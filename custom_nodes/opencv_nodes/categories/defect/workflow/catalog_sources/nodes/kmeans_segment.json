@@ -1,0 +1,28 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.kmeans-segment",
+  "display_name": "K-Means Segment",
+  "category": "opencv.defect",
+  "description": "按 BGR 颜色向量执行像素 K-Means 聚类分割。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "image", "display_name": "Segmented Image", "payload_type_id": "image-ref.v1"},
+    {"name": "clusters", "display_name": "Clusters", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "cluster_count": {"type": "integer", "default": 3, "minimum": 2, "maximum": 32},
+      "attempts": {"type": "integer", "default": 3, "minimum": 1},
+      "max_iterations": {"type": "integer", "default": 20, "minimum": 1},
+      "epsilon": {"type": "number", "default": 1.0, "minimum": 1e-09},
+      "output_object_key": {"type": "string"}
+    }
+  },
+  "capability_tags": ["opencv.kmeans-segment", "vision.opencv", "vision.segmentation"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

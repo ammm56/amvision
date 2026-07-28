@@ -34,6 +34,46 @@ from custom_nodes.opencv_nodes.categories.defect.backend.nodes.watershed import 
     NODE_TYPE_ID as WATERSHED_NODE_TYPE_ID,
     handle_node as watershed_handler,
 )
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.clear_border import (
+    NODE_TYPE_ID as CLEAR_BORDER_NODE_TYPE_ID,
+    handle_node as clear_border_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.flood_fill import (
+    NODE_TYPE_ID as FLOOD_FILL_NODE_TYPE_ID,
+    handle_node as flood_fill_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.grabcut import (
+    NODE_TYPE_ID as GRABCUT_NODE_TYPE_ID,
+    handle_node as grabcut_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.kmeans_segment import (
+    NODE_TYPE_ID as KMEANS_SEGMENT_NODE_TYPE_ID,
+    handle_node as kmeans_segment_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.morphology_hitmiss import (
+    NODE_TYPE_ID as MORPHOLOGY_HITMISS_NODE_TYPE_ID,
+    handle_node as morphology_hitmiss_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.region_difference import (
+    NODE_TYPE_ID as REGION_DIFFERENCE_NODE_TYPE_ID,
+    handle_node as region_difference_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.region_intersection import (
+    NODE_TYPE_ID as REGION_INTERSECTION_NODE_TYPE_ID,
+    handle_node as region_intersection_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.region_union import (
+    NODE_TYPE_ID as REGION_UNION_NODE_TYPE_ID,
+    handle_node as region_union_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.remove_small_components import (
+    NODE_TYPE_ID as REMOVE_SMALL_COMPONENTS_NODE_TYPE_ID,
+    handle_node as remove_small_components_handler,
+)
+from custom_nodes.opencv_nodes.categories.defect.backend.nodes.watershed_markers import (
+    NODE_TYPE_ID as WATERSHED_MARKERS_NODE_TYPE_ID,
+    handle_node as watershed_markers_handler,
+)
 
 
 NODE_HANDLERS = (
@@ -45,6 +85,16 @@ NODE_HANDLERS = (
     (HEATMAP_PREVIEW_NODE_TYPE_ID, heatmap_preview_handler),
     (WATERSHED_NODE_TYPE_ID, watershed_handler),
     (SKELETONIZE_NODE_TYPE_ID, skeletonize_handler),
+    (FLOOD_FILL_NODE_TYPE_ID, flood_fill_handler),
+    (GRABCUT_NODE_TYPE_ID, grabcut_handler),
+    (KMEANS_SEGMENT_NODE_TYPE_ID, kmeans_segment_handler),
+    (WATERSHED_MARKERS_NODE_TYPE_ID, watershed_markers_handler),
+    (REMOVE_SMALL_COMPONENTS_NODE_TYPE_ID, remove_small_components_handler),
+    (CLEAR_BORDER_NODE_TYPE_ID, clear_border_handler),
+    (REGION_UNION_NODE_TYPE_ID, region_union_handler),
+    (REGION_INTERSECTION_NODE_TYPE_ID, region_intersection_handler),
+    (REGION_DIFFERENCE_NODE_TYPE_ID, region_difference_handler),
+    (MORPHOLOGY_HITMISS_NODE_TYPE_ID, morphology_hitmiss_handler),
 )
 
 

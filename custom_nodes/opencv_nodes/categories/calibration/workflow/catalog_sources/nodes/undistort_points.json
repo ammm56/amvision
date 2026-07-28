@@ -1,0 +1,19 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.undistort-points",
+  "display_name": "Undistort Points",
+  "category": "opencv.calibration",
+  "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "points", "display_name": "Points", "payload_type_id": "value.v1"},
+    {"name": "calibration", "display_name": "Calibration", "payload_type_id": "value.v1"}
+  ],
+  "output_ports": [{"name": "points", "display_name": "Undistorted Points", "payload_type_id": "value.v1"}],
+  "parameter_schema": {"type": "object", "properties": {"normalize": {"type": "boolean", "default": false}}},
+  "capability_tags": ["opencv.undistort-points", "vision.opencv", "vision.calibration"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

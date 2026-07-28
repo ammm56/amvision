@@ -1,0 +1,24 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.line-segment-detect",
+  "display_name": "Line Segment Detect",
+  "category": "opencv.matching",
+  "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [{"name": "lines", "display_name": "Lines", "payload_type_id": "lines.v1"}],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "refine": {"type": "string", "enum": ["none", "standard", "advanced"], "default": "standard"},
+      "scale": {"type": "number", "default": 0.8, "minimum": 0.1, "maximum": 1},
+      "sigma_scale": {"type": "number", "default": 0.6, "minimum": 0.01},
+      "min_length": {"type": "number", "default": 10.0, "minimum": 0}
+    }
+  },
+  "capability_tags": ["opencv.line-segment-detect", "vision.opencv", "vision.geometry"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

@@ -1,0 +1,26 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.brisk-keypoints",
+  "display_name": "BRISK Keypoints",
+  "category": "opencv.matching",
+  "description": "提取快速多尺度 BRISK 关键点和二进制描述子。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "features", "display_name": "Features", "payload_type_id": "local-features.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "threshold": {"type": "integer", "default": 30, "minimum": 1},
+      "octaves": {"type": "integer", "default": 3, "minimum": 0},
+      "pattern_scale": {"type": "number", "default": 1.0, "minimum": 0.01}
+    }
+  },
+  "capability_tags": ["opencv.brisk-keypoints", "vision.opencv", "vision.features"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

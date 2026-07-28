@@ -42,6 +42,26 @@ from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.undistort impor
     NODE_TYPE_ID as UNDISTORT_NODE_TYPE_ID,
     handle_node as undistort_handler,
 )
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.flip import (
+    NODE_TYPE_ID as FLIP_NODE_TYPE_ID,
+    handle_node as flip_handler,
+)
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.get_rect_subpix import (
+    NODE_TYPE_ID as GET_RECT_SUBPIX_NODE_TYPE_ID,
+    handle_node as get_rect_subpix_handler,
+)
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.pad_border import (
+    NODE_TYPE_ID as PAD_BORDER_NODE_TYPE_ID,
+    handle_node as pad_border_handler,
+)
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.transpose import (
+    NODE_TYPE_ID as TRANSPOSE_NODE_TYPE_ID,
+    handle_node as transpose_handler,
+)
+from custom_nodes.opencv_nodes.categories.geometry.backend.nodes.warp_polar import (
+    NODE_TYPE_ID as WARP_POLAR_NODE_TYPE_ID,
+    handle_node as warp_polar_handler,
+)
 
 
 NODE_HANDLERS = (
@@ -58,6 +78,11 @@ NODE_HANDLERS = (
     (REMAP_NODE_TYPE_ID, remap_handler),
     (ROTATION_CORRECT_NODE_TYPE_ID, rotation_correct_handler),
     (UNDISTORT_NODE_TYPE_ID, undistort_handler),
+    (GET_RECT_SUBPIX_NODE_TYPE_ID, get_rect_subpix_handler),
+    (WARP_POLAR_NODE_TYPE_ID, warp_polar_handler),
+    (FLIP_NODE_TYPE_ID, flip_handler),
+    (TRANSPOSE_NODE_TYPE_ID, transpose_handler),
+    (PAD_BORDER_NODE_TYPE_ID, pad_border_handler),
 )
 
 

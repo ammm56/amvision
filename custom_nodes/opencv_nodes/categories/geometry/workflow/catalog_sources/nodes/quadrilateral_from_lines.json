@@ -39,5 +39,5 @@
   "capability_tags": ["opencv.geometry", "vision.lines", "vision.roi", "vision.alignment"],
   "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
   "node_pack_id": "opencv.nodes",
-  "node_pack_version": "0.2.0"
+  "node_pack_version": "0.1.3"
 }

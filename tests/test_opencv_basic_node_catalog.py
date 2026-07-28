@@ -42,7 +42,7 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
     } <= node_type_ids
     assert {
         item["node_pack_version"] for item in actual_catalog_payload["node_definitions"]
-    } == {"0.2.0"}
+    } == {"0.1.3"}
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,
         payload_type_ids={"measurements.v1", "lines.v1", "circles.v1", "ellipses.v1"},

@@ -1,0 +1,28 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.sift-keypoints",
+  "display_name": "SIFT Keypoints",
+  "category": "opencv.matching",
+  "description": "提取具备尺度和旋转不变性的 SIFT 关键点与 float32 描述子。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "features", "display_name": "Features", "payload_type_id": "local-features.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "max_features": {"type": "integer", "default": 1000, "minimum": 1},
+      "octave_layers": {"type": "integer", "default": 3, "minimum": 1},
+      "contrast_threshold": {"type": "number", "default": 0.04, "minimum": 0},
+      "edge_threshold": {"type": "number", "default": 10.0, "minimum": 0},
+      "sigma": {"type": "number", "default": 1.6, "minimum": 0.01}
+    }
+  },
+  "capability_tags": ["opencv.sift-keypoints", "vision.opencv", "vision.features"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

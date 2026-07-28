@@ -1,0 +1,27 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.fisheye-calibrate",
+  "display_name": "Fisheye Calibrate",
+  "category": "opencv.calibration",
+  "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "images", "display_name": "Images", "payload_type_id": "image-refs.v1", "required": false},
+    {"name": "observations", "display_name": "Observations", "payload_type_id": "value.v1", "required": false}
+  ],
+  "output_ports": [{"name": "calibration", "display_name": "Calibration", "payload_type_id": "value.v1"}],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "columns": {"type": "integer", "default": 9, "minimum": 2},
+      "rows": {"type": "integer", "default": 6, "minimum": 2},
+      "square_size": {"type": "number", "default": 1.0, "minimum": 1e-09},
+      "min_views": {"type": "integer", "default": 3, "minimum": 1}
+    }
+  },
+  "capability_tags": ["opencv.fisheye-calibrate", "vision.opencv", "vision.calibration"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

@@ -187,19 +187,19 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 
 OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 接入统一节点目录。
 
-当前 OpenCV custom node 已统一收口为一个 `opencv.nodes` pack，版本为 `0.2.0`。
+当前 OpenCV custom node 已统一收口为一个 `opencv.nodes` pack，版本与系统版本保持一致，当前为 `0.1.3`。
 代码按 `basic / shape / matching / calibration / geometry / measurement / defect / render`
-八个包内分类维护，公开 105 个 `custom.opencv.*` 节点。Catalog 中使用以下稳定的功能分类：
+八个包内分类维护，公开 133 个 `custom.opencv.*` 节点。Catalog 中使用以下稳定的功能分类：
 
 - `opencv.color / opencv.mask`：颜色转换、通道处理、颜色范围阈值、掩膜逻辑和图像算术
 - `opencv.filter`：平滑、阈值、边缘、形态学、Filter2D、Scharr 和 Gabor
 - `opencv.analysis`：直方图、ROI 强度统计和批量图像分析
 - `opencv.shape`：轮廓、线圆、拟合、区域属性、矩、Hu 矩和形状关系
-- `opencv.matching`：模板、尺度模板、旋转尺度模板、Phase Correlation、ECC、ORB 和 Homography
-- `opencv.calibration`：棋盘格观测、针孔相机标定和 SolvePnP
-- `opencv.geometry`：仿射、透视、去畸变、Remap、坐标桥接和几何构造
+- `opencv.matching`：模板、Phase Correlation、ECC、ORB、SIFT、AKAZE、BRISK、FLANN、角点和线段检测
+- `opencv.calibration`：棋盘格与圆点阵观测、针孔与 fisheye 标定、PnP、点投影、点矫正和 hand-eye 标定
+- `opencv.geometry`：仿射、透视、去畸变、Remap、坐标桥接、亚像素裁剪、极坐标展开和基础轴变换
 - `opencv.measurement`：卡尺、距离、角度、孔径、槽宽、平行度和同心度
-- `opencv.defect`：差异、连通域、孔洞、距离变换、Watershed、骨架和热力图
+- `opencv.defect`：差异、连通域、Watershed、GrabCut、K-Means、区域集合运算、边界清理、HitMiss、骨架和热力图
 - `opencv.render`：检测、轮廓、线、圆、ROI、区域和量测绘制
 - `opencv.io / opencv.preview / opencv.transform`：裁剪导出、调试预览和 payload bridge
 
@@ -211,7 +211,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 
 - python_packages: [opencv-python, numpy]
 - node_pack_id: opencv.nodes
-- node_pack_version: 0.2.0
+- node_pack_version: 0.1.3
 - capability_tags: [opencv.preprocess] / [opencv.color] / [opencv.mask] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching] / [opencv.calibration]
 
 `capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。

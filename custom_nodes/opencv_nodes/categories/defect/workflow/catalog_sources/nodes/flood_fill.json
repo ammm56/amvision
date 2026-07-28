@@ -1,0 +1,30 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.flood-fill",
+  "display_name": "Flood Fill",
+  "category": "opencv.defect",
+  "description": "从种子点按颜色差容差提取连通区域 mask。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [
+    {"name": "mask", "display_name": "Mask", "payload_type_id": "image-ref.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "seed_x": {"type": "integer", "default": 0, "minimum": 0},
+      "seed_y": {"type": "integer", "default": 0, "minimum": 0},
+      "lo_diff": {"type": "number", "default": 10.0, "minimum": 0, "maximum": 255},
+      "up_diff": {"type": "number", "default": 10.0, "minimum": 0, "maximum": 255},
+      "connectivity": {"type": "integer", "enum": [4, 8], "default": 4},
+      "fixed_range": {"type": "boolean", "default": false},
+      "output_object_key": {"type": "string"}
+    }
+  },
+  "capability_tags": ["opencv.flood-fill", "vision.opencv", "vision.segmentation"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

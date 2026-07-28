@@ -30,5 +30,11 @@ def test_opencv_calibration_node_catalog_builder_matches_checked_in_catalog() ->
         "custom.opencv.chessboard-corners",
         "custom.opencv.camera-calibrate",
         "custom.opencv.solve-pnp",
+        "custom.opencv.circle-grid-detect",
+        "custom.opencv.corner-subpix",
+        "custom.opencv.fisheye-calibrate",
+        "custom.opencv.project-points",
+        "custom.opencv.undistort-points",
+        "custom.opencv.hand-eye-calibrate",
     }
-    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.2.0"}
+    assert {item["node_pack_version"] for item in actual["node_definitions"]} == {"0.1.3"}

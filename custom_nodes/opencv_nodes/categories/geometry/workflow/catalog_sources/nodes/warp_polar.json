@@ -1,0 +1,28 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.warp-polar",
+  "display_name": "Warp Polar",
+  "category": "opencv.geometry",
+  "description": "执行线性或对数极坐标变换，适用于圆形标签、密封圈、瓶盖和环形焊缝展开。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [{"name": "image", "display_name": "Polar Image", "payload_type_id": "image-ref.v1"}],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "center_x": {"type": "number"},
+      "center_y": {"type": "number"},
+      "max_radius": {"type": "number", "minimum": 1e-09},
+      "output_width": {"type": "integer", "minimum": 1},
+      "output_height": {"type": "integer", "minimum": 1},
+      "mode": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
+      "inverse": {"type": "boolean", "default": false},
+      "output_object_key": {"type": "string"}
+    }
+  },
+  "capability_tags": ["opencv.warp-polar", "vision.opencv", "vision.geometry"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

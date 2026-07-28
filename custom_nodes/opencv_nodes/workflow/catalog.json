@@ -1002,7 +1002,7 @@
             "items": {
               "type": "array",
               "items": {
-                "type": "integer"
+                "type": "number"
               }
             }
           }
@@ -1648,7 +1648,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1711,7 +1711,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1833,7 +1833,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1897,7 +1897,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1965,7 +1965,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2030,7 +2030,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2166,7 +2166,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2247,7 +2247,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2307,7 +2307,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2384,7 +2384,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2453,7 +2453,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2531,7 +2531,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2624,7 +2624,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2712,7 +2712,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2893,7 +2893,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -2988,7 +2988,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3070,7 +3070,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3133,7 +3133,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "description": {
@@ -3199,7 +3199,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3261,7 +3261,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3315,7 +3315,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3393,7 +3393,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3451,7 +3451,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3538,7 +3538,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -3692,7 +3692,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -3851,7 +3851,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -4001,7 +4001,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -4135,7 +4135,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -4200,7 +4200,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4287,7 +4287,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4360,7 +4360,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4420,7 +4420,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4502,7 +4502,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4568,7 +4568,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4634,7 +4634,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -4881,7 +4881,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -4964,7 +4964,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5030,7 +5030,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5101,7 +5101,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5194,7 +5194,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -5301,7 +5301,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5309,7 +5309,7 @@
       "node_type_id": "custom.opencv.camera-calibrate",
       "display_name": "Camera Calibrate",
       "category": "opencv.calibration",
-      "description": "从多张同尺寸棋盘格图片估计针孔相机内参、畸变系数和逐视图重投影误差。",
+      "description": "从同尺寸棋盘格图片或结构化标定观测估计针孔相机内参、畸变系数和逐视图重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -5319,7 +5319,16 @@
           "display_name": "Images",
           "payload_type_id": "image-refs.v1",
           "description": "",
-          "required": true,
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -5380,7 +5389,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5450,7 +5459,385 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-grid-detect",
+      "display_name": "Circle Grid Detect",
+      "category": "opencv.calibration",
+      "description": "检测对称或非对称圆点阵并输出带物理坐标的标定观测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "observation",
+          "display_name": "Observation",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 2
+          },
+          "rows": {
+            "type": "integer",
+            "default": 11,
+            "minimum": 2
+          },
+          "spacing": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 1e-09
+          },
+          "asymmetric": {
+            "type": "boolean",
+            "default": true
+          },
+          "use_clustering": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.circle-grid-detect",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.corner-subpix",
+      "display_name": "Corner SubPix",
+      "category": "opencv.calibration",
+      "description": "依据灰度梯度对二维角点执行亚像素细化。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Refined Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "window_size": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1
+          },
+          "zero_zone": {
+            "type": "integer",
+            "default": -1,
+            "minimum": -1
+          },
+          "max_iterations": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1
+          },
+          "epsilon": {
+            "type": "number",
+            "default": 0.01,
+            "minimum": 1e-09
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.corner-subpix",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fisheye-calibrate",
+      "display_name": "Fisheye Calibrate",
+      "category": "opencv.calibration",
+      "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "default": 9,
+            "minimum": 2
+          },
+          "rows": {
+            "type": "integer",
+            "default": 6,
+            "minimum": 2
+          },
+          "square_size": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 1e-09
+          },
+          "min_views": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fisheye-calibrate",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.hand-eye-calibrate",
+      "display_name": "Hand-Eye Calibrate",
+      "category": "opencv.calibration",
+      "description": "由机器人夹具到基座和标定目标到相机的位姿序列估计相机到夹具外参。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "robot_poses",
+          "display_name": "Robot Poses",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "target_poses",
+          "display_name": "Target Poses",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "hand_eye",
+          "display_name": "Hand-Eye Transform",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "tsai",
+              "park",
+              "horaud",
+              "andreff",
+              "daniilidis"
+            ],
+            "default": "tsai"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.hand-eye-calibrate",
+        "vision.opencv",
+        "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.project-points",
+      "display_name": "Project Points",
+      "category": "opencv.calibration",
+      "description": "依据针孔或 fisheye 标定参数和位姿将三维点投影到图像平面。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "object_points",
+          "display_name": "Object Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "pose",
+          "display_name": "Pose",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image_points",
+          "display_name": "Image Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.project-points",
+        "vision.opencv",
+        "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5521,7 +5908,72 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.undistort-points",
+      "display_name": "Undistort Points",
+      "category": "opencv.calibration",
+      "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Undistorted Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "normalize": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.undistort-points",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5602,7 +6054,71 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.clear-border",
+      "display_name": "Clear Border",
+      "category": "opencv.defect",
+      "description": "删除与图像边界相接的二值连通域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.clear-border",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5714,7 +6230,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5820,7 +6336,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5890,7 +6406,208 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.flood-fill",
+      "display_name": "Flood Fill",
+      "category": "opencv.defect",
+      "description": "从种子点按颜色差容差提取连通区域 mask。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "seed_x": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "seed_y": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "lo_diff": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 0,
+            "maximum": 255
+          },
+          "up_diff": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 0,
+            "maximum": 255
+          },
+          "connectivity": {
+            "type": "integer",
+            "enum": [
+              4,
+              8
+            ],
+            "default": 4
+          },
+          "fixed_range": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.flood-fill",
+        "vision.opencv",
+        "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.grabcut",
+      "display_name": "GrabCut",
+      "category": "opencv.defect",
+      "description": "使用矩形或可选初始 mask 执行交互式前景分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask",
+          "display_name": "Initial Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Foreground Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "iterations": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.grabcut",
+        "vision.opencv",
+        "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -5990,7 +6707,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6070,7 +6787,483 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.kmeans-segment",
+      "display_name": "K-Means Segment",
+      "category": "opencv.defect",
+      "description": "按 BGR 颜色向量执行像素 K-Means 聚类分割。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Segmented Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "clusters",
+          "display_name": "Clusters",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "cluster_count": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 2,
+            "maximum": 32
+          },
+          "attempts": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          },
+          "max_iterations": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1
+          },
+          "epsilon": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 1e-09
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.kmeans-segment",
+        "vision.opencv",
+        "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.morphology-hitmiss",
+      "display_name": "Morphology HitMiss",
+      "category": "opencv.defect",
+      "description": "使用包含 -1、0、1 的结构元素在二值图中搜索像素模式。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Matches",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "kernel": {
+            "type": "array",
+            "default": [
+              [
+                -1,
+                -1,
+                -1
+              ],
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                1,
+                1,
+                1
+              ]
+            ],
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "enum": [
+                  -1,
+                  0,
+                  1
+                ]
+              }
+            }
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.morphology-hitmiss",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.region-difference",
+      "display_name": "Region Difference",
+      "category": "opencv.defect",
+      "description": "计算二值区域 A 减区域 B。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "region_a",
+          "display_name": "Region A",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "region_b",
+          "display_name": "Region B",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Region",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.region-difference",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.region-intersection",
+      "display_name": "Region Intersection",
+      "category": "opencv.defect",
+      "description": "计算两个同尺寸二值区域的交集。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "region_a",
+          "display_name": "Region A",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "region_b",
+          "display_name": "Region B",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Region",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.region-intersection",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.region-union",
+      "display_name": "Region Union",
+      "category": "opencv.defect",
+      "description": "计算两个同尺寸二值区域的并集。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "region_a",
+          "display_name": "Region A",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "region_b",
+          "display_name": "Region B",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Region",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.region-union",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.remove-small-components",
+      "display_name": "Remove Small Components",
+      "category": "opencv.defect",
+      "description": "按像素面积删除小型二值连通域。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "min_area": {
+            "type": "integer",
+            "default": 16,
+            "minimum": 1
+          },
+          "connectivity": {
+            "type": "integer",
+            "enum": [
+              4,
+              8
+            ],
+            "default": 8
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.remove-small-components",
+        "vision.opencv",
+        "vision.region"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6144,7 +7337,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6249,7 +7442,89 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.watershed-markers",
+      "display_name": "Watershed Markers",
+      "category": "opencv.defect",
+      "description": "使用显式 marker label 图执行 watershed 并输出区域 mask 与边界。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "markers",
+          "display_name": "Markers",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Region Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "boundary",
+          "display_name": "Boundary",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.watershed-markers",
+        "vision.opencv",
+        "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6429,7 +7704,142 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.flip",
+      "display_name": "Flip",
+      "category": "opencv.geometry",
+      "description": "沿水平、垂直或双轴翻转图像。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical",
+              "both"
+            ],
+            "default": "horizontal"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.flip",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.get-rect-subpix",
+      "display_name": "Get Rect SubPix",
+      "category": "opencv.geometry",
+      "description": "围绕浮点中心坐标提取指定尺寸的亚像素矩形 patch。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Patch",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "default": 64,
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "default": 64,
+            "minimum": 1
+          },
+          "center_x": {
+            "type": "number"
+          },
+          "center_y": {
+            "type": "number"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.get-rect-subpix",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6507,7 +7917,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6587,7 +7997,106 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.pad-border",
+      "display_name": "Pad Border",
+      "category": "opencv.geometry",
+      "description": "按 constant、replicate、reflect 或 wrap 策略扩展图像边界。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "top": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "bottom": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "left": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "right": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "border_mode": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "replicate",
+              "reflect",
+              "reflect101",
+              "wrap"
+            ],
+            "default": "constant"
+          },
+          "border_value": {
+            "type": "array",
+            "default": [
+              0,
+              0,
+              0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "maxItems": 4
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.pad-border",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6734,7 +8243,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -6880,7 +8389,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7047,7 +8556,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7195,7 +8704,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7333,7 +8842,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7472,7 +8981,62 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transpose",
+      "display_name": "Transpose",
+      "category": "opencv.geometry",
+      "description": "交换图像行列轴。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transpose",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7668,7 +9232,244 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.warp-polar",
+      "display_name": "Warp Polar",
+      "category": "opencv.geometry",
+      "description": "执行线性或对数极坐标变换，适用于圆形标签、密封圈、瓶盖和环形焊缝展开。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Polar Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "center_x": {
+            "type": "number"
+          },
+          "center_y": {
+            "type": "number"
+          },
+          "max_radius": {
+            "type": "number",
+            "minimum": 1e-09
+          },
+          "output_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "log"
+            ],
+            "default": "linear"
+          },
+          "inverse": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.warp-polar",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.akaze-keypoints",
+      "display_name": "AKAZE Keypoints",
+      "category": "opencv.matching",
+      "description": "提取非线性尺度空间 AKAZE 关键点和 MLDB 二进制描述子。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "default": 0.001,
+            "minimum": 1e-09
+          },
+          "octaves": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1
+          },
+          "octave_layers": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.akaze-keypoints",
+        "vision.opencv",
+        "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.brisk-keypoints",
+      "display_name": "BRISK Keypoints",
+      "category": "opencv.matching",
+      "description": "提取快速多尺度 BRISK 关键点和二进制描述子。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1
+          },
+          "octaves": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 0
+          },
+          "pattern_scale": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 0.01
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.brisk-keypoints",
+        "vision.opencv",
+        "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7765,7 +9566,232 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fast-corners",
+      "display_name": "FAST Corners",
+      "category": "opencv.matching",
+      "description": "使用 FAST 检测高吞吐角点并按响应值截取结果。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 255
+          },
+          "nonmax_suppression": {
+            "type": "boolean",
+            "default": true
+          },
+          "max_features": {
+            "type": "integer",
+            "default": 500,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fast-corners",
+        "vision.opencv",
+        "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.flann-match",
+      "display_name": "FLANN Match",
+      "category": "opencv.matching",
+      "description": "使用 KD-Tree 或 LSH 对 float32 或 binary 局部描述子执行近邻匹配。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "features_a",
+          "display_name": "Features A",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "features_b",
+          "display_name": "Features B",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "matches",
+          "display_name": "Matches",
+          "payload_type_id": "feature-matches.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "ratio_test_threshold": {
+            "type": "number",
+            "default": 0.75,
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "max_matches": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.flann-match",
+        "vision.opencv",
+        "vision.matching"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.good-features-to-track",
+      "display_name": "Good Features To Track",
+      "category": "opencv.matching",
+      "description": "使用 Shi-Tomasi 或 Harris 响应提取适合跟踪的强角点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_corners": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 1
+          },
+          "quality_level": {
+            "type": "number",
+            "default": 0.01,
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "min_distance": {
+            "type": "number",
+            "default": 5.0,
+            "minimum": 0
+          },
+          "block_size": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 2
+          },
+          "use_harris": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.good-features-to-track",
+        "vision.opencv",
+        "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -7968,7 +9994,84 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.line-segment-detect",
+      "display_name": "Line Segment Detect",
+      "category": "opencv.matching",
+      "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "lines",
+          "display_name": "Lines",
+          "payload_type_id": "lines.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "refine": {
+            "type": "string",
+            "enum": [
+              "none",
+              "standard",
+              "advanced"
+            ],
+            "default": "standard"
+          },
+          "scale": {
+            "type": "number",
+            "default": 0.8,
+            "minimum": 0.1,
+            "maximum": 1
+          },
+          "sigma_scale": {
+            "type": "number",
+            "default": 0.6,
+            "minimum": 0.01
+          },
+          "min_length": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 0
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.line-segment-detect",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8094,7 +10197,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8259,7 +10362,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8434,7 +10537,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8498,7 +10601,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8637,7 +10740,93 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.sift-keypoints",
+      "display_name": "SIFT Keypoints",
+      "category": "opencv.matching",
+      "description": "提取具备尺度和旋转不变性的 SIFT 关键点与 float32 描述子。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "features",
+          "display_name": "Features",
+          "payload_type_id": "local-features.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "max_features": {
+            "type": "integer",
+            "default": 1000,
+            "minimum": 1
+          },
+          "octave_layers": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          },
+          "contrast_threshold": {
+            "type": "number",
+            "default": 0.04,
+            "minimum": 0
+          },
+          "edge_threshold": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 0
+          },
+          "sigma": {
+            "type": "number",
+            "default": 1.6,
+            "minimum": 0.01
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.sift-keypoints",
+        "vision.opencv",
+        "vision.features"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8804,7 +10993,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -8965,7 +11154,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9048,7 +11237,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9144,7 +11333,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9229,7 +11418,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9297,7 +11486,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9393,7 +11582,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9472,7 +11661,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9562,7 +11751,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9658,7 +11847,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9753,7 +11942,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9835,7 +12024,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -9989,7 +12178,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -10095,7 +12284,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10178,7 +12367,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10275,7 +12464,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10363,7 +12552,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10457,7 +12646,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10674,7 +12863,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -10901,7 +13090,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11015,7 +13204,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11210,7 +13399,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11297,7 +13486,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11408,7 +13597,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11458,7 +13647,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11575,7 +13764,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -11705,7 +13894,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12049,7 +14238,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12266,7 +14455,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12321,7 +14510,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12371,7 +14560,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12492,7 +14681,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12608,7 +14797,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12687,7 +14876,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12737,7 +14926,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -12825,7 +15014,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     }
   ],

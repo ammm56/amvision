@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.fast-corners",
+  "display_name": "FAST Corners",
+  "category": "opencv.matching",
+  "description": "使用 FAST 检测高吞吐角点并按响应值截取结果。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [{"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"}],
+  "output_ports": [{"name": "points", "display_name": "Points", "payload_type_id": "value.v1"}],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "threshold": {"type": "integer", "default": 10, "minimum": 1, "maximum": 255},
+      "nonmax_suppression": {"type": "boolean", "default": true},
+      "max_features": {"type": "integer", "default": 500, "minimum": 1}
+    }
+  },
+  "capability_tags": ["opencv.fast-corners", "vision.opencv", "vision.features"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}

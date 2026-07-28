@@ -33,6 +33,11 @@ def test_opencv_geometry_node_catalog_builder_matches_checked_in_catalog() -> No
         "custom.opencv.line-deduplicate",
         "custom.opencv.line-intersection",
         "custom.opencv.quadrilateral-from-lines",
+        "custom.opencv.get-rect-subpix",
+        "custom.opencv.warp-polar",
+        "custom.opencv.flip",
+        "custom.opencv.transpose",
+        "custom.opencv.pad-border",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

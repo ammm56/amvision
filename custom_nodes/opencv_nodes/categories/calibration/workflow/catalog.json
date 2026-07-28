@@ -1002,7 +1002,7 @@
             "items": {
               "type": "array",
               "items": {
-                "type": "integer"
+                "type": "number"
               }
             }
           }
@@ -1576,7 +1576,7 @@
       "node_type_id": "custom.opencv.camera-calibrate",
       "display_name": "Camera Calibrate",
       "category": "opencv.calibration",
-      "description": "从多张同尺寸棋盘格图片估计针孔相机内参、畸变系数和逐视图重投影误差。",
+      "description": "从同尺寸棋盘格图片或结构化标定观测估计针孔相机内参、畸变系数和逐视图重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -1586,7 +1586,16 @@
           "display_name": "Images",
           "payload_type_id": "image-refs.v1",
           "description": "",
-          "required": true,
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
           "multiple": false,
           "metadata": {}
         }
@@ -1647,7 +1656,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1717,7 +1726,385 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.circle-grid-detect",
+      "display_name": "Circle Grid Detect",
+      "category": "opencv.calibration",
+      "description": "检测对称或非对称圆点阵并输出带物理坐标的标定观测。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "observation",
+          "display_name": "Observation",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 2
+          },
+          "rows": {
+            "type": "integer",
+            "default": 11,
+            "minimum": 2
+          },
+          "spacing": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 1e-09
+          },
+          "asymmetric": {
+            "type": "boolean",
+            "default": true
+          },
+          "use_clustering": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.circle-grid-detect",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.corner-subpix",
+      "display_name": "Corner SubPix",
+      "category": "opencv.calibration",
+      "description": "依据灰度梯度对二维角点执行亚像素细化。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Refined Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "window_size": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1
+          },
+          "zero_zone": {
+            "type": "integer",
+            "default": -1,
+            "minimum": -1
+          },
+          "max_iterations": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1
+          },
+          "epsilon": {
+            "type": "number",
+            "default": 0.01,
+            "minimum": 1e-09
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.corner-subpix",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.fisheye-calibrate",
+      "display_name": "Fisheye Calibrate",
+      "category": "opencv.calibration",
+      "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "images",
+          "display_name": "Images",
+          "payload_type_id": "image-refs.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "observations",
+          "display_name": "Observations",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "default": 9,
+            "minimum": 2
+          },
+          "rows": {
+            "type": "integer",
+            "default": 6,
+            "minimum": 2
+          },
+          "square_size": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 1e-09
+          },
+          "min_views": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.fisheye-calibrate",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.hand-eye-calibrate",
+      "display_name": "Hand-Eye Calibrate",
+      "category": "opencv.calibration",
+      "description": "由机器人夹具到基座和标定目标到相机的位姿序列估计相机到夹具外参。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "robot_poses",
+          "display_name": "Robot Poses",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "target_poses",
+          "display_name": "Target Poses",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "hand_eye",
+          "display_name": "Hand-Eye Transform",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "tsai",
+              "park",
+              "horaud",
+              "andreff",
+              "daniilidis"
+            ],
+            "default": "tsai"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.hand-eye-calibrate",
+        "vision.opencv",
+        "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.project-points",
+      "display_name": "Project Points",
+      "category": "opencv.calibration",
+      "description": "依据针孔或 fisheye 标定参数和位姿将三维点投影到图像平面。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "object_points",
+          "display_name": "Object Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "pose",
+          "display_name": "Pose",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image_points",
+          "display_name": "Image Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.project-points",
+        "vision.opencv",
+        "vision.pose"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1788,7 +2175,72 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.undistort-points",
+      "display_name": "Undistort Points",
+      "category": "opencv.calibration",
+      "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "points",
+          "display_name": "Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "calibration",
+          "display_name": "Calibration",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "points",
+          "display_name": "Undistorted Points",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "normalize": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.undistort-points",
+        "vision.opencv",
+        "vision.calibration"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     }
   ],

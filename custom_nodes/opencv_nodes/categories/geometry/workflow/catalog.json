@@ -1002,7 +1002,7 @@
             "items": {
               "type": "array",
               "items": {
-                "type": "integer"
+                "type": "number"
               }
             }
           }
@@ -1748,7 +1748,142 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.flip",
+      "display_name": "Flip",
+      "category": "opencv.geometry",
+      "description": "沿水平、垂直或双轴翻转图像。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical",
+              "both"
+            ],
+            "default": "horizontal"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.flip",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.get-rect-subpix",
+      "display_name": "Get Rect SubPix",
+      "category": "opencv.geometry",
+      "description": "围绕浮点中心坐标提取指定尺寸的亚像素矩形 patch。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Patch",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "default": 64,
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "default": 64,
+            "minimum": 1
+          },
+          "center_x": {
+            "type": "number"
+          },
+          "center_y": {
+            "type": "number"
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.get-rect-subpix",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1826,7 +1961,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -1906,7 +2041,106 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.pad-border",
+      "display_name": "Pad Border",
+      "category": "opencv.geometry",
+      "description": "按 constant、replicate、reflect 或 wrap 策略扩展图像边界。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "top": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "bottom": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "left": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "right": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0
+          },
+          "border_mode": {
+            "type": "string",
+            "enum": [
+              "constant",
+              "replicate",
+              "reflect",
+              "reflect101",
+              "wrap"
+            ],
+            "default": "constant"
+          },
+          "border_value": {
+            "type": "array",
+            "default": [
+              0,
+              0,
+              0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "maxItems": 4
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.pad-border",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2053,7 +2287,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2199,7 +2433,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2366,7 +2600,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2514,7 +2748,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2652,7 +2886,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2791,7 +3025,62 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.transpose",
+      "display_name": "Transpose",
+      "category": "opencv.geometry",
+      "description": "交换图像行列轴。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.transpose",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     },
     {
@@ -2987,7 +3276,92 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.2.0",
+      "node_pack_version": "0.1.3",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.warp-polar",
+      "display_name": "Warp Polar",
+      "category": "opencv.geometry",
+      "description": "执行线性或对数极坐标变换，适用于圆形标签、密封圈、瓶盖和环形焊缝展开。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Polar Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "center_x": {
+            "type": "number"
+          },
+          "center_y": {
+            "type": "number"
+          },
+          "max_radius": {
+            "type": "number",
+            "minimum": 1e-09
+          },
+          "output_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "log"
+            ],
+            "default": "linear"
+          },
+          "inverse": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.warp-polar",
+        "vision.opencv",
+        "vision.geometry"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.1.3",
       "metadata": {}
     }
   ],

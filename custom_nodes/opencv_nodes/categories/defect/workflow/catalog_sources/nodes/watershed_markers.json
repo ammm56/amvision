@@ -1,0 +1,23 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.watershed-markers",
+  "display_name": "Watershed Markers",
+  "category": "opencv.defect",
+  "description": "使用显式 marker label 图执行 watershed 并输出区域 mask 与边界。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {"name": "image", "display_name": "Image", "payload_type_id": "image-ref.v1"},
+    {"name": "markers", "display_name": "Markers", "payload_type_id": "image-ref.v1"}
+  ],
+  "output_ports": [
+    {"name": "mask", "display_name": "Region Mask", "payload_type_id": "image-ref.v1"},
+    {"name": "boundary", "display_name": "Boundary", "payload_type_id": "image-ref.v1"},
+    {"name": "summary", "display_name": "Summary", "payload_type_id": "value.v1"}
+  ],
+  "parameter_schema": {"type": "object", "properties": {"output_object_key": {"type": "string"}}},
+  "capability_tags": ["opencv.watershed-markers", "vision.opencv", "vision.segmentation"],
+  "runtime_requirements": {"python_packages": ["opencv-python", "numpy"]},
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.1.3"
+}
