@@ -2659,23 +2659,6 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
-.workflow-graph-toolbar__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid #4a555b;
-  border-radius: 8px;
-  color: #dce7eb;
-  background: #2a3034;
-}
-
-.workflow-graph-toolbar__back:hover {
-  text-decoration: none;
-  background: #323a3f;
-}
-
 .workflow-graph-toolbar__meta span {
   display: inline-flex;
   align-items: center;
@@ -2684,10 +2667,6 @@ textarea:focus-visible {
   border: 1px solid #3a444a;
   border-radius: 999px;
   background: #202529;
-}
-
-.workflow-graph-toolbar__meta .status-badge {
-  flex-shrink: 0;
 }
 
 .workflow-graph-toolbar .ui-button--secondary {
@@ -2727,7 +2706,6 @@ textarea:focus-visible {
     max-width: 180px;
   }
 
-  .workflow-graph-toolbar__back,
   .workflow-graph-toolbar__meta span,
   .workflow-graph-toolbar .ui-button {
     white-space: nowrap;
@@ -3471,7 +3449,6 @@ textarea:focus-visible {
   color: var(--graph-muted);
 }
 
-.workflow-graph-workbench .workflow-graph-toolbar__back,
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary,
 .workflow-graph-workbench .workflow-graph-toolbar__title-edit,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor button,
@@ -3481,7 +3458,6 @@ textarea:focus-visible {
   background: var(--graph-panel);
 }
 
-.workflow-graph-workbench .workflow-graph-toolbar__back:hover,
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled),
 .workflow-graph-workbench .workflow-graph-toolbar__title-edit:hover,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor button:hover:not(:disabled) {

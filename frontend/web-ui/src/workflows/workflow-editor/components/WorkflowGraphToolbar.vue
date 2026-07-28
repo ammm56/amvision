@@ -1,10 +1,6 @@
 <template>
   <header class="workflow-graph-toolbar">
     <div class="workflow-graph-toolbar__title">
-      <RouterLink to="/workflows/apps" class="workflow-graph-toolbar__back">
-        <ArrowLeft :size="16" />
-        {{ t('workflowEditor.actions.backToApps') }}
-      </RouterLink>
       <div class="workflow-graph-toolbar__title-main">
         <div v-if="titleEditing" class="workflow-graph-toolbar__title-editor">
           <input
@@ -56,11 +52,8 @@
         </div>
       </div>
     </div>
-    <div class="workflow-graph-toolbar__meta">
-      <span>{{ t('workflowEditor.fields.nodeCount') }} {{ nodeCount }}</span>
-      <span>{{ t('workflowEditor.fields.edgeCount') }} {{ edgeCount }}</span>
+    <div v-if="runtimeState || statusMessage" class="workflow-graph-toolbar__meta">
       <span v-if="runtimeState">{{ runtimeState }}</span>
-      <StatusBadge v-if="previewRunLabel" :tone="previewRunTone">{{ previewRunLabel }}</StatusBadge>
       <span v-if="statusMessage">{{ statusMessage }}</span>
     </div>
     <div class="workflow-graph-toolbar__actions">
@@ -91,12 +84,10 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { ArrowLeft, BoxSelect, Check, Moon, Play, RefreshCw, Save, SquarePen, Sun, X } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
+import { BoxSelect, Check, Moon, Play, RefreshCw, Save, SquarePen, Sun, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 const props = defineProps<{
   editorTitle: string
@@ -104,11 +95,7 @@ const props = defineProps<{
   titleEditing: boolean
   titleSaving: boolean
   titleEditable: boolean
-  nodeCount: number
-  edgeCount: number
   runtimeState: string | null
-  previewRunLabel: string | null
-  previewRunTone: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
   statusMessage: string | null
   loading: boolean
   graphTheme: string

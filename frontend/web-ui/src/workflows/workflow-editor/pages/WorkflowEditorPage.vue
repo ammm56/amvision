@@ -6,11 +6,7 @@
       :title-editing="editorTitleEditing"
       :title-saving="editorTitleSaving"
       :title-editable="editorTitleEditable"
-      :node-count="graphNodes.length"
-      :edge-count="graphLinks.length"
       :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
-      :preview-run-label="lastPreviewRun ? formatPreviewRunStatusLabel(lastPreviewRun.state) : null"
-      :preview-run-tone="lastPreviewRun ? readPreviewRunBadgeTone(lastPreviewRun.state) : 'neutral'"
       :status-message="toolbarStatusMessage"
       :loading="loading"
       :graph-theme="graphTheme"
@@ -283,7 +279,7 @@ import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometr
 import { useWorkflowPreviewDisplays, type PreviewImageInteractionApplyEvent } from '../preview/useWorkflowPreviewDisplays'
 import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
 import { getPreviewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
-import { formatPreviewRunStatusLabel, readPreviewRunBadgeTone, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
+import { formatPreviewRunStatusLabel, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
 import { useWorkflowDocumentBuilder } from '../documents/useWorkflowDocumentBuilder'
 import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
 import { useWorkflowNewAppDraft } from '../documents/useWorkflowNewAppDraft'
