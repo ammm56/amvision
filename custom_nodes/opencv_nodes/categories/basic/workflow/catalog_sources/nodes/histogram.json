@@ -1,0 +1,64 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.histogram",
+  "display_name": "Histogram",
+  "category": "opencv.analysis",
+  "description": "计算整图或搜索 ROI 的逐通道直方图。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "Roi",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "histogram",
+      "display_name": "Histogram",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "bins": {
+        "type": "integer",
+        "default": 256,
+        "minimum": 2,
+        "maximum": 4096
+      },
+      "channels": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        }
+      },
+      "search_bbox_xyxy": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.histogram",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

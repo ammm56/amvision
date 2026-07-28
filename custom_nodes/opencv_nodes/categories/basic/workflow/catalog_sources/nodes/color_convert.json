@@ -1,0 +1,67 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.color-convert",
+  "display_name": "Color Convert",
+  "category": "opencv.color",
+  "description": "在 BGR、RGB、Gray、HSV、HLS、Lab、YCrCb、XYZ、Luv 和 BGRA 之间执行显式颜色空间转换。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "conversion": {
+        "type": "string",
+        "default": "bgr-to-gray",
+        "enum": [
+          "bgr-to-gray",
+          "gray-to-bgr",
+          "bgr-to-rgb",
+          "rgb-to-bgr",
+          "bgr-to-hsv",
+          "hsv-to-bgr",
+          "bgr-to-hls",
+          "hls-to-bgr",
+          "bgr-to-lab",
+          "lab-to-bgr",
+          "bgr-to-ycrcb",
+          "ycrcb-to-bgr",
+          "bgr-to-xyz",
+          "xyz-to-bgr",
+          "bgr-to-luv",
+          "luv-to-bgr",
+          "bgra-to-bgr",
+          "bgr-to-bgra"
+        ]
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.cvt-color",
+    "vision.color"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

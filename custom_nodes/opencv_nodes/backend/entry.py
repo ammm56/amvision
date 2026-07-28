@@ -8,6 +8,9 @@ from backend.service.application.workflows.runtime_registry_loader import (
 from custom_nodes.opencv_nodes.categories.basic.backend.nodes import (
     NODE_HANDLERS as BASIC_NODE_HANDLERS,
 )
+from custom_nodes.opencv_nodes.categories.calibration.backend.nodes import (
+    NODE_HANDLERS as CALIBRATION_NODE_HANDLERS,
+)
 from custom_nodes.opencv_nodes.categories.defect.backend.nodes import (
     NODE_HANDLERS as DEFECT_NODE_HANDLERS,
 )
@@ -30,6 +33,7 @@ from custom_nodes.opencv_nodes.categories.shape.backend.nodes import (
 
 _NODE_HANDLER_GROUPS = (
     BASIC_NODE_HANDLERS,
+    CALIBRATION_NODE_HANDLERS,
     DEFECT_NODE_HANDLERS,
     GEOMETRY_NODE_HANDLERS,
     MATCHING_NODE_HANDLERS,

@@ -26,6 +26,10 @@ def test_opencv_matching_node_catalog_builder_matches_checked_in_catalog() -> No
         "custom.opencv.orb-keypoints",
         "custom.opencv.orb-match",
         "custom.opencv.homography-estimate",
+        "custom.opencv.phase-correlation",
+        "custom.opencv.ecc-align",
+        "custom.opencv.multi-scale-template-match",
+        "custom.opencv.rotation-scale-template-match",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

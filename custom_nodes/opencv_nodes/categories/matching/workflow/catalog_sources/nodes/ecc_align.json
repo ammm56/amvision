@@ -1,0 +1,78 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.ecc-align",
+  "display_name": "ECC Align",
+  "category": "opencv.matching",
+  "description": "通过最大化增强相关系数估计平移、欧氏、仿射或单应变换，并输出对齐图。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "reference_image",
+      "display_name": "Reference Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "moving_image",
+      "display_name": "Moving Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "transform",
+      "display_name": "Transform",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "motion": {
+        "type": "string",
+        "default": "affine",
+        "enum": [
+          "translation",
+          "euclidean",
+          "affine",
+          "homography"
+        ]
+      },
+      "iterations": {
+        "type": "integer",
+        "default": 100,
+        "minimum": 1
+      },
+      "epsilon": {
+        "type": "number",
+        "default": 1e-06,
+        "minimum": 0.0
+      },
+      "gaussian_filter_size": {
+        "type": "integer",
+        "default": 5,
+        "minimum": 1
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.ecc-align",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

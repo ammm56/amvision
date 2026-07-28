@@ -1,0 +1,57 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.box-blur",
+  "display_name": "Box Blur",
+  "category": "opencv.filter",
+  "description": "执行可配置宽高的归一化或非归一化方框滤波。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "kernel_width": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1
+      },
+      "kernel_height": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1
+      },
+      "normalize": {
+        "type": "boolean",
+        "default": true
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.box-blur",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

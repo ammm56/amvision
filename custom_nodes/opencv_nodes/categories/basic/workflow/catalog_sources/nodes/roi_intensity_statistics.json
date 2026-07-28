@@ -1,0 +1,52 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.roi-intensity-statistics",
+  "display_name": "ROI Intensity Statistics",
+  "category": "opencv.analysis",
+  "description": "计算整图或 ROI 各通道的均值、标准差、极值与常用百分位数。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "Roi",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "statistics",
+      "display_name": "Statistics",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "search_bbox_xyxy": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.roi-intensity-statistics",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

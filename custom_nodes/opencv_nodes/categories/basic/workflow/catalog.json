@@ -1648,7 +1648,70 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.apply-mask",
+      "display_name": "Apply Mask",
+      "category": "opencv.mask",
+      "description": "使用单通道 mask 保留输入图片前景，背景置零。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.apply-mask",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1770,7 +1833,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1834,7 +1897,140 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.box-blur",
+      "display_name": "Box Blur",
+      "category": "opencv.filter",
+      "description": "执行可配置宽高的归一化或非归一化方框滤波。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "kernel_width": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          },
+          "kernel_height": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1
+          },
+          "normalize": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.box-blur",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.brightness-contrast",
+      "display_name": "Brightness Contrast",
+      "category": "opencv.color",
+      "description": "按 dst = src × alpha + beta 调整亮度与对比度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "alpha": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 0.0
+          },
+          "beta": {
+            "type": "number",
+            "default": 0.0,
+            "minimum": -255,
+            "maximum": 255
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.brightness-contrast",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1970,7 +2166,225 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.channel-merge",
+      "display_name": "Channel Merge",
+      "category": "opencv.color",
+      "description": "把三个或四个同尺寸单通道输入合并成一张图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "channel_0",
+          "display_name": "Channel 0",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_1",
+          "display_name": "Channel 1",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_2",
+          "display_name": "Channel 2",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_3",
+          "display_name": "Channel 3",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.channel-merge",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.channel-select",
+      "display_name": "Channel Select",
+      "category": "opencv.color",
+      "description": "按零起始通道序号提取单个通道。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "channel_index": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 3
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.channel-select",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.channel-split",
+      "display_name": "Channel Split",
+      "category": "opencv.color",
+      "description": "把输入图片拆成最多四个独立的单通道图片。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "channel_0",
+          "display_name": "Channel 0",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_1",
+          "display_name": "Channel 1",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_2",
+          "display_name": "Channel 2",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "channel_3",
+          "display_name": "Channel 3",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.channel-split",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2039,7 +2453,178 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.color-convert",
+      "display_name": "Color Convert",
+      "category": "opencv.color",
+      "description": "在 BGR、RGB、Gray、HSV、HLS、Lab、YCrCb、XYZ、Luv 和 BGRA 之间执行显式颜色空间转换。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "conversion": {
+            "type": "string",
+            "default": "bgr-to-gray",
+            "enum": [
+              "bgr-to-gray",
+              "gray-to-bgr",
+              "bgr-to-rgb",
+              "rgb-to-bgr",
+              "bgr-to-hsv",
+              "hsv-to-bgr",
+              "bgr-to-hls",
+              "hls-to-bgr",
+              "bgr-to-lab",
+              "lab-to-bgr",
+              "bgr-to-ycrcb",
+              "ycrcb-to-bgr",
+              "bgr-to-xyz",
+              "xyz-to-bgr",
+              "bgr-to-luv",
+              "luv-to-bgr",
+              "bgra-to-bgr",
+              "bgr-to-bgra"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.cvt-color",
+        "vision.color"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.color-range-threshold",
+      "display_name": "Color Range Threshold",
+      "category": "opencv.mask",
+      "description": "在指定颜色空间按各通道上下界执行 inRange，输出二值 mask。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "color_space": {
+            "type": "string",
+            "default": "hsv",
+            "enum": [
+              "bgr",
+              "hsv",
+              "hls",
+              "lab",
+              "ycrcb",
+              "gray"
+            ]
+          },
+          "lower": {
+            "type": "array",
+            "default": [
+              0,
+              0,
+              0
+            ],
+            "items": {
+              "type": "number"
+            }
+          },
+          "upper": {
+            "type": "array",
+            "default": [
+              179,
+              255,
+              255
+            ],
+            "items": {
+              "type": "number"
+            }
+          },
+          "invert": {
+            "type": "boolean",
+            "default": false
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.in-range",
+        "vision.mask",
+        "inspection.color"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2127,7 +2712,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2308,7 +2893,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -2321,6 +2906,172 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.filter-2d",
+      "display_name": "Filter 2D",
+      "category": "opencv.filter",
+      "description": "使用用户提供的二维卷积核执行通用 filter2D。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "kernel": {
+            "type": "array",
+            "default": [
+              [
+                0,
+                -1,
+                0
+              ],
+              [
+                -1,
+                5,
+                -1
+              ],
+              [
+                0,
+                -1,
+                0
+              ]
+            ],
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "delta": {
+            "type": "number",
+            "default": 0.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.filter-2d",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.gabor-filter",
+      "display_name": "Gabor Filter",
+      "category": "opencv.filter",
+      "description": "使用 Gabor 核增强指定方向和空间频率的纹理响应。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "kernel_size": {
+            "type": "integer",
+            "default": 21,
+            "minimum": 3
+          },
+          "sigma": {
+            "type": "number",
+            "default": 5.0,
+            "minimum": 0.01
+          },
+          "theta_deg": {
+            "type": "number",
+            "default": 0.0
+          },
+          "wavelength": {
+            "type": "number",
+            "default": 10.0,
+            "minimum": 0.01
+          },
+          "gamma": {
+            "type": "number",
+            "default": 0.5,
+            "minimum": 0.01
+          },
+          "phase_deg": {
+            "type": "number",
+            "default": 0.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.gabor-filter",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",
@@ -2382,7 +3133,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "description": {
@@ -2391,6 +3142,65 @@
           }
         }
       }
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.gamma-correction",
+      "display_name": "Gamma Correction",
+      "category": "opencv.color",
+      "description": "使用 8-bit LUT 调整非线性亮度响应。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "gamma": {
+            "type": "number",
+            "default": 1.0,
+            "minimum": 0.01
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.gamma-correction",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
     },
     {
       "format_id": "amvision.node-definition.v1",
@@ -2451,7 +3261,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2505,7 +3315,230 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.histogram",
+      "display_name": "Histogram",
+      "category": "opencv.analysis",
+      "description": "计算整图或搜索 ROI 的逐通道直方图。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "Roi",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "histogram",
+          "display_name": "Histogram",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "bins": {
+            "type": "integer",
+            "default": 256,
+            "minimum": 2,
+            "maximum": 4096
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "search_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.histogram",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.histogram-equalize",
+      "display_name": "Histogram Equalize",
+      "category": "opencv.color",
+      "description": "执行全局直方图均衡化，彩色图片默认只处理亮度通道。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "luminance_only": {
+            "type": "boolean",
+            "default": true
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.histogram-equalize",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-arithmetic",
+      "display_name": "Image Arithmetic",
+      "category": "opencv.transform",
+      "description": "对两张同形状图片执行加、减、乘、除、绝对差或加权叠加。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image_a",
+          "display_name": "Image A",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "image_b",
+          "display_name": "Image B",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "default": "absdiff",
+            "enum": [
+              "add",
+              "subtract",
+              "multiply",
+              "divide",
+              "absdiff",
+              "weighted-add"
+            ]
+          },
+          "alpha": {
+            "type": "number",
+            "default": 0.5
+          },
+          "beta": {
+            "type": "number",
+            "default": 0.5
+          },
+          "gamma": {
+            "type": "number",
+            "default": 0.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-arithmetic",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2659,7 +3692,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -2818,7 +3851,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -2968,7 +4001,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -3102,7 +4135,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -3167,7 +4200,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3254,7 +4287,80 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.mask-logic",
+      "display_name": "Mask Logic",
+      "category": "opencv.mask",
+      "description": "对一个或两个 mask 执行 AND、OR、XOR 或 NOT 运算。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "mask_a",
+          "display_name": "Mask A",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "mask_b",
+          "display_name": "Mask B",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "mask",
+          "display_name": "Mask",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "default": "and",
+            "enum": [
+              "and",
+              "or",
+              "xor",
+              "not"
+            ]
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.mask-logic",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3314,7 +4420,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3396,7 +4502,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3462,7 +4568,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3528,7 +4634,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3775,7 +4881,7 @@
       ],
       "runtime_requirements": {},
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -3858,7 +4964,144 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.roi-intensity-statistics",
+      "display_name": "ROI Intensity Statistics",
+      "category": "opencv.analysis",
+      "description": "计算整图或 ROI 各通道的均值、标准差、极值与常用百分位数。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "roi",
+          "display_name": "Roi",
+          "payload_type_id": "roi.v1",
+          "description": "",
+          "required": false,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "statistics",
+          "display_name": "Statistics",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "search_bbox_xyxy": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.roi-intensity-statistics",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.scharr",
+      "display_name": "Scharr",
+      "category": "opencv.filter",
+      "description": "计算 Scharr x、y 方向梯度或梯度幅值。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "image",
+          "display_name": "Image",
+          "payload_type_id": "image-ref.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "default": "magnitude",
+            "enum": [
+              "x",
+              "y",
+              "magnitude"
+            ]
+          },
+          "scale": {
+            "type": "number",
+            "default": 1.0
+          },
+          "delta": {
+            "type": "number",
+            "default": 0.0
+          },
+          "output_object_key": {
+            "type": "string"
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.scharr",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3951,7 +5194,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {
         "i18n": {
           "display_name": {
@@ -4058,7 +5301,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     }
   ],

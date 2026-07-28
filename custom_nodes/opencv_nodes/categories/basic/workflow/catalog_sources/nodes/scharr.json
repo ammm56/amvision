@@ -1,0 +1,60 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.scharr",
+  "display_name": "Scharr",
+  "category": "opencv.filter",
+  "description": "计算 Scharr x、y 方向梯度或梯度幅值。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "direction": {
+        "type": "string",
+        "default": "magnitude",
+        "enum": [
+          "x",
+          "y",
+          "magnitude"
+        ]
+      },
+      "scale": {
+        "type": "number",
+        "default": 1.0
+      },
+      "delta": {
+        "type": "number",
+        "default": 0.0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.scharr",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

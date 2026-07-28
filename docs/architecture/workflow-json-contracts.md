@@ -187,48 +187,21 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 
 OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 接入统一节点目录。
 
-当前 OpenCV custom node 已开始按多 pack 收口：
+当前 OpenCV custom node 已统一收口为一个 `opencv.nodes` pack，版本为 `0.2.0`。
+代码按 `basic / shape / matching / calibration / geometry / measurement / defect / render`
+八个包内分类维护，公开 105 个 `custom.opencv.*` 节点。Catalog 中使用以下稳定的功能分类：
 
-- `opencv.nodes`：预处理、桥接与导出主线
-- `opencv.nodes`：结果绘制与调试复核主线
-- `opencv.nodes`：差异、连通域与缺陷后处理主线
-- `opencv.nodes`：轮廓、线圆、形状拟合与几何结果抽取主线
-- `opencv.nodes`：工业量测与几何判定前置主线
-- `opencv.nodes`：姿态矫正、标定与几何变换主线
-- `opencv.nodes`：模板匹配、局部特征匹配与平面对位主线
-
-其中 `opencv.nodes` 当前已落地的节点族：
-
-- opencv.filter：gaussian-blur、binary-threshold、morphology、canny、grayscale、resize、adaptive-threshold、otsu-threshold
-- opencv.transform：payload-to-value
-- opencv.io：crop-export
-- opencv.preview：gallery-preview
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.render：draw-detections、draw-contours、draw-lines、draw-circles、draw-roi、draw-rois、draw-measurements、draw-regions
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.matching：template-match、orb-keypoints、orb-match、homography-estimate
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.defect：image-diff、connected-components
-- opencv.filter：absdiff-threshold、fill-holes、distance-transform
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.shape：contour、contour-filter、contour-approx、convex-hull、min-area-rect、fit-ellipse、hough-lines、hough-circles、fit-line、min-enclosing-circle
-- opencv.transform：contours-to-regions
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.measurement：measure、caliper-edge、point-distance、point-to-line-distance、line-angle、circle-diameter、parallelism-metrics、concentricity-metrics、slot-width
-
-而 `opencv.nodes` 当前承载：
-
-- opencv.geometry：rotation-correct、perspective-transform、affine-transform、undistort、remap、planar-transform-bridge
+- `opencv.color / opencv.mask`：颜色转换、通道处理、颜色范围阈值、掩膜逻辑和图像算术
+- `opencv.filter`：平滑、阈值、边缘、形态学、Filter2D、Scharr 和 Gabor
+- `opencv.analysis`：直方图、ROI 强度统计和批量图像分析
+- `opencv.shape`：轮廓、线圆、拟合、区域属性、矩、Hu 矩和形状关系
+- `opencv.matching`：模板、尺度模板、旋转尺度模板、Phase Correlation、ECC、ORB 和 Homography
+- `opencv.calibration`：棋盘格观测、针孔相机标定和 SolvePnP
+- `opencv.geometry`：仿射、透视、去畸变、Remap、坐标桥接和几何构造
+- `opencv.measurement`：卡尺、距离、角度、孔径、槽宽、平行度和同心度
+- `opencv.defect`：差异、连通域、孔洞、距离变换、Watershed、骨架和热力图
+- `opencv.render`：检测、轮廓、线、圆、ROI、区域和量测绘制
+- `opencv.io / opencv.preview / opencv.transform`：裁剪导出、调试预览和 payload bridge
 
 其中 `opencv.nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；`opencv.nodes` 则继续通过 `planar-transform-bridge` 把 `planar-transform.v1` 显式桥接回 `image-ref.v1 / roi.v1`，便于继续接量测、模板定位和 ROI 规则链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload 规则 也已统一收进 `custom_nodes/opencv_nodes/shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
 
@@ -237,8 +210,9 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 这些节点统一通过 NodeDefinition 声明 runtime_requirements，例如：
 
 - python_packages: [opencv-python, numpy]
-- node_pack_id: opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes / opencv.nodes
-- capability_tags: [opencv.preprocess] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching]
+- node_pack_id: opencv.nodes
+- node_pack_version: 0.2.0
+- capability_tags: [opencv.preprocess] / [opencv.color] / [opencv.mask] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching] / [opencv.calibration]
 
 `capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。
 

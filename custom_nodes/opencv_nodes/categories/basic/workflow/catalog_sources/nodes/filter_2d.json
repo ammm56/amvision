@@ -1,0 +1,73 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.filter-2d",
+  "display_name": "Filter 2D",
+  "category": "opencv.filter",
+  "description": "使用用户提供的二维卷积核执行通用 filter2D。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "kernel": {
+        "type": "array",
+        "default": [
+          [
+            0,
+            -1,
+            0
+          ],
+          [
+            -1,
+            5,
+            -1
+          ],
+          [
+            0,
+            -1,
+            0
+          ]
+        ],
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "delta": {
+        "type": "number",
+        "default": 0.0
+      },
+      "output_object_key": {
+        "type": "string"
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.filter-2d",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

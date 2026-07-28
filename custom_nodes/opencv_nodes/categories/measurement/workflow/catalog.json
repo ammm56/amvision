@@ -1729,7 +1729,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1812,7 +1812,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1908,7 +1908,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -1993,7 +1993,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2061,7 +2061,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2157,7 +2157,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2236,7 +2236,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2326,7 +2326,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2422,7 +2422,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     }
   ],

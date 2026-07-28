@@ -27,90 +27,30 @@
 - `barcode.nodes`，条码能力按 `barcode_nodes/categories/` 分类
 - `plc.nodes`，协议实现按 `plc_nodes/protocols/` 分类
 
-其中 `opencv_nodes/categories/basic` 当前已经有：
+当前 `opencv.nodes` 共公开 105 个节点。执行代码按八个包内分类目录维护：
 
-- `binary-threshold`
-- `canny`
-- `gaussian-blur`
-- `morphology`
-- `grayscale`
-- `resize`
-- `crop`
-- `normalize`
-- `clahe`
-- `median-blur`
-- `bilateral-filter`
-- `adaptive-threshold`
-- `otsu-threshold`
-- `invert`
-- `sobel`
-- `laplacian`
-- `crop-export`
-- `gallery-preview`
-- `payload-to-value`
+- `basic`：41 个，包含基础预处理、颜色与掩膜、直方图和区域强度统计、通用滤波、批量图像分析及 I/O bridge
+- `shape`：18 个，包含轮廓、线圆、圆测量、拟合、区域属性、矩、Hu 矩和形状关系
+- `matching`：8 个，包含模板、尺度模板、旋转尺度模板、Phase Correlation、ECC、ORB 与 Homography
+- `calibration`：3 个，包含棋盘格观测、针孔相机标定和 SolvePnP
+- `geometry`：10 个，包含仿射、透视、去畸变、Remap、坐标桥接、直线交点和四边形构造
+- `measurement`：9 个，包含卡尺、距离、角度、孔径、槽宽、平行度和同心度
+- `defect`：8 个，包含差异、连通域、孔洞、距离变换、Watershed、骨架和热力图
+- `render`：8 个，包含检测、轮廓、线、圆、ROI、区域和量测绘制
 
-其中 `opencv_nodes/categories/geometry` 当前已经有：
-
-- `rotation-correct`
-- `perspective-transform`
-- `affine-transform`
-- `undistort`
-- `remap`
-
-其中 `opencv_nodes/categories/measurement` 当前已经有：
-
-- `measure`
-- `caliper-edge`
-- `point-distance`
-- `point-to-line-distance`
-- `line-angle`
-- `circle-diameter`
-- `slot-width`
-- `parallelism-metrics`
-- `concentricity-metrics`
-
-其中 `opencv_nodes/categories/defect` 当前已经有：
-
-- `image-diff`
-- `absdiff-threshold`
-- `connected-components`
-- `fill-holes`
-- `distance-transform`
-
-其中 `opencv_nodes/categories/shape` 当前已经有：
-
-- `contour`
-- `contour-filter`
-- `contour-approx`
-- `min-area-rect`
-- `convex-hull`
-- `fit-ellipse`
-- `contours-to-regions`
-- `hough-lines`
-- `hough-circles`
-- `fit-line`
-- `min-enclosing-circle`
-
-其中 `opencv_nodes/categories/matching` 当前已经有：
-
-- `template-match`
-- `orb-keypoints`
-- `orb-match`
-- `homography-estimate`
-
-当前 OpenCV 只有一个一级 pack：`opencv.nodes`。`basic`、`geometry`、`measurement`、
-`shape`、`defect`、`matching` 和 `render` 是包内分类目录，不再拥有独立 manifest、
-启停状态或版本。
+当前 OpenCV 只有一个一级 pack：`opencv.nodes`。以上目录均不再拥有独立 manifest、
+启停状态或版本；分类目录只维护各自代码、Catalog source 和专项测试。
 
 其中包内分类收口当前已落地：
 
 - OpenCV 共享 backend helper 已统一收进 `custom_nodes/opencv_nodes/shared/backend/runtime/`，并按依赖加载、图片读写、payload、几何、局部特征、平面变换和参数校验分包
 - OpenCV custom payload 规则 当前也已统一收进 `custom_nodes/opencv_nodes/shared/workflow/payload_contracts.json`
-- `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` 已正式迁入 `custom_nodes/opencv_nodes/categories/geometry/`
+- `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge / line-deduplicate / line-intersection / quadrilateral-from-lines / quadrilateral-from-circle-centers` 已正式迁入 `custom_nodes/opencv_nodes/categories/geometry/`
 - `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` 已正式迁入 `custom_nodes/opencv_nodes/categories/measurement/`
-- `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` 已正式迁入 `custom_nodes/opencv_nodes/categories/shape/`
-- `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform` 已正式迁入 `custom_nodes/opencv_nodes/categories/defect/`
-- `template-match / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_nodes/categories/matching/`
+- `circle-measure / contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle / region-properties / image-moments / hu-moments / shape-match / convexity-defects / point-polygon-test` 已正式迁入 `custom_nodes/opencv_nodes/categories/shape/`
+- `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` 已正式迁入 `custom_nodes/opencv_nodes/categories/defect/`
+- `template-match / multi-scale-template-match / rotation-scale-template-match / phase-correlation / ecc-align / orb-keypoints / orb-match / homography-estimate` 已正式迁入 `custom_nodes/opencv_nodes/categories/matching/`
+- `chessboard-corners / camera-calibrate / solve-pnp` 已正式进入 `custom_nodes/opencv_nodes/categories/calibration/`
 - `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` 已正式迁入 `custom_nodes/opencv_nodes/categories/render/`
 - 公开 `node_type_id` 保持不变，当前仍统一使用 `custom.opencv.*`
 - checked-in 样例 `industrial_single_frame_calibrated_template_edge_gate.*`、`industrial_single_frame_calibrated_orb_homography_gate.*`、`industrial_single_frame_calibrated_orb_bridged_template_edge_gate.*`、`industrial_single_frame_line_pair_measure_gate.*` 与 `industrial_single_frame_circle_concentricity_gate.*` 继续作为分类迁移后的主线验证入口；`test_opencv_matching_nodes.py` 继续作为 ORB / homography 参考对位链的定向运行时回归入口
@@ -1140,17 +1080,30 @@ OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免�
 
 | 包内分类 | 当前状态 | 收纳节点 | 说明 |
 | --- | --- | --- | --- |
-| `categories/basic` | 已实现 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / crop-export / gallery-preview / payload-to-value / image-refs-* / slot-batch-state` | 基础预处理、裁剪导出、批量图像统计和 payload 桥接。 |
+| `categories/basic` | 已实现 | `grayscale / resize / crop / normalize / clahe / median-blur / bilateral-filter / gaussian-blur / adaptive-threshold / otsu-threshold / binary-threshold / invert / morphology / canny / sobel / laplacian / color-convert / color-range-threshold / channel-split / channel-merge / channel-select / mask-logic / apply-mask / image-arithmetic / gamma-correction / brightness-contrast / histogram / histogram-equalize / roi-intensity-statistics / box-blur / filter-2d / scharr / gabor-filter / crop-export / gallery-preview / payload-to-value / image-refs-* / slot-batch-state` | 基础预处理、颜色与掩膜、直方图和区域统计、通用滤波、裁剪导出、批量图像统计和 payload 桥接。 |
 | `categories/render` | 已实现 | `draw-detections / draw-contours / draw-lines / draw-circles / draw-roi / draw-rois / draw-measurements / draw-regions` | 现场调试复核和规则依据叠加。 |
-| `categories/shape` | 已实现 | `contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle` | 轮廓、线圆、形状拟合和结构化 payload 抽取。 |
+| `categories/shape` | 已实现 | `circle-measure / contour / contour-filter / contour-approx / convex-hull / min-area-rect / fit-ellipse / contours-to-regions / hough-lines / hough-circles / fit-line / min-enclosing-circle / region-properties / image-moments / hu-moments / shape-match / convexity-defects / point-polygon-test` | 轮廓、线圆、圆测量、形状拟合、区域特征和结构化 payload 抽取。 |
 | `categories/measurement` | 已实现 | `measure / caliper-edge / point-distance / point-to-line-distance / line-angle / circle-diameter / slot-width / parallelism-metrics / concentricity-metrics` | 工业量测原语。 |
-| `categories/geometry` | 已实现 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge` | 姿态、标定、坐标变换和几何矫正。 |
-| `categories/matching` | 已实现 | `template-match / orb-keypoints / orb-match / homography-estimate` | 模板定位、局部特征匹配与平面对位。 |
+| `categories/geometry` | 已实现 | `rotation-correct / perspective-transform / affine-transform / undistort / remap / planar-transform-bridge / line-deduplicate / line-intersection / quadrilateral-from-lines / quadrilateral-from-circle-centers` | 姿态、坐标变换、几何矫正和几何构造。 |
+| `categories/matching` | 已实现 | `template-match / multi-scale-template-match / rotation-scale-template-match / phase-correlation / ecc-align / orb-keypoints / orb-match / homography-estimate` | 单尺度、尺度和旋转尺度模板定位，频域 / ECC 配准，局部特征匹配与平面对位。 |
+| `categories/calibration` | 已实现 | `chessboard-corners / camera-calibrate / solve-pnp` | 棋盘格观测、针孔相机内参和畸变估计、基于 3D-2D 对应点的位姿估计；与 `geometry/undistort` 组成标定应用闭环。 |
 | `categories/defect` | 已实现 | `image-diff / absdiff-threshold / connected-components / fill-holes / distance-transform / watershed / skeletonize / heatmap-preview` | 差异、缺陷、形态学后处理和调试预览。 |
 
 `draw-* / regions overlay` 后续直接进入 `categories/render`。
 
-### 第一批最值得继续补的 OpenCV 常用算子
+### P0 OpenCV 常用原子算子
+
+本阶段已经实现 30 个 P0 原子节点，统一纳入 `opencv.nodes` `0.2.0`：
+
+- 颜色与掩膜：`color-convert / color-range-threshold / channel-split / channel-merge / channel-select / mask-logic / apply-mask / image-arithmetic / gamma-correction / brightness-contrast`
+- 区域统计：`histogram / histogram-equalize / roi-intensity-statistics`
+- 通用形状特征：`region-properties / image-moments / hu-moments / shape-match / convexity-defects / point-polygon-test`
+- 稳健配准：`phase-correlation / ecc-align`
+- 多尺度模板：`multi-scale-template-match / rotation-scale-template-match`
+- 通用滤波：`box-blur / filter-2d / scharr / gabor-filter`
+- 标定闭环：`chessboard-corners / camera-calibrate / solve-pnp`，并复用已有 `undistort`
+
+节点定义、backend handler、分类 Catalog 与根 Catalog 均按同一清单生成和校验。标定节点保持原子边界：棋盘格节点输出单次观测；相机标定节点从 `image-refs.v1` 批量图片估计针孔模型；`solve-pnp` 消费观测与标定对象，不把设备采集或业务判定混入标定层。
 
 ### 图像预处理
 
@@ -1166,6 +1119,13 @@ OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免�
 - `custom.opencv.adaptive-threshold`（已实现）
 - `custom.opencv.otsu-threshold`（已实现）
 - `custom.opencv.invert`（已实现）
+- `custom.opencv.color-convert`（已实现）
+- `custom.opencv.color-range-threshold`（已实现）
+- `custom.opencv.channel-split / channel-merge / channel-select`（已实现）
+- `custom.opencv.mask-logic / apply-mask / image-arithmetic`（已实现）
+- `custom.opencv.gamma-correction / brightness-contrast`（已实现）
+- `custom.opencv.histogram / histogram-equalize / roi-intensity-statistics`（已实现）
+- `custom.opencv.box-blur / filter-2d / scharr / gabor-filter`（已实现）
 
 ### 边缘与线条
 
@@ -1188,6 +1148,9 @@ OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免�
 - `custom.opencv.min-area-rect`（已实现）
 - `custom.opencv.fit-ellipse`（已实现）
 - `custom.opencv.contours-to-regions`（已实现）
+- `custom.opencv.circle-measure`（已实现）
+- `custom.opencv.region-properties / image-moments / hu-moments`（已实现）
+- `custom.opencv.shape-match / convexity-defects / point-polygon-test`（已实现）
 
 ### 几何与标定
 
@@ -1198,6 +1161,9 @@ OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免�
 - `custom.opencv.undistort`（已实现）
 - `custom.opencv.remap`（已实现）
 - `custom.opencv.rotation-correct`（已实现）
+- `custom.opencv.chessboard-corners`（已实现）
+- `custom.opencv.camera-calibrate`（已实现）
+- `custom.opencv.solve-pnp`（已实现）
 
 ### 匹配与定位
 
@@ -1207,6 +1173,10 @@ OpenCV 保持一个 `opencv.nodes` pack。包内按能力族拆目录，避免�
 - `custom.opencv.orb-keypoints`（已实现）
 - `custom.opencv.orb-match`（已实现）
 - `custom.opencv.homography-estimate`（已实现）
+- `custom.opencv.phase-correlation`（已实现）
+- `custom.opencv.ecc-align`（已实现）
+- `custom.opencv.multi-scale-template-match`（已实现）
+- `custom.opencv.rotation-scale-template-match`（已实现）
 
 说明：
 

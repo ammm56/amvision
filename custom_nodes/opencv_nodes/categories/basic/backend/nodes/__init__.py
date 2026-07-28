@@ -98,9 +98,94 @@ from custom_nodes.opencv_nodes.categories.basic.backend.nodes.slot_batch_state i
     NODE_TYPE_ID as SLOT_BATCH_STATE_NODE_TYPE_ID,
     handle_node as slot_batch_state_handler,
 )
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.apply_mask import (
+    NODE_TYPE_ID as APPLY_MASK_NODE_TYPE_ID,
+    handle_node as apply_mask_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.box_blur import (
+    NODE_TYPE_ID as BOX_BLUR_NODE_TYPE_ID,
+    handle_node as box_blur_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.brightness_contrast import (
+    NODE_TYPE_ID as BRIGHTNESS_CONTRAST_NODE_TYPE_ID,
+    handle_node as brightness_contrast_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.channel_merge import (
+    NODE_TYPE_ID as CHANNEL_MERGE_NODE_TYPE_ID,
+    handle_node as channel_merge_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.channel_select import (
+    NODE_TYPE_ID as CHANNEL_SELECT_NODE_TYPE_ID,
+    handle_node as channel_select_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.channel_split import (
+    NODE_TYPE_ID as CHANNEL_SPLIT_NODE_TYPE_ID,
+    handle_node as channel_split_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.color_convert import (
+    NODE_TYPE_ID as COLOR_CONVERT_NODE_TYPE_ID,
+    handle_node as color_convert_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.color_range_threshold import (
+    NODE_TYPE_ID as COLOR_RANGE_THRESHOLD_NODE_TYPE_ID,
+    handle_node as color_range_threshold_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.filter_2d import (
+    NODE_TYPE_ID as FILTER_2D_NODE_TYPE_ID,
+    handle_node as filter_2d_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.gabor_filter import (
+    NODE_TYPE_ID as GABOR_FILTER_NODE_TYPE_ID,
+    handle_node as gabor_filter_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.gamma_correction import (
+    NODE_TYPE_ID as GAMMA_CORRECTION_NODE_TYPE_ID,
+    handle_node as gamma_correction_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.histogram import (
+    NODE_TYPE_ID as HISTOGRAM_NODE_TYPE_ID,
+    handle_node as histogram_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.histogram_equalize import (
+    NODE_TYPE_ID as HISTOGRAM_EQUALIZE_NODE_TYPE_ID,
+    handle_node as histogram_equalize_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.image_arithmetic import (
+    NODE_TYPE_ID as IMAGE_ARITHMETIC_NODE_TYPE_ID,
+    handle_node as image_arithmetic_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.mask_logic import (
+    NODE_TYPE_ID as MASK_LOGIC_NODE_TYPE_ID,
+    handle_node as mask_logic_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.roi_intensity_statistics import (
+    NODE_TYPE_ID as ROI_INTENSITY_STATISTICS_NODE_TYPE_ID,
+    handle_node as roi_intensity_statistics_handler,
+)
+from custom_nodes.opencv_nodes.categories.basic.backend.nodes.scharr import (
+    NODE_TYPE_ID as SCHARR_NODE_TYPE_ID,
+    handle_node as scharr_handler,
+)
 
 
 NODE_HANDLERS = (
+    (COLOR_CONVERT_NODE_TYPE_ID, color_convert_handler),
+    (COLOR_RANGE_THRESHOLD_NODE_TYPE_ID, color_range_threshold_handler),
+    (CHANNEL_SPLIT_NODE_TYPE_ID, channel_split_handler),
+    (CHANNEL_MERGE_NODE_TYPE_ID, channel_merge_handler),
+    (CHANNEL_SELECT_NODE_TYPE_ID, channel_select_handler),
+    (MASK_LOGIC_NODE_TYPE_ID, mask_logic_handler),
+    (APPLY_MASK_NODE_TYPE_ID, apply_mask_handler),
+    (IMAGE_ARITHMETIC_NODE_TYPE_ID, image_arithmetic_handler),
+    (GAMMA_CORRECTION_NODE_TYPE_ID, gamma_correction_handler),
+    (BRIGHTNESS_CONTRAST_NODE_TYPE_ID, brightness_contrast_handler),
+    (HISTOGRAM_NODE_TYPE_ID, histogram_handler),
+    (HISTOGRAM_EQUALIZE_NODE_TYPE_ID, histogram_equalize_handler),
+    (ROI_INTENSITY_STATISTICS_NODE_TYPE_ID, roi_intensity_statistics_handler),
+    (BOX_BLUR_NODE_TYPE_ID, box_blur_handler),
+    (FILTER_2D_NODE_TYPE_ID, filter_2d_handler),
+    (SCHARR_NODE_TYPE_ID, scharr_handler),
+    (GABOR_FILTER_NODE_TYPE_ID, gabor_filter_handler),
     (BILATERAL_FILTER_NODE_TYPE_ID, bilateral_filter_handler),
     (CLAHE_NODE_TYPE_ID, clahe_handler),
     (CROP_NODE_TYPE_ID, crop_handler),

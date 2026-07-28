@@ -1,0 +1,49 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.phase-correlation",
+  "display_name": "Phase Correlation",
+  "category": "opencv.matching",
+  "description": "使用频域相位相关估计两张同尺寸图片间的亚像素平移。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "reference_image",
+      "display_name": "Reference Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "moving_image",
+      "display_name": "Moving Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "transform",
+      "display_name": "Transform",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "use_hanning_window": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.phase-correlation",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

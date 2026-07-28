@@ -18,6 +18,31 @@ def test_opencv_basic_node_catalog_builder_matches_checked_in_catalog() -> None:
     actual_catalog_payload = build_custom_node_catalog_payload(workflow_dir=workflow_dir)
 
     assert actual_catalog_payload == expected_catalog_payload
+    node_type_ids = {
+        item["node_type_id"] for item in actual_catalog_payload["node_definitions"]
+    }
+    assert {
+        "custom.opencv.color-convert",
+        "custom.opencv.color-range-threshold",
+        "custom.opencv.channel-split",
+        "custom.opencv.channel-merge",
+        "custom.opencv.channel-select",
+        "custom.opencv.mask-logic",
+        "custom.opencv.apply-mask",
+        "custom.opencv.image-arithmetic",
+        "custom.opencv.gamma-correction",
+        "custom.opencv.brightness-contrast",
+        "custom.opencv.histogram",
+        "custom.opencv.histogram-equalize",
+        "custom.opencv.roi-intensity-statistics",
+        "custom.opencv.box-blur",
+        "custom.opencv.filter-2d",
+        "custom.opencv.scharr",
+        "custom.opencv.gabor-filter",
+    } <= node_type_ids
+    assert {
+        item["node_pack_version"] for item in actual_catalog_payload["node_definitions"]
+    } == {"0.2.0"}
     _assert_source_image_schema_supports_local_buffer_refs(
         catalog_payload=actual_catalog_payload,
         payload_type_ids={"measurements.v1", "lines.v1", "circles.v1", "ellipses.v1"},

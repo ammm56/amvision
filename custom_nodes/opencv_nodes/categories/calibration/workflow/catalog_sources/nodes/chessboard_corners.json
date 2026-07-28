@@ -1,0 +1,59 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.chessboard-corners",
+  "display_name": "Chessboard Corners",
+  "category": "opencv.calibration",
+  "description": "检测棋盘格内角点并输出包含 3D-2D 对应关系的标定观测。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "observation",
+      "display_name": "Observation",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "columns": {
+        "type": "integer",
+        "default": 9,
+        "minimum": 2
+      },
+      "rows": {
+        "type": "integer",
+        "default": 6,
+        "minimum": 2
+      },
+      "square_size": {
+        "type": "number",
+        "default": 1.0,
+        "minimum": 1e-09
+      },
+      "use_sb": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.chessboard-corners",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

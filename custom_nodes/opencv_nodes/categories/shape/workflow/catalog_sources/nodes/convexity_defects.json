@@ -1,0 +1,39 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.convexity-defects",
+  "display_name": "Convexity Defects",
+  "category": "opencv.shape",
+  "description": "计算每个轮廓相对凸包的凹陷位置和深度。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "contours",
+      "display_name": "Contours",
+      "payload_type_id": "contours.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "defects",
+      "display_name": "Defects",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {}
+  },
+  "capability_tags": [
+    "opencv.convexity-defects",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

@@ -34,6 +34,12 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
         "custom.opencv.hough-circles",
         "custom.opencv.fit-line",
         "custom.opencv.min-enclosing-circle",
+        "custom.opencv.region-properties",
+        "custom.opencv.image-moments",
+        "custom.opencv.hu-moments",
+        "custom.opencv.shape-match",
+        "custom.opencv.convexity-defects",
+        "custom.opencv.point-polygon-test",
     }
     assert {item["node_pack_id"] for item in actual_catalog_payload["node_definitions"]} == {
         "opencv.nodes"

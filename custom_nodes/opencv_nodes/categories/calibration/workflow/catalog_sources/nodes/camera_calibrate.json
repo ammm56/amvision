@@ -1,0 +1,68 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.camera-calibrate",
+  "display_name": "Camera Calibrate",
+  "category": "opencv.calibration",
+  "description": "从多张同尺寸棋盘格图片估计针孔相机内参、畸变系数和逐视图重投影误差。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "images",
+      "display_name": "Images",
+      "payload_type_id": "image-refs.v1"
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "calibration",
+      "display_name": "Calibration",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "columns": {
+        "type": "integer",
+        "default": 9,
+        "minimum": 2
+      },
+      "rows": {
+        "type": "integer",
+        "default": 6,
+        "minimum": 2
+      },
+      "square_size": {
+        "type": "number",
+        "default": 1.0,
+        "minimum": 1e-09
+      },
+      "min_views": {
+        "type": "integer",
+        "default": 3,
+        "minimum": 1
+      },
+      "use_sb": {
+        "type": "boolean",
+        "default": true
+      },
+      "fix_aspect_ratio": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.camera-calibrate",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

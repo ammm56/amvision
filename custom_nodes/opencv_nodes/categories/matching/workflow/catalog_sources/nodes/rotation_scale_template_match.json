@@ -1,0 +1,117 @@
+{
+  "format_id": "amvision.node-definition.v1",
+  "node_type_id": "custom.opencv.rotation-scale-template-match",
+  "display_name": "Rotation-scale Template Match",
+  "category": "opencv.matching",
+  "description": "在角度与尺度网格中搜索模板，并输出角度、尺度和匹配区域。",
+  "implementation_kind": "custom-node",
+  "runtime_kind": "python-callable",
+  "input_ports": [
+    {
+      "name": "image",
+      "display_name": "Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "template_image",
+      "display_name": "Template Image",
+      "payload_type_id": "image-ref.v1"
+    },
+    {
+      "name": "roi",
+      "display_name": "Roi",
+      "payload_type_id": "roi.v1",
+      "required": false
+    }
+  ],
+  "output_ports": [
+    {
+      "name": "regions",
+      "display_name": "Regions",
+      "payload_type_id": "regions.v1"
+    },
+    {
+      "name": "summary",
+      "display_name": "Summary",
+      "payload_type_id": "value.v1"
+    }
+  ],
+  "parameter_schema": {
+    "type": "object",
+    "properties": {
+      "method": {
+        "type": "string",
+        "default": "ccoeff-normed",
+        "enum": [
+          "ccoeff-normed",
+          "ccorr-normed",
+          "sqdiff-normed"
+        ]
+      },
+      "scale_min": {
+        "type": "number",
+        "default": 0.8,
+        "minimum": 0.05
+      },
+      "scale_max": {
+        "type": "number",
+        "default": 1.2,
+        "minimum": 0.05
+      },
+      "scale_step": {
+        "type": "number",
+        "default": 0.05,
+        "minimum": 0.001
+      },
+      "angle_min_deg": {
+        "type": "number",
+        "default": -15.0
+      },
+      "angle_max_deg": {
+        "type": "number",
+        "default": 15.0
+      },
+      "angle_step_deg": {
+        "type": "number",
+        "default": 2.0,
+        "minimum": 0.1
+      },
+      "score_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "max_matches": {
+        "type": "integer",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 200
+      },
+      "nms_iou_threshold": {
+        "type": "number",
+        "default": 0.3,
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "search_bbox_xyxy": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capability_tags": [
+    "opencv.rotation-scale-template-match",
+    "vision.opencv"
+  ],
+  "runtime_requirements": {
+    "python_packages": [
+      "opencv-python",
+      "numpy"
+    ]
+  },
+  "node_pack_id": "opencv.nodes",
+  "node_pack_version": "0.2.0"
+}

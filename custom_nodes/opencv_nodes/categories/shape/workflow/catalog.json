@@ -1785,7 +1785,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2012,7 +2012,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2126,7 +2126,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2321,7 +2321,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2408,7 +2408,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2519,7 +2519,57 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.convexity-defects",
+      "display_name": "Convexity Defects",
+      "category": "opencv.shape",
+      "description": "计算每个轮廓相对凸包的凹陷位置和深度。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "defects",
+          "display_name": "Defects",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.convexity-defects",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2636,7 +2686,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -2766,7 +2816,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3110,7 +3160,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3327,7 +3377,112 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.hu-moments",
+      "display_name": "Hu Moments",
+      "category": "opencv.shape",
+      "description": "计算七个 Hu 不变矩，默认输出便于比较的有符号对数值。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "hu_moments",
+          "display_name": "Hu Moments",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "log_scale": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.hu-moments",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.image-moments",
+      "display_name": "Image Moments",
+      "category": "opencv.shape",
+      "description": "计算轮廓的空间矩、中心矩、归一化中心矩和质心。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "moments",
+          "display_name": "Moments",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.image-moments",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3448,7 +3603,7 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     },
     {
@@ -3564,7 +3719,224 @@
         ]
       },
       "node_pack_id": "opencv.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.point-polygon-test",
+      "display_name": "Point Polygon Test",
+      "category": "opencv.shape",
+      "description": "判断一个或多个点位于指定轮廓内部、边界还是外部，并可输出有符号距离。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "result",
+          "display_name": "Result",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "contour_index": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          },
+          "point_xy": {
+            "type": "array",
+            "default": [
+              0,
+              0
+            ],
+            "items": {
+              "type": "number"
+            }
+          },
+          "points_xy": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "measure_distance": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.point-polygon-test",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.region-properties",
+      "display_name": "Region Properties",
+      "category": "opencv.shape",
+      "description": "计算面积、周长、质心、方向、长短轴、偏心率、圆度、实心度和外接率等区域特征。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours",
+          "display_name": "Contours",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "properties",
+          "display_name": "Properties",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.region-properties",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
+      "metadata": {}
+    },
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.opencv.shape-match",
+      "display_name": "Shape Match",
+      "category": "opencv.shape",
+      "description": "使用 Hu 矩比较两个 contour 集合中的指定轮廓，分数越低越相似。",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [
+        {
+          "name": "contours_a",
+          "display_name": "Contours A",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "contours_b",
+          "display_name": "Contours B",
+          "payload_type_id": "contours.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "output_ports": [
+        {
+          "name": "score",
+          "display_name": "Score",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        },
+        {
+          "name": "summary",
+          "display_name": "Summary",
+          "payload_type_id": "value.v1",
+          "description": "",
+          "required": true,
+          "multiple": false,
+          "metadata": {}
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "contour_index_a": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          },
+          "contour_index_b": {
+            "type": "integer",
+            "default": 1,
+            "minimum": 1
+          },
+          "method": {
+            "type": "string",
+            "default": "i1",
+            "enum": [
+              "i1",
+              "i2",
+              "i3"
+            ]
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "opencv.shape-match",
+        "vision.opencv"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "opencv-python",
+          "numpy"
+        ]
+      },
+      "node_pack_id": "opencv.nodes",
+      "node_pack_version": "0.2.0",
       "metadata": {}
     }
   ],
