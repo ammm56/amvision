@@ -40,13 +40,18 @@
       "parameters": {}
     },
     {
-      "node_id": "semantic_segment",
-      "node_type_id": "custom.sam3.semantic-segment",
+      "node_id": "load_sam3",
+      "node_type_id": "custom.sam3.load-checkpoint",
       "parameters": {
         "model_asset_id": "sam3/default",
         "device": "auto",
         "precision": "auto"
       }
+    },
+    {
+      "node_id": "semantic_segment",
+      "node_type_id": "custom.sam3.semantic-segment",
+      "parameters": {}
     },
     {
       "node_id": "box_prompt",
@@ -63,14 +68,24 @@
     {
       "node_id": "interactive_segment",
       "node_type_id": "custom.sam3.interactive-segment",
-      "parameters": {
-        "model_asset_id": "sam3/default",
-        "device": "auto",
-        "precision": "auto"
-      }
+      "parameters": {}
     }
   ],
   "edges": [
+    {
+      "edge_id": "sam3-model-semantic",
+      "source_node_id": "load_sam3",
+      "source_port": "model",
+      "target_node_id": "semantic_segment",
+      "target_port": "model"
+    },
+    {
+      "edge_id": "sam3-model-interactive",
+      "source_node_id": "load_sam3",
+      "source_port": "model",
+      "target_node_id": "interactive_segment",
+      "target_port": "model"
+    },
     {
       "edge_id": "image-path-load",
       "source_node_id": "image_path",

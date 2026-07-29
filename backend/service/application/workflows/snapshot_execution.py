@@ -53,6 +53,11 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.settings import BackendServiceSettings
 from backend.service.application.workflows.process_threads import configure_workflow_process_threads
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+    WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
+    WorkflowModelSessionManager,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -167,6 +172,38 @@ class SnapshotExecutionService:
         self,
         request: WorkflowSnapshotExecutionRequest,
     ) -> WorkflowSnapshotExecutionResult:
+        """在稳定模型 scope 内执行一次固定 snapshot 的 workflow 图。"""
+
+        model_session_scope_id = self._resolve_model_session_scope_id(request)
+        model_session_manager = (
+            self.runtime_context.workflow_model_session_manager
+        )
+        if model_session_manager is None:
+            return self._execute_in_model_session_scope(
+                request=request,
+                model_session_scope_id=model_session_scope_id,
+            )
+        wait_for_scope = (
+            request.execution_metadata.get(
+                WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
+            )
+            is not False
+        )
+        with model_session_manager.locked_scope(
+            model_session_scope_id,
+            wait=wait_for_scope,
+        ):
+            return self._execute_in_model_session_scope(
+                request=request,
+                model_session_scope_id=model_session_scope_id,
+            )
+
+    def _execute_in_model_session_scope(
+        self,
+        *,
+        request: WorkflowSnapshotExecutionRequest,
+        model_session_scope_id: str,
+    ) -> WorkflowSnapshotExecutionResult:
         """执行一次固定 snapshot 的 workflow 图。
 
         参数：
@@ -180,6 +217,12 @@ class SnapshotExecutionService:
             request=request,
         )
 
+        self._prepare_model_sessions(
+            request=request,
+            template=template,
+            scope_id=model_session_scope_id,
+        )
+
         template_input_values = _build_template_input_values(
             application=application,
             input_bindings=request.input_bindings,
@@ -188,6 +231,9 @@ class SnapshotExecutionService:
         execution_metadata_payload.setdefault("project_id", request.project_id)
         execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
+        execution_metadata_payload[
+            WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
+        ] = model_session_scope_id
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         image_registry = execution_metadata_payload.get("execution_image_registry")
         owns_image_registry = image_registry is None
@@ -262,6 +308,56 @@ class SnapshotExecutionService:
                     cleanup_error.message,
                 )
         return snapshot_result
+
+    def prepare_model_sessions(
+        self, request: WorkflowSnapshotExecutionRequest
+    ) -> tuple[object, ...]:
+        """只校验 snapshot 并准备图中的模型 session，不执行业务节点。"""
+
+        _application, template = self._load_validated_snapshots(request=request)
+        scope_id = self._prepare_model_sessions(request=request, template=template)
+        manager = self.runtime_context.workflow_model_session_manager
+        if manager is None:
+            return ()
+        return tuple(
+            manager.build_health_summary(scope_id=scope_id).get("sessions", ())
+        )
+
+    def _prepare_model_sessions(
+        self,
+        *,
+        request: WorkflowSnapshotExecutionRequest,
+        template: WorkflowGraphTemplate,
+        scope_id: str | None = None,
+    ) -> str:
+        """按请求边界解析 scope 并幂等准备模型 session。"""
+
+        resolved_scope_id = scope_id or self._resolve_model_session_scope_id(request)
+        manager = self.runtime_context.workflow_model_session_manager
+        if manager is not None:
+            manager.prepare_template(
+                scope_id=resolved_scope_id,
+                template=template,
+                runtime_context=self.runtime_context,
+            )
+        return resolved_scope_id
+
+    @staticmethod
+    def _resolve_model_session_scope_id(
+        request: WorkflowSnapshotExecutionRequest,
+    ) -> str:
+        """读取调用方所有权 scope；临时执行回退到不可变 snapshot scope。"""
+
+        return str(
+            request.execution_metadata.get(
+                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+                (
+                    f"snapshot:{request.application_id}:"
+                    f"{request.application_snapshot_object_key}:"
+                    f"{request.template_snapshot_object_key}"
+                ),
+            )
+        ).strip()
 
     def _load_validated_snapshots(
         self,
@@ -672,6 +768,7 @@ def run_workflow_snapshot_process_worker(
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
+    model_session_manager: WorkflowModelSessionManager | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -688,6 +785,9 @@ def run_workflow_snapshot_process_worker(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
+        model_session_manager = WorkflowModelSessionManager(
+            runtime_registry=runtime_registry_loader.get_runtime_registry()
+        )
         sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
@@ -717,6 +817,7 @@ def run_workflow_snapshot_process_worker(
             async_inference_service_id="workflow-local",
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
+            workflow_model_session_manager=model_session_manager,
         )
         _emit_snapshot_execution_event(
             event_queue,
@@ -786,6 +887,8 @@ def run_workflow_snapshot_process_worker(
             }
         )
     finally:
+        if model_session_manager is not None:
+            model_session_manager.close_all()
         if sync_supervisor is not None:
             sync_supervisor.stop()
         if async_supervisor is not None:

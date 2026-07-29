@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from backend.contracts.workflows.workflow_graph import NodeDefinition
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution.contracts import WorkflowNodeExecutionRequest
+
+if TYPE_CHECKING:
+    from backend.service.application.workflows.model_sessions import (
+        WorkflowModelSessionProvider,
+    )
 
 
 class WorkflowNodeRuntimeRegistry:
@@ -18,6 +24,7 @@ class WorkflowNodeRuntimeRegistry:
         self._node_definitions: dict[str, NodeDefinition] = {}
         self._python_callable_handlers: dict[str, Callable[[WorkflowNodeExecutionRequest], dict[str, object]]] = {}
         self._worker_task_handlers: dict[str, Callable[[WorkflowNodeExecutionRequest], dict[str, object]]] = {}
+        self._model_session_providers: dict[str, WorkflowModelSessionProvider] = {}
 
     def register_node_definition(self, node_definition: NodeDefinition) -> None:
         """只注册节点定义，不附带处理函数。"""
@@ -30,6 +37,24 @@ class WorkflowNodeRuntimeRegistry:
         self._node_definitions.clear()
         self._python_callable_handlers.clear()
         self._worker_task_handlers.clear()
+        self._model_session_providers.clear()
+
+    def register_model_session_provider(
+        self,
+        loader_node_type_id: str,
+        provider: WorkflowModelSessionProvider,
+    ) -> None:
+        """为一个 Load Checkpoint 节点注册模型生命周期 provider。"""
+
+        self.get_node_definition(loader_node_type_id)
+        self._model_session_providers[loader_node_type_id] = provider
+
+    def get_model_session_provider(
+        self, loader_node_type_id: str
+    ) -> WorkflowModelSessionProvider | None:
+        """读取 loader 节点对应的 provider；普通节点返回 None。"""
+
+        return self._model_session_providers.get(loader_node_type_id)
 
     def register_python_callable(
         self,

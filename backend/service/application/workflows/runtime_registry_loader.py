@@ -6,7 +6,7 @@ import importlib
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Iterator, Mapping, Protocol, cast
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Protocol, cast
 
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.contracts.workflows.workflow_graph import NodeDefinition
@@ -24,6 +24,11 @@ SUPPORTED_EXECUTABLE_RUNTIME_KINDS = frozenset({"python-callable", "worker-task"
 BACKEND_ENTRYPOINT_NAME = "backend"
 
 WorkflowNodeHandler = Callable[[WorkflowNodeExecutionRequest], dict[str, object]]
+
+if TYPE_CHECKING:
+    from backend.service.application.workflows.model_sessions import (
+        WorkflowModelSessionProvider,
+    )
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,19 @@ class NodePackEntrypointRegistrationContext:
 
         node_definition = self.get_node_definition(node_type_id)
         self.runtime_registry.register_worker_task(node_definition, handler)
+
+    def register_model_session_provider(
+        self,
+        loader_node_type_id: str,
+        provider: object,
+    ) -> None:
+        """为当前 node pack 的 Load Checkpoint 节点注册生命周期 provider。"""
+
+        self.get_node_definition(loader_node_type_id)
+        self.runtime_registry.register_model_session_provider(
+            loader_node_type_id,
+            cast("WorkflowModelSessionProvider", provider),
+        )
 
 
 class NodePackBackendEntrypoint(Protocol):

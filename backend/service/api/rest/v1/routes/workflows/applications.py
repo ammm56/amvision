@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.nodes import get_node_catalog_registry
@@ -12,6 +12,12 @@ from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, paginate_sequence
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.service.application.workflows.model_sessions import (
+    build_workflow_preview_model_session_scope_id,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 
 from .documents import (
     _build_application_document_response,
@@ -203,6 +209,7 @@ def copy_flow_application(
 def delete_flow_application(
     project_id: str,
     application_id: str,
+    request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     node_catalog_registry: Annotated[NodeCatalogRegistry, Depends(get_node_catalog_registry)],
@@ -214,5 +221,20 @@ def delete_flow_application(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
     )
+    runtime_context = getattr(
+        request.app.state,
+        "workflow_service_node_runtime_context",
+        None,
+    )
+    if isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
+        model_session_manager = runtime_context.workflow_model_session_manager
+        if model_session_manager is not None:
+            model_session_manager.close_scope(
+                build_workflow_preview_model_session_scope_id(
+                    project_id=project_id,
+                    application_id=application_id,
+                ),
+                wait=False,
+            )
     service.delete_application(project_id=project_id, application_id=application_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

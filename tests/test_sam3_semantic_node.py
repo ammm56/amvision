@@ -11,6 +11,10 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import semantic_segment
+from tests.sam3_workflow_session_test_support import (
+    patch_real_semantic_session,
+    patch_semantic_session,
+)
 
 
 def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
@@ -85,10 +89,12 @@ def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
         }
         return _FakeSession()
 
-    monkeypatch.setattr(
+    patch_semantic_session(
+        monkeypatch,
         semantic_segment,
-        "get_or_create_sam3_semantic_runtime_session",
-        _fake_get_or_create_session,
+        _fake_get_or_create_session(
+            model_asset_id="sam3/default", device="cpu", precision="fp32"
+        ),
     )
 
     image_payload, image_registry = _build_test_image_payload(width=96, height=72)
@@ -133,7 +139,7 @@ def test_semantic_segment_returns_regions_and_summary(monkeypatch) -> None:
     assert output["summary"]["prompt_items"][0]["negative"] is False
 
 
-def test_semantic_segment_runs_project_native_smoke() -> None:
+def test_semantic_segment_runs_project_native_smoke(monkeypatch) -> None:
     """验证 semantic 节点会加载本地 project-native runtime。"""
 
     image_payload, image_registry = _build_test_image_payload(width=128, height=96)
@@ -160,6 +166,7 @@ def test_semantic_segment_runs_project_native_smoke() -> None:
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_semantic_session(monkeypatch, semantic_segment)
     output = semantic_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True
@@ -169,7 +176,9 @@ def test_semantic_segment_runs_project_native_smoke() -> None:
     assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
 
 
-def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group() -> (
+def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group(
+    monkeypatch,
+) -> (
     None
 ):
     """验证 SAM3 semantic runtime 支持同一 prompt_id 下的正负文本组合。"""
@@ -204,6 +213,7 @@ def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group()
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_semantic_session(monkeypatch, semantic_segment)
     output = semantic_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True

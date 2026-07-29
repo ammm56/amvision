@@ -264,7 +264,11 @@ class WorkflowRuntimeWorkerManager:
         try:
             return self._wait_for_startup_state(
                 handle,
-                timeout_seconds=self._resolve_runtime_start_timeout_seconds(),
+                timeout_seconds=self._resolve_runtime_start_timeout_seconds(
+                    has_model_loaders=self._snapshot_has_model_loaders(
+                        workflow_app_runtime.template_snapshot_object_key
+                    )
+                ),
             )
         except Exception:
             with self._lock:
@@ -1083,13 +1087,41 @@ class WorkflowRuntimeWorkerManager:
             message=message,
         )
 
-    def _resolve_runtime_start_timeout_seconds(self) -> float:
+    def _resolve_runtime_start_timeout_seconds(
+        self, *, has_model_loaders: bool = False
+    ) -> float:
         """返回 runtime worker 启动阶段的控制面等待超时。"""
 
         configured_timeout_seconds = float(
             self.settings.deployment_process_supervisor.startup_timeout_seconds
         )
-        return max(configured_timeout_seconds, 5.0)
+        if not has_model_loaders:
+            return max(configured_timeout_seconds, 5.0)
+        model_startup_timeout_seconds = float(
+            self.settings.workflow_runtime.model_startup_timeout_seconds
+        )
+        return max(
+            configured_timeout_seconds,
+            model_startup_timeout_seconds,
+            5.0,
+        )
+
+    def _snapshot_has_model_loaders(self, template_snapshot_object_key: str) -> bool:
+        """快速判断固定 snapshot 是否包含 Load Checkpoint 节点。"""
+
+        try:
+            payload = self.dataset_storage.read_json(template_snapshot_object_key)
+        except Exception:
+            return False
+        nodes = payload.get("nodes") if isinstance(payload, dict) else None
+        if not isinstance(nodes, list):
+            return False
+        return any(
+            isinstance(node, dict)
+            and node.get("enabled", True) is not False
+            and str(node.get("node_type_id") or "").endswith(".load-checkpoint")
+            for node in nodes
+        )
 
     def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
         """读取当前 broker 事件通道。"""

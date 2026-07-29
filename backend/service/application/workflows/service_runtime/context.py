@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from backend.service.application.workflows.service_runtime.payloads import WorkflowEvaluationTaskPackage
     from backend.service.infrastructure.db.session import SessionFactory
     from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+    from backend.service.application.workflows.model_sessions import (
+        WorkflowModelSessionManager,
+    )
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,16 @@ class WorkflowServiceNodeRuntimeContext:
     obb_async_inference_gateway_dispatcher_registry: Any | None = None
     local_buffer_reader: LocalBufferReader | None = None
     published_inference_gateway: PublishedInferenceGateway | None = None
+    workflow_model_session_manager: WorkflowModelSessionManager | None = None
+
+    def require_workflow_model_session_manager(self) -> WorkflowModelSessionManager:
+        """返回模型 Load Checkpoint 与消费节点共用的 session 管理器。"""
+
+        if self.workflow_model_session_manager is None:
+            raise ServiceConfigurationError(
+                "当前 workflow 运行时缺少 WorkflowModelSessionManager"
+            )
+        return self.workflow_model_session_manager
 
     def build_training_task_service(self, *, task_type: str, model_type: str) -> Any:
         """构造训练任务 service。"""

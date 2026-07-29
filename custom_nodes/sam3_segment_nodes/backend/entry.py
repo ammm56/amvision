@@ -6,6 +6,9 @@ from backend.service.application.workflows.runtime_registry_loader import (
     NodePackEntrypointRegistrationContext,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import NODE_HANDLERS
+from custom_nodes.sam3_segment_nodes.backend.runtime.workflow_session import (
+    Sam3WorkflowModelSessionProvider,
+)
 
 
 def register(context: NodePackEntrypointRegistrationContext) -> None:
@@ -17,3 +20,7 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
 
     for node_type_id, handler in NODE_HANDLERS.items():
         context.register_python_callable(node_type_id, handler)
+    context.register_model_session_provider(
+        "custom.sam3.load-checkpoint",
+        Sam3WorkflowModelSessionProvider(),
+    )

@@ -53,6 +53,7 @@ def build_parent_broker_channel_summary(channel: LocalBufferBrokerEventChannel |
 
 def build_runtime_health_summary(
     local_buffer_reader: LocalBufferBrokerClient | None,
+    model_sessions: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构造 workflow runtime worker 的健康摘要。"""
 
@@ -61,6 +62,15 @@ def build_runtime_health_summary(
         "local_buffer_broker": local_buffer_reader.get_health_summary()
         if local_buffer_reader is not None
         else {"connected": False, "channel_id": None, "recent_error": None},
+        "model_sessions": dict(
+            model_sessions
+            or {
+                "isolation": "workflow-runtime",
+                "execution_policy": "single-session-serial",
+                "ready_session_count": 0,
+                "sessions": [],
+            }
+        ),
     }
 
 

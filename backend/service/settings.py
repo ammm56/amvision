@@ -324,6 +324,8 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     - decoded_image_cache_max_bytes：单次 Workflow Run 解码图片私有内存缓存硬字节上限。
     - raw_result_cache_ttl_seconds：异步 WorkflowRun 原始公开 outputs 的进程内保留秒数。
     - raw_result_cache_max_items：异步 WorkflowRun 原始公开 outputs 的最大缓存条数。
+    - model_startup_timeout_seconds：等待图中 Load Checkpoint 节点完成加载、warmup 和验证的上限。
+    - preview_model_session_scope_limit：API 进程最多保留的编辑态 Preview 模型 scope 数量。
     """
 
     operator_thread_count: int = Field(
@@ -350,6 +352,16 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
         default=64,
         ge=0,
         description="异步 WorkflowRun 原始公开 outputs 的最大缓存条数，0 表示禁用",
+    )
+    model_startup_timeout_seconds: float = Field(
+        default=600.0,
+        gt=0,
+        description="等待 Workflow AppRuntime 模型 session 全部 ready 的最长秒数",
+    )
+    preview_model_session_scope_limit: int = Field(
+        default=1,
+        gt=0,
+        description="API 进程最多保留的编辑态 Preview 模型 scope 数量",
     )
 
 

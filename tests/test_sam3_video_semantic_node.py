@@ -11,6 +11,10 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_semantic_segment
+from tests.sam3_workflow_session_test_support import (
+    patch_real_semantic_session,
+    patch_semantic_session,
+)
 
 
 def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
@@ -78,10 +82,8 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
                 },
             )
 
-    monkeypatch.setattr(
-        video_semantic_segment,
-        "get_or_create_sam3_semantic_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_semantic_session(
+        monkeypatch, video_semantic_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -145,7 +147,7 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
     assert prompt_groups[0][0].negative_texts == ("background",)
 
 
-def test_video_semantic_segment_runs_project_native_smoke() -> None:
+def test_video_semantic_segment_runs_project_native_smoke(monkeypatch) -> None:
     """验证 video-semantic 节点会加载本地 project-native runtime。"""
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -176,6 +178,7 @@ def test_video_semantic_segment_runs_project_native_smoke() -> None:
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_semantic_session(monkeypatch, video_semantic_segment)
     output = video_semantic_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True

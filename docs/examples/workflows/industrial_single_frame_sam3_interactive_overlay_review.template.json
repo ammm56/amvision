@@ -16,13 +16,18 @@
       "parameters": {}
     },
     {
-      "node_id": "segment",
-      "node_type_id": "custom.sam3.interactive-segment",
+      "node_id": "load_sam3",
+      "node_type_id": "custom.sam3.load-checkpoint",
       "parameters": {
         "model_asset_id": "sam3/default",
         "device": "auto",
         "precision": "auto"
       }
+    },
+    {
+      "node_id": "segment",
+      "node_type_id": "custom.sam3.interactive-segment",
+      "parameters": {}
     },
     {
       "node_id": "filter_regions",
@@ -121,6 +126,13 @@
     }
   ],
   "edges": [
+    {
+      "edge_id": "edge-sam3-model-segment",
+      "source_node_id": "load_sam3",
+      "source_port": "model",
+      "target_node_id": "segment",
+      "target_port": "model"
+    },
     {
       "edge_id": "edge-request-image-path-load-image",
       "source_node_id": "request_image_path_input",

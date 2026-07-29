@@ -86,6 +86,9 @@ from backend.service.application.workflows.service_runtime.context import (
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
+from backend.service.application.workflows.model_sessions import (
+    WorkflowModelSessionManager,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
@@ -466,6 +469,9 @@ class BackendServiceBootstrap(
             node_catalog_registry=node_catalog_registry,
             node_pack_loader=node_pack_loader,
         )
+        workflow_model_session_manager = WorkflowModelSessionManager(
+            runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry()
+        )
         local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
             settings=settings.local_buffer_broker,
         )
@@ -566,6 +572,7 @@ class BackendServiceBootstrap(
             obb_async_inference_gateway_dispatcher_registry=obb_async_inference_gateway_registry,
             local_buffer_reader=local_buffer_broker_supervisor,
             published_inference_gateway=published_inference_gateway,
+            workflow_model_session_manager=workflow_model_session_manager,
         )
         workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(
             settings=settings,
@@ -783,6 +790,11 @@ class BackendServiceBootstrap(
         runtime.trigger_source_supervisor.stop_all()
         runtime.workflow_preview_run_manager.stop()
         runtime.workflow_runtime_worker_manager.stop()
+        model_session_manager = (
+            runtime.workflow_service_node_runtime_context.workflow_model_session_manager
+        )
+        if model_session_manager is not None:
+            model_session_manager.close_all()
         # 反序停止所有 deployment supervisor 和 gateway registry
         for component in reversed(list(runtime.iter_all_deployment_supervisors())):
             component.stop()

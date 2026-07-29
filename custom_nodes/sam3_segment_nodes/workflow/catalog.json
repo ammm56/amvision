@@ -1,7 +1,120 @@
 {
   "format_id": "amvision.custom-node-catalog.v1",
-  "payload_contracts": [],
+  "payload_contracts": [
+    {
+      "format_id": "amvision.workflow-payload-contract.v1",
+      "payload_type_id": "sam3-model-session.v1",
+      "display_name": "SAM3 Model Session",
+      "transport_kind": "inline-json",
+      "json_schema": {
+        "type": "object",
+        "properties": {
+          "format_id": {
+            "const": "amvision.workflow-model-session-ref.v1"
+          },
+          "scope_id": {
+            "type": "string"
+          },
+          "loader_node_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "model_family": {
+            "const": "sam3"
+          },
+          "state": {
+            "const": "ready"
+          }
+        },
+        "required": [
+          "format_id",
+          "scope_id",
+          "loader_node_id",
+          "generation",
+          "model_family",
+          "state"
+        ]
+      }
+    }
+  ],
   "node_definitions": [
+    {
+      "format_id": "amvision.node-definition.v1",
+      "node_type_id": "custom.sam3.load-checkpoint",
+      "display_name": "SAM3 Load Checkpoint",
+      "category": "sam3.model.loader",
+      "description": "Load, warm up and validate one AppRuntime-owned SAM3 model session.",
+      "implementation_kind": "custom-node",
+      "runtime_kind": "python-callable",
+      "concurrency_policy": "serialized",
+      "input_ports": [],
+      "output_ports": [
+        {
+          "name": "model",
+          "display_name": "Model",
+          "payload_type_id": "sam3-model-session.v1",
+          "required": true,
+          "multiple": false,
+          "description": "Ready SAM3 session reference owned by the current Workflow AppRuntime."
+        }
+      ],
+      "parameter_schema": {
+        "type": "object",
+        "properties": {
+          "model_asset_id": {
+            "type": "string",
+            "title": "Model Asset",
+            "default": "sam3/default",
+            "x-amvision-ui": {
+              "enum_source": "system.sam3.model-assets"
+            }
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "default": "auto",
+            "x-amvision-ui": {
+              "enum_source": "system.torch.devices"
+            }
+          },
+          "precision": {
+            "type": "string",
+            "title": "Precision",
+            "default": "auto",
+            "x-amvision-ui": {
+              "enum_source": "system.torch.precisions"
+            }
+          }
+        }
+      },
+      "parameter_ui_schema": null,
+      "capability_tags": [
+        "model.loader",
+        "vision.segmentation"
+      ],
+      "runtime_requirements": {
+        "python_packages": [
+          "torch",
+          "opencv-python",
+          "numpy",
+          "Pillow"
+        ],
+        "model_asset_ids": [
+          "sam3/default"
+        ]
+      },
+      "node_pack_id": "sam3.segment-nodes",
+      "node_pack_version": "0.1.3",
+      "metadata": {
+        "model_runtime": "pytorch",
+        "model_family": "sam3",
+        "session_isolation": "workflow-runtime",
+        "execution_policy": "single-session-serial"
+      }
+    },
     {
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.sam3.interactive-segment",
@@ -12,6 +125,14 @@
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
       "input_ports": [
+        {
+          "name": "model",
+          "display_name": "Model",
+          "payload_type_id": "sam3-model-session.v1",
+          "required": true,
+          "multiple": false,
+          "description": "SAM3 Load Checkpoint session."
+        },
         {
           "name": "image",
           "display_name": "Image",
@@ -50,30 +171,6 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_asset_id": {
-            "type": "string",
-            "title": "Model Asset",
-            "default": "sam3/default",
-            "x-amvision-ui": {
-              "enum_source": "system.sam3.model-assets"
-            }
-          },
-          "device": {
-            "type": "string",
-            "title": "Device",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.devices"
-            }
-          },
-          "precision": {
-            "type": "string",
-            "title": "Precision",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.precisions"
-            }
-          },
           "mask_threshold": {
             "type": "number",
             "title": "Mask Threshold",
@@ -110,9 +207,6 @@
           "opencv-python",
           "numpy",
           "Pillow"
-        ],
-        "model_asset_ids": [
-          "sam3/default"
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
@@ -132,6 +226,14 @@
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
       "input_ports": [
+        {
+          "name": "model",
+          "display_name": "Model",
+          "payload_type_id": "sam3-model-session.v1",
+          "required": true,
+          "multiple": false,
+          "description": "SAM3 Load Checkpoint session."
+        },
         {
           "name": "image",
           "display_name": "Image",
@@ -170,30 +272,6 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_asset_id": {
-            "type": "string",
-            "title": "Model Asset",
-            "default": "sam3/default",
-            "x-amvision-ui": {
-              "enum_source": "system.sam3.model-assets"
-            }
-          },
-          "device": {
-            "type": "string",
-            "title": "Device",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.devices"
-            }
-          },
-          "precision": {
-            "type": "string",
-            "title": "Precision",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.precisions"
-            }
-          },
           "mask_threshold": {
             "type": "number",
             "title": "Mask Threshold",
@@ -230,9 +308,6 @@
           "opencv-python",
           "numpy",
           "Pillow"
-        ],
-        "model_asset_ids": [
-          "sam3/default"
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
@@ -252,6 +327,14 @@
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
       "input_ports": [
+        {
+          "name": "model",
+          "display_name": "Model",
+          "payload_type_id": "sam3-model-session.v1",
+          "required": true,
+          "multiple": false,
+          "description": "SAM3 Load Checkpoint session."
+        },
         {
           "name": "frames",
           "display_name": "Frames",
@@ -290,30 +373,6 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_asset_id": {
-            "type": "string",
-            "title": "Model Asset",
-            "default": "sam3/default",
-            "x-amvision-ui": {
-              "enum_source": "system.sam3.model-assets"
-            }
-          },
-          "device": {
-            "type": "string",
-            "title": "Device",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.devices"
-            }
-          },
-          "precision": {
-            "type": "string",
-            "title": "Precision",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.precisions"
-            }
-          },
           "mask_threshold": {
             "type": "number",
             "title": "Mask Threshold",
@@ -394,9 +453,6 @@
           "opencv-python",
           "numpy",
           "Pillow"
-        ],
-        "model_asset_ids": [
-          "sam3/default"
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
@@ -417,6 +473,14 @@
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
       "input_ports": [
+        {
+          "name": "model",
+          "display_name": "Model",
+          "payload_type_id": "sam3-model-session.v1",
+          "required": true,
+          "multiple": false,
+          "description": "SAM3 Load Checkpoint session."
+        },
         {
           "name": "frames",
           "display_name": "Frames",
@@ -455,30 +519,6 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "model_asset_id": {
-            "type": "string",
-            "title": "Model Asset",
-            "default": "sam3/default",
-            "x-amvision-ui": {
-              "enum_source": "system.sam3.model-assets"
-            }
-          },
-          "device": {
-            "type": "string",
-            "title": "Device",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.devices"
-            }
-          },
-          "precision": {
-            "type": "string",
-            "title": "Precision",
-            "default": "auto",
-            "x-amvision-ui": {
-              "enum_source": "system.torch.precisions"
-            }
-          },
           "mask_threshold": {
             "type": "number",
             "title": "Mask Threshold",
@@ -517,9 +557,6 @@
           "opencv-python",
           "numpy",
           "Pillow"
-        ],
-        "model_asset_ids": [
-          "sam3/default"
         ]
       },
       "node_pack_id": "sam3.segment-nodes",

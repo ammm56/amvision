@@ -63,6 +63,10 @@ export function useWorkflowEditorActions() {
   }
 
   async function runWorkflowPreview(input: WorkflowPreviewRunActionInput): Promise<WorkflowPreviewRun | null> {
+    if (previewing.value) {
+      statusMessage.value = translate('workflowEditor.feedback.previewAlreadyRunning')
+      return null
+    }
     previewing.value = true
     errorMessage.value = null
     statusMessage.value = null

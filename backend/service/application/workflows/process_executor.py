@@ -40,6 +40,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.settings import BackendServiceSettings
 from backend.service.application.workflows.process_threads import configure_workflow_process_threads
+from backend.service.application.workflows.model_sessions import (
+    WorkflowModelSessionManager,
+)
 
 
 @dataclass(frozen=True)
@@ -221,6 +224,7 @@ def run_workflow_application_process_worker(
     session_factory: SessionFactory | None = None
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
+    model_session_manager: WorkflowModelSessionManager | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -236,6 +240,9 @@ def run_workflow_application_process_worker(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
+        model_session_manager = WorkflowModelSessionManager(
+            runtime_registry=runtime_registry_loader.get_runtime_registry()
+        )
 
         sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
@@ -267,6 +274,7 @@ def run_workflow_application_process_worker(
             obb_sync_deployment_process_supervisor=sync_supervisor,
             obb_async_deployment_process_supervisor=async_supervisor,
             async_inference_service_id="workflow-local",
+            workflow_model_session_manager=model_session_manager,
         )
         execution_result = _execute_workflow_application(
             project_id=project_id,
@@ -324,6 +332,8 @@ def run_workflow_application_process_worker(
             }
         )
     finally:
+        if model_session_manager is not None:
+            model_session_manager.close_all()
         if sync_supervisor is not None:
             sync_supervisor.stop()
         if async_supervisor is not None:

@@ -1114,16 +1114,29 @@ def _build_sam3_semantic_template() -> WorkflowGraphTemplate:
         display_name="SAM3 Semantic Smoke Template",
         nodes=(
             WorkflowGraphNode(
-                node_id="sam3_semantic",
-                node_type_id="custom.sam3.semantic-segment",
+                node_id="sam3_loader",
+                node_type_id="custom.sam3.load-checkpoint",
                 parameters={
                     "model_asset_id": "sam3/default",
                     "device": "cpu",
                     "precision": "fp32",
                 },
             ),
+            WorkflowGraphNode(
+                node_id="sam3_semantic",
+                node_type_id="custom.sam3.semantic-segment",
+                parameters={},
+            ),
         ),
-        edges=(),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="sam3-loader-to-semantic",
+                source_node_id="sam3_loader",
+                source_port="model",
+                target_node_id="sam3_semantic",
+                target_port="model",
+            ),
+        ),
         template_inputs=(
             WorkflowGraphInput(
                 input_id="request_image_base64",
@@ -1213,6 +1226,15 @@ def _build_sam3_video_semantic_template() -> WorkflowGraphTemplate:
         display_name="SAM3 Video Semantic Smoke Template",
         nodes=(
             WorkflowGraphNode(
+                node_id="sam3_loader",
+                node_type_id="custom.sam3.load-checkpoint",
+                parameters={
+                    "model_asset_id": "sam3/default",
+                    "device": "cpu",
+                    "precision": "fp32",
+                },
+            ),
+            WorkflowGraphNode(
                 node_id="video_decode",
                 node_type_id="core.io.video-decode-frames",
                 parameters={
@@ -1226,14 +1248,17 @@ def _build_sam3_video_semantic_template() -> WorkflowGraphTemplate:
             WorkflowGraphNode(
                 node_id="sam3_video_semantic",
                 node_type_id="custom.sam3.video-semantic-segment",
-                parameters={
-                    "model_asset_id": "sam3/default",
-                    "device": "cpu",
-                    "precision": "fp32",
-                },
+                parameters={},
             ),
         ),
         edges=(
+            WorkflowGraphEdge(
+                edge_id="sam3-loader-to-video-semantic",
+                source_node_id="sam3_loader",
+                source_port="model",
+                target_node_id="sam3_video_semantic",
+                target_port="model",
+            ),
             WorkflowGraphEdge(
                 edge_id="decode-to-video-semantic",
                 source_node_id="video_decode",

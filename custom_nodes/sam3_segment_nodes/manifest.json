@@ -3,12 +3,13 @@
   "id": "sam3.segment-nodes",
   "version": "0.1.3",
   "displayName": "SAM3 Segment Nodes",
-  "description": "提供 SAM3 交互分割、语义分割、视频交互分割和视频语义分割 custom node。",
+  "description": "提供 AppRuntime 独立 Load Checkpoint、SAM3 交互分割、语义分割和视频分割 custom node。",
   "category": "custom-node-pack",
   "capabilities": [
     "pipeline.node",
     "vision.segmentation",
     "vision.tracking",
+    "model.loader",
     "video.processing",
     "prompt.visual",
     "prompt.text"
@@ -32,7 +33,9 @@
     "phase": "implemented",
     "notes": [
       "第一阶段作为 custom node 扩展能力接入，不直接并入核心模型主链。",
-      "SAM3 权重按 model_asset_id 从 data/files/models/pretrained/sam3 下的资产 manifest 解析，不暴露不存在的 model scale。",
+      "SAM3 Load Checkpoint 按 model_asset_id 从 data/files/models/pretrained/sam3 下的资产 manifest 解析，不暴露不存在的 model scale。",
+      "每个 WorkflowAppRuntime 独立加载、warmup 和验证模型；全部 loader ready 后 runtime 才接收请求。",
+      "Segment 节点消费 sam3-model-session.v1，同一 session 串行执行，不跨 AppRuntime 共享，不做 batching 或图片合并。",
       "interactive-segment 使用 project-native runtime，直接读取本地 sam3.pt，不依赖 projectsrc 参考代码。",
       "interactive-segment 支持 box、point、polygon、mask prompt，并输出 regions.v1。",
       "semantic-segment 支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。",

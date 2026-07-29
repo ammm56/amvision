@@ -37,6 +37,12 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+    WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
+    WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
+    build_workflow_preview_model_session_scope_id,
+)
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
@@ -307,6 +313,19 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
         )
+        preview_model_session_scope_id = (
+            build_workflow_preview_model_session_scope_id(
+                project_id=normalized_request.project_id,
+                application_id=application_id,
+            )
+        )
+        # scope 和并发策略属于服务端所有权边界，不能接受浏览器 metadata 覆盖。
+        preview_metadata[
+            WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
+        ] = preview_model_session_scope_id
+        preview_metadata[
+            WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
+        ] = False
         retain_node_records_enabled = _resolve_preview_retain_node_records_enabled(
             preview_metadata,
             execution_policy=execution_policy,
@@ -403,7 +422,23 @@ class WorkflowRuntimeService:
         inline_started_at = monotonic()
         execution_metadata = dict(execution_request.execution_metadata)
         execution_metadata.setdefault(WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, preview_run_id)
+        model_session_manager = (
+            self.workflow_service_node_runtime_context.workflow_model_session_manager
+        )
+        model_session_scope_id = str(
+            execution_metadata.get(
+                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY, ""
+            )
+        ).strip()
         try:
+            if model_session_manager is not None and model_session_scope_id:
+                model_session_manager.enforce_scope_limit(
+                    scope_prefix=WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
+                    current_scope_id=model_session_scope_id,
+                    max_scope_count=(
+                        self.settings.workflow_runtime.preview_model_session_scope_limit
+                    ),
+                )
             execution_result = SnapshotExecutionService(
                 dataset_storage=self.dataset_storage,
                 node_catalog_registry=self.node_catalog_registry,
@@ -433,12 +468,20 @@ class WorkflowRuntimeService:
                 details={"error_type": type(exc).__name__, "error_message": str(exc) or type(exc).__name__},
             )
             return self._finish_inline_preview_run_failed(preview_run_id, wrapped_error)
+        model_session_health = (
+            model_session_manager.build_health_summary(
+                scope_id=model_session_scope_id
+            )
+            if model_session_manager is not None and model_session_scope_id
+            else None
+        )
         return self._finish_inline_preview_run_succeeded(
             preview_run_id,
             execution_result,
             retain_node_records_enabled=retain_node_records_enabled,
             return_sync_response_payload_enabled=return_sync_response_payload_enabled,
             inline_duration_ms=_elapsed_ms(inline_started_at),
+            model_session_health=model_session_health,
         )
 
     def _finish_inline_preview_run_succeeded(
@@ -449,11 +492,18 @@ class WorkflowRuntimeService:
         retain_node_records_enabled: bool,
         return_sync_response_payload_enabled: bool,
         inline_duration_ms: float,
+        model_session_health: dict[str, object] | None = None,
     ) -> WorkflowPreviewRun:
         """把 inline Preview Run 写入 succeeded 状态。"""
 
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
+            preview_metadata = _merge_preview_run_inline_metadata(
+                preview_run.metadata,
+                inline_duration_ms=inline_duration_ms,
+            )
+            if model_session_health is not None:
+                preview_metadata["model_session"] = dict(model_session_health)
             persisted_preview_run = replace(
                 preview_run,
                 state="succeeded",
@@ -466,10 +516,7 @@ class WorkflowRuntimeService:
                     else ()
                 ),
                 error_message=None,
-                metadata=_merge_preview_run_inline_metadata(
-                    preview_run.metadata,
-                    inline_duration_ms=inline_duration_ms,
-                ),
+                metadata=preview_metadata,
             )
             unit_of_work.workflow_runtime.save_preview_run(persisted_preview_run)
             unit_of_work.commit()

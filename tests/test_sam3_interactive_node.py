@@ -11,6 +11,10 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import interactive_segment
+from tests.sam3_workflow_session_test_support import (
+    patch_interactive_session,
+    patch_real_interactive_session,
+)
 
 
 def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
@@ -68,10 +72,12 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
         }
         return _FakeSession()
 
-    monkeypatch.setattr(
+    patch_interactive_session(
+        monkeypatch,
         interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        _fake_get_or_create_session,
+        _fake_get_or_create_session(
+            model_asset_id="sam3/default", device="cpu", precision="fp32"
+        ),
     )
 
     image_payload, image_registry = _build_test_image_payload(width=96, height=72)
@@ -139,11 +145,7 @@ def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
                 },
             )
 
-    monkeypatch.setattr(
-        interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
-    )
+    patch_interactive_session(monkeypatch, interactive_segment, _FakeSession())
 
     image_payload, image_registry = _build_test_image_payload(width=96, height=72)
     request = WorkflowNodeExecutionRequest(
@@ -205,11 +207,7 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
                 },
             )
 
-    monkeypatch.setattr(
-        interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
-    )
+    patch_interactive_session(monkeypatch, interactive_segment, _FakeSession())
 
     image_payload, image_registry = _build_test_image_payload(width=96, height=72)
     mask_payload = _build_test_mask_payload(
@@ -249,7 +247,7 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
     assert output["summary"]["prompt_kinds"] == ["mask"]
 
 
-def test_interactive_segment_runs_project_native_smoke() -> None:
+def test_interactive_segment_runs_project_native_smoke(monkeypatch) -> None:
     """验证 interactive 节点会加载本地 project-native runtime。"""
 
     image_payload, image_registry = _build_test_image_payload(width=128, height=96)
@@ -277,6 +275,7 @@ def test_interactive_segment_runs_project_native_smoke() -> None:
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_interactive_session(monkeypatch, interactive_segment)
     output = interactive_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True

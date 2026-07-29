@@ -28,6 +28,7 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 
 ### SAM3 / Image
 
+- `SAM3 Load Checkpoint`
 - `SAM3 Interactive Segment`
 - `SAM3 Semantic Segment`
 
@@ -58,11 +59,14 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 
 ## 参数归属
 
-四个节点共享：
+只有 `SAM3 Load Checkpoint` 声明：
 
 - `model_asset_id`
 - `device`
 - `precision`
+
+四个 Segment 节点都必须通过 `model: sam3-model-session.v1` 输入消费 loader 输出，不再重复声明模型资产、设备和精度。它们共享：
+
 - `mask_threshold`
 - `stability_offset`
 - `min_component_area`
@@ -81,13 +85,19 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 
 ## 运行时规则
 
+- SAM3 使用通用 [Workflow Model Session 运行时](workflow-model-session-runtime.md)，不建立 SAM3 专用服务级模型池。
+- 每个 `WorkflowAppRuntime` 独立持有图中每个 `SAM3 Load Checkpoint` 对应的 session；不同 runtime 和 Preview 不共享。
+- Runtime 启动时先扫描 loader，串行完成 checkpoint 加载、移入设备、受控 warmup 和输出验证，全部成功后才标记 ready/running。
+- 同一个 loader 可以连接多个 SAM3 Segment 节点；这些节点通过 lease 锁串行使用模型对象。
+- 编辑器 Preview 使用稳定的 Project + Application scope；snapshot 每次变化不触发 SAM3 重载，只有 Loader 配置或消费者能力变化才换代。
+- 同一应用 Preview 不允许并发或排队；切换应用受 Preview scope 上限约束，删除/禁用 Loader 会释放对应模型。
 - 单图 Semantic 加载完整视觉骨干、文本编码、image-text encoder 和 semantic segmentation head；当前节点只输出 semantic mask，不输出 detector object query 结果。
 - 单图 Interactive 使用完整 interactive predictor。
 - Video Semantic 复用持久化 semantic session 逐帧执行，并在摘要中明确标记为 `per-frame-semantic`；在接入正式 detector-tracker 前不能宣称具备官方视频记忆传播。
 - Video Interactive 使用持久化 interactive session 和项目内显式命名的 tracking mode，保留对象 id、Prompt 修正和遮挡恢复状态。
 - 项目自定义 prototype/attention 跟踪算法如需保留，应作为明确命名的独立跟踪模式，不得描述为官方 SAM3 video predictor。
-- 模型 session 进入有容量限制的 runtime pool，支持 LRU、显存释放、失败清理和显式关闭。
-- SAM3 node pack 默认执行超时为 300 秒；WorkflowAppRuntime 冷启动调用必须使用不低于该值的 request timeout，或在接收现场请求前完成模型预热。
+- 不使用跨 AppRuntime LRU、全局 pool、并发推理、额外模型队列、batching 或图片合并。
+- SAM3 node pack 默认执行超时为 300 秒；AppRuntime 模型启动等待时间由 `workflow_runtime.model_startup_timeout_seconds` 控制，默认 600 秒。
 - 节点运行摘要必须记录实际模型资产、设备、精度、Prompt 数量、耗时和后处理参数。
 
 ## 版本与依赖
@@ -121,7 +131,8 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 | Video Semantic | 已实现 | 逐帧复用 semantic session，摘要固定标记 `per-frame-semantic` |
 | 官方视频记忆传播 | 未宣称实现 | 未接入正式 detector-tracker 前，不把逐帧 semantic 输出描述为官方跟踪 |
 | 后处理 | 已实现 | 四个节点统一支持阈值、稳定性、最小连通域和轮廓简化参数 |
-| Runtime pool | 已实现 | Interactive 与 Semantic 分池、单实例 LRU、显式关闭和释放 |
+| Load Checkpoint | 已实现 | 独立节点输出 `sam3-model-session.v1`，Segment 节点不再重复模型参数 |
+| Runtime session | 已实现 | 每个 AppRuntime 独立、启动预热验证、单 lease 串行、停止时显式释放 |
 | 示例与测试 | 已实现 | 包含 Prompt 画布闭环、Catalog、资产、CPU 和真实 checkpoint 回归 |
 
 表中的“已实现”以本项目在本文定义的能力边界为准。后续若接入官方 detector-tracker、增加新的 checkpoint 架构或扩展硬件后端，必须先更新本文的固定边界、支持矩阵和验收标准，再修改 Catalog 与运行时。

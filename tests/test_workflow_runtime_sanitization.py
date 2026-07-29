@@ -28,6 +28,10 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
 )
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+    WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
+)
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     MAX_PERSISTED_COLLECTION_ITEMS,
     MAX_PERSISTED_STRING_CHARS,
@@ -70,6 +74,16 @@ def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_san
     )
 
     assert preview_run.state == "succeeded"
+    assert (
+        preview_run.metadata[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY]
+        == "preview:project-1:image-decode-preview-app"
+    )
+    assert (
+        preview_run.metadata[
+            WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
+        ]
+        is False
+    )
     preview_image = preview_run.outputs["http_response"]["body"]["image"]
     assert preview_image["transport_kind"] == "inline-base64"
     assert preview_image["image_base64"] == image_base64

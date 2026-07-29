@@ -12,6 +12,10 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segment
+from tests.sam3_workflow_session_test_support import (
+    patch_interactive_session,
+    patch_real_interactive_session,
+)
 
 
 def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> None:
@@ -67,10 +71,8 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
                 },
             )
 
-    monkeypatch.setattr(
-        video_interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_interactive_session(
+        monkeypatch, video_interactive_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -126,7 +128,7 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
     assert output["tracks"]["items"][1]["state"] == "propagated"
 
 
-def test_video_interactive_segment_runs_project_native_smoke() -> None:
+def test_video_interactive_segment_runs_project_native_smoke(monkeypatch) -> None:
     """验证 video-interactive 节点会加载本地 project-native runtime。"""
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -158,6 +160,7 @@ def test_video_interactive_segment_runs_project_native_smoke() -> None:
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_interactive_session(monkeypatch, video_interactive_segment)
     output = video_interactive_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True
@@ -222,10 +225,8 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
                 },
             )
 
-    monkeypatch.setattr(
-        video_interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_interactive_session(
+        monkeypatch, video_interactive_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -292,10 +293,8 @@ def test_video_interactive_segment_memory_mode_supports_longer_window(
                 summary=_build_fake_summary(),
             )
 
-    monkeypatch.setattr(
-        video_interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_interactive_session(
+        monkeypatch, video_interactive_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -368,10 +367,8 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(
                 ),
             )
 
-    monkeypatch.setattr(
-        video_interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_interactive_session(
+        monkeypatch, video_interactive_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -450,10 +447,8 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(
                 summary=_build_fake_summary(),
             )
 
-    monkeypatch.setattr(
-        video_interactive_segment,
-        "get_or_create_sam3_interactive_runtime_session",
-        lambda **_: _FakeSession(),
+    patch_interactive_session(
+        monkeypatch, video_interactive_segment, _FakeSession()
     )
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -512,7 +507,9 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(
     assert prompt_history[2][0].prompt_kind == "mask"
 
 
-def test_video_interactive_segment_memory_attention_runs_project_native_smoke() -> None:
+def test_video_interactive_segment_memory_attention_runs_project_native_smoke(
+    monkeypatch,
+) -> None:
     """验证 video-interactive 节点可以加载本地 memory-attention-tracker 模式。"""
 
     frame_window_payload, image_registry = _build_test_frame_window_payload(
@@ -545,6 +542,7 @@ def test_video_interactive_segment_memory_attention_runs_project_native_smoke() 
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    patch_real_interactive_session(monkeypatch, video_interactive_segment)
     output = video_interactive_segment.handle_node(request)
 
     assert output["summary"]["project_native"] is True

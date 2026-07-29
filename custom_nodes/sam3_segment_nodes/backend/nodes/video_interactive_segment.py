@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     read_frame_window_items,
     read_interactive_prompt_items,
-)
-from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
-    normalize_device,
-    normalize_model_asset_id,
-    normalize_precision,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.postprocess import (
     resolve_sam3_postprocess_options,
@@ -21,8 +18,9 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.results import (
     build_tracks_payload,
     build_video_interactive_summary_payload,
 )
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
-    get_or_create_sam3_interactive_runtime_session,
+from custom_nodes.sam3_segment_nodes.backend.runtime.workflow_session import (
+    Sam3WorkflowModelSession,
+    resolve_sam3_session_lease,
 )
 from custom_nodes.sam3_segment_nodes.backend.runtime.tracking import (
     TRACKING_MODE_MEMORY,
@@ -54,95 +52,94 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         source_image_bytes=first_frame.image_bytes,
     )
     tracking_options = resolve_video_tracking_options(request.parameters)
-    model_asset_id = normalize_model_asset_id(request.parameters.get("model_asset_id"))
-    device = normalize_device(request.parameters.get("device"))
-    precision = normalize_precision(request.parameters.get("precision"))
     postprocess_options = resolve_sam3_postprocess_options(request.parameters)
-    runtime_session = get_or_create_sam3_interactive_runtime_session(
-        model_asset_id=model_asset_id,
-        device=device,
-        precision=precision,
-    )
+    lease = resolve_sam3_session_lease(request, capability="video-interactive")
 
-    frame_predictions: list[dict[str, object]] = []
-    tracked_region_state: dict[str, object] = {}
-    tracked_memory_state = {}
-    tracked_attention_state = {}
-    propagated_prompt_counts: list[int] = []
-    memory_similarity_peaks: list[dict[str, float]] = []
-    memory_attention_peaks: list[dict[str, float]] = []
-    for frame_item in frame_items:
-        frame_context = runtime_session.prepare_frame_context(
-            image_bytes=frame_item.image_bytes,
-            image_payload=frame_item.image_payload,
-        )
-        (
-            active_prompt_items,
-            propagated_prompt_ids,
-            frame_similarity_peaks,
-            frame_attention_peaks,
-        ) = build_frame_prompt_items(
-            base_prompt_items=prompt_items,
-            tracked_region_state=tracked_region_state,
-            tracked_memory_state=tracked_memory_state,
-            tracked_attention_state=tracked_attention_state,
-            tracking_options=tracking_options,
-            frame_width=frame_item.width,
-            frame_height=frame_item.height,
-            frame_context=frame_context,
-        )
-        propagated_prompt_counts.append(len(propagated_prompt_ids))
-        memory_similarity_peaks.append(frame_similarity_peaks)
-        memory_attention_peaks.append(frame_attention_peaks)
-        prediction = runtime_session.predict_from_frame_context(
-            frame_context=frame_context,
-            prompt_items=active_prompt_items,
-            mask_threshold=postprocess_options.mask_threshold,
-            stability_offset=postprocess_options.stability_offset,
-            min_component_area=postprocess_options.min_component_area,
-            polygon_simplify_ratio=postprocess_options.polygon_simplify_ratio,
-        )
-        if tracking_options.tracking_mode == TRACKING_MODE_MEMORY:
-            update_memory_track_states(
+    with lease.locked_session(
+        capability="video-interactive"
+    ) as workflow_session:
+        runtime_session = cast(
+            Sam3WorkflowModelSession, workflow_session
+        ).require_interactive()
+        frame_predictions: list[dict[str, object]] = []
+        tracked_region_state: dict[str, object] = {}
+        tracked_memory_state = {}
+        tracked_attention_state = {}
+        propagated_prompt_counts: list[int] = []
+        memory_similarity_peaks: list[dict[str, float]] = []
+        memory_attention_peaks: list[dict[str, float]] = []
+        for frame_item in frame_items:
+            frame_context = runtime_session.prepare_frame_context(
+                image_bytes=frame_item.image_bytes,
+                image_payload=frame_item.image_payload,
+            )
+            (
+                active_prompt_items,
+                propagated_prompt_ids,
+                frame_similarity_peaks,
+                frame_attention_peaks,
+            ) = build_frame_prompt_items(
+                base_prompt_items=prompt_items,
+                tracked_region_state=tracked_region_state,
                 tracked_memory_state=tracked_memory_state,
-                active_prompt_items=active_prompt_items,
-                prediction_regions=prediction.regions,
-                frame_context=frame_context,
-                frame_index=frame_item.frame_index,
-                tracking_options=tracking_options,
-            )
-        elif tracking_options.tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
-            update_attention_track_states(
                 tracked_attention_state=tracked_attention_state,
-                active_prompt_items=active_prompt_items,
-                prediction_regions=prediction.regions,
-                frame_context=frame_context,
-                frame_index=frame_item.frame_index,
                 tracking_options=tracking_options,
+                frame_width=frame_item.width,
+                frame_height=frame_item.height,
+                frame_context=frame_context,
             )
-        elif tracking_options.tracking_mode == TRACKING_MODE_STATEFUL:
-            tracked_region_state = build_stateful_region_state(
-                active_prompt_items=active_prompt_items,
-                prediction_regions=prediction.regions,
+            propagated_prompt_counts.append(len(propagated_prompt_ids))
+            memory_similarity_peaks.append(frame_similarity_peaks)
+            memory_attention_peaks.append(frame_attention_peaks)
+            prediction = runtime_session.predict_from_frame_context(
+                frame_context=frame_context,
+                prompt_items=active_prompt_items,
+                mask_threshold=postprocess_options.mask_threshold,
+                stability_offset=postprocess_options.stability_offset,
+                min_component_area=postprocess_options.min_component_area,
+                polygon_simplify_ratio=postprocess_options.polygon_simplify_ratio,
             )
-        frame_predictions.append(
-            {
-                "frame_index": frame_item.frame_index,
-                "timestamp_ms": frame_item.timestamp_ms,
-                "regions": prediction.regions,
-                "summary": prediction.summary,
-                "region_states": [
-                    (
-                        "propagated"
-                        if str(region.prompt_id) in propagated_prompt_ids
-                        else "seeded"
-                        if frame_item.frame_index == first_frame.frame_index
-                        else "reseeded"
-                    )
-                    for region in prediction.regions
-                ],
-            }
-        )
+            if tracking_options.tracking_mode == TRACKING_MODE_MEMORY:
+                update_memory_track_states(
+                    tracked_memory_state=tracked_memory_state,
+                    active_prompt_items=active_prompt_items,
+                    prediction_regions=prediction.regions,
+                    frame_context=frame_context,
+                    frame_index=frame_item.frame_index,
+                    tracking_options=tracking_options,
+                )
+            elif tracking_options.tracking_mode == TRACKING_MODE_MEMORY_ATTENTION:
+                update_attention_track_states(
+                    tracked_attention_state=tracked_attention_state,
+                    active_prompt_items=active_prompt_items,
+                    prediction_regions=prediction.regions,
+                    frame_context=frame_context,
+                    frame_index=frame_item.frame_index,
+                    tracking_options=tracking_options,
+                )
+            elif tracking_options.tracking_mode == TRACKING_MODE_STATEFUL:
+                tracked_region_state = build_stateful_region_state(
+                    active_prompt_items=active_prompt_items,
+                    prediction_regions=prediction.regions,
+                )
+            frame_predictions.append(
+                {
+                    "frame_index": frame_item.frame_index,
+                    "timestamp_ms": frame_item.timestamp_ms,
+                    "regions": prediction.regions,
+                    "summary": prediction.summary,
+                    "region_states": [
+                        (
+                            "propagated"
+                            if str(region.prompt_id) in propagated_prompt_ids
+                            else "seeded"
+                            if frame_item.frame_index == first_frame.frame_index
+                            else "reseeded"
+                        )
+                        for region in prediction.regions
+                    ],
+                }
+            )
 
     frame_predictions_tuple = tuple(frame_predictions)
     source_video = (

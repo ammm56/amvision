@@ -343,18 +343,19 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     assert [node.node_id for node in template.nodes] == [
         "video_load_local",
         "decode_frames",
+        "load_sam3",
         "segment_video",
         "filter_tracks",
         "render_overlay",
         "save_video",
         "video_body",
     ]
-    assert template.nodes[2].parameters["tracking_mode"] == "memory-attention-tracker"
-    assert template.nodes[2].parameters["history_limit"] == 6
-    assert template.nodes[2].parameters["prototype_momentum"] == 0.72
-    assert template.nodes[2].parameters["attention_temperature"] == 0.12
-    assert template.nodes[2].parameters["prototype_blend_weight"] == 0.35
-    assert template.nodes[2].parameters["max_memory_tokens_per_entry"] == 256
+    assert template.nodes[3].parameters["tracking_mode"] == "memory-attention-tracker"
+    assert template.nodes[3].parameters["history_limit"] == 6
+    assert template.nodes[3].parameters["prototype_momentum"] == 0.72
+    assert template.nodes[3].parameters["attention_temperature"] == 0.12
+    assert template.nodes[3].parameters["prototype_blend_weight"] == 0.35
+    assert template.nodes[3].parameters["max_memory_tokens_per_entry"] == 256
     assert template.metadata["example_kind"] == "sam3-video-memory-attention-review"
     assert template.metadata["tracking_mode"] == "memory-attention-tracker"
     assert template.metadata["node_groups"]["tracking"] == [
@@ -397,12 +398,14 @@ def test_sam3_prompt_nodes_review_example_document_is_valid() -> None:
         "core.input.text-prompt",
         "core.input.text-prompt",
         "core.input.text-prompts-merge",
+        "custom.sam3.load-checkpoint",
         "custom.sam3.semantic-segment",
         "core.input.box-prompt",
         "custom.sam3.interactive-segment",
     ]
     assert template.nodes[5].parameters["model_asset_id"] == "sam3/default"
-    assert template.nodes[7].parameters["model_asset_id"] == "sam3/default"
+    assert template.nodes[6].parameters == {}
+    assert template.nodes[8].parameters == {}
     assert template.metadata["node_pack_version"] == "0.1.3"
 
 
@@ -2518,6 +2521,7 @@ def test_industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate_documents
     assert [node.node_id for node in template.nodes] == [
         "request_camera_config_input",
         "capture_frame",
+        "load_sam3",
         "segment",
         "filter_regions",
         "create_roi",
@@ -2773,6 +2777,7 @@ def test_industrial_single_frame_overlay_review_documents_are_valid(
             [
                 "request_image_path_input",
                 "load_image",
+                "load_sam3",
                 "segment",
                 "filter_regions",
                 "create_roi",
@@ -2927,6 +2932,7 @@ def test_industrial_single_frame_native_model_overlay_review_documents_are_valid
             [
                 "request_image_path_input",
                 "load_image",
+                "load_sam3",
                 "segment",
                 "filter_regions",
                 "create_roi",

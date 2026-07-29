@@ -33,6 +33,7 @@
 - [docs/architecture/websocket-architecture.md](websocket-architecture.md)：WebSocket 子系统的职责边界、版本化路由、事件流组织和重连规则
 - [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](workflow-runtime.md)：workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
+- [docs/architecture/workflow-model-session-runtime.md](workflow-model-session-runtime.md)：图内 Load Checkpoint、AppRuntime 模型隔离、启动预热验证、单 session 串行和释放规则
 - [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)：workflow 图编排前端所需的后端接口现状、本轮已补齐项和下一批执行清单
 - [docs/architecture/workflow-parallel-branches.md](workflow-parallel-branches.md)：通用 Parallel 分支、受控并发、资源边界和 80 ROI / 3 实例现场配置
 - [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息规则

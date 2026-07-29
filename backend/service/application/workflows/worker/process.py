@@ -22,6 +22,10 @@ from backend.service.application.workflows.snapshot_execution import (
 )
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.process_threads import configure_workflow_process_threads
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+    WorkflowModelSessionManager,
+)
 from backend.service.application.workflows.worker.health import (
     build_runtime_health_summary,
     build_runtime_instance_id,
@@ -66,6 +70,7 @@ def run_workflow_runtime_worker_process(
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
+    model_session_manager: WorkflowModelSessionManager | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -82,6 +87,9 @@ def run_workflow_runtime_worker_process(
             node_pack_loader=node_pack_loader,
         )
         runtime_registry_loader.refresh()
+        model_session_manager = WorkflowModelSessionManager(
+            runtime_registry=runtime_registry_loader.get_runtime_registry()
+        )
         sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
@@ -111,6 +119,7 @@ def run_workflow_runtime_worker_process(
             async_inference_service_id="workflow-local",
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
+            workflow_model_session_manager=model_session_manager,
         )
         workflow_runtime_id = require_payload_str(runtime_payload, "workflow_runtime_id")
         application_id = require_payload_str(runtime_payload, "application_id")
@@ -139,6 +148,20 @@ def run_workflow_runtime_worker_process(
                 settings.workflow_runtime.decoded_image_cache_max_bytes
             ),
         )
+        model_session_scope_id = f"runtime:{workflow_runtime_id}"
+        startup_execution_metadata = {
+            WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY: model_session_scope_id,
+            "workflow_runtime_id": workflow_runtime_id,
+        }
+        snapshot_execution_service.prepare_model_sessions(
+            WorkflowSnapshotExecutionRequest(
+                project_id=snapshot_project_id,
+                application_id=application_id,
+                application_snapshot_object_key=application_snapshot_object_key,
+                template_snapshot_object_key=template_snapshot_object_key,
+                execution_metadata=startup_execution_metadata,
+            )
+        )
         worker_started_at = now_isoformat()
         runtime_instance_id = build_runtime_instance_id(workflow_runtime_id)
         current_observed_state = "running"
@@ -146,6 +169,16 @@ def run_workflow_runtime_worker_process(
         current_run_id: str | None = None
         state_lock = Lock()
         heartbeat_stop_event = Event()
+
+        def build_current_health_summary() -> dict[str, object]:
+            """返回当前 runtime 的 broker 与模型 session 健康摘要。"""
+
+            return build_runtime_health_summary(
+                local_buffer_reader,
+                model_session_manager.build_health_summary(
+                    scope_id=model_session_scope_id
+                ),
+            )
 
         def build_state_message(*, message_type: str, request_id: str | None = None) -> dict[str, object]:
             """按当前 worker 共享状态构造状态消息。"""
@@ -161,7 +194,7 @@ def run_workflow_runtime_worker_process(
                     heartbeat_at=now_isoformat(),
                     loaded_snapshot_fingerprint=snapshot_fingerprint,
                     last_error=current_last_error,
-                    health_summary=build_runtime_health_summary(local_buffer_reader),
+                    health_summary=build_current_health_summary(),
                     message_type=message_type,
                     request_id=request_id,
                 )
@@ -205,7 +238,7 @@ def run_workflow_runtime_worker_process(
                         current_run_id=current_run_id,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        health_summary=build_runtime_health_summary(local_buffer_reader),
+                        health_summary=build_current_health_summary(),
                     )
                 )
                 continue
@@ -215,6 +248,9 @@ def run_workflow_runtime_worker_process(
             input_bindings = require_payload_dict(command, "input_bindings")
             execution_metadata = require_payload_dict(command, "execution_metadata")
             execution_metadata.setdefault("workflow_run_id", workflow_run_id)
+            execution_metadata[
+                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
+            ] = model_session_scope_id
             with state_lock:
                 current_run_id = workflow_run_id
             try:
@@ -262,7 +298,7 @@ def run_workflow_runtime_worker_process(
                             "loaded_snapshot_fingerprint": snapshot_fingerprint,
                             "last_error": None,
                             "health_summary": {
-                                **build_runtime_health_summary(local_buffer_reader),
+                                **build_current_health_summary(),
                                 "last_requested_timeout_seconds": requested_timeout_seconds,
                             },
                         },
@@ -287,7 +323,7 @@ def run_workflow_runtime_worker_process(
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
                         observed_state=current_observed_state,
                         worker_last_error=current_last_error,
-                        health_summary=build_runtime_health_summary(local_buffer_reader),
+                        health_summary=build_current_health_summary(),
                     )
                 )
             except ServiceError as exc:
@@ -311,7 +347,7 @@ def run_workflow_runtime_worker_process(
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
                         observed_state=current_observed_state,
                         worker_last_error=current_last_error,
-                        health_summary=build_runtime_health_summary(local_buffer_reader),
+                        health_summary=build_current_health_summary(),
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
@@ -334,7 +370,7 @@ def run_workflow_runtime_worker_process(
                         current_run_id=None,
                         started_at=worker_started_at,
                         loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        health_summary=build_runtime_health_summary(local_buffer_reader),
+                        health_summary=build_current_health_summary(),
                     )
                 )
     finally:
@@ -342,6 +378,8 @@ def run_workflow_runtime_worker_process(
             heartbeat_stop_event.set()
         if "heartbeat_thread" in locals():
             heartbeat_thread.join(timeout=1.0)
+        if model_session_manager is not None:
+            model_session_manager.close_all()
         if sync_supervisor is not None:
             sync_supervisor.stop()
         if async_supervisor is not None:
