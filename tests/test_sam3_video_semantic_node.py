@@ -19,7 +19,7 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {"predict_calls": 0, "prompt_groups": []}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
             captured["predict_calls"] = int(captured["predict_calls"]) + 1
             history = list(captured["prompt_groups"])
             history.append(prompt_items)
@@ -50,8 +50,8 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
                 ),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -92,7 +92,11 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
         node_definition=SimpleNamespace(
             node_type_id=video_semantic_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -152,7 +156,11 @@ def test_video_semantic_segment_runs_project_native_smoke() -> None:
         node_definition=SimpleNamespace(
             node_type_id=video_semantic_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {

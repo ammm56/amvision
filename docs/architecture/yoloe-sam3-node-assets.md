@@ -91,14 +91,16 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - 所有大权重、tokenizer、embedding 缓存和配置文件都放在 `data/files/models/pretrained/` 下。
 - `custom_nodes/` 目录只放节点包源码、catalog、schema 和文档，不放大权重。
 - `data/files/models/pretrained/` 属于本地数据目录，仓库只保留生成规则和维护命令，不把大权重和生成产物纳入源码提交。
-- 目录规则保持和项目现有预训练模型目录一致：
+- YOLOE 保持现有 Scale 目录规则，SAM3 直接使用资产变体目录：
 
 ```text
-{root}/{model_type}/{task_type}/{scale}/{variant}/manifest.json
-{root}/{model_type}/{task_type}/{scale}/{variant}/checkpoints/{file}
+{root}/yoloe/{task_type}/{scale}/{variant}/manifest.json
+{root}/yoloe/{task_type}/{scale}/{variant}/checkpoints/{file}
+{root}/sam3/{task_type}/{variant}/manifest.json
+{root}/sam3/{task_type}/{variant}/checkpoints/{file}
 ```
 
-- 第一阶段继续使用统一 scale 命名：
+- YOLOE 继续使用统一 Scale 命名：
   - `nano`
   - `tiny`
   - `s`
@@ -159,7 +161,7 @@ data/files/models/pretrained/
 
 ### YOLOE
 
-第一阶段先创建已确认的最小目录骨架：
+SAM3 不存在本项目可用的模型 Scale，资产目录直接按稳定变体名组织：
 
 ```text
 data/files/models/pretrained/
@@ -210,11 +212,10 @@ data/files/models/pretrained/
 data/files/models/pretrained/
 └─ sam3/
    └─ segmentation/
-      └─ l/
-         └─ default/
-            ├─ manifest.json
-            └─ checkpoints/
-               └─ sam3.pt
+      └─ default/
+         ├─ manifest.json
+         └─ checkpoints/
+            └─ sam3.pt
 ```
 
 说明：
@@ -224,12 +225,13 @@ data/files/models/pretrained/
 
 ## manifest.json 最低字段
 
-`YOLOE` 与 `SAM3` 第一阶段都使用项目现有的预训练目录 `manifest.json` 约定，不引入新的 `variant.json`。
+`YOLOE` 与 `SAM3` 都使用项目现有的预训练目录 `manifest.json` 约定，不引入新的 `variant.json`。两者的模型标识字段不同：YOLOE 使用真实的 `model_scale`，SAM3 使用 `model_asset_id` 和 `architecture_id`。
 
 最低字段如下：
 
 - `model_name`
-- `model_scale`
+- YOLOE：`model_scale`
+- SAM3：`model_asset_id`、`architecture_id`、`checkpoint_sha256`
 - `task_type`
 - `model_version_id`
 - `checkpoint_file_id`
@@ -241,7 +243,10 @@ data/files/models/pretrained/
 | 字段 | 说明 |
 | --- | --- |
 | `model_name` | 预训练模型系列名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3` |
-| `model_scale` | 项目统一 scale，例如 `nano`、`s`、`l` |
+| `model_scale` | 仅用于确实存在 Scale 的 YOLOE，例如 `nano`、`s`、`l` |
+| `model_asset_id` | SAM3 稳定资产 id，例如 `sam3/default` |
+| `architecture_id` | SAM3 运行时架构 id，例如 `sam3.vision-1008.v1` |
+| `checkpoint_sha256` | SAM3 checkpoint 完整性校验值 |
 | `task_type` | `YOLOE` 与 `SAM3` 第一阶段都固定写 `segmentation` |
 | `model_version_id` | 预训练目录的稳定 `ModelVersion` id |
 | `checkpoint_file_id` | 预训练 checkpoint 的稳定文件 id |
@@ -277,11 +282,14 @@ data/files/models/pretrained/
 ```json
 {
   "model_name": "sam3",
-  "model_scale": "l",
+  "model_version": "sam3",
+  "model_asset_id": "sam3/default",
+  "architecture_id": "sam3.vision-1008.v1",
   "task_type": "segmentation",
-  "model_version_id": "mv-pretrained-sam3-segmentation-l",
-  "checkpoint_file_id": "mf-pretrained-sam3-segmentation-l-checkpoint",
+  "model_version_id": "mv-pretrained-sam3-segmentation-default",
+  "checkpoint_file_id": "mf-pretrained-sam3-segmentation-default-checkpoint",
   "checkpoint_path": "checkpoints/sam3.pt",
+  "checkpoint_sha256": "<sha256>",
   "metadata": {
     "catalog_name": "default",
     "entry_name": "default",

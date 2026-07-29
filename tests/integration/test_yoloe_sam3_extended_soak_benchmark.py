@@ -11,7 +11,9 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items as merge_sam3_text_prompt_items,
     read_text_prompt_items as read_sam3_text_prompt_items,
 )
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import get_or_create_sam3_semantic_runtime_session
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
+    get_or_create_sam3_semantic_runtime_session,
+)
 from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
     get_or_create_yoloe_text_prompt_runtime_session,
 )
@@ -47,12 +49,48 @@ def test_yoloe_text_prompt_cpu_extended_soak_benchmark() -> None:
 
     image_bytes = _build_test_png_bytes(width=640, height=448)
     prompts = (
-        SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language="en"),
-        SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="car", display_name="vehicle", negative=False, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="truck", display_name="vehicle", negative=False, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="road", display_name="vehicle", negative=True, language="en"),
-        SimpleNamespace(prompt_id="prompt-3", text="equipment", display_name="equipment", negative=False, language="en"),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="person",
+            display_name="person",
+            negative=False,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="background",
+            display_name="person",
+            negative=True,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="car",
+            display_name="vehicle",
+            negative=False,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="truck",
+            display_name="vehicle",
+            negative=False,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="road",
+            display_name="vehicle",
+            negative=True,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-3",
+            text="equipment",
+            display_name="equipment",
+            negative=False,
+            language="en",
+        ),
     )
 
     warm_prediction = session.predict(
@@ -83,12 +121,12 @@ def test_sam3_semantic_cpu_extended_soak_benchmark() -> None:
     """验证 SAM3 semantic 在更大图尺寸与更长迭代下的 CPU 稳定性。"""
 
     session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
     repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
@@ -131,14 +169,18 @@ def test_sam3_semantic_cpu_extended_soak_benchmark() -> None:
         )
     )
 
-    warm_prediction = session.predict(image_bytes=image_bytes, prompt_items=prompt_groups)
+    warm_prediction = session.predict(
+        image_bytes=image_bytes, prompt_items=prompt_groups
+    )
     assert warm_prediction.summary["project_native"] is True
     assert warm_prediction.summary["prompt_group_count"] == 3
 
     benchmark = _run_cpu_soak_benchmark(
         benchmark_name="sam3-semantic-cpu-extended",
         iterations=EXTENDED_CPU_SOAK_ITERATIONS,
-        predict_once=lambda: session.predict(image_bytes=image_bytes, prompt_items=prompt_groups),
+        predict_once=lambda: session.predict(
+            image_bytes=image_bytes, prompt_items=prompt_groups
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= CPU_MEMORY_DRIFT_LIMIT_BYTES
 
@@ -163,10 +205,34 @@ def test_yoloe_text_prompt_cuda_extended_soak_benchmark() -> None:
 
     image_bytes = _build_test_png_bytes(width=640, height=448)
     prompts = (
-        SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language="en"),
-        SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="car", display_name="vehicle", negative=False, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="road", display_name="vehicle", negative=True, language="en"),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="person",
+            display_name="person",
+            negative=False,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="background",
+            display_name="person",
+            negative=True,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="car",
+            display_name="vehicle",
+            negative=False,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="road",
+            display_name="vehicle",
+            negative=True,
+            language="en",
+        ),
     )
 
     warm_prediction = session.predict(
@@ -197,12 +263,12 @@ def test_sam3_semantic_cuda_extended_soak_benchmark() -> None:
     """验证 SAM3 semantic 在更大图尺寸与更长迭代下的 CUDA 稳定性。"""
 
     session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cuda",
         precision="fp16",
     )
     repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cuda",
         precision="fp16",
     )
@@ -234,12 +300,16 @@ def test_sam3_semantic_cuda_extended_soak_benchmark() -> None:
         )
     )
 
-    warm_prediction = session.predict(image_bytes=image_bytes, prompt_items=prompt_groups)
+    warm_prediction = session.predict(
+        image_bytes=image_bytes, prompt_items=prompt_groups
+    )
     assert warm_prediction.summary["project_native"] is True
 
     benchmark = _run_cuda_soak_benchmark(
         benchmark_name="sam3-semantic-cuda-extended",
         iterations=EXTENDED_GPU_SOAK_ITERATIONS,
-        predict_once=lambda: session.predict(image_bytes=image_bytes, prompt_items=prompt_groups),
+        predict_once=lambda: session.predict(
+            image_bytes=image_bytes, prompt_items=prompt_groups
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= GPU_MEMORY_DRIFT_LIMIT_BYTES

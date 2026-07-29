@@ -19,7 +19,7 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
             captured["image_bytes_length"] = len(image_bytes)
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
@@ -46,8 +46,8 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
                 ),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -58,9 +58,11 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
                 },
             )
 
-    def _fake_get_or_create_session(*, model_scale: str, device: str, precision: str):
+    def _fake_get_or_create_session(
+        *, model_asset_id: str, device: str, precision: str
+    ):
         captured["session_kwargs"] = {
-            "model_scale": model_scale,
+            "model_asset_id": model_asset_id,
             "device": device,
             "precision": precision,
         }
@@ -77,7 +79,7 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
         node_id="node-sam3-interactive",
         node_definition=SimpleNamespace(node_type_id=interactive_segment.NODE_TYPE_ID),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
         },
@@ -100,7 +102,7 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
     output = interactive_segment.handle_node(request)
 
     assert captured["session_kwargs"] == {
-        "model_scale": "l",
+        "model_asset_id": "sam3/default",
         "device": "cpu",
         "precision": "fp32",
     }
@@ -119,14 +121,14 @@ def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
                 regions=(),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -147,7 +149,11 @@ def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-interactive-polygon",
         node_definition=SimpleNamespace(node_type_id=interactive_segment.NODE_TYPE_ID),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "image": image_payload,
             "prompts": {
@@ -181,14 +187,14 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items):
+        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
             captured["prompt_items"] = prompt_items
             return SimpleNamespace(
                 regions=(),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -212,7 +218,11 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-interactive-mask",
         node_definition=SimpleNamespace(node_type_id=interactive_segment.NODE_TYPE_ID),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "image": image_payload,
             "prompts": {
@@ -247,7 +257,7 @@ def test_interactive_segment_runs_project_native_smoke() -> None:
         node_id="node-sam3-real-smoke",
         node_definition=SimpleNamespace(node_type_id=interactive_segment.NODE_TYPE_ID),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
         },

@@ -8,12 +8,16 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.support.detection import (
     enable_pytorch_cuda_inference_fast_path,
     resolve_execution_device_name,
 )
 
-from ..checkpoint.loader import build_sam3_interactive_state_dict, load_sam3_checkpoint_branches
+from ..checkpoint.loader import (
+    build_sam3_interactive_state_dict,
+    load_sam3_checkpoint_branches,
+)
 from ..postprocess.masks import (
     DEFAULT_MASK_THRESHOLD,
     DEFAULT_POLYGON_SIMPLIFY_RATIO,
@@ -22,9 +26,21 @@ from ..postprocess.masks import (
     postprocess_sam3_interactive_masks,
 )
 from ..preprocess.image import PreparedSam3Image, preprocess_sam3_image
-from ..prompts.encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
-from ..nn.prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
-from ..nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
+from ..prompts.encoding import (
+    PreparedSam3InteractivePrompts,
+    build_sam3_interactive_prompt_tensors,
+)
+from ..nn.prompt_mask_modules import (
+    PromptEncoder,
+    SAM2MaskDecoder,
+    SAM2TwoWayTransformer,
+)
+from ..nn.vision_backbone import (
+    PositionEmbeddingSine,
+    SAM3VisualBackbone,
+    Sam3DualViTDetNeck,
+    ViT,
+)
 
 
 @dataclass(frozen=True)
@@ -49,14 +65,88 @@ class Sam3InteractiveFrameContext:
 def _resolve_runtime_torch_dtype(*, device_name: str, precision: str) -> torch.dtype:
     """把节点参数 precision 解析成实际运行 dtype。"""
 
-    normalized_precision = str(precision or "fp32").strip().lower()
+    normalized_precision = str(precision or "auto").strip().lower()
     if not device_name.startswith("cuda"):
+        if normalized_precision not in {"auto", "fp32"}:
+            raise InvalidRequestError(
+                "SAM3 CPU runtime 只支持 fp32",
+                details={"device": device_name, "precision": normalized_precision},
+            )
         return torch.float32
+    if normalized_precision == "auto":
+        return torch.float16
     if normalized_precision == "fp16":
         return torch.float16
     if normalized_precision == "bf16":
+        is_bf16_supported = getattr(torch.cuda, "is_bf16_supported", None)
+        if not callable(is_bf16_supported) or not bool(is_bf16_supported()):
+            raise InvalidRequestError(
+                "当前 CUDA device 不支持 bf16",
+                details={"device": device_name, "precision": normalized_precision},
+            )
         return torch.bfloat16
     return torch.float32
+
+
+def _resolve_requested_device_name(requested_device_name: str) -> str:
+    """把 auto 解析成当前 PyTorch runtime 的最佳可用设备。"""
+
+    if requested_device_name == "auto":
+        return "cuda:0" if torch.cuda.is_available() else "cpu"
+    return requested_device_name
+
+
+def _load_compatible_state_dict(
+    model: nn.Module,
+    source_state_dict: dict[str, torch.Tensor],
+    *,
+    checkpoint_path: Path,
+) -> dict[str, object]:
+    """只加载名称和 shape 完全匹配的参数，并拒绝未初始化模型参数。"""
+
+    model_state_dict = model.state_dict()
+    shape_mismatches = {
+        key: {
+            "expected": list(model_state_dict[key].shape),
+            "actual": list(value.shape),
+        }
+        for key, value in source_state_dict.items()
+        if key in model_state_dict
+        and tuple(model_state_dict[key].shape) != tuple(value.shape)
+    }
+    if shape_mismatches:
+        raise InvalidRequestError(
+            "SAM3 checkpoint 与 interactive architecture 的 tensor shape 不兼容",
+            details={
+                "checkpoint_path": str(checkpoint_path),
+                "shape_mismatches": shape_mismatches,
+            },
+        )
+    compatible_state_dict = {
+        key: value
+        for key, value in source_state_dict.items()
+        if key in model_state_dict
+        and tuple(model_state_dict[key].shape) == tuple(value.shape)
+    }
+    incompatible_keys = model.load_state_dict(compatible_state_dict, strict=False)
+    missing_parameter_keys = sorted(
+        key
+        for key in incompatible_keys.missing_keys
+        if key in dict(model.named_parameters())
+    )
+    if missing_parameter_keys:
+        raise InvalidRequestError(
+            "SAM3 checkpoint 缺少 interactive architecture 必需参数",
+            details={
+                "checkpoint_path": str(checkpoint_path),
+                "missing_parameter_keys": missing_parameter_keys,
+            },
+        )
+    return {
+        "loaded_key_count": len(compatible_state_dict),
+        "source_key_count": len(source_state_dict),
+        "ignored_source_key_count": len(source_state_dict) - len(compatible_state_dict),
+    }
 
 
 class Sam3InteractiveImageModel(nn.Module):
@@ -118,7 +208,10 @@ class Sam3InteractiveImageModel(nn.Module):
         self.sam_image_embedding_size = self.image_size // self.backbone_stride
         self.sam_prompt_encoder = PromptEncoder(
             embed_dim=self.sam_prompt_embed_dim,
-            image_embedding_size=(self.sam_image_embedding_size, self.sam_image_embedding_size),
+            image_embedding_size=(
+                self.sam_image_embedding_size,
+                self.sam_image_embedding_size,
+            ),
             input_image_size=(self.image_size, self.image_size),
             mask_in_chans=16,
         )
@@ -153,8 +246,12 @@ class Sam3InteractiveImageModel(nn.Module):
         """抽取单图视觉特征。"""
 
         backbone_out = self.image_encoder.forward_image(image_tensor)
-        backbone_out["backbone_fpn"][0] = self.sam_mask_decoder.conv_s0(backbone_out["backbone_fpn"][0])
-        backbone_out["backbone_fpn"][1] = self.sam_mask_decoder.conv_s1(backbone_out["backbone_fpn"][1])
+        backbone_out["backbone_fpn"][0] = self.sam_mask_decoder.conv_s0(
+            backbone_out["backbone_fpn"][0]
+        )
+        backbone_out["backbone_fpn"][1] = self.sam_mask_decoder.conv_s1(
+            backbone_out["backbone_fpn"][1]
+        )
         return backbone_out
 
     def _prepare_backbone_features(
@@ -162,29 +259,47 @@ class Sam3InteractiveImageModel(nn.Module):
         backbone_out: dict[str, object],
         *,
         batch: int = 1,
-    ) -> tuple[dict[str, object], list[torch.Tensor], list[torch.Tensor], list[tuple[int, int]]]:
+    ) -> tuple[
+        dict[str, object], list[torch.Tensor], list[torch.Tensor], list[tuple[int, int]]
+    ]:
         """按 SAM2 predictor 的约定整理视觉特征。"""
 
         if batch > 1:
             backbone_out = {
                 **backbone_out,
-                "backbone_fpn": [feat.expand(batch, -1, -1, -1) for feat in backbone_out["backbone_fpn"]],
-                "vision_pos_enc": [pos.expand(batch, -1, -1, -1) for pos in backbone_out["vision_pos_enc"]],
+                "backbone_fpn": [
+                    feat.expand(batch, -1, -1, -1)
+                    for feat in backbone_out["backbone_fpn"]
+                ],
+                "vision_pos_enc": [
+                    pos.expand(batch, -1, -1, -1)
+                    for pos in backbone_out["vision_pos_enc"]
+                ],
             }
         feature_maps = backbone_out["backbone_fpn"][-self.num_feature_levels :]
         vision_pos_embeds = backbone_out["vision_pos_enc"][-self.num_feature_levels :]
-        feat_sizes = [(tensor.shape[-2], tensor.shape[-1]) for tensor in vision_pos_embeds]
+        feat_sizes = [
+            (tensor.shape[-2], tensor.shape[-1]) for tensor in vision_pos_embeds
+        ]
         vision_feats = [tensor.flatten(2).permute(2, 0, 1) for tensor in feature_maps]
-        vision_pos_embeds = [tensor.flatten(2).permute(2, 0, 1) for tensor in vision_pos_embeds]
+        vision_pos_embeds = [
+            tensor.flatten(2).permute(2, 0, 1) for tensor in vision_pos_embeds
+        ]
         return backbone_out, vision_feats, vision_pos_embeds, feat_sizes
 
-    def extract_interactive_features(self, prepared_image: PreparedSam3Image) -> dict[str, object]:
+    def extract_interactive_features(
+        self, prepared_image: PreparedSam3Image
+    ) -> dict[str, object]:
         """把输入图片转换成 interactive prompt 推理需要的特征。"""
 
         backbone_out = self.forward_image(prepared_image.image_tensor)
-        _, vision_feats, _vision_pos_embeds, feat_sizes = self._prepare_backbone_features(backbone_out)
+        _, vision_feats, _vision_pos_embeds, feat_sizes = (
+            self._prepare_backbone_features(backbone_out)
+        )
         if self.directly_add_no_mem_embed:
-            vision_feats[-1] = vision_feats[-1] + self.no_mem_embed.to(vision_feats[-1].dtype)
+            vision_feats[-1] = vision_feats[-1] + self.no_mem_embed.to(
+                vision_feats[-1].dtype
+            )
         feature_maps = [
             feat.permute(1, 2, 0).view(1, -1, *feat_size)
             for feat, feat_size in zip(vision_feats, feat_sizes)
@@ -221,14 +336,16 @@ class Sam3InteractiveImageModel(nn.Module):
             else 1
         )
         batched_mode = batch_size > 1
-        mask_logits, iou_scores, sam_tokens_out, object_score_logits = self.sam_mask_decoder(
-            image_embeddings=image_embed,
-            image_pe=self.sam_prompt_encoder.get_dense_pe(),
-            sparse_prompt_embeddings=sparse_embeddings,
-            dense_prompt_embeddings=dense_embeddings,
-            multimask_output=False,
-            repeat_image=batched_mode,
-            high_res_features=high_res_feats,
+        mask_logits, iou_scores, sam_tokens_out, object_score_logits = (
+            self.sam_mask_decoder(
+                image_embeddings=image_embed,
+                image_pe=self.sam_prompt_encoder.get_dense_pe(),
+                sparse_prompt_embeddings=sparse_embeddings,
+                dense_prompt_embeddings=dense_embeddings,
+                multimask_output=False,
+                repeat_image=batched_mode,
+                high_res_features=high_res_feats,
+            )
         )
         del sam_tokens_out
         final_scores = iou_scores.squeeze(1)
@@ -252,14 +369,25 @@ def build_sam3_interactive_image_model(
 
     resolved_device_name = resolve_execution_device_name(
         torch_module=torch,
-        requested_device_name=requested_device_name,
+        requested_device_name=_resolve_requested_device_name(requested_device_name),
     )
-    enable_pytorch_cuda_inference_fast_path(torch_module=torch, device_name=resolved_device_name)
-    runtime_torch_dtype = _resolve_runtime_torch_dtype(device_name=resolved_device_name, precision=precision)
+    enable_pytorch_cuda_inference_fast_path(
+        torch_module=torch, device_name=resolved_device_name
+    )
+    runtime_torch_dtype = _resolve_runtime_torch_dtype(
+        device_name=resolved_device_name, precision=precision
+    )
 
     model = Sam3InteractiveImageModel()
-    interactive_state_dict = build_sam3_interactive_state_dict(load_sam3_checkpoint_branches(checkpoint_path))
-    model.load_state_dict(interactive_state_dict, strict=False)
+    interactive_state_dict = build_sam3_interactive_state_dict(
+        load_sam3_checkpoint_branches(checkpoint_path)
+    )
+    compatibility_summary = _load_compatible_state_dict(
+        model,
+        interactive_state_dict,
+        checkpoint_path=checkpoint_path,
+    )
+    model.checkpoint_compatibility_summary = compatibility_summary
     model.eval()
     model.to(device=torch.device(resolved_device_name), dtype=runtime_torch_dtype)
     return model, resolved_device_name, runtime_torch_dtype
@@ -272,19 +400,21 @@ class Sam3InteractiveRuntimeSession:
         self,
         *,
         checkpoint_path: Path,
-        model_scale: str,
-        variant_name: str,
+        model_asset_id: str,
+        architecture_id: str,
         requested_device_name: str,
         precision: str,
     ) -> None:
-        self.model_scale = model_scale
-        self.variant_name = variant_name
+        self.model_asset_id = model_asset_id
+        self.architecture_id = architecture_id
         self.checkpoint_path = checkpoint_path
         self.precision = precision
-        self.model, self.device_name, self.runtime_torch_dtype = build_sam3_interactive_image_model(
-            checkpoint_path=checkpoint_path,
-            requested_device_name=requested_device_name,
-            precision=precision,
+        self.model, self.device_name, self.runtime_torch_dtype = (
+            build_sam3_interactive_image_model(
+                checkpoint_path=checkpoint_path,
+                requested_device_name=requested_device_name,
+                precision=precision,
+            )
         )
 
     @torch.inference_mode()
@@ -299,10 +429,16 @@ class Sam3InteractiveRuntimeSession:
         prepared_image = preprocess_sam3_image(
             image_bytes,
             image_payload=image_payload,
-            precision="fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
+            precision="fp16"
+            if self.runtime_torch_dtype == torch.float16
+            else "bf16"
+            if self.runtime_torch_dtype == torch.bfloat16
+            else "fp32",
         )
         prepared_image = PreparedSam3Image(
-            image_tensor=prepared_image.image_tensor.to(device=self.model.no_mem_embed.device, dtype=self.runtime_torch_dtype),
+            image_tensor=prepared_image.image_tensor.to(
+                device=self.model.no_mem_embed.device, dtype=self.runtime_torch_dtype
+            ),
             original_width=prepared_image.original_width,
             original_height=prepared_image.original_height,
             target_width=prepared_image.target_width,
@@ -311,7 +447,9 @@ class Sam3InteractiveRuntimeSession:
             scale_y=prepared_image.scale_y,
         )
         features = self.model.extract_interactive_features(prepared_image)
-        mask_prompt_height, mask_prompt_width = self.model.sam_prompt_encoder.mask_input_size
+        mask_prompt_height, mask_prompt_width = (
+            self.model.sam_prompt_encoder.mask_input_size
+        )
         return Sam3InteractiveFrameContext(
             prepared_image=prepared_image,
             features=features,
@@ -326,6 +464,10 @@ class Sam3InteractiveRuntimeSession:
         *,
         frame_context: Sam3InteractiveFrameContext,
         prompt_items: tuple[object, ...],
+        mask_threshold: float = DEFAULT_MASK_THRESHOLD,
+        stability_offset: float = DEFAULT_STABILITY_OFFSET,
+        min_component_area: int | None = None,
+        polygon_simplify_ratio: float = DEFAULT_POLYGON_SIMPLIFY_RATIO,
     ) -> Sam3InteractivePrediction:
         """复用已提取的单帧特征执行 interactive prompt 推理。"""
 
@@ -344,9 +486,11 @@ class Sam3InteractiveRuntimeSession:
                 device=self.model.no_mem_embed.device,
                 prompt_mask_dtype=self.runtime_torch_dtype,
             )
-            item_mask_logits, _item_iou_scores, item_final_scores = self.model.predict_mask_logits(
-                features=frame_context.features,
-                prompts=prompts,
+            item_mask_logits, _item_iou_scores, item_final_scores = (
+                self.model.predict_mask_logits(
+                    features=frame_context.features,
+                    prompts=prompts,
+                )
             )
             mask_logits_list.append(item_mask_logits)
             final_scores_list.append(item_final_scores.reshape(-1))
@@ -358,25 +502,44 @@ class Sam3InteractiveRuntimeSession:
             source_height=prepared_image.original_height,
             prompt_items=prompt_items,
             scores=final_scores,
+            threshold=mask_threshold,
+            stability_offset=stability_offset,
+            min_component_area=min_component_area,
+            polygon_simplify_ratio=polygon_simplify_ratio,
         )
         prompt_kinds = sorted({str(item.prompt_kind) for item in prompt_items})
         summary = {
             "project_native": True,
-            "model_scale": self.model_scale,
-            "variant_name": self.variant_name,
+            "model_asset_id": self.model_asset_id,
+            "architecture_id": self.architecture_id,
             "checkpoint_path": str(self.checkpoint_path),
             "device": self.device_name,
-            "precision": "fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
+            "precision": "fp16"
+            if self.runtime_torch_dtype == torch.float16
+            else "bf16"
+            if self.runtime_torch_dtype == torch.bfloat16
+            else "fp32",
             "prompt_count": len(prompt_items),
             "prompt_kinds": prompt_kinds,
             "region_count": len(region_items),
             "inference_mode": "interactive-segment",
             "postprocess_profile": "sam3-default-v2",
-            "mask_threshold": DEFAULT_MASK_THRESHOLD,
-            "stability_offset": DEFAULT_STABILITY_OFFSET,
-            "polygon_simplify_ratio": DEFAULT_POLYGON_SIMPLIFY_RATIO,
+            "mask_threshold": mask_threshold,
+            "stability_offset": stability_offset,
+            "min_component_area": min_component_area,
+            "polygon_simplify_ratio": polygon_simplify_ratio,
+            "checkpoint_compatibility": dict(
+                getattr(self.model, "checkpoint_compatibility_summary", {})
+            ),
         }
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
+
+    def close(self) -> None:
+        """释放模型引用和可回收的 CUDA 显存。"""
+
+        self.model.to(device=torch.device("cpu"))
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     @torch.inference_mode()
     def predict(
@@ -385,13 +548,23 @@ class Sam3InteractiveRuntimeSession:
         image_bytes: bytes,
         image_payload: object,
         prompt_items: tuple[object, ...],
+        mask_threshold: float = DEFAULT_MASK_THRESHOLD,
+        stability_offset: float = DEFAULT_STABILITY_OFFSET,
+        min_component_area: int | None = None,
+        polygon_simplify_ratio: float = DEFAULT_POLYGON_SIMPLIFY_RATIO,
     ) -> Sam3InteractivePrediction:
         """内部自动预处理并完成 interactive 推理。"""
 
-        frame_context = self.prepare_frame_context(image_bytes=image_bytes, image_payload=image_payload)
+        frame_context = self.prepare_frame_context(
+            image_bytes=image_bytes, image_payload=image_payload
+        )
         return self.predict_from_frame_context(
             frame_context=frame_context,
             prompt_items=prompt_items,
+            mask_threshold=mask_threshold,
+            stability_offset=stability_offset,
+            min_component_area=min_component_area,
+            polygon_simplify_ratio=polygon_simplify_ratio,
         )
 
 

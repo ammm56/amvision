@@ -33,9 +33,7 @@ def test_detection_deployment_lifecycle_example_documents_are_valid() -> None:
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = example_dir / "detection_deployment_lifecycle.template.json"
-    application_path = (
-        example_dir / "detection_deployment_lifecycle.application.json"
-    )
+    application_path = example_dir / "detection_deployment_lifecycle.application.json"
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -156,7 +154,12 @@ def test_detection_deployment_sync_infer_health_example_documents_are_valid() ->
 
 
 @pytest.mark.parametrize(
-    ("example_name", "expected_model_node_type_id", "expected_binding_ids", "expected_example_kind"),
+    (
+        "example_name",
+        "expected_model_node_type_id",
+        "expected_binding_ids",
+        "expected_example_kind",
+    ),
     [
         (
             "segmentation_deployment_sync_regions_gate",
@@ -244,8 +247,7 @@ def test_task_native_direct_model_example_documents_are_valid(
     assert template.nodes[0].node_id == "decode_request_image"
     assert template.nodes[1].node_id == "deployment_request_input"
     assert any(
-        node.node_type_id == expected_model_node_type_id
-        for node in template.nodes
+        node.node_type_id == expected_model_node_type_id for node in template.nodes
     )
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["uses_existing_deployment_instance"] is True
@@ -254,7 +256,9 @@ def test_task_native_direct_model_example_documents_are_valid(
         f"docs/examples/workflows/{example_name}.template.json"
     )
     assert application.metadata["example_kind"] == expected_example_kind
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
 
 
 def test_barcode_result_display_example_documents_are_valid() -> None:
@@ -370,13 +374,47 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
     ]
 
 
+def test_sam3_prompt_nodes_review_example_document_is_valid() -> None:
+    """验证 SAM3 Prompt 节点画布闭环示例可以通过当前规则校验。"""
+
+    example_dir = (
+        Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
+    )
+    template_path = example_dir / "sam3_prompt_nodes_review.template.json"
+    template = WorkflowGraphTemplate.model_validate(
+        json.loads(template_path.read_text(encoding="utf-8"))
+    )
+
+    registry = _build_repository_node_catalog_registry()
+    validate_workflow_graph_template(
+        template=template,
+        node_definitions=registry.get_workflow_node_definitions(),
+    )
+
+    assert [node.node_type_id for node in template.nodes] == [
+        "core.io.template-input.value",
+        "core.io.image-load-local",
+        "core.input.text-prompt",
+        "core.input.text-prompt",
+        "core.input.text-prompts-merge",
+        "custom.sam3.semantic-segment",
+        "core.input.box-prompt",
+        "custom.sam3.interactive-segment",
+    ]
+    assert template.nodes[5].parameters["model_asset_id"] == "sam3/default"
+    assert template.nodes[7].parameters["model_asset_id"] == "sam3/default"
+    assert template.metadata["node_pack_version"] == "0.1.3"
+
+
 def test_camera_usb_uvc_enumerate_capture_preview_example_documents_are_valid() -> None:
     """验证 USB/UVC 枚举直采样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "camera_usb_uvc_enumerate_capture_preview.template.json"
+    template_path = (
+        example_dir / "camera_usb_uvc_enumerate_capture_preview.template.json"
+    )
     application_path = (
         example_dir / "camera_usb_uvc_enumerate_capture_preview.application.json"
     )
@@ -405,12 +443,16 @@ def test_camera_usb_uvc_enumerate_capture_preview_example_documents_are_valid() 
     ]
     assert template.nodes[1].parameters["probe_frame"] is True
     assert template.nodes[2].parameters["output_format"] == "png"
-    assert template.metadata["example_kind"] == "camera-usb-uvc-enumerate-capture-preview"
+    assert (
+        template.metadata["example_kind"] == "camera-usb-uvc-enumerate-capture-preview"
+    )
     assert template.metadata["focus"] == "usb-uvc-enumerate-and-direct-capture"
     assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_camera_config"
     ]
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "enumeration_result",
         "captured_image",
         "preview_body",
@@ -437,7 +479,9 @@ def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid(
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "camera_usb_uvc_session_single_frame_review.template.json"
+    template_path = (
+        example_dir / "camera_usb_uvc_session_single_frame_review.template.json"
+    )
     application_path = (
         example_dir / "camera_usb_uvc_session_single_frame_review.application.json"
     )
@@ -470,8 +514,14 @@ def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid(
     assert template.nodes[1].parameters["probe_frame"] is False
     assert template.nodes[2].parameters["verify_after_set"] is True
     assert template.nodes[4].parameters["output_format"] == "png"
-    assert template.metadata["example_kind"] == "camera-usb-uvc-session-single-frame-review"
-    assert template.metadata["focus"] == "usb-uvc-session-single-frame-and-parameter-review"
+    assert (
+        template.metadata["example_kind"]
+        == "camera-usb-uvc-session-single-frame-review"
+    )
+    assert (
+        template.metadata["focus"]
+        == "usb-uvc-session-single-frame-and-parameter-review"
+    )
     assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_session_config",
         "request_set_parameters",
@@ -479,7 +529,9 @@ def test_camera_usb_uvc_session_single_frame_review_example_documents_are_valid(
     ]
     assert template.template_inputs[1].required is False
     assert template.template_inputs[2].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "open_session_summary",
         "set_result",
         "parameter_result",
@@ -553,7 +605,9 @@ def test_camera_usb_uvc_stream_window_preview_example_documents_are_valid() -> N
         "request_session_config",
         "request_stream_config",
     ]
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "open_session_summary",
         "stream_start_summary",
         "stream_state",
@@ -672,7 +726,9 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = example_dir / "plc_modbus_wait_ready_ack_callback.template.json"
-    application_path = example_dir / "plc_modbus_wait_ready_ack_callback.application.json"
+    application_path = (
+        example_dir / "plc_modbus_wait_ready_ack_callback.application.json"
+    )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -711,14 +767,19 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
     assert template.nodes[4].parameters["data_type"] == "bool"
     assert template.nodes[4].parameters["value"] is True
     assert template.nodes[6].parameters["right_value"] is True
-    assert template.nodes[11].parameters["url"] == "http://127.0.0.1:18080/plc/modbus/handshake-result"
+    assert (
+        template.nodes[11].parameters["url"]
+        == "http://127.0.0.1:18080/plc/modbus/handshake-result"
+    )
     assert template.metadata["example_kind"] == "plc-modbus-wait-ready-ack-callback"
     assert template.metadata["focus"] == "plc-modbus-handshake-callback"
     assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_wait_config",
         "request_ack_write_config",
     ]
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "wait_result",
         "ack_write_result",
         "inspection_result",
@@ -740,14 +801,20 @@ def test_plc_modbus_wait_ready_ack_callback_example_documents_are_valid() -> Non
     ]
 
 
-def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid() -> None:
+def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid() -> (
+    None
+):
     """验证 plc-register TriggerSource 回传样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "plc_register_modbus_tcp_async_result_record.template.json"
-    application_path = example_dir / "plc_register_modbus_tcp_async_result_record.application.json"
+    template_path = (
+        example_dir / "plc_register_modbus_tcp_async_result_record.template.json"
+    )
+    application_path = (
+        example_dir / "plc_register_modbus_tcp_async_result_record.application.json"
+    )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -781,19 +848,29 @@ def test_plc_register_modbus_tcp_async_result_record_example_documents_are_valid
     assert template.nodes[1].node_type_id == "core.logic.payload-to-value"
     assert template.nodes[3].parameters["right_value"] is True
     assert template.nodes[10].parameters["alarm_code"] == "PLC-REGISTER-NG"
-    assert template.nodes[12].parameters["url"] == "http://127.0.0.1:18080/plc/register/result"
-    assert template.metadata["example_kind"] == "plc-register-modbus-tcp-async-result-record"
+    assert (
+        template.nodes[12].parameters["url"]
+        == "http://127.0.0.1:18080/plc/register/result"
+    )
+    assert (
+        template.metadata["example_kind"]
+        == "plc-register-modbus-tcp-async-result-record"
+    )
     assert template.metadata["focus"] == "plc-register-trigger-result-callback"
     assert template.metadata["trigger_source_kind"] == "plc-register"
     assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_trigger_payload",
         "request_trigger_event",
     ]
-    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == [
         "response-body.v1",
         "response-body.v1",
     ]
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "inspection_result",
         "inspection_alarm",
         "decision_summary",
@@ -819,9 +896,12 @@ def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "industrial_single_frame_glue_roi_modbus_callback.template.json"
+    template_path = (
+        example_dir / "industrial_single_frame_glue_roi_modbus_callback.template.json"
+    )
     application_path = (
-        example_dir / "industrial_single_frame_glue_roi_modbus_callback.application.json"
+        example_dir
+        / "industrial_single_frame_glue_roi_modbus_callback.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -860,13 +940,16 @@ def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() 
     assert template.nodes[11].node_type_id == "custom.plc.modbus.write-result-signals"
     assert template.nodes[11].parameters["host"] == "127.0.0.1"
     assert template.nodes[11].parameters["signal_mappings"][0]["signal_name"] == "ok"
-    assert template.nodes[11].parameters["signal_mappings"][3]["source_scope"] == "request"
-    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-modbus-callback"
+    assert (
+        template.nodes[11].parameters["signal_mappings"][3]["source_scope"] == "request"
+    )
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-glue-roi-modbus-callback"
+    )
     assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
     assert template.metadata["signal_write_input_binding"] == "request_signal_write"
-    assert [
-        template_input.input_id for template_input in template.template_inputs
-    ] == [
+    assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_image_path",
         "request_regions",
         "request_roi",
@@ -874,7 +957,9 @@ def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() 
     ]
     assert template.template_inputs[3].payload_type_id == "value.v1"
     assert template.template_inputs[3].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "inspection_result",
         "inspection_alarm",
         "signal_write_summary",
@@ -902,15 +987,21 @@ def test_industrial_single_frame_glue_roi_modbus_callback_documents_are_valid() 
     ]
 
 
-def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_valid() -> None:
+def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_valid() -> (
+    None
+):
     """验证工业单帧 ROI + Modbus 回写严格顺序样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "industrial_single_frame_glue_roi_modbus_callback_strict.template.json"
+    template_path = (
+        example_dir
+        / "industrial_single_frame_glue_roi_modbus_callback_strict.template.json"
+    )
     application_path = (
-        example_dir / "industrial_single_frame_glue_roi_modbus_callback_strict.application.json"
+        example_dir
+        / "industrial_single_frame_glue_roi_modbus_callback_strict.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -955,22 +1046,25 @@ def test_industrial_single_frame_glue_roi_modbus_callback_strict_documents_are_v
         "signal_write_summary",
         "metadata",
     ]
-    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-modbus-callback-strict"
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-glue-roi-modbus-callback-strict"
+    )
     assert template.metadata["focus"] == "single-frame-industrial-rule-chain"
     assert template.metadata["callback_delivery_order"] == [
         "plc-modbus-write-result-signals",
         "build-callback-payload",
         "http-request-callback",
     ]
-    assert [
-        template_input.input_id for template_input in template.template_inputs
-    ] == [
+    assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_image_path",
         "request_regions",
         "request_roi",
         "request_signal_write",
     ]
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "inspection_result",
         "inspection_alarm",
         "signal_write_summary",
@@ -1006,9 +1100,12 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "industrial_single_frame_glue_roi_delivery_bundle.template.json"
+    template_path = (
+        example_dir / "industrial_single_frame_glue_roi_delivery_bundle.template.json"
+    )
     application_path = (
-        example_dir / "industrial_single_frame_glue_roi_delivery_bundle.application.json"
+        example_dir
+        / "industrial_single_frame_glue_roi_delivery_bundle.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -1060,15 +1157,24 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
     ]
     assert template.nodes[16].node_type_id == "custom.http.request"
     assert template.nodes[16].parameters["body_mode"] == "json_envelope"
-    assert template.nodes[16].parameters["field_mappings"][0]["target_path"] == "payload.record_id"
+    assert (
+        template.nodes[16].parameters["field_mappings"][0]["target_path"]
+        == "payload.record_id"
+    )
     assert template.nodes[17].node_type_id == "custom.database.sql.upsert"
     assert template.nodes[17].parameters["database_url"] == (
         "sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3"
     )
     assert template.nodes[17].parameters["key_columns"] == ["record_id"]
-    assert template.metadata["example_kind"] == "industrial-single-frame-glue-roi-delivery-bundle"
+    assert (
+        template.metadata["example_kind"]
+        == "industrial-single-frame-glue-roi-delivery-bundle"
+    )
     assert template.metadata["focus"] == "single-frame-industrial-result-delivery"
-    assert template.metadata["delivery_context_input_binding"] == "request_delivery_context"
+    assert (
+        template.metadata["delivery_context_input_binding"]
+        == "request_delivery_context"
+    )
     assert template.metadata["sql_schema_sql"] == (
         "docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql"
     )
@@ -1080,9 +1186,7 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
         "http-request",
         "sql-upsert",
     ]
-    assert [
-        template_input.input_id for template_input in template.template_inputs
-    ] == [
+    assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_image_path",
         "request_regions",
         "request_roi",
@@ -1091,7 +1195,9 @@ def test_industrial_single_frame_glue_roi_delivery_bundle_documents_are_valid() 
     ]
     assert template.template_inputs[2].required is False
     assert template.template_inputs[4].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "inspection_result",
         "inspection_alarm",
         "signal_write_summary",
@@ -1561,7 +1667,9 @@ def test_industrial_single_frame_calibrated_orb_homography_gate_documents_are_va
         template_input.payload_type_id for template_input in template.template_inputs
     ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
     assert template.template_inputs[4].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "current_aligned_image",
         "reference_aligned_image",
         "current_features",
@@ -1711,7 +1819,9 @@ def test_industrial_single_frame_calibrated_orb_bridged_template_edge_gate_docum
         template_input.payload_type_id for template_input in template.template_inputs
     ] == ["value.v1", "value.v1", "value.v1", "value.v1", "value.v1", "value.v1"]
     assert template.template_inputs[5].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "current_aligned_image",
         "reference_aligned_image",
         "reference_frame_current_image",
@@ -1766,8 +1876,7 @@ def test_industrial_single_frame_reference_diff_defect_gate_documents_are_valid(
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir
-        / "industrial_single_frame_reference_diff_defect_gate.template.json"
+        example_dir / "industrial_single_frame_reference_diff_defect_gate.template.json"
     )
     application_path = (
         example_dir
@@ -2026,10 +2135,7 @@ def test_industrial_single_frame_sobel_laplacian_edge_gap_gate_documents_are_val
         template.metadata["example_kind"]
         == "industrial-single-frame-sobel-laplacian-edge-gap-gate"
     )
-    assert (
-        template.metadata["focus"]
-        == "single-frame-industrial-opencv-edge-gap-chain"
-    )
+    assert template.metadata["focus"] == "single-frame-industrial-opencv-edge-gap-chain"
     assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
     assert [template_input.input_id for template_input in template.template_inputs] == [
         "request_image_path",
@@ -2072,7 +2178,8 @@ def test_industrial_single_frame_usb_uvc_detection_position_gate_documents_are_v
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_single_frame_usb_uvc_detection_position_gate.template.json"
+        example_dir
+        / "industrial_single_frame_usb_uvc_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
@@ -2136,7 +2243,9 @@ def test_industrial_single_frame_usb_uvc_detection_position_gate_documents_are_v
     assert template.template_inputs[1].payload_type_id == "value.v1"
     assert template.template_inputs[2].payload_type_id == "value.v1"
     assert template.template_inputs[2].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "captured_image",
         "capture_summary",
         "model_detections",
@@ -2274,7 +2383,9 @@ def test_industrial_single_frame_geometry_gate_documents_are_valid(
         "request_image_path"
     ]
     assert template.template_inputs[0].payload_type_id == "value.v1"
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "inspection_result",
         "inspection_alarm",
         "decision_summary",
@@ -2444,7 +2555,9 @@ def test_industrial_single_frame_usb_uvc_sam3_semantic_continuity_gate_documents
     assert template.template_inputs[1].payload_type_id == "text-prompts.v1"
     assert template.template_inputs[2].payload_type_id == "value.v1"
     assert template.template_inputs[2].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "captured_image",
         "capture_summary",
         "model_regions",
@@ -2603,7 +2716,9 @@ def test_industrial_single_frame_overlay_review_documents_are_valid(
         == f"docs/examples/workflows/{example_name}.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
     assert application.bindings[2].required is False
     assert application.bindings[2].metadata["payload_type_id"] == "value.v1"
     assert application.bindings[5].config["payload_type_id"] == "image-ref.v1"
@@ -2734,7 +2849,9 @@ def test_industrial_single_frame_native_model_overlay_review_documents_are_valid
         == f"docs/examples/workflows/{example_name}.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
     assert application.bindings[1].metadata["payload_type_id"] == "text-prompts.v1"
     assert application.bindings[2].required is False
     if expected_has_detections_output:
@@ -2884,7 +3001,9 @@ def test_industrial_single_frame_prompt_region_native_model_overlay_review_docum
     assert template.metadata["example_kind"] == expected_example_kind
     assert template.metadata["focus"] == expected_focus
     assert template.metadata["dynamic_roi_input_binding"] == "request_roi"
-    assert [template_input.input_id for template_input in template.template_inputs] == expected_input_ids
+    assert [
+        template_input.input_id for template_input in template.template_inputs
+    ] == expected_input_ids
     assert [
         template_input.payload_type_id for template_input in template.template_inputs
     ] == expected_input_payload_types
@@ -2894,13 +3013,25 @@ def test_industrial_single_frame_prompt_region_native_model_overlay_review_docum
         == f"docs/examples/workflows/{example_name}.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
-    assert [binding.binding_id for binding in application.bindings] == expected_binding_ids
+    assert [
+        binding.binding_id for binding in application.bindings
+    ] == expected_binding_ids
     assert application.bindings[expected_optional_binding_index].required is False
-    assert application.bindings[expected_optional_binding_index].metadata["payload_type_id"] == "value.v1"
-    assert application.bindings[expected_overlay_binding_index].config["payload_type_id"] == "image-ref.v1"
+    assert (
+        application.bindings[expected_optional_binding_index].metadata[
+            "payload_type_id"
+        ]
+        == "value.v1"
+    )
+    assert (
+        application.bindings[expected_overlay_binding_index].config["payload_type_id"]
+        == "image-ref.v1"
+    )
     if expected_detections_binding_index is not None:
         assert (
-            application.bindings[expected_detections_binding_index].config["payload_type_id"]
+            application.bindings[expected_detections_binding_index].config[
+                "payload_type_id"
+            ]
             == "detections.v1"
         )
 
@@ -2987,8 +3118,7 @@ def test_industrial_local_directory_polling_cursor_guard_documents_are_valid() -
         example_dir / "industrial_local_directory_polling_cursor_guard.template.json"
     )
     application_path = (
-        example_dir
-        / "industrial_local_directory_polling_cursor_guard.application.json"
+        example_dir / "industrial_local_directory_polling_cursor_guard.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -3059,7 +3189,8 @@ def test_industrial_local_directory_batch_detection_position_gate_documents_are_
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_batch_detection_position_gate.template.json"
+        example_dir
+        / "industrial_local_directory_batch_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
@@ -3171,7 +3302,8 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_watch_detection_position_gate.template.json"
+        example_dir
+        / "industrial_local_directory_watch_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
@@ -3239,14 +3371,18 @@ def test_industrial_local_directory_watch_detection_position_gate_documents_are_
         "deployment_request",
         "request_roi",
     ]
-    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == [
         "response-body.v1",
         "response-body.v1",
         "value.v1",
         "value.v1",
     ]
     assert template.template_inputs[3].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "batch_files",
         "inspection_results",
         "inspection_result_count",
@@ -3291,7 +3427,8 @@ def test_industrial_local_directory_poll_detection_position_gate_documents_are_v
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = (
-        example_dir / "industrial_local_directory_poll_detection_position_gate.template.json"
+        example_dir
+        / "industrial_local_directory_poll_detection_position_gate.template.json"
     )
     application_path = (
         example_dir
@@ -3359,14 +3496,18 @@ def test_industrial_local_directory_poll_detection_position_gate_documents_are_v
         "deployment_request",
         "request_roi",
     ]
-    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == [
         "response-body.v1",
         "response-body.v1",
         "value.v1",
         "value.v1",
     ]
     assert template.template_inputs[3].required is False
-    assert [template_output.output_id for template_output in template.template_outputs] == [
+    assert [
+        template_output.output_id for template_output in template.template_outputs
+    ] == [
         "batch_files",
         "inspection_results",
         "inspection_result_count",
@@ -3460,7 +3601,9 @@ def test_industrial_local_directory_batch_segments_continuity_gate_documents_are
         template.metadata["example_kind"]
         == "industrial-local-directory-batch-segments-continuity-gate"
     )
-    assert template.metadata["focus"] == "local-batch-industrial-segmentation-rule-chain"
+    assert (
+        template.metadata["focus"] == "local-batch-industrial-segmentation-rule-chain"
+    )
     assert (
         template.metadata["dynamic_batch_start_binding"] == "request_batch_start_index"
     )
@@ -3474,7 +3617,9 @@ def test_industrial_local_directory_batch_segments_continuity_gate_documents_are
         "request_batch_cursor",
         "request_segments_items",
     ]
-    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == [
         "value.v1",
         "value.v1",
         "value.v1",
@@ -3582,7 +3727,9 @@ def test_industrial_local_directory_batch_regions_continuity_gate_documents_are_
         "request_batch_cursor",
         "request_regions_items",
     ]
-    assert [template_input.payload_type_id for template_input in template.template_inputs] == [
+    assert [
+        template_input.payload_type_id for template_input in template.template_inputs
+    ] == [
         "value.v1",
         "value.v1",
         "value.v1",
@@ -3676,7 +3823,9 @@ def test_detection_deployment_infer_opencv_health_example_documents_are_valid() 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "detection_deployment_infer_opencv_health.template.json"
+    template_path = (
+        example_dir / "detection_deployment_infer_opencv_health.template.json"
+    )
     application_path = (
         example_dir / "detection_deployment_infer_opencv_health.application.json"
     )
@@ -3731,7 +3880,7 @@ def test_detection_deployment_infer_opencv_health_example_documents_are_valid() 
     ),
     [
         (
-                "detection_deployment_infer_opencv_health_zeromq",
+            "detection_deployment_infer_opencv_health_zeromq",
             "deployment-infer-opencv-health-zeromq",
             [
                 "request_image_base64",
@@ -3826,7 +3975,9 @@ def test_detection_deployment_qr_crop_remap_example_documents_are_valid() -> Non
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = example_dir / "detection_deployment_qr_crop_remap.template.json"
-    application_path = example_dir / "detection_deployment_qr_crop_remap.application.json"
+    application_path = (
+        example_dir / "detection_deployment_qr_crop_remap.application.json"
+    )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )
@@ -3880,7 +4031,9 @@ def test_detection_end_to_end_qr_crop_remap_example_documents_are_valid() -> Non
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
     template_path = example_dir / "detection_end_to_end_qr_crop_remap.template.json"
-    application_path = example_dir / "detection_end_to_end_qr_crop_remap.application.json"
+    application_path = (
+        example_dir / "detection_end_to_end_qr_crop_remap.application.json"
+    )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
     )

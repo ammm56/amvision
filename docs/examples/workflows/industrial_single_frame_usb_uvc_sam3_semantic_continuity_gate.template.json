@@ -28,7 +28,9 @@
       "node_id": "segment",
       "node_type_id": "custom.sam3.semantic-segment",
       "parameters": {
-        "model_scale": "s"
+        "model_asset_id": "sam3/default",
+        "device": "auto",
+        "precision": "auto"
       }
     },
     {

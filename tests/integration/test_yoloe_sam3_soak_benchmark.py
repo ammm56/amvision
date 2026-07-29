@@ -23,7 +23,9 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     resolve_sam3_pretrained_variant,
 )
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import get_or_create_sam3_semantic_runtime_session
+from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
+    get_or_create_sam3_semantic_runtime_session,
+)
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
     resolve_yoloe_pretrained_variant,
 )
@@ -57,9 +59,27 @@ def test_yoloe_text_prompt_cpu_soak_benchmark() -> None:
 
     image_bytes = _build_test_png_bytes(width=96, height=72)
     prompts = (
-        SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-        SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-        SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="person",
+            display_name="person",
+            negative=False,
+            language=None,
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="background",
+            display_name="person",
+            negative=True,
+            language="en",
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-2",
+            text="car",
+            display_name="car",
+            negative=False,
+            language=None,
+        ),
     )
     warm_prediction = session.predict(
         image_bytes=image_bytes,
@@ -87,12 +107,12 @@ def test_sam3_semantic_cpu_soak_benchmark() -> None:
     """验证 SAM3 semantic 在 CPU 上的长时重复推理、缓存驻留和内存漂移。"""
 
     session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
     repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
@@ -123,12 +143,16 @@ def test_sam3_semantic_cpu_soak_benchmark() -> None:
             }
         )
     )
-    warm_prediction = session.predict(image_bytes=image_bytes, prompt_items=prompt_groups)
+    warm_prediction = session.predict(
+        image_bytes=image_bytes, prompt_items=prompt_groups
+    )
     assert warm_prediction.summary["project_native"] is True
     benchmark = _run_cpu_soak_benchmark(
         benchmark_name="sam3-semantic-cpu",
         iterations=CPU_SOAK_ITERATIONS,
-        predict_once=lambda: session.predict(image_bytes=image_bytes, prompt_items=prompt_groups),
+        predict_once=lambda: session.predict(
+            image_bytes=image_bytes, prompt_items=prompt_groups
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= CPU_MEMORY_DRIFT_LIMIT_BYTES
 
@@ -153,8 +177,20 @@ def test_yoloe_text_prompt_cuda_soak_benchmark() -> None:
 
     image_bytes = _build_test_png_bytes(width=96, height=72)
     prompts = (
-        SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-        SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="person",
+            display_name="person",
+            negative=False,
+            language=None,
+        ),
+        SimpleNamespace(
+            prompt_id="prompt-1",
+            text="background",
+            display_name="person",
+            negative=True,
+            language="en",
+        ),
     )
     warm_prediction = session.predict(
         image_bytes=image_bytes,
@@ -183,12 +219,12 @@ def test_sam3_semantic_cuda_soak_benchmark() -> None:
     """验证 SAM3 semantic 在 CUDA 上的会话驻留、重复推理和显存漂移。"""
 
     session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cuda",
         precision="fp16",
     )
     repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cuda",
         precision="fp16",
     )
@@ -214,12 +250,16 @@ def test_sam3_semantic_cuda_soak_benchmark() -> None:
             }
         )
     )
-    warm_prediction = session.predict(image_bytes=image_bytes, prompt_items=prompt_groups)
+    warm_prediction = session.predict(
+        image_bytes=image_bytes, prompt_items=prompt_groups
+    )
     assert warm_prediction.summary["project_native"] is True
     benchmark = _run_cuda_soak_benchmark(
         benchmark_name="sam3-semantic-cuda",
         iterations=GPU_SOAK_ITERATIONS,
-        predict_once=lambda: session.predict(image_bytes=image_bytes, prompt_items=prompt_groups),
+        predict_once=lambda: session.predict(
+            image_bytes=image_bytes, prompt_items=prompt_groups
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= GPU_MEMORY_DRIFT_LIMIT_BYTES
 
@@ -228,9 +268,11 @@ def test_yoloe_sam3_asset_failure_recovery_smoke() -> None:
     """验证异常预训练目录失败后，恢复到真实本地资产仍可继续推理。"""
 
     with pytest.raises(InvalidRequestError, match="manifest"):
-        resolve_yoloe_pretrained_variant(model_series="v8", model_scale="xx", prompt_free=False)
-    with pytest.raises(InvalidRequestError, match="manifest"):
-        resolve_sam3_pretrained_variant(model_scale="xx")
+        resolve_yoloe_pretrained_variant(
+            model_series="v8", model_scale="xx", prompt_free=False
+        )
+    with pytest.raises(InvalidRequestError, match="模型资产"):
+        resolve_sam3_pretrained_variant(model_asset_id="sam3/missing")
 
     yoloe_session = get_or_create_yoloe_text_prompt_runtime_session(
         model_series="v8",
@@ -241,7 +283,13 @@ def test_yoloe_sam3_asset_failure_recovery_smoke() -> None:
     yoloe_prediction = yoloe_session.predict(
         image_bytes=_build_test_png_bytes(width=80, height=60),
         prompts=(
-            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
         ),
         confidence_threshold=0.25,
         iou_threshold=0.7,
@@ -250,7 +298,7 @@ def test_yoloe_sam3_asset_failure_recovery_smoke() -> None:
     assert yoloe_prediction.summary["project_native"] is True
 
     sam3_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
@@ -342,7 +390,9 @@ def _run_cuda_soak_benchmark(
         "memory_end_allocated_bytes": end_allocated_bytes,
         "memory_end_reserved_bytes": end_reserved_bytes,
         "memory_peak_allocated_bytes": peak_allocated_bytes,
-        "memory_drift_bytes": int(max(0, end_allocated_bytes - baseline_allocated_bytes)),
+        "memory_drift_bytes": int(
+            max(0, end_allocated_bytes - baseline_allocated_bytes)
+        ),
         "duration_ms": _summarize_durations(iteration_durations_ms),
         "last_summary": last_summary or {},
     }
@@ -366,6 +416,7 @@ def _read_process_memory_bytes() -> int:
     """读取当前进程常驻内存。"""
 
     if hasattr(ctypes, "windll"):
+
         class _ProcessMemoryCountersEx(ctypes.Structure):
             _fields_ = [
                 ("cb", wintypes.DWORD),

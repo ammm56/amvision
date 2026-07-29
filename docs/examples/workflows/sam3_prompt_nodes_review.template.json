@@ -1,0 +1,153 @@
+{
+  "format_id": "amvision.workflow-graph-template.v1",
+  "template_id": "sam3-prompt-nodes-review-template",
+  "template_version": "1.0.0",
+  "display_name": "SAM3 Prompt Nodes Review",
+  "description": "演示只通过画布节点构造 Text、Negative Text 和 Box Prompt，并分别执行 SAM3 Semantic 与 Interactive Segment。",
+  "nodes": [
+    {
+      "node_id": "image_path",
+      "node_type_id": "core.io.template-input.value",
+      "parameters": {}
+    },
+    {
+      "node_id": "load_image",
+      "node_type_id": "core.io.image-load-local",
+      "parameters": {}
+    },
+    {
+      "node_id": "positive_text",
+      "node_type_id": "core.input.text-prompt",
+      "parameters": {
+        "prompt_id": "target",
+        "text": "metal part",
+        "display_name": "Target"
+      }
+    },
+    {
+      "node_id": "negative_text",
+      "node_type_id": "core.input.text-prompt",
+      "parameters": {
+        "prompt_id": "target",
+        "text": "background",
+        "display_name": "Target",
+        "negative": true
+      }
+    },
+    {
+      "node_id": "merge_text",
+      "node_type_id": "core.input.text-prompts-merge",
+      "parameters": {}
+    },
+    {
+      "node_id": "semantic_segment",
+      "node_type_id": "custom.sam3.semantic-segment",
+      "parameters": {
+        "model_asset_id": "sam3/default",
+        "device": "auto",
+        "precision": "auto"
+      }
+    },
+    {
+      "node_id": "box_prompt",
+      "node_type_id": "core.input.box-prompt",
+      "parameters": {
+        "prompt_id": "target",
+        "display_name": "Target",
+        "x1": 100,
+        "y1": 100,
+        "x2": 500,
+        "y2": 500
+      }
+    },
+    {
+      "node_id": "interactive_segment",
+      "node_type_id": "custom.sam3.interactive-segment",
+      "parameters": {
+        "model_asset_id": "sam3/default",
+        "device": "auto",
+        "precision": "auto"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "image-path-load",
+      "source_node_id": "image_path",
+      "source_port": "value",
+      "target_node_id": "load_image",
+      "target_port": "path"
+    },
+    {
+      "edge_id": "positive-merge",
+      "source_node_id": "positive_text",
+      "source_port": "prompts",
+      "target_node_id": "merge_text",
+      "target_port": "prompts"
+    },
+    {
+      "edge_id": "negative-merge",
+      "source_node_id": "negative_text",
+      "source_port": "prompts",
+      "target_node_id": "merge_text",
+      "target_port": "prompts"
+    },
+    {
+      "edge_id": "image-semantic",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "semantic_segment",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "prompts-semantic",
+      "source_node_id": "merge_text",
+      "source_port": "prompts",
+      "target_node_id": "semantic_segment",
+      "target_port": "prompts"
+    },
+    {
+      "edge_id": "image-interactive",
+      "source_node_id": "load_image",
+      "source_port": "image",
+      "target_node_id": "interactive_segment",
+      "target_port": "image"
+    },
+    {
+      "edge_id": "box-interactive",
+      "source_node_id": "box_prompt",
+      "source_port": "prompts",
+      "target_node_id": "interactive_segment",
+      "target_port": "prompts"
+    }
+  ],
+  "template_inputs": [
+    {
+      "input_id": "image_path",
+      "display_name": "Image Path",
+      "payload_type_id": "value.v1",
+      "target_node_id": "image_path",
+      "target_port": "payload"
+    }
+  ],
+  "template_outputs": [
+    {
+      "output_id": "semantic_regions",
+      "display_name": "Semantic Regions",
+      "payload_type_id": "regions.v1",
+      "source_node_id": "semantic_segment",
+      "source_port": "regions"
+    },
+    {
+      "output_id": "interactive_regions",
+      "display_name": "Interactive Regions",
+      "payload_type_id": "regions.v1",
+      "source_node_id": "interactive_segment",
+      "source_port": "regions"
+    }
+  ],
+  "metadata": {
+    "example_kind": "sam3-prompt-nodes-review",
+    "node_pack_version": "0.1.3"
+  }
+}

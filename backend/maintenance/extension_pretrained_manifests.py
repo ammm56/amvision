@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -44,7 +45,9 @@ def sync_extension_pretrained_manifests(
     - ExtensionPretrainedManifestSyncResult：本次扫描、迁移和写入结果。
     """
 
-    repo_root = repository_root.resolve() if repository_root is not None else REPOSITORY_ROOT
+    repo_root = (
+        repository_root.resolve() if repository_root is not None else REPOSITORY_ROOT
+    )
     pretrained_root = repo_root / "data" / "files" / "models" / "pretrained"
     yoloe_root = pretrained_root / "yoloe"
     sam3_root = pretrained_root / "sam3"
@@ -90,13 +93,19 @@ def _sync_yoloe_manifests(yoloe_root: Path, *, warnings: list[str]) -> list[Path
     written_manifest_paths: list[Path] = []
     for scale_dir in _iter_child_dirs(task_root):
         for variant_dir in _iter_child_dirs(scale_dir):
-            checkpoint_path = _resolve_single_checkpoint_file(variant_dir / "checkpoints", warnings=warnings)
+            checkpoint_path = _resolve_single_checkpoint_file(
+                variant_dir / "checkpoints", warnings=warnings
+            )
             if checkpoint_path is None:
-                warnings.append(f"YOLOE 目录缺少可识别 checkpoint：{variant_dir.as_posix()}")
+                warnings.append(
+                    f"YOLOE 目录缺少可识别 checkpoint：{variant_dir.as_posix()}"
+                )
                 continue
             match = _YOLOE_WEIGHT_PATTERN.match(checkpoint_path.name)
             if match is None:
-                warnings.append(f"YOLOE checkpoint 文件名不符合官方命名规则：{checkpoint_path.name}")
+                warnings.append(
+                    f"YOLOE checkpoint 文件名不符合官方命名规则：{checkpoint_path.name}"
+                )
                 continue
 
             family_token = match.group("family").lower()
@@ -108,7 +117,9 @@ def _sync_yoloe_manifests(yoloe_root: Path, *, warnings: list[str]) -> list[Path
                     "YOLOE 目录 scale 与 checkpoint 文件名推断结果不一致："
                     f"{scale_dir.name} != {parsed_scale} ({checkpoint_path.name})"
                 )
-            expected_variant = f"{family_token}-{'prompt-free' if prompt_free else 'default'}"
+            expected_variant = (
+                f"{family_token}-{'prompt-free' if prompt_free else 'default'}"
+            )
             if variant_dir.name != expected_variant:
                 warnings.append(
                     "YOLOE variant 目录名与 checkpoint 文件名推断结果不一致："
@@ -132,7 +143,9 @@ def _sync_yoloe_manifests(yoloe_root: Path, *, warnings: list[str]) -> list[Path
                 "task_type": task_type,
                 "model_version_id": model_version_id,
                 "checkpoint_file_id": checkpoint_file_id,
-                "checkpoint_path": str(checkpoint_path.relative_to(variant_dir)).replace("\\", "/"),
+                "checkpoint_path": str(
+                    checkpoint_path.relative_to(variant_dir)
+                ).replace("\\", "/"),
                 "metadata": {
                     "catalog_name": variant_dir.name,
                     "entry_name": variant_dir.name,
@@ -141,7 +154,7 @@ def _sync_yoloe_manifests(yoloe_root: Path, *, warnings: list[str]) -> list[Path
                     "upstream_mode": "prompt-free" if prompt_free else "default",
                     "node_usage": "custom-node",
                     "node_primary_output": "detections.v1",
-                    "notes": "YOLOE 官方权重为 segmentation 变体，第一阶段 custom node 先以 detection 输出形式使用。"
+                    "notes": "YOLOE 官方权重为 segmentation 变体，第一阶段 custom node 先以 detection 输出形式使用。",
                 },
             }
             manifest_path = variant_dir / "manifest.json"
@@ -159,37 +172,65 @@ def _sync_sam3_manifests(sam3_root: Path, *, warnings: list[str]) -> list[Path]:
         return []
 
     written_manifest_paths: list[Path] = []
-    for scale_dir in _iter_child_dirs(task_root):
-        for variant_dir in _iter_child_dirs(scale_dir):
-            checkpoint_path = _resolve_single_checkpoint_file(variant_dir / "checkpoints", warnings=warnings)
-            if checkpoint_path is None:
-                warnings.append(f"SAM3 目录缺少可识别 checkpoint：{variant_dir.as_posix()}")
-                continue
-            if checkpoint_path.name.lower() != "sam3.pt":
-                warnings.append(f"SAM3 checkpoint 文件名不是预期的 sam3.pt：{checkpoint_path.name}")
+    for variant_dir in _iter_child_dirs(task_root):
+        checkpoint_path = _resolve_single_checkpoint_file(
+            variant_dir / "checkpoints",
+            warnings=warnings,
+        )
+        if checkpoint_path is None:
+            warnings.append(f"SAM3 目录缺少可识别 checkpoint：{variant_dir.as_posix()}")
+            continue
+        if checkpoint_path.name.lower() != "sam3.pt":
+            warnings.append(
+                f"SAM3 checkpoint 文件名不是预期的 sam3.pt：{checkpoint_path.name}"
+            )
 
-            variant_suffix = "" if variant_dir.name == "default" else f"-{variant_dir.name}"
-            manifest_payload = {
-                "model_name": "sam3",
-                "model_scale": scale_dir.name,
-                "task_type": "segmentation",
-                "model_version_id": f"mv-pretrained-sam3-segmentation-{scale_dir.name}{variant_suffix}",
-                "checkpoint_file_id": f"mf-pretrained-sam3-segmentation-{scale_dir.name}-checkpoint{variant_suffix}",
-                "checkpoint_path": str(checkpoint_path.relative_to(variant_dir)).replace("\\", "/"),
-                "metadata": {
-                    "catalog_name": variant_dir.name,
-                    "entry_name": variant_dir.name,
-                    "source": "local-pretrained",
-                    "upstream_weight_name": checkpoint_path.name,
-                    "upstream_mode": "default",
-                    "node_usage": "custom-node",
-                    "node_modes": ["semantic", "interactive"],
-                },
-            }
-            manifest_path = variant_dir / "manifest.json"
-            _write_manifest_file(manifest_path, manifest_payload)
-            written_manifest_paths.append(manifest_path)
+        manifest_payload = {
+            "model_name": "sam3",
+            "model_version": "sam3",
+            "model_asset_id": f"sam3/{variant_dir.name}",
+            "architecture_id": "sam3.vision-1008.v1",
+            "task_type": "segmentation",
+            "model_version_id": f"mv-pretrained-sam3-segmentation-{variant_dir.name}",
+            "checkpoint_file_id": f"mf-pretrained-sam3-segmentation-{variant_dir.name}-checkpoint",
+            "checkpoint_path": str(checkpoint_path.relative_to(variant_dir)).replace(
+                "\\", "/"
+            ),
+            "checkpoint_sha256": _sha256_file(checkpoint_path),
+            "capabilities": [
+                "image.interactive-segmentation",
+                "image.semantic-segmentation",
+                "video.interactive-segmentation",
+                "video.per-frame-semantic-segmentation",
+            ],
+            "minimum_runtime": {
+                "python": ">=3.12",
+                "torch": ">=2.0",
+            },
+            "metadata": {
+                "catalog_name": variant_dir.name,
+                "entry_name": variant_dir.name,
+                "source": "local-pretrained",
+                "upstream_weight_name": checkpoint_path.name,
+                "upstream_mode": "default",
+                "node_usage": "custom-node",
+                "node_modes": ["semantic", "interactive"],
+            },
+        }
+        manifest_path = variant_dir / "manifest.json"
+        _write_manifest_file(manifest_path, manifest_payload)
+        written_manifest_paths.append(manifest_path)
     return written_manifest_paths
+
+
+def _sha256_file(file_path: Path) -> str:
+    """流式计算本地模型资产的 SHA-256。"""
+
+    hasher = hashlib.sha256()
+    with file_path.open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(8 * 1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _iter_child_dirs(root_dir: Path) -> tuple[Path, ...]:
@@ -197,7 +238,12 @@ def _iter_child_dirs(root_dir: Path) -> tuple[Path, ...]:
 
     if not root_dir.is_dir():
         return ()
-    return tuple(sorted((path for path in root_dir.iterdir() if path.is_dir()), key=lambda item: item.name))
+    return tuple(
+        sorted(
+            (path for path in root_dir.iterdir() if path.is_dir()),
+            key=lambda item: item.name,
+        )
+    )
 
 
 def _resolve_single_checkpoint_file(
@@ -214,7 +260,9 @@ def _resolve_single_checkpoint_file(
             (
                 path
                 for path in checkpoints_dir.iterdir()
-                if path.is_file() and path.name != ".gitkeep" and path.suffix.lower() == ".pt"
+                if path.is_file()
+                and path.name != ".gitkeep"
+                and path.suffix.lower() == ".pt"
             ),
             key=lambda item: item.name,
         )

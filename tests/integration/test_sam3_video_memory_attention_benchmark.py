@@ -10,7 +10,9 @@ import pytest
 import torch
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segment
 from tests.integration.test_yoloe_sam3_soak_benchmark import (
     CPU_MEMORY_DRIFT_LIMIT_BYTES,
@@ -40,7 +42,9 @@ def test_sam3_video_interactive_attention_cpu_extended_benchmark() -> None:
     benchmark = _run_cpu_soak_benchmark(
         benchmark_name="sam3-video-interactive-attention-cpu-extended",
         iterations=ATTENTION_VIDEO_CPU_SOAK_ITERATIONS,
-        predict_once=lambda: SimpleNamespace(summary=video_interactive_segment.handle_node(request)["summary"]),
+        predict_once=lambda: SimpleNamespace(
+            summary=video_interactive_segment.handle_node(request)["summary"]
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= CPU_MEMORY_DRIFT_LIMIT_BYTES
 
@@ -62,7 +66,9 @@ def test_sam3_video_interactive_attention_cuda_extended_benchmark() -> None:
     benchmark = _run_cuda_soak_benchmark(
         benchmark_name="sam3-video-interactive-attention-cuda-extended",
         iterations=ATTENTION_VIDEO_GPU_SOAK_ITERATIONS,
-        predict_once=lambda: SimpleNamespace(summary=video_interactive_segment.handle_node(request)["summary"]),
+        predict_once=lambda: SimpleNamespace(
+            summary=video_interactive_segment.handle_node(request)["summary"]
+        ),
     )
     assert benchmark["memory_drift_bytes"] <= GPU_MEMORY_DRIFT_LIMIT_BYTES
 
@@ -74,16 +80,20 @@ def _build_attention_benchmark_request(
 ) -> WorkflowNodeExecutionRequest:
     """构造 memory-attention 长窗口多对象 benchmark 请求。"""
 
-    frame_window_payload, image_registry = _build_attention_benchmark_frame_window_payload(
-        frame_count=6,
-        width=192,
-        height=144,
+    frame_window_payload, image_registry = (
+        _build_attention_benchmark_frame_window_payload(
+            frame_count=6,
+            width=192,
+            height=144,
+        )
     )
     return WorkflowNodeExecutionRequest(
         node_id=f"sam3-video-attention-benchmark-{device}",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": device,
             "precision": precision,
             "tracking_mode": "memory-attention-tracker",
@@ -92,10 +102,30 @@ def _build_attention_benchmark_request(
             "frames": frame_window_payload,
             "prompts": {
                 "items": [
-                    {"prompt_id": "track-a", "prompt_kind": "box", "display_name": "Object A", "bbox_xyxy": [12, 18, 52, 74]},
-                    {"prompt_id": "track-b", "prompt_kind": "box", "display_name": "Object B", "bbox_xyxy": [132, 18, 184, 66]},
-                    {"prompt_id": "track-c", "prompt_kind": "box", "display_name": "Object C", "bbox_xyxy": [34, 88, 76, 134]},
-                    {"prompt_id": "track-d", "prompt_kind": "box", "display_name": "Object D", "bbox_xyxy": [150, 92, 204, 142]},
+                    {
+                        "prompt_id": "track-a",
+                        "prompt_kind": "box",
+                        "display_name": "Object A",
+                        "bbox_xyxy": [12, 18, 52, 74],
+                    },
+                    {
+                        "prompt_id": "track-b",
+                        "prompt_kind": "box",
+                        "display_name": "Object B",
+                        "bbox_xyxy": [132, 18, 184, 66],
+                    },
+                    {
+                        "prompt_id": "track-c",
+                        "prompt_kind": "box",
+                        "display_name": "Object C",
+                        "bbox_xyxy": [34, 88, 76, 134],
+                    },
+                    {
+                        "prompt_id": "track-d",
+                        "prompt_kind": "box",
+                        "display_name": "Object D",
+                        "bbox_xyxy": [150, 92, 204, 142],
+                    },
                 ]
             },
         },
@@ -118,10 +148,46 @@ def _build_attention_benchmark_frame_window_payload(
             width=width,
             height=height,
             rectangles=(
-                {"bbox": (12 + frame_index * 10, 18 + frame_index * 2, 52 + frame_index * 10, 74 + frame_index * 2), "fill": (50, 50, 50), "outline": (255, 120, 0)},
-                {"bbox": (132 - frame_index * 8, 18 + frame_index * 3, 184 - frame_index * 8, 66 + frame_index * 3), "fill": (80, 80, 80), "outline": (0, 220, 120)},
-                {"bbox": (34 + frame_index * 9, 88 - frame_index * 3, 76 + frame_index * 9, 134 - frame_index * 3), "fill": (70, 70, 70), "outline": (90, 40, 255)},
-                {"bbox": (150 - frame_index * 7, 92 - frame_index * 5, 204 - frame_index * 7, 142 - frame_index * 5), "fill": (60, 60, 60), "outline": (255, 70, 120)},
+                {
+                    "bbox": (
+                        12 + frame_index * 10,
+                        18 + frame_index * 2,
+                        52 + frame_index * 10,
+                        74 + frame_index * 2,
+                    ),
+                    "fill": (50, 50, 50),
+                    "outline": (255, 120, 0),
+                },
+                {
+                    "bbox": (
+                        132 - frame_index * 8,
+                        18 + frame_index * 3,
+                        184 - frame_index * 8,
+                        66 + frame_index * 3,
+                    ),
+                    "fill": (80, 80, 80),
+                    "outline": (0, 220, 120),
+                },
+                {
+                    "bbox": (
+                        34 + frame_index * 9,
+                        88 - frame_index * 3,
+                        76 + frame_index * 9,
+                        134 - frame_index * 3,
+                    ),
+                    "fill": (70, 70, 70),
+                    "outline": (90, 40, 255),
+                },
+                {
+                    "bbox": (
+                        150 - frame_index * 7,
+                        92 - frame_index * 5,
+                        204 - frame_index * 7,
+                        142 - frame_index * 5,
+                    ),
+                    "fill": (60, 60, 60),
+                    "outline": (255, 70, 120),
+                },
             ),
         )
         registered_image = image_registry.register_image_bytes(

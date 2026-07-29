@@ -11,7 +11,9 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes import get_core_node_specs
 
 
-def _build_image_ref_json_schema(*, extra_properties: dict[str, object] | None = None) -> dict[str, object]:
+def _build_image_ref_json_schema(
+    *, extra_properties: dict[str, object] | None = None
+) -> dict[str, object]:
     """构造统一的 image-ref.v1 JSON schema。
 
     参数：
@@ -109,6 +111,85 @@ def get_core_workflow_payload_contracts() -> tuple[WorkflowPayloadContract, ...]
                     "value": {"type": "boolean"},
                 },
                 "required": ["value"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="text-prompts.v1",
+            display_name="Text Prompts",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "prompt_id": {"type": "string", "minLength": 1},
+                                "text": {"type": "string", "minLength": 1},
+                                "display_name": {"type": "string"},
+                                "language": {"type": "string"},
+                                "negative": {"type": "boolean"},
+                            },
+                            "required": ["prompt_id", "text"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        ),
+        WorkflowPayloadContract(
+            payload_type_id="prompt-regions.v1",
+            display_name="Prompt Regions",
+            transport_kind="inline-json",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "source_image": {"type": "object"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "prompt_id": {"type": "string", "minLength": 1},
+                                "display_name": {"type": "string"},
+                                "prompt_kind": {
+                                    "type": "string",
+                                    "enum": ["point", "box", "polygon", "mask"],
+                                },
+                                "point_xy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                },
+                                "point_label": {
+                                    "type": "string",
+                                    "enum": ["positive", "negative"],
+                                },
+                                "bbox_xyxy": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                },
+                                "polygon_xy": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "number"},
+                                        "minItems": 2,
+                                        "maxItems": 2,
+                                    },
+                                    "minItems": 3,
+                                },
+                                "mask_image": {"type": "object"},
+                            },
+                            "required": ["prompt_id", "prompt_kind"],
+                        },
+                    },
+                },
+                "required": ["items"],
             },
         ),
         WorkflowPayloadContract(

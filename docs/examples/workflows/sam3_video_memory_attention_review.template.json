@@ -25,7 +25,7 @@
       "node_id": "segment_video",
       "node_type_id": "custom.sam3.video-interactive-segment",
       "parameters": {
-        "model_scale": "l",
+        "model_asset_id": "sam3/default",
         "tracking_mode": "memory-attention-tracker",
         "history_limit": 6,
         "prototype_momentum": 0.72,

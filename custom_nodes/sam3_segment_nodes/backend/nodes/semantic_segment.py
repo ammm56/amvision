@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
     read_image_bytes,
@@ -10,8 +12,11 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     normalize_device,
-    normalize_model_scale,
+    normalize_model_asset_id,
     normalize_precision,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.postprocess import (
+    resolve_sam3_postprocess_options,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.results import (
     build_regions_payload,
@@ -26,21 +31,29 @@ NODE_TYPE_ID = "custom.sam3.semantic-segment"
 
 
 def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """执行 SAM3 语义分割节点。
-    """
+    """执行 SAM3 语义分割节点。"""
 
     image_payload, image_bytes = read_image_bytes(request, input_name="image")
     prompt_items = read_text_prompt_items(request.input_values.get("prompts"))
     prompt_groups = merge_text_prompt_items(prompt_items)
-    model_scale = normalize_model_scale(request.parameters.get("model_scale"))
+    model_asset_id = normalize_model_asset_id(request.parameters.get("model_asset_id"))
     device = normalize_device(request.parameters.get("device"))
     precision = normalize_precision(request.parameters.get("precision"))
+    postprocess_options = resolve_sam3_postprocess_options(request.parameters)
     runtime_session = get_or_create_sam3_semantic_runtime_session(
-        model_scale=model_scale,
+        model_asset_id=model_asset_id,
         device=device,
         precision=precision,
     )
-    prediction = runtime_session.predict(image_bytes=image_bytes, image_payload=image_payload, prompt_items=prompt_groups)
+    prediction = runtime_session.predict(
+        image_bytes=image_bytes,
+        image_payload=image_payload,
+        prompt_items=prompt_groups,
+        mask_threshold=postprocess_options.mask_threshold,
+        stability_offset=postprocess_options.stability_offset,
+        min_component_area=postprocess_options.min_component_area,
+        polygon_simplify_ratio=postprocess_options.polygon_simplify_ratio,
+    )
     return {
         "regions": build_regions_payload(
             request,

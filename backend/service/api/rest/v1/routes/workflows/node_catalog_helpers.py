@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import json
+from importlib import util
 
 from backend.contracts.nodes import NodePackManifest
 from backend.contracts.workflows.workflow_graph import (
@@ -20,6 +22,7 @@ from .schemas import WorkflowNodePaletteGroupResponse
 _WORKFLOW_PARAMETER_UI_EXTENSION_KEY = "x-amvision-ui"
 _WORKFLOW_PARAMETER_DEFAULT_GROUP_ID = "default"
 
+
 def _build_workflow_node_palette_groups(
     node_definitions: list[NodeDefinition],
 ) -> list[WorkflowNodePaletteGroupResponse]:
@@ -33,7 +36,10 @@ def _build_workflow_node_palette_groups(
     for category in sorted(grouped_nodes):
         grouped_items = sorted(
             grouped_nodes[category],
-            key=lambda item: (item.display_name.casefold(), item.node_type_id.casefold()),
+            key=lambda item: (
+                item.display_name.casefold(),
+                item.node_type_id.casefold(),
+            ),
         )
         palette_groups.append(
             WorkflowNodePaletteGroupResponse(
@@ -46,13 +52,17 @@ def _build_workflow_node_palette_groups(
     return palette_groups
 
 
-def _build_effective_node_definitions(node_definitions: list[NodeDefinition]) -> list[NodeDefinition]:
+def _build_effective_node_definitions(
+    node_definitions: list[NodeDefinition],
+) -> list[NodeDefinition]:
     """为节点目录响应补齐可直接渲染的 parameter_ui_schema。"""
 
     return [_with_effective_parameter_ui_schema(item) for item in node_definitions]
 
 
-def _with_effective_parameter_ui_schema(node_definition: NodeDefinition) -> NodeDefinition:
+def _with_effective_parameter_ui_schema(
+    node_definition: NodeDefinition,
+) -> NodeDefinition:
     """为单个节点定义补齐 parameter_ui_schema。"""
 
     return node_definition.model_copy(
@@ -72,7 +82,9 @@ def _merge_parameter_ui_schema(
 ) -> NodeParameterUiSchema:
     """把原始 parameter_schema 和显式 parameter_ui_schema 合并为稳定规则。"""
 
-    derived_parameter_ui_schema = _derive_parameter_ui_schema_from_parameter_schema(parameter_schema)
+    derived_parameter_ui_schema = _derive_parameter_ui_schema_from_parameter_schema(
+        parameter_schema
+    )
     if explicit_parameter_ui_schema is None:
         return derived_parameter_ui_schema
 
@@ -80,7 +92,9 @@ def _merge_parameter_ui_schema(
     for group in explicit_parameter_ui_schema.groups:
         group_index[group.group_id] = group
 
-    field_index = {item.parameter_name: item for item in derived_parameter_ui_schema.fields}
+    field_index = {
+        item.parameter_name: item for item in derived_parameter_ui_schema.fields
+    }
     for field in explicit_parameter_ui_schema.fields:
         field_index[field.parameter_name] = field
 
@@ -95,13 +109,21 @@ def _merge_parameter_ui_schema(
         groups=tuple(
             sorted(
                 group_index.values(),
-                key=lambda item: (item.order, item.display_name.casefold(), item.group_id.casefold()),
+                key=lambda item: (
+                    item.order,
+                    item.display_name.casefold(),
+                    item.group_id.casefold(),
+                ),
             )
         ),
         fields=tuple(
             sorted(
                 field_index.values(),
-                key=lambda item: (item.order, item.display_name.casefold(), item.parameter_name.casefold()),
+                key=lambda item: (
+                    item.order,
+                    item.display_name.casefold(),
+                    item.parameter_name.casefold(),
+                ),
             )
         ),
     )
@@ -132,10 +154,14 @@ def _derive_parameter_ui_schema_from_parameter_schema(
     group_index = _build_parameter_ui_group_index(root_ui_extension.get("groups"))
     fields: list[NodeParameterUiField] = []
 
-    for fallback_order, (parameter_name, raw_property_schema) in enumerate(raw_properties.items()):
+    for fallback_order, (parameter_name, raw_property_schema) in enumerate(
+        raw_properties.items()
+    ):
         if not isinstance(parameter_name, str) or not parameter_name.strip():
             continue
-        property_schema = dict(raw_property_schema) if isinstance(raw_property_schema, dict) else {}
+        property_schema = (
+            dict(raw_property_schema) if isinstance(raw_property_schema, dict) else {}
+        )
         property_ui_extension = _read_parameter_ui_extension(property_schema)
         group_id = (
             _read_optional_non_empty_text(property_ui_extension.get("group"))
@@ -160,14 +186,21 @@ def _derive_parameter_ui_schema_from_parameter_schema(
                     _read_optional_non_empty_text(property_schema.get("title"))
                     or _humanize_parameter_text(parameter_name)
                 ),
-                description=_read_optional_non_empty_text(property_schema.get("description")) or "",
+                description=_read_optional_non_empty_text(
+                    property_schema.get("description")
+                )
+                or "",
                 group_id=group_id,
                 order=fallback_order if field_order is None else field_order,
                 required=parameter_name in required_names,
                 hidden=hidden,
                 readonly=readonly,
-                default_value=property_schema.get("default") if "default" in property_schema else None,
-                enum_options=_build_parameter_ui_enum_options(property_schema, property_ui_extension),
+                default_value=property_schema.get("default")
+                if "default" in property_schema
+                else None,
+                enum_options=_build_parameter_ui_enum_options(
+                    property_schema, property_ui_extension
+                ),
                 json_schema=_sanitize_parameter_schema_fragment(property_schema),
             )
         )
@@ -176,28 +209,42 @@ def _derive_parameter_ui_schema_from_parameter_schema(
         groups=tuple(
             sorted(
                 group_index.values(),
-                key=lambda item: (item.order, item.display_name.casefold(), item.group_id.casefold()),
+                key=lambda item: (
+                    item.order,
+                    item.display_name.casefold(),
+                    item.group_id.casefold(),
+                ),
             )
         ),
         fields=tuple(
             sorted(
                 fields,
-                key=lambda item: (item.order, item.display_name.casefold(), item.parameter_name.casefold()),
+                key=lambda item: (
+                    item.order,
+                    item.display_name.casefold(),
+                    item.parameter_name.casefold(),
+                ),
             )
         ),
     )
 
 
-def _build_parameter_ui_group_index(raw_groups: object) -> dict[str, NodeParameterUiGroup]:
+def _build_parameter_ui_group_index(
+    raw_groups: object,
+) -> dict[str, NodeParameterUiGroup]:
     """把参数 UI 分组配置解析为按 group_id 索引的字典。"""
 
     group_index: dict[str, NodeParameterUiGroup] = {}
     if isinstance(raw_groups, dict):
-        for fallback_order, (raw_group_id, raw_group_config) in enumerate(raw_groups.items()):
+        for fallback_order, (raw_group_id, raw_group_config) in enumerate(
+            raw_groups.items()
+        ):
             if not isinstance(raw_group_id, str) or not raw_group_id.strip():
                 continue
             group_id = raw_group_id.strip()
-            group_config = raw_group_config if isinstance(raw_group_config, dict) else {}
+            group_config = (
+                raw_group_config if isinstance(raw_group_config, dict) else {}
+            )
             group_index[group_id] = NodeParameterUiGroup(
                 group_id=group_id,
                 display_name=(
@@ -205,7 +252,10 @@ def _build_parameter_ui_group_index(raw_groups: object) -> dict[str, NodeParamet
                     or _read_optional_non_empty_text(group_config.get("title"))
                     or _humanize_parameter_text(group_id)
                 ),
-                description=_read_optional_non_empty_text(group_config.get("description")) or "",
+                description=_read_optional_non_empty_text(
+                    group_config.get("description")
+                )
+                or "",
                 order=_read_optional_int(group_config.get("order")) or fallback_order,
             )
         return group_index
@@ -214,7 +264,9 @@ def _build_parameter_ui_group_index(raw_groups: object) -> dict[str, NodeParamet
         for fallback_order, raw_group_item in enumerate(raw_groups):
             if not isinstance(raw_group_item, dict):
                 continue
-            group_id = _read_optional_non_empty_text(raw_group_item.get("group_id") or raw_group_item.get("id"))
+            group_id = _read_optional_non_empty_text(
+                raw_group_item.get("group_id") or raw_group_item.get("id")
+            )
             if group_id is None:
                 continue
             group_index[group_id] = NodeParameterUiGroup(
@@ -224,7 +276,10 @@ def _build_parameter_ui_group_index(raw_groups: object) -> dict[str, NodeParamet
                     or _read_optional_non_empty_text(raw_group_item.get("title"))
                     or _humanize_parameter_text(group_id)
                 ),
-                description=_read_optional_non_empty_text(raw_group_item.get("description")) or "",
+                description=_read_optional_non_empty_text(
+                    raw_group_item.get("description")
+                )
+                or "",
                 order=_read_optional_int(raw_group_item.get("order")) or fallback_order,
             )
     return group_index
@@ -236,6 +291,11 @@ def _build_parameter_ui_enum_options(
 ) -> tuple[NodeParameterUiEnumOption, ...]:
     """从参数 schema 构建稳定的枚举选项展示列表。"""
 
+    dynamic_options = _build_dynamic_parameter_ui_enum_options(
+        property_ui_extension.get("enum_source")
+    )
+    if dynamic_options is not None:
+        return dynamic_options
     raw_enum_values = property_schema.get("enum")
     if not isinstance(raw_enum_values, list):
         return ()
@@ -249,14 +309,125 @@ def _build_parameter_ui_enum_options(
         if isinstance(raw_enum_labels, list) and index < len(raw_enum_labels):
             label = _read_optional_non_empty_text(raw_enum_labels[index])
         elif isinstance(raw_enum_labels, dict):
-            label = _read_optional_non_empty_text(raw_enum_labels.get(_stringify_parameter_option_key(enum_value)))
+            label = _read_optional_non_empty_text(
+                raw_enum_labels.get(_stringify_parameter_option_key(enum_value))
+            )
         options.append(
             NodeParameterUiEnumOption(
                 value=enum_value,
-                label=label or _humanize_parameter_text(_stringify_parameter_option_key(enum_value)),
+                label=label
+                or _humanize_parameter_text(
+                    _stringify_parameter_option_key(enum_value)
+                ),
             )
         )
     return tuple(options)
+
+
+def _build_dynamic_parameter_ui_enum_options(
+    enum_source: object,
+) -> tuple[NodeParameterUiEnumOption, ...] | None:
+    """按受控来源构造运行时枚举选项。
+
+    参数：
+    - enum_source：parameter schema 的 `x-amvision-ui.enum_source` 值。
+
+    返回：
+    - tuple[NodeParameterUiEnumOption, ...] | None：动态选项；未知来源返回 None。
+    """
+
+    if enum_source == "system.torch.devices":
+        return _build_torch_device_options()
+    if enum_source == "system.torch.precisions":
+        return _build_torch_precision_options()
+    if enum_source == "system.sam3.model-assets":
+        return _build_sam3_model_asset_options()
+    return None
+
+
+def _build_sam3_model_asset_options() -> tuple[NodeParameterUiEnumOption, ...]:
+    """返回当前安装的 SAM3 模型资产。"""
+
+    try:
+        pretrained_module = importlib.import_module(
+            "custom_nodes.sam3_segment_nodes.backend.payloads.pretrained"
+        )
+        variants = pretrained_module.list_sam3_pretrained_variants()
+    except Exception:
+        return ()
+    return tuple(
+        NodeParameterUiEnumOption(
+            value=variant.model_asset_id,
+            label=f"{variant.model_name} · {variant.model_asset_id}",
+        )
+        for variant in variants
+    )
+
+
+def _build_torch_device_options() -> tuple[NodeParameterUiEnumOption, ...]:
+    """返回当前 PyTorch runtime 实际可用的设备。"""
+
+    options = [
+        NodeParameterUiEnumOption(value="auto", label="Auto"),
+        NodeParameterUiEnumOption(value="cpu", label="CPU"),
+    ]
+    torch_module = _try_import_torch()
+    if torch_module is None:
+        return tuple(options)
+    try:
+        if not torch_module.cuda.is_available():
+            return tuple(options)
+        for device_index in range(int(torch_module.cuda.device_count())):
+            device_name = str(
+                torch_module.cuda.get_device_name(device_index) or ""
+            ).strip()
+            label = f"CUDA {device_index}"
+            if device_name:
+                label = f"{label} · {device_name}"
+            options.append(
+                NodeParameterUiEnumOption(
+                    value=f"cuda:{device_index}",
+                    label=label,
+                )
+            )
+    except Exception:
+        return tuple(options)
+    return tuple(options)
+
+
+def _build_torch_precision_options() -> tuple[NodeParameterUiEnumOption, ...]:
+    """返回当前 PyTorch runtime 可供节点选择的精度集合。"""
+
+    options = [
+        NodeParameterUiEnumOption(value="auto", label="Auto"),
+        NodeParameterUiEnumOption(value="fp32", label="FP32"),
+    ]
+    torch_module = _try_import_torch()
+    if torch_module is None:
+        return tuple(options)
+    try:
+        if not torch_module.cuda.is_available():
+            return tuple(options)
+        options.append(NodeParameterUiEnumOption(value="fp16", label="FP16"))
+        is_bf16_supported = getattr(torch_module.cuda, "is_bf16_supported", None)
+        if callable(is_bf16_supported) and bool(is_bf16_supported()):
+            options.append(NodeParameterUiEnumOption(value="bf16", label="BF16"))
+    except Exception:
+        return tuple(options)
+    return tuple(options)
+
+
+def _try_import_torch() -> object | None:
+    """在不把 Torch 变成 API 模块硬依赖的前提下读取运行时。"""
+
+    if util.find_spec("torch") is None:
+        return None
+    try:
+        import torch
+
+        return torch
+    except Exception:
+        return None
 
 
 def _read_parameter_ui_extension(payload: dict[str, object]) -> dict[str, object]:
@@ -266,7 +437,9 @@ def _read_parameter_ui_extension(payload: dict[str, object]) -> dict[str, object
     return dict(raw_extension) if isinstance(raw_extension, dict) else {}
 
 
-def _sanitize_parameter_schema_fragment(property_schema: dict[str, object]) -> dict[str, object]:
+def _sanitize_parameter_schema_fragment(
+    property_schema: dict[str, object],
+) -> dict[str, object]:
     """移除仅用于编辑器扩展的保留字段，保留原始 JSON Schema 片段。"""
 
     return {
@@ -300,7 +473,9 @@ def _read_optional_bool(value: object) -> bool | None:
 def _humanize_parameter_text(value: str) -> str:
     """把参数名或分组名转换为更适合界面展示的文本。"""
 
-    normalized_value = value.replace(".", " ").replace("-", " ").replace("_", " ").strip()
+    normalized_value = (
+        value.replace(".", " ").replace("-", " ").replace("_", " ").strip()
+    )
     if not normalized_value:
         return value
     return normalized_value.title()
@@ -322,13 +497,15 @@ def _build_workflow_palette_group_display_name(category: str) -> str:
     """把节点分类 id 转换为一级分类和二级分类组成的展示路径。"""
 
     category_tokens = [
-        token
-        for token in category.replace("/", ".").split(".")
-        if token
+        token for token in category.replace("/", ".").split(".") if token
     ]
     if not category_tokens:
         return category
-    if len(category_tokens) >= 3 and category_tokens[0].casefold() in {"core", "opencv"}:
+    if len(category_tokens) >= 3 and category_tokens[0].casefold() in {
+        "core",
+        "opencv",
+        "sam3",
+    }:
         category_tokens = category_tokens[1:]
     return " / ".join(_humanize_palette_token(token) for token in category_tokens)
 
@@ -384,15 +561,24 @@ def _filter_workflow_node_definitions(
 
     filtered_items: list[NodeDefinition] = []
     for node_definition in node_definitions:
-        if normalized_category is not None and not node_definition.category.casefold().startswith(normalized_category):
+        if (
+            normalized_category is not None
+            and not node_definition.category.casefold().startswith(normalized_category)
+        ):
             continue
         if normalized_node_pack_id is not None:
-            if node_definition.node_pack_id is None or node_definition.node_pack_id.casefold() != normalized_node_pack_id:
+            if (
+                node_definition.node_pack_id is None
+                or node_definition.node_pack_id.casefold() != normalized_node_pack_id
+            ):
                 continue
         if normalized_payload_type_id is not None:
             payload_type_ids = {
                 port.payload_type_id.casefold()
-                for port in (*node_definition.input_ports, *node_definition.output_ports)
+                for port in (
+                    *node_definition.input_ports,
+                    *node_definition.output_ports,
+                )
             }
             if normalized_payload_type_id not in payload_type_ids:
                 continue
@@ -403,7 +589,11 @@ def _filter_workflow_node_definitions(
                 node_definition.description,
                 node_definition.category,
             )
-            if not any(normalized_keyword in value.casefold() for value in searchable_values if value):
+            if not any(
+                normalized_keyword in value.casefold()
+                for value in searchable_values
+                if value
+            ):
                 continue
         filtered_items.append(node_definition)
     return filtered_items

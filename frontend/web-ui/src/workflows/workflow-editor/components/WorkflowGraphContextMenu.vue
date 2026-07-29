@@ -1,6 +1,10 @@
 <template>
   <div class="workflow-graph-context-menu" :style="menuStyle" @mousedown.stop @contextmenu.prevent>
-    <button type="button" class="workflow-graph-context-menu__submenu-trigger" @mouseenter="emit('open-node-picker')" @click="emit('open-node-picker')">
+    <button
+      type="button"
+      class="workflow-graph-context-menu__submenu-trigger"
+      @click="emit('open-node-picker')"
+    >
       <Plus :size="15" />
       {{ addNodeLabel }}
       <ChevronRight :size="14" />

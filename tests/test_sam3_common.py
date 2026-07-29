@@ -8,27 +8,73 @@ import pytest
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items,
     read_interactive_prompt_items,
     read_text_prompt_items,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
+    normalize_device,
+    normalize_precision,
     resolve_sam3_pretrained_variant,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.models.interactive import (
+    _resolve_runtime_torch_dtype as resolve_interactive_runtime_torch_dtype,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.models.semantic import (
+    _resolve_runtime_torch_dtype as resolve_semantic_runtime_torch_dtype,
 )
 
 
 def test_resolve_sam3_pretrained_variant_reads_local_manifest() -> None:
     """验证 SAM3 本地 manifest 可以被公共 helper 正确解析。"""
 
-    variant = resolve_sam3_pretrained_variant(model_scale="l")
+    variant = resolve_sam3_pretrained_variant(model_asset_id="sam3/default")
 
     assert variant.model_name == "sam3"
-    assert variant.model_scale == "l"
+    assert variant.model_asset_id == "sam3/default"
+    assert variant.architecture_id == "sam3.vision-1008.v1"
     assert variant.task_type == "segmentation"
-    assert variant.variant_name == "default"
     assert variant.checkpoint_path.name == "sam3.pt"
+    assert "image.interactive-segmentation" in variant.metadata["capabilities"]
+    assert variant.metadata["minimum_runtime"]["python"] == ">=3.12"
+
+
+@pytest.mark.parametrize("invalid_device", ["gpu", "npu", "cuda:-1", "cuda:all"])
+def test_normalize_device_rejects_unsupported_runtime_names(
+    invalid_device: str,
+) -> None:
+    """验证节点不会接受当前 runtime 不能解释的硬件名称。"""
+
+    with pytest.raises(InvalidRequestError, match="device"):
+        normalize_device(invalid_device)
+
+
+@pytest.mark.parametrize("invalid_precision", ["int8", "fp64", "half"])
+def test_normalize_precision_rejects_unsupported_values(
+    invalid_precision: str,
+) -> None:
+    """验证节点不会静默接受不支持的推理精度。"""
+
+    with pytest.raises(InvalidRequestError, match="precision"):
+        normalize_precision(invalid_precision)
+
+
+@pytest.mark.parametrize(
+    "resolver",
+    [
+        resolve_interactive_runtime_torch_dtype,
+        resolve_semantic_runtime_torch_dtype,
+    ],
+)
+def test_sam3_cpu_runtime_rejects_half_precision(resolver) -> None:
+    """验证两类 SAM3 runtime 都会拒绝 CPU half precision。"""
+
+    with pytest.raises(InvalidRequestError, match="CPU runtime"):
+        resolver(device_name="cpu", precision="fp16")
 
 
 def test_read_interactive_prompt_items_accepts_box_and_point() -> None:
@@ -94,10 +140,34 @@ def test_merge_text_prompt_items_supports_positive_and_negative_groups() -> None
 
     prompt_groups = merge_text_prompt_items(
         (
-            SimpleNamespace(prompt_id="prompt-1", text="person", display_name="person", negative=False, language=None),
-            SimpleNamespace(prompt_id="prompt-1", text="human", display_name="person", negative=False, language="en"),
-            SimpleNamespace(prompt_id="prompt-1", text="background", display_name="person", negative=True, language="en"),
-            SimpleNamespace(prompt_id="prompt-2", text="car", display_name="car", negative=False, language=None),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="person",
+                display_name="person",
+                negative=False,
+                language=None,
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="human",
+                display_name="person",
+                negative=False,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-1",
+                text="background",
+                display_name="person",
+                negative=True,
+                language="en",
+            ),
+            SimpleNamespace(
+                prompt_id="prompt-2",
+                text="car",
+                display_name="car",
+                negative=False,
+                language=None,
+            ),
         )
     )
 
@@ -139,7 +209,12 @@ def test_read_interactive_prompt_items_accepts_polygon() -> None:
 
     assert len(prompt_items) == 1
     assert prompt_items[0].prompt_kind == "polygon"
-    assert prompt_items[0].polygon_xy == ((4.0, 4.0), (28.0, 6.0), (24.0, 18.0), (8.0, 20.0))
+    assert prompt_items[0].polygon_xy == (
+        (4.0, 4.0),
+        (28.0, 6.0),
+        (24.0, 18.0),
+        (8.0, 20.0),
+    )
     assert prompt_items[0].prompt_mask is not None
     assert tuple(prompt_items[0].prompt_mask.shape) == (24, 32)
     assert int(prompt_items[0].prompt_mask.sum()) > 0
@@ -149,7 +224,9 @@ def test_read_interactive_prompt_items_accepts_mask() -> None:
     """验证当前阶段 mask prompt 会被规整为二值 prompt mask。"""
 
     image_registry = ExecutionImageRegistry()
-    mask_payload = _build_test_mask_payload(image_registry=image_registry, width=16, height=12)
+    mask_payload = _build_test_mask_payload(
+        image_registry=image_registry, width=16, height=12
+    )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-mask-common",
         node_definition=SimpleNamespace(node_type_id="custom.sam3.interactive-segment"),

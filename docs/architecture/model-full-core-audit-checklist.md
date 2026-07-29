@@ -313,7 +313,7 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 - `custom_nodes/sam3_segment_nodes/backend/runtime/access.py`：负责 custom node 侧 runtime cache key 与 session 获取；旧 `nodes/_project_native_runtime.py` 已删除。
 - `custom_nodes/sam3_segment_nodes/backend/runtime/tracking.py`：包含 video-interactive tracking mode、参数解析、跨帧 prompt 传播、memory / attention track state 更新和 tracking summary 构造。
 - `custom_nodes/sam3_segment_nodes/backend/payloads/types.py`：包含 text / interactive prompt、frame window 和预训练 variant 的 payload 类型。
-- `custom_nodes/sam3_segment_nodes/backend/payloads/pretrained.py`：包含 SAM3 预训练 manifest 定位、scale / device / precision 规范化和受控未实现错误。
+- `custom_nodes/sam3_segment_nodes/backend/payloads/pretrained.py`：包含 SAM3 预训练 manifest 扫描、`model_asset_id` 解析、checkpoint SHA-256 校验缓存以及 device / precision 规范化；SAM3 不使用虚假 Scale。
 - `custom_nodes/sam3_segment_nodes/backend/payloads/inputs.py`：包含 text / interactive prompt 解析、frame window 读取、图片读取、polygon / mask prompt 处理。
 - `custom_nodes/sam3_segment_nodes/backend/payloads/results.py`：包含 regions、tracks、summary 和 source image 摘要 payload 组装。
 - 旧 `custom_nodes/sam3_segment_nodes/backend/nodes/_common.py` 已删除，不再保留 re-export 壳。
@@ -325,6 +325,7 @@ custom_nodes/yoloe_open_vocab_nodes/backend/
 - custom node 侧 runtime session cache 已进入 `runtime/access.py`，不再放在 nodes 目录。
 - custom node 侧 payload 类型、prompt / frame window 输入读取、pretrained manifest 和 result / summary 构造已进入 `payloads/`，节点 adapter 不再依赖 `_common.py`。
 - video-interactive tracking 参数解析、prompt propagation、memory / attention state 更新和 tracking summary 已进入 `runtime/tracking.py`，节点 adapter 不再直接持有这批逻辑。
+- SAM3 的固定节点清单、资产规则、硬件支持矩阵和当前实施状态统一以 [sam3-custom-node-plan.md](sam3-custom-node-plan.md) 为准，后续扩展应先更新该文档。
 
 第一阶段目标结构：
 

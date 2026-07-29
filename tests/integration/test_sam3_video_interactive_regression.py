@@ -8,7 +8,9 @@ from types import SimpleNamespace
 from PIL import Image, ImageDraw
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segment
 
 
@@ -19,12 +21,25 @@ def test_sam3_video_interactive_long_window_large_displacement_smoke() -> None:
         frame_count=6,
         width=192,
         height=128,
-        object_box_sequence=((12, 20, 64, 88), (28, 20, 80, 88), (52, 20, 104, 88), (84, 20, 136, 88), (112, 20, 164, 88), (128, 20, 180, 88)),
+        object_box_sequence=(
+            (12, 20, 64, 88),
+            (28, 20, 80, 88),
+            (52, 20, 104, 88),
+            (84, 20, 136, 88),
+            (112, 20, 164, 88),
+            (128, 20, 180, 88),
+        ),
     )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-long-window-regression",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -60,8 +75,14 @@ def test_sam3_video_interactive_multi_object_smoke() -> None:
     )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-multi-object-regression",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -93,20 +114,31 @@ def test_sam3_video_interactive_multi_object_smoke() -> None:
     assert output["tracks"]["count"] >= 1
 
 
-def test_sam3_video_interactive_memory_attention_long_window_large_displacement_smoke() -> None:
+def test_sam3_video_interactive_memory_attention_long_window_large_displacement_smoke() -> (
+    None
+):
     """验证真实 project-native runtime 可以在 memory-attention 模式下处理长窗口和大位移。"""
 
     frame_window_payload, image_registry = _build_moving_object_frame_window_payload(
         frame_count=6,
         width=192,
         height=128,
-        object_box_sequence=((12, 20, 64, 88), (28, 20, 80, 88), (52, 20, 104, 88), (84, 20, 136, 88), (112, 20, 164, 88), (128, 20, 180, 88)),
+        object_box_sequence=(
+            (12, 20, 64, 88),
+            (28, 20, 80, 88),
+            (52, 20, 104, 88),
+            (84, 20, 136, 88),
+            (112, 20, 164, 88),
+            (128, 20, 180, 88),
+        ),
     )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-long-window-attention-regression",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "memory-attention-tracker",
@@ -146,9 +178,11 @@ def test_sam3_video_interactive_memory_attention_multi_object_smoke() -> None:
     )
     request = WorkflowNodeExecutionRequest(
         node_id="node-sam3-video-multi-object-attention-regression",
-        node_definition=SimpleNamespace(node_type_id=video_interactive_segment.NODE_TYPE_ID),
+        node_definition=SimpleNamespace(
+            node_type_id=video_interactive_segment.NODE_TYPE_ID
+        ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "memory-attention-tracker",
@@ -157,10 +191,30 @@ def test_sam3_video_interactive_memory_attention_multi_object_smoke() -> None:
             "frames": frame_window_payload,
             "prompts": {
                 "items": [
-                    {"prompt_id": "track-a", "prompt_kind": "box", "display_name": "Object A", "bbox_xyxy": [12, 18, 52, 74]},
-                    {"prompt_id": "track-b", "prompt_kind": "box", "display_name": "Object B", "bbox_xyxy": [118, 40, 170, 106]},
-                    {"prompt_id": "track-c", "prompt_kind": "box", "display_name": "Object C", "bbox_xyxy": [36, 86, 74, 126]},
-                    {"prompt_id": "track-d", "prompt_kind": "box", "display_name": "Object D", "bbox_xyxy": [148, 14, 198, 58]},
+                    {
+                        "prompt_id": "track-a",
+                        "prompt_kind": "box",
+                        "display_name": "Object A",
+                        "bbox_xyxy": [12, 18, 52, 74],
+                    },
+                    {
+                        "prompt_id": "track-b",
+                        "prompt_kind": "box",
+                        "display_name": "Object B",
+                        "bbox_xyxy": [118, 40, 170, 106],
+                    },
+                    {
+                        "prompt_id": "track-c",
+                        "prompt_kind": "box",
+                        "display_name": "Object C",
+                        "bbox_xyxy": [36, 86, 74, 126],
+                    },
+                    {
+                        "prompt_id": "track-d",
+                        "prompt_kind": "box",
+                        "display_name": "Object D",
+                        "bbox_xyxy": [148, 14, 198, 58],
+                    },
                 ]
             },
         },
@@ -237,8 +291,18 @@ def _build_two_object_frame_window_payload(
 
     image_registry = ExecutionImageRegistry()
     frame_items: list[dict[str, object]] = []
-    object_a_sequence = ((12, 18, 52, 74), (24, 20, 64, 76), (36, 24, 76, 80), (48, 28, 88, 84))
-    object_b_sequence = ((118, 40, 170, 106), (110, 34, 162, 100), (102, 28, 154, 94), (94, 24, 146, 90))
+    object_a_sequence = (
+        (12, 18, 52, 74),
+        (24, 20, 64, 76),
+        (36, 24, 76, 80),
+        (48, 28, 88, 84),
+    )
+    object_b_sequence = (
+        (118, 40, 170, 106),
+        (110, 34, 162, 100),
+        (102, 28, 154, 94),
+        (94, 24, 146, 90),
+    )
     for frame_index in range(frame_count):
         frame_bytes = _build_frame_png_bytes(
             width=width,
@@ -294,19 +358,59 @@ def _build_four_object_frame_window_payload(
 
     image_registry = ExecutionImageRegistry()
     frame_items: list[dict[str, object]] = []
-    object_a_sequence = ((12, 18, 52, 74), (22, 20, 62, 76), (34, 24, 74, 80), (44, 28, 84, 84), (56, 30, 96, 86))
-    object_b_sequence = ((118, 40, 170, 106), (110, 34, 162, 100), (102, 28, 154, 94), (94, 24, 146, 90), (86, 20, 138, 86))
-    object_c_sequence = ((36, 86, 74, 126), (46, 82, 84, 122), (58, 78, 96, 118), (70, 74, 108, 114), (82, 70, 120, 110))
-    object_d_sequence = ((148, 14, 198, 58), (140, 20, 190, 64), (132, 26, 182, 70), (124, 30, 174, 74), (118, 36, 168, 80))
+    object_a_sequence = (
+        (12, 18, 52, 74),
+        (22, 20, 62, 76),
+        (34, 24, 74, 80),
+        (44, 28, 84, 84),
+        (56, 30, 96, 86),
+    )
+    object_b_sequence = (
+        (118, 40, 170, 106),
+        (110, 34, 162, 100),
+        (102, 28, 154, 94),
+        (94, 24, 146, 90),
+        (86, 20, 138, 86),
+    )
+    object_c_sequence = (
+        (36, 86, 74, 126),
+        (46, 82, 84, 122),
+        (58, 78, 96, 118),
+        (70, 74, 108, 114),
+        (82, 70, 120, 110),
+    )
+    object_d_sequence = (
+        (148, 14, 198, 58),
+        (140, 20, 190, 64),
+        (132, 26, 182, 70),
+        (124, 30, 174, 74),
+        (118, 36, 168, 80),
+    )
     for frame_index in range(frame_count):
         frame_bytes = _build_frame_png_bytes(
             width=width,
             height=height,
             rectangles=(
-                {"bbox": object_a_sequence[frame_index], "fill": (60, 60, 60), "outline": (255, 120, 0)},
-                {"bbox": object_b_sequence[frame_index], "fill": (90, 90, 90), "outline": (0, 220, 120)},
-                {"bbox": object_c_sequence[frame_index], "fill": (80, 80, 80), "outline": (90, 40, 255)},
-                {"bbox": object_d_sequence[frame_index], "fill": (70, 70, 70), "outline": (255, 70, 120)},
+                {
+                    "bbox": object_a_sequence[frame_index],
+                    "fill": (60, 60, 60),
+                    "outline": (255, 120, 0),
+                },
+                {
+                    "bbox": object_b_sequence[frame_index],
+                    "fill": (90, 90, 90),
+                    "outline": (0, 220, 120),
+                },
+                {
+                    "bbox": object_c_sequence[frame_index],
+                    "fill": (80, 80, 80),
+                    "outline": (90, 40, 255),
+                },
+                {
+                    "bbox": object_d_sequence[frame_index],
+                    "fill": (70, 70, 70),
+                    "outline": (255, 70, 120),
+                },
             ),
         )
         registered_image = image_registry.register_image_bytes(

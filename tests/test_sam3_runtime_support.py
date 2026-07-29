@@ -38,7 +38,6 @@ SAM3_CHECKPOINT_PATH = (
     / "pretrained"
     / "sam3"
     / "segmentation"
-    / "l"
     / "default"
     / "checkpoints"
     / "sam3.pt"

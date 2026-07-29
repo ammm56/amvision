@@ -62,8 +62,10 @@ def test_sam3_resolve_pretrained_variant_rejects_missing_manifest(monkeypatch) -
         / "_missing-sam3",
     )
 
-    with pytest.raises(InvalidRequestError, match="manifest"):
-        sam3_pretrained.resolve_sam3_pretrained_variant(model_scale="l")
+    sam3_pretrained.list_sam3_pretrained_variants.cache_clear()
+    with pytest.raises(InvalidRequestError, match="模型资产"):
+        sam3_pretrained.resolve_sam3_pretrained_variant(model_asset_id="sam3/default")
+    sam3_pretrained.list_sam3_pretrained_variants.cache_clear()
 
 
 def test_yoloe_text_prompt_items_reject_empty_items() -> None:
@@ -181,12 +183,12 @@ def test_sam3_semantic_runtime_session_reuses_cpu_cache() -> None:
     """验证 SAM3 semantic runtime 在 CPU 上会复用同一会话。"""
 
     session_a = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )
     session_b = get_or_create_sam3_semantic_runtime_session(
-        model_scale="l",
+        model_asset_id="sam3/default",
         device="cpu",
         precision="fp32",
     )

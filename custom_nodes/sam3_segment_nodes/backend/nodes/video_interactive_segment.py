@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     read_frame_window_items,
     read_interactive_prompt_items,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     normalize_device,
-    normalize_model_scale,
+    normalize_model_asset_id,
     normalize_precision,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.postprocess import (
+    resolve_sam3_postprocess_options,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.results import (
     build_tracks_payload,
@@ -49,11 +54,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         source_image_bytes=first_frame.image_bytes,
     )
     tracking_options = resolve_video_tracking_options(request.parameters)
-    model_scale = normalize_model_scale(request.parameters.get("model_scale"))
+    model_asset_id = normalize_model_asset_id(request.parameters.get("model_asset_id"))
     device = normalize_device(request.parameters.get("device"))
     precision = normalize_precision(request.parameters.get("precision"))
+    postprocess_options = resolve_sam3_postprocess_options(request.parameters)
     runtime_session = get_or_create_sam3_interactive_runtime_session(
-        model_scale=model_scale,
+        model_asset_id=model_asset_id,
         device=device,
         precision=precision,
     )
@@ -70,7 +76,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             image_bytes=frame_item.image_bytes,
             image_payload=frame_item.image_payload,
         )
-        active_prompt_items, propagated_prompt_ids, frame_similarity_peaks, frame_attention_peaks = build_frame_prompt_items(
+        (
+            active_prompt_items,
+            propagated_prompt_ids,
+            frame_similarity_peaks,
+            frame_attention_peaks,
+        ) = build_frame_prompt_items(
             base_prompt_items=prompt_items,
             tracked_region_state=tracked_region_state,
             tracked_memory_state=tracked_memory_state,
@@ -86,6 +97,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         prediction = runtime_session.predict_from_frame_context(
             frame_context=frame_context,
             prompt_items=active_prompt_items,
+            mask_threshold=postprocess_options.mask_threshold,
+            stability_offset=postprocess_options.stability_offset,
+            min_component_area=postprocess_options.min_component_area,
+            polygon_simplify_ratio=postprocess_options.polygon_simplify_ratio,
         )
         if tracking_options.tracking_mode == TRACKING_MODE_MEMORY:
             update_memory_track_states(
@@ -130,7 +145,11 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         )
 
     frame_predictions_tuple = tuple(frame_predictions)
-    source_video = frame_window_payload.get("source_video") if isinstance(frame_window_payload, dict) else {}
+    source_video = (
+        frame_window_payload.get("source_video")
+        if isinstance(frame_window_payload, dict)
+        else {}
+    )
     return {
         "tracks": build_tracks_payload(
             request,

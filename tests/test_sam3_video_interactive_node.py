@@ -23,7 +23,7 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
         def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
-        def predict_from_frame_context(self, *, frame_context, prompt_items):
+        def predict_from_frame_context(self, *, frame_context, prompt_items, **_):
             captured["predict_calls"] = int(captured["predict_calls"]) + 1
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
@@ -54,8 +54,8 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
                 ),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -81,7 +81,11 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
         node_definition=SimpleNamespace(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -133,7 +137,11 @@ def test_video_interactive_segment_runs_project_native_smoke() -> None:
         node_definition=SimpleNamespace(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -171,7 +179,7 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
         def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
-        def predict_from_frame_context(self, *, frame_context, prompt_items):
+        def predict_from_frame_context(self, *, frame_context, prompt_items, **_):
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
             captured["prompt_history"] = cast_history
@@ -201,8 +209,8 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
                 ),
                 summary={
                     "project_native": True,
-                    "model_scale": "l",
-                    "variant_name": "default",
+                    "model_asset_id": "sam3/default",
+                    "architecture_id": "sam3.vision-1008.v1",
                     "checkpoint_path": "fake-sam3.pt",
                     "device": "cpu",
                     "precision": "fp32",
@@ -229,7 +237,7 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "shared-prompts-across-window",
@@ -270,7 +278,7 @@ def test_video_interactive_segment_memory_mode_supports_longer_window(
         def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=96, height=72)
 
-        def predict_from_frame_context(self, *, frame_context, prompt_items):
+        def predict_from_frame_context(self, *, frame_context, prompt_items, **_):
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
             captured["prompt_history"] = cast_history
@@ -298,7 +306,11 @@ def test_video_interactive_segment_memory_mode_supports_longer_window(
         node_definition=SimpleNamespace(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -338,7 +350,7 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(
         def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=120, height=80)
 
-        def predict_from_frame_context(self, *, frame_context, prompt_items):
+        def predict_from_frame_context(self, *, frame_context, prompt_items, **_):
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
             captured["prompt_history"] = cast_history
@@ -370,7 +382,11 @@ def test_video_interactive_segment_memory_mode_supports_multiple_objects(
         node_definition=SimpleNamespace(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
-        parameters={"model_scale": "l", "device": "cpu", "precision": "fp32"},
+        parameters={
+            "model_asset_id": "sam3/default",
+            "device": "cpu",
+            "precision": "fp32",
+        },
         input_values={
             "frames": frame_window_payload,
             "prompts": {
@@ -420,7 +436,7 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(
         def prepare_frame_context(self, *, image_bytes: bytes, image_payload):
             return _build_fake_frame_context(width=104, height=76)
 
-        def predict_from_frame_context(self, *, frame_context, prompt_items):
+        def predict_from_frame_context(self, *, frame_context, prompt_items, **_):
             cast_history = list(captured["prompt_history"])
             cast_history.append(prompt_items)
             captured["prompt_history"] = cast_history
@@ -449,7 +465,7 @@ def test_video_interactive_segment_supports_explicit_memory_attention_mode(
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "memory-attention-tracker",
@@ -508,7 +524,7 @@ def test_video_interactive_segment_memory_attention_runs_project_native_smoke() 
             node_type_id=video_interactive_segment.NODE_TYPE_ID
         ),
         parameters={
-            "model_scale": "l",
+            "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
             "tracking_mode": "memory-attention-tracker",
@@ -578,8 +594,8 @@ def _build_fake_summary(
 
     return {
         "project_native": True,
-        "model_scale": "l",
-        "variant_name": "default",
+        "model_asset_id": "sam3/default",
+        "architecture_id": "sam3.vision-1008.v1",
         "checkpoint_path": "fake-sam3.pt",
         "device": "cpu",
         "precision": "fp32",

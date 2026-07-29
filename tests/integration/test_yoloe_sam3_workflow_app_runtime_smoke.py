@@ -26,8 +26,12 @@ from backend.nodes.core_nodes.video.io.video_load_local import _video_load_local
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -46,7 +50,9 @@ _YOLOE_MANIFEST_PATH = _CUSTOM_NODES_ROOT / "yoloe_open_vocab_nodes" / "manifest
 _SAM3_MANIFEST_PATH = _CUSTOM_NODES_ROOT / "sam3_segment_nodes" / "manifest.json"
 
 
-def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOE prompt-free 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
     with _temporary_pack_default_enabled(
@@ -93,7 +99,10 @@ def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path
                     application=_build_yoloe_prompt_free_application(),
                 )
 
-                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-prompt-free-smoke.png")
+                image_object_key = _write_test_image(
+                    dataset_storage,
+                    object_key="projects/project-1/inputs/yoloe-prompt-free-smoke.png",
+                )
                 workflow_runtime_id = _create_and_start_runtime(
                     client=client,
                     headers=headers,
@@ -106,6 +115,7 @@ def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path
                 )
                 invoke_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
                     headers=headers,
                     json={
                         "input_bindings": {
@@ -137,7 +147,9 @@ def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path
     assert payload["state"] == "succeeded"
     assert set(payload["outputs"]) == {"detections", "regions", "summary"}
     assert isinstance(payload["outputs"]["detections"]["items"], list)
-    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+    assert payload["outputs"]["regions"]["count"] == len(
+        payload["outputs"]["regions"]["items"]
+    )
 
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
@@ -147,7 +159,9 @@ def test_yoloe_prompt_free_workflow_app_runtime_controlled_enable_smoke(tmp_path
     assert summary_payload["vocabulary_size"] > 1000
 
 
-def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOE text-prompt 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
     with _temporary_pack_default_enabled(
@@ -194,7 +208,10 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
                     application=_build_yoloe_text_prompt_application(),
                 )
 
-                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-smoke.png")
+                image_object_key = _write_test_image(
+                    dataset_storage,
+                    object_key="projects/project-1/inputs/yoloe-smoke.png",
+                )
                 workflow_runtime_id = _create_and_start_runtime(
                     client=client,
                     headers=headers,
@@ -207,6 +224,7 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
                 )
                 invoke_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
                     headers=headers,
                     json={
                         "input_bindings": {
@@ -239,7 +257,9 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
     assert payload["state"] == "succeeded"
     assert set(payload["outputs"]) == {"detections", "regions", "summary"}
     assert isinstance(payload["outputs"]["detections"]["items"], list)
-    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+    assert payload["outputs"]["regions"]["count"] == len(
+        payload["outputs"]["regions"]["items"]
+    )
 
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
@@ -249,7 +269,9 @@ def test_yoloe_text_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path
     assert summary_payload["negative_prompt_count"] == 2
 
 
-def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOE visual-prompt 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
     with _temporary_pack_default_enabled(
@@ -296,8 +318,14 @@ def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_pa
                     application=_build_yoloe_visual_prompt_application(),
                 )
 
-                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-visual-source-smoke.png")
-                prompt_image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/yoloe-visual-prompt-smoke.png")
+                image_object_key = _write_test_image(
+                    dataset_storage,
+                    object_key="projects/project-1/inputs/yoloe-visual-source-smoke.png",
+                )
+                prompt_image_object_key = _write_test_image(
+                    dataset_storage,
+                    object_key="projects/project-1/inputs/yoloe-visual-prompt-smoke.png",
+                )
                 workflow_runtime_id = _create_and_start_runtime(
                     client=client,
                     headers=headers,
@@ -310,6 +338,7 @@ def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_pa
                 )
                 invoke_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
                     headers=headers,
                     json={
                         "input_bindings": {
@@ -346,7 +375,9 @@ def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_pa
     assert payload["state"] == "succeeded"
     assert set(payload["outputs"]) == {"detections", "regions", "summary"}
     assert isinstance(payload["outputs"]["detections"]["items"], list)
-    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+    assert payload["outputs"]["regions"]["count"] == len(
+        payload["outputs"]["regions"]["items"]
+    )
 
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
@@ -360,7 +391,9 @@ def test_yoloe_visual_prompt_workflow_app_runtime_controlled_enable_smoke(tmp_pa
     assert summary_payload["prompt_kind_counts"] == {"box": 1}
 
 
-def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 SAM3 semantic-segment 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
     with _temporary_pack_default_enabled(
@@ -407,7 +440,10 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
                     application=_build_sam3_semantic_application(),
                 )
 
-                image_object_key = _write_test_image(dataset_storage, object_key="projects/project-1/inputs/sam3-smoke.png")
+                image_object_key = _write_test_image(
+                    dataset_storage,
+                    object_key="projects/project-1/inputs/sam3-smoke.png",
+                )
                 workflow_runtime_id = _create_and_start_runtime(
                     client=client,
                     headers=headers,
@@ -420,6 +456,7 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
                 )
                 invoke_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
                     headers=headers,
                     json={
                         "input_bindings": {
@@ -449,9 +486,12 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
     assert stop_response.json()["observed_state"] == "stopped"
 
     payload = invoke_response.json()
+    assert "state" in payload, payload
     assert payload["state"] == "succeeded"
     assert set(payload["outputs"]) == {"regions", "summary"}
-    assert payload["outputs"]["regions"]["count"] == len(payload["outputs"]["regions"]["items"])
+    assert payload["outputs"]["regions"]["count"] == len(
+        payload["outputs"]["regions"]["items"]
+    )
 
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
@@ -461,7 +501,9 @@ def test_sam3_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Pa
     assert summary_payload["negative_prompt_count"] == 2
 
 
-def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_path: Path) -> None:
+def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(
+    tmp_path: Path,
+) -> None:
     """验证 SAM3 video-semantic-segment 可以按受控启用路径进入 WorkflowAppRuntime。"""
 
     with _temporary_pack_default_enabled(
@@ -475,7 +517,9 @@ def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_pa
             database_name="workflow-app-runtime-sam3-video-semantic-smoke.db",
         )
         headers = build_test_headers(scopes="workflows:read,workflows:write")
-        local_video_path = _write_test_video_file(tmp_path / "sam3-video-semantic-smoke.avi")
+        local_video_path = _write_test_video_file(
+            tmp_path / "sam3-video-semantic-smoke.avi"
+        )
         request_video = _build_local_video_payload_for_workflow(local_video_path)
 
         try:
@@ -522,6 +566,7 @@ def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_pa
                 )
                 invoke_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
                     headers=headers,
                     json={
                         "input_bindings": {
@@ -548,9 +593,12 @@ def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(tmp_pa
     assert stop_response.json()["observed_state"] == "stopped"
 
     payload = invoke_response.json()
+    assert "state" in payload, payload
     assert payload["state"] == "succeeded"
     assert set(payload["outputs"]) == {"tracks", "summary"}
-    assert payload["outputs"]["tracks"]["count"] == len(payload["outputs"]["tracks"]["items"])
+    assert payload["outputs"]["tracks"]["count"] == len(
+        payload["outputs"]["tracks"]["items"]
+    )
 
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
@@ -576,9 +624,13 @@ def _create_runtime_api_client(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(_CUSTOM_NODES_ROOT)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(_CUSTOM_NODES_ROOT)
+            ),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
@@ -605,7 +657,7 @@ def _create_and_start_runtime(
             "project_id": _PROJECT_ID,
             "application_id": application_id,
             "display_name": display_name,
-            "request_timeout_seconds": 120,
+            "request_timeout_seconds": 300,
         },
     )
     assert create_response.status_code == 201
@@ -631,7 +683,9 @@ def _assert_pack_catalog_disabled(
         headers=headers,
     )
     assert status_response.status_code == 200
-    status_item = _find_node_pack_status_item(status_response.json(), node_pack_id=node_pack_id)
+    status_item = _find_node_pack_status_item(
+        status_response.json(), node_pack_id=node_pack_id
+    )
     assert status_item["enabled"] is False
 
     catalog_response = client.get(
@@ -656,7 +710,9 @@ def _enable_pack_and_assert_loaded(
         headers=headers,
     )
     assert response.status_code == 200
-    status_item = _find_node_pack_status_item(response.json(), node_pack_id=node_pack_id)
+    status_item = _find_node_pack_status_item(
+        response.json(), node_pack_id=node_pack_id
+    )
     assert status_item["enabled"] is True
     assert status_item["state"] == "loaded"
 
@@ -1061,7 +1117,7 @@ def _build_sam3_semantic_template() -> WorkflowGraphTemplate:
                 node_id="sam3_semantic",
                 node_type_id="custom.sam3.semantic-segment",
                 parameters={
-                    "model_scale": "l",
+                    "model_asset_id": "sam3/default",
                     "device": "cpu",
                     "precision": "fp32",
                 },
@@ -1171,7 +1227,7 @@ def _build_sam3_video_semantic_template() -> WorkflowGraphTemplate:
                 node_id="sam3_video_semantic",
                 node_type_id="custom.sam3.video-semantic-segment",
                 parameters={
-                    "model_scale": "l",
+                    "model_asset_id": "sam3/default",
                     "device": "cpu",
                     "precision": "fp32",
                 },
@@ -1319,7 +1375,9 @@ def _write_test_image(dataset_storage: object, *, object_key: str) -> str:
     return object_key
 
 
-def _build_local_video_payload_for_workflow(local_video_path: Path) -> dict[str, object]:
+def _build_local_video_payload_for_workflow(
+    local_video_path: Path,
+) -> dict[str, object]:
     """通过 core 节点构造可直接作为 workflow 输入的视频 payload。"""
 
     output = _video_load_local_handler(
@@ -1334,7 +1392,9 @@ def _build_local_video_payload_for_workflow(local_video_path: Path) -> dict[str,
     return dict(output["video"])
 
 
-def _write_test_video_file(video_path: Path, *, frame_count: int = 4, width: int = 160, height: int = 112) -> Path:
+def _write_test_video_file(
+    video_path: Path, *, frame_count: int = 4, width: int = 160, height: int = 112
+) -> Path:
     """写入一段本地测试视频。"""
 
     video_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1349,8 +1409,16 @@ def _write_test_video_file(video_path: Path, *, frame_count: int = 4, width: int
     for frame_index in range(frame_count):
         frame = np.full((height, width, 3), 235, dtype=np.uint8)
         x_offset = 12 + frame_index * 16
-        cv2.rectangle(frame, (x_offset, 20), (x_offset + 42, 82), (30, 30, 30), thickness=-1)
-        cv2.circle(frame, (width - 32 - frame_index * 6, 48 + frame_index * 4), 14, (50, 160, 70), thickness=-1)
+        cv2.rectangle(
+            frame, (x_offset, 20), (x_offset + 42, 82), (30, 30, 30), thickness=-1
+        )
+        cv2.circle(
+            frame,
+            (width - 32 - frame_index * 6, 48 + frame_index * 4),
+            14,
+            (50, 160, 70),
+            thickness=-1,
+        )
         writer.write(frame)
     writer.release()
     return video_path.resolve()
@@ -1385,7 +1453,9 @@ def _temporary_pack_default_enabled(
             payload = json.loads(original_texts[manifest_path])
             payload["enabledByDefault"] = enabled
             manifest_path.write_bytes(
-                (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+                (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode(
+                    "utf-8"
+                )
             )
         yield
     finally:

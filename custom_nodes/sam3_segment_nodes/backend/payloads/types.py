@@ -82,11 +82,12 @@ class Sam3FrameWindowItem:
 class Sam3PretrainedVariant:
     """描述一个 SAM3 预训练权重目录。"""
 
-    model_scale: str
-    variant_name: str
+    model_asset_id: str
+    architecture_id: str
     manifest_path: Path
     checkpoint_path: Path
     model_name: str
+    model_version: str
     task_type: str
     metadata: dict[str, object]
 

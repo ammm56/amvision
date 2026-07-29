@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,7 +17,10 @@ from backend.service.application.runtime.support.detection import (
     resolve_execution_device_name,
 )
 
-from ..checkpoint.loader import build_sam3_semantic_state_dict, load_sam3_checkpoint_branches
+from ..checkpoint.loader import (
+    build_sam3_semantic_state_dict,
+    load_sam3_checkpoint_branches,
+)
 from ..postprocess.masks import (
     DEFAULT_MASK_THRESHOLD,
     DEFAULT_POLYGON_SIMPLIFY_RATIO,
@@ -25,7 +29,12 @@ from ..postprocess.masks import (
     postprocess_sam3_interactive_masks,
 )
 from ..preprocess.image import PreparedSam3Image, preprocess_sam3_image
-from ..nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
+from ..nn.vision_backbone import (
+    PositionEmbeddingSine,
+    SAM3VisualBackbone,
+    Sam3DualViTDetNeck,
+    ViT,
+)
 
 
 @dataclass(frozen=True)
@@ -46,12 +55,18 @@ class Sam3TextResidualAttentionBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_model)
         mlp_width = int(d_model * mlp_ratio)
         self.mlp = nn.Sequential(
-            nn.Linear(d_model, mlp_width),
-            nn.GELU(),
-            nn.Linear(mlp_width, d_model),
+            OrderedDict(
+                (
+                    ("c_fc", nn.Linear(d_model, mlp_width)),
+                    ("gelu", nn.GELU()),
+                    ("c_proj", nn.Linear(mlp_width, d_model)),
+                )
+            )
         )
 
-    def forward(self, hidden_states: torch.Tensor, attn_mask: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, attn_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """执行一层文本 transformer block。"""
 
         normalized_hidden_states = self.ln_1(hidden_states)
@@ -94,8 +109,10 @@ class Sam3TextTransformer(nn.Module):
             ]
         )
         self.ln_final = nn.LayerNorm(width)
-        self.text_projection = nn.Linear(width, width)
-        self.register_buffer("_causal_mask", self._build_causal_mask(), persistent=False)
+        self.text_projection = nn.Parameter(torch.empty(width, 512))
+        self.register_buffer(
+            "_causal_mask", self._build_causal_mask(), persistent=False
+        )
 
     def _build_causal_mask(self) -> torch.Tensor:
         """构造因果 mask。"""
@@ -119,7 +136,7 @@ class Sam3TextTransformer(nn.Module):
             torch.arange(hidden_states.shape[0], device=hidden_states.device),
             token_tensor.argmax(dim=-1),
         ]
-        pooled_hidden_states = self.text_projection(pooled_hidden_states)
+        pooled_hidden_states = pooled_hidden_states @ self.text_projection
         return pooled_hidden_states, hidden_states
 
 
@@ -141,20 +158,30 @@ class Sam3SemanticTextEncoder(nn.Module):
     def forward(self, texts: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
         """编码文本并返回 attention mask 与 resized memory。"""
 
-        tokenized = self.tokenizer(texts, context_length=self.context_length).to(self.resizer.weight.device)
+        tokenized = self.tokenizer(texts, context_length=self.context_length).to(
+            self.resizer.weight.device
+        )
         text_attention_mask = tokenized == 0
         _pooled_hidden_states, token_level_hidden_states = self.encoder(tokenized)
-        token_level_hidden_states = self.resizer(token_level_hidden_states).transpose(0, 1).contiguous()
+        token_level_hidden_states = (
+            self.resizer(token_level_hidden_states).transpose(0, 1).contiguous()
+        )
         return text_attention_mask, token_level_hidden_states
 
 
 class Sam3SemanticEncoderLayer(nn.Module):
     """SAM3 detector encoder 的最小 project-native 实现。"""
 
-    def __init__(self, *, d_model: int = 256, dim_feedforward: int = 2048, dropout: float = 0.1) -> None:
+    def __init__(
+        self, *, d_model: int = 256, dim_feedforward: int = 2048, dropout: float = 0.1
+    ) -> None:
         super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, 8, dropout=dropout, batch_first=True)
-        self.cross_attn_image = nn.MultiheadAttention(d_model, 8, dropout=dropout, batch_first=True)
+        self.self_attn = nn.MultiheadAttention(
+            d_model, 8, dropout=dropout, batch_first=True
+        )
+        self.cross_attn_image = nn.MultiheadAttention(
+            d_model, 8, dropout=dropout, batch_first=True
+        )
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.norm1 = nn.LayerNorm(d_model)
@@ -196,7 +223,9 @@ class Sam3SemanticEncoderLayer(nn.Module):
         image_tokens = image_tokens + self.dropout2(cross_attended_image_tokens)
 
         normalized_feedforward_tokens = self.norm3(image_tokens)
-        feedforward_tokens = self.linear2(self.dropout(self.activation(self.linear1(normalized_feedforward_tokens))))
+        feedforward_tokens = self.linear2(
+            self.dropout(self.activation(self.linear1(normalized_feedforward_tokens)))
+        )
         image_tokens = image_tokens + self.dropout3(feedforward_tokens)
         return image_tokens
 
@@ -206,8 +235,9 @@ class Sam3SemanticEncoderFusion(nn.Module):
 
     def __init__(self, *, d_model: int = 256, num_layers: int = 6) -> None:
         super().__init__()
-        self.layers = nn.ModuleList([Sam3SemanticEncoderLayer(d_model=d_model) for _ in range(num_layers)])
-        self.text_pooling_proj = nn.Linear(d_model, d_model)
+        self.layers = nn.ModuleList(
+            [Sam3SemanticEncoderLayer(d_model=d_model) for _ in range(num_layers)]
+        )
 
     def forward(
         self,
@@ -223,9 +253,6 @@ class Sam3SemanticEncoderFusion(nn.Module):
         pos_embed = image_pos_embeds[-1]
         batch_size, channel_count, height, width = feature_map.shape
 
-        pooled_prompt = self._pool_prompt(prompt_tokens, prompt_padding_mask)
-        feature_map = feature_map + self.text_pooling_proj(pooled_prompt)[:, :, None, None]
-
         image_tokens = feature_map.flatten(2).transpose(1, 2).contiguous()
         image_pos = pos_embed.flatten(2).transpose(1, 2).contiguous()
         prompt_tokens_batch_first = prompt_tokens.transpose(0, 1).contiguous()
@@ -239,19 +266,13 @@ class Sam3SemanticEncoderFusion(nn.Module):
         assert image_tokens.shape == (batch_size, height * width, channel_count)
         return image_tokens.transpose(0, 1).contiguous()
 
-    @staticmethod
-    def _pool_prompt(prompt_tokens: torch.Tensor, prompt_padding_mask: torch.Tensor) -> torch.Tensor:
-        """对有效 prompt token 做平均池化。"""
-
-        valid_mask = (~prompt_padding_mask).to(prompt_tokens.dtype).transpose(0, 1)[..., None]
-        valid_count = torch.clamp(valid_mask.sum(dim=0), min=1.0)
-        return (prompt_tokens * valid_mask).sum(dim=0) / valid_count
-
 
 class Sam3SemanticPixelDecoder(nn.Module):
     """SAM3 segmentation head 使用的 pixel decoder。"""
 
-    def __init__(self, *, hidden_dim: int = 256, num_upsampling_stages: int = 3) -> None:
+    def __init__(
+        self, *, hidden_dim: int = 256, num_upsampling_stages: int = 3
+    ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         conv_layers: list[nn.Module] = []
@@ -283,8 +304,12 @@ class Sam3SemanticSegmentationHead(nn.Module):
 
     def __init__(self, *, hidden_dim: int = 256) -> None:
         super().__init__()
-        self.pixel_decoder = Sam3SemanticPixelDecoder(hidden_dim=hidden_dim, num_upsampling_stages=3)
-        self.cross_attend_prompt = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=8, dropout=0.0)
+        self.pixel_decoder = Sam3SemanticPixelDecoder(
+            hidden_dim=hidden_dim, num_upsampling_stages=3
+        )
+        self.cross_attend_prompt = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=8, dropout=0.0
+        )
         self.cross_attn_norm = nn.LayerNorm(hidden_dim)
         self.semantic_seg_head = nn.Conv2d(self.pixel_decoder.out_dim, 1, kernel_size=1)
 
@@ -390,8 +415,14 @@ class Sam3SemanticImageModel(nn.Module):
         """输出 prompt-conditioned semantic mask logits。"""
 
         prompt_count = int(prompt_tokens.shape[1])
-        backbone_feats = [feature.expand(prompt_count, -1, -1, -1).contiguous() for feature in backbone_out["backbone_fpn"]]
-        image_pos_embeds = [position.expand(prompt_count, -1, -1, -1).contiguous() for position in backbone_out["vision_pos_enc"]]
+        backbone_feats = [
+            feature.expand(prompt_count, -1, -1, -1).contiguous()
+            for feature in backbone_out["backbone_fpn"]
+        ]
+        image_pos_embeds = [
+            position.expand(prompt_count, -1, -1, -1).contiguous()
+            for position in backbone_out["vision_pos_enc"]
+        ]
         encoder_hidden_states = self.encoder(
             image_feature_maps=backbone_feats,
             image_pos_embeds=image_pos_embeds,
@@ -414,14 +445,88 @@ class Sam3SemanticImageModel(nn.Module):
 def _resolve_runtime_torch_dtype(*, device_name: str, precision: str) -> torch.dtype:
     """把节点参数 precision 解析成实际运行 dtype。"""
 
-    normalized_precision = str(precision or "fp32").strip().lower()
+    normalized_precision = str(precision or "auto").strip().lower()
     if not device_name.startswith("cuda"):
+        if normalized_precision not in {"auto", "fp32"}:
+            raise InvalidRequestError(
+                "SAM3 CPU runtime 只支持 fp32",
+                details={"device": device_name, "precision": normalized_precision},
+            )
         return torch.float32
+    if normalized_precision == "auto":
+        return torch.float16
     if normalized_precision == "fp16":
         return torch.float16
     if normalized_precision == "bf16":
+        is_bf16_supported = getattr(torch.cuda, "is_bf16_supported", None)
+        if not callable(is_bf16_supported) or not bool(is_bf16_supported()):
+            raise InvalidRequestError(
+                "当前 CUDA device 不支持 bf16",
+                details={"device": device_name, "precision": normalized_precision},
+            )
         return torch.bfloat16
     return torch.float32
+
+
+def _resolve_requested_device_name(requested_device_name: str) -> str:
+    """把 auto 解析成当前 PyTorch runtime 的最佳可用设备。"""
+
+    if requested_device_name == "auto":
+        return "cuda:0" if torch.cuda.is_available() else "cpu"
+    return requested_device_name
+
+
+def _load_compatible_state_dict(
+    model: nn.Module,
+    source_state_dict: dict[str, torch.Tensor],
+    *,
+    checkpoint_path: Path,
+) -> dict[str, object]:
+    """只加载名称和 shape 完全匹配的参数，并拒绝未初始化模型参数。"""
+
+    model_state_dict = model.state_dict()
+    shape_mismatches = {
+        key: {
+            "expected": list(model_state_dict[key].shape),
+            "actual": list(value.shape),
+        }
+        for key, value in source_state_dict.items()
+        if key in model_state_dict
+        and tuple(model_state_dict[key].shape) != tuple(value.shape)
+    }
+    if shape_mismatches:
+        raise InvalidRequestError(
+            "SAM3 checkpoint 与 semantic architecture 的 tensor shape 不兼容",
+            details={
+                "checkpoint_path": str(checkpoint_path),
+                "shape_mismatches": shape_mismatches,
+            },
+        )
+    compatible_state_dict = {
+        key: value
+        for key, value in source_state_dict.items()
+        if key in model_state_dict
+        and tuple(model_state_dict[key].shape) == tuple(value.shape)
+    }
+    incompatible_keys = model.load_state_dict(compatible_state_dict, strict=False)
+    missing_parameter_keys = sorted(
+        key
+        for key in incompatible_keys.missing_keys
+        if key in dict(model.named_parameters())
+    )
+    if missing_parameter_keys:
+        raise InvalidRequestError(
+            "SAM3 checkpoint 缺少 semantic architecture 必需参数",
+            details={
+                "checkpoint_path": str(checkpoint_path),
+                "missing_parameter_keys": missing_parameter_keys,
+            },
+        )
+    return {
+        "loaded_key_count": len(compatible_state_dict),
+        "source_key_count": len(source_state_dict),
+        "ignored_source_key_count": len(source_state_dict) - len(compatible_state_dict),
+    }
 
 
 def build_sam3_semantic_image_model(
@@ -434,14 +539,25 @@ def build_sam3_semantic_image_model(
 
     resolved_device_name = resolve_execution_device_name(
         torch_module=torch,
-        requested_device_name=requested_device_name,
+        requested_device_name=_resolve_requested_device_name(requested_device_name),
     )
-    enable_pytorch_cuda_inference_fast_path(torch_module=torch, device_name=resolved_device_name)
-    runtime_torch_dtype = _resolve_runtime_torch_dtype(device_name=resolved_device_name, precision=precision)
+    enable_pytorch_cuda_inference_fast_path(
+        torch_module=torch, device_name=resolved_device_name
+    )
+    runtime_torch_dtype = _resolve_runtime_torch_dtype(
+        device_name=resolved_device_name, precision=precision
+    )
 
     model = Sam3SemanticImageModel()
-    semantic_state_dict = build_sam3_semantic_state_dict(load_sam3_checkpoint_branches(checkpoint_path))
-    model.load_state_dict(semantic_state_dict, strict=False)
+    semantic_state_dict = build_sam3_semantic_state_dict(
+        load_sam3_checkpoint_branches(checkpoint_path)
+    )
+    compatibility_summary = _load_compatible_state_dict(
+        model,
+        semantic_state_dict,
+        checkpoint_path=checkpoint_path,
+    )
+    model.checkpoint_compatibility_summary = compatibility_summary
     model.eval()
     model.to(device=torch.device(resolved_device_name), dtype=runtime_torch_dtype)
     return model, resolved_device_name, runtime_torch_dtype
@@ -456,19 +572,21 @@ class Sam3SemanticRuntimeSession:
         self,
         *,
         checkpoint_path: Path,
-        model_scale: str,
-        variant_name: str,
+        model_asset_id: str,
+        architecture_id: str,
         requested_device_name: str,
         precision: str,
     ) -> None:
-        self.model_scale = model_scale
-        self.variant_name = variant_name
+        self.model_asset_id = model_asset_id
+        self.architecture_id = architecture_id
         self.checkpoint_path = checkpoint_path
         self.precision = precision
-        self.model, self.device_name, self.runtime_torch_dtype = build_sam3_semantic_image_model(
-            checkpoint_path=checkpoint_path,
-            requested_device_name=requested_device_name,
-            precision=precision,
+        self.model, self.device_name, self.runtime_torch_dtype = (
+            build_sam3_semantic_image_model(
+                checkpoint_path=checkpoint_path,
+                requested_device_name=requested_device_name,
+                precision=precision,
+            )
         )
 
     @torch.inference_mode()
@@ -478,16 +596,27 @@ class Sam3SemanticRuntimeSession:
         image_bytes: bytes,
         image_payload: object,
         prompt_items: tuple[object, ...],
+        mask_threshold: float = DEFAULT_MASK_THRESHOLD,
+        stability_offset: float = DEFAULT_STABILITY_OFFSET,
+        min_component_area: int | None = None,
+        polygon_simplify_ratio: float = DEFAULT_POLYGON_SIMPLIFY_RATIO,
     ) -> Sam3SemanticPrediction:
         """执行单图 semantic 推理。"""
 
         prepared_image = preprocess_sam3_image(
             image_bytes,
             image_payload=image_payload,
-            precision="fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
+            precision="fp16"
+            if self.runtime_torch_dtype == torch.float16
+            else "bf16"
+            if self.runtime_torch_dtype == torch.bfloat16
+            else "fp32",
         )
         prepared_image = PreparedSam3Image(
-            image_tensor=prepared_image.image_tensor.to(device=self.model.segmentation_head.semantic_seg_head.weight.device, dtype=self.runtime_torch_dtype),
+            image_tensor=prepared_image.image_tensor.to(
+                device=self.model.segmentation_head.semantic_seg_head.weight.device,
+                dtype=self.runtime_torch_dtype,
+            ),
             original_width=prepared_image.original_width,
             original_height=prepared_image.original_height,
             target_width=prepared_image.target_width,
@@ -505,22 +634,46 @@ class Sam3SemanticRuntimeSession:
         negative_text_map: list[tuple[str, ...]] = []
         prompt_group_languages: list[tuple[str, ...]] = []
         for group in prompt_groups:
-            positive_texts = tuple(str(item) for item in getattr(group, "positive_texts", ()))
-            negative_texts = tuple(str(item) for item in getattr(group, "negative_texts", ()))
+            positive_texts = tuple(
+                str(item) for item in getattr(group, "positive_texts", ())
+            )
+            negative_texts = tuple(
+                str(item) for item in getattr(group, "negative_texts", ())
+            )
             if not positive_texts:
-                raise InvalidRequestError("SAM3 semantic-segment 至少需要一条 positive 文本提示")
+                raise InvalidRequestError(
+                    "SAM3 semantic-segment 至少需要一条 positive 文本提示"
+                )
             positive_start = len(prompt_texts)
             prompt_texts.extend(positive_texts)
             prompt_texts.extend(negative_texts)
-            prompt_text_offsets.append((positive_start, len(positive_texts), len(negative_texts)))
-            prompt_display_names.append(str(getattr(group, "display_name", "") or getattr(group, "prompt_id", "")))
-            source_prompt_texts.append(_build_group_source_prompt_text(positive_texts, negative_texts))
+            prompt_text_offsets.append(
+                (positive_start, len(positive_texts), len(negative_texts))
+            )
+            prompt_display_names.append(
+                str(
+                    getattr(group, "display_name", "")
+                    or getattr(group, "prompt_id", "")
+                )
+            )
+            source_prompt_texts.append(
+                _build_group_source_prompt_text(positive_texts, negative_texts)
+            )
             positive_text_map.append(positive_texts)
             negative_text_map.append(negative_texts)
-            prompt_group_languages.append(tuple(str(item) for item in getattr(group, "languages", ()) if str(item)))
+            prompt_group_languages.append(
+                tuple(
+                    str(item) for item in getattr(group, "languages", ()) if str(item)
+                )
+            )
         prompt_padding_mask, prompt_tokens = self.model.encode_text(prompt_texts)
-        prompt_padding_mask = prompt_padding_mask.to(self.model.segmentation_head.semantic_seg_head.weight.device)
-        prompt_tokens = prompt_tokens.to(device=self.model.segmentation_head.semantic_seg_head.weight.device, dtype=self.runtime_torch_dtype)
+        prompt_padding_mask = prompt_padding_mask.to(
+            self.model.segmentation_head.semantic_seg_head.weight.device
+        )
+        prompt_tokens = prompt_tokens.to(
+            device=self.model.segmentation_head.semantic_seg_head.weight.device,
+            dtype=self.runtime_torch_dtype,
+        )
         prompt_padding_mask, prompt_tokens = _build_grouped_prompt_tokens(
             prompt_padding_mask=prompt_padding_mask,
             prompt_tokens=prompt_tokens,
@@ -537,14 +690,22 @@ class Sam3SemanticRuntimeSession:
             source_width=prepared_image.original_width,
             source_height=prepared_image.original_height,
             prompt_items=prompt_items,
+            threshold=mask_threshold,
+            stability_offset=stability_offset,
+            min_component_area=min_component_area,
+            polygon_simplify_ratio=polygon_simplify_ratio,
         )
         summary = {
             "project_native": True,
-            "model_scale": self.model_scale,
-            "variant_name": self.variant_name,
+            "model_asset_id": self.model_asset_id,
+            "architecture_id": self.architecture_id,
             "checkpoint_path": str(self.checkpoint_path),
             "device": self.device_name,
-            "precision": "fp16" if self.runtime_torch_dtype == torch.float16 else "bf16" if self.runtime_torch_dtype == torch.bfloat16 else "fp32",
+            "precision": "fp16"
+            if self.runtime_torch_dtype == torch.float16
+            else "bf16"
+            if self.runtime_torch_dtype == torch.bfloat16
+            else "fp32",
             "prompt_count": len(prompt_groups),
             "prompt_item_count": len(prompt_texts),
             "prompt_group_count": len(prompt_groups),
@@ -556,9 +717,10 @@ class Sam3SemanticRuntimeSession:
             "inference_mode": "semantic-segment",
             "text_encoder": "checkpoint-language-backbone",
             "postprocess_profile": "sam3-default-v2",
-            "mask_threshold": DEFAULT_MASK_THRESHOLD,
-            "stability_offset": DEFAULT_STABILITY_OFFSET,
-            "polygon_simplify_ratio": DEFAULT_POLYGON_SIMPLIFY_RATIO,
+            "mask_threshold": mask_threshold,
+            "stability_offset": stability_offset,
+            "min_component_area": min_component_area,
+            "polygon_simplify_ratio": polygon_simplify_ratio,
             "prompt_groups": [
                 {
                     "prompt_id": str(getattr(group, "prompt_id", "")),
@@ -569,8 +731,18 @@ class Sam3SemanticRuntimeSession:
                 }
                 for index, group in enumerate(prompt_groups)
             ],
+            "checkpoint_compatibility": dict(
+                getattr(self.model, "checkpoint_compatibility_summary", {})
+            ),
         }
         return Sam3SemanticPrediction(regions=tuple(region_items), summary=summary)
+
+    def close(self) -> None:
+        """释放模型引用和可回收的 CUDA 显存。"""
+
+        self.model.to(device=torch.device("cpu"))
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 def _build_grouped_prompt_tokens(
@@ -597,12 +769,19 @@ def _build_grouped_prompt_tokens(
             negative_start = positive_end
             negative_end = negative_start + negative_count
             negative_padding_mask = prompt_padding_mask[negative_start:negative_end]
-            negative_prompt_tokens = prompt_tokens_batch_first[negative_start:negative_end]
-            _negative_group_padding_mask, negative_group_prompt_tokens = _average_group_prompt_tokens(
-                prompt_padding_mask=negative_padding_mask,
-                prompt_tokens=negative_prompt_tokens,
+            negative_prompt_tokens = prompt_tokens_batch_first[
+                negative_start:negative_end
+            ]
+            _negative_group_padding_mask, negative_group_prompt_tokens = (
+                _average_group_prompt_tokens(
+                    prompt_padding_mask=negative_padding_mask,
+                    prompt_tokens=negative_prompt_tokens,
+                )
             )
-            group_prompt_tokens = group_prompt_tokens - float(negative_prompt_weight) * negative_group_prompt_tokens
+            group_prompt_tokens = (
+                group_prompt_tokens
+                - float(negative_prompt_weight) * negative_group_prompt_tokens
+            )
             group_prompt_tokens = F.normalize(group_prompt_tokens, dim=-1, p=2)
             group_prompt_tokens[group_padding_mask] = 0.0
         grouped_padding_masks.append(group_padding_mask)
@@ -624,7 +803,9 @@ def _average_group_prompt_tokens(
     valid_count = valid_mask.sum(dim=0)
     group_padding_mask = valid_count.squeeze(-1) <= 0
     normalized_valid_count = torch.clamp(valid_count, min=1.0)
-    averaged_prompt_tokens = (prompt_tokens * valid_mask).sum(dim=0) / normalized_valid_count
+    averaged_prompt_tokens = (prompt_tokens * valid_mask).sum(
+        dim=0
+    ) / normalized_valid_count
     averaged_prompt_tokens[group_padding_mask] = 0.0
     return group_padding_mask, averaged_prompt_tokens
 

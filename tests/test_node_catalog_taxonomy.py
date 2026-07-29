@@ -12,6 +12,7 @@ from custom_nodes.opencv_nodes.workflow.catalog_builder import (
 
 
 EXPECTED_CORE_CATEGORY_COUNTS = {
+    "core.input.prompt": 7,
     "core.io.image": 7,
     "core.io.file": 9,
     "core.io.input": 3,
@@ -81,14 +82,16 @@ _HAN_PATTERN = re.compile(r"[\u3400-\u9fff]")
 
 
 def test_core_catalog_uses_confirmed_two_level_taxonomy() -> None:
-    """验证 160 个 Core 节点完整落入严格两级分类。"""
+    """验证 167 个 Core 节点完整落入严格两级分类。"""
 
     definitions = get_core_workflow_node_definitions()
     category_counts = Counter(item.category for item in definitions)
 
-    assert len(definitions) == 160
+    assert len(definitions) == 167
     assert category_counts == EXPECTED_CORE_CATEGORY_COUNTS
-    assert all(_TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions)
+    assert all(
+        _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in definitions
+    )
     assert all("/" not in item.category for item in definitions)
 
 
@@ -100,10 +103,15 @@ def test_opencv_catalog_uses_confirmed_two_level_taxonomy_and_english_names() ->
 
     assert len(catalog.node_definitions) == 133
     assert category_counts == EXPECTED_OPENCV_CATEGORY_COUNTS
-    assert all(_TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category) for item in catalog.node_definitions)
+    assert all(
+        _TWO_LEVEL_CATEGORY_PATTERN.fullmatch(item.category)
+        for item in catalog.node_definitions
+    )
     assert all("/" not in item.category for item in catalog.node_definitions)
     assert min(category_counts.values()) >= 2
-    assert all(not _HAN_PATTERN.search(item.display_name) for item in catalog.node_definitions)
+    assert all(
+        not _HAN_PATTERN.search(item.display_name) for item in catalog.node_definitions
+    )
     assert all(
         "display_name" not in item.metadata.get("i18n", {})
         for item in catalog.node_definitions
