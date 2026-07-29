@@ -237,7 +237,8 @@ class NodeDefinition(BaseModel):
     - format_id：当前 NodeDefinition 的 JSON 格式版本。
     - node_type_id：稳定节点类型 id。
     - display_name：节点显示名称。
-    - category：节点分类，例如 io.input、model.inference、opencv.render。
+    - category：节点分类。Core 与 OpenCV 使用 namespace、一级分类、二级分类三段 key，
+      例如 core.model.inference、opencv.image.color。
     - description：节点职责说明。
     - implementation_kind：实现来源，支持 core-node 或 custom-node。
     - runtime_kind：运行方式，支持 python-callable、worker-task 或 service-call。
@@ -288,7 +289,9 @@ class NodeDefinition(BaseModel):
 
         _require_stripped_text(self.node_type_id, "node_type_id")
         _require_stripped_text(self.display_name, "display_name")
-        _require_stripped_text(self.category, "category")
+        normalized_category = _require_stripped_text(self.category, "category")
+        if "/" in normalized_category:
+            raise ValueError("category 不能包含 /，分类层级统一使用 . 分隔")
         _build_port_index(
             ports=self.input_ports,
             direction="input",

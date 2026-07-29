@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.circle-diameter",
   "display_name": "Circle Diameter",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.circle",
   "description": "读取选中圆的直径、半径、面积或周长，适合孔径、圆形工件和圆斑量测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

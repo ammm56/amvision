@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.hough-lines",
   "display_name": "Hough Lines",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.detection",
   "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

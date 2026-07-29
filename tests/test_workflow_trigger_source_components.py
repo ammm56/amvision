@@ -1447,7 +1447,7 @@ class _DeploymentModelWorkflowRuntimeService:
                 node_definition=NodeDefinition(
                     node_type_id="core.model.detection",
                     display_name="Detection",
-                    category="model.inference",
+                    category="core.model.inference",
                     implementation_kind=NODE_IMPLEMENTATION_CORE,
                     runtime_kind=NODE_RUNTIME_WORKER_TASK,
                 ),

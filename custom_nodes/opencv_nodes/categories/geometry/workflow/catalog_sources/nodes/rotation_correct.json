@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.rotation-correct",
   "display_name": "Rotation Correct",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "按给定角度或上游 value.v1 输入对图片做旋转矫正，并输出摘要，适合先把工件姿态收正再进入后续 ROI、量测和规则链。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

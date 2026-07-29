@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.sobel",
   "display_name": "Sobel",
-  "category": "opencv.filter",
+  "category": "opencv.image.edge",
   "description": "对输入图片执行一阶 Sobel 边缘增强，适合在轮廓、边线和缺陷显著化前先强化方向性边缘。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

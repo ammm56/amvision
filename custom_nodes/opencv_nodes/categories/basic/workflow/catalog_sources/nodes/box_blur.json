@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.box-blur",
   "display_name": "Box Blur",
-  "category": "opencv.filter",
+  "category": "opencv.image.filter",
   "description": "执行可配置宽高的归一化或非归一化方框滤波。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

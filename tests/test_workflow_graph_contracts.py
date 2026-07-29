@@ -93,7 +93,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
         NodeDefinition(
             node_type_id="core.io.template-input.image",
             display_name="Template Image Input",
-            category="io.input",
+            category="core.io.input",
             description="接收流程应用绑定进来的图片引用，并输出给后续节点。",
             implementation_kind=NODE_IMPLEMENTATION_CORE,
             runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
@@ -116,7 +116,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
         NodeDefinition(
             node_type_id="core.model.detection",
             display_name="Detection",
-            category="model.inference",
+            category="core.model.inference",
             description="调用独立推理 worker 产出标准 detection 结果。",
             implementation_kind=NODE_IMPLEMENTATION_CORE,
             runtime_kind=NODE_RUNTIME_WORKER_TASK,
@@ -146,7 +146,7 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
         NodeDefinition(
             node_type_id="custom.opencv.draw-detections",
             display_name="Draw Detections",
-            category="opencv.render",
+            category="opencv.output.render",
             description="通过 OpenCV 把 detection 结果叠加到图片上，生成结构化 HTTP 回包。",
             implementation_kind=NODE_IMPLEMENTATION_CUSTOM,
             runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
@@ -179,9 +179,22 @@ def _build_node_definitions() -> tuple[NodeDefinition, ...]:
             capability_tags=("opencv.draw", "vision.render", "result.aggregate"),
             runtime_requirements={"python_packages": ["opencv-python", "numpy"]},
             node_pack_id="opencv.nodes",
-            node_pack_version="0.1.0",
+            node_pack_version="0.1.3",
         ),
     )
+
+
+def test_node_definition_rejects_slash_category_paths() -> None:
+    """验证公开 category 不再接受斜杠多级路径。"""
+
+    with pytest.raises(ValueError, match="不能包含 /"):
+        NodeDefinition(
+            node_type_id="core.test.invalid-category",
+            display_name="Invalid Category",
+            category="core/logic/branch",
+            implementation_kind=NODE_IMPLEMENTATION_CORE,
+            runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        )
 
 
 def _build_graph_template() -> WorkflowGraphTemplate:

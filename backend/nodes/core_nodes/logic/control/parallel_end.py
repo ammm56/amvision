@@ -64,7 +64,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.logic.parallel-end",
         display_name="Parallel End",
-        category="logic.iteration",
+        category="core.logic.parallel",
         description=(
             "等待 Parallel Start 的全部显式分支完成，并按画布分支顺序 collect 或 concat Results。"
         ),

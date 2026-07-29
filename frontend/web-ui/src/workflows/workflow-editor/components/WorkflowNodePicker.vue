@@ -74,7 +74,7 @@
           @click="emit('select', definition)"
         >
           <strong>{{ readDefinitionDisplayName(definition) }}</strong>
-          <span>{{ readCategoryLabel(definition.category) }}</span>
+          <span>{{ readNodeCategoryLabel(definition.category) }}</span>
           <p v-if="readDefinitionDescription(definition)">{{ readDefinitionDescription(definition) }}</p>
           <small>{{ definition.node_type_id }}</small>
         </button>
@@ -97,6 +97,12 @@ import {
   resolveNodeDefinitionDescription,
   resolveNodeDefinitionDisplayName,
 } from '../node-definition-localization'
+import {
+  compareNodeCategories,
+  humanizeNodeCategoryToken,
+  readNodeCategoryLabel,
+  readNodeCategoryParts,
+} from '../node-taxonomy'
 import type { NodeDefinition } from '../types'
 
 type NodePickerMode = 'context-menu' | 'link-drop'
@@ -210,39 +216,42 @@ const categoryGroups = computed<CategoryGroup[]>(() => {
     groupsByCategory.set(definition.category, items)
   }
   return [...groupsByCategory.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareNodeCategories(selectedSource.value?.id ?? '', left, right))
     .map(([category, definitions]) => ({
       id: category,
-      label: readCategoryLabel(category),
+      label: readNodeCategoryLabel(category),
       definitions: sortDefinitions(definitions),
     }))
 })
 
 const categoryRows = computed<CategoryRow[]>(() => {
-  const groupsByRoot = new Map<string, CategoryGroup[]>()
+  const groupsByRoot = new Map<string, { label: string; categories: CategoryGroup[] }>()
   for (const category of categoryGroups.value) {
-    const root = readCategoryTokens(category.id)[0] ?? category.id
-    const items = groupsByRoot.get(root) ?? []
-    items.push(category)
-    groupsByRoot.set(root, items)
+    const parts = readNodeCategoryParts(category.id)
+    const group = groupsByRoot.get(parts.rootId) ?? {
+      label: parts.rootLabel,
+      categories: [],
+    }
+    group.categories.push({
+      ...category,
+      label: parts.childLabel,
+    })
+    groupsByRoot.set(parts.rootId, group)
   }
 
   const rows: CategoryRow[] = []
-  for (const [root, categories] of [...groupsByRoot.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [rootId, group] of groupsByRoot) {
     rows.push({
-      id: `root:${root}`,
+      id: `root:${rootId}`,
       kind: 'root',
-      label: humanizeCategoryToken(root),
-      count: categories.reduce((count, category) => count + category.definitions.length, 0),
+      label: group.label,
+      count: group.categories.reduce((count, category) => count + category.definitions.length, 0),
     })
-    for (const category of categories) {
-      const childTokens = readCategoryTokens(category.id).slice(1)
+    for (const category of group.categories) {
       rows.push({
         id: category.id,
         kind: 'category',
-        label: childTokens.length > 0
-          ? childTokens.map(humanizeCategoryToken).join(' / ')
-          : humanizeCategoryToken(root),
+        label: category.label,
         definitions: category.definitions,
       })
     }
@@ -324,37 +333,11 @@ function readDefinitionDescription(definition: NodeDefinition): string {
   return resolveNodeDefinitionDescription(definition, currentLocale.value)
 }
 
-function readCategoryLabel(category: string): string {
-  return readCategoryTokens(category).map(humanizeCategoryToken).join(' / ')
-}
-
 function formatNodePackLabel(packId: string): string {
   const tokens = packId
     .split(/[._-]+/)
     .filter((token) => token && token.toLowerCase() !== 'nodes')
-  return tokens.map(humanizeCategoryToken).join(' ')
-}
-
-function readCategoryTokens(category: string): string[] {
-  return category.split(/[./]+/).map((token) => token.trim()).filter(Boolean)
-}
-
-function humanizeCategoryToken(token: string): string {
-  const normalizedToken = token.toLowerCase()
-  const fixedLabels: Record<string, string> = {
-    api: 'API',
-    cv: 'CV',
-    http: 'HTTP',
-    io: 'IO',
-    opencv: 'OpenCV',
-    plc: 'PLC',
-    roi: 'ROI',
-    sql: 'SQL',
-    ui: 'UI',
-    uvc: 'UVC',
-  }
-  return fixedLabels[normalizedToken]
-    ?? token.replace(/[-_]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+  return tokens.map(humanizeNodeCategoryToken).join(' ')
 }
 
 function clampToViewport(value: number, size: number, axis: 'width' | 'height'): number {

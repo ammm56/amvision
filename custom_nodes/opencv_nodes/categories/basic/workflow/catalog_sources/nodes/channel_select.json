@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.channel-select",
   "display_name": "Channel Select",
-  "category": "opencv.color",
+  "category": "opencv.image.color",
   "description": "按零起始通道序号提取单个通道。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

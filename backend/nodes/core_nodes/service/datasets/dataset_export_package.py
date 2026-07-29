@@ -68,7 +68,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.dataset-export.package",
         display_name="Package Dataset Export",
-        category="service.dataset.export",
+        category="core.dataset.export",
         description=(
             "按现有 DatasetExport delivery API 生成或复用一个 zip 下载包；"
             "cleanup_on_completion 只会登记当前 workflow 执行期的临时对象清理，不影响原有 HTTP API 下载链。"

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.color-range-threshold",
   "display_name": "Color Range Threshold",
-  "category": "opencv.mask",
+  "category": "opencv.image.threshold",
   "description": "在指定颜色空间按各通道上下界执行 inRange，输出二值 mask。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

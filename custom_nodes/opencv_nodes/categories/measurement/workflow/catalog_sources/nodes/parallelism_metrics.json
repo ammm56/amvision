@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.parallelism-metrics",
   "display_name": "Parallelism Metrics",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.geometry",
   "description": "计算两条直线的角度差和相对偏移，适合导轨、边线和平行边装配检查。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

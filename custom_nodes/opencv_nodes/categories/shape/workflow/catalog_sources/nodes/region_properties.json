@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.region-properties",
   "display_name": "Region Properties",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "计算面积、周长、质心、方向、长短轴、偏心率、圆度、实心度和外接率等区域特征。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

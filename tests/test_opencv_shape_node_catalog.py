@@ -45,7 +45,10 @@ def test_opencv_shape_node_catalog_builder_matches_checked_in_catalog() -> None:
         "opencv.nodes"
     }
     assert {item["category"] for item in actual_catalog_payload["node_definitions"]} == {
-        "opencv.shape"
+        "opencv.geometry.contour",
+        "opencv.geometry.detection",
+        "opencv.geometry.shape",
+        "opencv.measurement.circle",
     }
     node_by_type = {
         item["node_type_id"]: item

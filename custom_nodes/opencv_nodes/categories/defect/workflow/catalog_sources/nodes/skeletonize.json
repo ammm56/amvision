@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.skeletonize",
   "display_name": "Skeletonize",
-  "category": "opencv.filter",
+  "category": "opencv.mask.operation",
   "description": "把二值前景规整成近似单像素骨架，适合细线、焊缝、胶线中心线和跨度趋势分析。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

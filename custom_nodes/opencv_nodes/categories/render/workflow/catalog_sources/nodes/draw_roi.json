@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-roi",
   "display_name": "Draw ROI",
-  "category": "opencv.render",
+  "category": "opencv.output.render",
   "description": "通过 OpenCV 把 roi.v1 直接绘制回原图，适合现场复核换型区域、检测范围和工位边界。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

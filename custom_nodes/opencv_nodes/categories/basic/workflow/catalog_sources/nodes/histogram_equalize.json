@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.histogram-equalize",
   "display_name": "Histogram Equalize",
-  "category": "opencv.color",
+  "category": "opencv.image.enhancement",
   "description": "执行全局直方图均衡化，彩色图片默认只处理亮度通道。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

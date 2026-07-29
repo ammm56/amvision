@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.fisheye-calibrate",
   "display_name": "Fisheye Calibrate",
-  "category": "opencv.calibration",
+  "category": "opencv.calibration.camera",
   "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

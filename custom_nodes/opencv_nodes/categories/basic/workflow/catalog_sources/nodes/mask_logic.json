@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.mask-logic",
   "display_name": "Mask Logic",
-  "category": "opencv.mask",
+  "category": "opencv.mask.operation",
   "description": "对一个或两个 mask 执行 AND、OR、XOR 或 NOT 运算。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

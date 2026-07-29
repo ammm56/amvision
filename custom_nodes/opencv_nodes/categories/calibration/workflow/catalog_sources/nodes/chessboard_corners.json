@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.chessboard-corners",
   "display_name": "Chessboard Corners",
-  "category": "opencv.calibration",
+  "category": "opencv.calibration.camera",
   "description": "检测棋盘格内角点并输出包含 3D-2D 对应关系的标定观测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

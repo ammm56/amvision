@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.undistort-points",
   "display_name": "Undistort Points",
-  "category": "opencv.calibration",
+  "category": "opencv.calibration.pose",
   "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.point-to-line-distance",
   "display_name": "Point To Line Distance",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.geometry",
   "description": "读取单个点到选中直线的距离，适合做中心点偏移、边缘偏移和装配位置量测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

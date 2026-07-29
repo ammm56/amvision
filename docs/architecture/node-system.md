@@ -163,7 +163,10 @@ USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默�
 
 ## 通用 Parallel 执行边界
 
-Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List Item` 和 `Parallel End` 组合任意数量的显式分支。List 节点归入 `logic.collection`，执行边界归入现有 `logic.iteration`，节点名称、端口和参数保持 English。
+Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List Item` 和
+`Parallel End` 组合任意数量的显式分支。List 节点归入
+`core.logic.collection`，并行执行边界归入 `core.logic.parallel`，节点名称、端口和
+参数保持 English。
 
 分支数量由画布连线决定，`max_concurrency` 仅限制同时运行数。执行器不自动并行整张 DAG。当前 80 个 ROI、3 个 deployment instances 的 classification 应用只是现场配置，不得把 3、托盘、插槽或 classification 固化到节点实现。详细契约和验证要求见 [workflow-parallel-branches.md](workflow-parallel-branches.md)。
 

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-deduplicate",
   "display_name": "Line Deduplicate",
-  "category": "opencv.geometry",
+  "category": "opencv.geometry.detection",
   "description": "按角度、法向距离和线段投影重叠关系过滤重复直线；保持输入顺序并默认最多输出 10 条。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

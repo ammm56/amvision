@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.hu-moments",
   "display_name": "Hu Moments",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "计算七个 Hu 不变矩，默认输出便于比较的有符号对数值。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

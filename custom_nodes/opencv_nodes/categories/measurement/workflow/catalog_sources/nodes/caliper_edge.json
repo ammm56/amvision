@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.caliper-edge",
   "display_name": "Caliper Edge",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.edge",
   "description": "在轴向 ROI 或任意方向 Caliper 内搜索一个或多个边缘，支持极性、NMS 和亚像素位置。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

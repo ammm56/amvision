@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.point-distance",
   "display_name": "Point Distance",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.geometry",
   "description": "计算两点之间的欧氏距离、曼哈顿距离和坐标差，适合中心距、孔距和装配偏移量测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

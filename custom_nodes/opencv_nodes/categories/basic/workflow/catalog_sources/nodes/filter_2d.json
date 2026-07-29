@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.filter-2d",
   "display_name": "Filter 2D",
-  "category": "opencv.filter",
+  "category": "opencv.image.filter",
   "description": "使用用户提供的二维卷积核执行通用 filter2D。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

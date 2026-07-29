@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.transpose",
   "display_name": "Transpose",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "交换图像行列轴。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

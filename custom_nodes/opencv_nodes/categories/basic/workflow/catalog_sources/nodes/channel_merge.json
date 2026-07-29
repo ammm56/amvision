@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.channel-merge",
   "display_name": "Channel Merge",
-  "category": "opencv.color",
+  "category": "opencv.image.color",
   "description": "把三个或四个同尺寸单通道输入合并成一张图片。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

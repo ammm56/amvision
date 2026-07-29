@@ -58,7 +58,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.logic.list-split",
         display_name="Split List",
-        category="logic.collection",
+        category="core.logic.collection",
         description=(
             "按原始顺序将 Items 平衡拆成 partition_count 个连续 partitions。"
             "输出可配合 Get List Item 和 Parallel Start 构造任意数量的显式分支。"

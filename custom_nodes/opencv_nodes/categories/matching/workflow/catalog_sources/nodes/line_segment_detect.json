@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-segment-detect",
   "display_name": "Line Segment Detect",
-  "category": "opencv.matching",
+  "category": "opencv.geometry.detection",
   "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

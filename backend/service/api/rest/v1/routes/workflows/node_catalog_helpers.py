@@ -319,11 +319,17 @@ def _stringify_parameter_option_key(value: object) -> str:
 
 
 def _build_workflow_palette_group_display_name(category: str) -> str:
-    """把节点分类 id 转换为更适合 palette 展示的分组名称。"""
+    """把节点分类 id 转换为一级分类和二级分类组成的展示路径。"""
 
-    category_tokens = [token for token in category.replace("-", ".").replace("_", ".").split(".") if token]
+    category_tokens = [
+        token
+        for token in category.replace("/", ".").split(".")
+        if token
+    ]
     if not category_tokens:
         return category
+    if len(category_tokens) >= 3 and category_tokens[0].casefold() in {"core", "opencv"}:
+        category_tokens = category_tokens[1:]
     return " / ".join(_humanize_palette_token(token) for token in category_tokens)
 
 
@@ -343,7 +349,11 @@ def _humanize_palette_token(token: str) -> str:
     normalized_token = token.strip().casefold()
     if normalized_token in token_mapping:
         return token_mapping[normalized_token]
-    return token.replace("-", " ").replace("_", " ").title()
+    return " ".join(
+        token_mapping.get(part.casefold(), part.title())
+        for part in token.replace("_", "-").split("-")
+        if part
+    )
 
 
 def _filter_workflow_node_definitions(

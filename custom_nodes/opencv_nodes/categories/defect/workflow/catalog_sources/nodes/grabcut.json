@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.grabcut",
   "display_name": "GrabCut",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.image",
   "description": "使用矩形或可选初始 mask 执行交互式前景分割。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

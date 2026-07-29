@@ -65,7 +65,9 @@ def build_custom_node_catalog_document() -> CustomNodeCatalogDocument:
             "node_definitions": node_definitions,
             "metadata": {
                 "categoryRoot": "opencv",
-                "sourceLayout": "categories/<category>",
+                "categoryModel": "two-level",
+                "categoryDepth": 2,
+                "sourceLayout": "categories/<implementation-module>",
             },
         }
     )

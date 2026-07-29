@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.invert",
   "display_name": "Invert",
-  "category": "opencv.filter",
+  "category": "opencv.image.enhancement",
   "description": "对输入图片执行按位反相，适合把暗前景/亮背景切换成后续阈值或轮廓流程更稳定的方向。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

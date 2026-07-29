@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.min-area-rect",
   "display_name": "Min Area Rect",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

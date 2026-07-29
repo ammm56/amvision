@@ -2,14 +2,10 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-refs-occupied-check",
   "display_name": "Image Refs Occupied Check",
-  "category": "opencv.analysis",
+  "category": "opencv.inspection.batch",
   "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
   "metadata": {
     "i18n": {
-      "display_name": {
-        "zh-CN": "图片集合有料检查",
-        "en-US": "Image Refs Occupied Check"
-      },
       "description": {
         "zh-CN": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
         "en-US": "Consume Image Refs Slot Metrics.summary and classify each slot as occupied or empty with multi-metric rules."

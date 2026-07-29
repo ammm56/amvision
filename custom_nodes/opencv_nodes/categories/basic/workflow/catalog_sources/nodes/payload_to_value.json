@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.payload-to-value",
   "display_name": "OpenCV Payload To Value",
-  "category": "opencv.transform",
+  "category": "opencv.output.workflow",
   "description": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
@@ -228,10 +228,6 @@
   ],
   "metadata": {
     "i18n": {
-      "display_name": {
-        "zh-CN": "OpenCV 结果转值",
-        "en-US": "OpenCV Payload To Value"
-      },
       "description": {
         "zh-CN": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
         "en-US": "Wrap OpenCV geometry, matching, and region payloads as value.v1 so the result can be composed into JSON responses or previewed as JSON."

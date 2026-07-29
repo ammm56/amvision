@@ -89,11 +89,11 @@ def test_parallel_nodes_follow_existing_catalog_names_and_categories() -> None:
     """验证公开名称保持 English，且只使用现有 node categories。"""
 
     assert LIST_SPLIT_NODE_SPEC.node_definition.display_name == "Split List"
-    assert LIST_SPLIT_NODE_SPEC.node_definition.category == "logic.collection"
+    assert LIST_SPLIT_NODE_SPEC.node_definition.category == "core.logic.collection"
     assert PARALLEL_START_NODE_SPEC.node_definition.display_name == "Parallel Start"
-    assert PARALLEL_START_NODE_SPEC.node_definition.category == "logic.iteration"
+    assert PARALLEL_START_NODE_SPEC.node_definition.category == "core.logic.parallel"
     assert PARALLEL_END_NODE_SPEC.node_definition.display_name == "Parallel End"
-    assert PARALLEL_END_NODE_SPEC.node_definition.category == "logic.iteration"
+    assert PARALLEL_END_NODE_SPEC.node_definition.category == "core.logic.parallel"
     assert "localized_display_name" not in LIST_SPLIT_NODE_SPEC.node_definition.metadata
     assert "localized_display_name" not in PARALLEL_START_NODE_SPEC.node_definition.metadata
     assert "localized_display_name" not in PARALLEL_END_NODE_SPEC.node_definition.metadata

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.gamma-correction",
   "display_name": "Gamma Correction",
-  "category": "opencv.color",
+  "category": "opencv.image.enhancement",
   "description": "使用 8-bit LUT 调整非线性亮度响应。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

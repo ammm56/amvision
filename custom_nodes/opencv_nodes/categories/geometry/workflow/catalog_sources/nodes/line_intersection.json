@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-intersection",
   "display_name": "Line Intersection",
-  "category": "opencv.geometry",
+  "category": "opencv.geometry.detection",
   "description": "按显式 line index 计算两个 lines.v1 输入的无限直线交点；平行、近似平行或来源不一致时快速失败。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.fast-corners",
   "display_name": "FAST Corners",
-  "category": "opencv.matching",
+  "category": "opencv.feature.detection",
   "description": "使用 FAST 检测高吞吐角点并按响应值截取结果。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

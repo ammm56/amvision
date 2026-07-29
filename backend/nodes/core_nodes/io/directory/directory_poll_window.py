@@ -142,7 +142,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.io.directory-poll-window",
         display_name="Directory Poll Window",
-        category="io.input",
+        category="core.io.file",
         description="从目录扫描结果中解析轮询友好的批次窗口；当当前没有新文件时返回 has_work=false 和空 files，而不是直接报错，适合外部定时调度或目录轮询守护。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,

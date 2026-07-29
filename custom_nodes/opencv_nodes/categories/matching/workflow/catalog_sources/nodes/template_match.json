@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.template-match",
   "display_name": "Template Match",
-  "category": "opencv.matching",
+  "category": "opencv.matching.template",
   "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

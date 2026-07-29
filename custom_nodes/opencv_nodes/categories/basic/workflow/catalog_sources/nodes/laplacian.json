@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.laplacian",
   "display_name": "Laplacian",
-  "category": "opencv.filter",
+  "category": "opencv.image.edge",
   "description": "对输入图片执行二阶 Laplacian 边缘增强，适合在缺口、毛刺和细小轮廓前处理时强化边界变化。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.corner-subpix",
   "display_name": "Corner SubPix",
-  "category": "opencv.calibration",
+  "category": "opencv.calibration.camera",
   "description": "依据灰度梯度对二维角点执行亚像素细化。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

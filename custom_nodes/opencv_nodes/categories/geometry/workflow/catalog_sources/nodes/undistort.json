@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.undistort",
   "display_name": "Undistort",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "按相机标定参数执行镜头畸变矫正，支持参数默认值或 value.v1 动态配置对象，适合先把桶形/枕形畸变收正再进入定位和量测链。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

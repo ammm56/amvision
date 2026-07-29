@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-regions",
   "display_name": "Draw Regions",
-  "category": "opencv.render",
+  "category": "opencv.output.render",
   "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上，适合模板匹配、分割和缺陷区域复核。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

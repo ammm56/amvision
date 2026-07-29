@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.apply-mask",
   "display_name": "Apply Mask",
-  "category": "opencv.mask",
+  "category": "opencv.mask.operation",
   "description": "使用单通道 mask 保留输入图片前景，背景置零。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

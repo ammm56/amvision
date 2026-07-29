@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.morphology",
   "display_name": "Morphology",
-  "category": "opencv.filter",
+  "category": "opencv.mask.morphology",
   "description": "对输入图片执行 morphology 操作。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

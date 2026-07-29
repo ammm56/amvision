@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.homography-estimate",
   "display_name": "Homography Estimate",
-  "category": "opencv.matching",
+  "category": "opencv.matching.registration",
   "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

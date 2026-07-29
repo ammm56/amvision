@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.perspective-transform",
   "display_name": "Perspective Transform",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "按四点透视关系把输入图片矫正为规则矩形输出，支持直接使用 roi.v1 或固定 source_points，适合治具面矫正、标签拍扁和视角收正。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

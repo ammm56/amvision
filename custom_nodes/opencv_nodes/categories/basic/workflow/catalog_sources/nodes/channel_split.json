@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.channel-split",
   "display_name": "Channel Split",
-  "category": "opencv.color",
+  "category": "opencv.image.color",
   "description": "把输入图片拆成最多四个独立的单通道图片。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

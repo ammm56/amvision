@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.affine-transform",
   "display_name": "Affine Transform",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "按 2x3 仿射矩阵或三对点关系对图片执行几何矫正，支持直接读取上游 value.v1 变换对象，适合平移、缩放、轻微旋转或剪切对位。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

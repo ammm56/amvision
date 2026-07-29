@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour",
   "display_name": "Contour",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.contour",
   "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

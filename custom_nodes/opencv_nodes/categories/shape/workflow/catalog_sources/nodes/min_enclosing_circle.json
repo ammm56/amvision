@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.min-enclosing-circle",
   "display_name": "Min Enclosing Circle",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

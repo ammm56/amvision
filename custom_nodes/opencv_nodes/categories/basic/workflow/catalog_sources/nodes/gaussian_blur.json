@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.gaussian-blur",
   "display_name": "Gaussian Blur",
-  "category": "opencv.filter",
+  "category": "opencv.image.filter",
   "description": "对输入图片执行高斯模糊。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

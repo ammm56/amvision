@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.scharr",
   "display_name": "Scharr",
-  "category": "opencv.filter",
+  "category": "opencv.image.edge",
   "description": "计算 Scharr x、y 方向梯度或梯度幅值。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

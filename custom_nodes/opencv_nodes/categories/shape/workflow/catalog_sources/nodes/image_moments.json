@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.image-moments",
   "display_name": "Image Moments",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "计算轮廓的空间矩、中心矩、归一化中心矩和质心。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

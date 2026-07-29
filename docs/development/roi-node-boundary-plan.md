@@ -175,7 +175,10 @@ Image -> Contour / Hough / Template Match -> ROI From Contour -> Perspective Tra
 
 - ROI 创建类节点负责全部图像交互取参。
 - Crop、Draw ROI、Crop Export 都不能写回 ROI 参数。
-- 节点分类中 `vision.roi` 只放 ROI 创建、转换、规则判断；`opencv.filter` 只放图像处理；`opencv.render` 只放绘制节点。
+- 节点分类中 `core.vision.roi` 只放 ROI 创建和转换，ROI 规则进入
+  `core.vision.position`；OpenCV 图像处理按 `opencv.image.filter`、
+  `opencv.image.threshold` 和 `opencv.mask.morphology` 分开，绘制节点进入
+  `opencv.output.render`。
 - workflow 里用户能清楚看到：先创建 ROI，再使用 ROI。
 - 生产 runtime 中未打开调试图时不产生额外图片编码。
 

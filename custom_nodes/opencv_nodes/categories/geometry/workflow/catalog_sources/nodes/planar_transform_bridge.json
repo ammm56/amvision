@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.planar-transform-bridge",
   "display_name": "Planar Transform Bridge",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "把 structured planar-transform.v1 显式桥接为图片 warp 和 ROI 投影输出，适合把 ORB/homography 结果继续接到参考帧校正、后续量测或 ROI 对位链。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

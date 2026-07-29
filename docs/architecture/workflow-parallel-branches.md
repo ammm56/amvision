@@ -9,7 +9,8 @@
 ## 设计原则
 
 - 节点名称、端口名称、参数名和 category 保持 English，与现有 `For Each Start`、`For Each End`、`Get List Item` 等节点一致。
-- 不新增 `logic.parallel` category。List 数据处理放在 `logic.collection`，执行边界放在 `logic.iteration`。
+- List 数据处理放在 `core.logic.collection`，并行执行边界放在
+  `core.logic.parallel`。
 - 分支数量由 `Parallel Start` 输出端实际连接的分支数量决定，可以是 1、3、10 或其他正数。
 - `max_concurrency` 是资源上限，不是分支数量。10 条分支可以设置为 3 路受控并发，也可以在资源允许时设置为 10。
 - 执行器只并发显式 `Parallel Start` / `Parallel End` 边界，不自动并发整张 DAG。
@@ -20,7 +21,7 @@
 ### Split List
 
 - node type id：`core.logic.list-split`
-- category：`logic.collection`
+- category：`core.logic.collection`
 - 输入：`Items / value.v1`
 - 输出：`Partitions / value.v1`、`Count / value.v1`
 - 参数：`partition_count`，范围 1 到 1024
@@ -31,7 +32,7 @@
 ### Parallel Start
 
 - node type id：`core.logic.parallel-start`
-- category：`logic.iteration`
+- category：`core.logic.parallel`
 - 输入：`Value / value.v1`
 - 输出：`Value / value.v1`
 - 参数：`max_concurrency`，范围 1 到 64，默认 4
@@ -40,7 +41,7 @@
 ### Parallel End
 
 - node type id：`core.logic.parallel-end`
-- category：`logic.iteration`
+- category：`core.logic.parallel`
 - 输入：`Results / value.v1`，`multiple=True`
 - 输出：`Results / value.v1`、`Count / value.v1`
 - 参数：`mode`

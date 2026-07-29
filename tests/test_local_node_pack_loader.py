@@ -211,7 +211,7 @@ def register(context):
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.opencv.draw-detections",
                 "display_name": "Draw Detections",
-                "category": "opencv.render",
+                "category": "opencv.output.render",
                 "description": "通过 OpenCV 把 detection 结果叠加到图片上。",
                 "implementation_kind": "custom-node",
                 "runtime_kind": "python-callable",

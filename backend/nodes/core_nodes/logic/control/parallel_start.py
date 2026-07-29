@@ -32,7 +32,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.logic.parallel-start",
         display_name="Parallel Start",
-        category="logic.iteration",
+        category="core.logic.parallel",
         description=(
             "声明显式 Parallel 执行边界的起点。Value 可以连接任意数量的独立分支，"
             "max_concurrency 只限制同时运行的分支数。"

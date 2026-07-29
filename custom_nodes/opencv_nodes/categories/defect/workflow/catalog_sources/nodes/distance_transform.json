@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.distance-transform",
   "display_name": "Distance Transform",
-  "category": "opencv.filter",
+  "category": "opencv.mask.operation",
   "description": "对二值前景执行距离变换，并输出灰度预览图和距离摘要，适合胶线厚度趋势、孔腔中心性或骨架前置分析。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

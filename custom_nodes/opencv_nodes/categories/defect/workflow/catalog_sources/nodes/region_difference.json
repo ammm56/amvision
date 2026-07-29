@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.region-difference",
   "display_name": "Region Difference",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.region",
   "description": "计算二值区域 A 减区域 B。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

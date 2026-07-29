@@ -1575,7 +1575,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.adaptive-threshold",
       "display_name": "Adaptive Threshold",
-      "category": "opencv.filter",
+      "category": "opencv.image.threshold",
       "description": "对输入灰度图执行 adaptive threshold，适合光照不均或背景变化明显的二值化场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -1655,7 +1655,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.apply-mask",
       "display_name": "Apply Mask",
-      "category": "opencv.mask",
+      "category": "opencv.mask.operation",
       "description": "使用单通道 mask 保留输入图片前景，背景置零。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -1718,7 +1718,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.bilateral-filter",
       "display_name": "Bilateral Filter",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -1840,7 +1840,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.binary-threshold",
       "display_name": "Binary Threshold",
-      "category": "opencv.filter",
+      "category": "opencv.image.threshold",
       "description": "把输入图片转为灰度后执行二值化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -1904,7 +1904,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.box-blur",
       "display_name": "Box Blur",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "执行可配置宽高的归一化或非归一化方框滤波。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -1972,7 +1972,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.brightness-contrast",
       "display_name": "Brightness Contrast",
-      "category": "opencv.color",
+      "category": "opencv.image.enhancement",
       "description": "按 dst = src × alpha + beta 调整亮度与对比度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2037,7 +2037,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.canny",
       "display_name": "Canny Edge",
-      "category": "opencv.filter",
+      "category": "opencv.image.edge",
       "description": "对输入图片执行 Canny 边缘检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2173,7 +2173,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.channel-merge",
       "display_name": "Channel Merge",
-      "category": "opencv.color",
+      "category": "opencv.image.color",
       "description": "把三个或四个同尺寸单通道输入合并成一张图片。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2254,7 +2254,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.channel-select",
       "display_name": "Channel Select",
-      "category": "opencv.color",
+      "category": "opencv.image.color",
       "description": "按零起始通道序号提取单个通道。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2314,7 +2314,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.channel-split",
       "display_name": "Channel Split",
-      "category": "opencv.color",
+      "category": "opencv.image.color",
       "description": "把输入图片拆成最多四个独立的单通道图片。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2391,7 +2391,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.clahe",
       "display_name": "CLAHE",
-      "category": "opencv.filter",
+      "category": "opencv.image.enhancement",
       "description": "对输入图片执行 CLAHE 局部对比度增强，适合光照不稳、局部对比不足或表面纹理偏弱的工业图像预处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2460,7 +2460,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.color-convert",
       "display_name": "Color Convert",
-      "category": "opencv.color",
+      "category": "opencv.image.color",
       "description": "在 BGR、RGB、Gray、HSV、HLS、Lab、YCrCb、XYZ、Luv 和 BGRA 之间执行显式颜色空间转换。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2538,7 +2538,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.color-range-threshold",
       "display_name": "Color Range Threshold",
-      "category": "opencv.mask",
+      "category": "opencv.image.threshold",
       "description": "在指定颜色空间按各通道上下界执行 inRange，输出二值 mask。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2631,7 +2631,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.crop",
       "display_name": "Crop",
-      "category": "opencv.filter",
+      "category": "opencv.image.transform",
       "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2719,7 +2719,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.crop-export",
       "display_name": "Crop Export",
-      "category": "opencv.io",
+      "category": "opencv.output.workflow",
       "description": "把 image 和 detections 或 roi-list.v1 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，或 ROI Grid Create.rois 接 rois，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2896,10 +2896,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "裁剪导出",
-            "en-US": "Crop Export"
-          },
           "description": {
             "zh-CN": "把 image 和 detections 或 roi-list.v1 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，或 ROI Grid Create.rois 接 rois，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
             "en-US": "Crop the source image with detection boxes or roi-list.v1 and output an image-refs.v1 collection. Typical wiring: source image -> image, detections -> detections, or ROI Grid Create.rois -> rois, then connect crops to Gallery Preview.images, Get Image Ref.images, or QR Crop Decode Remap.crops."
@@ -2911,7 +2907,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.filter-2d",
       "display_name": "Filter 2D",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "使用用户提供的二维卷积核执行通用 filter2D。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -2995,7 +2991,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.gabor-filter",
       "display_name": "Gabor Filter",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "使用 Gabor 核增强指定方向和空间频率的纹理响应。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3077,7 +3073,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.gallery-preview",
       "display_name": "Gallery Preview",
-      "category": "opencv.preview",
+      "category": "opencv.output.render",
       "description": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3147,7 +3143,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.gamma-correction",
       "display_name": "Gamma Correction",
-      "category": "opencv.color",
+      "category": "opencv.image.enhancement",
       "description": "使用 8-bit LUT 调整非线性亮度响应。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3206,7 +3202,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.gaussian-blur",
       "display_name": "Gaussian Blur",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "对输入图片执行高斯模糊。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3268,7 +3264,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.grayscale",
       "display_name": "Grayscale",
-      "category": "opencv.filter",
+      "category": "opencv.image.color",
       "description": "把输入图片转为灰度图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3322,7 +3318,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.histogram",
       "display_name": "Histogram",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.statistics",
       "description": "计算整图或搜索 ROI 的逐通道直方图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3400,7 +3396,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.histogram-equalize",
       "display_name": "Histogram Equalize",
-      "category": "opencv.color",
+      "category": "opencv.image.enhancement",
       "description": "执行全局直方图均衡化，彩色图片默认只处理亮度通道。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3458,7 +3454,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-arithmetic",
       "display_name": "Image Arithmetic",
-      "category": "opencv.transform",
+      "category": "opencv.image.enhancement",
       "description": "对两张同形状图片执行加、减、乘、除、绝对差或加权叠加。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3545,7 +3541,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-empty-check",
       "display_name": "Image Refs Empty Check",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.batch",
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3695,10 +3691,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "图片集合空槽检查",
-            "en-US": "Image Refs Empty Check"
-          },
           "description": {
             "zh-CN": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
             "en-US": "Consume Image Refs Slot Metrics.summary and classify each slot as empty or non-empty with multi-metric rules."
@@ -3710,7 +3702,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-occupied-check",
       "display_name": "Image Refs Occupied Check",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.batch",
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -3854,10 +3846,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "图片集合有料检查",
-            "en-US": "Image Refs Occupied Check"
-          },
           "description": {
             "zh-CN": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
             "en-US": "Consume Image Refs Slot Metrics.summary and classify each slot as occupied or empty with multi-metric rules."
@@ -3869,7 +3857,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-slot-metrics",
       "display_name": "Image Refs Slot Metrics",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.batch",
       "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4004,10 +3992,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "图片集合槽位指标",
-            "en-US": "Image Refs Slot Metrics"
-          },
           "description": {
             "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
             "en-US": "Compute grayscale, dark-pixel, edge and dark-component metrics for every image in image-refs.v1 as the base node for empty, occupied and statistical checks."
@@ -4019,7 +4003,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.image-refs-statistics",
       "display_name": "Image Refs Statistics",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.batch",
       "description": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4138,10 +4122,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "图片集合统计",
-            "en-US": "Image Refs Statistics"
-          },
           "description": {
             "zh-CN": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
             "en-US": "Compute grayscale, brightness and edge statistics for each image in image-refs.v1, with optional empty / non-empty decisions for batch ROI inspection."
@@ -4153,7 +4133,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.invert",
       "display_name": "Invert",
-      "category": "opencv.filter",
+      "category": "opencv.image.enhancement",
       "description": "对输入图片执行按位反相，适合把暗前景/亮背景切换成后续阈值或轮廓流程更稳定的方向。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4207,7 +4187,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.laplacian",
       "display_name": "Laplacian",
-      "category": "opencv.filter",
+      "category": "opencv.image.edge",
       "description": "对输入图片执行二阶 Laplacian 边缘增强，适合在缺口、毛刺和细小轮廓前处理时强化边界变化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4294,7 +4274,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.mask-logic",
       "display_name": "Mask Logic",
-      "category": "opencv.mask",
+      "category": "opencv.mask.operation",
       "description": "对一个或两个 mask 执行 AND、OR、XOR 或 NOT 运算。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4367,7 +4347,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.median-blur",
       "display_name": "Median Blur",
-      "category": "opencv.filter",
+      "category": "opencv.image.filter",
       "description": "对输入图片执行中值滤波，适合去除椒盐噪声、小颗粒噪声和零散脏点，同时尽量保留边缘结构。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4427,7 +4407,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.morphology",
       "display_name": "Morphology",
-      "category": "opencv.filter",
+      "category": "opencv.mask.morphology",
       "description": "对输入图片执行 morphology 操作。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4509,7 +4489,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.normalize",
       "display_name": "Normalize",
-      "category": "opencv.filter",
+      "category": "opencv.image.enhancement",
       "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4575,7 +4555,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.otsu-threshold",
       "display_name": "Otsu Threshold",
-      "category": "opencv.filter",
+      "category": "opencv.image.threshold",
       "description": "对输入灰度图执行 Otsu 自动阈值分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4641,7 +4621,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.payload-to-value",
       "display_name": "OpenCV Payload To Value",
-      "category": "opencv.transform",
+      "category": "opencv.output.workflow",
       "description": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4884,10 +4864,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "OpenCV 结果转值",
-            "en-US": "OpenCV Payload To Value"
-          },
           "description": {
             "zh-CN": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，便于继续组合 JSON 响应或统一做 JSON 预览。",
             "en-US": "Wrap OpenCV geometry, matching, and region payloads as value.v1 so the result can be composed into JSON responses or previewed as JSON."
@@ -4899,7 +4875,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.resize",
       "display_name": "Resize",
-      "category": "opencv.filter",
+      "category": "opencv.image.transform",
       "description": "按目标宽高缩放输入图片；当仅提供一个边时按原始比例推导另一边。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -4971,7 +4947,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.roi-intensity-statistics",
       "display_name": "ROI Intensity Statistics",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.statistics",
       "description": "计算整图或 ROI 各通道的均值、标准差、极值与常用百分位数。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -5037,7 +5013,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.scharr",
       "display_name": "Scharr",
-      "category": "opencv.filter",
+      "category": "opencv.image.edge",
       "description": "计算 Scharr x、y 方向梯度或梯度幅值。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -5108,7 +5084,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.slot-batch-state",
       "display_name": "Slot Batch State",
-      "category": "opencv.analysis",
+      "category": "opencv.inspection.batch",
       "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
@@ -5197,10 +5173,6 @@
       "node_pack_version": "0.1.3",
       "metadata": {
         "i18n": {
-          "display_name": {
-            "zh-CN": "槽位批量状态",
-            "en-US": "Slot Batch State"
-          },
           "description": {
             "zh-CN": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
             "en-US": "Merge batch empty-check and occupied-check summaries, then classify the slot batch as empty-tray, full-tray, or partial-or-abnormal by ratio thresholds."
@@ -5212,7 +5184,7 @@
       "format_id": "amvision.node-definition.v1",
       "node_type_id": "custom.opencv.sobel",
       "display_name": "Sobel",
-      "category": "opencv.filter",
+      "category": "opencv.image.edge",
       "description": "对输入图片执行一阶 Sobel 边缘增强，适合在轮廓、边线和缺陷显著化前先强化方向性边缘。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",

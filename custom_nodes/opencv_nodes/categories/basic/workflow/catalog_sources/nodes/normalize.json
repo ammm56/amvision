@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.normalize",
   "display_name": "Normalize",
-  "category": "opencv.filter",
+  "category": "opencv.image.enhancement",
   "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

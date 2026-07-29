@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.hough-circles",
   "display_name": "Hough Circles",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.detection",
   "description": "在 Search ROI 内执行位置无关的工业圆搜索；Reference Circle 只定义目标半径，不固定圆心，并使用径向边缘、robust fitting 和质量门槛过滤伪圆。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

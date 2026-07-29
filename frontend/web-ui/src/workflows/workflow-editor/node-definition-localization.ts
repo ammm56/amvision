@@ -11,13 +11,8 @@ const localeAliases: Record<string, string[]> = {
   'ko-KR': ['ko-KR', 'ko'],
 }
 
-export function resolveNodeDefinitionDisplayName(definition: NodeDefinition, locale: SupportedLocale): string {
-  return resolveLocalizedText(
-    readNodeMetadataLocalization(definition.metadata, 'display_name'),
-    definition.display_name,
-    locale,
-    humanizeIdentifier(definition.node_type_id),
-  )
+export function resolveNodeDefinitionDisplayName(definition: NodeDefinition, _locale: SupportedLocale): string {
+  return normalizeText(definition.display_name) || humanizeIdentifier(definition.node_type_id)
 }
 
 export function resolveNodeDefinitionDescription(definition: NodeDefinition, locale: SupportedLocale): string {

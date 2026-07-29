@@ -3,7 +3,7 @@
   "id": "opencv.nodes",
   "version": "0.1.3",
   "displayName": "OpenCV Nodes",
-  "description": "提供统一的 OpenCV 图像处理、颜色与掩膜、几何、形状、匹配、标定、量测、缺陷分析和渲染节点。",
+  "description": "提供统一的 OpenCV 颜色、增强、滤波、阈值、分割、特征、模板、几何、标定、量测、检测和可视化节点。",
   "category": "vision",
   "categoryRoot": "opencv",
   "implementationLayout": "categories",
@@ -11,6 +11,8 @@
     "pipeline.node",
     "vision.opencv",
     "vision.filter",
+    "vision.segmentation",
+    "vision.feature",
     "vision.geometry",
     "vision.matching",
     "vision.calibration",
@@ -36,6 +38,8 @@
   "customNodeCatalogPath": "workflow/catalog.json",
   "metadata": {
     "categoryRoot": "opencv",
-    "layout": "categories/<category>"
+    "categoryModel": "two-level",
+    "categoryDepth": 2,
+    "layout": "categories/<implementation-module>"
   }
 }

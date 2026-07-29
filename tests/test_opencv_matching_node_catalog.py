@@ -42,7 +42,11 @@ def test_opencv_matching_node_catalog_builder_matches_checked_in_catalog() -> No
         "opencv.nodes"
     }
     assert {item["category"] for item in actual_catalog_payload["node_definitions"]} == {
-        "opencv.matching"
+        "opencv.feature.detection",
+        "opencv.matching.feature",
+        "opencv.matching.registration",
+        "opencv.matching.template",
+        "opencv.geometry.detection",
     }
     node_by_type = {
         item["node_type_id"]: item

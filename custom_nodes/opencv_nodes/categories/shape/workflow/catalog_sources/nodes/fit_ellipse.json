@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.fit-ellipse",
   "display_name": "Fit Ellipse",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

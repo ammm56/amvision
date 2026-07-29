@@ -94,7 +94,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.service.model-evaluation.package",
         display_name="Package Evaluation Result",
-        category="service.model.evaluation",
+        category="core.model.lifecycle",
         description=(
             "按 task_type 为已完成 evaluation task 生成或复用 zip 结果包；"
             "cleanup_on_completion 只会登记当前 workflow 执行期的临时对象清理，不影响原有 HTTP API 输出文件。"

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.watershed-markers",
   "display_name": "Watershed Markers",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.image",
   "description": "使用显式 marker label 图执行 watershed 并输出区域 mask 与边界。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

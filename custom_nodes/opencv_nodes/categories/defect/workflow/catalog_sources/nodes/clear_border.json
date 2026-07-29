@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.clear-border",
   "display_name": "Clear Border",
-  "category": "opencv.defect",
+  "category": "opencv.mask.operation",
   "description": "删除与图像边界相接的二值连通域。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

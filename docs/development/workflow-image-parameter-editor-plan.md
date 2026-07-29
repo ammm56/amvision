@@ -270,7 +270,7 @@ ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 
 
 ### Geometry 节点交互边界
 
-`opencv.geometry` 节点只负责几何变换和坐标桥接，不混入 ROI 创建、模板匹配或绘制职责。当前交互协议按节点实际参数划分：
+`opencv.image.transform` 节点只负责几何变换和坐标桥接，不混入 ROI 创建、模板匹配或绘制职责。当前交互协议按节点实际参数划分：
 
 - `perspective-transform`：使用 `polygon` 四点工具写回 `source_points`，并估算 `output_width / output_height`。
 - `rotation-correct`：使用 `line` 工具从图中方向线写回 `angle_deg`，同时提供 `negate_angle / expand_canvas` 调试控件。
@@ -282,7 +282,9 @@ ImageViewer overlay 中多边形统一使用 `points_xy`；节点业务 payload 
 
 ### Matching 双图交互边界
 
-`opencv.matching` 节点以双图调试图为核心，不把匹配语义降级成普通 line/polygon：
+`opencv.matching.feature`、`opencv.matching.registration` 和
+`opencv.matching.template` 节点以双图调试图为核心，不把匹配语义降级成普通
+line/polygon：
 
 - `orb-match` 输出 `feature-matches.v1`，debug preview 使用 `match-line` 点选匹配线、`point-pair` 手动画左右图点对，并通过控件筛选匹配线数量、距离和显示状态。
 - `homography-estimate` 输出 `planar-transform.v1`，debug preview 使用 `match-line` 点选内点线、`point-pair` 手动补充点对、`homography-overlay` 点选投影框。

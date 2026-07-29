@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.canny",
   "display_name": "Canny Edge",
-  "category": "opencv.filter",
+  "category": "opencv.image.edge",
   "description": "对输入图片执行 Canny 边缘检测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

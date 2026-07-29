@@ -45,7 +45,8 @@ NodeDefinition 定义“节点能接什么、吐什么、怎么运行”。
 当前最小字段包括：
 
 - node_type_id：稳定节点类型 id
-- category：节点分类，例如 io.input、model.inference、opencv.render、integration.output
+- category：节点分类。Core 与 OpenCV 使用 namespace、一级分类、二级分类三段 key，
+  例如 `core.model.inference`、`opencv.image.color`、`opencv.output.render`
 - implementation_kind：core-node 或 custom-node
 - runtime_kind：python-callable、worker-task、service-call
 - input_ports / output_ports：端口定义，端口直接引用 payload_type_id
@@ -188,20 +189,11 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 接入统一节点目录。
 
 当前 OpenCV custom node 已统一收口为一个 `opencv.nodes` pack，版本与系统版本保持一致，当前为 `0.1.3`。
-代码按 `basic / shape / matching / calibration / geometry / measurement / defect / render`
-八个包内分类维护，公开 133 个 `custom.opencv.*` 节点。Catalog 中使用以下稳定的功能分类：
-
-- `opencv.color / opencv.mask`：颜色转换、通道处理、颜色范围阈值、掩膜逻辑和图像算术
-- `opencv.filter`：平滑、阈值、边缘、形态学、Filter2D、Scharr 和 Gabor
-- `opencv.analysis`：直方图、ROI 强度统计和批量图像分析
-- `opencv.shape`：轮廓、线圆、拟合、区域属性、矩、Hu 矩和形状关系
-- `opencv.matching`：模板、Phase Correlation、ECC、ORB、SIFT、AKAZE、BRISK、FLANN、角点和线段检测
-- `opencv.calibration`：棋盘格与圆点阵观测、针孔与 fisheye 标定、PnP、点投影、点矫正和 hand-eye 标定
-- `opencv.geometry`：仿射、透视、去畸变、Remap、坐标桥接、亚像素裁剪、极坐标展开和基础轴变换
-- `opencv.measurement`：卡尺、距离、角度、孔径、槽宽、平行度和同心度
-- `opencv.defect`：差异、连通域、Watershed、GrabCut、K-Means、区域集合运算、边界清理、HitMiss、骨架和热力图
-- `opencv.render`：检测、轮廓、线、圆、ROI、区域和量测绘制
-- `opencv.io / opencv.preview / opencv.transform`：裁剪导出、调试预览和 payload bridge
+代码按实现模块维护，公开 133 个 `custom.opencv.*` 节点。Catalog 固定使用
+Image、Mask、Segmentation、Feature、Matching、Geometry、Calibration、
+Measurement、Inspection、Output 十个一级分类，并在每个一级分类下使用简短的
+二级分类。完整节点归属和数量见
+[节点包边界和节点分类](node-taxonomy.md)。
 
 其中 `opencv.nodes` 负责 `contour -> contours.v1`、`min-area-rect -> rotated-rects.v1`、`hough-lines / fit-line -> lines.v1`、`hough-circles / min-enclosing-circle -> circles.v1` 与 `contours-to-regions -> regions.v1` 这条结构化几何抽取主线；`opencv.nodes` 中的 `connected-components` 也直接输出 `regions.v1`，`gallery-preview` 输出 `response-body.v1`；`opencv.nodes` 当前则负责 `orb-keypoints -> local-features.v1`、`orb-match -> feature-matches.v1` 与 `homography-estimate -> planar-transform.v1` 这条更重的参考对位链；`opencv.nodes` 则继续通过 `planar-transform-bridge` 把 `planar-transform.v1` 显式桥接回 `image-ref.v1 / roi.v1`，便于继续接量测、模板定位和 ROI 规则链；而 `image-diff -> absdiff-threshold -> connected-components` 已经可以形成一条完整的传统差异检测上游链，继续接到 `core.output.http-response` 或既有工业规则链。当前这组 OpenCV 自定义 payload 规则 也已统一收进 `custom_nodes/opencv_nodes/shared/workflow/payload_contracts.json`，由多个 pack 共享生成并在运行时按相同定义去重合并。
 
@@ -212,7 +204,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
 - python_packages: [opencv-python, numpy]
 - node_pack_id: opencv.nodes
 - node_pack_version: 0.1.3
-- capability_tags: [opencv.preprocess] / [opencv.color] / [opencv.mask] / [opencv.render] / [opencv.defect] / [opencv.contour] / [opencv.measure] / [opencv.geometry] / [opencv.matching] / [opencv.calibration]
+- capability_tags：继续按能力检索使用，不参与 Category 层级生成
 
 `capability_tags` 中的 `execution.pure` 是图执行优化契约。节点只有在不写文件、不修改变量、不发外部请求、不控制运行时，也不依赖“是否执行”这一可观察行为时才能声明该标签。图执行器会保守地执行未声明该标签的节点；纯节点仅在其输出进入模板输出或被启用的可观察节点消费时执行。这样禁用 Preview 后可以连同只服务于该 Preview 的绘制链一起跳过，又不会误跳过 HTTP、协议、持久化和状态更新节点。
 
@@ -225,7 +217,7 @@ OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-detections",
   "display_name": "Draw Detections",
-  "category": "opencv.render",
+  "category": "opencv.output.render",
   "description": "通过 OpenCV 把 detection 结果叠加到图片上。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

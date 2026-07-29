@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.convex-hull",
   "display_name": "Convex Hull",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

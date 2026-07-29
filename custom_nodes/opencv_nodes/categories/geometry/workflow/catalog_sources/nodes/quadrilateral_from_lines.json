@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.quadrilateral-from-lines",
   "display_name": "Quadrilateral From Lines",
-  "category": "opencv.geometry",
+  "category": "opencv.geometry.detection",
   "description": "从显式连接的 Top、Right、Bottom、Left lines.v1 输入构建凸四边形 ROI；不猜测边线语义。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

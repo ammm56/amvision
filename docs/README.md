@@ -54,7 +54,7 @@
 - [docs/development/python-code-checks.md](development/python-code-checks.md) 说明 Python 明显问题检查命令，以及 Ruff 规则编号对应的直白含义
 - [docs/nodes/README.md](nodes/README.md) 汇总 node pack、custom node 和 runtime hook 专题文档
 - [docs/architecture/node-system.md](architecture/node-system.md) 汇总 node pack、custom node 和扩展机制文档
-- [docs/architecture/node-taxonomy.md](architecture/node-taxonomy.md) 固定 core/custom 边界、node pack 拆分、包内目录、分类树和兼容迁移规则
+- [docs/architecture/node-taxonomy.md](architecture/node-taxonomy.md) 固定 core/custom 边界、node pack 拆分、包内目录、两级分类和兼容迁移规则
 - [docs/decisions/README.md](decisions/README.md) 汇总架构决策记录
 
 ## 保存原则

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.morphology-hitmiss",
   "display_name": "Morphology HitMiss",
-  "category": "opencv.defect",
+  "category": "opencv.mask.morphology",
   "description": "使用包含 -1、0、1 的结构元素在二值图中搜索像素模式。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

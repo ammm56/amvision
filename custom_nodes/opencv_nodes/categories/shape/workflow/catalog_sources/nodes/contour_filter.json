@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour-filter",
   "display_name": "Contour Filter",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.contour",
   "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

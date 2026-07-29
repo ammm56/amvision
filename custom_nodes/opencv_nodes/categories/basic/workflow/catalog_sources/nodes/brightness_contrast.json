@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.brightness-contrast",
   "display_name": "Brightness Contrast",
-  "category": "opencv.color",
+  "category": "opencv.image.enhancement",
   "description": "按 dst = src × alpha + beta 调整亮度与对比度。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

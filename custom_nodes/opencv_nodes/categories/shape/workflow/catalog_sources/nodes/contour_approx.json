@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.contour-approx",
   "display_name": "Contour Approx",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.contour",
   "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

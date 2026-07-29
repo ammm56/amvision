@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flann-match",
   "display_name": "FLANN Match",
-  "category": "opencv.matching",
+  "category": "opencv.matching.feature",
   "description": "使用 KD-Tree 或 LSH 对 float32 或 binary 局部描述子执行近邻匹配。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

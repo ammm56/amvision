@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.heatmap-preview",
   "display_name": "Heatmap Preview",
-  "category": "opencv.render",
+  "category": "opencv.inspection.difference",
   "description": "把差异图、距离图或边缘强度图映射为伪彩色热力图，支持可选底图叠加，适合现场调试异常强度分布。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

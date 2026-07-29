@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.draw-circles",
   "display_name": "Draw Circles",
-  "category": "opencv.render",
+  "category": "opencv.output.render",
   "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

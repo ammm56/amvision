@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.crop",
   "display_name": "Crop",
-  "category": "opencv.filter",
+  "category": "opencv.image.transform",
   "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

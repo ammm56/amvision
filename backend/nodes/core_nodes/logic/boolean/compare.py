@@ -52,7 +52,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.logic.compare",
         display_name="Compare Values",
-        category="logic.compare",
+        category="core.logic.condition",
         description="支持 =、!=、>、>=、<、<= 的最小比较节点。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,

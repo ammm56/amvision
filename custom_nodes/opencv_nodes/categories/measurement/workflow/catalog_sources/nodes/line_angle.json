@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.line-angle",
   "display_name": "Line Angle",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.geometry",
   "description": "读取选中直线的方向角或相对参考角度的偏差，适合做角度姿态和装配方向量测。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

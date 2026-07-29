@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.color-convert",
   "display_name": "Color Convert",
-  "category": "opencv.color",
+  "category": "opencv.image.color",
   "description": "在 BGR、RGB、Gray、HSV、HLS、Lab、YCrCb、XYZ、Luv 和 BGRA 之间执行显式颜色空间转换。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

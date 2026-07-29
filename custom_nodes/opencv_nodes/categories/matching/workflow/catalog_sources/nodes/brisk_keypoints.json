@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.brisk-keypoints",
   "display_name": "BRISK Keypoints",
-  "category": "opencv.matching",
+  "category": "opencv.feature.detection",
   "description": "提取快速多尺度 BRISK 关键点和二进制描述子。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

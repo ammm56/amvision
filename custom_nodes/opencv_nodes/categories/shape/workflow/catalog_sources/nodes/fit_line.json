@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.fit-line",
   "display_name": "Fit Line",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

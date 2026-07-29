@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.kmeans-segment",
   "display_name": "K-Means Segment",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.image",
   "description": "按 BGR 颜色向量执行像素 K-Means 聚类分割。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

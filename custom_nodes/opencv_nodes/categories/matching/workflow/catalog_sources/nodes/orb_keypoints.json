@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.orb-keypoints",
   "display_name": "ORB Keypoints",
-  "category": "opencv.matching",
+  "category": "opencv.feature.detection",
   "description": "对输入图片提取 ORB 局部特征点与二进制描述，适合在模板匹配不稳、存在旋转缩放或局部视角变化时做参考对位前处理。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

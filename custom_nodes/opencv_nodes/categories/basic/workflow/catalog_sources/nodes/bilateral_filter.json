@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.bilateral-filter",
   "display_name": "Bilateral Filter",
-  "category": "opencv.filter",
+  "category": "opencv.image.filter",
   "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

@@ -208,11 +208,17 @@ def test_workflow_editor_catalog_and_resource_management_endpoints(tmp_path: Pat
             for item in node_catalog_payload["node_definitions"]
         )
         assert any(
-            group["category"] == "opencv.render"
+            group["category"] == "opencv.output.render"
+            and group["display_name"] == "Output / Render"
             and any(
                 node_item["node_type_id"] == "custom.opencv.draw-detections"
                 for node_item in group["node_definitions"]
             )
+            for group in node_catalog_payload["palette_groups"]
+        )
+        assert any(
+            group["category"] == "core.io.image"
+            and group["display_name"] == "IO / Image"
             for group in node_catalog_payload["palette_groups"]
         )
 
@@ -388,7 +394,7 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
             )
             by_category_response = client.get(
                 "/api/v1/workflows/node-catalog",
-                params={"category": "opencv.render"},
+                params={"category": "opencv.output.render"},
                 headers=_build_workflow_read_headers(),
             )
             by_payload_type_response = client.get(
@@ -425,10 +431,11 @@ def test_workflow_node_catalog_supports_filters(tmp_path: Path) -> None:
         assert by_category_payload["node_definitions"]
         assert by_category_payload["palette_groups"]
         assert all(
-            item["category"].startswith("opencv.render")
+            item["category"] == "opencv.output.render"
             for item in by_category_payload["node_definitions"]
         )
-        assert all(group["category"].startswith("opencv.render") for group in by_category_payload["palette_groups"])
+        assert all(group["category"] == "opencv.output.render" for group in by_category_payload["palette_groups"])
+        assert all(group["display_name"] == "Output / Render" for group in by_category_payload["palette_groups"])
         assert any(
             item["node_type_id"] == "custom.opencv.draw-detections"
             for item in by_category_payload["node_definitions"]
@@ -790,7 +797,7 @@ def register(context):
                 "format_id": "amvision.node-definition.v1",
                 "node_type_id": "custom.opencv.draw-detections",
                 "display_name": "Draw Detections",
-                "category": "opencv.render",
+                "category": "opencv.output.render",
                 "description": "通过 OpenCV 把 detection 结果叠加到图片上，并生成结构化 HTTP 回包。",
                 "implementation_kind": "custom-node",
                 "runtime_kind": "python-callable",

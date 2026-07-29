@@ -8,7 +8,8 @@
 
 - `implementation_kind` 区分 core node 和 custom node。
 - `node_pack_id` 标识可独立安装、启用、禁用、版本化和回滚的能力包。
-- `category` 是节点选择器中的多级功能路径，不是 node pack。
+- `category` 是节点包内严格两级的功能分类，不是 node pack。公开 key 使用
+  `<namespace>.<root>.<child>`。
 - 代码目录反映包内实现边界，不参与公开工作流标识。
 
 `node_type_id` 是工作流保存的节点标识。开发阶段发生职责或命名调整时，直接更新节点定义、模板、应用、测试和文档，不保留隐藏兼容节点。进入正式发布阶段后，再通过显式版本迁移管理公开 id 变化。
@@ -35,9 +36,10 @@
 
 ## custom_nodes 目录规则
 
-### 按算法分类
+### 按实现模块分类
 
-OpenCV 和 Barcode 采用 `categories`：
+OpenCV 和 Barcode 采用 `categories`。物理目录用于组织实现模块，不直接决定公开
+`category`。一个实现模块可以包含多个公开的两级分类：
 
 ```text
 custom_nodes/opencv_nodes/
@@ -110,24 +112,70 @@ HTTP Request 是通用节点。MES 提交只是 URL、鉴权和字段映射的�
 
 统一 pack 使用以下显式字段：
 
-- `categoryRoot`：包内所有节点 `category` 的根路径。
+- `categoryRoot`：包内所有节点 `category` 的命名空间。
 - `implementationLayout`：`flat`、`categories`、`providers`、`protocols` 或 `recipes`。
 
-加载器校验每个节点的 `category` 必须位于 `categoryRoot` 下。这样可以避免 Database 节点重新落入 `integration.output`，也可以避免 Camera provider 在目录中成为新的一级 pack。
+加载器校验每个节点的 `category` 必须位于 `categoryRoot` 下。Core 与 OpenCV
+公开分类采用 `<categoryRoot>.<root>.<child>`，例如 `core.model.inference` 和
+`opencv.image.color`。`categoryRoot` 是内部命名空间，不在第二列重复显示。
+分类不得包含 `/`，也不得在二级分类后继续增加层级。
+
+## OpenCV 两级分类
+
+OpenCV 现行 133 个节点固定归入以下 10 个一级分类、27 个二级分类：
+
+| 一级分类 | 二级分类 | category | 节点数 |
+| --- | --- | --- | ---: |
+| Image | Color | `opencv.image.color` | 5 |
+| Image | Enhancement | `opencv.image.enhancement` | 7 |
+| Image | Filter | `opencv.image.filter` | 6 |
+| Image | Edge | `opencv.image.edge` | 4 |
+| Image | Threshold | `opencv.image.threshold` | 4 |
+| Image | Transform | `opencv.image.transform` | 13 |
+| Mask | Operation | `opencv.mask.operation` | 7 |
+| Mask | Morphology | `opencv.mask.morphology` | 2 |
+| Segmentation | Image | `opencv.segmentation.image` | 4 |
+| Segmentation | Region | `opencv.segmentation.region` | 5 |
+| Feature | Detection | `opencv.feature.detection` | 6 |
+| Matching | Feature | `opencv.matching.feature` | 2 |
+| Matching | Template | `opencv.matching.template` | 3 |
+| Matching | Registration | `opencv.matching.registration` | 3 |
+| Geometry | Detection | `opencv.geometry.detection` | 7 |
+| Geometry | Contour | `opencv.geometry.contour` | 5 |
+| Geometry | Shape | `opencv.geometry.shape` | 10 |
+| Calibration | Camera | `opencv.calibration.camera` | 5 |
+| Calibration | Pose | `opencv.calibration.pose` | 4 |
+| Measurement | Edge | `opencv.measurement.edge` | 2 |
+| Measurement | Circle | `opencv.measurement.circle` | 3 |
+| Measurement | Geometry | `opencv.measurement.geometry` | 5 |
+| Inspection | Statistics | `opencv.inspection.statistics` | 2 |
+| Inspection | Batch | `opencv.inspection.batch` | 5 |
+| Inspection | Difference | `opencv.inspection.difference` | 3 |
+| Output | Render | `opencv.output.render` | 9 |
+| Output | Workflow | `opencv.output.workflow` | 2 |
+
+节点标题固定使用 catalog 中的 English `display_name`。语言切换只影响说明、端口、
+参数和错误信息，不替换节点标题。
 
 ## core node 边界
 
 core 只保留工作流引擎稳定运行所需的通用数据、控制、平台服务和视觉规则，不直接承载第三方 SDK 或外部系统协议。
 
-core 顶层分类固定为：
+Core 现行 160 个节点固定归入以下 9 个一级分类、30 个二级分类：
 
-- `io`：输入、输出、文件、图片、视频、模板边界。
-- `logic`：值、布尔、集合、对象、循环、状态和规则。
-- `vision`：与具体第三方视觉库无关的 ROI、region、连续性、装配和缺陷规则。
-- `model`：已部署模型的通用推理边界。
-- `service`：数据集、任务、部署和模型任务等平台服务调用。
-- `inspection`：工业结果记录和汇总对象。
-- `ui`：预览和调试显示。
+- IO：Image、File、Input、Response、Video。
+- UI：Preview。
+- Logic：Condition、Collection、Branch、Iteration、Parallel、Object、Transform、
+  Variable、Rule。
+- Model：Inference、Lifecycle。
+- Dataset：Import、Export。
+- Deployment：Runtime。
+- Task：Observation。
+- Inspection：Record。
+- Vision：ROI、Region、Geometry、Position、Assembly、Continuity、Defect、Video。
+
+内部 key 统一使用 `core.<root>.<child>`，例如 `core.model.inference` 和
+`core.vision.continuity`。
 
 `support` 目录只放实现 helper，不生成节点，不出现在目录。
 
@@ -144,16 +192,20 @@ backend/nodes/core_nodes/io/output/
 
 ## 节点选择器
 
-节点选择器固定为三段：
+节点目录固定为三列：
 
-1. 来源：Core Nodes 或一个完整 node pack。
-2. 分类树：按 `category` 的根路径和子路径展示。
-3. 节点：显示节点名、完整分类、说明和稳定 `node_type_id`。
+1. Source：选择 Core Nodes 或完整 node pack。
+2. Category：一级分类显示为不可点击的分组标题，二级分类显示为缩进的可选项。
+3. Node：显示所选二级分类中的固定 English 节点名、分类路径、可本地化说明和稳定
+   `node_type_id`。
+
+`core`、`opencv` 等 namespace 不在第二列重复显示。界面可以用 `Root / Child`
+展示节点所属路径，但 `/` 只用于展示，不写入 `category`。
 
 当前开发阶段的 catalog 只包含现行节点定义，不登记已删除 pack、旧 node type 或隐藏兼容副本。
 
 ## 设计参考
 
-- [ComfyUI Custom Nodes](https://docs.comfy.org/custom-nodes/walkthrough) 使用 category 决定节点菜单位置，并支持路径形式的多级分类。
+- [ComfyUI Custom Nodes](https://docs.comfy.org/custom-nodes/walkthrough) 使用 category 决定节点菜单位置；本项目将公开目录限制为两级，避免无限加深。
 - [Dify Tool Plugin](https://docs.dify.ai/en/develop-plugin/dev-guides-and-walkthroughs/tool-plugin) 将一个 provider 和多个 tools 放在同一个插件工程中。
 - [HALCON Operator Reference](https://www.mvtec.com/doc/halcon/2511/en/index.html) 使用稳定的功能层级组织大量视觉算子，而不是把每个小分类变成独立插件。

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.solve-pnp",
   "display_name": "Solve PnP",
-  "category": "opencv.calibration",
+  "category": "opencv.calibration.pose",
   "description": "根据标定观测和相机内参估计物体位姿，并返回重投影误差。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

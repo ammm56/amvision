@@ -2,14 +2,10 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.slot-batch-state",
   "display_name": "Slot Batch State",
-  "category": "opencv.analysis",
+  "category": "opencv.inspection.batch",
   "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
   "metadata": {
     "i18n": {
-      "display_name": {
-        "zh-CN": "槽位批量状态",
-        "en-US": "Slot Batch State"
-      },
       "description": {
         "zh-CN": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
         "en-US": "Merge batch empty-check and occupied-check summaries, then classify the slot batch as empty-tray, full-tray, or partial-or-abnormal by ratio thresholds."

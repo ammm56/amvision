@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.histogram",
   "display_name": "Histogram",
-  "category": "opencv.analysis",
+  "category": "opencv.inspection.statistics",
   "description": "计算整图或搜索 ROI 的逐通道直方图。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

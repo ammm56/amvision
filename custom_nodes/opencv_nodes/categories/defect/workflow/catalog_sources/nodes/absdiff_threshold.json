@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.absdiff-threshold",
   "display_name": "Absdiff Threshold",
-  "category": "opencv.filter",
+  "category": "opencv.inspection.difference",
   "description": "把差分图通过阈值化收成前景变化区域二值图。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

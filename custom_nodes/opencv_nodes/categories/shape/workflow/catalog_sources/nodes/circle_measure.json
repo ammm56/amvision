@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.circle-measure",
   "display_name": "Circle Measure",
-  "category": "opencv.shape",
+  "category": "opencv.measurement.circle",
   "description": "围绕参考圆径向采样亚像素边缘，使用 robust circle fitting 输出稳定圆定位和质量诊断。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

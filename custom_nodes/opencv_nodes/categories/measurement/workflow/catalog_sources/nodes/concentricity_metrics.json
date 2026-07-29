@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.concentricity-metrics",
   "display_name": "Concentricity Metrics",
-  "category": "opencv.measurement",
+  "category": "opencv.measurement.circle",
   "description": "计算两圆之间的中心偏移和半径差，适合同心孔、轴套和圆环装配检查。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

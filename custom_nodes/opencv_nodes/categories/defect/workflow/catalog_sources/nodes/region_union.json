@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.region-union",
   "display_name": "Region Union",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.region",
   "description": "计算两个同尺寸二值区域的并集。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

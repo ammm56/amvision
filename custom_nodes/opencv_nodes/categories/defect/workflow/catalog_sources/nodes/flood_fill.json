@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.flood-fill",
   "display_name": "Flood Fill",
-  "category": "opencv.defect",
+  "category": "opencv.segmentation.region",
   "description": "从种子点按颜色差容差提取连通区域 mask。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

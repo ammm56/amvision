@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.pad-border",
   "display_name": "Pad Border",
-  "category": "opencv.geometry",
+  "category": "opencv.image.transform",
   "description": "按 constant、replicate、reflect 或 wrap 策略扩展图像边界。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",

@@ -2,7 +2,7 @@
   "format_id": "amvision.node-definition.v1",
   "node_type_id": "custom.opencv.shape-match",
   "display_name": "Shape Match",
-  "category": "opencv.shape",
+  "category": "opencv.geometry.shape",
   "description": "使用 Hu 矩比较两个 contour 集合中的指定轮廓，分数越低越相似。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
