@@ -3,11 +3,18 @@ import type { ComputedRef, Ref } from 'vue'
 import type { WorkflowSaveActionInput, WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
 import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
 import type { WorkflowAppSaveResult } from '../services/workflow-app.service'
-import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
+import type {
+  FlowApplication,
+  FlowApplicationBinding,
+  WorkflowGraphTemplate,
+  WorkflowJsonObject,
+  WorkflowPreviewRun,
+} from '../types'
 import type { WorkflowValidationIssue } from '../validation/useWorkflowPreflight'
 
 export interface WorkflowPreviewRunUiOptions {
   preserveImageViewerNodeId?: string | null
+  targetNodeId?: string | null
 }
 
 export interface WorkflowSaveRunOrchestrationOptions {
@@ -19,7 +26,7 @@ export interface WorkflowSaveRunOrchestrationOptions {
   buildCurrentApplication: (template: WorkflowGraphTemplate) => FlowApplication | null
   runWorkflowPreflight: (template: WorkflowGraphTemplate, application: FlowApplication) => WorkflowValidationIssue | null
   applyWorkflowValidationIssue: (issue: WorkflowValidationIssue) => void
-  buildPreviewInputBindings: () => Promise<WorkflowJsonObject | null>
+  buildPreviewInputBindings: (bindings?: FlowApplicationBinding[]) => Promise<WorkflowJsonObject | null>
   saveWorkflowDocument: (input: WorkflowSaveActionInput) => Promise<WorkflowAppSaveResult | null>
   runWorkflowPreview: (input: WorkflowPreviewRunActionInput) => Promise<WorkflowPreviewRun | null>
   applyWorkflowSaveFeedback: (result: WorkflowAppSaveResult, options: { wasNewApp: boolean }) => Promise<void>
@@ -75,7 +82,11 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       options.applyWorkflowValidationIssue(preflightIssue)
       return
     }
-    const inputBindings = await options.buildPreviewInputBindings()
+    const targetNodeId = readOptionalText(uiOptions.targetNodeId)
+    const scopedInputBindings = targetNodeId
+      ? collectNodeScopeInputBindings(template, application, targetNodeId)
+      : undefined
+    const inputBindings = await options.buildPreviewInputBindings(scopedInputBindings)
     if (!inputBindings) return
     options.clearActionMessages()
     options.clearContextMenu()
@@ -88,6 +99,9 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       template,
       application,
       inputBindings,
+      executionScope: targetNodeId
+        ? { kind: 'node', targetNodeId }
+        : { kind: 'application' },
     })
     if (!previewRun) return
     await options.applyPreviewRunFeedback(previewRun, { reopenImageViewerNodeId: preserveImageViewerNodeId })
@@ -97,6 +111,45 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     saveCurrentWorkflowApp,
     runPreview,
   }
+}
+
+function collectNodeScopeInputBindings(
+  template: WorkflowGraphTemplate,
+  application: FlowApplication,
+  targetNodeId: string,
+): FlowApplicationBinding[] {
+  const enabledNodeIds = new Set(
+    template.nodes
+      .filter((node) => node.enabled !== false)
+      .map((node) => node.node_id),
+  )
+  if (!enabledNodeIds.has(targetNodeId)) return []
+  const reverseAdjacency = new Map<string, string[]>()
+  for (const nodeId of enabledNodeIds) reverseAdjacency.set(nodeId, [])
+  for (const edge of template.edges) {
+    if (!enabledNodeIds.has(edge.source_node_id) || !enabledNodeIds.has(edge.target_node_id)) continue
+    reverseAdjacency.get(edge.target_node_id)?.push(edge.source_node_id)
+  }
+  const scopedNodeIds = new Set([targetNodeId])
+  const pendingNodeIds = [targetNodeId]
+  while (pendingNodeIds.length > 0) {
+    const nodeId = pendingNodeIds.shift()
+    if (!nodeId) continue
+    for (const sourceNodeId of reverseAdjacency.get(nodeId) ?? []) {
+      if (scopedNodeIds.has(sourceNodeId)) continue
+      scopedNodeIds.add(sourceNodeId)
+      pendingNodeIds.push(sourceNodeId)
+    }
+  }
+  const scopedTemplateInputIds = new Set(
+    template.template_inputs
+      .filter((input) => scopedNodeIds.has(input.target_node_id))
+      .map((input) => input.input_id),
+  )
+  return application.bindings.filter(
+    (binding) => binding.direction === 'input'
+      && scopedTemplateInputIds.has(binding.template_port_id),
+  )
 }
 
 function readOptionalText(value: unknown): string | null {

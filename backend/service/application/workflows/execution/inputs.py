@@ -86,6 +86,22 @@ def resolve_node_inputs(
         for source_node_id, source_port in edge_bindings.get(binding_key, []):
             source_key = (source_node_id, source_port)
             if source_key not in node_output_values:
+                if (
+                    node_definition.node_type_id == "core.input.mask-prompt"
+                    and port.name == "mask_image"
+                ):
+                    raise InvalidRequestError(
+                        "Mask Editor 尚未应用有效 Mask，请在 Mask Editor 节点上执行 "
+                        "Preview Node Run，再点击该节点的调试图绘制并应用 Mask",
+                        details={
+                            "node_id": node_id,
+                            "port_name": port.name,
+                            "source_node_id": source_node_id,
+                            "source_port": source_port,
+                            "reason": "upstream_mask_not_applied",
+                            "node_state": "waiting_for_upstream_output",
+                        },
+                    )
                 raise InvalidRequestError(
                     "当前节点依赖的上游输出尚未产出",
                     details={
@@ -93,6 +109,8 @@ def resolve_node_inputs(
                         "port_name": port.name,
                         "source_node_id": source_node_id,
                         "source_port": source_port,
+                        "reason": "upstream_output_not_produced",
+                        "node_state": "waiting_for_upstream_output",
                     },
                 )
             resolved_values.append(node_output_values[source_key])

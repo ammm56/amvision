@@ -86,6 +86,25 @@ def test_execution_image_registry_registers_reads_and_releases_bytes() -> None:
         registry.read_bytes(entry.image_handle)
 
 
+def test_memory_image_content_sha_is_stable_across_execution_registries() -> None:
+    """验证同一编码图片跨 Workflow Run 使用内容 SHA，而不是临时 handle 判断身份。"""
+
+    first_entry = ExecutionImageRegistry().register_image_bytes(
+        content=b"same-image-bytes",
+        media_type="image/png",
+    )
+    second_entry = ExecutionImageRegistry().register_image_bytes(
+        content=b"same-image-bytes",
+        media_type="image/png",
+    )
+
+    assert first_entry.image_handle != second_entry.image_handle
+    assert first_entry.content_sha256 == second_entry.content_sha256
+    assert first_entry.content_sha256 == (
+        "2638cad8bfc06894b95a03f3701642c5ba093352a20ce6c9a006cf7105c63570"
+    )
+
+
 def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_response(tmp_path: Path) -> None:
     """验证 raw BGR24 图片在节点内存中流转，对外响应时才编码为 JSON 安全图片。"""
 
@@ -118,6 +137,9 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert memory_payload["dtype"] == "uint8"
     assert memory_payload["layout"] == "HWC"
     assert memory_payload["pixel_format"] == "bgr24"
+    assert memory_payload["content_sha256"] == registry.get_entry(
+        str(memory_payload["image_handle"])
+    ).content_sha256
     assert loaded_payload["media_type"] == "image/raw"
     assert np.array_equal(loaded_matrix, image_matrix)
     assert response_image["transport_kind"] == "inline-base64"
@@ -126,6 +148,30 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert response_image["width"] == 3
     assert response_image["height"] == 2
     assert "shape" not in response_image
+
+
+def test_register_image_matrix_content_sha_is_stable_across_runs(tmp_path: Path) -> None:
+    """验证相同 raw BGR24 矩阵跨执行生成相同内容 SHA。"""
+
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    image_matrix = np.arange(18, dtype=np.uint8).reshape((2, 3, 3))
+    first_request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload={"object_key": "inputs/source.png"},
+    )
+    second_request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload={"object_key": "inputs/source.png"},
+    )
+
+    first_payload = register_image_matrix(first_request, image_matrix=image_matrix)
+    second_payload = register_image_matrix(second_request, image_matrix=image_matrix.copy())
+
+    assert first_payload["image_handle"] != second_payload["image_handle"]
+    assert first_payload["content_sha256"] == second_payload["content_sha256"]
 
 
 def test_load_image_bytes_supports_storage_and_memory_modes(tmp_path: Path) -> None:
@@ -544,6 +590,9 @@ def test_register_image_bytes_and_copy_image_payload_support_memory_source(tmp_p
         variant_name="saved",
     )
 
+    assert memory_payload["content_sha256"] == (
+        "47cf5fe51e9e014ae6dbf92f6fa867714083aee218c31b9b3931c5ba4ceabe5b"
+    )
     assert saved_payload == build_storage_image_payload(
         object_key="outputs/result.png",
         source_payload=memory_payload,

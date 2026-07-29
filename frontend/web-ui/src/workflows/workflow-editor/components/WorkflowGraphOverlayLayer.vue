@@ -21,6 +21,7 @@
     :dark-label="t('preferences.dark')"
     :save-label="t('workflowEditor.actions.saveWorkflowApp')"
     :preview-label="t('workflowEditor.actions.previewRun')"
+    :preview-node-label="t('workflowEditor.actions.previewNodeRun')"
     @open-node-picker="emit('openNodePicker')"
     @expose-app-input="emit('exposeAppInput')"
     @expose-app-output="emit('exposeAppOutput')"
@@ -34,6 +35,7 @@
     @toggle-theme="emit('toggleTheme')"
     @save="emit('save')"
     @preview="emit('preview')"
+    @preview-node="emit('previewNode')"
   />
 
   <WorkflowNodePicker
@@ -104,6 +106,7 @@ const emit = defineEmits<{
   toggleTheme: []
   save: []
   preview: []
+  previewNode: []
   selectNodeFromPicker: [definition: NodeDefinition]
   closeNodePicker: []
 }>()

@@ -44,20 +44,14 @@ def _handle_mask_editor(request: WorkflowNodeExecutionRequest) -> dict[str, obje
     saved_source_identity = str(
         request.parameters.get("mask_source_identity") or ""
     ).strip()
-    if object_key:
-        if not saved_source_identity or not source_identity:
-            raise InvalidRequestError(
-                "Mask Editor 的源图缺少稳定标识，请清除旧 Mask 后重新编辑"
-            )
-        if saved_source_identity != source_identity:
-            raise InvalidRequestError(
-                "Mask Editor 的源图已变化，请清除旧 Mask 后重新编辑",
-                details={
-                    "saved_source_identity": saved_source_identity,
-                    "current_source_identity": source_identity,
-                },
-            )
-    if object_key:
+    mask_source_changed = bool(
+        object_key
+        and (
+            not saved_source_identity
+            or saved_source_identity != source_identity
+        )
+    )
+    if object_key and not mask_source_changed:
         mask_payload = {
             "transport_kind": "storage",
             "object_key": object_key,
@@ -107,7 +101,11 @@ def _handle_mask_editor(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                         ],
                         extra={
                             "brush_size": 24,
-                            "mask_object_key": object_key,
+                            "mask_object_key": (
+                                "" if mask_source_changed else object_key
+                            ),
+                            "mask_source_identity": source_identity,
+                            "source_changed": mask_source_changed,
                             "apply_parameters": {
                                 "mask_source_identity": source_identity,
                             },

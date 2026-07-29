@@ -61,6 +61,7 @@ class ExecutionImageEntry:
     - dtype：raw 数据类型。
     - layout：raw 数据布局。
     - pixel_format：raw 像素格式。
+    - content_sha256：图片内容 SHA-256；跨 Workflow Run 判断同一源图时使用。
     - created_by_node_id：创建该图片的节点 id。
     """
 
@@ -75,6 +76,7 @@ class ExecutionImageEntry:
     dtype: str | None = None
     layout: str | None = None
     pixel_format: str | None = None
+    content_sha256: str | None = None
     created_by_node_id: str | None = None
 
 
@@ -200,6 +202,7 @@ class ExecutionImageRegistry:
             dtype=_normalize_optional_text(dtype),
             layout=_normalize_optional_text(layout),
             pixel_format=_normalize_optional_text(pixel_format),
+            content_sha256=hashlib.sha256(content).hexdigest(),
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
         with self._lock:
@@ -217,6 +220,11 @@ class ExecutionImageRegistry:
         """注册一张 raw BGR24 内存图片并返回稳定条目。"""
 
         image_handle = f"img-{uuid4().hex}"
+        content_hasher = hashlib.sha256()
+        content_hasher.update(
+            f"bgr24:{int(width)}x{int(height)}:uint8:HWC\0".encode("ascii")
+        )
+        content_hasher.update(memoryview(matrix).cast("B"))
         entry = ExecutionImageEntry(
             image_handle=image_handle,
             content=None,
@@ -229,6 +237,7 @@ class ExecutionImageRegistry:
             dtype="uint8",
             layout="HWC",
             pixel_format="bgr24",
+            content_sha256=content_hasher.hexdigest(),
             created_by_node_id=_normalize_optional_text(created_by_node_id),
         )
         with self._lock:
@@ -889,6 +898,7 @@ def build_memory_image_payload(
     dtype: str | None = None,
     layout: str | None = None,
     pixel_format: str | None = None,
+    content_sha256: str | None = None,
 ) -> dict[str, object]:
     """构建 memory 模式 image-ref payload。
 
@@ -901,6 +911,7 @@ def build_memory_image_payload(
     - dtype：raw 数据类型。
     - layout：raw 数据布局。
     - pixel_format：raw 像素格式。
+    - content_sha256：图片内容 SHA-256，用于跨执行稳定识别同一图片。
 
     返回：
     - dict[str, object]：memory 模式图片引用。
@@ -917,6 +928,9 @@ def build_memory_image_payload(
         "image_handle": normalized_image_handle,
         "media_type": normalized_media_type,
     }
+    normalized_content_sha256 = _normalize_optional_text(content_sha256)
+    if normalized_content_sha256 is not None:
+        payload["content_sha256"] = normalized_content_sha256.lower()
     normalized_width = _normalize_optional_dimension(width)
     normalized_height = _normalize_optional_dimension(height)
     if normalized_width is not None:
@@ -1059,6 +1073,7 @@ def register_image_bytes(
         dtype=image_entry.dtype,
         layout=image_entry.layout,
         pixel_format=image_entry.pixel_format,
+        content_sha256=image_entry.content_sha256,
     )
 
 
@@ -1105,6 +1120,7 @@ def register_image_matrix(
         dtype=str(raw_fields["dtype"]),
         layout=str(raw_fields["layout"]),
         pixel_format=str(raw_fields["pixel_format"]),
+        content_sha256=image_entry.content_sha256,
     )
 
 

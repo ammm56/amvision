@@ -29,6 +29,8 @@ class WorkflowPreviewRunCreateRequest:
     execution_metadata: dict[str, object] | None = None
     timeout_seconds: int | None = None
     wait_mode: str = "sync"
+    execution_scope_kind: str = "application"
+    target_node_id: str | None = None
 
 
 def normalize_preview_run_create_request(
@@ -47,6 +49,19 @@ def normalize_preview_run_create_request(
             "wait_mode 只支持 sync 或 async",
             details={"wait_mode": request.wait_mode},
         )
+    execution_scope_kind = request.execution_scope_kind.strip().lower()
+    if execution_scope_kind not in {"application", "node"}:
+        raise InvalidRequestError(
+            "execution_scope.kind 只支持 application 或 node",
+            details={"kind": request.execution_scope_kind},
+        )
+    target_node_id = _normalize_optional_str(request.target_node_id)
+    if execution_scope_kind == "node" and target_node_id is None:
+        raise InvalidRequestError("节点级 Preview 必须提供 target_node_id")
+    if execution_scope_kind == "application" and target_node_id is not None:
+        raise InvalidRequestError(
+            "application 级 Preview 不能提供 target_node_id"
+        )
     return WorkflowPreviewRunCreateRequest(
         project_id=project_id,
         application_ref_id=_normalize_optional_str(request.application_ref_id),
@@ -57,6 +72,8 @@ def normalize_preview_run_create_request(
         execution_metadata=dict(request.execution_metadata or {}),
         timeout_seconds=request.timeout_seconds,
         wait_mode=wait_mode,
+        execution_scope_kind=execution_scope_kind,
+        target_node_id=target_node_id,
     )
 
 

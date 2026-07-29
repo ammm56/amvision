@@ -104,6 +104,59 @@ def test_preview_run_value_preview_formats_any_value_for_http_response(tmp_path:
     assert preview_record["outputs"]["body"] == response_body
 
 
+def test_preview_node_run_executes_only_target_ancestor_closure(
+    tmp_path: Path,
+) -> None:
+    """验证节点级 Preview 运行到目标节点后停止，不执行下游 HTTP 输出。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_value_preview_application(),
+            template=_build_value_preview_template(),
+            input_bindings={"payload": {"value": {"count": 2}}},
+            execution_scope_kind="node",
+            target_node_id="value_preview",
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "succeeded"
+    assert preview_run.outputs == {}
+    assert preview_run.template_outputs == {}
+    assert [record["node_id"] for record in preview_run.node_records] == [
+        "value_preview"
+    ]
+    assert preview_run.node_records[0]["outputs"]["body"]["type"] == "value-preview"
+
+
+def test_failed_preview_retains_completed_upstream_node_records(
+    tmp_path: Path,
+) -> None:
+    """验证下游失败时仍返回本次已完成节点的调试输出。"""
+
+    service, _, _ = _build_runtime_service(tmp_path)
+    preview_run = service.create_preview_run(
+        WorkflowPreviewRunCreateRequest(
+            project_id="project-1",
+            application=_build_value_preview_application(),
+            template=_build_value_preview_with_failing_tail_template(),
+            input_bindings={"payload": {"value": {"count": 2}}},
+        ),
+        created_by="workflow-user",
+    )
+
+    assert preview_run.state == "failed"
+    assert "code 参数必须是整数" in (preview_run.error_message or "")
+    completed_node_ids = [
+        record["node_id"] for record in preview_run.node_records
+    ]
+    assert completed_node_ids == ["value_preview"]
+    assert preview_run.node_records[0]["outputs"]["body"]["type"] == "value-preview"
+    assert "invalid_envelope" not in completed_node_ids
+
+
 def test_preview_run_value_preview_path_extracts_single_subfield(tmp_path: Path) -> None:
     """验证 value-preview 可以按 path 只显示某个子字段。"""
 
@@ -763,6 +816,24 @@ def _build_value_preview_application() -> FlowApplication:
                 config={"status_code": 200},
             ),
         ),
+    )
+
+
+def _build_value_preview_with_failing_tail_template() -> WorkflowGraphTemplate:
+    """构造下游失败但上游 Preview 已完成的模板。"""
+
+    template = _build_value_preview_template()
+    return template.model_copy(
+        update={
+            "nodes": (
+                *template.nodes,
+                WorkflowGraphNode(
+                    node_id="invalid_envelope",
+                    node_type_id="core.output.response-envelope",
+                    parameters={"code": "invalid"},
+                ),
+            ),
+        }
     )
 
 

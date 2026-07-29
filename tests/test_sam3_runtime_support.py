@@ -141,7 +141,9 @@ def test_workflow_provider_validation_exposes_warmup_timings() -> None:
 
     validation = workflow_session_module.Sam3WorkflowModelSessionProvider().validate(
         load_result=WorkflowModelSessionLoadResult(
-            session=object(),
+            session=workflow_session_module.Sam3WorkflowModelSession(
+                interactive=object(),
+            ),
             model_family="sam3",
             model_asset_id="sam3-default",
             checkpoint_sha256="abc123",
@@ -158,6 +160,8 @@ def test_workflow_provider_validation_exposes_warmup_timings() -> None:
     )
 
     assert validation["warmup"] == "passed"
+    assert validation["runtime_instance_count"] == 1
+    assert validation["runtime_instances"] == ["interactive"]
     assert validation["warmup_timings_ms"] == {
         "interactive": 12.5,
         "total": 12.5,

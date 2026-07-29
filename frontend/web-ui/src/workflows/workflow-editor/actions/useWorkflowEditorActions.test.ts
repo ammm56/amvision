@@ -72,4 +72,33 @@ describe('useWorkflowEditorActions Preview guard', () => {
     expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledTimes(1)
     expect(actions.previewing.value).toBe(false)
   })
+
+  it('forwards node execution scope and retains node records', async () => {
+    mocks.validateWorkflowTemplate.mockResolvedValue({})
+    const actions = useWorkflowEditorActions()
+    await actions.runWorkflowPreview({
+      projectId: 'project-1',
+      template: {
+        nodes: [],
+      },
+      application: {},
+      inputBindings: {},
+      executionScope: {
+        kind: 'node',
+        targetNodeId: 'mask-editor-1',
+      },
+    } as unknown as WorkflowPreviewRunActionInput)
+
+    expect(mocks.createWorkflowPreviewRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executionScope: {
+          kind: 'node',
+          targetNodeId: 'mask-editor-1',
+        },
+        executionMetadata: expect.objectContaining({
+          retain_node_records_enabled: true,
+        }),
+      }),
+    )
+  })
 })

@@ -159,3 +159,27 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 | 示例与测试 | 已实现 | 包含 Prompt 画布闭环、Catalog、资产、CPU 和真实 checkpoint 回归 |
 
 表中的“已实现”以本项目在本文定义的能力边界为准。后续若接入官方 detector-tracker、增加新的 checkpoint 架构或扩展硬件后端，必须先更新本文的固定边界、支持矩阵和验收标准，再修改 Catalog 与运行时。
+
+## 编辑器 Preview 的模型复用边界
+
+编辑器 Preview 使用稳定的应用级 scope：
+`preview:<project_id>:<application_id>`。`project_id` 保证不同项目隔离，
+`application_id` 保证同一个 Workflow App 的多次完整 Preview 和节点级 Preview
+复用同一组 loader lease。
+
+模型 lease 的生命周期由完整 Workflow App 图决定，单次执行范围只决定本次需要准备
+哪些 loader：
+
+- 非 loader 节点的参数、连线或调试范围变化，不释放也不重建已有模型。
+- `Preview Node Run` 的祖先闭包不含 loader 时，不加载模型，也不能把应用中已有的
+  loader 当作“已删除”回收。
+- loader 节点自身的模型资产、Device、Precision、启用状态、节点 id 或直接消费能力
+  集合变化时，才使该 loader 的 fingerprint 失效并受控重建。
+- loader 从完整图删除或应用 Preview scope 被显式关闭时，必须释放对应模型和最近图像
+  feature context。
+
+同一个 SAM3 Load Checkpoint 同时连接 Interactive 和 Semantic 节点时，当前会构造
+两个经过独立 warmup 和输出验证的 runtime instance。首次加载显存因此可能分两段上升，
+健康摘要必须如实报告 `runtime_instance_count` 和 `runtime_instances`。在权重兼容、
+输出一致性、显存和长期稳定性验证完成前，不强行共享两种能力的视觉骨干，也不能把这
+两段增长误报为同一模型被重复释放和加载。

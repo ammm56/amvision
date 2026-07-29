@@ -22,6 +22,10 @@ export interface WorkflowRuntimeListQuery {
   limit?: number
 }
 
+export type WorkflowPreviewExecutionScope =
+  | { kind: 'application' }
+  | { kind: 'node'; targetNodeId: string }
+
 export interface WorkflowPreviewRunCreateInput {
   projectId: string
   executionPolicyId?: string | null
@@ -32,6 +36,7 @@ export interface WorkflowPreviewRunCreateInput {
   executionMetadata?: WorkflowJsonObject
   timeoutSeconds?: number | null
   waitMode?: 'sync' | 'async'
+  executionScope?: WorkflowPreviewExecutionScope
 }
 
 export interface WorkflowAppRuntimeCreateInput {
@@ -115,6 +120,9 @@ export async function createWorkflowPreviewRun(input: WorkflowPreviewRunCreateIn
       execution_metadata: input.executionMetadata ?? {},
       timeout_seconds: input.timeoutSeconds ?? null,
       wait_mode: input.waitMode ?? 'sync',
+      execution_scope: input.executionScope?.kind === 'node'
+        ? { kind: 'node', target_node_id: input.executionScope.targetNodeId }
+        : { kind: 'application', target_node_id: null },
     },
   })
 }

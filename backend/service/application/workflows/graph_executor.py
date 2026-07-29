@@ -101,6 +101,7 @@ class WorkflowGraphExecutor:
         execution_metadata: dict[str, object] | None = None,
         runtime_context: object | None = None,
         event_callback: Callable[[dict[str, object]], None] | None = None,
+        target_node_ids: frozenset[str] = frozenset(),
     ) -> WorkflowGraphExecutionResult:
         """执行一份图模板。"""
 
@@ -126,6 +127,7 @@ class WorkflowGraphExecutor:
         required_node_ids = build_required_node_ids(
             template=template,
             node_definitions_by_node_id=node_definitions_by_node_id,
+            explicit_target_node_ids=target_node_ids,
         )
         for_each_plans = self._build_for_each_execution_plans(
             template=template,

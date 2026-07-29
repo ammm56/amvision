@@ -48,11 +48,15 @@ def _handle_box_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, objec
             source_identity=source_identity,
             stored_source_identity=request.parameters.get("prompt_source_identity"),
         )
-    validate_prompt_geometry_bounds(
-        ((coordinates[0], coordinates[1]), (coordinates[2], coordinates[3])),
-        source_image=source_image,
-        field_name="bbox_xyxy",
-    )
+    if applied:
+        validate_prompt_geometry_bounds(
+            (
+                (coordinates[0], coordinates[1]),
+                (coordinates[2], coordinates[3]),
+            ),
+            source_image=source_image,
+            field_name="bbox_xyxy",
+        )
     outputs: dict[str, object] = {
         "prompts": (
             build_prompt_regions_payload(
@@ -210,7 +214,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["prompt_id"],
         },
-        capability_tags=("prompt.visual", "prompt.box", "payload.create"),
+        capability_tags=(
+            "prompt.visual",
+            "prompt.box",
+            "prompt.editor",
+            "payload.create",
+        ),
     ),
     handler=_handle_box_prompt,
 )

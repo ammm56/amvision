@@ -31,6 +31,9 @@ from backend.service.application.project_summary import (
 )
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
+from backend.service.application.workflows.preview_partial_results import (
+    build_completed_node_records_from_events,
+)
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
     serialize_node_execution_record,
@@ -88,6 +91,7 @@ class WorkflowPreviewRunExecutionRequest:
     timeout_seconds: int = 30
     retain_node_records_enabled: bool = True
     return_sync_response_payload_enabled: bool = False
+    target_node_id: str | None = None
 
 
 @dataclass
@@ -174,6 +178,7 @@ class WorkflowPreviewRunManager:
                 template_snapshot_object_key=request.template_snapshot_object_key,
                 input_bindings=dict(request.input_bindings),
                 execution_metadata=execution_metadata,
+                target_node_id=request.target_node_id,
             )
         )
         active_run = _ActiveWorkflowPreviewRun(
@@ -338,6 +343,7 @@ class WorkflowPreviewRunManager:
                 remaining_seconds = deadline - monotonic()
                 if remaining_seconds <= 0:
                     active_run.executor.terminate(active_run.handle)
+                    self._settle_child_events(active_run)
                     error = OperationTimeoutError(
                         "等待 workflow snapshot 子进程响应超时",
                         details={
@@ -345,7 +351,11 @@ class WorkflowPreviewRunManager:
                             "timeout_seconds": active_run.request.timeout_seconds,
                         },
                     )
-                    updated_preview_run = self._mark_run_timed_out(preview_run_id, error)
+                    updated_preview_run = self._mark_run_timed_out(
+                        preview_run_id,
+                        error,
+                        node_records=self._build_partial_node_records(active_run),
+                    )
                     active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
@@ -362,11 +372,16 @@ class WorkflowPreviewRunManager:
                     )
                 except Empty:
                     if not active_run.handle.process.is_alive():
+                        self._settle_child_events(active_run)
                         error = ServiceConfigurationError(
                             "workflow snapshot 子进程已退出且未返回结果",
                             details={"preview_run_id": preview_run_id},
                         )
-                        updated_preview_run = self._mark_run_failed(preview_run_id, error)
+                        updated_preview_run = self._mark_run_failed(
+                            preview_run_id,
+                            error,
+                            node_records=self._build_partial_node_records(active_run),
+                        )
                         active_run.final_preview_run = updated_preview_run
                         self._append_event(
                             preview_run_id,
@@ -382,7 +397,12 @@ class WorkflowPreviewRunManager:
                 try:
                     execution_result = deserialize_snapshot_execution_result(message)
                 except OperationTimeoutError as exc:
-                    updated_preview_run = self._mark_run_timed_out(preview_run_id, exc)
+                    self._settle_child_events(active_run)
+                    updated_preview_run = self._mark_run_timed_out(
+                        preview_run_id,
+                        exc,
+                        node_records=self._build_partial_node_records(active_run),
+                    )
                     active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
@@ -397,7 +417,12 @@ class WorkflowPreviewRunManager:
                     )
                     return
                 except ServiceError as exc:
-                    updated_preview_run = self._mark_run_failed(preview_run_id, exc)
+                    self._settle_child_events(active_run)
+                    updated_preview_run = self._mark_run_failed(
+                        preview_run_id,
+                        exc,
+                        node_records=self._build_partial_node_records(active_run),
+                    )
                     active_run.final_preview_run = updated_preview_run
                     self._append_event(
                         preview_run_id,
@@ -474,6 +499,28 @@ class WorkflowPreviewRunManager:
                 event_lock=active_run.event_lock,
             )
 
+    def _settle_child_events(
+        self,
+        active_run: _ActiveWorkflowPreviewRun,
+    ) -> None:
+        """在失败收口前等待独立事件队列完成短暂刷新。"""
+
+        stable_poll_count = 0
+        previous_event_count = -1
+        for _ in range(10):
+            self._drain_child_events(active_run)
+            current_event_count = len(
+                self._read_events(active_run.request.preview_run_id)
+            )
+            if current_event_count == previous_event_count:
+                stable_poll_count += 1
+                if stable_poll_count >= 2:
+                    return
+            else:
+                stable_poll_count = 0
+                previous_event_count = current_event_count
+            active_run.completion_event.wait(timeout=0.01)
+
     def _mark_run_succeeded(
         self,
         preview_run_id: str,
@@ -518,6 +565,8 @@ class WorkflowPreviewRunManager:
         self,
         preview_run_id: str,
         error: ServiceError,
+        *,
+        node_records: tuple[dict[str, object], ...] = (),
     ) -> WorkflowPreviewRun:
         """把 preview run 更新为 failed。"""
 
@@ -529,6 +578,7 @@ class WorkflowPreviewRunManager:
                 finished_at=_now_isoformat(),
                 error_message=error.message,
                 metadata=_build_preview_run_error_metadata(preview_run, error=error),
+                node_records=node_records,
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
@@ -538,6 +588,8 @@ class WorkflowPreviewRunManager:
         self,
         preview_run_id: str,
         error: OperationTimeoutError,
+        *,
+        node_records: tuple[dict[str, object], ...] = (),
     ) -> WorkflowPreviewRun:
         """把 preview run 更新为 timed_out。"""
 
@@ -549,10 +601,23 @@ class WorkflowPreviewRunManager:
                 finished_at=_now_isoformat(),
                 error_message=error.message,
                 metadata=_build_preview_run_error_metadata(preview_run, error=error),
+                node_records=node_records,
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
         return updated_preview_run
+
+    def _build_partial_node_records(
+        self,
+        active_run: _ActiveWorkflowPreviewRun,
+    ) -> tuple[dict[str, object], ...]:
+        """读取本次失败 Preview 已完成节点的调试记录。"""
+
+        if not active_run.request.retain_node_records_enabled:
+            return ()
+        return build_completed_node_records_from_events(
+            self._read_events(active_run.request.preview_run_id)
+        )
 
     def _mark_run_cancelled(self, preview_run_id: str) -> WorkflowPreviewRun:
         """把 preview run 更新为 cancelled。"""

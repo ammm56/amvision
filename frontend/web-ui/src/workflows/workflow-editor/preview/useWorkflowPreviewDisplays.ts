@@ -52,6 +52,7 @@ export interface PreviewImageInteractionTool {
   applyParameters: Record<string, unknown>
   brushSize: number | null
   maskObjectKey: string | null
+  maskSourceIdentity: string | null
   maskSrc: string | null
 }
 
@@ -665,6 +666,7 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       applyParameters: readJsonObject(rawTool.apply_parameters),
       brushSize: readDisplayNumber(rawTool.brush_size),
       maskObjectKey: readDisplayText(rawTool.mask_object_key) || null,
+      maskSourceIdentity: readDisplayText(rawTool.mask_source_identity) || null,
       maskSrc: null,
     }]
   })

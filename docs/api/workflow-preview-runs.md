@@ -18,6 +18,7 @@
 - saved application 引用执行
 - inline application + template snapshot 执行
 - sync/async wait_mode
+- application/node execution_scope
 
 ## 资源定位
 
@@ -60,6 +61,9 @@
 
 - wait_mode=sync 时，create 接口通常直接返回 succeeded、failed、timed_out 或 cancelled。
 - wait_mode=async 时，create 接口先返回 running；后续状态变化通过详情、事件接口或 WebSocket 资源流观察。
+- `failed`、`timed_out` 和 `cancelled` 不会变成部分成功；状态仍准确表达整次 Preview
+  的终态。开启 node records 保留时，本次失败前已经完成的节点仍写入 `node_records`，
+  用于恢复调试图、表格和 JSON。
 
 ## 稳定字段
 
@@ -108,12 +112,18 @@
 - execution_metadata：可选，执行元数据；接口层会补写 created_by
 - timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 30
 - wait_mode：可选；支持 sync 或 async，默认 sync
+- execution_scope：可选；默认 `{"kind":"application"}`。节点级编辑调试使用
+  `{"kind":"node","target_node_id":"<node-id>"}`。
 
 ### 输入约束
 
 - application_ref 与 inline application/template 二选一。
 - 如果未提供 application_ref，则必须同时提供 application 和 template。
 - wait_mode=async 时会立即返回 `state=running` 的 WorkflowPreviewRun。
+- node scope 只执行目标节点的祖先闭包和目标节点；忽略不属于该闭包的 application
+  输入，不产生 application outputs，也不执行或预热任何下游节点。
+- node scope 只允许 Workflow 编辑态 Preview 使用；正式 AppRuntime invoke 和
+  WorkflowRun 不接受该字段。
 
 ### 最小请求 JSON
 
@@ -135,6 +145,30 @@
   }
 }
 ```
+
+### 节点级 Preview 请求
+
+```json
+{
+  "project_id": "project-1",
+  "application": {},
+  "template": {},
+  "input_bindings": {
+    "request_image_ref": {
+      "transport_kind": "storage",
+      "object_key": "projects/project-1/files/source.png"
+    }
+  },
+  "execution_scope": {
+    "kind": "node",
+    "target_node_id": "mask-editor-node"
+  },
+  "wait_mode": "sync"
+}
+```
+
+该请求用于画布右键 `Preview Node Run`。响应中的 `outputs` 和 `template_outputs`
+为空，目标节点与已执行祖先的结果位于 `node_records`。
 
 ### 最小响应 JSON
 

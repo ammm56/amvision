@@ -37,6 +37,9 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
+from backend.service.application.workflows.preview_partial_results import (
+    build_completed_node_records_from_events,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
@@ -326,6 +329,10 @@ class WorkflowRuntimeService:
         preview_metadata[
             WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
         ] = False
+        preview_metadata["preview_execution_scope"] = {
+            "kind": normalized_request.execution_scope_kind,
+            "target_node_id": normalized_request.target_node_id,
+        }
         retain_node_records_enabled = _resolve_preview_retain_node_records_enabled(
             preview_metadata,
             execution_policy=execution_policy,
@@ -362,6 +369,7 @@ class WorkflowRuntimeService:
             timeout_seconds=effective_timeout_seconds,
             retain_node_records_enabled=retain_node_records_enabled,
             return_sync_response_payload_enabled=normalized_request.wait_mode == "sync",
+            target_node_id=normalized_request.target_node_id,
         )
         if normalized_request.wait_mode == "sync" and _should_run_preview_inline(preview_metadata):
             return self._execute_preview_run_inline(
@@ -430,6 +438,7 @@ class WorkflowRuntimeService:
                 WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY, ""
             )
         ).strip()
+        inline_events: list[dict[str, object]] = []
         try:
             if model_session_manager is not None and model_session_scope_id:
                 model_session_manager.enforce_scope_limit(
@@ -444,6 +453,7 @@ class WorkflowRuntimeService:
                 node_catalog_registry=self.node_catalog_registry,
                 runtime_registry=self.workflow_node_runtime_registry,
                 runtime_context=self.workflow_service_node_runtime_context,
+                event_sink=inline_events.append,
                 decoded_image_cache_max_entries=(
                     self.settings.workflow_runtime.decoded_image_cache_max_entries
                 ),
@@ -458,16 +468,33 @@ class WorkflowRuntimeService:
                     template_snapshot_object_key=execution_request.template_snapshot_object_key,
                     input_bindings=dict(execution_request.input_bindings),
                     execution_metadata=execution_metadata,
+                    target_node_id=execution_request.target_node_id,
                 )
             )
         except ServiceError as exc:
-            return self._finish_inline_preview_run_failed(preview_run_id, exc)
+            return self._finish_inline_preview_run_failed(
+                preview_run_id,
+                exc,
+                node_records=(
+                    build_completed_node_records_from_events(inline_events)
+                    if retain_node_records_enabled
+                    else ()
+                ),
+            )
         except Exception as exc:
             wrapped_error = ServiceConfigurationError(
                 "workflow preview run 直接执行失败",
                 details={"error_type": type(exc).__name__, "error_message": str(exc) or type(exc).__name__},
             )
-            return self._finish_inline_preview_run_failed(preview_run_id, wrapped_error)
+            return self._finish_inline_preview_run_failed(
+                preview_run_id,
+                wrapped_error,
+                node_records=(
+                    build_completed_node_records_from_events(inline_events)
+                    if retain_node_records_enabled
+                    else ()
+                ),
+            )
         model_session_health = (
             model_session_manager.build_health_summary(
                 scope_id=model_session_scope_id
@@ -537,6 +564,8 @@ class WorkflowRuntimeService:
         self,
         preview_run_id: str,
         error: ServiceError,
+        *,
+        node_records: tuple[dict[str, object], ...] = (),
     ) -> WorkflowPreviewRun:
         """把 inline Preview Run 写入 failed 状态。"""
 
@@ -551,6 +580,7 @@ class WorkflowRuntimeService:
                     _merge_preview_run_inline_metadata(preview_run.metadata),
                     error=error,
                 ),
+                node_records=node_records,
             )
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()

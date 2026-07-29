@@ -267,10 +267,21 @@ class Sam3WorkflowModelSessionProvider:
                     "SAM3 warmup 输出验证失败",
                     details={"mode": mode},
                 )
+        session = _require_sam3_session(load_result.session)
         warmup_timings = warmup_result.get("_warmup_timings_ms")
+        runtime_instances = [
+            capability
+            for capability, runtime_session in (
+                ("interactive", session.interactive),
+                ("semantic", session.semantic),
+            )
+            if runtime_session is not None
+        ]
         return {
             "warmup": "passed",
             "validated_modes": sorted(expected_modes),
+            "runtime_instance_count": len(runtime_instances),
+            "runtime_instances": runtime_instances,
             "warmup_timings_ms": (
                 dict(warmup_timings)
                 if isinstance(warmup_timings, dict)

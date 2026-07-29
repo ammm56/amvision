@@ -186,6 +186,73 @@ def test_stable_preview_scope_reuses_session_and_configuration_change_reloads() 
     ]
 
 
+def test_node_scope_without_loader_keeps_existing_application_lease() -> None:
+    """验证节点级执行裁剪不回收同应用完整图中仍存在的 loader。"""
+
+    registry, provider = _build_registry()
+    manager = WorkflowModelSessionManager(runtime_registry=registry)
+    scope_id = "preview:project-1:app-1"
+    template = _build_template()
+
+    first = manager.prepare_template(
+        scope_id=scope_id,
+        template=template,
+        runtime_context=object(),
+    )
+    node_scope = manager.prepare_template(
+        scope_id=scope_id,
+        template=template,
+        runtime_context=object(),
+        active_loader_node_ids=set(),
+    )
+    third = manager.prepare_template(
+        scope_id=scope_id,
+        template=template,
+        runtime_context=object(),
+        active_loader_node_ids={"loader"},
+    )
+
+    assert node_scope == ()
+    assert third == first
+    assert provider.events == ["load", "warmup", "validate"]
+    assert manager.build_health_summary(scope_id=scope_id)[
+        "ready_session_count"
+    ] == 1
+
+
+def test_non_loader_parameter_change_keeps_existing_application_lease() -> None:
+    """验证普通节点参数变化不会使稳定 Preview scope 中的模型换代。"""
+
+    registry, provider = _build_registry()
+    manager = WorkflowModelSessionManager(runtime_registry=registry)
+    scope_id = "preview:project-1:app-1"
+    original_template = _build_template()
+    changed_template = original_template.model_copy(
+        update={
+            "nodes": (
+                original_template.nodes[0],
+                original_template.nodes[1].model_copy(
+                    update={"parameters": {"threshold": 0.75}}
+                ),
+            )
+        }
+    )
+
+    first = manager.prepare_template(
+        scope_id=scope_id,
+        template=original_template,
+        runtime_context=object(),
+    )
+    second = manager.prepare_template(
+        scope_id=scope_id,
+        template=changed_template,
+        runtime_context=object(),
+    )
+
+    assert second == first
+    assert provider.events == ["load", "warmup", "validate"]
+
+
 def test_deleted_or_disabled_loader_closes_orphan_lease() -> None:
     """验证编辑图删除 Load Checkpoint 后不会遗留模型。"""
 

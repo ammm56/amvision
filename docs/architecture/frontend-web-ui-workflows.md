@@ -224,7 +224,22 @@ PreviewRun 用于工作流调试，不等同于正式运行。
 
 界面不能假设 `node_records` 一定存在。执行策略可能关闭 trace 和节点记录，此时应只展示最终 outputs、template_outputs 和错误摘要。
 
+画布节点右键菜单的 `Preview Node Run` 使用 node execution scope。前端只提交目标节点
+祖先闭包需要的 application inputs，后端执行到目标节点后停止。该入口用于
+`prompt.editor`、ROI 和其他交互式图像参数节点，不是完整应用运行的快捷别名。该入口
+固定放在右键菜单最后一项、完整 `Preview Run` 之后；执行完成只刷新节点调试结果，
+不能自动打开图片编辑面板，编辑面板只由用户点击调试图打开。
+
+ImageViewer 的“应用并 Preview”必须由父页面串行协调：先完成 ObjectStore 上传和当前
+节点参数写回，再从更新后的前端图生成 inline template，最后提交一次节点级 Preview。
+子组件不能同时发出独立的 apply 和 preview 事件。上传期间页面保存、工具栏 Preview、
+节点级 Preview 和重复应用均保持禁用，防止旧参数快照覆盖新结果。
+
 `wait_mode=sync` 的 editor preview 应直接读取 create 响应里的 `node_records`、`outputs` 和 `template_outputs`。其中 `node_records.outputs` 保留当前这次执行的原始 preview payload，适合直接渲染 image-preview、gallery-preview、table-preview 和 value-preview。
+
+无论 Preview 最终是 `succeeded` 还是 `failed`，前端都必须先用本次响应的
+`node_records` 替换节点调试展示，再显示失败信息。不得在失败时沿用上一次运行的
+图片；生产 AppRuntime 仍保持失败即失败，不采用编辑器的部分调试结果语义。
 
 通过 `GET /api/v1/workflows/preview-runs/{preview_run_id}` 回查历史时，`node_records`、`outputs` 和 `template_outputs` 都是持久化脱敏副本，不能再假设可以回放原始 base64 或 memory image-ref。
 

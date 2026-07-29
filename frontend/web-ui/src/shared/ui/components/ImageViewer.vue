@@ -61,7 +61,7 @@
               <Trash2 :size="15" />
               {{ t('imageViewer.toolbar.clear') }}
             </Button>
-            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction" @click="applyInteractionDraft">
+            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction || previewDisabled || previewRunning" @click="applyInteractionDraft">
               <Check :size="15" />
               {{ t('imageViewer.toolbar.applyParams') }}
             </Button>
@@ -401,6 +401,7 @@ import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOu
 import Button from './Button.vue'
 import ImageGeometryAnnotations from '../image-viewer/ImageGeometryAnnotations.vue'
 import { useImageGeometryAnnotations } from '../image-viewer/useImageGeometryAnnotations'
+import { dispatchImageViewerPreview } from '../image-viewer/dispatchImageViewerPreview'
 import { useImageViewerViewport } from '../image-viewer/useImageViewerViewport'
 
 interface ViewerImageCircleOverlay {
@@ -451,6 +452,7 @@ interface ViewerImageInteractionTool {
   applyParameters?: Record<string, unknown>
   brushSize?: number | null
   maskObjectKey?: string | null
+  maskSourceIdentity?: string | null
   maskSrc?: string | null
 }
 
@@ -1183,6 +1185,9 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
     parameters: {
       ...(activeInteractionTool.value?.applyParameters ?? {}),
+      ...(interactionTool.value === 'mask' && activeInteractionTool.value?.maskSourceIdentity
+        ? { mask_source_identity: activeInteractionTool.value.maskSourceIdentity }
+        : {}),
     },
   }
   if ((interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
@@ -1444,9 +1449,12 @@ function applyTuningParameters(requestPreview: boolean): void {
     searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
     parameters,
   }
-  emit('applyInteraction', event)
+  if (requestPreview) {
+    scheduleTuningPreview(event)
+  } else {
+    emit('applyInteraction', event)
+  }
   showInteractionFeedback(requestPreview ? t('imageViewer.feedback.tuningAppliedPreview') : t('imageViewer.feedback.tuningApplied'), 'success')
-  if (requestPreview) scheduleTuningPreview(event)
 }
 
 function scheduleTuningPreview(event: ViewerImageInteractionApplyEvent): void {
@@ -1466,17 +1474,23 @@ function runPreviewFromViewer(): void {
     return
   }
   const event = buildInteractionDraftEvent()
-  if (hasInteractionDraft.value) {
-    if (!event) {
-      showInteractionFeedback(t('imageViewer.feedback.incompletePreview'), 'warning')
-      return
-    }
-    emit('applyInteraction', event)
+  const action = dispatchImageViewerPreview(
+    hasInteractionDraft.value,
+    event,
+    {
+      previewInteraction: (interactionEvent) => emit('previewInteraction', interactionEvent),
+      runPreview: () => emit('runPreview'),
+    },
+  )
+  if (action === 'invalid') {
+    showInteractionFeedback(t('imageViewer.feedback.incompletePreview'), 'warning')
+    return
+  }
+  if (action === 'interaction' && event) {
     showInteractionFeedback(t('imageViewer.feedback.appliedStartingPreview', { message: readAppliedFeedbackText(event) }), 'success')
   } else {
     showInteractionFeedback(t('imageViewer.feedback.startingPreview'), 'info')
   }
-  emit('runPreview')
 }
 
 function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {

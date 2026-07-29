@@ -52,12 +52,13 @@ def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, o
                 "Polygon Prompt 坐标必须是数字",
                 details={"point_index": point_index},
             ) from exc
-    validate_prompt_geometry_bounds(
-        polygon_xy,
-        source_image=source_image,
-        field_name="polygon_xy",
-    )
     applied = request.parameters.get("prompt_applied") is True
+    if applied:
+        validate_prompt_geometry_bounds(
+            polygon_xy,
+            source_image=source_image,
+            field_name="polygon_xy",
+        )
     source_identity = build_image_reference_identity(source_image)
     if source_image is not None:
         validate_applied_prompt_source_identity(
@@ -215,7 +216,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["prompt_id"],
         },
-        capability_tags=("prompt.visual", "prompt.polygon", "payload.create"),
+        capability_tags=(
+            "prompt.visual",
+            "prompt.polygon",
+            "prompt.editor",
+            "payload.create",
+        ),
     ),
     handler=_handle_polygon_prompt,
 )

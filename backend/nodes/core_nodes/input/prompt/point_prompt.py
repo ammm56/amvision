@@ -72,11 +72,12 @@ def _handle_point_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, obj
             }
         )
     }
-    validate_prompt_geometry_bounds(
-        (point_xy,),
-        source_image=source_image,
-        field_name="point_xy",
-    )
+    if applied:
+        validate_prompt_geometry_bounds(
+            (point_xy,),
+            source_image=source_image,
+            field_name="point_xy",
+        )
     if source_image is not None:
         outputs.update(
             build_debug_image_preview_output(
@@ -228,7 +229,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
             },
             "required": ["prompt_id"],
         },
-        capability_tags=("prompt.visual", "prompt.point", "payload.create"),
+        capability_tags=(
+            "prompt.visual",
+            "prompt.point",
+            "prompt.editor",
+            "payload.create",
+        ),
     ),
     handler=_handle_point_prompt,
 )

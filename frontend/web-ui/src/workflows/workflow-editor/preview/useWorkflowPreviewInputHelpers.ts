@@ -8,6 +8,7 @@ export interface WorkflowPreviewInputHelperOptions {
   previewBlockingMessages: ComputedRef<string[]>
   getBindingPayloadTypeId: (binding: FlowApplicationBinding) => string
   buildPreviewInputBindingsPayload: (bindings: FlowApplicationBinding[]) => Promise<WorkflowJsonObject>
+  hasPreviewBindingValue: (binding: FlowApplicationBinding) => boolean
   setErrorMessage: (message: string | null) => void
 }
 
@@ -29,12 +30,27 @@ export function useWorkflowPreviewInputHelpers(options: WorkflowPreviewInputHelp
     return `${requiredText}。payload type: ${payloadTypeId}。`
   }
 
-  async function buildPreviewInputBindings(): Promise<WorkflowJsonObject | null> {
-    if (options.previewBlockingMessages.value.length > 0) {
-      options.setErrorMessage(options.previewBlockingMessages.value.join('；'))
+  async function buildPreviewInputBindings(
+    scopedBindings?: FlowApplicationBinding[],
+  ): Promise<WorkflowJsonObject | null> {
+    const bindings = scopedBindings ?? options.previewInputBindings.value
+    const blockingMessages = scopedBindings
+      ? (() => {
+        const missingBindingIds = bindings
+          .filter((binding) => binding.required && !options.hasPreviewBindingValue(binding))
+          .map((binding) => binding.binding_id)
+        return missingBindingIds.length > 0
+          ? [translate('workflowEditor.feedback.previewRequiredBindings', {
+            bindings: missingBindingIds.join(', '),
+          })]
+          : []
+      })()
+      : options.previewBlockingMessages.value
+    if (blockingMessages.length > 0) {
+      options.setErrorMessage(blockingMessages.join('；'))
       return null
     }
-    return options.buildPreviewInputBindingsPayload(options.previewInputBindings.value)
+    return options.buildPreviewInputBindingsPayload(bindings)
   }
 
   return {

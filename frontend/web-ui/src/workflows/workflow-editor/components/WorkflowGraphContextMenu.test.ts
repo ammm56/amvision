@@ -30,6 +30,7 @@ describe('WorkflowGraphContextMenu', () => {
         darkLabel: 'Dark',
         saveLabel: 'Save App',
         previewLabel: 'Preview Run',
+        previewNodeLabel: 'Preview Node Run',
       },
     })
     const addNodeButton = wrapper.get('.workflow-graph-context-menu__submenu-trigger')
@@ -39,5 +40,43 @@ describe('WorkflowGraphContextMenu', () => {
 
     await addNodeButton.trigger('click')
     expect(wrapper.emitted('open-node-picker')).toHaveLength(1)
+  })
+
+  it('shows Preview Node Run only for a node context menu', async () => {
+    const wrapper = mount(WorkflowGraphContextMenu, {
+      global: {
+        plugins: [i18n],
+      },
+      props: {
+        contextMenu: {
+          x: 100,
+          y: 120,
+          worldX: 40,
+          worldY: 60,
+          nodeId: 'mask-editor-1',
+          edgeId: null,
+          port: null,
+        },
+        menuStyle: {},
+        minimapVisible: true,
+        graphTheme: 'light',
+        saveDisabled: false,
+        previewDisabled: false,
+        addNodeLabel: 'Add Node',
+        lightLabel: 'Light',
+        darkLabel: 'Dark',
+        saveLabel: 'Save App',
+        previewLabel: 'Preview Run',
+        previewNodeLabel: 'Preview Node Run',
+      },
+    })
+
+    const previewNodeButton = wrapper.findAll('button')
+      .find((button) => button.text().includes('Preview Node Run'))
+    expect(previewNodeButton).toBeDefined()
+    const menuButtonLabels = wrapper.findAll('button').map((button) => button.text().trim())
+    expect(menuButtonLabels.slice(-2)).toEqual(['Preview Run', 'Preview Node Run'])
+    await previewNodeButton?.trigger('click')
+    expect(wrapper.emitted('preview-node')).toHaveLength(1)
   })
 })

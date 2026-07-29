@@ -104,8 +104,14 @@ class WorkflowModelSessionManager:
         scope_id: str,
         template: WorkflowGraphTemplate,
         runtime_context: object,
+        active_loader_node_ids: set[str] | None = None,
     ) -> tuple[WorkflowModelSessionReference, ...]:
-        """按图中 loader 顺序串行完成加载、warmup 和输出验证。"""
+        """按完整图对齐 lease，并只准备本次执行需要的 loader。
+
+        ``template`` 始终表示完整 Workflow App 图，用于判断 loader 是否被删除、
+        禁用或修改。``active_loader_node_ids`` 只表示本次节点级执行祖先闭包中实际
+        需要运行的 loader，不能据此回收同一应用中的其他已有 lease。
+        """
 
         normalized_scope_id = _normalize_scope_id(scope_id)
         with self.locked_scope(normalized_scope_id):
@@ -113,6 +119,7 @@ class WorkflowModelSessionManager:
                 scope_id=normalized_scope_id,
                 template=template,
                 runtime_context=runtime_context,
+                active_loader_node_ids=active_loader_node_ids,
             )
 
     def _prepare_template_in_locked_scope(
@@ -121,6 +128,7 @@ class WorkflowModelSessionManager:
         scope_id: str,
         template: WorkflowGraphTemplate,
         runtime_context: object,
+        active_loader_node_ids: set[str] | None,
     ) -> tuple[WorkflowModelSessionReference, ...]:
         """在 scope execution lock 内对齐 loader 集合并准备 session。"""
 
@@ -143,6 +151,15 @@ class WorkflowModelSessionManager:
             is not None
         )
         expected_loader_node_ids = {node.node_id for node in loader_nodes}
+        normalized_active_loader_node_ids = (
+            expected_loader_node_ids
+            if active_loader_node_ids is None
+            else {
+                str(node_id).strip()
+                for node_id in active_loader_node_ids
+                if str(node_id).strip() in expected_loader_node_ids
+            }
+        )
         stale_leases = self._remove_stale_scope_leases(
             scope_id=scope_id,
             expected_loader_node_ids=expected_loader_node_ids,
@@ -152,6 +169,8 @@ class WorkflowModelSessionManager:
 
         prepared: list[WorkflowModelSessionReference] = []
         for loader_node in loader_nodes:
+            if loader_node.node_id not in normalized_active_loader_node_ids:
+                continue
             provider = self.runtime_registry.get_model_session_provider(
                 loader_node.node_type_id
             )
@@ -206,7 +225,6 @@ class WorkflowModelSessionManager:
             except Exception:
                 if load_result is not None:
                     provider.close(load_result.session)
-                self._close_scope_in_locked_scope(scope_id)
                 raise
             with self._lock:
                 generation = self._generation_by_key.get(key, 0) + 1

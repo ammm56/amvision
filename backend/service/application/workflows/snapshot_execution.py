@@ -45,6 +45,9 @@ from backend.service.application.workflows.graph_executor import (
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     serialize_node_execution_record_for_response,
 )
+from backend.service.application.workflows.execution.topology import (
+    build_node_execution_scope_template,
+)
 from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
 from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
 from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
@@ -92,6 +95,7 @@ class WorkflowSnapshotExecutionRequest:
     template_snapshot_object_key: str
     input_bindings: dict[str, object] = field(default_factory=dict)
     execution_metadata: dict[str, object] = field(default_factory=dict)
+    target_node_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,19 +217,36 @@ class SnapshotExecutionService:
         - WorkflowSnapshotExecutionResult：稳定执行结果。
         """
 
-        application, template = self._load_validated_snapshots(
+        application, full_template = self._load_validated_snapshots(
             request=request,
+        )
+        target_node_id = (
+            request.target_node_id.strip()
+            if isinstance(request.target_node_id, str)
+            else None
+        )
+        template = (
+            build_node_execution_scope_template(
+                template=full_template,
+                target_node_id=target_node_id,
+            )
+            if target_node_id
+            else full_template
         )
 
         self._prepare_model_sessions(
             request=request,
-            template=template,
+            full_template=full_template,
+            execution_template=template,
             scope_id=model_session_scope_id,
         )
 
         template_input_values = _build_template_input_values(
             application=application,
             input_bindings=request.input_bindings,
+            allowed_template_input_ids={
+                item.input_id for item in template.template_inputs
+            },
         )
         execution_metadata_payload = dict(request.execution_metadata)
         execution_metadata_payload.setdefault("project_id", request.project_id)
@@ -258,15 +279,24 @@ class SnapshotExecutionService:
                 execution_metadata=execution_metadata_payload,
                 runtime_context=self.runtime_context,
                 event_callback=self.event_sink,
+                target_node_ids=(
+                    frozenset((target_node_id,))
+                    if target_node_id
+                    else frozenset()
+                ),
             )
             snapshot_result = WorkflowSnapshotExecutionResult(
                 project_id=request.project_id,
                 application_id=request.application_id,
                 template_id=graph_execution_result.template_id,
                 template_version=graph_execution_result.template_version,
-                outputs=_build_binding_outputs(
-                    application=application,
-                    template_outputs=graph_execution_result.outputs,
+                outputs=(
+                    {}
+                    if target_node_id
+                    else _build_binding_outputs(
+                        application=application,
+                        template_outputs=graph_execution_result.outputs,
+                    )
                 ),
                 template_outputs=dict(graph_execution_result.outputs),
                 node_records=graph_execution_result.node_records,
@@ -314,8 +344,27 @@ class SnapshotExecutionService:
     ) -> tuple[object, ...]:
         """只校验 snapshot 并准备图中的模型 session，不执行业务节点。"""
 
-        _application, template = self._load_validated_snapshots(request=request)
-        scope_id = self._prepare_model_sessions(request=request, template=template)
+        _application, full_template = self._load_validated_snapshots(
+            request=request
+        )
+        target_node_id = (
+            request.target_node_id.strip()
+            if isinstance(request.target_node_id, str)
+            else None
+        )
+        template = (
+            build_node_execution_scope_template(
+                template=full_template,
+                target_node_id=target_node_id,
+            )
+            if target_node_id
+            else full_template
+        )
+        scope_id = self._prepare_model_sessions(
+            request=request,
+            full_template=full_template,
+            execution_template=template,
+        )
         manager = self.runtime_context.workflow_model_session_manager
         if manager is None:
             return ()
@@ -327,18 +376,29 @@ class SnapshotExecutionService:
         self,
         *,
         request: WorkflowSnapshotExecutionRequest,
-        template: WorkflowGraphTemplate,
+        full_template: WorkflowGraphTemplate,
+        execution_template: WorkflowGraphTemplate,
         scope_id: str | None = None,
     ) -> str:
-        """按请求边界解析 scope 并幂等准备模型 session。"""
+        """按完整图管理 lease，并按本次执行子图选择需要准备的 loader。"""
 
         resolved_scope_id = scope_id or self._resolve_model_session_scope_id(request)
         manager = self.runtime_context.workflow_model_session_manager
         if manager is not None:
+            active_loader_node_ids = {
+                node.node_id
+                for node in execution_template.nodes
+                if node.enabled
+                and self.runtime_registry.get_model_session_provider(
+                    node.node_type_id
+                )
+                is not None
+            }
             manager.prepare_template(
                 scope_id=resolved_scope_id,
-                template=template,
+                template=full_template,
                 runtime_context=self.runtime_context,
+                active_loader_node_ids=active_loader_node_ids,
             )
         return resolved_scope_id
 
@@ -651,6 +711,7 @@ class WorkflowSnapshotProcessExecutor:
                     "template_snapshot_object_key": request.template_snapshot_object_key,
                     "input_bindings": dict(request.input_bindings),
                     "execution_metadata": dict(request.execution_metadata),
+                    "target_node_id": request.target_node_id,
                 },
                 "local_buffer_broker_event_channel": self.local_buffer_broker_event_channel,
                 "published_inference_gateway_event_channel": gateway_channel,
@@ -853,6 +914,10 @@ def run_workflow_snapshot_process_worker(
                 ),
                 input_bindings=_require_payload_dict(request_payload, "input_bindings"),
                 execution_metadata=_require_payload_dict(request_payload, "execution_metadata"),
+                target_node_id=_read_optional_payload_str(
+                    request_payload,
+                    "target_node_id",
+                ),
             )
         )
         response_queue.put(
@@ -1054,6 +1119,7 @@ def _build_template_input_values(
     *,
     application: FlowApplication,
     input_bindings: dict[str, object],
+    allowed_template_input_ids: set[str] | None = None,
 ) -> dict[str, object]:
     """把 application input binding 映射为模板输入值。
 
@@ -1069,6 +1135,15 @@ def _build_template_input_values(
         binding.binding_id: binding
         for binding in application.bindings
         if binding.direction == FLOW_BINDING_DIRECTION_INPUT
+        and (
+            allowed_template_input_ids is None
+            or binding.template_port_id in allowed_template_input_ids
+        )
+    }
+    declared_input_binding_ids = {
+        binding.binding_id
+        for binding in application.bindings
+        if binding.direction == FLOW_BINDING_DIRECTION_INPUT
     }
     required_binding_ids = {
         binding.binding_id for binding in input_binding_index.values() if binding.required
@@ -1081,7 +1156,9 @@ def _build_template_input_values(
             "workflow application 缺少必需输入绑定",
             details={"missing_binding_ids": missing_binding_ids},
         )
-    unexpected_binding_ids = sorted(set(input_bindings.keys()) - set(input_binding_index.keys()))
+    unexpected_binding_ids = sorted(
+        set(input_bindings.keys()) - declared_input_binding_ids
+    )
     if unexpected_binding_ids:
         from backend.service.application.errors import InvalidRequestError  # noqa: PLC0415
 
@@ -1095,6 +1172,26 @@ def _build_template_input_values(
         for binding in input_binding_index.values()
         if binding.binding_id in input_bindings
     }
+
+
+def _read_optional_payload_str(
+    payload: object,
+    field_name: str,
+) -> str | None:
+    """从跨进程负载读取可选字符串。"""
+
+    if not isinstance(payload, dict):
+        raise ServiceConfigurationError("workflow snapshot 子进程负载格式无效")
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ServiceConfigurationError(
+            "workflow snapshot 子进程负载字段类型无效",
+            details={"field_name": field_name},
+        )
+    normalized_value = value.strip()
+    return normalized_value or None
 
 
 def _build_binding_outputs(

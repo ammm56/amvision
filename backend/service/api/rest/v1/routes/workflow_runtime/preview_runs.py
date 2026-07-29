@@ -61,6 +61,8 @@ def create_workflow_preview_run(
             execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
             timeout_seconds=body.timeout_seconds,
             wait_mode=body.wait_mode,
+            execution_scope_kind=body.execution_scope.kind,
+            target_node_id=body.execution_scope.target_node_id,
         ),
         created_by=principal.principal_id,
     )

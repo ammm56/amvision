@@ -58,6 +58,15 @@
       <Play :size="15" />
       {{ previewLabel }}
     </button>
+    <button
+      v-if="contextMenu.nodeId"
+      type="button"
+      :disabled="previewDisabled"
+      @click="emit('preview-node')"
+    >
+      <Play :size="15" />
+      {{ previewNodeLabel }}
+    </button>
   </div>
 </template>
 
@@ -98,6 +107,7 @@ defineProps<{
   darkLabel: string
   saveLabel: string
   previewLabel: string
+  previewNodeLabel: string
 }>()
 
 const emit = defineEmits<{
@@ -114,6 +124,7 @@ const emit = defineEmits<{
   'toggle-theme': []
   save: []
   preview: []
+  'preview-node': []
 }>()
 
 const { t } = useI18n()

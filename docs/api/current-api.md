@@ -268,7 +268,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
 | GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy；支持 offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
-| POST | /api/v1/workflows/preview-runs | workflows:write | 创建一条 WorkflowPreviewRun；支持 sync/async wait_mode。 |
+| POST | /api/v1/workflows/preview-runs | workflows:write | 创建一条 WorkflowPreviewRun；支持 sync/async wait_mode，以及 application/node execution_scope。 |
 | GET | /api/v1/workflows/preview-runs | workflows:read | 按 Project 列出 WorkflowPreviewRun，并支持状态、创建时间、offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
 | GET | /api/v1/workflows/preview-runs/{preview_run_id}/events | workflows:read | 读取一条 WorkflowPreviewRun 的执行事件；支持 after_sequence 和 limit。 |

@@ -3,6 +3,7 @@ import { translate } from '@/platform/i18n'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
 import { createWorkflowPreviewRun } from '../services/workflow-runtime.service'
+import type { WorkflowPreviewExecutionScope } from '../services/workflow-runtime.service'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
 import type { FlowApplication, WorkflowGraphTemplate, WorkflowJsonObject, WorkflowPreviewRun } from '../types'
 
@@ -14,6 +15,7 @@ export interface WorkflowSaveActionInput {
 
 export interface WorkflowPreviewRunActionInput extends WorkflowSaveActionInput {
   inputBindings: WorkflowJsonObject
+  executionScope?: WorkflowPreviewExecutionScope
 }
 
 const DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS = 120
@@ -32,7 +34,11 @@ function hasDebugImagePanelNode(template: WorkflowGraphTemplate): boolean {
   )
 }
 
-function shouldRetainPreviewNodeRecords(template: WorkflowGraphTemplate): boolean {
+function shouldRetainPreviewNodeRecords(
+  template: WorkflowGraphTemplate,
+  executionScope?: WorkflowPreviewExecutionScope,
+): boolean {
+  if (executionScope?.kind === 'node') return true
   return template.nodes.some((node) => node.enabled !== false && node.node_type_id.endsWith('-preview'))
     || hasDebugImagePanelNode(template)
 }
@@ -81,11 +87,12 @@ export function useWorkflowEditorActions() {
           source: 'workflow-graph-workbench',
           preview_execution_mode: 'inline',
           debug_image_panels_enabled: hasDebugImagePanelNode(input.template),
-          retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template),
+          retain_node_records_enabled: shouldRetainPreviewNodeRecords(input.template, input.executionScope),
         },
         waitMode: 'sync',
         timeoutSeconds: DEFAULT_WORKFLOW_PREVIEW_TIMEOUT_SECONDS,
         application: input.application,
+        executionScope: input.executionScope,
       })
       lastPreviewRun.value = previewRun
       statusMessage.value = null

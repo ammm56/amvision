@@ -9,6 +9,7 @@ from backend.nodes.core_catalog import get_core_workflow_node_definitions
 from backend.nodes.core_nodes.input.prompt.box_prompt import _handle_box_prompt
 from backend.nodes.core_nodes.input.prompt.mask_prompt import _handle_mask_prompt
 from backend.nodes.core_nodes.input.prompt.mask_editor import _handle_mask_editor
+import backend.nodes.core_nodes.input.prompt.mask_editor as mask_editor_module
 import backend.nodes.core_nodes.input.prompt.mask_prompt as mask_prompt_module
 from backend.nodes.core_nodes.input.prompt.point_prompt import _handle_point_prompt
 from backend.nodes.core_nodes.input.prompt.polygon_prompt import (
@@ -44,6 +45,17 @@ def test_core_catalog_contains_prompt_input_nodes() -> None:
         "core.input.mask-editor",
         "core.input.prompt-regions-merge",
     } <= node_type_ids
+    prompt_editor_node_type_ids = {
+        definition.node_type_id
+        for definition in get_core_workflow_node_definitions()
+        if "prompt.editor" in definition.capability_tags
+    }
+    assert {
+        "core.input.point-prompt",
+        "core.input.box-prompt",
+        "core.input.polygon-prompt",
+        "core.input.mask-editor",
+    } <= prompt_editor_node_type_ids
 
 
 def test_text_prompt_and_merge_build_shared_payload() -> None:
@@ -169,28 +181,120 @@ def test_point_prompt_rejects_missing_coordinate() -> None:
         )
 
 
-def test_mask_editor_rejects_mask_after_source_image_changes() -> None:
-    """验证同尺寸换图后旧 Mask 也不能继续应用。"""
+def test_mask_editor_invalidates_mask_after_source_image_changes(
+    monkeypatch,
+) -> None:
+    """验证换图后旧 Mask 不再输出，但源图编辑 Preview 仍可打开。"""
 
-    with pytest.raises(InvalidRequestError, match="源图已变化"):
-        _handle_mask_editor(
-            _request(
-                node_id="mask-editor",
-                parameters={
-                    "mask_object_key": "projects/project-1/inputs/mask.png",
-                    "mask_source_identity": "object_key:projects/project-1/a.png",
-                },
-                input_values={
-                    "image": {
-                        "transport_kind": "storage",
-                        "object_key": "projects/project-1/b.png",
-                        "media_type": "image/png",
-                        "width": 64,
-                        "height": 64,
-                    }
-                },
-            )
+    monkeypatch.setattr(
+        mask_editor_module,
+        "build_debug_image_preview_output",
+        lambda *_args, **_kwargs: {
+            "debug_preview": {
+                "type": "image-preview",
+                "title": "Mask Editor",
+            }
+        },
+    )
+    outputs = _handle_mask_editor(
+        _request(
+            node_id="mask-editor",
+            parameters={
+                "mask_object_key": "projects/project-1/inputs/mask.png",
+                "mask_source_identity": "object_key:projects/project-1/a.png",
+            },
+            input_values={
+                "image": {
+                    "transport_kind": "storage",
+                    "object_key": "projects/project-1/b.png",
+                    "media_type": "image/png",
+                    "width": 64,
+                    "height": 64,
+                }
+            },
         )
+    )
+
+    assert "mask_image" not in outputs
+    assert outputs["debug_preview"]["type"] == "image-preview"
+
+
+def test_mask_editor_without_applied_mask_only_outputs_debug_preview(
+    monkeypatch,
+) -> None:
+    """验证浏览器空草稿不会变成运行时 Mask 输出。"""
+
+    monkeypatch.setattr(
+        mask_editor_module,
+        "build_debug_image_preview_output",
+        lambda *_args, **kwargs: {
+            "debug_preview": {
+                "type": "image-preview",
+                "interaction": kwargs["interaction"],
+            }
+        },
+    )
+    outputs = _handle_mask_editor(
+        _request(
+            node_id="mask-editor",
+            input_values={
+                "image": {
+                    "transport_kind": "storage",
+                    "object_key": "projects/project-1/source.png",
+                    "media_type": "image/png",
+                    "width": 64,
+                    "height": 64,
+                }
+            },
+        )
+    )
+
+    assert set(outputs) == {"debug_preview"}
+    tool = outputs["debug_preview"]["interaction"]["tools"][0]
+    assert tool["mask_source_identity"] == (
+        "object_key:projects/project-1/source.png"
+    )
+    assert tool["apply_parameters"]["mask_source_identity"] == (
+        "object_key:projects/project-1/source.png"
+    )
+
+
+def test_mask_editor_prefers_stable_content_sha_over_execution_image_handle(
+    monkeypatch,
+) -> None:
+    """验证 memory 图片换临时 handle 后仍使用稳定内容 SHA 关联 Mask。"""
+
+    monkeypatch.setattr(
+        mask_editor_module,
+        "build_debug_image_preview_output",
+        lambda *_args, **kwargs: {
+            "debug_preview": {
+                "type": "image-preview",
+                "interaction": kwargs["interaction"],
+            }
+        },
+    )
+    outputs = _handle_mask_editor(
+        _request(
+            node_id="mask-editor",
+            input_values={
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "img-new-run",
+                    "content_sha256": "abc123",
+                    "media_type": "image/png",
+                    "width": 64,
+                    "height": 64,
+                }
+            },
+        )
+    )
+
+    tool = outputs["debug_preview"]["interaction"]["tools"][0]
+    assert tool["mask_source_identity"] == "content_sha256:abc123"
+    assert tool["apply_parameters"]["mask_source_identity"] == (
+        "content_sha256:abc123"
+    )
 
 
 @pytest.mark.parametrize(

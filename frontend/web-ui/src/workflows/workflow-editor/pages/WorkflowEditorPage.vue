@@ -210,6 +210,7 @@
         @toggle-theme="toggleGraphTheme"
         @save="saveCurrentWorkflowApp"
         @preview="runPreview"
+        @preview-node="runPreviewNodeFromContextMenu"
         @select-node-from-picker="selectNodeFromPicker"
         @close-node-picker="closeNodePicker"
       />
@@ -218,7 +219,7 @@
       :image="activeImageViewer"
       :table="activePreviewTable"
       :json="activePreviewJson"
-      :preview-running="previewing"
+      :preview-running="previewOperationRunning"
       :preview-disabled="previewDisabled"
       @close-image="closeImageViewer"
       @close-table="closePreviewTableViewer"
@@ -349,6 +350,7 @@ const currentLocale = computed<SupportedLocale>(() => {
 })
 
 const loading = ref(false)
+const imageInteractionApplying = ref(false)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const graphNodes = ref<GraphNodeView[]>([])
@@ -762,7 +764,6 @@ const graphNodePreviewGalleryItemHeight = 72
 const graphNodePreviewGalleryGap = 6
 const imageRefTransportKindOptions = computed(() => getPreviewImageRefTransportKindOptions())
 const graphNodeWidgetRowHeight = 34
-let imageInteractionPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const {
@@ -891,8 +892,9 @@ const {
 })
 const editorTitle = computed(() => isNewApp.value ? newWorkflowAppDraft.value.displayName || t('workflowEditor.editor.newTitle') : workflowApp.value?.applicationDocument.application.display_name || routeApplicationId.value)
 const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowApp.value?.applicationDocument.application_id))
-const saveDisabled = computed(() => saving.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
-const previewDisabled = computed(() => previewing.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
+const saveDisabled = computed(() => saving.value || imageInteractionApplying.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const previewDisabled = computed(() => previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 
 function beginEditorTitleEdit(): void {
   if (!editorTitleEditable.value || editorTitleSaving.value) return
@@ -1203,6 +1205,7 @@ const {
   previewBlockingMessages,
   getBindingPayloadTypeId,
   buildPreviewInputBindingsPayload,
+  hasPreviewBindingValue,
   setErrorMessage: (message) => {
     errorMessage.value = message
   },
@@ -1258,69 +1261,93 @@ function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue):
 }
 
 async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): Promise<boolean> {
-  const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
-  if (!targetNode) {
-    errorMessage.value = t('workflowEditor.feedback.interactionTargetNotFound', { nodeId: event.nodeId })
-    return false
-  }
-  let normalizedEvent = event
-  if (event.maskDataUrl) {
-    const projectId = selectedProjectId.value.trim()
-    const applicationId = (
-      routeApplicationId.value
-      || newWorkflowAppDraft.value.applicationId
-    ).trim()
-    if (!projectId || !applicationId) {
+  if (imageInteractionApplying.value) return false
+  imageInteractionApplying.value = true
+  try {
+    const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
+    if (!targetNode) {
+      errorMessage.value = t('workflowEditor.feedback.interactionTargetNotFound', { nodeId: event.nodeId })
+      return false
+    }
+    let normalizedEvent = event
+    if (event.maskDataUrl) {
+      const maskSourceIdentity = (
+        typeof event.parameters?.mask_source_identity === 'string'
+          ? event.parameters.mask_source_identity.trim()
+          : ''
+      )
+      if (!maskSourceIdentity) {
+        errorMessage.value = t('workflowEditor.feedback.maskSourceIdentityMissing')
+        return false
+      }
+      const projectId = selectedProjectId.value.trim()
+      const applicationId = (
+        routeApplicationId.value
+        || newWorkflowAppDraft.value.applicationId
+      ).trim()
+      if (!projectId || !applicationId) {
+        errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
+        return false
+      }
+      try {
+        const maskBlob = await fetch(event.maskDataUrl).then((response) => response.blob())
+        const storedMask = await uploadWorkflowPromptMask(projectId, applicationId, maskBlob)
+        normalizedEvent = {
+          ...event,
+          parameters: {
+            ...(event.parameters ?? {}),
+            mask_object_key: storedMask.object_key,
+            mask_source_identity: maskSourceIdentity,
+          },
+        }
+      } catch (error) {
+        errorMessage.value = error instanceof Error ? error.message : String(error)
+        return false
+      }
+    }
+    const updates = buildPreviewImageInteractionParameterUpdates(normalizedEvent, targetNode.node.parameters)
+    if (!updates || Object.keys(updates).length === 0) {
+      if (event.clearParameterNames?.length) {
+        errorMessage.value = null
+        selectNode(event.nodeId)
+        return true
+      }
       errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
       return false
     }
-    try {
-      const maskBlob = await fetch(event.maskDataUrl).then((response) => response.blob())
-      const storedMask = await uploadWorkflowPromptMask(projectId, applicationId, maskBlob)
-      normalizedEvent = {
-        ...event,
-        parameters: {
-          ...(event.parameters ?? {}),
-          mask_object_key: storedMask.object_key,
-        },
-      }
-    } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : String(error)
-      return false
-    }
+    updateNodeParametersByName(targetNode, updates)
+    selectNode(event.nodeId)
+    return true
+  } finally {
+    imageInteractionApplying.value = false
   }
-  const updates = buildPreviewImageInteractionParameterUpdates(normalizedEvent, targetNode.node.parameters)
-  if (!updates || Object.keys(updates).length === 0) {
-    if (event.clearParameterNames?.length) {
-      errorMessage.value = null
-      selectNode(event.nodeId)
-      return true
-    }
-    errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
-    return false
-  }
-  updateNodeParametersByName(targetNode, updates)
-  selectNode(event.nodeId)
-  return true
 }
 
 async function previewPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): Promise<void> {
   if (!await applyPreviewImageInteraction(event)) return
-  scheduleImageInteractionPreviewRun(event.nodeId)
-}
-
-function scheduleImageInteractionPreviewRun(nodeId: string | null = null): void {
-  if (imageInteractionPreviewTimer !== null) window.clearTimeout(imageInteractionPreviewTimer)
-  imageInteractionPreviewTimer = window.setTimeout(() => {
-    imageInteractionPreviewTimer = null
-    if (previewDisabled.value) return
-    void runPreview({ preserveImageViewerNodeId: nodeId ?? activeImageViewer.value?.nodeId ?? null })
-  }, 250)
+  if (previewDisabled.value) return
+  await runPreview({
+    preserveImageViewerNodeId: event.nodeId,
+    targetNodeId: event.nodeId,
+  })
 }
 
 function runPreviewFromImageViewer(): void {
   if (previewDisabled.value) return
-  void runPreview({ preserveImageViewerNodeId: activeImageViewer.value?.nodeId ?? null })
+  const targetNodeId = activeImageViewer.value?.nodeId ?? null
+  void runPreview({
+    preserveImageViewerNodeId: targetNodeId,
+    targetNodeId,
+  })
+}
+
+function runPreviewNodeFromContextMenu(): void {
+  const targetNodeId = contextMenu.value?.nodeId ?? null
+  clearContextMenu()
+  if (!targetNodeId || previewDisabled.value) return
+  void runPreview({
+    targetNodeId,
+  })
 }
 
 function buildPreviewImageInteractionParameterUpdates(
