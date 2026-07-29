@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from multiprocessing.queues import Queue
+from pathlib import Path
 from queue import Empty
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
@@ -363,7 +364,7 @@ class LocalBufferBrokerProcessSupervisor:
                         "response_queue": response_queue,
                     },
                     name="local-buffer-broker",
-                    daemon=False,
+                    daemon=True,
                 )
                 process.start()
                 self._process = process
@@ -371,15 +372,48 @@ class LocalBufferBrokerProcessSupervisor:
                 self._request_queue = request_queue
                 self._response_queue = response_queue
 
-            remaining_seconds = max(0.1, deadline - monotonic())
-            try:
-                message = startup_queue.get(timeout=remaining_seconds)
-            except Empty as exc:
-                self.stop()
-                raise OperationTimeoutError(
-                    "等待 LocalBufferBroker 启动超时",
-                    details={"timeout_seconds": self.settings.startup_timeout_seconds},
-                ) from exc
+            message: object | None = None
+            while message is None:
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    process_id = process.pid
+                    process_exitcode = process.exitcode
+                    self.stop()
+                    raise OperationTimeoutError(
+                        "等待 LocalBufferBroker 启动超时",
+                        details={
+                            "timeout_seconds": self.settings.startup_timeout_seconds,
+                            "process_id": process_id,
+                            "process_exitcode": process_exitcode,
+                            "root_dir": self.settings.root_dir,
+                            "pool_files": [
+                                str(
+                                    Path(self.settings.root_dir)
+                                    / pool.pool_name
+                                    / pool.file_name
+                                )
+                                for pool in self.settings.pools
+                            ],
+                        },
+                    )
+                try:
+                    message = startup_queue.get(
+                        timeout=min(0.1, max(0.01, remaining_seconds))
+                    )
+                except Empty:
+                    if process.exitcode is None:
+                        continue
+                    process_id = process.pid
+                    process_exitcode = process.exitcode
+                    self.stop()
+                    raise ServiceConfigurationError(
+                        "LocalBufferBroker 子进程在启动完成前退出",
+                        details={
+                            "process_id": process_id,
+                            "process_exitcode": process_exitcode,
+                            "root_dir": self.settings.root_dir,
+                        },
+                    )
 
             if isinstance(message, dict) and message.get("ok") is True:
                 router = _LocalBufferBrokerEventRouter(

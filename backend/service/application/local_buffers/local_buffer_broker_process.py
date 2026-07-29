@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from multiprocessing import parent_process
 import os
 from pathlib import Path
+from queue import Empty
 from typing import Any
 from uuid import uuid4
 
@@ -345,6 +347,7 @@ def run_local_buffer_broker_process(
     try:
         settings = LocalBufferBrokerSettings.model_validate(settings_payload)
         registry = LocalBufferBrokerRegistry(settings=settings)
+        supervisor_process = parent_process()
         startup_queue.put(
             {
                 "ok": True,
@@ -354,7 +357,17 @@ def run_local_buffer_broker_process(
         )
         stop_requested = False
         while not stop_requested:
-            message = request_queue.get()
+            try:
+                message = request_queue.get(timeout=0.5)
+            except Empty:
+                # Windows 不会保证强制结束父进程时同步结束 multiprocessing 子进程。
+                # broker 定期检查 supervisor，避免孤立进程长期占用默认 mmap pool。
+                if supervisor_process is not None and not supervisor_process.is_alive():
+                    break
+                continue
+            except (EOFError, OSError):
+                # 父进程退出后控制队列可能先于 parent sentinel 关闭。
+                break
             request_id = str(message.get("request_id") or "") if isinstance(message, dict) else ""
             try:
                 action = str(message.get("action") or "") if isinstance(message, dict) else ""
@@ -376,6 +389,10 @@ def run_local_buffer_broker_process(
                         ),
                     }
                 )
+    except KeyboardInterrupt:
+        # Uvicorn reload 和控制台关闭可能把中断信号同时发送给父进程与 broker。
+        # broker 只需执行 finally 中的 mmap 清理，不重复输出子进程 traceback。
+        pass
     except Exception as exc:  # pragma: no cover - 启动失败需要跨进程回传
         startup_queue.put(
             {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from queue import Empty
 from threading import Thread
 from time import monotonic, sleep
 import json
@@ -37,6 +38,9 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
+from backend.service.application.local_buffers.local_buffer_broker_process import (
+    run_local_buffer_broker_process,
+)
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
 )
@@ -53,7 +57,7 @@ from backend.service.application.runtime.contracts.detection.prediction import (
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
-from backend.service.application.errors import InvalidRequestError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY,
@@ -318,6 +322,165 @@ def test_local_buffer_broker_rejects_legacy_default_pool_config() -> None:
                 }
             }
         )
+
+
+def test_local_buffer_broker_process_closes_quietly_on_keyboard_interrupt(
+    tmp_path: Path,
+) -> None:
+    """验证 reload 传播 KeyboardInterrupt 时 broker 会关闭 mmap 且不向外抛错。"""
+
+    class _CollectQueue:
+        def __init__(self) -> None:
+            self.messages: list[object] = []
+
+        def put(self, message: object) -> None:
+            self.messages.append(message)
+
+    class _InterruptQueue:
+        def get(self, *, timeout: float) -> object:
+            _ = timeout
+            raise KeyboardInterrupt
+
+    settings = LocalBufferBrokerSettings(
+        root_dir=str(tmp_path / "interrupt-broker"),
+        default_pool_name="image-test",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-test",
+                slot_size_bytes=4096,
+                slot_count=2,
+            ),
+        ),
+    )
+    startup_queue = _CollectQueue()
+
+    run_local_buffer_broker_process(
+        settings_payload=settings.model_dump(mode="python"),
+        startup_queue=startup_queue,
+        request_queue=_InterruptQueue(),
+        response_queue=_CollectQueue(),
+    )
+
+    assert startup_queue.messages
+    startup_message = startup_queue.messages[0]
+    assert isinstance(startup_message, dict)
+    assert startup_message["ok"] is True
+    pool_file = (
+        tmp_path
+        / "interrupt-broker"
+        / "image-test"
+        / "image-test-001.dat"
+    )
+    pool_file.unlink()
+    assert pool_file.exists() is False
+
+
+def test_local_buffer_broker_process_stops_when_supervisor_exits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证父进程失效后孤立 broker 会自行关闭 mmap。"""
+
+    class _CollectQueue:
+        def __init__(self) -> None:
+            self.messages: list[object] = []
+
+        def put(self, message: object) -> None:
+            self.messages.append(message)
+
+    class _IdleQueue:
+        def get(self, *, timeout: float) -> object:
+            _ = timeout
+            raise Empty
+
+    class _ExitedSupervisor:
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(
+        "backend.service.application.local_buffers.local_buffer_broker_process.parent_process",
+        lambda: _ExitedSupervisor(),
+    )
+    settings = LocalBufferBrokerSettings(
+        root_dir=str(tmp_path / "orphan-broker"),
+        default_pool_name="image-test",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-test",
+                slot_size_bytes=4096,
+                slot_count=2,
+            ),
+        ),
+    )
+    startup_queue = _CollectQueue()
+
+    run_local_buffer_broker_process(
+        settings_payload=settings.model_dump(mode="python"),
+        startup_queue=startup_queue,
+        request_queue=_IdleQueue(),
+        response_queue=_CollectQueue(),
+    )
+
+    assert startup_queue.messages
+    pool_file = (
+        tmp_path
+        / "orphan-broker"
+        / "image-test"
+        / "image-test-001.dat"
+    )
+    pool_file.unlink()
+    assert pool_file.exists() is False
+
+
+def test_local_buffer_broker_supervisor_reports_early_child_exit(
+    tmp_path: Path,
+) -> None:
+    """验证 broker 子进程提前退出时立即返回 exit code，不等待启动超时。"""
+
+    class _EmptyQueue:
+        def get(self, *, timeout: float) -> object:
+            _ = timeout
+            raise Empty
+
+        def close(self) -> None:
+            return
+
+        def join_thread(self) -> None:
+            return
+
+    class _ExitedProcess:
+        pid = 43210
+        exitcode = 7
+
+        def start(self) -> None:
+            return
+
+        def is_alive(self) -> bool:
+            return False
+
+    class _ExitedProcessContext:
+        def Queue(self) -> _EmptyQueue:
+            return _EmptyQueue()
+
+        def Process(self, **kwargs: object) -> _ExitedProcess:
+            assert kwargs["daemon"] is True
+            return _ExitedProcess()
+
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
+    supervisor._context = _ExitedProcessContext()
+
+    started_at = monotonic()
+    with pytest.raises(
+        ServiceConfigurationError,
+        match="子进程在启动完成前退出",
+    ) as exc_info:
+        supervisor.start()
+
+    assert monotonic() - started_at < 1.0
+    assert exc_info.value.details["process_id"] == 43210
+    assert exc_info.value.details["process_exitcode"] == 7
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(
