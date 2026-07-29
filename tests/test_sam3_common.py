@@ -91,7 +91,7 @@ def test_read_interactive_prompt_items_accepts_box_and_point() -> None:
                 "prompt_id": "point-1",
                 "prompt_kind": "point",
                 "point_xy": [15, 25],
-                "point_label": "negative",
+                "point_label": "positive",
             },
         ]
     }
@@ -102,8 +102,53 @@ def test_read_interactive_prompt_items_accepts_box_and_point() -> None:
     assert prompt_items[0].prompt_kind == "box"
     assert prompt_items[0].bbox_xyxy == (10.0, 20.0, 30.0, 40.0)
     assert prompt_items[1].prompt_kind == "point"
-    assert prompt_items[1].point_xy == (15.0, 25.0)
-    assert prompt_items[1].point_label == "negative"
+    assert prompt_items[1].point_xy_items == ((15.0, 25.0),)
+    assert prompt_items[1].point_labels == ("positive",)
+
+
+def test_read_interactive_prompt_items_groups_positive_and_negative_points() -> None:
+    """验证同一 prompt_id 的多个正负点会编码为一个对象。"""
+
+    prompt_items = read_interactive_prompt_items(
+        {
+            "items": [
+                {
+                    "prompt_id": "object-1",
+                    "prompt_kind": "point",
+                    "point_xy": [10, 20],
+                    "point_label": "positive",
+                },
+                {
+                    "prompt_id": "object-1",
+                    "prompt_kind": "point",
+                    "point_xy": [30, 40],
+                    "point_label": "negative",
+                },
+            ]
+        }
+    )
+
+    assert len(prompt_items) == 1
+    assert prompt_items[0].point_xy_items == ((10.0, 20.0), (30.0, 40.0))
+    assert prompt_items[0].point_labels == ("positive", "negative")
+
+
+def test_read_interactive_prompt_items_rejects_negative_only_object() -> None:
+    """验证只含负点的对象不能进入模型。"""
+
+    with pytest.raises(InvalidRequestError, match="Positive"):
+        read_interactive_prompt_items(
+            {
+                "items": [
+                    {
+                        "prompt_id": "object-1",
+                        "prompt_kind": "point",
+                        "point_xy": [10, 20],
+                        "point_label": "negative",
+                    }
+                ]
+            }
+        )
 
 
 def test_read_text_prompt_items_accepts_positive_and_negative_items() -> None:

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from backend.nodes.core_catalog import get_core_workflow_node_definitions
 from backend.nodes.core_nodes.input.prompt.box_prompt import _handle_box_prompt
 from backend.nodes.core_nodes.input.prompt.mask_prompt import _handle_mask_prompt
+from backend.nodes.core_nodes.input.prompt.mask_editor import _handle_mask_editor
+import backend.nodes.core_nodes.input.prompt.mask_prompt as mask_prompt_module
 from backend.nodes.core_nodes.input.prompt.point_prompt import _handle_point_prompt
+from backend.nodes.core_nodes.input.prompt.polygon_prompt import (
+    _handle_polygon_prompt,
+)
 from backend.nodes.core_nodes.input.prompt.prompt_regions_merge import (
     _handle_prompt_regions_merge,
 )
@@ -35,6 +41,7 @@ def test_core_catalog_contains_prompt_input_nodes() -> None:
         "core.input.box-prompt",
         "core.input.polygon-prompt",
         "core.input.mask-prompt",
+        "core.input.mask-editor",
         "core.input.prompt-regions-merge",
     } <= node_type_ids
 
@@ -82,7 +89,7 @@ def test_text_prompt_and_merge_build_shared_payload() -> None:
     ]
 
 
-def test_visual_prompt_nodes_build_and_merge_shared_payload() -> None:
+def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None:
     """验证 Point、Box、Mask Prompt 可合并为 prompt-regions.v1。"""
 
     point = _handle_point_prompt(
@@ -90,9 +97,9 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload() -> None:
             node_id="point",
             parameters={
                 "prompt_id": "part",
-                "x": 12,
-                "y": 24,
+                "point_xy": [12, 24],
                 "point_label": "positive",
+                "prompt_applied": True,
             },
         )
     )["prompts"]
@@ -100,23 +107,31 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload() -> None:
         _request(
             node_id="box",
             parameters={
-                "prompt_id": "part",
-                "x1": 2,
-                "y1": 3,
-                "x2": 20,
-                "y2": 30,
+                "prompt_id": "part-box",
+                "bbox_xyxy": [2, 3, 20, 30],
+                "prompt_applied": True,
             },
         )
     )["prompts"]
     mask_image = {
-        "transport_kind": "object-store",
+        "transport_kind": "storage",
         "object_key": "project/files/mask.png",
         "media_type": "image/png",
     }
+    monkeypatch.setattr(
+        mask_prompt_module,
+        "load_image_bytes_from_payload",
+        lambda _request, *, image_payload: (dict(image_payload), b"mask"),
+    )
+    monkeypatch.setattr(
+        mask_prompt_module,
+        "decode_image_bytes_to_matrix",
+        lambda **_kwargs: np.ones((8, 8), dtype=np.uint8),
+    )
     mask = _handle_mask_prompt(
         _request(
             node_id="mask",
-            parameters={"prompt_id": "part"},
+            parameters={"prompt_id": "part-mask"},
             input_values={"mask_image": mask_image},
         )
     )["prompts"]
@@ -145,7 +160,165 @@ def test_point_prompt_rejects_missing_coordinate() -> None:
         _handle_point_prompt(
             _request(
                 node_id="invalid-point",
-                parameters={"prompt_id": "part", "x": 12},
+                parameters={
+                    "prompt_id": "part",
+                    "point_xy": [12],
+                    "prompt_applied": True,
+                },
+            )
+        )
+
+
+def test_mask_editor_rejects_mask_after_source_image_changes() -> None:
+    """验证同尺寸换图后旧 Mask 也不能继续应用。"""
+
+    with pytest.raises(InvalidRequestError, match="源图已变化"):
+        _handle_mask_editor(
+            _request(
+                node_id="mask-editor",
+                parameters={
+                    "mask_object_key": "projects/project-1/inputs/mask.png",
+                    "mask_source_identity": "object_key:projects/project-1/a.png",
+                },
+                input_values={
+                    "image": {
+                        "transport_kind": "storage",
+                        "object_key": "projects/project-1/b.png",
+                        "media_type": "image/png",
+                        "width": 64,
+                        "height": 64,
+                    }
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("handler", "parameters"),
+    (
+        (
+            _handle_point_prompt,
+            {
+                "prompt_id": "part",
+                "point_xy": [12, 24],
+                "prompt_applied": True,
+            },
+        ),
+        (
+            _handle_box_prompt,
+            {
+                "prompt_id": "part",
+                "bbox_xyxy": [2, 3, 20, 30],
+                "prompt_applied": True,
+            },
+        ),
+        (
+            _handle_polygon_prompt,
+            {
+                "prompt_id": "part",
+                "polygon_xy": [[2, 3], [20, 3], [20, 30], [2, 30]],
+                "prompt_applied": True,
+            },
+        ),
+    ),
+)
+def test_applied_geometry_prompt_rejects_changed_source_image(
+    handler,
+    parameters: dict[str, object],
+) -> None:
+    """验证已应用几何不能静默迁移到新图。"""
+
+    with pytest.raises(InvalidRequestError, match="源图已变化"):
+        handler(
+            _request(
+                node_id="prompt",
+                parameters={
+                    **parameters,
+                    "prompt_source_identity": (
+                        "object_key:projects/project-1/old.png"
+                    ),
+                },
+                input_values={
+                    "image": {
+                        "transport_kind": "storage",
+                        "object_key": "projects/project-1/new.png",
+                        "media_type": "image/png",
+                        "width": 64,
+                        "height": 64,
+                    }
+                },
+            )
+        )
+
+
+def test_prompt_regions_merge_supports_grouped_positive_and_negative_points() -> None:
+    """验证同一对象可由多个正负点组成。"""
+
+    positive = _handle_point_prompt(
+        _request(
+            node_id="positive",
+            parameters={
+                "prompt_id": "part",
+                "point_xy": [12, 24],
+                "point_label": "positive",
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+    negative = _handle_point_prompt(
+        _request(
+            node_id="negative",
+            parameters={
+                "prompt_id": "part",
+                "point_xy": [30, 40],
+                "point_label": "negative",
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+
+    merged = _handle_prompt_regions_merge(
+        _request(
+            node_id="merge",
+            input_values={"prompts": (positive, negative)},
+        )
+    )["prompts"]
+
+    assert [item["point_label"] for item in merged["items"]] == [
+        "positive",
+        "negative",
+    ]
+
+
+def test_prompt_regions_merge_rejects_mixed_kinds_for_same_object() -> None:
+    """验证同一对象 id 不能混合 Point 与 Box。"""
+
+    point = _handle_point_prompt(
+        _request(
+            node_id="point",
+            parameters={
+                "prompt_id": "part",
+                "point_xy": [12, 24],
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+    box = _handle_box_prompt(
+        _request(
+            node_id="box",
+            parameters={
+                "prompt_id": "part",
+                "bbox_xyxy": [2, 3, 20, 30],
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+
+    with pytest.raises(InvalidRequestError, match="不能混合"):
+        _handle_prompt_regions_merge(
+            _request(
+                node_id="merge",
+                input_values={"prompts": (point, box)},
             )
         )
 

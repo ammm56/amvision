@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse
+from starlette.datastructures import UploadFile
+
+import cv2
+import numpy as np
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.rest.v1.pagination import (
@@ -13,7 +18,7 @@ from backend.service.api.rest.v1.pagination import (
     MAX_LIST_LIMIT,
     paginate_sequence,
 )
-from backend.service.application.errors import PermissionDeniedError
+from backend.service.application.errors import InvalidRequestError, PermissionDeniedError
 from backend.service.application.project_bootstrap import ProjectBootstrapRequest
 from backend.service.api.rest.v1.routes.projects.files import (
     list_project_public_object_entries,
@@ -41,11 +46,68 @@ from backend.service.api.rest.v1.routes.projects.services import (
     ensure_project_visible,
     list_visible_project_ids,
     require_project_bootstrap_principal,
+    require_dataset_storage,
 )
 
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
 projects_router.include_router(sdk_config_packages_router)
+
+
+@projects_router.post(
+    "/{project_id}/workflow-prompt-masks",
+    response_model=ProjectObjectMetadataResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_workflow_prompt_mask(
+    project_id: str,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal,
+        Depends(require_scopes("workflows:write")),
+    ],
+    application_id: Annotated[
+        str, Query(min_length=1, description="所属 Workflow Application id")
+    ],
+) -> ProjectObjectMetadataResponse:
+    """保存编辑器生成的二值 Prompt Mask。"""
+
+    ensure_project_visible(
+        principal=principal,
+        project_id=project_id,
+    )
+    if "/" in application_id or "\\" in application_id:
+        raise InvalidRequestError("application_id 不能包含路径分隔符")
+    form = await request.form()
+    upload = form.get("mask")
+    if not isinstance(upload, UploadFile):
+        raise InvalidRequestError("mask 必须是 multipart 文件")
+    content = await upload.read()
+    if not content:
+        raise InvalidRequestError("Mask 文件不能为空")
+    encoded = np.frombuffer(content, dtype=np.uint8)
+    mask_matrix = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
+    if mask_matrix is None or mask_matrix.size == 0:
+        raise InvalidRequestError("Mask 文件不是可解码的图片")
+    foreground = mask_matrix > 0
+    if not bool(np.any(foreground)):
+        raise InvalidRequestError("Mask 至少需要一个前景像素")
+    normalized_mask = np.where(foreground, 255, 0).astype(np.uint8)
+    success, png_buffer = cv2.imencode(".png", normalized_mask)
+    if not success:
+        raise InvalidRequestError("Mask 无法编码为 PNG")
+    object_key = (
+        f"projects/{project_id}/inputs/workflow-applications/"
+        f"{application_id}/prompt-masks/{uuid4().hex}.png"
+    )
+    dataset_storage = require_dataset_storage(request)
+    dataset_storage.write_bytes(object_key, png_buffer.tobytes())
+    file_path = dataset_storage.resolve(object_key)
+    return build_project_object_metadata_response(
+        project_id=project_id,
+        object_key=object_key,
+        file_path=file_path,
+    )
 
 
 @projects_router.get("", response_model=list[ProjectCatalogItemResponse])

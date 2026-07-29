@@ -59,10 +59,8 @@
       "parameters": {
         "prompt_id": "target",
         "display_name": "Target",
-        "x1": 100,
-        "y1": 100,
-        "x2": 500,
-        "y2": 500
+        "bbox_xyxy": [100, 100, 500, 500],
+        "prompt_applied": true
       }
     },
     {

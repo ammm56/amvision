@@ -14,9 +14,6 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     read_text_prompt_items as read_sam3_text_prompt_items,
 )
 import custom_nodes.sam3_segment_nodes.backend.payloads.pretrained as sam3_pretrained
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
-    get_or_create_sam3_semantic_runtime_session,
-)
 import custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained as yoloe_pretrained
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.inputs import (
     read_text_prompt_items as read_yoloe_text_prompt_items,
@@ -177,58 +174,6 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
     assert prediction_a.summary["prompt_count"] == 2
     assert prediction_a.summary["prompt_item_count"] == 3
     assert prediction_b.summary["prompt_group_count"] == 2
-
-
-def test_sam3_semantic_runtime_session_reuses_cpu_cache() -> None:
-    """验证 SAM3 semantic runtime 在 CPU 上会复用同一会话。"""
-
-    session_a = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cpu",
-        precision="fp32",
-    )
-    session_b = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cpu",
-        precision="fp32",
-    )
-
-    assert session_a is session_b
-
-    prompt_groups = merge_sam3_text_prompt_items(
-        read_sam3_text_prompt_items(
-            {
-                "items": [
-                    {
-                        "prompt_id": "prompt-1",
-                        "text": "object",
-                        "display_name": "object",
-                    },
-                    {
-                        "prompt_id": "prompt-1",
-                        "text": "background",
-                        "display_name": "object",
-                        "negative": True,
-                    },
-                ]
-            }
-        )
-    )
-    prediction_a = session_a.predict(
-        image_bytes=_build_test_png_bytes(width=128, height=96),
-        image_payload=None,
-        prompt_items=prompt_groups,
-    )
-    prediction_b = session_b.predict(
-        image_bytes=_build_test_png_bytes(width=128, height=96),
-        image_payload=None,
-        prompt_items=prompt_groups,
-    )
-
-    assert prediction_a.summary["prompt_count"] == 1
-    assert prediction_a.summary["prompt_item_count"] == 2
-    assert prediction_b.summary["negative_prompt_count"] == 1
-    assert prediction_b.summary["prompt_groups"][0]["negative_texts"] == ["background"]
 
 
 def _build_namespace(**kwargs):

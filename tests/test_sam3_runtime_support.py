@@ -11,6 +11,10 @@ from PIL import Image
 import torch
 import torch.nn.functional as F
 
+from backend.contracts.workflows.workflow_graph import WorkflowGraphNode
+from backend.service.application.workflows.model_sessions import (
+    WorkflowModelSessionLoadResult,
+)
 from custom_nodes.sam3_segment_nodes.backend.core import (
     Sam3VideoAttentionMemoryEntry,
     Sam3VideoAttentionTrackState,
@@ -27,6 +31,10 @@ from custom_nodes.sam3_segment_nodes.backend.core import (
     update_attention_track_state_from_region,
     update_track_state_from_region,
 )
+from custom_nodes.sam3_segment_nodes.backend.payloads.types import (
+    Sam3PretrainedVariant,
+)
+import custom_nodes.sam3_segment_nodes.backend.runtime.workflow_session as workflow_session_module
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,14 +52,126 @@ SAM3_CHECKPOINT_PATH = (
 )
 
 
+def test_workflow_provider_reads_checkpoint_once_for_both_capabilities(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """验证同一 loader 的 Interactive/Semantic 模型复用一次 checkpoint 读取。"""
+
+    checkpoint_path = tmp_path / "sam3.pt"
+    checkpoint_path.write_bytes(b"checkpoint")
+    variant = Sam3PretrainedVariant(
+        model_asset_id="sam3-default",
+        architecture_id="sam3",
+        manifest_path=tmp_path / "manifest.json",
+        checkpoint_path=checkpoint_path,
+        model_name="sam3",
+        model_version="0.1.3",
+        task_type="segmentation",
+        metadata={"checkpoint_sha256": "abc123"},
+    )
+    checkpoint_branches = object()
+    checkpoint_loads: list[Path] = []
+    built_sessions: list[tuple[str, object, str | None]] = []
+
+    class _FakeRuntimeSession:
+        def __init__(self, *, checkpoint_branches, checkpoint_sha256=None, **_kwargs):
+            self.device_name = "cpu"
+            self.runtime_torch_dtype = torch.float32
+            built_sessions.append(
+                (self.__class__.__name__, checkpoint_branches, checkpoint_sha256)
+            )
+
+        def close(self) -> None:
+            return None
+
+    class _FakeInteractiveSession(_FakeRuntimeSession):
+        pass
+
+    class _FakeSemanticSession(_FakeRuntimeSession):
+        pass
+
+    monkeypatch.setattr(
+        workflow_session_module,
+        "resolve_sam3_pretrained_variant",
+        lambda **_kwargs: variant,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "load_sam3_checkpoint_branches",
+        lambda path: checkpoint_loads.append(path) or checkpoint_branches,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "Sam3InteractiveRuntimeSession",
+        _FakeInteractiveSession,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "Sam3SemanticRuntimeSession",
+        _FakeSemanticSession,
+    )
+
+    result = workflow_session_module.Sam3WorkflowModelSessionProvider().load(
+        loader_node=WorkflowGraphNode(
+            node_id="loader",
+            node_type_id="custom.sam3.load-checkpoint",
+            parameters={
+                "model_asset_id": "sam3-default",
+                "device": "cpu",
+                "precision": "fp32",
+            },
+        ),
+        consumer_node_type_ids=(
+            "custom.sam3.interactive-segment",
+            "custom.sam3.semantic-segment",
+        ),
+        runtime_context=object(),
+    )
+
+    assert checkpoint_loads == [checkpoint_path]
+    assert len(built_sessions) == 2
+    assert all(item[1] is checkpoint_branches for item in built_sessions)
+    assert all(item[2] == "abc123" for item in built_sessions)
+    assert result.checkpoint_sha256 == "abc123"
+
+
+def test_workflow_provider_validation_exposes_warmup_timings() -> None:
+    """验证 runtime 健康信息包含分能力和总 warmup 耗时。"""
+
+    validation = workflow_session_module.Sam3WorkflowModelSessionProvider().validate(
+        load_result=WorkflowModelSessionLoadResult(
+            session=object(),
+            model_family="sam3",
+            model_asset_id="sam3-default",
+            checkpoint_sha256="abc123",
+            resolved_device="cpu",
+            resolved_precision="fp32",
+            capabilities=("interactive",),
+        ),
+        warmup_result={
+            "interactive": {"project_native": True},
+            "_warmup_timings_ms": {"interactive": 12.5, "total": 12.5},
+        },
+        consumer_node_type_ids=("custom.sam3.interactive-segment",),
+        runtime_context=object(),
+    )
+
+    assert validation["warmup"] == "passed"
+    assert validation["warmup_timings_ms"] == {
+        "interactive": 12.5,
+        "total": 12.5,
+    }
+
+
 @dataclass(frozen=True)
 class _PromptItem:
     prompt_id: str
     prompt_kind: str
     display_name: str
     bbox_xyxy: tuple[float, float, float, float] | None = None
-    point_xy: tuple[float, float] | None = None
-    point_label: str | None = None
+    point_xy_items: tuple[tuple[float, float], ...] = ()
+    point_labels: tuple[str, ...] = ()
     prompt_mask: np.ndarray | None = None
 
 
@@ -108,8 +228,8 @@ def test_build_sam3_interactive_prompt_tensors_supports_box_and_point() -> None:
             prompt_id="point-1",
             prompt_kind="point",
             display_name="point",
-            point_xy=(5.0, 8.0),
-            point_label="negative",
+            point_xy_items=((5.0, 8.0),),
+            point_labels=("negative",),
         ),
     )
 

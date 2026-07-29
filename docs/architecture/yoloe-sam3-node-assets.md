@@ -155,7 +155,7 @@ data/files/models/pretrained/
 - `YOLOE default`
 - `YOLOE prompt-free`
 - `SAM3 default`
-- 当前 `YOLOE prompt-free`、`YOLOE text-prompt`、`YOLOE visual-prompt` 都已经接通 project-native runtime；`YOLOE visual-prompt` 当前已开放 `box / point / polygon / mask` 四类提示，并支持同一 `prompt_id` 下混合多种视觉提示后合并成一个 prompt 原型。
+- 当前 `YOLOE prompt-free`、`YOLOE text-prompt`、`YOLOE visual-prompt` 都已经接通 project-native runtime；`YOLOE visual-prompt` 当前已开放 `box / point / polygon / mask` 四类提示。同一 `prompt_id` 只能表示同一种提示，其中 Point 可包含多个正负点；Box、Polygon、Mask 的 id 不允许重复。
 
 ## 第一阶段目录规则
 
@@ -369,6 +369,11 @@ data/files/models/pretrained/
   - `polygon`
   - `mask`
 - `mask_image` 建议继续复用 `image-ref.v1`，不要把整张 mask 内联到 JSON。
+- 同一 `prompt_id` 表示同一个对象，不能混合不同 `prompt_kind`。
+- Point 可以使用多条相同 `prompt_id` 记录表达多个 Positive/Negative 点，并且至少包含一个 Positive 点。
+- YOLOE 将同一对象的 Positive Point 合并为前景提示，并用 Negative Point 从提示区域中排除背景；SAM3 将这些点作为同一个对象的一组稀疏提示送入 Prompt Encoder。
+- Box、Polygon、Mask 的 `prompt_id` 必须唯一。
+- `source_image` 记录提示创建时的参考图；参考图内容或尺寸变化后，YOLOE 和 SAM3 都必须拒绝旧提示。
 
 ### regions.v1
 

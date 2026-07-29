@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -20,6 +21,9 @@ from backend.service.application.workflows.execution.contracts import (
 from custom_nodes.sam3_segment_nodes.backend.core import (
     Sam3InteractiveRuntimeSession,
     Sam3SemanticRuntimeSession,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.checkpoint.loader import (
+    load_sam3_checkpoint_branches,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     normalize_device,
@@ -99,6 +103,9 @@ class Sam3WorkflowModelSessionProvider:
             loader_node.parameters.get("precision")
         )
         variant = resolve_sam3_pretrained_variant(model_asset_id=model_asset_id)
+        checkpoint_sha256 = str(
+            variant.metadata.get("checkpoint_sha256") or ""
+        ).strip() or None
         capabilities = _resolve_capabilities(consumer_node_type_ids)
         needs_interactive = bool(
             {"interactive", "video-interactive"}.intersection(capabilities)
@@ -107,7 +114,15 @@ class Sam3WorkflowModelSessionProvider:
             {"semantic", "video-semantic"}.intersection(capabilities)
         )
         session = Sam3WorkflowModelSession()
+        load_started_at = perf_counter()
         try:
+            checkpoint_started_at = perf_counter()
+            checkpoint_branches = load_sam3_checkpoint_branches(
+                variant.checkpoint_path
+            )
+            checkpoint_read_ms = round(
+                (perf_counter() - checkpoint_started_at) * 1000, 3
+            )
             if needs_interactive:
                 session.interactive = Sam3InteractiveRuntimeSession(
                     checkpoint_path=variant.checkpoint_path,
@@ -115,6 +130,8 @@ class Sam3WorkflowModelSessionProvider:
                     architecture_id=variant.architecture_id,
                     requested_device_name=requested_device,
                     precision=requested_precision,
+                    checkpoint_branches=checkpoint_branches,
+                    checkpoint_sha256=checkpoint_sha256,
                 )
             if needs_semantic:
                 session.semantic = Sam3SemanticRuntimeSession(
@@ -123,7 +140,10 @@ class Sam3WorkflowModelSessionProvider:
                     architecture_id=variant.architecture_id,
                     requested_device_name=requested_device,
                     precision=requested_precision,
+                    checkpoint_branches=checkpoint_branches,
+                    checkpoint_sha256=checkpoint_sha256,
                 )
+            del checkpoint_branches
         except Exception:
             session.close()
             raise
@@ -135,9 +155,6 @@ class Sam3WorkflowModelSessionProvider:
                 details={"consumer_node_type_ids": list(consumer_node_type_ids)},
             )
         resolved_precision = _read_runtime_precision(loaded_runtime)
-        checkpoint_sha256 = str(
-            variant.metadata.get("checkpoint_sha256") or ""
-        ).strip() or None
         return WorkflowModelSessionLoadResult(
             session=session,
             model_family=SAM3_MODEL_FAMILY,
@@ -149,6 +166,18 @@ class Sam3WorkflowModelSessionProvider:
             metadata={
                 "architecture_id": variant.architecture_id,
                 "model_version": variant.model_version,
+                "timings_ms": {
+                    "checkpoint_read": checkpoint_read_ms,
+                    "model_build_and_device_transfer": round(
+                        (perf_counter() - load_started_at) * 1000
+                        - checkpoint_read_ms,
+                        3,
+                    ),
+                    "load_total": round(
+                        (perf_counter() - load_started_at) * 1000,
+                        3,
+                    ),
+                },
             },
         )
 
@@ -163,9 +192,12 @@ class Sam3WorkflowModelSessionProvider:
 
         del consumer_node_type_ids, runtime_context
         session = _require_sam3_session(load_result.session)
+        warmup_started_at = perf_counter()
         image_bytes, image_payload = _build_warmup_image()
         summaries: dict[str, dict[str, object]] = {}
+        capability_timings_ms: dict[str, float] = {}
         if session.interactive is not None:
+            capability_started_at = perf_counter()
             prediction = session.interactive.predict(
                 image_bytes=image_bytes,
                 image_payload=image_payload,
@@ -179,7 +211,12 @@ class Sam3WorkflowModelSessionProvider:
                 ),
             )
             summaries["interactive"] = dict(prediction.summary)
+            capability_timings_ms["interactive"] = round(
+                (perf_counter() - capability_started_at) * 1000,
+                3,
+            )
         if session.semantic is not None:
+            capability_started_at = perf_counter()
             prediction = session.semantic.predict(
                 image_bytes=image_bytes,
                 image_payload=image_payload,
@@ -194,6 +231,14 @@ class Sam3WorkflowModelSessionProvider:
                 ),
             )
             summaries["semantic"] = dict(prediction.summary)
+            capability_timings_ms["semantic"] = round(
+                (perf_counter() - capability_started_at) * 1000,
+                3,
+            )
+        summaries["_warmup_timings_ms"] = {
+            **capability_timings_ms,
+            "total": round((perf_counter() - warmup_started_at) * 1000, 3),
+        }
         return summaries
 
     def validate(
@@ -222,9 +267,15 @@ class Sam3WorkflowModelSessionProvider:
                     "SAM3 warmup 输出验证失败",
                     details={"mode": mode},
                 )
+        warmup_timings = warmup_result.get("_warmup_timings_ms")
         return {
             "warmup": "passed",
             "validated_modes": sorted(expected_modes),
+            "warmup_timings_ms": (
+                dict(warmup_timings)
+                if isinstance(warmup_timings, dict)
+                else {}
+            ),
         }
 
     def close(self, session: object) -> None:

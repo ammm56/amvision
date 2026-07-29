@@ -125,10 +125,15 @@ def read_interactive_prompt_items(
 
     if not isinstance(payload, dict):
         raise InvalidRequestError("SAM3 交互分割节点要求 prompts payload 必须是对象")
+    _validate_prompt_source_image(
+        payload.get("source_image"),
+        current_source_image=source_image_payload,
+    )
     raw_items = payload.get("items")
     if not isinstance(raw_items, list) or not raw_items:
         raise InvalidRequestError("SAM3 交互分割节点要求 prompts.items 必须是非空数组")
-    prompt_items: list[Sam3InteractivePromptItem] = []
+    grouped_items: dict[str, list[dict[str, object]]] = {}
+    display_names: dict[str, str] = {}
     for item in raw_items:
         if not isinstance(item, dict):
             raise InvalidRequestError("SAM3 交互分割节点要求每个 prompt item 必须是对象")
@@ -137,7 +142,42 @@ def read_interactive_prompt_items(
         display_name = str(item.get("display_name") or prompt_id).strip() or prompt_id
         if not prompt_id:
             raise InvalidRequestError("SAM3 交互分割节点要求 prompt_id 不能为空")
+        previous_display_name = display_names.get(prompt_id)
+        if previous_display_name is not None and previous_display_name != display_name:
+            raise InvalidRequestError(
+                "同一个 SAM3 prompt_id 只能对应一个 display_name",
+                details={
+                    "prompt_id": prompt_id,
+                    "display_name": display_name,
+                    "previous_display_name": previous_display_name,
+                },
+            )
+        display_names[prompt_id] = display_name
+        grouped_items.setdefault(prompt_id, []).append(item)
+
+    prompt_items: list[Sam3InteractivePromptItem] = []
+    for prompt_id, group_items in grouped_items.items():
+        display_name = display_names[prompt_id]
+        prompt_kinds = {
+            str(item.get("prompt_kind") or "").strip().lower()
+            for item in group_items
+        }
+        if len(prompt_kinds) != 1:
+            raise InvalidRequestError(
+                "同一个 SAM3 prompt_id 不能混合不同类型的视觉提示",
+                details={
+                    "prompt_id": prompt_id,
+                    "prompt_kinds": sorted(prompt_kinds),
+                },
+            )
+        prompt_kind = next(iter(prompt_kinds))
+        if prompt_kind != "point" and len(group_items) != 1:
+            raise InvalidRequestError(
+                "Box、Polygon 和 Mask 的 prompt_id 必须唯一",
+                details={"prompt_id": prompt_id, "prompt_kind": prompt_kind},
+            )
         if prompt_kind == "box":
+            item = group_items[0]
             bbox_xyxy = item.get("bbox_xyxy")
             if not isinstance(bbox_xyxy, list) or len(bbox_xyxy) != 4:
                 raise InvalidRequestError("SAM3 交互分割节点要求 bbox_xyxy 必须是长度为 4 的数组")
@@ -155,30 +195,50 @@ def read_interactive_prompt_items(
             )
             continue
         if prompt_kind == "point":
-            point_xy = item.get("point_xy")
-            if not isinstance(point_xy, list) or len(point_xy) != 2:
-                raise InvalidRequestError("SAM3 交互分割节点要求 point_xy 必须是长度为 2 的数组")
-            try:
-                normalized_point = tuple(float(value) for value in point_xy)
-            except Exception as exc:
-                raise InvalidRequestError("SAM3 交互分割节点要求 point_xy 必须是数字数组") from exc
-            point_label = str(item.get("point_label") or "positive").strip().lower()
-            if point_label not in SUPPORTED_POINT_LABELS:
+            normalized_points: list[tuple[float, float]] = []
+            point_labels: list[str] = []
+            for item in group_items:
+                point_xy = item.get("point_xy")
+                if not isinstance(point_xy, list) or len(point_xy) != 2:
+                    raise InvalidRequestError(
+                        "SAM3 交互分割节点要求 point_xy 必须是长度为 2 的数组"
+                    )
+                try:
+                    normalized_point = tuple(float(value) for value in point_xy)
+                except Exception as exc:
+                    raise InvalidRequestError(
+                        "SAM3 交互分割节点要求 point_xy 必须是数字数组"
+                    ) from exc
+                point_label = (
+                    str(item.get("point_label") or "positive").strip().lower()
+                )
+                if point_label not in SUPPORTED_POINT_LABELS:
+                    raise InvalidRequestError(
+                        "SAM3 交互分割节点要求 point_label 只能是 positive 或 negative",
+                        details={
+                            "prompt_id": prompt_id,
+                            "point_label": point_label,
+                        },
+                    )
+                normalized_points.append(normalized_point)
+                point_labels.append(point_label)
+            if "positive" not in point_labels:
                 raise InvalidRequestError(
-                    "SAM3 交互分割节点要求 point_label 只能是 positive 或 negative",
-                    details={"prompt_id": prompt_id, "point_label": point_label},
+                    "每个 SAM3 Point 对象至少需要一个 Positive 点",
+                    details={"prompt_id": prompt_id},
                 )
             prompt_items.append(
                 Sam3InteractivePromptItem(
                     prompt_id=prompt_id,
                     prompt_kind=prompt_kind,
                     display_name=display_name,
-                    point_xy=normalized_point,
-                    point_label=point_label,
+                    point_xy_items=tuple(normalized_points),
+                    point_labels=tuple(point_labels),
                 )
             )
             continue
         if prompt_kind == "polygon":
+            item = group_items[0]
             source_width, source_height = _resolve_source_image_size(
                 source_image_payload=source_image_payload,
                 source_image_bytes=source_image_bytes,
@@ -199,6 +259,7 @@ def read_interactive_prompt_items(
             )
             continue
         if prompt_kind == "mask":
+            item = group_items[0]
             if request is None:
                 raise InvalidRequestError(
                     "SAM3 交互分割节点解析 mask prompt 时缺少执行请求上下文",
@@ -231,6 +292,53 @@ def read_interactive_prompt_items(
             details={"prompt_id": prompt_id, "prompt_kind": prompt_kind},
         )
     return tuple(prompt_items)
+
+
+def _validate_prompt_source_image(
+    prompt_source_image: object,
+    *,
+    current_source_image: dict[str, object] | None,
+) -> None:
+    """防止源图变化后继续使用旧坐标或旧 Mask。"""
+
+    if prompt_source_image is None or current_source_image is None:
+        return
+    if not isinstance(prompt_source_image, dict):
+        raise InvalidRequestError("prompt-regions.v1 的 source_image 必须是对象")
+    identity_fields = (
+        "object_key",
+        "image_handle",
+        "content_sha256",
+        "source_sha256",
+    )
+    compared = False
+    for field_name in identity_fields:
+        previous_value = str(prompt_source_image.get(field_name) or "").strip()
+        current_value = str(current_source_image.get(field_name) or "").strip()
+        if previous_value and current_value:
+            compared = True
+            if previous_value != current_value:
+                raise InvalidRequestError(
+                    "视觉 Prompt 的源图已变化，请重新编辑并应用",
+                    details={"identity_field": field_name},
+                )
+    if compared:
+        return
+    previous_size = (
+        prompt_source_image.get("width"),
+        prompt_source_image.get("height"),
+    )
+    current_size = (
+        current_source_image.get("width"),
+        current_source_image.get("height"),
+    )
+    if all(isinstance(value, (int, float)) for value in (*previous_size, *current_size)):
+        if tuple(int(value) for value in previous_size) != tuple(
+            int(value) for value in current_size
+        ):
+            raise InvalidRequestError(
+                "视觉 Prompt 的源图尺寸已变化，请重新编辑并应用"
+            )
 
 
 def read_frame_window_items(

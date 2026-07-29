@@ -216,6 +216,20 @@ export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Pr
   return apiRequest<WorkflowAppRuntime>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/health`)
 }
 
+export async function uploadWorkflowPromptMask(
+  projectId: string,
+  applicationId: string,
+  maskBlob: Blob,
+): Promise<{ object_key: string; media_type: string; size_bytes: number }> {
+  const form = new FormData()
+  form.append('mask', maskBlob, 'prompt-mask.png')
+  return apiRequest<{ object_key: string; media_type: string; size_bytes: number }>(`/projects/${encodePathPart(projectId)}/workflow-prompt-masks`, {
+    method: 'POST',
+    query: { application_id: applicationId },
+    body: form,
+  })
+}
+
 /**
  * 主动读取每个 runtime 的现场状态，避免页面继续展示列表接口中的持久化快照。
  * 单个 runtime 刷新失败时保留资源身份，但把状态标为 unknown，调用方不会误判为 running。

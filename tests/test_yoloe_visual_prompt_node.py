@@ -12,6 +12,7 @@ from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
 )
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -262,10 +263,10 @@ def test_visual_prompt_detect_accepts_mask_prompt(monkeypatch) -> None:
     assert output["summary"]["prompt_items"][0]["has_prompt_mask"] is True
 
 
-def test_visual_prompt_detect_merges_same_prompt_id_mixed_prompts(monkeypatch) -> None:
-    """验证同一个 prompt_id 下的多种视觉提示会合并成一个 prompt 原型。"""
+def test_visual_prompt_detect_rejects_same_prompt_id_mixed_prompts(monkeypatch) -> None:
+    """验证同一个 prompt_id 不能混合不同视觉 Prompt 类型。"""
 
-    captured = _prepare_visual_prompt_capture(monkeypatch)
+    _prepare_visual_prompt_capture(monkeypatch)
     image_payload, prompt_image_payload, image_registry = _build_test_images()
     mask_payload = _build_mask_image_payload(image_registry)
     request = WorkflowNodeExecutionRequest(
@@ -302,23 +303,63 @@ def test_visual_prompt_detect_merges_same_prompt_id_mixed_prompts(monkeypatch) -
         execution_metadata={"execution_image_registry": image_registry},
     )
 
+    with pytest.raises(InvalidRequestError, match="不能混合"):
+        visual_prompt_detect.handle_node(request)
+
+
+def test_visual_prompt_detect_groups_positive_and_negative_points(monkeypatch) -> None:
+    """验证同一对象的多个正负点合并为一个 YOLOE 视觉原型。"""
+
+    captured = _prepare_visual_prompt_capture(monkeypatch)
+    image_payload, prompt_image_payload, image_registry = _build_test_images()
+    request = WorkflowNodeExecutionRequest(
+        node_id="node-multi-point",
+        node_definition=SimpleNamespace(node_type_id=visual_prompt_detect.NODE_TYPE_ID),
+        parameters={"model_series": "v8", "model_scale": "s"},
+        input_values={
+            "image": image_payload,
+            "prompt_image": prompt_image_payload,
+            "prompts": {
+                "source_image": dict(prompt_image_payload),
+                "items": [
+                    {
+                        "prompt_id": "part",
+                        "display_name": "part",
+                        "prompt_kind": "point",
+                        "point_xy": [16, 16],
+                        "point_label": "positive",
+                    },
+                    {
+                        "prompt_id": "part",
+                        "display_name": "part",
+                        "prompt_kind": "point",
+                        "point_xy": [24, 24],
+                        "point_label": "positive",
+                    },
+                    {
+                        "prompt_id": "part",
+                        "display_name": "part",
+                        "prompt_kind": "point",
+                        "point_xy": [16, 16],
+                        "point_label": "negative",
+                    },
+                ],
+            },
+        },
+        execution_metadata={"execution_image_registry": image_registry},
+    )
+
     output = visual_prompt_detect.handle_node(request)
 
     prompt_item = captured["prompts"][0]
     assert len(captured["prompts"]) == 1
-    assert prompt_item.prompt_kind == "mixed"
-    assert prompt_item.prompt_kinds == ("box", "mask", "point")
+    assert prompt_item.prompt_kind == "point"
+    assert prompt_item.raw_item_count == 3
+    assert prompt_item.point_xy is None
     assert isinstance(prompt_item.prompt_mask, np.ndarray)
-    assert int(np.count_nonzero(prompt_item.prompt_mask)) > 0
+    assert prompt_item.prompt_mask[16, 16] == 0
+    assert prompt_item.prompt_mask[24, 24] == 1
     assert output["summary"]["prompt_count"] == 1
-    assert output["summary"]["prompt_items"][0]["prompt_kind"] == "mixed"
-    assert output["summary"]["prompt_items"][0]["prompt_kinds"] == [
-        "box",
-        "mask",
-        "point",
-    ]
-    assert output["summary"]["prompt_items"][0]["raw_item_count"] == 3
-    assert output["summary"]["prompt_items"][0]["has_prompt_mask"] is True
 
 
 def test_build_visual_prompt_tensor_supports_multiple_prompt_kinds() -> None:

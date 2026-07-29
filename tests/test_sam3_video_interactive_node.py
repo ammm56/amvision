@@ -67,7 +67,7 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
                     "prompt_kinds": ["box"],
                     "region_count": 1,
                     "inference_mode": "interactive-segment",
-                    "postprocess_profile": "sam3-default-v2",
+                    "postprocess_profile": "sam3-default",
                 },
             )
 
@@ -166,7 +166,7 @@ def test_video_interactive_segment_runs_project_native_smoke(monkeypatch) -> Non
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 2
-    assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
+    assert output["summary"]["postprocess_profile"] == "sam3-default"
     assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
     assert output["tracks"]["count"] >= 1
 
@@ -221,7 +221,7 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
                     "prompt_kinds": ["box"],
                     "region_count": 1,
                     "inference_mode": "interactive-segment",
-                    "postprocess_profile": "sam3-default-v2",
+                    "postprocess_profile": "sam3-default",
                 },
             )
 
@@ -601,7 +601,7 @@ def _build_fake_summary(
         "prompt_kinds": ["box"],
         "region_count": region_count,
         "inference_mode": "interactive-segment",
-        "postprocess_profile": "sam3-default-v2",
+        "postprocess_profile": "sam3-default",
     }
 
 

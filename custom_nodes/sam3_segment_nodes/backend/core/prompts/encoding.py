@@ -16,8 +16,8 @@ class Sam3InteractivePromptLike(Protocol):
     prompt_kind: str
     display_name: str
     bbox_xyxy: tuple[float, float, float, float] | None
-    point_xy: tuple[float, float] | None
-    point_label: str | None
+    point_xy_items: tuple[tuple[float, float], ...]
+    point_labels: tuple[str, ...]
     prompt_mask: object | None
 
 
@@ -87,15 +87,26 @@ def build_sam3_interactive_prompt_tensors(
             continue
 
         if item.prompt_kind == "point":
-            assert item.point_xy is not None
-            assert item.point_label is not None
-            point_x, point_y = item.point_xy
-            point_coord_items.append([[float(point_x) * scale_x, float(point_y) * scale_y]])
+            if not item.point_xy_items or len(item.point_xy_items) != len(
+                item.point_labels
+            ):
+                raise ValueError("point prompt 缺少成对的 point_xy_items 与 point_labels")
+            point_coord_items.append(
+                [
+                    [float(point_x) * scale_x, float(point_y) * scale_y]
+                    for point_x, point_y in item.point_xy_items
+                ]
+            )
             point_label_items.append(
-                [SAM3_POSITIVE_POINT_LABEL if item.point_label == "positive" else SAM3_NEGATIVE_POINT_LABEL]
+                [
+                    SAM3_POSITIVE_POINT_LABEL
+                    if point_label == "positive"
+                    else SAM3_NEGATIVE_POINT_LABEL
+                    for point_label in item.point_labels
+                ]
             )
             prompt_mask_items.append(None)
-            max_prompt_length = max(max_prompt_length, 1)
+            max_prompt_length = max(max_prompt_length, len(item.point_xy_items))
             continue
 
         if item.prompt_kind in {"polygon", "mask"}:

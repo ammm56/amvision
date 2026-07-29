@@ -25,6 +25,7 @@
 - [docs/architecture/model-artifact-provenance.md](architecture/model-artifact-provenance.md) 固定训练和转换模型产物的来源元数据、格式写入位置和证据链边界
 - [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md) 汇总 YOLOE 与 SAM3 custom node 的磁盘资产规则、manifest.json 字段和 payload 规则 约定
 - [docs/architecture/sam3-custom-node-plan.md](architecture/sam3-custom-node-plan.md) 固定 SAM3 Prompt、模型资产、设备、运行时、节点参数和验收边界
+- [docs/architecture/visual-prompt-editor.md](architecture/visual-prompt-editor.md) 固定 Point、Box、Polygon、Mask 图片编辑、源图失效检测和 ObjectStore 持久化规则
 - [docs/architecture/video-workflow-node-plan.md](architecture/video-workflow-node-plan.md) 汇总通用视频 payload 规则、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
 - [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md) 汇总工业现场单帧判定优先的规则节点、结果回传节点和输入接入节点分批规划
 - [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md) 汇总工业扩展节点体系规划，重点细化相机、PLC、工业缺陷核心节点和 OpenCV 常用算子路线

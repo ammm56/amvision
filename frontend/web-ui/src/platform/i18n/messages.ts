@@ -7033,6 +7033,8 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     toolbar: {
       pickOnImage: '在图片上取参', exitPick: '退出取参', pick: '取参', switchTool: '切换到 {tool}',
       switchCircleMode: '切换圆取参方式', centerRadius: '中心半径', threePointCircle: '三点圆',
+      brush: '画笔', eraser: '橡皮擦', brushSize: '画笔大小', undo: '撤销', redo: '重做', fill: '填充',
+      deleteVertex: '删除末端顶点',
       drawTemplateRoi: '绘制模板 ROI', templateRoi: '模板 ROI', drawSearchRoi: '绘制搜索 ROI', searchRoi: '搜索 ROI',
       clearDraft: '清除当前取参草稿', clearGeometry: '清除已保存的 ROI 和参考几何参数', clear: '清除', applyParams: '应用参数',
       applyDraftAndPreview: '应用当前取参并重新 Preview Run', rerunPreview: '重新执行 Preview Run',
@@ -7047,12 +7049,15 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     },
     empty: '当前图片没有可浏览的 src',
     tools: {
+      point: '点', mask: '遮罩',
       bbox: '矩形 ROI', rect: '矩形区域', polygon: '多边形 ROI', contour: '轮廓区域', circle: '圆',
       line: '线段', grid: '网格', templateRegion: '模板区域', matchLine: '匹配线', pointPair: '手动点对',
       homographyOverlay: '投影框',
     },
     status: {
       tuningAvailableNotEnabled: '可调参；取参未启用', notEnabled: '取参未启用',
+      pointReady: '点已选择，可应用参数', pointHint: '在图片上单击选择一个点',
+      maskReady: '遮罩已就绪，可应用保存', maskHint: '至少绘制一个前景像素',
       bboxReady: 'bbox 已选择，可应用参数', bboxHint: '拖拽选择 bbox',
       rectReady: '矩形区域已选择，可应用参数', rectHint: '拖拽选择矩形区域',
       gridReady: 'grid 区域已选择，可应用参数', gridHint: '拖拽选择 grid 区域',
@@ -7064,6 +7069,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       searchReadyContinueTemplate: '搜索 ROI 已选择，继续拖拽选择模板 ROI', dragStage: '拖拽选择{stage}',
       polygonReadyRatio: '多边形 {count}/{max}，可应用参数', polygonRatio: '多边形取参 {count}/{max}',
       polygonReady: '多边形 {count} 点，可应用参数', polygonMinimum: '多边形取参 {count}/{min}',
+      polygonSelfIntersecting: '多边形存在自交，请删除或调整顶点',
       lineDirectionHint: '拖拽目标方向线段，自动写回搜索 ROI、最小线长和角度范围',
       lineSearchHint: '拖拽目标线段，自动写回搜索 ROI', lineHint: '拖拽选择线段',
       lineReady: '线段已选择：{length}px / {angle}°，可应用参数',
@@ -7078,6 +7084,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       overlaySelected: '{label} 已选中，{message}',
     },
     applied: {
+      point: '点已应用到节点参数', mask: '遮罩已保存到节点参数',
       bbox: '矩形 ROI 已应用到节点参数', rect: '矩形区域已应用到节点参数',
       templateRegion: '模板 ROI / 搜索 ROI 已应用到节点参数', polygon: '多边形 ROI 已应用到节点参数',
       contour: '轮廓区域已应用到节点参数', grid: 'ROI 网格参数已应用', circle: '圆参数已应用',
@@ -7089,6 +7096,8 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     toolbar: {
       pickOnImage: 'Pick parameters on image', exitPick: 'Exit Pick', pick: 'Pick', switchTool: 'Switch to {tool}',
       switchCircleMode: 'Switch circle picking mode', centerRadius: 'Center + Radius', threePointCircle: '3-Point Circle',
+      brush: 'Brush', eraser: 'Eraser', brushSize: 'Brush size', undo: 'Undo', redo: 'Redo', fill: 'Fill',
+      deleteVertex: 'Delete Last Vertex',
       drawTemplateRoi: 'Draw Template ROI', templateRoi: 'Template ROI', drawSearchRoi: 'Draw Search ROI', searchRoi: 'Search ROI',
       clearDraft: 'Clear current picking draft', clearGeometry: 'Clear saved ROI and reference geometry parameters', clear: 'Clear', applyParams: 'Apply Parameters',
       applyDraftAndPreview: 'Apply current parameters and run Preview again', rerunPreview: 'Run Preview again',
@@ -7103,12 +7112,15 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     },
     empty: 'The current image has no viewable src',
     tools: {
+      point: 'Point', mask: 'Mask',
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
     },
     status: {
       tuningAvailableNotEnabled: 'Parameters available; image picking is disabled', notEnabled: 'Image picking is disabled',
+      pointReady: 'Point selected; parameters can be applied', pointHint: 'Click one point on the image',
+      maskReady: 'Mask ready; apply to save', maskHint: 'Draw at least one foreground pixel',
       bboxReady: 'bbox selected; parameters can be applied', bboxHint: 'Drag to select bbox',
       rectReady: 'Rectangle selected; parameters can be applied', rectHint: 'Drag to select rectangle',
       gridReady: 'grid region selected; parameters can be applied', gridHint: 'Drag to select grid region',
@@ -7120,6 +7132,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       searchReadyContinueTemplate: 'Search ROI selected; drag to select Template ROI', dragStage: 'Drag to select {stage}',
       polygonReadyRatio: 'Polygon {count}/{max}; parameters can be applied', polygonRatio: 'Pick polygon {count}/{max}',
       polygonReady: 'Polygon with {count} points; parameters can be applied', polygonMinimum: 'Pick polygon {count}/{min}',
+      polygonSelfIntersecting: 'The polygon intersects itself; delete or adjust vertices',
       lineDirectionHint: 'Drag a target direction line to set Search ROI, minimum length, and angle range',
       lineSearchHint: 'Drag a target line to set Search ROI', lineHint: 'Drag to select a line',
       lineReady: 'Line selected: {length}px / {angle}°; parameters can be applied',
@@ -7134,6 +7147,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       overlaySelected: '{label} selected; {message}',
     },
     applied: {
+      point: 'Point applied to node parameters', mask: 'Mask saved to node parameters',
       bbox: 'Rectangle ROI applied to node parameters', rect: 'Rectangle applied to node parameters',
       templateRegion: 'Template ROI / Search ROI applied to node parameters', polygon: 'Polygon ROI applied to node parameters',
       contour: 'Contour applied to node parameters', grid: 'ROI Grid parameters applied', circle: 'Circle parameters applied',
@@ -7145,6 +7159,8 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     toolbar: {
       pickOnImage: '画像上でパラメータを取得', exitPick: '取得終了', pick: '取得', switchTool: '{tool} に切替',
       switchCircleMode: '円の取得方法を切替', centerRadius: '中心 + 半径', threePointCircle: '3点円',
+      brush: 'ブラシ', eraser: '消しゴム', brushSize: 'ブラシサイズ', undo: '元に戻す', redo: 'やり直す', fill: '塗りつぶし',
+      deleteVertex: '最後の頂点を削除',
       drawTemplateRoi: 'Template ROI を描画', templateRoi: 'Template ROI', drawSearchRoi: 'Search ROI を描画', searchRoi: 'Search ROI',
       clearDraft: '現在の取得内容をクリア', clearGeometry: '保存済み ROI と参照ジオメトリをクリア', clear: 'クリア', applyParams: 'パラメータ適用',
       applyDraftAndPreview: '現在の取得内容を適用して Preview を再実行', rerunPreview: 'Preview を再実行',
@@ -7159,12 +7175,15 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     },
     empty: '表示可能な src がありません',
     tools: {
+      point: '点', mask: 'マスク',
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
     },
     status: {
       tuningAvailableNotEnabled: '調整可能；画像取得は無効', notEnabled: '画像取得は無効',
+      pointReady: '点を選択済み；適用できます', pointHint: '画像上の点をクリックしてください',
+      maskReady: 'マスクを適用できます', maskHint: '前景ピクセルを1つ以上描画してください',
       bboxReady: 'bbox を選択済み；適用できます', bboxHint: 'ドラッグして bbox を選択',
       rectReady: 'Rectangle を選択済み；適用できます', rectHint: 'ドラッグして Rectangle を選択',
       gridReady: 'grid 領域を選択済み；適用できます', gridHint: 'ドラッグして grid 領域を選択',
@@ -7176,6 +7195,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       searchReadyContinueTemplate: 'Search ROI を選択済み；Template ROI を選択してください', dragStage: 'ドラッグして {stage} を選択',
       polygonReadyRatio: 'Polygon {count}/{max}；適用できます', polygonRatio: 'Polygon 取得 {count}/{max}',
       polygonReady: 'Polygon {count} 点；適用できます', polygonMinimum: 'Polygon 取得 {count}/{min}',
+      polygonSelfIntersecting: 'Polygon が自己交差しています。頂点を削除または調整してください',
       lineDirectionHint: '対象方向の Line をドラッグして Search ROI、最小長、角度範囲を設定',
       lineSearchHint: '対象 Line をドラッグして Search ROI を設定', lineHint: 'ドラッグして Line を選択',
       lineReady: 'Line 選択済み：{length}px / {angle}°；適用できます',
@@ -7190,6 +7210,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       overlaySelected: '{label} を選択しました。{message}',
     },
     applied: {
+      point: '点をノードパラメータに適用しました', mask: 'マスクをノードパラメータに保存しました',
       bbox: 'Rectangle ROI をノードに適用しました', rect: 'Rectangle をノードに適用しました',
       templateRegion: 'Template ROI / Search ROI をノードに適用しました', polygon: 'Polygon ROI をノードに適用しました',
       contour: 'Contour をノードに適用しました', grid: 'ROI Grid を適用しました', circle: 'Circle を適用しました',
@@ -7201,6 +7222,8 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     toolbar: {
       pickOnImage: '이미지에서 파라미터 선택', exitPick: '선택 종료', pick: '선택', switchTool: '{tool}(으)로 전환',
       switchCircleMode: 'Circle 선택 방식 전환', centerRadius: 'Center + Radius', threePointCircle: '3-Point Circle',
+      brush: '브러시', eraser: '지우개', brushSize: '브러시 크기', undo: '실행 취소', redo: '다시 실행', fill: '채우기',
+      deleteVertex: '마지막 꼭짓점 삭제',
       drawTemplateRoi: 'Template ROI 그리기', templateRoi: 'Template ROI', drawSearchRoi: 'Search ROI 그리기', searchRoi: 'Search ROI',
       clearDraft: '현재 선택 초안 지우기', clearGeometry: '저장된 ROI 및 기준 지오메트리 파라미터 지우기', clear: '지우기', applyParams: '파라미터 적용',
       applyDraftAndPreview: '현재 선택을 적용하고 Preview 다시 실행', rerunPreview: 'Preview 다시 실행',
@@ -7215,12 +7238,15 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
     },
     empty: '표시할 수 있는 src 가 없습니다',
     tools: {
+      point: '점', mask: '마스크',
       bbox: 'Rectangle ROI', rect: 'Rectangle', polygon: 'Polygon ROI', contour: 'Contour', circle: 'Circle',
       line: 'Line', grid: 'Grid', templateRegion: 'Template Region', matchLine: 'Match Line', pointPair: 'Manual Point Pair',
       homographyOverlay: 'Homography Overlay',
     },
     status: {
       tuningAvailableNotEnabled: '조정 가능; 이미지 선택 비활성화', notEnabled: '이미지 선택 비활성화',
+      pointReady: '점 선택됨; 적용 가능', pointHint: '이미지에서 한 점을 클릭하세요',
+      maskReady: '마스크 준비됨; 적용하여 저장 가능', maskHint: '전경 픽셀을 하나 이상 그리세요',
       bboxReady: 'bbox 선택됨; 적용 가능', bboxHint: '드래그하여 bbox 선택',
       rectReady: 'Rectangle 선택됨; 적용 가능', rectHint: '드래그하여 Rectangle 선택',
       gridReady: 'grid 영역 선택됨; 적용 가능', gridHint: '드래그하여 grid 영역 선택',
@@ -7232,6 +7258,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       searchReadyContinueTemplate: 'Search ROI 선택됨; Template ROI 를 선택하세요', dragStage: '드래그하여 {stage} 선택',
       polygonReadyRatio: 'Polygon {count}/{max}; 적용 가능', polygonRatio: 'Polygon 선택 {count}/{max}',
       polygonReady: 'Polygon {count} points; 적용 가능', polygonMinimum: 'Polygon 선택 {count}/{min}',
+      polygonSelfIntersecting: 'Polygon 이 자체 교차합니다. 꼭짓점을 삭제하거나 조정하세요',
       lineDirectionHint: '대상 방향 Line 을 드래그하여 Search ROI, 최소 길이와 각도 범위 설정',
       lineSearchHint: '대상 Line 을 드래그하여 Search ROI 설정', lineHint: '드래그하여 Line 선택',
       lineReady: 'Line 선택됨: {length}px / {angle}°; 적용 가능',
@@ -7246,6 +7273,7 @@ const imageViewerMessages: Record<SupportedLocale, MessageSchema> = {
       overlaySelected: '{label} 선택됨; {message}',
     },
     applied: {
+      point: '점을 노드 파라미터에 적용했습니다', mask: '마스크를 노드 파라미터에 저장했습니다',
       bbox: 'Rectangle ROI 를 노드에 적용했습니다', rect: 'Rectangle 을 노드에 적용했습니다',
       templateRegion: 'Template ROI / Search ROI 를 노드에 적용했습니다', polygon: 'Polygon ROI 를 노드에 적용했습니다',
       contour: 'Contour 를 노드에 적용했습니다', grid: 'ROI Grid 파라미터를 적용했습니다', circle: 'Circle 파라미터를 적용했습니다',

@@ -6,9 +6,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
-    get_or_create_sam3_interactive_runtime_session,
-    get_or_create_sam3_semantic_runtime_session,
+from custom_nodes.sam3_segment_nodes.backend.core import (
+    Sam3InteractiveRuntimeSession,
+    Sam3SemanticRuntimeSession,
+)
+from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
+    resolve_sam3_pretrained_variant,
 )
 
 
@@ -63,9 +66,9 @@ def patch_real_interactive_session(monkeypatch, module) -> None:
 
     lease = _TestLease(
         lambda: _TestWorkflowSession(
-            interactive=get_or_create_sam3_interactive_runtime_session(
+            interactive=_build_real_interactive_session(
                 model_asset_id="sam3/default",
-                device="cpu",
+                device_name="cpu",
                 precision="fp32",
             )
         )
@@ -82,9 +85,9 @@ def patch_real_semantic_session(monkeypatch, module) -> None:
 
     lease = _TestLease(
         lambda: _TestWorkflowSession(
-            semantic=get_or_create_sam3_semantic_runtime_session(
+            semantic=build_real_semantic_session(
                 model_asset_id="sam3/default",
-                device="cpu",
+                device_name="cpu",
                 precision="fp32",
             )
         )
@@ -93,4 +96,40 @@ def patch_real_semantic_session(monkeypatch, module) -> None:
         module,
         "resolve_sam3_session_lease",
         lambda _request, *, capability: lease,
+    )
+
+
+def _build_real_interactive_session(
+    *,
+    model_asset_id: str,
+    device_name: str,
+    precision: str,
+) -> Sam3InteractiveRuntimeSession:
+    """按 AppRuntime 生命周期的构造方式创建真实 interactive session。"""
+
+    variant = resolve_sam3_pretrained_variant(model_asset_id=model_asset_id)
+    return Sam3InteractiveRuntimeSession(
+        checkpoint_path=variant.checkpoint_path,
+        model_asset_id=variant.model_asset_id,
+        architecture_id=variant.architecture_id,
+        requested_device_name=device_name,
+        precision=precision,
+    )
+
+
+def build_real_semantic_session(
+    *,
+    model_asset_id: str,
+    device_name: str,
+    precision: str,
+) -> Sam3SemanticRuntimeSession:
+    """按 AppRuntime 生命周期的构造方式创建真实 semantic session。"""
+
+    variant = resolve_sam3_pretrained_variant(model_asset_id=model_asset_id)
+    return Sam3SemanticRuntimeSession(
+        checkpoint_path=variant.checkpoint_path,
+        model_asset_id=variant.model_asset_id,
+        architecture_id=variant.architecture_id,
+        requested_device_name=device_name,
+        precision=precision,
     )

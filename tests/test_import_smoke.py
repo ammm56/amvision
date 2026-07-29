@@ -874,7 +874,6 @@ BACKEND_MODULES: tuple[str, ...] = (
     "custom_nodes.sam3_segment_nodes.backend.payloads.results",
     "custom_nodes.sam3_segment_nodes.backend.payloads.types",
     "custom_nodes.sam3_segment_nodes.backend.runtime",
-    "custom_nodes.sam3_segment_nodes.backend.runtime.access",
     "custom_nodes.sam3_segment_nodes.backend.runtime.tracking",
 )
 

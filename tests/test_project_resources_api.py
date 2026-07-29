@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import cv2
 from fastapi.testclient import TestClient
+import numpy as np
 
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers.broker_settings import (
@@ -156,6 +158,45 @@ def test_project_object_metadata_and_content_support_image_preview(tmp_path: Pat
     assert content_response.status_code == 200
     assert content_response.headers["content-type"] == "image/png"
     assert content_response.content == build_valid_test_png_bytes()
+
+
+def test_workflow_prompt_mask_upload_persists_binary_project_asset(
+    tmp_path: Path,
+) -> None:
+    """验证 Mask Editor 只保存二值 ObjectStore 文件。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-prompt-mask.db",
+        include_storage=True,
+    )
+    mask = np.zeros((12, 16), dtype=np.uint8)
+    mask[3:9, 4:12] = 127
+    encoded, buffer = cv2.imencode(".png", mask)
+    assert encoded is True
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/workflow-prompt-masks",
+                headers=build_test_headers(scopes="workflows:write"),
+                params={"application_id": "workflow-app-1"},
+                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["object_key"].startswith(
+        "projects/project-1/inputs/workflow-applications/"
+        "workflow-app-1/prompt-masks/"
+    )
+    stored_mask = cv2.imread(
+        str(dataset_storage.resolve(payload["object_key"])),
+        cv2.IMREAD_GRAYSCALE,
+    )
+    assert stored_mask is not None
+    assert set(np.unique(stored_mask).tolist()) == {0, 255}
 
 
 def test_project_file_list_returns_public_files_with_file_ids(tmp_path: Path) -> None:

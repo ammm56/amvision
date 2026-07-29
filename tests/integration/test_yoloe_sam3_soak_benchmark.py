@@ -23,9 +23,7 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     resolve_sam3_pretrained_variant,
 )
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
-    get_or_create_sam3_semantic_runtime_session,
-)
+from tests.sam3_workflow_session_test_support import build_real_semantic_session
 from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.pretrained import (
     resolve_yoloe_pretrained_variant,
 )
@@ -106,17 +104,11 @@ def test_yoloe_text_prompt_cpu_soak_benchmark() -> None:
 def test_sam3_semantic_cpu_soak_benchmark() -> None:
     """验证 SAM3 semantic 在 CPU 上的长时重复推理、缓存驻留和内存漂移。"""
 
-    session = get_or_create_sam3_semantic_runtime_session(
+    session = build_real_semantic_session(
         model_asset_id="sam3/default",
-        device="cpu",
+        device_name="cpu",
         precision="fp32",
     )
-    repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cpu",
-        precision="fp32",
-    )
-    assert session is repeated_session
 
     image_bytes = _build_test_png_bytes(width=128, height=96)
     prompt_groups = merge_sam3_text_prompt_items(
@@ -218,17 +210,11 @@ def test_yoloe_text_prompt_cuda_soak_benchmark() -> None:
 def test_sam3_semantic_cuda_soak_benchmark() -> None:
     """验证 SAM3 semantic 在 CUDA 上的会话驻留、重复推理和显存漂移。"""
 
-    session = get_or_create_sam3_semantic_runtime_session(
+    session = build_real_semantic_session(
         model_asset_id="sam3/default",
-        device="cuda",
+        device_name="cuda",
         precision="fp16",
     )
-    repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cuda",
-        precision="fp16",
-    )
-    assert session is repeated_session
 
     image_bytes = _build_test_png_bytes(width=128, height=96)
     prompt_groups = merge_sam3_text_prompt_items(
@@ -297,9 +283,9 @@ def test_yoloe_sam3_asset_failure_recovery_smoke() -> None:
     )
     assert yoloe_prediction.summary["project_native"] is True
 
-    sam3_session = get_or_create_sam3_semantic_runtime_session(
+    sam3_session = build_real_semantic_session(
         model_asset_id="sam3/default",
-        device="cpu",
+        device_name="cpu",
         precision="fp32",
     )
     sam3_prediction = sam3_session.predict(

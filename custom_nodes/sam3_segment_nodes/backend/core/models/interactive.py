@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
 import torch
 from torch import nn
@@ -15,6 +18,7 @@ from backend.service.application.runtime.support.detection import (
 )
 
 from ..checkpoint.loader import (
+    Sam3CheckpointBranches,
     build_sam3_interactive_state_dict,
     load_sam3_checkpoint_branches,
 )
@@ -321,10 +325,15 @@ class Sam3InteractiveImageModel(nn.Module):
         point_inputs = None
         if prompts.point_coords is not None and prompts.point_labels is not None:
             point_inputs = (prompts.point_coords, prompts.point_labels)
+        prompt_encoder_started_at = perf_counter()
         sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
             points=point_inputs,
             boxes=None,
             masks=prompts.prompt_masks,
+        )
+        self.last_prompt_encoder_ms = round(
+            (perf_counter() - prompt_encoder_started_at) * 1000,
+            3,
         )
         image_embed = features["image_embed"]
         high_res_feats = features["high_res_feats"]
@@ -336,6 +345,7 @@ class Sam3InteractiveImageModel(nn.Module):
             else 1
         )
         batched_mode = batch_size > 1
+        decoder_started_at = perf_counter()
         mask_logits, iou_scores, sam_tokens_out, object_score_logits = (
             self.sam_mask_decoder(
                 image_embeddings=image_embed,
@@ -346,6 +356,10 @@ class Sam3InteractiveImageModel(nn.Module):
                 repeat_image=batched_mode,
                 high_res_features=high_res_feats,
             )
+        )
+        self.last_mask_decoder_ms = round(
+            (perf_counter() - decoder_started_at) * 1000,
+            3,
         )
         del sam_tokens_out
         final_scores = iou_scores.squeeze(1)
@@ -364,6 +378,7 @@ def build_sam3_interactive_image_model(
     checkpoint_path: Path,
     requested_device_name: str,
     precision: str,
+    checkpoint_branches: Sam3CheckpointBranches | None = None,
 ) -> tuple[Sam3InteractiveImageModel, str, torch.dtype]:
     """构建并加载 project-native SAM3 interactive 单图模型。"""
 
@@ -380,7 +395,7 @@ def build_sam3_interactive_image_model(
 
     model = Sam3InteractiveImageModel()
     interactive_state_dict = build_sam3_interactive_state_dict(
-        load_sam3_checkpoint_branches(checkpoint_path)
+        checkpoint_branches or load_sam3_checkpoint_branches(checkpoint_path)
     )
     compatibility_summary = _load_compatible_state_dict(
         model,
@@ -404,18 +419,30 @@ class Sam3InteractiveRuntimeSession:
         architecture_id: str,
         requested_device_name: str,
         precision: str,
+        checkpoint_branches: Sam3CheckpointBranches | None = None,
+        checkpoint_sha256: str | None = None,
     ) -> None:
         self.model_asset_id = model_asset_id
         self.architecture_id = architecture_id
         self.checkpoint_path = checkpoint_path
         self.precision = precision
+        self.checkpoint_sha256 = str(checkpoint_sha256 or "").strip()
+        self.session_generation = uuid4().hex
         self.model, self.device_name, self.runtime_torch_dtype = (
             build_sam3_interactive_image_model(
                 checkpoint_path=checkpoint_path,
                 requested_device_name=requested_device_name,
                 precision=precision,
+                checkpoint_branches=checkpoint_branches,
             )
         )
+        self._feature_cache_key: str | None = None
+        self._feature_cache_context: Sam3InteractiveFrameContext | None = None
+        self._feature_cache_hits = 0
+        self._feature_cache_misses = 0
+        self._last_preprocess_ms = 0.0
+        self._last_backbone_ms = 0.0
+        self._last_feature_cache_hit = False
 
     @torch.inference_mode()
     def prepare_frame_context(
@@ -426,6 +453,7 @@ class Sam3InteractiveRuntimeSession:
     ) -> Sam3InteractiveFrameContext:
         """预处理图片并提取可复用的单帧 interactive 特征。"""
 
+        preprocess_started_at = perf_counter()
         prepared_image = preprocess_sam3_image(
             image_bytes,
             image_payload=image_payload,
@@ -446,17 +474,67 @@ class Sam3InteractiveRuntimeSession:
             scale_x=prepared_image.scale_x,
             scale_y=prepared_image.scale_y,
         )
+        self._last_preprocess_ms = round(
+            (perf_counter() - preprocess_started_at) * 1000,
+            3,
+        )
+        backbone_started_at = perf_counter()
         features = self.model.extract_interactive_features(prepared_image)
+        self._last_backbone_ms = round(
+            (perf_counter() - backbone_started_at) * 1000,
+            3,
+        )
         mask_prompt_height, mask_prompt_width = (
             self.model.sam_prompt_encoder.mask_input_size
         )
-        return Sam3InteractiveFrameContext(
+        context = Sam3InteractiveFrameContext(
             prepared_image=prepared_image,
             features=features,
             low_res_feature_map=features["low_res_feature_map"],
             mask_prompt_width=mask_prompt_width,
             mask_prompt_height=mask_prompt_height,
         )
+        return context
+
+    def get_or_prepare_frame_context(
+        self,
+        *,
+        image_bytes: bytes,
+        image_payload: object,
+    ) -> tuple[Sam3InteractiveFrameContext, bool]:
+        """只保留最近一张图片的 interactive feature context。"""
+
+        image_content_sha256 = sha256(image_bytes).hexdigest()
+        cache_key = "|".join(
+            (
+                self.model_asset_id,
+                self.architecture_id,
+                self.session_generation,
+                self.checkpoint_sha256,
+                self.device_name,
+                str(self.runtime_torch_dtype),
+                "1008x1008",
+                image_content_sha256,
+            )
+        )
+        if (
+            self._feature_cache_key == cache_key
+            and self._feature_cache_context is not None
+        ):
+            self._feature_cache_hits += 1
+            self._last_preprocess_ms = 0.0
+            self._last_backbone_ms = 0.0
+            self._last_feature_cache_hit = True
+            return self._feature_cache_context, True
+        context = self.prepare_frame_context(
+            image_bytes=image_bytes,
+            image_payload=image_payload,
+        )
+        self._feature_cache_context = context
+        self._feature_cache_key = cache_key
+        self._feature_cache_misses += 1
+        self._last_feature_cache_hit = False
+        return context, False
 
     @torch.inference_mode()
     def predict_from_frame_context(
@@ -474,9 +552,25 @@ class Sam3InteractiveRuntimeSession:
         prepared_image = frame_context.prepared_image
         mask_logits_list: list[torch.Tensor] = []
         final_scores_list: list[torch.Tensor] = []
-        for prompt_item in prompt_items:
+        prompt_prepare_ms = 0.0
+        prompt_encoder_ms = 0.0
+        decoder_ms = 0.0
+        sparse_prompt_kinds = {
+            str(getattr(item, "prompt_kind", "")) for item in prompt_items
+        }
+        can_batch_sparse_prompts = (
+            len(sparse_prompt_kinds) == 1
+            and sparse_prompt_kinds.issubset({"point", "box"})
+        )
+        prompt_batches = (
+            (prompt_items,)
+            if can_batch_sparse_prompts
+            else tuple((prompt_item,) for prompt_item in prompt_items)
+        )
+        for prompt_batch in prompt_batches:
+            prompt_prepare_started_at = perf_counter()
             prompts = build_sam3_interactive_prompt_tensors(
-                (prompt_item,),
+                tuple(prompt_batch),
                 source_width=prepared_image.original_width,
                 source_height=prepared_image.original_height,
                 target_width=prepared_image.target_width,
@@ -486,16 +580,25 @@ class Sam3InteractiveRuntimeSession:
                 device=self.model.no_mem_embed.device,
                 prompt_mask_dtype=self.runtime_torch_dtype,
             )
+            prompt_prepare_ms += (perf_counter() - prompt_prepare_started_at) * 1000
             item_mask_logits, _item_iou_scores, item_final_scores = (
                 self.model.predict_mask_logits(
                     features=frame_context.features,
                     prompts=prompts,
                 )
             )
+            prompt_encoder_ms += float(
+                getattr(self.model, "last_prompt_encoder_ms", 0.0)
+            )
+            decoder_ms += float(getattr(self.model, "last_mask_decoder_ms", 0.0))
             mask_logits_list.append(item_mask_logits)
             final_scores_list.append(item_final_scores.reshape(-1))
         mask_logits = torch.cat(mask_logits_list, dim=0)
         final_scores = torch.cat(final_scores_list, dim=0)
+        prompt_prepare_ms = round(prompt_prepare_ms, 3)
+        prompt_encoder_ms = round(prompt_encoder_ms, 3)
+        decoder_ms = round(decoder_ms, 3)
+        postprocess_started_at = perf_counter()
         region_items = postprocess_sam3_interactive_masks(
             mask_logits,
             source_width=prepared_image.original_width,
@@ -507,12 +610,14 @@ class Sam3InteractiveRuntimeSession:
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
+        postprocess_ms = round(
+            (perf_counter() - postprocess_started_at) * 1000, 3
+        )
         prompt_kinds = sorted({str(item.prompt_kind) for item in prompt_items})
         summary = {
             "project_native": True,
             "model_asset_id": self.model_asset_id,
             "architecture_id": self.architecture_id,
-            "checkpoint_path": str(self.checkpoint_path),
             "device": self.device_name,
             "precision": "fp16"
             if self.runtime_torch_dtype == torch.float16
@@ -523,7 +628,7 @@ class Sam3InteractiveRuntimeSession:
             "prompt_kinds": prompt_kinds,
             "region_count": len(region_items),
             "inference_mode": "interactive-segment",
-            "postprocess_profile": "sam3-default-v2",
+            "postprocess_profile": "sam3-default",
             "mask_threshold": mask_threshold,
             "stability_offset": stability_offset,
             "min_component_area": min_component_area,
@@ -531,6 +636,36 @@ class Sam3InteractiveRuntimeSession:
             "checkpoint_compatibility": dict(
                 getattr(self.model, "checkpoint_compatibility_summary", {})
             ),
+            "feature_cache": {
+                "scope": "latest-image",
+                "key_components": [
+                    "session-generation",
+                    "model-asset",
+                    "device",
+                    "precision",
+                    "inference-profile",
+                    "image-content-sha256",
+                ],
+                "hit": self._last_feature_cache_hit,
+                "hits": self._feature_cache_hits,
+                "misses": self._feature_cache_misses,
+                "session_generation": self.session_generation,
+                "checkpoint_sha256": self.checkpoint_sha256 or None,
+            },
+            "timings_ms": {
+                "preprocess": self._last_preprocess_ms,
+                "backbone": self._last_backbone_ms,
+                "prompt_prepare": prompt_prepare_ms,
+                "prompt_encoder": prompt_encoder_ms,
+                "decoder": decoder_ms,
+                "postprocess": postprocess_ms,
+            },
+            "prompt_batching": (
+                "homogeneous-sparse"
+                if can_batch_sparse_prompts and len(prompt_items) > 1
+                else "single"
+            ),
+            "cuda_memory": _read_cuda_memory_summary(self.device_name),
         }
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
 
@@ -538,6 +673,8 @@ class Sam3InteractiveRuntimeSession:
         """释放模型引用和可回收的 CUDA 显存。"""
 
         self.model.to(device=torch.device("cpu"))
+        self._feature_cache_context = None
+        self._feature_cache_key = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -555,7 +692,7 @@ class Sam3InteractiveRuntimeSession:
     ) -> Sam3InteractivePrediction:
         """内部自动预处理并完成 interactive 推理。"""
 
-        frame_context = self.prepare_frame_context(
+        frame_context, _cache_hit = self.get_or_prepare_frame_context(
             image_bytes=image_bytes, image_payload=image_payload
         )
         return self.predict_from_frame_context(
@@ -566,6 +703,20 @@ class Sam3InteractiveRuntimeSession:
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
+
+
+def _read_cuda_memory_summary(device_name: str) -> dict[str, int] | None:
+    """读取当前 session 设备的 CUDA 显存诊断值。"""
+
+    if not device_name.startswith("cuda") or not torch.cuda.is_available():
+        return None
+    device = torch.device(device_name)
+    return {
+        "allocated_bytes": int(torch.cuda.memory_allocated(device)),
+        "reserved_bytes": int(torch.cuda.memory_reserved(device)),
+        "max_allocated_bytes": int(torch.cuda.max_memory_allocated(device)),
+        "max_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+    }
 
 
 __all__ = [

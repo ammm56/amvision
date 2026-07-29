@@ -281,7 +281,7 @@ def test_interactive_segment_runs_project_native_smoke(monkeypatch) -> None:
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "interactive-segment"
     assert output["summary"]["prompt_kinds"] == ["box"]
-    assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
+    assert output["summary"]["postprocess_profile"] == "sam3-default"
     assert output["regions"]["count"] >= 1
 
 

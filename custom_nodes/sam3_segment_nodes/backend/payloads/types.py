@@ -54,14 +54,18 @@ class Sam3TextPromptGroup:
 
 @dataclass(frozen=True)
 class Sam3InteractivePromptItem:
-    """描述一条 SAM3 交互提示。"""
+    """描述一个 SAM3 交互提示对象。
+
+    同一个 Point 对象可以包含多个正点和负点。这里是 SAM3 内部规整结构，
+    公开 payload 仍统一使用 prompt-regions.v1。
+    """
 
     prompt_id: str
     prompt_kind: str
     display_name: str
     bbox_xyxy: tuple[float, float, float, float] | None = None
-    point_xy: tuple[float, float] | None = None
-    point_label: str | None = None
+    point_xy_items: tuple[tuple[float, float], ...] = ()
+    point_labels: tuple[str, ...] = ()
     polygon_xy: tuple[tuple[float, float], ...] | None = None
     prompt_mask: np.ndarray | None = None
 

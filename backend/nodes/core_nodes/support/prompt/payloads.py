@@ -7,6 +7,23 @@ from collections.abc import Iterable
 from backend.service.application.errors import InvalidRequestError
 
 
+def build_image_reference_identity(image_payload: object) -> str:
+    """构造用于判断 Prompt 源图是否变化的稳定标识。"""
+
+    if not isinstance(image_payload, dict):
+        return ""
+    for field_name in (
+        "content_sha256",
+        "source_sha256",
+        "image_handle",
+        "object_key",
+    ):
+        field_value = str(image_payload.get(field_name) or "").strip()
+        if field_value:
+            return f"{field_name}:{field_value}"
+    return ""
+
+
 def require_non_empty_text(value: object, *, field_name: str) -> str:
     """读取必填文本参数。
 
@@ -102,6 +119,7 @@ def merge_prompt_regions_payloads(payloads: object) -> dict[str, object]:
         merged_items.extend(
             _normalize_prompt_region_item(item) for item in payload["items"]
         )
+    _validate_merged_prompt_region_groups(merged_items)
     return build_prompt_regions_payload(merged_items, source_image=source_image)
 
 
@@ -183,12 +201,158 @@ def _normalize_prompt_region_item(value: object) -> dict[str, object]:
             _normalize_numeric_pair(point, field_name="polygon_xy")
             for point in raw_polygon_xy
         ]
+        if _polygon_has_self_intersection(item["polygon_xy"]):
+            raise InvalidRequestError("polygon_xy 不能包含自交边")
     else:
         mask_image = value.get("mask_image")
         if not isinstance(mask_image, dict):
             raise InvalidRequestError("mask_image 必须是 image-ref.v1 对象")
         item["mask_image"] = dict(mask_image)
     return item
+
+
+def validate_prompt_geometry_bounds(
+    coordinates: Iterable[Iterable[float]],
+    *,
+    source_image: dict[str, object] | None,
+    field_name: str,
+) -> None:
+    """校验视觉 Prompt 坐标没有超出已知源图边界。"""
+
+    if source_image is None:
+        return
+    width = source_image.get("width")
+    height = source_image.get("height")
+    if (
+        isinstance(width, bool)
+        or isinstance(height, bool)
+        or not isinstance(width, (int, float))
+        or not isinstance(height, (int, float))
+        or float(width) <= 0
+        or float(height) <= 0
+    ):
+        return
+    for point_index, point in enumerate(coordinates):
+        values = list(point)
+        if len(values) != 2:
+            raise InvalidRequestError(f"{field_name} 包含无效坐标点")
+        x_value, y_value = float(values[0]), float(values[1])
+        if not (0 <= x_value < float(width) and 0 <= y_value < float(height)):
+            raise InvalidRequestError(
+                f"{field_name} 坐标超出源图边界",
+                details={
+                    "point_index": point_index,
+                    "point_xy": [x_value, y_value],
+                    "image_size": [float(width), float(height)],
+                },
+            )
+
+
+def validate_applied_prompt_source_identity(
+    *,
+    prompt_name: str,
+    applied: bool,
+    source_identity: str,
+    stored_source_identity: object,
+) -> None:
+    """拒绝把旧图上的已应用几何静默迁移到新源图。"""
+
+    if not applied:
+        return
+    if not source_identity:
+        raise InvalidRequestError(
+            f"{prompt_name} 的源图缺少稳定标识，不能应用几何"
+        )
+    if str(stored_source_identity or "").strip() != source_identity:
+        raise InvalidRequestError(
+            f"{prompt_name} 的源图已变化，请重新创建并应用几何",
+            details={"source_identity": source_identity},
+        )
+
+
+def _validate_merged_prompt_region_groups(
+    items: list[dict[str, object]],
+) -> None:
+    """校验合并后的对象分组，避免把互斥提示伪装成同一对象。"""
+
+    grouped_items: dict[str, list[dict[str, object]]] = {}
+    for item in items:
+        grouped_items.setdefault(str(item["prompt_id"]), []).append(item)
+    for prompt_id, group in grouped_items.items():
+        prompt_kinds = {str(item["prompt_kind"]) for item in group}
+        if len(prompt_kinds) != 1:
+            raise InvalidRequestError(
+                "同一 prompt_id 不能混合不同视觉提示类型",
+                details={
+                    "prompt_id": prompt_id,
+                    "prompt_kinds": sorted(prompt_kinds),
+                },
+            )
+        prompt_kind = next(iter(prompt_kinds))
+        if prompt_kind == "point":
+            if not any(item.get("point_label") == "positive" for item in group):
+                raise InvalidRequestError(
+                    "Point 对象至少需要一个 Positive 点",
+                    details={"prompt_id": prompt_id},
+                )
+        elif len(group) != 1:
+            raise InvalidRequestError(
+                "Box、Polygon、Mask 的 prompt_id 不能重复",
+                details={"prompt_id": prompt_id, "prompt_kind": prompt_kind},
+            )
+
+
+def _polygon_has_self_intersection(points: list[list[float]]) -> bool:
+    """判断简单多边形是否存在非相邻边相交。"""
+
+    edge_count = len(points)
+    for first_index in range(edge_count):
+        first_start = points[first_index]
+        first_end = points[(first_index + 1) % edge_count]
+        for second_index in range(first_index + 1, edge_count):
+            if second_index in {
+                first_index,
+                (first_index + 1) % edge_count,
+                (first_index - 1) % edge_count,
+            }:
+                continue
+            if first_index == 0 and second_index == edge_count - 1:
+                continue
+            second_start = points[second_index]
+            second_end = points[(second_index + 1) % edge_count]
+            if _segments_intersect(
+                first_start, first_end, second_start, second_end
+            ):
+                return True
+    return False
+
+
+def _segments_intersect(
+    first_start: list[float],
+    first_end: list[float],
+    second_start: list[float],
+    second_end: list[float],
+) -> bool:
+    """判断两条非相邻闭线段是否严格相交。"""
+
+    def orientation(
+        point_a: list[float],
+        point_b: list[float],
+        point_c: list[float],
+    ) -> float:
+        return (point_b[0] - point_a[0]) * (
+            point_c[1] - point_a[1]
+        ) - (point_b[1] - point_a[1]) * (point_c[0] - point_a[0])
+
+    first_a = orientation(first_start, first_end, second_start)
+    first_b = orientation(first_start, first_end, second_end)
+    second_a = orientation(second_start, second_end, first_start)
+    second_b = orientation(second_start, second_end, first_end)
+    epsilon = 1e-9
+    return (
+        first_a * first_b < -epsilon
+        and second_a * second_b < -epsilon
+    )
 
 
 def _normalize_numeric_pair(value: object, *, field_name: str) -> list[float]:

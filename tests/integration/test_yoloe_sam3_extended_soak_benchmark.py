@@ -11,9 +11,7 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.inputs import (
     merge_text_prompt_items as merge_sam3_text_prompt_items,
     read_text_prompt_items as read_sam3_text_prompt_items,
 )
-from custom_nodes.sam3_segment_nodes.backend.runtime.access import (
-    get_or_create_sam3_semantic_runtime_session,
-)
+from tests.sam3_workflow_session_test_support import build_real_semantic_session
 from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.access import (
     get_or_create_yoloe_text_prompt_runtime_session,
 )
@@ -120,17 +118,11 @@ def test_yoloe_text_prompt_cpu_extended_soak_benchmark() -> None:
 def test_sam3_semantic_cpu_extended_soak_benchmark() -> None:
     """验证 SAM3 semantic 在更大图尺寸与更长迭代下的 CPU 稳定性。"""
 
-    session = get_or_create_sam3_semantic_runtime_session(
+    session = build_real_semantic_session(
         model_asset_id="sam3/default",
-        device="cpu",
+        device_name="cpu",
         precision="fp32",
     )
-    repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cpu",
-        precision="fp32",
-    )
-    assert session is repeated_session
 
     image_bytes = _build_test_png_bytes(width=768, height=512)
     prompt_groups = merge_sam3_text_prompt_items(
@@ -262,17 +254,11 @@ def test_yoloe_text_prompt_cuda_extended_soak_benchmark() -> None:
 def test_sam3_semantic_cuda_extended_soak_benchmark() -> None:
     """验证 SAM3 semantic 在更大图尺寸与更长迭代下的 CUDA 稳定性。"""
 
-    session = get_or_create_sam3_semantic_runtime_session(
+    session = build_real_semantic_session(
         model_asset_id="sam3/default",
-        device="cuda",
+        device_name="cuda",
         precision="fp16",
     )
-    repeated_session = get_or_create_sam3_semantic_runtime_session(
-        model_asset_id="sam3/default",
-        device="cuda",
-        precision="fp16",
-    )
-    assert session is repeated_session
 
     image_bytes = _build_test_png_bytes(width=768, height=512)
     prompt_groups = merge_sam3_text_prompt_items(

@@ -152,6 +152,10 @@ def read_visual_prompt_items(
         prompt_image_payload=prompt_image_payload,
         prompt_image_bytes=prompt_image_bytes,
     )
+    _validate_visual_prompt_source_image(
+        payload.get("source_image"),
+        prompt_image_payload=prompt_image_payload,
+    )
     raw_prompt_records: list[dict[str, object]] = []
     for item in raw_items:
         if not isinstance(item, dict):
@@ -272,9 +276,55 @@ def _normalize_visual_prompt_point_label(value: object) -> str:
     normalized_value = str(value or "positive").strip().lower()
     if normalized_value not in {"positive", "negative"}:
         raise InvalidRequestError("YOLOE point visual prompt 的 point_label 只能是 positive 或 negative")
-    if normalized_value == "negative":
-        raise InvalidRequestError("YOLOE visual-prompt 第一阶段暂不支持 negative point")
     return normalized_value
+
+
+def _validate_visual_prompt_source_image(
+    prompt_source_image: object,
+    *,
+    prompt_image_payload: dict[str, object] | None,
+) -> None:
+    """拒绝把旧图上的视觉 Prompt 用到新的参考图。"""
+
+    if prompt_source_image is None or prompt_image_payload is None:
+        return
+    if not isinstance(prompt_source_image, dict):
+        raise InvalidRequestError("prompt-regions.v1 的 source_image 必须是对象")
+    compared = False
+    for field_name in (
+        "object_key",
+        "image_handle",
+        "content_sha256",
+        "source_sha256",
+    ):
+        previous_value = str(prompt_source_image.get(field_name) or "").strip()
+        current_value = str(prompt_image_payload.get(field_name) or "").strip()
+        if previous_value and current_value:
+            compared = True
+            if previous_value != current_value:
+                raise InvalidRequestError(
+                    "YOLOE 视觉 Prompt 的源图已变化，请重新编辑并应用",
+                    details={"identity_field": field_name},
+                )
+    if compared:
+        return
+    previous_size = (
+        prompt_source_image.get("width"),
+        prompt_source_image.get("height"),
+    )
+    current_size = (
+        prompt_image_payload.get("width"),
+        prompt_image_payload.get("height"),
+    )
+    if all(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        for value in (*previous_size, *current_size)
+    ) and tuple(int(value) for value in previous_size) != tuple(
+        int(value) for value in current_size
+    ):
+        raise InvalidRequestError(
+            "YOLOE 视觉 Prompt 的源图尺寸已变化，请重新编辑并应用"
+        )
 
 
 def _normalize_visual_prompt_polygon(payload: object) -> tuple[tuple[float, float], ...]:
@@ -406,11 +456,42 @@ def _merge_visual_prompt_records(
     prompt_image_width, prompt_image_height = prompt_image_size
     for prompt_id, records in grouped_records.items():
         prompt_kinds = tuple(sorted({str(record["prompt_kind"]) for record in records}))
+        if len(prompt_kinds) != 1:
+            raise InvalidRequestError(
+                "同一个 YOLOE visual prompt_id 不能混合多种 prompt_kind",
+                details={
+                    "prompt_id": prompt_id,
+                    "prompt_kinds": list(prompt_kinds),
+                },
+            )
+        prompt_kind = prompt_kinds[0]
+        if len(records) > 1 and prompt_kind != "point":
+            raise InvalidRequestError(
+                "YOLOE 的 Box、Polygon 和 Mask prompt_id 必须唯一",
+                details={"prompt_id": prompt_id, "prompt_kind": prompt_kind},
+            )
         merged_mask = np.zeros((int(prompt_image_height), int(prompt_image_width)), dtype=np.uint8)
-        for record in records:
+        positive_records = [
+            record
+            for record in records
+            if prompt_kind != "point" or record.get("point_label") == "positive"
+        ]
+        if prompt_kind == "point" and not positive_records:
+            raise InvalidRequestError(
+                "YOLOE point visual prompt 每个 prompt_id 至少需要一个 Positive 点",
+                details={"prompt_id": prompt_id},
+            )
+        for record in positive_records:
             prompt_mask = record.get("prompt_mask")
             if isinstance(prompt_mask, np.ndarray):
                 merged_mask = np.maximum(merged_mask, prompt_mask.astype(np.uint8))
+        if prompt_kind == "point":
+            for record in records:
+                if record.get("point_label") != "negative":
+                    continue
+                prompt_mask = record.get("prompt_mask")
+                if isinstance(prompt_mask, np.ndarray):
+                    merged_mask[prompt_mask > 0] = 0
         if int(np.count_nonzero(merged_mask)) <= 0:
             merged_prompt_mask: np.ndarray | None = None
         else:
@@ -420,7 +501,7 @@ def _merge_visual_prompt_records(
         point_xy: tuple[float, float] | None = None
         point_label: str | None = None
         polygon_xy: tuple[tuple[float, float], ...] | None = None
-        if len(records) == 1 and len(prompt_kinds) == 1:
+        if len(records) == 1:
             bbox_xyxy = records[0].get("bbox_xyxy") if isinstance(records[0].get("bbox_xyxy"), tuple) else None
             point_xy = records[0].get("point_xy") if isinstance(records[0].get("point_xy"), tuple) else None
             point_label = str(records[0].get("point_label")) if records[0].get("point_label") is not None else None
@@ -431,7 +512,7 @@ def _merge_visual_prompt_records(
         merged_items.append(
             YoloeVisualPromptItem(
                 prompt_id=prompt_id,
-                prompt_kind=prompt_kinds[0] if len(prompt_kinds) == 1 else "mixed",
+                prompt_kind=prompt_kind,
                 bbox_xyxy=bbox_xyxy,
                 point_xy=point_xy,
                 point_label=point_label,

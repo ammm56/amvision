@@ -49,6 +49,10 @@ export interface PreviewImageInteractionTool {
   angleToleranceDeg: number | null
   searchPaddingRatio: number | null
   searchPaddingMin: number | null
+  applyParameters: Record<string, unknown>
+  brushSize: number | null
+  maskObjectKey: string | null
+  maskSrc: string | null
 }
 
 export interface PreviewImageInteraction {
@@ -75,6 +79,7 @@ export interface PreviewImageInteractionApplyEvent {
   circle?: PreviewImageCircleOverlay
   lineXyxy?: [number, number, number, number]
   pairLinesXyxy?: Array<[number, number, number, number]>
+  maskDataUrl?: string
 }
 
 export interface PreviewViewerImage {
@@ -499,6 +504,17 @@ async function buildPreviewViewerImage(
   const displayHeight = readDisplayNumber(imagePayload.display_height)
     ?? displayImage.height
     ?? sourceHeight
+  const interaction = readPreviewImageInteraction(previewPayload?.interaction)
+  if (interaction) {
+    await Promise.all(interaction.tools.map(async (tool) => {
+      if (!tool.maskObjectKey) return
+      tool.maskSrc = await resolveStoragePreviewImageSrc(
+        previewRun,
+        tool.maskObjectKey,
+        registerObjectUrl,
+      )
+    }))
+  }
   return {
     nodeId,
     title,
@@ -522,7 +538,7 @@ async function buildPreviewViewerImage(
     displayScale: readDisplayNumber(imagePayload.display_scale),
     previewImageKind: readDisplayText(imagePayload.preview_image_kind),
     overlays: readPreviewImageOverlays(previewPayload?.overlays),
-    interaction: readPreviewImageInteraction(previewPayload?.interaction),
+    interaction,
   }
 }
 
@@ -646,6 +662,10 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       angleToleranceDeg: readDisplayNumber(rawTool.angle_tolerance_deg),
       searchPaddingRatio: readDisplayNumber(rawTool.search_padding_ratio),
       searchPaddingMin: readDisplayNumber(rawTool.search_padding_min),
+      applyParameters: readJsonObject(rawTool.apply_parameters),
+      brushSize: readDisplayNumber(rawTool.brush_size),
+      maskObjectKey: readDisplayText(rawTool.mask_object_key) || null,
+      maskSrc: null,
     }]
   })
 }
@@ -715,6 +735,10 @@ function readStringArray(value: unknown): string[] {
     const text = readDisplayText(item)
     return text ? [text] : []
   })
+}
+
+function readJsonObject(value: unknown): Record<string, unknown> {
+  return isPreviewJsonObject(value) ? { ...value } : {}
 }
 
 function readPreviewObject(value: unknown): Record<string, unknown> {

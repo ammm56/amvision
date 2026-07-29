@@ -69,7 +69,7 @@ def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
                     "region_count": 1,
                     "inference_mode": "semantic-segment",
                     "text_encoder": "checkpoint-language-backbone",
-                    "postprocess_profile": "sam3-default-v2",
+                    "postprocess_profile": "sam3-default",
                     "prompt_groups": [
                         {
                             "prompt_id": "prompt-1",
@@ -185,7 +185,7 @@ def test_video_semantic_segment_runs_project_native_smoke(monkeypatch) -> None:
     assert output["summary"]["inference_mode"] == "video-semantic-segment"
     assert output["summary"]["processed_frame_count"] == 1
     assert output["summary"]["frame_prompt_mode"] == "shared-text-prompts-across-window"
-    assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
+    assert output["summary"]["postprocess_profile"] == "sam3-default"
     assert output["tracks"]["count"] >= 0
 
 

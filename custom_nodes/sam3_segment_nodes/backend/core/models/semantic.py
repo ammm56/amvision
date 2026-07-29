@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from time import perf_counter
+from uuid import uuid4
 
 import torch
 from torch import nn
@@ -18,6 +21,7 @@ from backend.service.application.runtime.support.detection import (
 )
 
 from ..checkpoint.loader import (
+    Sam3CheckpointBranches,
     build_sam3_semantic_state_dict,
     load_sam3_checkpoint_branches,
 )
@@ -534,6 +538,7 @@ def build_sam3_semantic_image_model(
     checkpoint_path: Path,
     requested_device_name: str,
     precision: str,
+    checkpoint_branches: Sam3CheckpointBranches | None = None,
 ) -> tuple[Sam3SemanticImageModel, str, torch.dtype]:
     """构建并加载 project-native SAM3 semantic 单图模型。"""
 
@@ -550,7 +555,7 @@ def build_sam3_semantic_image_model(
 
     model = Sam3SemanticImageModel()
     semantic_state_dict = build_sam3_semantic_state_dict(
-        load_sam3_checkpoint_branches(checkpoint_path)
+        checkpoint_branches or load_sam3_checkpoint_branches(checkpoint_path)
     )
     compatibility_summary = _load_compatible_state_dict(
         model,
@@ -576,18 +581,27 @@ class Sam3SemanticRuntimeSession:
         architecture_id: str,
         requested_device_name: str,
         precision: str,
+        checkpoint_branches: Sam3CheckpointBranches | None = None,
+        checkpoint_sha256: str | None = None,
     ) -> None:
         self.model_asset_id = model_asset_id
         self.architecture_id = architecture_id
         self.checkpoint_path = checkpoint_path
         self.precision = precision
+        self.checkpoint_sha256 = str(checkpoint_sha256 or "").strip()
+        self.session_generation = uuid4().hex
         self.model, self.device_name, self.runtime_torch_dtype = (
             build_sam3_semantic_image_model(
                 checkpoint_path=checkpoint_path,
                 requested_device_name=requested_device_name,
                 precision=precision,
+                checkpoint_branches=checkpoint_branches,
             )
         )
+        self._feature_cache_key: str | None = None
+        self._feature_cache_value: tuple[PreparedSam3Image, object] | None = None
+        self._feature_cache_hits = 0
+        self._feature_cache_misses = 0
 
     @torch.inference_mode()
     def predict(
@@ -603,28 +617,66 @@ class Sam3SemanticRuntimeSession:
     ) -> Sam3SemanticPrediction:
         """执行单图 semantic 推理。"""
 
-        prepared_image = preprocess_sam3_image(
-            image_bytes,
-            image_payload=image_payload,
-            precision="fp16"
-            if self.runtime_torch_dtype == torch.float16
-            else "bf16"
-            if self.runtime_torch_dtype == torch.bfloat16
-            else "fp32",
+        image_sha256 = sha256(image_bytes).hexdigest()
+        feature_cache_key = "|".join(
+            (
+                self.model_asset_id,
+                self.architecture_id,
+                self.session_generation,
+                self.checkpoint_sha256,
+                self.device_name,
+                str(self.runtime_torch_dtype),
+                "1008x1008",
+                image_sha256,
+            )
         )
-        prepared_image = PreparedSam3Image(
-            image_tensor=prepared_image.image_tensor.to(
-                device=self.model.segmentation_head.semantic_seg_head.weight.device,
-                dtype=self.runtime_torch_dtype,
-            ),
-            original_width=prepared_image.original_width,
-            original_height=prepared_image.original_height,
-            target_width=prepared_image.target_width,
-            target_height=prepared_image.target_height,
-            scale_x=prepared_image.scale_x,
-            scale_y=prepared_image.scale_y,
+        feature_cache_hit = (
+            self._feature_cache_key == feature_cache_key
+            and self._feature_cache_value is not None
         )
-        backbone_out = self.model.forward_image(prepared_image.image_tensor)
+        if feature_cache_hit:
+            self._feature_cache_hits += 1
+            assert self._feature_cache_value is not None
+            prepared_image, backbone_out = self._feature_cache_value
+            preprocess_ms = 0.0
+            backbone_ms = 0.0
+        else:
+            preprocess_started_at = perf_counter()
+            prepared_image = preprocess_sam3_image(
+                image_bytes,
+                image_payload=image_payload,
+                precision="fp16"
+                if self.runtime_torch_dtype == torch.float16
+                else "bf16"
+                if self.runtime_torch_dtype == torch.bfloat16
+                else "fp32",
+            )
+            prepared_image = PreparedSam3Image(
+                image_tensor=prepared_image.image_tensor.to(
+                    device=self.model.segmentation_head.semantic_seg_head.weight.device,
+                    dtype=self.runtime_torch_dtype,
+                ),
+                original_width=prepared_image.original_width,
+                original_height=prepared_image.original_height,
+                target_width=prepared_image.target_width,
+                target_height=prepared_image.target_height,
+                scale_x=prepared_image.scale_x,
+                scale_y=prepared_image.scale_y,
+            )
+            preprocess_ms = round(
+                (perf_counter() - preprocess_started_at) * 1000,
+                3,
+            )
+            backbone_started_at = perf_counter()
+            backbone_out = self.model.forward_image(prepared_image.image_tensor)
+            backbone_ms = round(
+                (perf_counter() - backbone_started_at) * 1000,
+                3,
+            )
+            self._feature_cache_key = feature_cache_key
+            self._feature_cache_value = (prepared_image, backbone_out)
+            self._feature_cache_misses += 1
+        prompt_prepare_started_at = perf_counter()
         prompt_groups = tuple(prompt_items)
         prompt_texts: list[str] = []
         prompt_text_offsets: list[tuple[int, int, int]] = []
@@ -666,7 +718,16 @@ class Sam3SemanticRuntimeSession:
                     str(item) for item in getattr(group, "languages", ()) if str(item)
                 )
             )
+        prompt_prepare_ms = round(
+            (perf_counter() - prompt_prepare_started_at) * 1000,
+            3,
+        )
+        text_encoder_started_at = perf_counter()
         prompt_padding_mask, prompt_tokens = self.model.encode_text(prompt_texts)
+        text_encoder_ms = round(
+            (perf_counter() - text_encoder_started_at) * 1000,
+            3,
+        )
         prompt_padding_mask = prompt_padding_mask.to(
             self.model.segmentation_head.semantic_seg_head.weight.device
         )
@@ -680,11 +741,17 @@ class Sam3SemanticRuntimeSession:
             prompt_text_offsets=tuple(prompt_text_offsets),
             negative_prompt_weight=self.NEGATIVE_PROMPT_WEIGHT,
         )
+        decoder_started_at = perf_counter()
         semantic_logits = self.model.predict_semantic_logits(
             backbone_out=backbone_out,
             prompt_tokens=prompt_tokens,
             prompt_padding_mask=prompt_padding_mask,
         )
+        decoder_ms = round(
+            (perf_counter() - decoder_started_at) * 1000,
+            3,
+        )
+        postprocess_started_at = perf_counter()
         region_items = postprocess_sam3_interactive_masks(
             semantic_logits,
             source_width=prepared_image.original_width,
@@ -695,11 +762,13 @@ class Sam3SemanticRuntimeSession:
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
+        postprocess_ms = round(
+            (perf_counter() - postprocess_started_at) * 1000, 3
+        )
         summary = {
             "project_native": True,
             "model_asset_id": self.model_asset_id,
             "architecture_id": self.architecture_id,
-            "checkpoint_path": str(self.checkpoint_path),
             "device": self.device_name,
             "precision": "fp16"
             if self.runtime_torch_dtype == torch.float16
@@ -716,7 +785,7 @@ class Sam3SemanticRuntimeSession:
             "region_count": len(region_items),
             "inference_mode": "semantic-segment",
             "text_encoder": "checkpoint-language-backbone",
-            "postprocess_profile": "sam3-default-v2",
+            "postprocess_profile": "sam3-default",
             "mask_threshold": mask_threshold,
             "stability_offset": stability_offset,
             "min_component_area": min_component_area,
@@ -731,6 +800,31 @@ class Sam3SemanticRuntimeSession:
                 }
                 for index, group in enumerate(prompt_groups)
             ],
+            "feature_cache": {
+                "scope": "latest-image",
+                "key_components": [
+                    "session-generation",
+                    "model-asset",
+                    "device",
+                    "precision",
+                    "inference-profile",
+                    "image-content-sha256",
+                ],
+                "hit": feature_cache_hit,
+                "hits": self._feature_cache_hits,
+                "misses": self._feature_cache_misses,
+                "session_generation": self.session_generation,
+                "checkpoint_sha256": self.checkpoint_sha256 or None,
+            },
+            "timings_ms": {
+                "preprocess": preprocess_ms,
+                "backbone": backbone_ms,
+                "prompt_prepare": prompt_prepare_ms,
+                "prompt_encoder": text_encoder_ms,
+                "decoder": decoder_ms,
+                "postprocess": postprocess_ms,
+            },
+            "cuda_memory": _read_cuda_memory_summary(self.device_name),
             "checkpoint_compatibility": dict(
                 getattr(self.model, "checkpoint_compatibility_summary", {})
             ),
@@ -741,8 +835,24 @@ class Sam3SemanticRuntimeSession:
         """释放模型引用和可回收的 CUDA 显存。"""
 
         self.model.to(device=torch.device("cpu"))
+        self._feature_cache_key = None
+        self._feature_cache_value = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+
+def _read_cuda_memory_summary(device_name: str) -> dict[str, int] | None:
+    """读取当前 session 设备的 CUDA 显存诊断值。"""
+
+    if not device_name.startswith("cuda") or not torch.cuda.is_available():
+        return None
+    device = torch.device(device_name)
+    return {
+        "allocated_bytes": int(torch.cuda.memory_allocated(device)),
+        "reserved_bytes": int(torch.cuda.memory_reserved(device)),
+        "max_allocated_bytes": int(torch.cuda.max_memory_allocated(device)),
+        "max_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+    }
 
 
 def _build_grouped_prompt_tokens(

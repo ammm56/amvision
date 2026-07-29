@@ -312,6 +312,7 @@ import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOr
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
 import { updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
+import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
 import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
@@ -1256,13 +1257,39 @@ function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue):
   updatePreviewImageRefTransportKind(bindingId, value)
 }
 
-function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): boolean {
+async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): Promise<boolean> {
   const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
   if (!targetNode) {
     errorMessage.value = t('workflowEditor.feedback.interactionTargetNotFound', { nodeId: event.nodeId })
     return false
   }
-  const updates = buildPreviewImageInteractionParameterUpdates(event, targetNode.node.parameters)
+  let normalizedEvent = event
+  if (event.maskDataUrl) {
+    const projectId = selectedProjectId.value.trim()
+    const applicationId = (
+      routeApplicationId.value
+      || newWorkflowAppDraft.value.applicationId
+    ).trim()
+    if (!projectId || !applicationId) {
+      errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
+      return false
+    }
+    try {
+      const maskBlob = await fetch(event.maskDataUrl).then((response) => response.blob())
+      const storedMask = await uploadWorkflowPromptMask(projectId, applicationId, maskBlob)
+      normalizedEvent = {
+        ...event,
+        parameters: {
+          ...(event.parameters ?? {}),
+          mask_object_key: storedMask.object_key,
+        },
+      }
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : String(error)
+      return false
+    }
+  }
+  const updates = buildPreviewImageInteractionParameterUpdates(normalizedEvent, targetNode.node.parameters)
   if (!updates || Object.keys(updates).length === 0) {
     if (event.clearParameterNames?.length) {
       errorMessage.value = null
@@ -1277,8 +1304,8 @@ function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent):
   return true
 }
 
-function previewPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): void {
-  if (!applyPreviewImageInteraction(event)) return
+async function previewPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): Promise<void> {
+  if (!await applyPreviewImageInteraction(event)) return
   scheduleImageInteractionPreviewRun(event.nodeId)
 }
 
@@ -1371,6 +1398,16 @@ function buildPreviewImageInteractionParameterUpdates(
       if (targetParameters.has('output_height')) updates.output_height = outputHeight
     }
     return updates
+  }
+  if (event.tool === 'point' && event.pointsXy?.length === 1) {
+    const [pointX, pointY] = event.pointsXy[0]
+    if (targetParameters.has('point_xy')) {
+      updates.point_xy = [
+        roundInteractionNumber(pointX),
+        roundInteractionNumber(pointY),
+      ]
+    }
+    return Object.keys(updates).length > 0 ? updates : null
   }
   if (event.tool === 'circle' && event.circle) {
     const radius = Math.max(1, event.circle.radius)

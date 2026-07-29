@@ -30,7 +30,8 @@ Runtime worker 读取固定 application/template snapshot 后，按图中启用�
 
 - 同一 lease 使用单锁串行执行。
 - 多个下游模型节点可以复用同一 loader 输出，但不能并发调用同一模型对象。
-- 不增加模型请求队列、动态批处理、图片合并或跨 AppRuntime 调度。
+- 不增加模型请求队列、跨请求动态批处理、图片合并或跨 AppRuntime 调度。
+- 允许单次节点调用内部对同一图片、同一类型的 Prompt 做 decoder batching；这不改变 lease 的单锁串行边界。
 - Workflow worker 原有的一次一条 `WorkflowRun` 处理方式保持不变。
 - session 引用必须与当前 scope、generation、model family 和 capability 同时匹配；旧引用不能复用。
 
@@ -82,7 +83,7 @@ Runtime health summary 公开以下非敏感信息：
 - 服务全局模型池
 - 同一 session 并发推理
 - 模型请求排队系统
-- 自动 batching
+- 跨请求自动 batching
 - 图片拼接后推理
 - runtime ready 后再延迟加载 checkpoint
 

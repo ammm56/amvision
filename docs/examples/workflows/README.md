@@ -905,7 +905,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 注意事项：
 
 - `request_prompts` 使用标准 `prompt-regions.v1`；其中坐标语义对应 `request_prompt_image_path` 指向的提示参考图，而不是目标检测图
-- `prompt-regions.v1` 当前支持 `box / point / polygon / mask`，同一 `prompt_id` 也可以混合多类提示
+- `prompt-regions.v1` 当前支持 `box / point / polygon / mask`；同一 `prompt_id` 只能表示同一类对象提示，其中 Point 可包含多个正负点，Box、Polygon、Mask 不允许重复或混合类型
 - 这条样例默认使用 `presence + inside` 做最小复核语义，更适合“找到了没有、是否落在工位内”这类检测型场景
 
 ### industrial_single_frame_sam3_semantic_overlay_review

@@ -173,7 +173,7 @@ def test_semantic_segment_runs_project_native_smoke(monkeypatch) -> None:
     assert output["summary"]["inference_mode"] == "semantic-segment"
     assert output["summary"]["prompt_count"] == 1
     assert output["summary"]["region_count"] == output["regions"]["count"]
-    assert output["summary"]["postprocess_profile"] == "sam3-default-v2"
+    assert output["summary"]["postprocess_profile"] == "sam3-default"
 
 
 def test_semantic_segment_runs_project_native_smoke_with_negative_prompt_group(
