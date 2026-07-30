@@ -36,7 +36,7 @@ from ..preprocess.image import PreparedSam3Image, preprocess_sam3_image
 from ..nn.vision_backbone import (
     PositionEmbeddingSine,
     SAM3VisualBackbone,
-    Sam3DualViTDetNeck,
+    Sam3ViTDetNeck,
     ViT,
 )
 
@@ -357,7 +357,7 @@ class Sam3SemanticImageModel(nn.Module):
         super().__init__()
         self.image_size = 1008
         self.image_encoder = SAM3VisualBackbone(
-            vision_backbone=Sam3DualViTDetNeck(
+            vision_backbone=Sam3ViTDetNeck(
                 position_encoding=PositionEmbeddingSine(
                     num_pos_feats=256,
                     normalize=True,
@@ -365,7 +365,8 @@ class Sam3SemanticImageModel(nn.Module):
                     temperature=10000,
                 ),
                 d_model=256,
-                scale_factors=(4.0, 2.0, 1.0, 0.5),
+                branch_name="convs",
+                scale_factors=(4.0, 2.0, 1.0),
                 trunk=ViT(
                     img_size=1008,
                     pretrain_img_size=336,
@@ -391,9 +392,8 @@ class Sam3SemanticImageModel(nn.Module):
                     bias_patch_embed=False,
                     use_act_checkpoint=False,
                 ),
-                add_sam2_neck=True,
             ),
-            scalp=1,
+            scalp=0,
         )
         self.language_backbone = Sam3SemanticTextEncoder(d_model=256)
         self.encoder = Sam3SemanticEncoderFusion(d_model=256, num_layers=6)

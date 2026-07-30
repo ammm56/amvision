@@ -59,8 +59,8 @@ def test_video_interactive_segment_returns_tracks_and_summary(monkeypatch) -> No
                 summary={
                     "project_native": True,
                     "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.pt",
+                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
                     "device": "cpu",
                     "precision": "fp32",
                     "prompt_count": 1,
@@ -215,8 +215,8 @@ def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
                 summary={
                     "project_native": True,
                     "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.pt",
+                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
                     "device": "cpu",
                     "precision": "fp32",
                     "prompt_count": 1,
@@ -596,8 +596,8 @@ def _build_fake_summary(
     return {
         "project_native": True,
         "model_asset_id": "sam3/default",
-        "architecture_id": "sam3.vision-1008.v1",
-        "checkpoint_path": "fake-sam3.pt",
+        "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+        "checkpoint_path": "fake-sam3.1_multiplex.pt",
         "device": "cpu",
         "precision": "fp32",
         "prompt_count": prompt_count,

@@ -92,42 +92,55 @@ def load_sam3_checkpoint_branches(checkpoint_path: Path) -> Sam3CheckpointBranch
 def build_sam3_interactive_state_dict(
     branches: Sam3CheckpointBranches,
 ) -> dict[str, torch.Tensor]:
-    """按 upstream interactive 加载规则构造 project-native interactive state_dict。"""
+    """构造 SAM3.1 multiplex 的单图 interactive state_dict。
 
-    detector_trimmed = {
-        key.removeprefix("detector."): value
-        for key, value in branches.detector_state_dict.items()
-    }
-    interactive_state_dict = dict(detector_trimmed)
-    interactive_state_dict.update(
-        {
-            key.replace(
-                "backbone.vision_backbone", "image_encoder.vision_backbone"
-            ): value
-            for key, value in detector_trimmed.items()
-            if "backbone.vision_backbone" in key
-        }
+    这里只选择 interactive neck、interactive prompt encoder 和 interactive
+    mask decoder。Multiplex 的 propagation 分支和 bucketized 通用 decoder
+    不属于当前单图能力，不能混载。
+    """
+
+    interactive_state_dict: dict[str, torch.Tensor] = {}
+    for key, value in branches.detector_state_dict.items():
+        normalized_key = key.removeprefix("detector.")
+        if normalized_key.startswith("backbone.vision_backbone.trunk."):
+            normalized_key = normalized_key.replace(
+                "backbone.vision_backbone.",
+                "image_encoder.vision_backbone.",
+                1,
+            )
+        elif normalized_key.startswith(
+            "backbone.vision_backbone.interactive_convs."
+        ):
+            normalized_key = normalized_key.replace(
+                "backbone.vision_backbone.",
+                "image_encoder.vision_backbone.",
+                1,
+            )
+        else:
+            continue
+        interactive_state_dict[normalized_key] = value
+
+    tracker_prefix_mappings = (
+        (
+            "tracker.model.interactive_sam_prompt_encoder.",
+            "sam_prompt_encoder.",
+        ),
+        (
+            "tracker.model.interactive_sam_mask_decoder.",
+            "sam_mask_decoder.",
+        ),
     )
-    interactive_state_dict.update(
-        {
-            key.replace("tracker.transformer.encoder", "memory_attention"): value
-            for key, value in branches.tracker_state_dict.items()
-            if "tracker.transformer" in key
-        }
-    )
-    interactive_state_dict.update(
-        {
-            key.replace("tracker.maskmem_backbone", "memory_encoder"): value
-            for key, value in branches.tracker_state_dict.items()
-            if "tracker.maskmem_backbone" in key
-        }
-    )
-    interactive_state_dict.update(
-        {
-            key.removeprefix("tracker."): value
-            for key, value in branches.tracker_state_dict.items()
-        }
-    )
+    for key, value in branches.tracker_state_dict.items():
+        if key == "tracker.model.interactivity_no_mem_embed":
+            interactive_state_dict["no_mem_embed"] = value
+            continue
+        for source_prefix, target_prefix in tracker_prefix_mappings:
+            if key.startswith(source_prefix):
+                interactive_state_dict[
+                    target_prefix + key.removeprefix(source_prefix)
+                ] = value
+                break
+
     interactive_state_dict.update(
         {
             key.replace(".mlp.lin1.", ".mlp.layers.0.").replace(

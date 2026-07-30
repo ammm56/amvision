@@ -109,7 +109,7 @@
 
 `SAM3` 至少需要：
 
-- `data/files/models/pretrained/sam3/.../checkpoints/sam3.pt`
+- `data/files/models/pretrained/sam3/.../checkpoints/sam3.1_multiplex.pt`
 
 如果目标机器缺少这些目录，后续节点启用后仍会在运行时失败。
 
@@ -268,7 +268,7 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
 - `YOLOE` 预训练权重目录不完整
 - `mobileclip_blt.ts` 缺失
 - `bpe_simple_vocab_16e6.txt.gz` 缺失
-- `SAM3` 的 `sam3.pt` 缺失
+- `SAM3` 的 `sam3.1_multiplex.pt` 缺失，或 manifest 的 SHA-256 与文件不一致
 
 处理方式：
 

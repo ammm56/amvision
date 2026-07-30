@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，直接读取本地 `sam3.pt` 执行单图或多帧分割；其中 `interactive` 当前阶段支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也已提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。更强的 `stateful-semantic-propagation` 与后续 `memory-prototype` 风格语义视频模式当前仍处于预留规划，不是当前阶段的硬阻塞能力。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，读取登记的 `sam3.1_multiplex.pt` 执行单图或多帧分割；其中单图 Interactive 与 Semantic 只加载各自需要的 multiplex 分支。`interactive` 当前支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。这些项目内视频模式不宣称等同于最新参考仓库的完整 multiplex video predictor。
 
 ## 适用范围
 
@@ -143,7 +143,7 @@ data/files/models/pretrained/
   - `yoloe-11s-seg.pt`
   - `yoloe-26n-seg.pt`
   - prompt-free 变体使用 `*-seg-pf.pt`
-- `SAM3` 第一阶段按官方单权重文件 `sam3.pt` 组织。
+- `SAM3` 默认登记资产使用官方 `sam3.1_multiplex.pt`。
 
 这里要分清两层：
 
@@ -215,13 +215,39 @@ data/files/models/pretrained/
       └─ default/
          ├─ manifest.json
          └─ checkpoints/
-            └─ sam3.pt
+            └─ sam3.1_multiplex.pt
 ```
 
 说明：
 
-- `semantic` 和 `interactive` 先共用同一份 `sam3.pt`。
+- `semantic` 和 `interactive` 共用同一份 `sam3.1_multiplex.pt`，但运行时只实例化当前能力需要的分支：semantic 使用 `convs`，interactive 使用 `interactive_convs`。
+- 单图节点不加载 `propagation_convs` 和 multiplex 的 bucketized 通用 decoder，避免无用权重增加显存，也避免把不同 decoder 协议混载。
+- 当前 project-native 视频节点继续使用已声明的项目内逐帧或 memory 模式；不能把它描述成最新参考仓库的完整 multiplex video predictor。
 - 如果后续出现新的正式上游权重，再按同一规则追加 variant。
+
+### ComfyUI 兼容推理资产目录
+
+`data/files/models/checkpoints/` 用于保存不参与训练、微调和平台 `ModelVersion` 登记的直接推理权重。例如：
+
+```text
+data/files/models/checkpoints/
+└─ sam3.1_multiplex_fp16.safetensors
+```
+
+这个目录可以与 ComfyUI 的 checkpoint 放置习惯保持一致，但它与
+`data/files/models/pretrained/` 的职责不同：
+
+- `pretrained/` 是项目登记资产，必须有 manifest、稳定资产 id、SHA-256、能力和运行时架构声明。
+- `checkpoints/` 是 ComfyUI 兼容的推理资产池，供后续通用 `Load Checkpoint` 类节点受控扫描，不作为训练产物或平台模型版本。
+- 当前 SAM3 节点 manifest 不跨目录引用 `checkpoints/`；现有 project-native runtime 继续读取登记的 `.pt` 资产。
+- `.safetensors` 文件应由专用 loader 使用 `safe_open` 或等价安全接口读取，并通过 sidecar 或本地索引声明模型家族、精度、能力和 SHA-256；不能仅凭文件名猜测架构。
+- 节点只能使用资产 provider 返回的稳定 id，不接受任意磁盘绝对路径。
+- `projectsrc/sam3` 只用于核对最新参考实现，不得成为运行时 import 或响应字段来源。
+
+当前 `sam3.1_multiplex_fp16.safetensors` 与登记的 `.pt` 属于同一模型家族：
+它保留 multiplex 参数，但省略可重建的 RoPE `freqs_cis` 等 buffer。未来
+ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capability
+选择分支；不能直接复用现有 `.pt` loader。
 
 ## manifest.json 最低字段
 
@@ -242,10 +268,10 @@ data/files/models/pretrained/
 
 | 字段 | 说明 |
 | --- | --- |
-| `model_name` | 预训练模型系列名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3` |
+| `model_name` | 预训练模型系列名，例如 `yoloe-v8`、`yoloe-11`、`yoloe-26`、`sam3.1` |
 | `model_scale` | 仅用于确实存在 Scale 的 YOLOE，例如 `nano`、`s`、`l` |
 | `model_asset_id` | SAM3 稳定资产 id，例如 `sam3/default` |
-| `architecture_id` | SAM3 运行时架构 id，例如 `sam3.vision-1008.v1` |
+| `architecture_id` | SAM3 运行时架构 id，例如 `sam3.1-multiplex.vision-1008.v1` |
 | `checkpoint_sha256` | SAM3 checkpoint 完整性校验值 |
 | `task_type` | `YOLOE` 与 `SAM3` 第一阶段都固定写 `segmentation` |
 | `model_version_id` | 预训练目录的稳定 `ModelVersion` id |
@@ -281,21 +307,22 @@ data/files/models/pretrained/
 
 ```json
 {
-  "model_name": "sam3",
-  "model_version": "sam3",
+  "model_name": "sam3.1",
+  "model_version": "sam3.1_multiplex",
   "model_asset_id": "sam3/default",
-  "architecture_id": "sam3.vision-1008.v1",
+  "architecture_id": "sam3.1-multiplex.vision-1008.v1",
   "task_type": "segmentation",
-  "model_version_id": "mv-pretrained-sam3-segmentation-default",
-  "checkpoint_file_id": "mf-pretrained-sam3-segmentation-default-checkpoint",
-  "checkpoint_path": "checkpoints/sam3.pt",
+  "model_version_id": "mv-pretrained-sam3-1-multiplex-segmentation-default",
+  "checkpoint_file_id": "mf-pretrained-sam3-1-multiplex-segmentation-default-checkpoint",
+  "checkpoint_path": "checkpoints/sam3.1_multiplex.pt",
   "checkpoint_sha256": "<sha256>",
   "metadata": {
     "catalog_name": "default",
     "entry_name": "default",
     "source": "local-pretrained",
-    "upstream_weight_name": "sam3.pt",
-    "upstream_mode": "default"
+    "upstream_weight_name": "sam3.1_multiplex.pt",
+    "upstream_mode": "multiplex",
+    "runtime_scope": "project-native-single-image"
   }
 }
 ```

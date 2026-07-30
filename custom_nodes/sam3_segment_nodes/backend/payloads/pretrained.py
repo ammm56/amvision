@@ -171,7 +171,7 @@ def _read_sam3_pretrained_manifest(manifest_path: Path) -> Sam3PretrainedVariant
         manifest_path=manifest_path,
         checkpoint_path=checkpoint_path,
         model_name=str(payload.get("model_name") or "sam3"),
-        model_version=str(payload.get("model_version") or "sam3"),
+        model_version=str(payload.get("model_version") or "sam3.1_multiplex"),
         task_type=str(payload.get("task_type") or "segmentation"),
         metadata=normalized_metadata,
     )

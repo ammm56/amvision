@@ -16,6 +16,7 @@ from backend.service.application.workflows.model_sessions import (
     WorkflowModelSessionLoadResult,
 )
 from custom_nodes.sam3_segment_nodes.backend.core import (
+    Sam3CheckpointBranches,
     Sam3VideoAttentionMemoryEntry,
     Sam3VideoAttentionTrackState,
     Sam3InteractiveFrameContext,
@@ -54,7 +55,7 @@ SAM3_CHECKPOINT_PATH = (
     / "segmentation"
     / "default"
     / "checkpoints"
-    / "sam3.pt"
+    / "sam3.1_multiplex.pt"
 )
 
 
@@ -64,7 +65,7 @@ def test_workflow_provider_reads_checkpoint_once_for_both_capabilities(
 ) -> None:
     """验证同一 loader 的 Interactive/Semantic 模型复用一次 checkpoint 读取。"""
 
-    checkpoint_path = tmp_path / "sam3.pt"
+    checkpoint_path = tmp_path / "sam3.1_multiplex.pt"
     checkpoint_path.write_bytes(b"checkpoint")
     variant = Sam3PretrainedVariant(
         model_asset_id="sam3-default",
@@ -204,9 +205,54 @@ def test_load_sam3_checkpoint_branches_and_build_interactive_state_dict() -> Non
         key.startswith("image_encoder.vision_backbone.")
         for key in interactive_state_dict
     )
-    assert any(key.startswith("memory_attention.") for key in interactive_state_dict)
-    assert any(key.startswith("memory_encoder.") for key in interactive_state_dict)
+    assert any(
+        key.startswith("image_encoder.vision_backbone.interactive_convs.")
+        for key in interactive_state_dict
+    )
+    assert any(key.startswith("sam_prompt_encoder.") for key in interactive_state_dict)
     assert any(key.startswith("sam_mask_decoder.") for key in interactive_state_dict)
+    assert "no_mem_embed" in interactive_state_dict
+    assert not any(
+        key.startswith("image_encoder.vision_backbone.propagation_convs.")
+        for key in interactive_state_dict
+    )
+
+
+def test_build_interactive_state_dict_selects_only_sam31_interactive_weights() -> None:
+    """验证 SAM3.1 multiplex 不会把 propagation 或通用 decoder 混入单图模型。"""
+
+    scalar = torch.ones(1)
+    branches = Sam3CheckpointBranches(
+        full_state_dict={},
+        detector_state_dict={
+            "detector.backbone.vision_backbone.trunk.patch_embed.proj.weight": scalar,
+            "detector.backbone.vision_backbone.convs.0.conv_1x1.weight": scalar,
+            "detector.backbone.vision_backbone.interactive_convs.0.conv_1x1.weight": scalar,
+            "detector.backbone.vision_backbone.propagation_convs.0.conv_1x1.weight": scalar,
+        },
+        tracker_state_dict={
+            "tracker.model.interactive_sam_prompt_encoder.pe_layer.positional_encoding_gaussian_matrix": scalar,
+            "tracker.model.interactive_sam_mask_decoder.iou_token.weight": scalar,
+            "tracker.model.sam_mask_decoder.iou_token.weight": scalar,
+            "tracker.model.interactivity_no_mem_embed": scalar,
+        },
+    )
+
+    mapped = build_sam3_interactive_state_dict(branches)
+
+    assert (
+        "image_encoder.vision_backbone.trunk.patch_embed.proj.weight"
+        in mapped
+    )
+    assert (
+        "image_encoder.vision_backbone.interactive_convs.0.conv_1x1.weight"
+        in mapped
+    )
+    assert "sam_prompt_encoder.pe_layer.positional_encoding_gaussian_matrix" in mapped
+    assert "sam_mask_decoder.iou_token.weight" in mapped
+    assert mapped["no_mem_embed"] is scalar
+    assert not any(".convs." in key and ".interactive_convs." not in key for key in mapped)
+    assert not any("propagation_convs" in key for key in mapped)
 
 
 def test_preprocess_sam3_image_resizes_to_1008_square() -> None:

@@ -42,7 +42,7 @@ from ..nn.prompt_mask_modules import (
 from ..nn.vision_backbone import (
     PositionEmbeddingSine,
     SAM3VisualBackbone,
-    Sam3DualViTDetNeck,
+    Sam3ViTDetNeck,
     ViT,
 )
 
@@ -169,7 +169,7 @@ class Sam3InteractiveImageModel(nn.Module):
         self.use_high_res_features_in_sam = True
 
         self.image_encoder = SAM3VisualBackbone(
-            vision_backbone=Sam3DualViTDetNeck(
+            vision_backbone=Sam3ViTDetNeck(
                 position_encoding=PositionEmbeddingSine(
                     num_pos_feats=256,
                     normalize=True,
@@ -177,7 +177,8 @@ class Sam3InteractiveImageModel(nn.Module):
                     temperature=10000,
                 ),
                 d_model=256,
-                scale_factors=(4.0, 2.0, 1.0, 0.5),
+                branch_name="interactive_convs",
+                scale_factors=(4.0, 2.0, 1.0),
                 trunk=ViT(
                     img_size=1008,
                     pretrain_img_size=336,
@@ -203,9 +204,8 @@ class Sam3InteractiveImageModel(nn.Module):
                     bias_patch_embed=False,
                     use_act_checkpoint=False,
                 ),
-                add_sam2_neck=True,
             ),
-            scalp=1,
+            scalp=0,
         )
 
         self.sam_prompt_embed_dim = self.hidden_dim
@@ -241,10 +241,6 @@ class Sam3InteractiveImageModel(nn.Module):
         )
 
         self.no_mem_embed = nn.Parameter(torch.zeros(1, 1, self.hidden_dim))
-        self.no_mem_pos_enc = nn.Parameter(torch.zeros(1, 1, self.hidden_dim))
-        self.maskmem_tpos_enc = nn.Parameter(torch.zeros(7, 1, 1, self.mem_dim))
-        self.no_obj_ptr = nn.Parameter(torch.zeros(1, self.hidden_dim))
-        self.no_obj_embed_spatial = nn.Parameter(torch.zeros(1, self.mem_dim))
 
     def forward_image(self, image_tensor: torch.Tensor) -> dict[str, object]:
         """抽取单图视觉特征。"""

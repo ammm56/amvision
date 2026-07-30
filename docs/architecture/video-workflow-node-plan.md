@@ -457,7 +457,7 @@ release/
 - 当前默认策略：`memory-prototype-state`，`track_id` 继续稳定映射为 `prompt_id`
 - 当前已不再只是 shared prompt 或单纯上一帧 mask 回灌；现在会维护对象原型和最近若干帧 mask 历史，并在当前帧特征上生成 memory prompt
 - 当前也已提供更重的 `memory-attention-tracker` 可选模式：会维护跨帧 token memory、mask history 和 prototype，并在当前帧 low-res 特征上执行 attention 风格对象检索
-- 当前已经补了更长窗口、更大位移和更多对象数的定向回归；默认轻量逻辑测试放在 `tests/`，真实本地 `sam3.pt` 的视频链 smoke 放在 `tests/integration/`，继续保持显式执行
+- 当前已经补了更长窗口、更大位移和更多对象数的定向回归；默认轻量逻辑测试放在 `tests/`，真实本地 `sam3.1_multiplex.pt` 的视频链 smoke 放在 `tests/integration/`，继续保持显式执行
 - `custom.sam3.video-semantic-segment`
 - 输入：`frame-window.v1 + text-prompts.v1`
 - 输出：`tracks.v1`

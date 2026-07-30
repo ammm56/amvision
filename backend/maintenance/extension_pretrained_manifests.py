@@ -180,19 +180,25 @@ def _sync_sam3_manifests(sam3_root: Path, *, warnings: list[str]) -> list[Path]:
         if checkpoint_path is None:
             warnings.append(f"SAM3 目录缺少可识别 checkpoint：{variant_dir.as_posix()}")
             continue
-        if checkpoint_path.name.lower() != "sam3.pt":
+        if checkpoint_path.name.lower() != "sam3.1_multiplex.pt":
             warnings.append(
-                f"SAM3 checkpoint 文件名不是预期的 sam3.pt：{checkpoint_path.name}"
+                "SAM3 checkpoint 文件名不是预期的 "
+                f"sam3.1_multiplex.pt：{checkpoint_path.name}"
             )
 
         manifest_payload = {
-            "model_name": "sam3",
-            "model_version": "sam3",
+            "model_name": "sam3.1",
+            "model_version": "sam3.1_multiplex",
             "model_asset_id": f"sam3/{variant_dir.name}",
-            "architecture_id": "sam3.vision-1008.v1",
+            "architecture_id": "sam3.1-multiplex.vision-1008.v1",
             "task_type": "segmentation",
-            "model_version_id": f"mv-pretrained-sam3-segmentation-{variant_dir.name}",
-            "checkpoint_file_id": f"mf-pretrained-sam3-segmentation-{variant_dir.name}-checkpoint",
+            "model_version_id": (
+                f"mv-pretrained-sam3-1-multiplex-segmentation-{variant_dir.name}"
+            ),
+            "checkpoint_file_id": (
+                f"mf-pretrained-sam3-1-multiplex-segmentation-"
+                f"{variant_dir.name}-checkpoint"
+            ),
             "checkpoint_path": str(checkpoint_path.relative_to(variant_dir)).replace(
                 "\\", "/"
             ),
@@ -212,9 +218,10 @@ def _sync_sam3_manifests(sam3_root: Path, *, warnings: list[str]) -> list[Path]:
                 "entry_name": variant_dir.name,
                 "source": "local-pretrained",
                 "upstream_weight_name": checkpoint_path.name,
-                "upstream_mode": "default",
+                "upstream_mode": "multiplex",
                 "node_usage": "custom-node",
                 "node_modes": ["semantic", "interactive"],
+                "runtime_scope": "project-native-single-image",
             },
         }
         manifest_path = variant_dir / "manifest.json"

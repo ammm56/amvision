@@ -60,8 +60,8 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
                 summary={
                     "project_native": True,
                     "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.pt",
+                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
                     "device": "cpu",
                     "precision": "fp32",
                     "prompt_count": 1,
@@ -144,8 +144,8 @@ def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
                 summary={
                     "project_native": True,
                     "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.pt",
+                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
                     "device": "cpu",
                     "precision": "fp32",
                     "prompt_count": 1,
@@ -206,8 +206,8 @@ def test_interactive_segment_accepts_mask_prompt(monkeypatch) -> None:
                 summary={
                     "project_native": True,
                     "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.pt",
+                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
+                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
                     "device": "cpu",
                     "precision": "fp32",
                     "prompt_count": 1,

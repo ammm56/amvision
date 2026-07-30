@@ -34,11 +34,12 @@ def test_resolve_sam3_pretrained_variant_reads_local_manifest() -> None:
 
     variant = resolve_sam3_pretrained_variant(model_asset_id="sam3/default")
 
-    assert variant.model_name == "sam3"
+    assert variant.model_name == "sam3.1"
     assert variant.model_asset_id == "sam3/default"
-    assert variant.architecture_id == "sam3.vision-1008.v1"
+    assert variant.model_version == "sam3.1_multiplex"
+    assert variant.architecture_id == "sam3.1-multiplex.vision-1008.v1"
     assert variant.task_type == "segmentation"
-    assert variant.checkpoint_path.name == "sam3.pt"
+    assert variant.checkpoint_path.name == "sam3.1_multiplex.pt"
     assert "image.interactive-segmentation" in variant.metadata["capabilities"]
     assert variant.metadata["minimum_runtime"]["python"] == ">=3.12"
 

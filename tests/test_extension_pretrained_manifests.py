@@ -42,7 +42,7 @@ def test_sync_extension_pretrained_manifests_moves_legacy_yoloe_root_and_writes_
     )
     sam3_checkpoint_dir = sam3_variant_dir / "checkpoints"
     sam3_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    (sam3_checkpoint_dir / "sam3.pt").write_bytes(b"fake")
+    (sam3_checkpoint_dir / "sam3.1_multiplex.pt").write_bytes(b"fake")
 
     result = sync_extension_pretrained_manifests(tmp_path)
 
@@ -66,9 +66,25 @@ def test_sync_extension_pretrained_manifests_moves_legacy_yoloe_root_and_writes_
     assert yoloe_manifest["task_type"] == "segmentation"
     assert yoloe_manifest["checkpoint_path"] == "checkpoints/yoloe-v8s-seg.pt"
     assert sam3_manifest["task_type"] == "segmentation"
-    assert sam3_manifest["checkpoint_path"] == "checkpoints/sam3.pt"
+    assert (
+        sam3_manifest["checkpoint_path"]
+        == "checkpoints/sam3.1_multiplex.pt"
+    )
     assert sam3_manifest["model_asset_id"] == "sam3/default"
-    assert sam3_manifest["architecture_id"] == "sam3.vision-1008.v1"
+    assert sam3_manifest["model_name"] == "sam3.1"
+    assert sam3_manifest["model_version"] == "sam3.1_multiplex"
+    assert (
+        sam3_manifest["model_version_id"]
+        == "mv-pretrained-sam3-1-multiplex-segmentation-default"
+    )
+    assert (
+        sam3_manifest["checkpoint_file_id"]
+        == "mf-pretrained-sam3-1-multiplex-segmentation-default-checkpoint"
+    )
+    assert (
+        sam3_manifest["architecture_id"]
+        == "sam3.1-multiplex.vision-1008.v1"
+    )
     assert sam3_manifest["checkpoint_sha256"] == (
         "b5d54c39e66671c9731b9f471e585d8262cd4f54963f0c93082d8dcf334d4c78"
     )
@@ -79,6 +95,11 @@ def test_sync_extension_pretrained_manifests_moves_legacy_yoloe_root_and_writes_
         "video.per-frame-semantic-segmentation",
     ]
     assert sam3_manifest["minimum_runtime"]["python"] == ">=3.12"
+    assert sam3_manifest["metadata"]["upstream_mode"] == "multiplex"
+    assert (
+        sam3_manifest["metadata"]["runtime_scope"]
+        == "project-native-single-image"
+    )
     assert "model_scale" not in sam3_manifest
 
 

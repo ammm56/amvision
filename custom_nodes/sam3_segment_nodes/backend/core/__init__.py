@@ -29,7 +29,7 @@ from .state.interactive import (
 )
 from .nn.common import DropPath, LayerNorm2d, LayerScale, MLP, MLPBlock, clone_module_list, get_1d_sine_pe, inverse_sigmoid, xywh2xyxy
 from .nn.prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
-from .nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3DualViTDetNeck, ViT
+from .nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3ViTDetNeck, ViT
 from .tracking.memory import (
     Sam3MemoryPromptBuildResult,
     Sam3VideoTrackState,
@@ -74,7 +74,7 @@ __all__ = [
     "SAM2MaskDecoder",
     "SAM2TwoWayTransformer",
     "SAM3VisualBackbone",
-    "Sam3DualViTDetNeck",
+    "Sam3ViTDetNeck",
     "ViT",
     "build_sam3_interactive_prompt_tensors",
     "build_sam3_interactive_state_dict",

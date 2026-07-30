@@ -35,7 +35,7 @@
 ### 资产缺失
 
 - `YOLOE` 检查 `yoloe` 权重、`mobileclip_blt.ts`、`bpe_simple_vocab_16e6.txt.gz`
-- `SAM3` 检查 `sam3.pt`
+- `SAM3` 检查登记资产 `sam3.1_multiplex.pt` 及 manifest 的 SHA-256；ComfyUI 兼容目录中的 `.safetensors` 不替代该登记资产
 
 ### 提示输入不合法
 

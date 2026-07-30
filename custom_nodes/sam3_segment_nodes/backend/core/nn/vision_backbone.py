@@ -543,22 +543,30 @@ class ViT(nn.Module):
             block.attn._setup_rope_freqs(input_size=(imgsz[0] // self.patch_size, imgsz[1] // self.patch_size))
 
 
-class Sam3DualViTDetNeck(nn.Module):
-    """把 ViT 特征映射成 SAM3/SAM2 兼容 FPN 输出。"""
+class Sam3ViTDetNeck(nn.Module):
+    """把 SAM3.1 multiplex checkpoint 的一个 FPN 分支映射成运行时输出。
+
+    Multiplex checkpoint 同时包含 semantic、interactive 和 propagation 三个
+    neck 分支。单图节点只实例化自身需要的分支，避免把未参与当前能力的权重
+    常驻显存。
+    """
 
     def __init__(
         self,
         trunk: nn.Module,
         position_encoding: nn.Module,
         d_model: int,
-        scale_factors: tuple[float, ...] = (4.0, 2.0, 1.0, 0.5),
-        add_sam2_neck: bool = False,
+        branch_name: str,
+        scale_factors: tuple[float, ...] = (4.0, 2.0, 1.0),
     ) -> None:
         super().__init__()
+        if branch_name not in {"convs", "interactive_convs", "propagation_convs"}:
+            raise ValueError(f"不支持 SAM3.1 neck 分支: {branch_name}")
         self.trunk = trunk
         self.position_encoding = position_encoding
-        self.convs = nn.ModuleList()
-        self.sam2_convs = None
+        self.branch_name = branch_name
+        branch_convs = nn.ModuleList()
+        setattr(self, branch_name, branch_convs)
         self.scale_factors = scale_factors
         dim = self.trunk.channel_list[-1]
 
@@ -581,12 +589,7 @@ class Sam3DualViTDetNeck(nn.Module):
                 raise NotImplementedError(f"暂不支持 scale_factor={scale}")
             current.add_module("conv_1x1", nn.Conv2d(out_dim, d_model, kernel_size=1, bias=True))
             current.add_module("conv_3x3", nn.Conv2d(d_model, d_model, kernel_size=3, padding=1, bias=True))
-            self.convs.append(current)
-
-        if add_sam2_neck:
-            import copy
-
-            self.sam2_convs = copy.deepcopy(self.convs)
+            branch_convs.append(current)
 
     def sam_forward_feature_levels(
         self,
@@ -604,14 +607,11 @@ class Sam3DualViTDetNeck(nn.Module):
     def forward(
         self,
         tensor_list: torch.Tensor,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]:
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         xs = self.trunk(tensor_list)
         x = xs[-1]
-        sam3_out, sam3_pos = self.sam_forward_feature_levels(x, self.convs)
-        if self.sam2_convs is None:
-            return sam3_out, sam3_pos, None, None
-        sam2_out, sam2_pos = self.sam_forward_feature_levels(x, self.sam2_convs)
-        return sam3_out, sam3_pos, sam2_out, sam2_pos
+        branch_convs = getattr(self, self.branch_name)
+        return self.sam_forward_feature_levels(x, branch_convs)
 
     def set_imgsz(self, imgsz: list[int] = [1008, 1008]) -> None:
         self.trunk.set_imgsz(imgsz)
@@ -620,33 +620,21 @@ class Sam3DualViTDetNeck(nn.Module):
 class SAM3VisualBackbone(nn.Module):
     """只保留视觉分支的 SAM3 backbone 包装。"""
 
-    def __init__(self, vision_backbone: Sam3DualViTDetNeck, scalp: int = 1) -> None:
+    def __init__(self, vision_backbone: Sam3ViTDetNeck, scalp: int = 0) -> None:
         super().__init__()
         self.vision_backbone = vision_backbone
         self.scalp = int(scalp)
 
     def forward_image(self, samples: torch.Tensor) -> dict[str, object]:
-        sam3_features, sam3_pos, sam2_features, sam2_pos = self.vision_backbone.forward(samples)
+        sam3_features, sam3_pos = self.vision_backbone.forward(samples)
         if self.scalp > 0:
             sam3_features = sam3_features[: -self.scalp]
             sam3_pos = sam3_pos[: -self.scalp]
-            if sam2_features is not None and sam2_pos is not None:
-                sam2_features = sam2_features[: -self.scalp]
-                sam2_pos = sam2_pos[: -self.scalp]
-
-        sam2_output = None
-        if sam2_features is not None and sam2_pos is not None:
-            sam2_output = {
-                "vision_features": sam2_features[-1],
-                "vision_pos_enc": sam2_pos,
-                "backbone_fpn": sam2_features,
-            }
 
         return {
             "vision_features": sam3_features[-1],
             "vision_pos_enc": sam3_pos,
             "backbone_fpn": sam3_features,
-            "sam2_backbone_out": sam2_output,
         }
 
     def set_imgsz(self, imgsz: list[int] = [1008, 1008]) -> None:
@@ -656,6 +644,6 @@ class SAM3VisualBackbone(nn.Module):
 __all__ = [
     "PositionEmbeddingSine",
     "SAM3VisualBackbone",
-    "Sam3DualViTDetNeck",
+    "Sam3ViTDetNeck",
     "ViT",
 ]
