@@ -35,6 +35,12 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.types import (
     Sam3PretrainedVariant,
 )
 import custom_nodes.sam3_segment_nodes.backend.runtime.workflow_session as workflow_session_module
+from custom_nodes.sam3_segment_nodes.backend.core.models import (
+    interactive as interactive_model_module,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.prompts.encoding import (
+    PreparedSam3InteractivePrompts,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -219,37 +225,47 @@ def test_preprocess_sam3_image_resizes_to_1008_square() -> None:
 
 
 def test_build_sam3_interactive_prompt_tensors_supports_box_and_point() -> None:
-    """验证第一阶段 box/point prompt 会转换成 tracker 需要的点坐标与标签。"""
+    """验证 Box 使用专用输入，Point 使用带正负标签的点输入。"""
 
-    prompt_items = (
-        _PromptItem(
-            prompt_id="box-1",
-            prompt_kind="box",
-            display_name="box",
-            bbox_xyxy=(10.0, 20.0, 30.0, 40.0),
+    box_prompts = build_sam3_interactive_prompt_tensors(
+        (
+            _PromptItem(
+                prompt_id="box-1",
+                prompt_kind="box",
+                display_name="box",
+                bbox_xyxy=(10.0, 20.0, 30.0, 40.0),
+            ),
         ),
-        _PromptItem(
-            prompt_id="point-1",
-            prompt_kind="point",
-            display_name="point",
-            point_xy_items=((5.0, 8.0),),
-            point_labels=("negative",),
-        ),
+        source_width=100,
+        source_height=50,
+        target_width=1008,
+        target_height=1008,
     )
-
-    prepared_prompts = build_sam3_interactive_prompt_tensors(
-        prompt_items,
+    point_prompts = build_sam3_interactive_prompt_tensors(
+        (
+            _PromptItem(
+                prompt_id="point-1",
+                prompt_kind="point",
+                display_name="point",
+                point_xy_items=((5.0, 8.0), (12.0, 16.0)),
+                point_labels=("positive", "negative"),
+            ),
+        ),
         source_width=100,
         source_height=50,
         target_width=1008,
         target_height=1008,
     )
 
-    assert tuple(prepared_prompts.point_coords.shape) == (2, 2, 2)
-    assert tuple(prepared_prompts.point_labels.shape) == (2, 2)
-    assert prepared_prompts.prompt_masks is None
-    assert prepared_prompts.point_labels[0].tolist() == [2, 3]
-    assert prepared_prompts.point_labels[1].tolist() == [0, -1]
+    assert box_prompts.point_coords is None
+    assert box_prompts.point_labels is None
+    assert box_prompts.boxes is not None
+    assert tuple(box_prompts.boxes.shape) == (1, 2, 2)
+    assert box_prompts.prompt_masks is None
+    assert point_prompts.boxes is None
+    assert tuple(point_prompts.point_coords.shape) == (1, 2, 2)
+    assert tuple(point_prompts.point_labels.shape) == (1, 2)
+    assert point_prompts.point_labels[0].tolist() == [1, 0]
 
 
 def test_build_sam3_interactive_prompt_tensors_supports_polygon_mask_prompt() -> None:
@@ -280,7 +296,8 @@ def test_build_sam3_interactive_prompt_tensors_supports_polygon_mask_prompt() ->
     assert prepared_prompts.point_labels is None
     assert prepared_prompts.prompt_masks is not None
     assert tuple(prepared_prompts.prompt_masks.shape) == (1, 1, 288, 288)
-    assert float(prepared_prompts.prompt_masks.sum().item()) > 0.0
+    assert float(prepared_prompts.prompt_masks.max().item()) == 10.0
+    assert float(prepared_prompts.prompt_masks.min().item()) == -10.0
 
 
 def test_build_sam3_interactive_prompt_tensors_supports_mask_prompt() -> None:
@@ -311,7 +328,242 @@ def test_build_sam3_interactive_prompt_tensors_supports_mask_prompt() -> None:
     assert prepared_prompts.point_labels is None
     assert prepared_prompts.prompt_masks is not None
     assert tuple(prepared_prompts.prompt_masks.shape) == (1, 1, 288, 288)
-    assert float(prepared_prompts.prompt_masks.sum().item()) > 0.0
+    assert float(prepared_prompts.prompt_masks.max().item()) == 10.0
+    assert float(prepared_prompts.prompt_masks.min().item()) == -10.0
+
+
+def test_single_positive_point_enables_multimask_candidate_selection() -> None:
+    """验证单个正点会启用多候选 Mask，而多点与负点组合保持单候选。"""
+
+    single_positive = PreparedSam3InteractivePrompts(
+        point_coords=torch.tensor([[[10.0, 20.0]]]),
+        point_labels=torch.tensor([[1]]),
+        boxes=None,
+        prompt_masks=None,
+        prompt_ids=("point-1",),
+        prompt_kinds=("point",),
+    )
+    positive_and_negative = PreparedSam3InteractivePrompts(
+        point_coords=torch.tensor([[[10.0, 20.0], [30.0, 40.0]]]),
+        point_labels=torch.tensor([[1, 0]]),
+        boxes=None,
+        prompt_masks=None,
+        prompt_ids=("point-1",),
+        prompt_kinds=("point",),
+    )
+
+    assert (
+        interactive_model_module._should_use_multimask_output(single_positive) is True
+    )
+    assert (
+        interactive_model_module._should_use_multimask_output(positive_and_negative)
+        is False
+    )
+
+
+def test_box_prompt_batch_size_uses_dedicated_boxes_tensor() -> None:
+    """验证多 Box 不会退回 batch=1 并触发 repeat_image 不一致。"""
+
+    box_prompts = PreparedSam3InteractivePrompts(
+        point_coords=None,
+        point_labels=None,
+        boxes=torch.zeros((3, 2, 2), dtype=torch.float32),
+        prompt_masks=None,
+        prompt_ids=("box-1", "box-2", "box-3"),
+        prompt_kinds=("box", "box", "box"),
+    )
+
+    assert interactive_model_module._read_prepared_prompt_batch_size(box_prompts) == 3
+
+
+def test_interactive_box_prompt_uses_padding_point_and_suppresses_no_object() -> None:
+    """验证 Box 路径与参考实现一致地补空点，并抑制无对象 Mask。"""
+
+    captured: dict[str, object] = {}
+
+    class _PromptEncoder(torch.nn.Module):
+        def forward(self, *, points, boxes, masks):
+            captured["points"] = points
+            captured["boxes"] = boxes
+            batch_size = int(boxes.shape[0])
+            return (
+                torch.zeros((batch_size, 3, 4), dtype=torch.float32),
+                torch.zeros((batch_size, 4, 2, 2), dtype=torch.float32),
+            )
+
+        def get_dense_pe(self):
+            return torch.zeros((1, 4, 2, 2), dtype=torch.float32)
+
+    class _MaskDecoder(torch.nn.Module):
+        def forward(self, **kwargs):
+            batch_size = int(kwargs["sparse_prompt_embeddings"].shape[0])
+            return (
+                torch.full((batch_size, 1, 4, 4), 8.0),
+                torch.full((batch_size, 1), 0.9),
+                torch.zeros((batch_size, 1, 4)),
+                torch.full((batch_size, 1), -0.1),
+            )
+
+    model = interactive_model_module.Sam3InteractiveImageModel.__new__(
+        interactive_model_module.Sam3InteractiveImageModel
+    )
+    torch.nn.Module.__init__(model)
+    model.sam_prompt_encoder = _PromptEncoder()
+    model.sam_mask_decoder = _MaskDecoder()
+    prompts = PreparedSam3InteractivePrompts(
+        point_coords=None,
+        point_labels=None,
+        boxes=torch.tensor([[[2.0, 3.0], [12.0, 13.0]]]),
+        prompt_masks=None,
+        prompt_ids=("box-1",),
+        prompt_kinds=("box",),
+    )
+
+    mask_logits, _iou_scores, final_scores = model.predict_mask_logits(
+        features={
+            "image_embed": torch.zeros((1, 4, 2, 2)),
+            "high_res_feats": [],
+        },
+        prompts=prompts,
+    )
+
+    point_coords, point_labels = captured["points"]
+    assert tuple(point_coords.shape) == (1, 1, 2)
+    assert point_labels.tolist() == [[-1]]
+    assert torch.all(mask_logits == -1024.0)
+    assert final_scores.tolist() == [0.0]
+
+
+def test_interactive_mask_prompt_uses_reference_prompt_resolution() -> None:
+    """验证高分辨率精修 Mask 会按参考实现缩放到 PromptEncoder 输入尺寸。"""
+
+    captured: dict[str, object] = {}
+
+    class _PromptEncoder(torch.nn.Module):
+        image_embedding_size = (72, 72)
+
+        def forward(self, *, points, boxes, masks):
+            captured["masks"] = masks
+            return (
+                torch.zeros((1, 2, 4), dtype=torch.float32),
+                torch.zeros((1, 4, 2, 2), dtype=torch.float32),
+            )
+
+        def get_dense_pe(self):
+            return torch.zeros((1, 4, 2, 2), dtype=torch.float32)
+
+    class _MaskDecoder(torch.nn.Module):
+        def forward(self, **kwargs):
+            return (
+                torch.ones((1, 1, 4, 4), dtype=torch.float32),
+                torch.ones((1, 1), dtype=torch.float32),
+                torch.zeros((1, 1, 4), dtype=torch.float32),
+                torch.ones((1, 1), dtype=torch.float32),
+            )
+
+    model = interactive_model_module.Sam3InteractiveImageModel.__new__(
+        interactive_model_module.Sam3InteractiveImageModel
+    )
+    torch.nn.Module.__init__(model)
+    model.sam_prompt_encoder = _PromptEncoder()
+    model.sam_mask_decoder = _MaskDecoder()
+    prompts = PreparedSam3InteractivePrompts(
+        point_coords=None,
+        point_labels=None,
+        boxes=None,
+        prompt_masks=torch.ones((1, 1, 1008, 1008), dtype=torch.float32),
+        prompt_ids=("mask-1",),
+        prompt_kinds=("mask",),
+    )
+
+    model.predict_mask_logits(
+        features={
+            "image_embed": torch.zeros((1, 4, 2, 2)),
+            "high_res_feats": [],
+        },
+        prompts=prompts,
+    )
+
+    assert tuple(captured["masks"].shape) == (1, 1, 288, 288)
+
+
+def test_single_point_selects_highest_iou_candidate_without_reindexing_error() -> None:
+    """验证单点多候选能选择非首个候选，不会对已收缩分数再次索引。"""
+
+    class _PromptEncoder(torch.nn.Module):
+        def forward(self, *, points, boxes, masks):
+            return (
+                torch.zeros((1, 2, 4), dtype=torch.float32),
+                torch.zeros((1, 4, 2, 2), dtype=torch.float32),
+            )
+
+        def get_dense_pe(self):
+            return torch.zeros((1, 4, 2, 2), dtype=torch.float32)
+
+    class _MaskDecoder(torch.nn.Module):
+        def forward(self, **kwargs):
+            masks = torch.stack(
+                [
+                    torch.full((4, 4), 1.0),
+                    torch.full((4, 4), 2.0),
+                    torch.full((4, 4), 3.0),
+                ],
+            ).unsqueeze(0)
+            return (
+                masks,
+                torch.tensor([[0.2, 0.95, 0.4]]),
+                torch.zeros((1, 3, 4)),
+                torch.tensor([[1.0]]),
+            )
+
+    model = interactive_model_module.Sam3InteractiveImageModel.__new__(
+        interactive_model_module.Sam3InteractiveImageModel
+    )
+    torch.nn.Module.__init__(model)
+    model.sam_prompt_encoder = _PromptEncoder()
+    model.sam_mask_decoder = _MaskDecoder()
+    prompts = PreparedSam3InteractivePrompts(
+        point_coords=torch.tensor([[[5.0, 7.0]]]),
+        point_labels=torch.tensor([[1]], dtype=torch.int32),
+        boxes=None,
+        prompt_masks=None,
+        prompt_ids=("point-1",),
+        prompt_kinds=("point",),
+    )
+
+    mask_logits, iou_scores, final_scores = model.predict_mask_logits(
+        features={
+            "image_embed": torch.zeros((1, 4, 2, 2)),
+            "high_res_feats": [],
+        },
+        prompts=prompts,
+    )
+
+    assert torch.all(mask_logits == 2.0)
+    assert iou_scores.tolist() == [[0.949999988079071]]
+    assert final_scores.tolist() == [0.949999988079071]
+
+
+def test_image_feature_identity_prefers_payload_content_sha256() -> None:
+    """验证同图缓存优先使用 image-ref 的稳定内容摘要。"""
+
+    identity, identity_source = (
+        interactive_model_module._resolve_image_content_identity(
+            image_bytes=b"encoded-image",
+            image_payload={"content_sha256": "stable-sha"},
+        )
+    )
+    fallback_identity, fallback_source = (
+        interactive_model_module._resolve_image_content_identity(
+            image_bytes=b"encoded-image",
+            image_payload={},
+        )
+    )
+
+    assert identity == "stable-sha"
+    assert identity_source == "payload-content-sha256"
+    assert fallback_identity != "stable-sha"
+    assert fallback_source == "encoded-bytes-sha256"
 
 
 def test_postprocess_sam3_interactive_masks_builds_regions() -> None:

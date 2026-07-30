@@ -54,6 +54,11 @@ export interface PreviewImageInteractionTool {
   maskObjectKey: string | null
   sourceIdentity: string | null
   maskSrc: string | null
+  collection: boolean
+  pointLabel: string | null
+  initialPointsXy: Array<[number, number]>
+  initialBboxesXyxy: Array<[number, number, number, number]>
+  initialPolygonsXy: Array<Array<[number, number]>>
 }
 
 export interface PreviewImageInteraction {
@@ -74,14 +79,17 @@ export interface PreviewImageInteractionApplyEvent {
   searchPaddingRatio?: number | null
   searchPaddingMin?: number | null
   bboxXyxy?: [number, number, number, number]
+  bboxesXyxy?: Array<[number, number, number, number]>
   templateBboxXyxy?: [number, number, number, number]
   searchBboxXyxy?: [number, number, number, number]
   pointsXy?: Array<[number, number]>
+  polygonsXy?: Array<Array<[number, number]>>
   circle?: PreviewImageCircleOverlay
   lineXyxy?: [number, number, number, number]
   pairLinesXyxy?: Array<[number, number, number, number]>
   maskDataUrl?: string
   maskSourceIdentity?: string
+  onApplied?: (success: boolean) => void
 }
 
 export interface PreviewViewerImage {
@@ -253,6 +261,19 @@ export function useWorkflowPreviewDisplays() {
     activeImageViewer.value = image
   }
 
+  function synchronizePreviewImageInteractionParameters(
+    nodeId: string,
+    parameters: Record<string, unknown>,
+    image: PreviewViewerImage | null = null,
+  ): boolean {
+    const normalizedNodeId = nodeId.trim()
+    if (!normalizedNodeId) return false
+    return updatePreviewInteractionParameterDrafts(
+      image ?? previewNodeDisplays.value[normalizedNodeId]?.image ?? null,
+      parameters,
+    )
+  }
+
   async function replaceMaskInteractionTool(
     projectId: string,
     nodeId: string,
@@ -329,6 +350,7 @@ export function useWorkflowPreviewDisplays() {
     readPreviewNodeDisplayTooltip,
     openPreviewDisplayViewer,
     openImageViewer,
+    synchronizePreviewImageInteractionParameters,
     replaceMaskInteractionTool,
     openPreviewJsonViewer,
     closeImageViewer,
@@ -353,6 +375,36 @@ export function updateMaskInteractionTool(
     tool.maskObjectKey = objectKey
     tool.maskSrc = maskSrc
     updated = true
+  }
+  return updated
+}
+
+export function updatePreviewInteractionParameterDrafts(
+  image: PreviewViewerImage | null,
+  parameters: Record<string, unknown>,
+): boolean {
+  const tools = image?.interaction?.tools ?? []
+  let updated = false
+  for (const tool of tools) {
+    if (tool.tool === 'positive-point') {
+      tool.initialPointsXy = readPointPairs(parameters.positive_points_xy)
+      updated = true
+      continue
+    }
+    if (tool.tool === 'negative-point') {
+      tool.initialPointsXy = readPointPairs(parameters.negative_points_xy)
+      updated = true
+      continue
+    }
+    if (tool.tool === 'bbox' && tool.collection) {
+      tool.initialBboxesXyxy = readNumberTuple4Array(parameters.bboxes_xyxy)
+      updated = true
+      continue
+    }
+    if (tool.tool === 'polygon' && tool.collection) {
+      tool.initialPolygonsXy = readPointPairGroups(parameters.polygons_xy)
+      updated = true
+    }
   }
   return updated
 }
@@ -719,6 +771,11 @@ export function readPreviewImageInteractionTools(value: unknown): PreviewImageIn
       maskObjectKey: readDisplayText(rawTool.mask_object_key) || null,
       sourceIdentity: readDisplayText(rawTool.source_identity) || null,
       maskSrc: null,
+      collection: rawTool.collection === true,
+      pointLabel: readDisplayText(rawTool.point_label) || null,
+      initialPointsXy: readPointPairs(rawTool.initial_points_xy),
+      initialBboxesXyxy: readNumberTuple4Array(rawTool.initial_bboxes_xyxy),
+      initialPolygonsXy: readPointPairGroups(rawTool.initial_polygons_xy),
     }]
   })
 }
@@ -763,6 +820,24 @@ function readPointPairs(value: unknown): Array<[number, number]> {
     const pointX = readDisplayNumber(point[0])
     const pointY = readDisplayNumber(point[1])
     return pointX === null || pointY === null ? [] : [[pointX, pointY] as [number, number]]
+  })
+}
+
+function readPointPairGroups(value: unknown): Array<Array<[number, number]>> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((group) => {
+    const points = readPointPairs(group)
+    return points.length > 0 ? [points] : []
+  })
+}
+
+function readNumberTuple4Array(
+  value: unknown,
+): Array<[number, number, number, number]> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const tuple = readNumberTuple4(item)
+    return tuple ? [tuple] : []
   })
 }
 

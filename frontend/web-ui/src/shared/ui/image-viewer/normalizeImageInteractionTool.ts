@@ -13,6 +13,11 @@ export interface ViewerImageInteractionTool {
   maskObjectKey?: string | null
   sourceIdentity?: string | null
   maskSrc?: string | null
+  collection?: boolean
+  pointLabel?: string | null
+  initialPointsXy?: Array<[number, number]>
+  initialBboxesXyxy?: Array<[number, number, number, number]>
+  initialPolygonsXy?: Array<Array<[number, number]>>
 }
 
 /**
@@ -38,5 +43,10 @@ export function normalizeImageInteractionTool(
     angleToleranceDeg: toolItem.angleToleranceDeg ?? null,
     searchPaddingRatio: toolItem.searchPaddingRatio ?? null,
     searchPaddingMin: toolItem.searchPaddingMin ?? null,
+    collection: toolItem.collection ?? false,
+    pointLabel: toolItem.pointLabel ?? null,
+    initialPointsXy: toolItem.initialPointsXy ?? [],
+    initialBboxesXyxy: toolItem.initialBboxesXyxy ?? [],
+    initialPolygonsXy: toolItem.initialPolygonsXy ?? [],
   }]
 }

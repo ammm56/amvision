@@ -30,16 +30,13 @@ from backend.service.application.workflows.graph_executor import (
 
 
 def _handle_box_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """构造一条 xyxy 框 Prompt。"""
+    """构造多条 xyxy 框 Prompt。"""
 
     source_image = _read_optional_source_image(request)
-    coordinates = _read_bbox_xyxy(request.parameters.get("bbox_xyxy"))
-    if coordinates[2] <= coordinates[0] or coordinates[3] <= coordinates[1]:
-        raise InvalidRequestError(
-            "Box Prompt 要求 x2 > x1 且 y2 > y1",
-            details={"bbox_xyxy": list(coordinates)},
-        )
+    bboxes_xyxy = _read_bboxes_xyxy(request.parameters.get("bboxes_xyxy"))
     applied = request.parameters.get("prompt_applied") is True
+    if applied and not bboxes_xyxy:
+        raise InvalidRequestError("Box Prompt 至少需要一个有效 BBox")
     source_identity = build_image_reference_identity(source_image)
     if source_image is not None:
         validate_applied_prompt_source_identity(
@@ -49,35 +46,37 @@ def _handle_box_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, objec
             stored_source_identity=request.parameters.get("prompt_source_identity"),
         )
     if applied:
-        validate_prompt_geometry_bounds(
-            (
-                (coordinates[0], coordinates[1]),
-                (coordinates[2], coordinates[3]),
-            ),
-            source_image=source_image,
-            field_name="bbox_xyxy",
-        )
+        for bbox_index, coordinates in enumerate(bboxes_xyxy, start=1):
+            validate_prompt_geometry_bounds(
+                (
+                    (coordinates[0], coordinates[1]),
+                    (coordinates[2], coordinates[3]),
+                ),
+                source_image=source_image,
+                field_name=f"bboxes_xyxy[{bbox_index - 1}]",
+            )
+    prompt_id = str(request.parameters.get("prompt_id") or "prompt-1")
+    display_name = str(request.parameters.get("display_name") or prompt_id)
     outputs: dict[str, object] = {
         "prompts": (
             build_prompt_regions_payload(
-                (
+                tuple(
                     {
-                        "prompt_id": request.parameters.get("prompt_id"),
-                        "display_name": request.parameters.get("display_name"),
+                        "prompt_id": _build_item_prompt_id(prompt_id, bbox_index),
+                        "display_name": _build_item_display_name(
+                            display_name, bbox_index, len(bboxes_xyxy)
+                        ),
                         "prompt_kind": "box",
                         "bbox_xyxy": list(coordinates),
-                    },
+                    }
+                    for bbox_index, coordinates in enumerate(bboxes_xyxy, start=1)
                 ),
                 source_image=source_image,
             )
             if applied
             else {
                 "items": [],
-                **(
-                    {"source_image": source_image}
-                    if source_image is not None
-                    else {}
-                ),
+                **({"source_image": source_image} if source_image is not None else {}),
                 "draft": True,
             }
         )
@@ -91,17 +90,14 @@ def _handle_box_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, objec
                 artifact_name="box-prompt-debug-preview",
                 overlays=[
                     build_bbox_overlay(
-                        overlay_id=str(
-                            request.parameters.get("prompt_id") or "prompt-1"
-                        ),
-                        label=str(
-                            request.parameters.get("display_name")
-                            or request.parameters.get("prompt_id")
-                            or "Box Prompt"
+                        overlay_id=_build_item_prompt_id(prompt_id, bbox_index),
+                        label=_build_item_display_name(
+                            display_name, bbox_index, len(bboxes_xyxy)
                         ),
                         bbox_xyxy=coordinates,
-                        target_parameters=("bbox_xyxy",),
+                        target_parameters=("bboxes_xyxy",),
                     )
+                    for bbox_index, coordinates in enumerate(bboxes_xyxy, start=1)
                 ],
                 interaction=build_debug_panel_interaction(
                     tools=[
@@ -109,20 +105,22 @@ def _handle_box_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, objec
                             "bbox",
                             "Box",
                             [
-                                "bbox_xyxy",
+                                "bboxes_xyxy",
                                 "prompt_applied",
                                 "prompt_source_identity",
                             ],
                             clear_parameters=[
-                                "bbox_xyxy",
+                                "bboxes_xyxy",
                                 "prompt_applied",
                                 "prompt_source_identity",
                             ],
                             extra={
+                                "collection": True,
+                                "initial_bboxes_xyxy": bboxes_xyxy,
                                 "apply_parameters": {
                                     "prompt_applied": True,
                                     "prompt_source_identity": source_identity,
-                                }
+                                },
                             },
                         )
                     ],
@@ -141,17 +139,49 @@ def _read_optional_source_image(
     return None if value is None else require_image_payload(value)
 
 
-def _read_bbox_xyxy(value: object) -> tuple[float, float, float, float]:
-    """读取 xyxy 参数。"""
+def _read_bboxes_xyxy(
+    value: object,
+) -> list[tuple[float, float, float, float]]:
+    """读取多个 xyxy 参数。"""
 
-    if value is None:
-        return (0.0, 0.0, 100.0, 100.0)
-    if not isinstance(value, list) or len(value) != 4:
-        raise InvalidRequestError("Box Prompt 的 bbox_xyxy 必须包含四个数值")
-    try:
-        return tuple(float(item) for item in value)
-    except (TypeError, ValueError) as exc:
-        raise InvalidRequestError("Box Prompt 的 bbox_xyxy 必须包含四个数值") from exc
+    raw_bboxes = value if value is not None else []
+    if not isinstance(raw_bboxes, list):
+        raise InvalidRequestError("Box Prompt 的 bboxes_xyxy 必须是 BBox 数组")
+    bboxes: list[tuple[float, float, float, float]] = []
+    for bbox_index, raw_bbox in enumerate(raw_bboxes, start=1):
+        if not isinstance(raw_bbox, list) or len(raw_bbox) != 4:
+            raise InvalidRequestError(
+                "Box Prompt 的每个 BBox 必须包含四个数值",
+                details={"bbox_index": bbox_index},
+            )
+        try:
+            bbox = tuple(float(item) for item in raw_bbox)
+        except (TypeError, ValueError) as exc:
+            raise InvalidRequestError(
+                "Box Prompt 的每个 BBox 必须包含四个数值",
+                details={"bbox_index": bbox_index},
+            ) from exc
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            raise InvalidRequestError(
+                "Box Prompt 要求每个 BBox 满足 x2 > x1 且 y2 > y1",
+                details={"bbox_index": bbox_index, "bbox_xyxy": list(bbox)},
+            )
+        bboxes.append(bbox)
+    return bboxes
+
+
+def _build_item_prompt_id(prompt_id: str, item_index: int) -> str:
+    """为一个节点中的多个对象生成稳定且互不冲突的 Prompt ID。"""
+
+    return prompt_id if item_index == 1 else f"{prompt_id}-{item_index}"
+
+
+def _build_item_display_name(
+    display_name: str, item_index: int, item_count: int
+) -> str:
+    """为多对象 Prompt 生成可读显示名。"""
+
+    return display_name if item_count == 1 else f"{display_name} {item_index}"
 
 
 CORE_NODE_SPEC = CoreNodeSpec(
@@ -159,7 +189,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.input.box-prompt",
         display_name="Box Prompt",
         category="core.input.prompt",
-        description="构造一条 xyxy 矩形视觉提示。",
+        description="构造一个或多个 xyxy 矩形视觉提示。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -192,13 +222,16 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "default": "prompt-1",
                 },
                 "display_name": {"type": "string", "title": "Display Name"},
-                "bbox_xyxy": {
+                "bboxes_xyxy": {
                     "type": "array",
-                    "title": "BBox XYXY",
-                    "default": [0, 0, 100, 100],
-                    "items": {"type": "number"},
-                    "minItems": 4,
-                    "maxItems": 4,
+                    "title": "BBoxes XYXY",
+                    "default": [],
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                    },
                 },
                 "prompt_applied": {
                     "type": "boolean",

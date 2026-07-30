@@ -168,7 +168,9 @@ def test_video_interactive_segment_runs_project_native_smoke(monkeypatch) -> Non
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["postprocess_profile"] == "sam3-default"
     assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
-    assert output["tracks"]["count"] >= 1
+    # smoke checkpoint 不保证白图会通过 object score 门控；只验证视频推理
+    # 闭环与统计一致性，不能要求随机/占位权重伪造至少一个目标。
+    assert output["tracks"]["count"] == output["summary"]["track_count"]
 
 
 def test_video_interactive_segment_supports_explicit_shared_prompt_mode(
@@ -549,7 +551,8 @@ def test_video_interactive_segment_memory_attention_runs_project_native_smoke(
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 2
     assert output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
-    assert output["tracks"]["count"] >= 1
+    # memory-attention smoke checkpoint 同样不保证白图存在对象。
+    assert output["tracks"]["count"] == output["summary"]["track_count"]
 
 
 def _build_fake_frame_context(*, width: int, height: int):

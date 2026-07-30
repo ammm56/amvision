@@ -115,8 +115,8 @@
           @update-json-parameter-draft="updateNodeParameterJsonDraft"
           @commit-json-parameter-draft="commitNodeParameterJsonDraft"
           @select-deployment-instance="openDeploymentInstancePicker"
-          @open-preview-display="openPreviewDisplayViewer"
-          @open-preview-image="openImageViewer"
+          @open-preview-display="openWorkflowPreviewDisplayViewer"
+          @open-preview-image="openWorkflowImageViewer"
         />
       </div>
 
@@ -278,7 +278,12 @@ import type { WorkflowLiteGraphAdapter } from '../canvas/graph-engine/litegraph-
 import { useWorkflowConnectionRules } from '../connections/useWorkflowConnectionRules'
 import { useWorkflowContextMenu, type WorkflowContextMenuState } from '../context/useWorkflowContextMenu'
 import { useWorkflowGraphGeometry, type WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
-import { useWorkflowPreviewDisplays, type PreviewImageInteractionApplyEvent } from '../preview/useWorkflowPreviewDisplays'
+import {
+  useWorkflowPreviewDisplays,
+  type PreviewImageInteractionApplyEvent,
+  type PreviewNodeDisplay,
+  type PreviewViewerImage,
+} from '../preview/useWorkflowPreviewDisplays'
 import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
 import { getPreviewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
@@ -504,6 +509,7 @@ const {
   readPreviewNodeDisplayTooltip,
   openPreviewDisplayViewer,
   openImageViewer,
+  synchronizePreviewImageInteractionParameters,
   replaceMaskInteractionTool,
   openPreviewJsonViewer,
   closeImageViewer,
@@ -1267,9 +1273,37 @@ function setPreviewImageRefTransportKind(bindingId: string, value: SelectValue):
   updatePreviewImageRefTransportKind(bindingId, value)
 }
 
+function synchronizeCurrentNodeInteractionParameters(
+  nodeId: string,
+  image: PreviewViewerImage | null = null,
+): void {
+  const targetNode = graphNodes.value.find((node) => node.node.node_id === nodeId)
+  if (!targetNode) return
+  synchronizePreviewImageInteractionParameters(
+    nodeId,
+    targetNode.node.parameters,
+    image,
+  )
+}
+
+function openWorkflowPreviewDisplayViewer(display: PreviewNodeDisplay | null): void {
+  if (display?.image) {
+    synchronizeCurrentNodeInteractionParameters(display.nodeId, display.image)
+  }
+  openPreviewDisplayViewer(display)
+}
+
+function openWorkflowImageViewer(image: PreviewViewerImage | null): void {
+  if (image) {
+    synchronizeCurrentNodeInteractionParameters(image.nodeId, image)
+  }
+  openImageViewer(image)
+}
+
 async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyEvent): Promise<boolean> {
   if (imageInteractionApplying.value) return false
   imageInteractionApplying.value = true
+  let applied = false
   try {
     const targetNode = graphNodes.value.find((node) => node.node.node_id === event.nodeId)
     if (!targetNode) {
@@ -1326,12 +1360,17 @@ async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyE
       if (event.clearParameterNames?.length) {
         errorMessage.value = null
         selectNode(event.nodeId)
+        applied = true
         return true
       }
       errorMessage.value = t('workflowEditor.feedback.interactionUnsupported', { node: readGraphNodeTitle(targetNode) })
       return false
     }
     updateNodeParametersByName(targetNode, updates)
+    synchronizePreviewImageInteractionParameters(
+      event.nodeId,
+      targetNode.node.parameters,
+    )
     if (
       appliedMaskBinding
       && !isAppliedMaskBinding(
@@ -1350,9 +1389,11 @@ async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyE
       )
     }
     selectNode(event.nodeId)
+    applied = true
     return true
   } finally {
     imageInteractionApplying.value = false
+    event.onApplied?.(applied)
   }
 }
 
@@ -1411,6 +1452,21 @@ function buildPreviewImageInteractionParameterUpdates(
     }
     return Object.keys(updates).length > 0 ? updates : null
   }
+  if (event.tool === 'bbox' && event.bboxesXyxy?.length) {
+    const bboxes = event.bboxesXyxy
+      .map((bbox) => bbox.map(roundInteractionNumber))
+      .filter(([x1, y1, x2, y2]) => (
+        typeof x1 === 'number'
+        && typeof y1 === 'number'
+        && typeof x2 === 'number'
+        && typeof y2 === 'number'
+        && x2 > x1
+        && y2 > y1
+      ))
+    if (bboxes.length === 0) return Object.keys(updates).length ? updates : null
+    if (targetParameters.has('bboxes_xyxy')) updates.bboxes_xyxy = bboxes
+    return Object.keys(updates).length > 0 ? updates : null
+  }
   if ((event.tool === 'bbox' || event.tool === 'rect' || event.tool === 'grid') && event.bboxXyxy) {
     const [x1, y1, x2, y2] = event.bboxXyxy
     const width = Math.max(0, x2 - x1)
@@ -1443,6 +1499,19 @@ function buildPreviewImageInteractionParameterUpdates(
     }
     return updates
   }
+  if (event.tool === 'polygon' && event.polygonsXy?.length) {
+    const polygons = event.polygonsXy
+      .filter((polygon) => polygon.length >= 3)
+      .map((polygon) => polygon.map(
+        ([pointX, pointY]) => [
+          roundInteractionNumber(pointX),
+          roundInteractionNumber(pointY),
+        ],
+      ))
+    if (polygons.length === 0) return Object.keys(updates).length ? updates : null
+    if (targetParameters.has('polygons_xy')) updates.polygons_xy = polygons
+    return Object.keys(updates).length > 0 ? updates : null
+  }
   if ((event.tool === 'polygon' || event.tool === 'contour') && event.pointsXy && event.pointsXy.length >= 3) {
     const points = event.pointsXy.map(([pointX, pointY]) => [roundInteractionNumber(pointX), roundInteractionNumber(pointY)])
     if (targetParameters.has('source_points')) updates.source_points = points
@@ -1458,6 +1527,22 @@ function buildPreviewImageInteractionParameterUpdates(
       if (targetParameters.has('output_height')) updates.output_height = outputHeight
     }
     return updates
+  }
+  if (
+    (event.tool === 'positive-point' || event.tool === 'negative-point')
+    && event.pointsXy
+  ) {
+    const points = event.pointsXy.map(
+      ([pointX, pointY]) => [
+        roundInteractionNumber(pointX),
+        roundInteractionNumber(pointY),
+      ],
+    )
+    const parameterName = event.tool === 'positive-point'
+      ? 'positive_points_xy'
+      : 'negative_points_xy'
+    if (targetParameters.has(parameterName)) updates[parameterName] = points
+    return Object.keys(updates).length > 0 ? updates : null
   }
   if (event.tool === 'point' && event.pointsXy?.length === 1) {
     const [pointX, pointY] = event.pointsXy[0]

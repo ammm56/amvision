@@ -109,8 +109,7 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None
             node_id="point",
             parameters={
                 "prompt_id": "part",
-                "point_xy": [12, 24],
-                "point_label": "positive",
+                "positive_points_xy": [[12, 24]],
                 "prompt_applied": True,
             },
         )
@@ -120,7 +119,7 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None
             node_id="box",
             parameters={
                 "prompt_id": "part-box",
-                "bbox_xyxy": [2, 3, 20, 30],
+                "bboxes_xyxy": [[2, 3, 20, 30]],
                 "prompt_applied": True,
             },
         )
@@ -163,16 +162,16 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None
     assert merged["items"][2]["mask_image"] == mask_image
 
 
-def test_point_prompt_rejects_missing_coordinate() -> None:
-    """验证缺少坐标时不会构造无效视觉 Prompt。"""
+def test_point_prompt_rejects_missing_positive_point() -> None:
+    """验证已应用节点缺少 Positive 点时不会构造无效 Prompt。"""
 
-    with pytest.raises(InvalidRequestError, match="point_xy"):
+    with pytest.raises(InvalidRequestError, match="Positive"):
         _handle_point_prompt(
             _request(
                 node_id="invalid-point",
                 parameters={
                     "prompt_id": "part",
-                    "point_xy": [12],
+                    "positive_points_xy": [],
                     "prompt_applied": True,
                 },
             )
@@ -255,9 +254,7 @@ def test_mask_editor_without_applied_mask_only_outputs_debug_preview(
 
     assert set(outputs) == {"debug_preview"}
     tool = outputs["debug_preview"]["interaction"]["tools"][0]
-    assert tool["source_identity"] == (
-        "object_key:projects/project-1/source.png"
-    )
+    assert tool["source_identity"] == ("object_key:projects/project-1/source.png")
     assert "apply_parameters" not in tool
 
 
@@ -362,7 +359,7 @@ def test_mask_editor_restores_applied_mask_for_reediting(
             _handle_point_prompt,
             {
                 "prompt_id": "part",
-                "point_xy": [12, 24],
+                "positive_points_xy": [[12, 24]],
                 "prompt_applied": True,
             },
         ),
@@ -370,7 +367,7 @@ def test_mask_editor_restores_applied_mask_for_reediting(
             _handle_box_prompt,
             {
                 "prompt_id": "part",
-                "bbox_xyxy": [2, 3, 20, 30],
+                "bboxes_xyxy": [[2, 3, 20, 30]],
                 "prompt_applied": True,
             },
         ),
@@ -378,7 +375,7 @@ def test_mask_editor_restores_applied_mask_for_reediting(
             _handle_polygon_prompt,
             {
                 "prompt_id": "part",
-                "polygon_xy": [[2, 3], [20, 3], [20, 30], [2, 30]],
+                "polygons_xy": [[[2, 3], [20, 3], [20, 30], [2, 30]]],
                 "prompt_applied": True,
             },
         ),
@@ -396,9 +393,7 @@ def test_applied_geometry_prompt_rejects_changed_source_image(
                 node_id="prompt",
                 parameters={
                     **parameters,
-                    "prompt_source_identity": (
-                        "object_key:projects/project-1/old.png"
-                    ),
+                    "prompt_source_identity": ("object_key:projects/project-1/old.png"),
                 },
                 input_values={
                     "image": {
@@ -413,42 +408,76 @@ def test_applied_geometry_prompt_rejects_changed_source_image(
         )
 
 
-def test_prompt_regions_merge_supports_grouped_positive_and_negative_points() -> None:
-    """验证同一对象可由多个正负点组成。"""
+def test_point_prompt_supports_positive_and_negative_point_arrays() -> None:
+    """验证单个节点可为同一对象同时构造多个 Positive/Negative 点。"""
 
-    positive = _handle_point_prompt(
+    prompts = _handle_point_prompt(
         _request(
-            node_id="positive",
+            node_id="points",
             parameters={
                 "prompt_id": "part",
-                "point_xy": [12, 24],
-                "point_label": "positive",
-                "prompt_applied": True,
-            },
-        )
-    )["prompts"]
-    negative = _handle_point_prompt(
-        _request(
-            node_id="negative",
-            parameters={
-                "prompt_id": "part",
-                "point_xy": [30, 40],
-                "point_label": "negative",
+                "positive_points_xy": [[12, 24], [16, 28]],
+                "negative_points_xy": [[30, 40]],
                 "prompt_applied": True,
             },
         )
     )["prompts"]
 
-    merged = _handle_prompt_regions_merge(
-        _request(
-            node_id="merge",
-            input_values={"prompts": (positive, negative)},
-        )
-    )["prompts"]
-
-    assert [item["point_label"] for item in merged["items"]] == [
+    assert [item["point_label"] for item in prompts["items"]] == [
+        "positive",
         "positive",
         "negative",
+    ]
+    assert [item["point_xy"] for item in prompts["items"]] == [
+        [12.0, 24.0],
+        [16.0, 28.0],
+        [30.0, 40.0],
+    ]
+
+
+def test_box_and_polygon_prompt_support_multiple_objects() -> None:
+    """验证单个 Box/Polygon 节点可产生多个独立对象。"""
+
+    boxes = _handle_box_prompt(
+        _request(
+            node_id="boxes",
+            parameters={
+                "prompt_id": "part",
+                "display_name": "Part",
+                "bboxes_xyxy": [
+                    [2, 3, 20, 30],
+                    [32, 33, 50, 60],
+                ],
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+    polygons = _handle_polygon_prompt(
+        _request(
+            node_id="polygons",
+            parameters={
+                "prompt_id": "region",
+                "display_name": "Region",
+                "polygons_xy": [
+                    [[2, 3], [20, 3], [20, 30], [2, 30]],
+                    [[32, 33], [50, 33], [50, 60], [32, 60]],
+                ],
+                "prompt_applied": True,
+            },
+        )
+    )["prompts"]
+
+    assert [item["prompt_id"] for item in boxes["items"]] == [
+        "part",
+        "part-2",
+    ]
+    assert [item["display_name"] for item in boxes["items"]] == [
+        "Part 1",
+        "Part 2",
+    ]
+    assert [item["prompt_id"] for item in polygons["items"]] == [
+        "region",
+        "region-2",
     ]
 
 
@@ -460,7 +489,7 @@ def test_prompt_regions_merge_rejects_mixed_kinds_for_same_object() -> None:
             node_id="point",
             parameters={
                 "prompt_id": "part",
-                "point_xy": [12, 24],
+                "positive_points_xy": [[12, 24]],
                 "prompt_applied": True,
             },
         )
@@ -470,7 +499,7 @@ def test_prompt_regions_merge_rejects_mixed_kinds_for_same_object() -> None:
             node_id="box",
             parameters={
                 "prompt_id": "part",
-                "bbox_xyxy": [2, 3, 20, 30],
+                "bboxes_xyxy": [[2, 3, 20, 30]],
                 "prompt_applied": True,
             },
         )

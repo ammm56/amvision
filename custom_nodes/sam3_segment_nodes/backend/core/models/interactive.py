@@ -322,49 +322,114 @@ class Sam3InteractiveImageModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """运行 prompt encoder + mask decoder，输出低分辨率 mask logits 与得分。"""
 
+        image_embed = features["image_embed"]
+        batch_size = _read_prepared_prompt_batch_size(prompts)
         point_inputs = None
         if prompts.point_coords is not None and prompts.point_labels is not None:
             point_inputs = (prompts.point_coords, prompts.point_labels)
+        else:
+            # SAM3 参考实现即使只有 Box 或 Mask，也会加入一个 label=-1 的
+            # 空点 token。省略它会改变 sparse prompt token 序列并显著影响结果。
+            point_inputs = (
+                torch.zeros(
+                    (batch_size, 1, 2),
+                    dtype=image_embed.dtype,
+                    device=image_embed.device,
+                ),
+                -torch.ones(
+                    (batch_size, 1),
+                    dtype=torch.int32,
+                    device=image_embed.device,
+                ),
+            )
+        _synchronize_cuda_tensor(features["image_embed"])
         prompt_encoder_started_at = perf_counter()
+        prompt_masks = prompts.prompt_masks
+        if prompt_masks is not None:
+            prompt_size = tuple(
+                int(size) * 4 for size in self.sam_prompt_encoder.image_embedding_size
+            )
+            if tuple(prompt_masks.shape[-2:]) != prompt_size:
+                prompt_masks = torch.nn.functional.interpolate(
+                    prompt_masks,
+                    size=prompt_size,
+                    mode="bilinear",
+                    align_corners=False,
+                    antialias=True,
+                )
         sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
             points=point_inputs,
-            boxes=None,
-            masks=prompts.prompt_masks,
+            boxes=prompts.boxes,
+            masks=prompt_masks,
         )
+        sparse_embeddings = sparse_embeddings.to(dtype=image_embed.dtype)
+        dense_embeddings = dense_embeddings.to(dtype=image_embed.dtype)
+        _synchronize_cuda_tensor(sparse_embeddings)
         self.last_prompt_encoder_ms = round(
             (perf_counter() - prompt_encoder_started_at) * 1000,
             3,
         )
-        image_embed = features["image_embed"]
         high_res_feats = features["high_res_feats"]
-        batch_size = (
-            prompts.point_coords.shape[0]
-            if prompts.point_coords is not None
-            else prompts.prompt_masks.shape[0]
-            if prompts.prompt_masks is not None
-            else 1
-        )
         batched_mode = batch_size > 1
+        multimask_output = _should_use_multimask_output(prompts)
+        _synchronize_cuda_tensor(image_embed)
         decoder_started_at = perf_counter()
         mask_logits, iou_scores, sam_tokens_out, object_score_logits = (
             self.sam_mask_decoder(
                 image_embeddings=image_embed,
-                image_pe=self.sam_prompt_encoder.get_dense_pe(),
+                image_pe=self.sam_prompt_encoder.get_dense_pe().to(
+                    dtype=image_embed.dtype,
+                    device=image_embed.device,
+                ),
                 sparse_prompt_embeddings=sparse_embeddings,
                 dense_prompt_embeddings=dense_embeddings,
-                multimask_output=False,
+                multimask_output=multimask_output,
                 repeat_image=batched_mode,
                 high_res_features=high_res_feats,
             )
         )
+        _synchronize_cuda_tensor(mask_logits)
         self.last_mask_decoder_ms = round(
             (perf_counter() - decoder_started_at) * 1000,
             3,
         )
         del sam_tokens_out
-        final_scores = iou_scores.squeeze(1)
+        # 与 SAM3 tracker 参考实现一致：object score 小于等于零时必须把
+        # mask 设为 NO_OBJ_SCORE，不能把无对象 logits 继续交给阈值后处理。
+        object_is_present = object_score_logits > 0
+        mask_logits = torch.where(
+            object_is_present[:, :, None, None],
+            mask_logits,
+            torch.tensor(
+                -1024.0,
+                dtype=mask_logits.dtype,
+                device=mask_logits.device,
+            ),
+        )
+        final_scores = iou_scores
+        if multimask_output:
+            # SAM3 使用 IoU head 选择单点提示的最佳候选。
+            best_mask_indexes = iou_scores.argmax(dim=1)
+            batch_indexes = torch.arange(
+                mask_logits.shape[0],
+                device=mask_logits.device,
+            )
+            selected_iou_scores = iou_scores[
+                batch_indexes,
+                best_mask_indexes,
+            ]
+            mask_logits = mask_logits[batch_indexes, best_mask_indexes].unsqueeze(1)
+            iou_scores = selected_iou_scores.unsqueeze(1)
+            final_scores = selected_iou_scores
+        else:
+            final_scores = final_scores.squeeze(1)
         if object_score_logits.ndim == 2:
-            final_scores = final_scores * object_score_logits.sigmoid().squeeze(1)
+            final_scores = torch.where(
+                object_is_present.squeeze(1),
+                final_scores,
+                torch.zeros_like(final_scores),
+            )
+        self.last_multimask_output = multimask_output
         return mask_logits, iou_scores, final_scores
 
     def set_imgsz(self, imgsz: list[int] = [1008, 1008]) -> None:
@@ -443,6 +508,7 @@ class Sam3InteractiveRuntimeSession:
         self._last_preprocess_ms = 0.0
         self._last_backbone_ms = 0.0
         self._last_feature_cache_hit = False
+        self._last_feature_cache_identity_source = "encoded-bytes-sha256"
 
     @torch.inference_mode()
     def prepare_frame_context(
@@ -478,8 +544,10 @@ class Sam3InteractiveRuntimeSession:
             (perf_counter() - preprocess_started_at) * 1000,
             3,
         )
+        _synchronize_cuda_tensor(prepared_image.image_tensor)
         backbone_started_at = perf_counter()
         features = self.model.extract_interactive_features(prepared_image)
+        _synchronize_cuda_tensor(features["image_embed"])
         self._last_backbone_ms = round(
             (perf_counter() - backbone_started_at) * 1000,
             3,
@@ -504,7 +572,11 @@ class Sam3InteractiveRuntimeSession:
     ) -> tuple[Sam3InteractiveFrameContext, bool]:
         """只保留最近一张图片的 interactive feature context。"""
 
-        image_content_sha256 = sha256(image_bytes).hexdigest()
+        image_content_sha256, identity_source = _resolve_image_content_identity(
+            image_bytes=image_bytes,
+            image_payload=image_payload,
+        )
+        self._last_feature_cache_identity_source = identity_source
         cache_key = "|".join(
             (
                 self.model_asset_id,
@@ -542,6 +614,7 @@ class Sam3InteractiveRuntimeSession:
         *,
         frame_context: Sam3InteractiveFrameContext,
         prompt_items: tuple[object, ...],
+        refine_iterations: int = 2,
         mask_threshold: float = DEFAULT_MASK_THRESHOLD,
         stability_offset: float = DEFAULT_STABILITY_OFFSET,
         min_component_area: int | None = None,
@@ -550,18 +623,19 @@ class Sam3InteractiveRuntimeSession:
         """复用已提取的单帧特征执行 interactive prompt 推理。"""
 
         prepared_image = frame_context.prepared_image
+        normalized_refine_iterations = max(1, min(int(refine_iterations), 3))
         mask_logits_list: list[torch.Tensor] = []
         final_scores_list: list[torch.Tensor] = []
         prompt_prepare_ms = 0.0
         prompt_encoder_ms = 0.0
         decoder_ms = 0.0
+        used_multimask_output = False
         sparse_prompt_kinds = {
             str(getattr(item, "prompt_kind", "")) for item in prompt_items
         }
-        can_batch_sparse_prompts = (
-            len(sparse_prompt_kinds) == 1
-            and sparse_prompt_kinds.issubset({"point", "box"})
-        )
+        can_batch_sparse_prompts = len(
+            sparse_prompt_kinds
+        ) == 1 and sparse_prompt_kinds.issubset({"point", "box"})
         prompt_batches = (
             (prompt_items,)
             if can_batch_sparse_prompts
@@ -591,6 +665,37 @@ class Sam3InteractiveRuntimeSession:
                 getattr(self.model, "last_prompt_encoder_ms", 0.0)
             )
             decoder_ms += float(getattr(self.model, "last_mask_decoder_ms", 0.0))
+            used_multimask_output = used_multimask_output or bool(
+                getattr(self.model, "last_multimask_output", False)
+            )
+            for _refine_index in range(1, normalized_refine_iterations):
+                refine_mask_logits = torch.nn.functional.interpolate(
+                    item_mask_logits,
+                    size=(
+                        prepared_image.target_height,
+                        prepared_image.target_width,
+                    ),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                refined_prompts = PreparedSam3InteractivePrompts(
+                    point_coords=None,
+                    point_labels=None,
+                    boxes=None,
+                    prompt_masks=refine_mask_logits,
+                    prompt_ids=prompts.prompt_ids,
+                    prompt_kinds=tuple("mask" for _ in prompts.prompt_kinds),
+                )
+                item_mask_logits, _item_iou_scores, item_final_scores = (
+                    self.model.predict_mask_logits(
+                        features=frame_context.features,
+                        prompts=refined_prompts,
+                    )
+                )
+                prompt_encoder_ms += float(
+                    getattr(self.model, "last_prompt_encoder_ms", 0.0)
+                )
+                decoder_ms += float(getattr(self.model, "last_mask_decoder_ms", 0.0))
             mask_logits_list.append(item_mask_logits)
             final_scores_list.append(item_final_scores.reshape(-1))
         mask_logits = torch.cat(mask_logits_list, dim=0)
@@ -599,8 +704,19 @@ class Sam3InteractiveRuntimeSession:
         prompt_encoder_ms = round(prompt_encoder_ms, 3)
         decoder_ms = round(decoder_ms, 3)
         postprocess_started_at = perf_counter()
+        # 参考实现先恢复到模型输入分辨率，再映射回源图。直接从 decoder
+        # 低分辨率放大到源图会改变边界插值，尤其影响小目标和细边缘。
+        high_resolution_mask_logits = torch.nn.functional.interpolate(
+            mask_logits.float(),
+            size=(
+                prepared_image.target_height,
+                prepared_image.target_width,
+            ),
+            mode="bilinear",
+            align_corners=False,
+        )
         region_items = postprocess_sam3_interactive_masks(
-            mask_logits,
+            high_resolution_mask_logits,
             source_width=prepared_image.original_width,
             source_height=prepared_image.original_height,
             prompt_items=prompt_items,
@@ -610,9 +726,7 @@ class Sam3InteractiveRuntimeSession:
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
-        postprocess_ms = round(
-            (perf_counter() - postprocess_started_at) * 1000, 3
-        )
+        postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         prompt_kinds = sorted({str(item.prompt_kind) for item in prompt_items})
         summary = {
             "project_native": True,
@@ -651,6 +765,7 @@ class Sam3InteractiveRuntimeSession:
                 "misses": self._feature_cache_misses,
                 "session_generation": self.session_generation,
                 "checkpoint_sha256": self.checkpoint_sha256 or None,
+                "identity_source": self._last_feature_cache_identity_source,
             },
             "timings_ms": {
                 "preprocess": self._last_preprocess_ms,
@@ -665,18 +780,11 @@ class Sam3InteractiveRuntimeSession:
                 if can_batch_sparse_prompts and len(prompt_items) > 1
                 else "single"
             ),
+            "single_point_multimask_selection": used_multimask_output,
+            "refine_iterations": normalized_refine_iterations,
             "cuda_memory": _read_cuda_memory_summary(self.device_name),
         }
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
-
-    def close(self) -> None:
-        """释放模型引用和可回收的 CUDA 显存。"""
-
-        self.model.to(device=torch.device("cpu"))
-        self._feature_cache_context = None
-        self._feature_cache_key = None
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
     @torch.inference_mode()
     def predict(
@@ -685,6 +793,7 @@ class Sam3InteractiveRuntimeSession:
         image_bytes: bytes,
         image_payload: object,
         prompt_items: tuple[object, ...],
+        refine_iterations: int = 2,
         mask_threshold: float = DEFAULT_MASK_THRESHOLD,
         stability_offset: float = DEFAULT_STABILITY_OFFSET,
         min_component_area: int | None = None,
@@ -698,11 +807,76 @@ class Sam3InteractiveRuntimeSession:
         return self.predict_from_frame_context(
             frame_context=frame_context,
             prompt_items=prompt_items,
+            refine_iterations=refine_iterations,
             mask_threshold=mask_threshold,
             stability_offset=stability_offset,
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
+
+    def close(self) -> None:
+        """释放模型引用和可回收的 CUDA 显存。"""
+
+        self.model.to(device=torch.device("cpu"))
+        self._feature_cache_context = None
+        self._feature_cache_key = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def _should_use_multimask_output(
+    prompts: PreparedSam3InteractivePrompts,
+) -> bool:
+    """单正点且没有 Box 时生成多个候选，并由模型得分选择最佳 Mask。"""
+
+    if not prompts.prompt_kinds or any(
+        prompt_kind != "point" for prompt_kind in prompts.prompt_kinds
+    ):
+        return False
+    if prompts.point_labels is None:
+        return False
+    valid_label_counts = (prompts.point_labels >= 0).sum(dim=1)
+    positive_label_counts = (prompts.point_labels == 1).sum(dim=1)
+    return bool(
+        torch.all(valid_label_counts == 1).item()
+        and torch.all(positive_label_counts == 1).item()
+    )
+
+
+def _read_prepared_prompt_batch_size(
+    prompts: PreparedSam3InteractivePrompts,
+) -> int:
+    """按 Point、Box、Mask 的真实输入优先级读取 Prompt batch。"""
+
+    if prompts.point_coords is not None:
+        return int(prompts.point_coords.shape[0])
+    if prompts.boxes is not None:
+        return int(prompts.boxes.shape[0])
+    if prompts.prompt_masks is not None:
+        return int(prompts.prompt_masks.shape[0])
+    return 1
+
+
+def _resolve_image_content_identity(
+    *,
+    image_bytes: bytes,
+    image_payload: object,
+) -> tuple[str, str]:
+    """优先使用 image-ref 自带内容摘要，缺失时回退到实际读取字节。"""
+
+    if isinstance(image_payload, dict):
+        content_sha256 = str(image_payload.get("content_sha256") or "").strip()
+        if content_sha256:
+            return content_sha256, "payload-content-sha256"
+    return sha256(image_bytes).hexdigest(), "encoded-bytes-sha256"
+
+
+def _synchronize_cuda_tensor(value: object) -> None:
+    """在计时边界同步相关 CUDA device，避免异步执行污染阶段耗时。"""
+
+    if not torch.is_tensor(value) or value.device.type != "cuda":
+        return
+    torch.cuda.synchronize(value.device)
 
 
 def _read_cuda_memory_summary(device_name: str) -> dict[str, int] | None:

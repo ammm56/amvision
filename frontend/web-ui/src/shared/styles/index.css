@@ -4352,32 +4352,21 @@ textarea:focus-visible {
   background: rgb(255 255 255 / 0.06);
 }
 
-.image-viewer__interaction-feedback {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  max-width: 260px;
-  padding: 0 10px;
-  border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
+.image-viewer__status-message {
+  min-width: 0;
+  text-align: center;
 }
 
-.image-viewer__interaction-feedback--success {
-  color: #bbf7d0;
-  background: rgb(22 163 74 / 0.18);
+.image-viewer__status-message--success {
+  color: #86efac;
 }
 
-.image-viewer__interaction-feedback--warning {
-  color: #fde68a;
-  background: rgb(217 119 6 / 0.18);
+.image-viewer__status-message--warning {
+  color: #fcd34d;
 }
 
-.image-viewer__interaction-feedback--info {
-  color: #bfdbfe;
-  background: rgb(37 99 235 / 0.18);
+.image-viewer__status-message--info {
+  color: #93c5fd;
 }
 
 .image-viewer__close.ui-button {
@@ -4702,6 +4691,129 @@ textarea:focus-visible {
   stroke: #111619;
   stroke-width: 2;
   fill: #f59e0b;
+}
+
+.image-viewer__overlay-point--positive {
+  fill: #22c55e;
+}
+
+.image-viewer__overlay-point--negative {
+  fill: #ef4444;
+}
+
+.image-geometry-editor__shape {
+  vector-effect: non-scaling-stroke;
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 5;
+  fill: rgb(245 158 11 / 0.14);
+  pointer-events: none;
+}
+
+.image-geometry-editor__shape--editable {
+  cursor: move;
+  pointer-events: visiblePainted;
+}
+
+.image-geometry-editor__shape:hover,
+.image-geometry-editor__shape--selected {
+  stroke: #22d3ee;
+  stroke-width: 3;
+  fill: rgb(34 211 238 / 0.16);
+}
+
+.image-geometry-editor__handle,
+.image-geometry-editor__vertex {
+  vector-effect: non-scaling-stroke;
+  pointer-events: all;
+  stroke: #0f172a;
+  stroke-width: 1.5;
+  fill: #f8fafc;
+}
+
+.image-geometry-editor__handle--n,
+.image-geometry-editor__handle--s {
+  cursor: ns-resize;
+}
+
+.image-geometry-editor__handle--e,
+.image-geometry-editor__handle--w {
+  cursor: ew-resize;
+}
+
+.image-geometry-editor__handle--nw,
+.image-geometry-editor__handle--se {
+  cursor: nwse-resize;
+}
+
+.image-geometry-editor__handle--ne,
+.image-geometry-editor__handle--sw {
+  cursor: nesw-resize;
+}
+
+.image-geometry-editor__vertex {
+  cursor: grab;
+}
+
+.image-geometry-editor__point {
+  vector-effect: non-scaling-stroke;
+  stroke: #111619;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.image-geometry-editor__point--editable {
+  cursor: move;
+  pointer-events: visiblePainted;
+}
+
+.image-geometry-editor__point--positive {
+  fill: #22c55e;
+}
+
+.image-geometry-editor__point--negative {
+  fill: #ef4444;
+}
+
+.image-geometry-editor__delete {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.image-geometry-editor__item .image-geometry-editor__handle,
+.image-geometry-editor__item .image-geometry-editor__vertex,
+.image-geometry-editor__item .image-geometry-editor__delete,
+.image-geometry-editor__point-item .image-geometry-editor__delete {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.image-geometry-editor__item--editable:hover .image-geometry-editor__handle,
+.image-geometry-editor__item--editable:hover .image-geometry-editor__vertex,
+.image-geometry-editor__item--editable:hover .image-geometry-editor__delete,
+.image-geometry-editor__item--editable.image-geometry-editor__item--selected .image-geometry-editor__handle,
+.image-geometry-editor__item--editable.image-geometry-editor__item--selected .image-geometry-editor__vertex,
+.image-geometry-editor__item--editable.image-geometry-editor__item--selected .image-geometry-editor__delete,
+.image-geometry-editor__point-item--editable:hover .image-geometry-editor__delete,
+.image-geometry-editor__point-item--editable.image-geometry-editor__point-item--selected .image-geometry-editor__delete {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.image-geometry-editor__delete circle {
+  vector-effect: non-scaling-stroke;
+  stroke: #fff;
+  stroke-width: 1.5;
+  fill: #dc2626;
+}
+
+.image-geometry-editor__delete path {
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
 }
 
 .image-viewer__empty {

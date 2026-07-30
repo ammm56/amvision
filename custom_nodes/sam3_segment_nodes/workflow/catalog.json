@@ -193,6 +193,13 @@
             "minimum": 0.0,
             "maximum": 0.1,
             "default": 0.002
+          },
+          "refine_iterations": {
+            "type": "integer",
+            "title": "Refine Iterations",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
           }
         }
       },

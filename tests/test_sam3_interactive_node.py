@@ -23,9 +23,18 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
+        def predict(
+            self,
+            *,
+            image_bytes: bytes,
+            image_payload,
+            prompt_items,
+            refine_iterations: int,
+            **_,
+        ):
             captured["image_bytes_length"] = len(image_bytes)
             captured["prompt_items"] = prompt_items
+            captured["refine_iterations"] = refine_iterations
             return SimpleNamespace(
                 regions=(
                     SimpleNamespace(
@@ -119,6 +128,7 @@ def test_interactive_segment_returns_regions_and_summary(monkeypatch) -> None:
     assert output["summary"]["inference_mode"] == "interactive-segment"
     assert output["summary"]["prompt_ids"] == ["prompt-1"]
     assert output["summary"]["source_image"]["transport_kind"] == "memory"
+    assert captured["refine_iterations"] == 2
 
 
 def test_interactive_segment_accepts_polygon_prompt(monkeypatch) -> None:
@@ -282,7 +292,10 @@ def test_interactive_segment_runs_project_native_smoke(monkeypatch) -> None:
     assert output["summary"]["inference_mode"] == "interactive-segment"
     assert output["summary"]["prompt_kinds"] == ["box"]
     assert output["summary"]["postprocess_profile"] == "sam3-default"
-    assert output["regions"]["count"] >= 1
+    # 本测试使用本地 smoke checkpoint，权重不保证会把白图判定为存在对象。
+    # 真实 SAM3 路径现在会按 object_score_logits 抑制无对象 Mask，因此这里
+    # 只验证 project-native 推理闭环和摘要一致性，不伪造必须命中目标的语义。
+    assert output["regions"]["count"] == output["summary"]["region_count"]
 
 
 def _build_test_image_payload(

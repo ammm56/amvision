@@ -30,35 +30,20 @@ from backend.service.application.workflows.graph_executor import (
 
 
 def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """构造一条多边形视觉 Prompt。"""
+    """构造多条多边形视觉 Prompt。"""
 
     source_image = _read_optional_source_image(request)
-    raw_polygon = request.parameters.get("polygon_xy")
-    if raw_polygon is None:
-        raw_polygon = [[0, 0], [100, 0], [100, 100], [0, 100]]
-    if not isinstance(raw_polygon, list) or len(raw_polygon) < 3:
-        raise InvalidRequestError("Polygon Prompt 至少需要三个坐标点")
-    polygon_xy: list[list[float]] = []
-    for point_index, point in enumerate(raw_polygon, start=1):
-        if not isinstance(point, list) or len(point) != 2:
-            raise InvalidRequestError(
-                "Polygon Prompt 的每个坐标点必须是长度为 2 的数组",
-                details={"point_index": point_index},
-            )
-        try:
-            polygon_xy.append([float(point[0]), float(point[1])])
-        except (TypeError, ValueError) as exc:
-            raise InvalidRequestError(
-                "Polygon Prompt 坐标必须是数字",
-                details={"point_index": point_index},
-            ) from exc
+    polygons_xy = _read_polygons_xy(request.parameters.get("polygons_xy"))
     applied = request.parameters.get("prompt_applied") is True
+    if applied and not polygons_xy:
+        raise InvalidRequestError("Polygon Prompt 至少需要一个有效 Polygon")
     if applied:
-        validate_prompt_geometry_bounds(
-            polygon_xy,
-            source_image=source_image,
-            field_name="polygon_xy",
-        )
+        for polygon_index, polygon_xy in enumerate(polygons_xy, start=1):
+            validate_prompt_geometry_bounds(
+                polygon_xy,
+                source_image=source_image,
+                field_name=f"polygons_xy[{polygon_index - 1}]",
+            )
     source_identity = build_image_reference_identity(source_image)
     if source_image is not None:
         validate_applied_prompt_source_identity(
@@ -67,27 +52,28 @@ def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, o
             source_identity=source_identity,
             stored_source_identity=request.parameters.get("prompt_source_identity"),
         )
+    prompt_id = str(request.parameters.get("prompt_id") or "prompt-1")
+    display_name = str(request.parameters.get("display_name") or prompt_id)
     outputs: dict[str, object] = {
         "prompts": (
             build_prompt_regions_payload(
-                (
+                tuple(
                     {
-                        "prompt_id": request.parameters.get("prompt_id"),
-                        "display_name": request.parameters.get("display_name"),
+                        "prompt_id": _build_item_prompt_id(prompt_id, polygon_index),
+                        "display_name": _build_item_display_name(
+                            display_name, polygon_index, len(polygons_xy)
+                        ),
                         "prompt_kind": "polygon",
                         "polygon_xy": polygon_xy,
-                    },
+                    }
+                    for polygon_index, polygon_xy in enumerate(polygons_xy, start=1)
                 ),
                 source_image=source_image,
             )
             if applied
             else {
                 "items": [],
-                **(
-                    {"source_image": source_image}
-                    if source_image is not None
-                    else {}
-                ),
+                **({"source_image": source_image} if source_image is not None else {}),
                 "draft": True,
             }
         )
@@ -101,17 +87,14 @@ def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, o
                 artifact_name="polygon-prompt-debug-preview",
                 overlays=[
                     build_polygon_overlay(
-                        overlay_id=str(
-                            request.parameters.get("prompt_id") or "prompt-1"
-                        ),
-                        label=str(
-                            request.parameters.get("display_name")
-                            or request.parameters.get("prompt_id")
-                            or "Polygon Prompt"
+                        overlay_id=_build_item_prompt_id(prompt_id, polygon_index),
+                        label=_build_item_display_name(
+                            display_name, polygon_index, len(polygons_xy)
                         ),
                         polygon_xy=polygon_xy,
-                        target_parameters=("polygon_xy",),
+                        target_parameters=("polygons_xy",),
                     )
+                    for polygon_index, polygon_xy in enumerate(polygons_xy, start=1)
                 ],
                 interaction=build_debug_panel_interaction(
                     tools=[
@@ -119,17 +102,19 @@ def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, o
                             "polygon",
                             "Polygon",
                             [
-                                "polygon_xy",
+                                "polygons_xy",
                                 "prompt_applied",
                                 "prompt_source_identity",
                             ],
                             clear_parameters=[
-                                "polygon_xy",
+                                "polygons_xy",
                                 "prompt_applied",
                                 "prompt_source_identity",
                             ],
                             extra={
+                                "collection": True,
                                 "min_points": 3,
+                                "initial_polygons_xy": polygons_xy,
                                 "apply_parameters": {
                                     "prompt_applied": True,
                                     "prompt_source_identity": source_identity,
@@ -141,6 +126,57 @@ def _handle_polygon_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, o
             )
         )
     return outputs
+
+
+def _read_polygons_xy(value: object) -> list[list[list[float]]]:
+    """读取多个简单多边形。"""
+
+    raw_polygons = value if value is not None else []
+    if not isinstance(raw_polygons, list):
+        raise InvalidRequestError("Polygon Prompt 的 polygons_xy 必须是 Polygon 数组")
+    polygons_xy: list[list[list[float]]] = []
+    for polygon_index, raw_polygon in enumerate(raw_polygons, start=1):
+        if not isinstance(raw_polygon, list) or len(raw_polygon) < 3:
+            raise InvalidRequestError(
+                "Polygon Prompt 的每个 Polygon 至少需要三个坐标点",
+                details={"polygon_index": polygon_index},
+            )
+        polygon_xy: list[list[float]] = []
+        for point_index, point in enumerate(raw_polygon, start=1):
+            if not isinstance(point, list) or len(point) != 2:
+                raise InvalidRequestError(
+                    "Polygon Prompt 的每个坐标点必须是长度为 2 的数组",
+                    details={
+                        "polygon_index": polygon_index,
+                        "point_index": point_index,
+                    },
+                )
+            try:
+                polygon_xy.append([float(point[0]), float(point[1])])
+            except (TypeError, ValueError) as exc:
+                raise InvalidRequestError(
+                    "Polygon Prompt 坐标必须是数字",
+                    details={
+                        "polygon_index": polygon_index,
+                        "point_index": point_index,
+                    },
+                ) from exc
+        polygons_xy.append(polygon_xy)
+    return polygons_xy
+
+
+def _build_item_prompt_id(prompt_id: str, item_index: int) -> str:
+    """为一个节点中的多个对象生成稳定且互不冲突的 Prompt ID。"""
+
+    return prompt_id if item_index == 1 else f"{prompt_id}-{item_index}"
+
+
+def _build_item_display_name(
+    display_name: str, item_index: int, item_count: int
+) -> str:
+    """为多对象 Prompt 生成可读显示名。"""
+
+    return display_name if item_count == 1 else f"{display_name} {item_index}"
 
 
 def _read_optional_source_image(
@@ -157,7 +193,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.input.polygon-prompt",
         display_name="Polygon Prompt",
         category="core.input.prompt",
-        description="用不少于三个 xy 坐标点构造多边形视觉提示。",
+        description="构造一个或多个不少于三个 xy 坐标点的多边形视觉提示。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -190,17 +226,20 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "default": "prompt-1",
                 },
                 "display_name": {"type": "string", "title": "Display Name"},
-                "polygon_xy": {
+                "polygons_xy": {
                     "type": "array",
-                    "title": "Polygon XY",
-                    "default": [[0, 0], [100, 0], [100, 100], [0, 100]],
+                    "title": "Polygons XY",
+                    "default": [],
                     "items": {
                         "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 2,
-                        "maxItems": 2,
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 2,
+                            "maxItems": 2,
+                        },
+                        "minItems": 3,
                     },
-                    "minItems": 3,
                 },
                 "prompt_applied": {
                     "type": "boolean",

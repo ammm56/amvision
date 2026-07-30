@@ -38,6 +38,16 @@
             >
               {{ t('imageViewer.toolbar.deleteVertex') }}
             </Button>
+            <Button
+              v-if="interactionTool === 'polygon' && activeInteractionTool?.collection && draftPointPairs.length >= activePolygonMinPoints"
+              size="sm"
+              variant="secondary"
+              type="button"
+              :disabled="draftPolygonSelfIntersects"
+              @click="finishDraftPolygon"
+            >
+              {{ t('imageViewer.toolbar.addPolygon') }}
+            </Button>
             <div v-if="interactionTool === 'mask'" class="image-viewer__tool-tabs">
               <Button size="sm" :variant="maskDrawMode === 'brush' ? 'primary' : 'secondary'" type="button" @click="maskDrawMode = 'brush'">{{ t('imageViewer.toolbar.brush') }}</Button>
               <Button size="sm" :variant="maskDrawMode === 'eraser' ? 'primary' : 'secondary'" type="button" @click="maskDrawMode = 'eraser'">{{ t('imageViewer.toolbar.eraser') }}</Button>
@@ -61,9 +71,16 @@
               <Trash2 :size="15" />
               {{ t('imageViewer.toolbar.clear') }}
             </Button>
-            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction || previewDisabled || previewRunning || interactionApplying" @click="applyInteractionDraft">
+            <Button
+              size="sm"
+              variant="primary"
+              type="button"
+              :title="t('imageViewer.toolbar.applyParams')"
+              :disabled="!canApplyInteraction || interactionApplying"
+              @click="applyInteractionDraft"
+            >
               <Check :size="15" />
-              {{ t('imageViewer.toolbar.applyParams') }}
+              {{ interactionApplyButtonText }}
             </Button>
             <Button
               size="sm"
@@ -76,13 +93,6 @@
               <Play :size="15" />
               {{ previewRunning ? t('imageViewer.toolbar.previewRunning') : (hasInteractionDraft ? t('imageViewer.toolbar.applyAndPreview') : 'Preview Run') }}
             </Button>
-            <span
-              v-if="interactionFeedback"
-              class="image-viewer__interaction-feedback"
-              :class="`image-viewer__interaction-feedback--${interactionFeedback.tone}`"
-            >
-              {{ interactionFeedback.text }}
-            </span>
           </div>
           <Button size="sm" variant="secondary" type="button" :title="t('imageViewer.toolbar.fit')" @click="fitImage">
             <Maximize2 :size="15" />
@@ -290,6 +300,21 @@
             >
               Search
             </text>
+            <ImageGeometryEditorOverlay
+              :editable="interactionActive"
+              :active-tool="interactionTool"
+              :canvas-width="imageCoordinateWidth"
+              :canvas-height="imageCoordinateHeight"
+              :bboxes="draftBboxesXyxy"
+              :polygons="draftPolygonsXy"
+              :positive-points="positiveDraftPointPairs"
+              :negative-points="negativeDraftPointPairs"
+              @update:bboxes="updateDraftBboxes"
+              @update:polygons="updateDraftPolygons"
+              @update:positive-points="updatePositiveDraftPoints"
+              @update:negative-points="updateNegativeDraftPoints"
+              @changed="markInteractionDraftDirty"
+            />
             <rect
               v-if="draftBboxXyxy"
               class="image-viewer__overlay-shape image-viewer__overlay-shape--draft"
@@ -386,7 +411,23 @@
           <span>{{ Math.round(scale * 100) }}%</span>
           <span v-for="metric in imageMetricItems" :key="metric">{{ metric }}</span>
         </div>
-        <span v-if="interactionStatusText">{{ interactionStatusText }}</span>
+        <span
+          v-if="interactionFeedback"
+          class="image-viewer__status-message"
+          :class="`image-viewer__status-message--${interactionFeedback.tone}`"
+        >
+          {{ interactionFeedback.text }}
+        </span>
+        <span
+          v-else-if="interactionApplyStatusText"
+          class="image-viewer__status-message"
+          :class="interactionDraftState === 'dirty' || interactionDraftState === 'failed'
+            ? 'image-viewer__status-message--warning'
+            : 'image-viewer__status-message--success'"
+        >
+          {{ interactionApplyStatusText }}
+        </span>
+        <span v-else-if="interactionStatusText">{{ interactionStatusText }}</span>
         <span>{{ image.sourceObjectKey || image.objectKey || 'inline-base64' }}</span>
       </div>
     </div>
@@ -400,6 +441,7 @@ import { Check, Crosshair, Maximize2, Play, RotateCcw, Trash2, X, ZoomIn, ZoomOu
 
 import Button from './Button.vue'
 import ImageGeometryAnnotations from '../image-viewer/ImageGeometryAnnotations.vue'
+import ImageGeometryEditorOverlay from '../image-viewer/ImageGeometryEditorOverlay.vue'
 import { useImageGeometryAnnotations } from '../image-viewer/useImageGeometryAnnotations'
 import { dispatchImageViewerPreview } from '../image-viewer/dispatchImageViewerPreview'
 import {
@@ -407,6 +449,10 @@ import {
   type ViewerImageInteractionTool,
 } from '../image-viewer/normalizeImageInteractionTool'
 import { useImageViewerViewport } from '../image-viewer/useImageViewerViewport'
+import type {
+  ImageBboxTuple,
+  ImagePointTuple,
+} from '../image-viewer/geometryEditing'
 
 interface ViewerImageCircleOverlay {
   centerX: number
@@ -483,14 +529,17 @@ interface ViewerImageInteractionApplyEvent {
   searchPaddingRatio?: number | null
   searchPaddingMin?: number | null
   bboxXyxy?: [number, number, number, number]
+  bboxesXyxy?: Array<[number, number, number, number]>
   templateBboxXyxy?: [number, number, number, number]
   searchBboxXyxy?: [number, number, number, number]
   pointsXy?: Array<[number, number]>
+  polygonsXy?: Array<Array<[number, number]>>
   circle?: ViewerImageCircleOverlay
   lineXyxy?: [number, number, number, number]
   pairLinesXyxy?: Array<[number, number, number, number]>
   maskDataUrl?: string
   maskSourceIdentity?: string
+  onApplied?: (success: boolean) => void
 }
 
 interface ImagePoint {
@@ -515,6 +564,8 @@ type CircleDraftMode = 'center-radius' | 'three-point'
 type TemplateRegionStage = 'template' | 'search'
 type InteractionToolId =
   | 'point'
+  | 'positive-point'
+  | 'negative-point'
   | 'mask'
   | 'bbox'
   | 'rect'
@@ -530,6 +581,8 @@ type InteractionToolId =
 
 const interactionToolRegistry: Record<InteractionToolId, { messageKey: string }> = {
   point: { messageKey: 'imageViewer.tools.point' },
+  'positive-point': { messageKey: 'imageViewer.tools.positivePoint' },
+  'negative-point': { messageKey: 'imageViewer.tools.negativePoint' },
   mask: { messageKey: 'imageViewer.tools.mask' },
   bbox: { messageKey: 'imageViewer.tools.bbox' },
   rect: { messageKey: 'imageViewer.tools.rect' },
@@ -568,11 +621,14 @@ const naturalHeight = ref(0)
 const interactionActive = ref(false)
 const selectedInteractionTool = ref('')
 const draftBbox = ref<{ start: ImagePoint; current: ImagePoint } | null>(null)
+const draftBboxesXyxy = ref<Array<[number, number, number, number]>>([])
 const draftLine = ref<{ start: ImagePoint; current: ImagePoint } | null>(null)
 const draftPairLines = ref<Array<[number, number, number, number]>>([])
 const draftCircleCenter = ref<ImagePoint | null>(null)
 const draftCircleEdge = ref<ImagePoint | null>(null)
 const draftPoints = ref<ImagePoint[]>([])
+const draftPolygonsXy = ref<Array<Array<[number, number]>>>([])
+const draftPointCollections = ref<Record<string, Array<[number, number]>>>({})
 const maskCanvasRef = ref<HTMLCanvasElement | null>(null)
 const maskDrawMode = ref<'brush' | 'eraser'>('brush')
 const maskBrushSize = ref(24)
@@ -590,6 +646,7 @@ const draftSearchBboxXyxy = ref<[number, number, number, number] | null>(null)
 const tuningParameterValues = ref<Record<string, unknown>>({})
 const autoPreviewEnabled = ref(true)
 const interactionFeedback = ref<{ text: string; tone: 'success' | 'warning' | 'info' } | null>(null)
+const interactionDraftState = ref<'idle' | 'applied' | 'dirty' | 'applying' | 'failed'>('idle')
 const clearedGeometryLocally = ref(false)
 let tuningPreviewTimer: ReturnType<typeof window.setTimeout> | null = null
 let interactionFeedbackTimer: ReturnType<typeof window.setTimeout> | null = null
@@ -633,6 +690,19 @@ const activeInteractionTool = computed(() => {
   if (tools.length === 0) return null
   return tools.find((tool) => tool.tool === selectedInteractionTool.value) ?? tools[0]
 })
+// 交互子工具切换不能重置同一编辑会话中的草稿。例如 Point Prompt
+// 需要在 Positive 与 Negative 之间反复切换并共同提交。这里只跟踪服务端
+// 下发的初始化数据；只有图片、节点或已保存几何真正变化时才重新初始化。
+const interactionInitializationIdentity = computed(() => JSON.stringify(
+  availableInteractionTools.value.map((tool) => ({
+    tool: tool.tool,
+    sourceIdentity: tool.sourceIdentity ?? null,
+    maskSrc: tool.maskSrc ?? null,
+    initialPointsXy: tool.initialPointsXy ?? null,
+    initialBboxesXyxy: tool.initialBboxesXyxy ?? null,
+    initialPolygonsXy: tool.initialPolygonsXy ?? null,
+  })),
+))
 const interactionTool = computed(() => activeInteractionTool.value?.tool ?? '')
 const activeTargetParameters = computed(() => activeInteractionTool.value?.targetParameters ?? [])
 const activePolygonMinPoints = computed(() => {
@@ -746,6 +816,19 @@ const draftLineAngleGuideMin = computed(() => draftLineVisualGuide.value?.angleG
 const draftLineAngleGuideMax = computed(() => draftLineVisualGuide.value?.angleGuideMax ?? null)
 const draftLineGuideLabel = computed(() => draftLineVisualGuide.value?.label ?? null)
 const draftPointPairs = computed<Array<[number, number]>>(() => draftPoints.value.map((point) => [roundImageCoordinate(point.x), roundImageCoordinate(point.y)]))
+const positiveDraftPointPairs = computed<Array<[number, number]>>(
+  () => draftPointCollections.value['positive-point'] ?? [],
+)
+const negativeDraftPointPairs = computed<Array<[number, number]>>(
+  () => draftPointCollections.value['negative-point'] ?? [],
+)
+const activeCollectionPointPairs = computed<Array<[number, number]>>(
+  () => draftPointCollections.value[interactionTool.value] ?? [],
+)
+const collectionPolygonsValid = computed(() => draftPolygonsXy.value.every(
+  (polygon) => polygon.length >= activePolygonMinPoints.value
+    && !polygonHasSelfIntersection(polygon),
+))
 const draftPointsText = computed(() => draftPointPairs.value.map(([pointX, pointY]) => `${pointX},${pointY}`).join(' '))
 const draftCircle = computed<CircleDraft | null>(() => {
   if (circleDraftMode.value === 'three-point') return buildCircleFromThreePoints(draftPoints.value)
@@ -777,12 +860,16 @@ const {
 })
 const hasInteractionDraft = computed(() => Boolean(
   draftBbox.value
+  || draftBboxesXyxy.value.length > 0
   || draftTemplateBboxXyxy.value
   || draftSearchBboxXyxy.value
   || draftLine.value
   || draftPairLines.value.length > 0
   || draftCircle.value
   || draftPointPairs.value.length > 0
+  || positiveDraftPointPairs.value.length > 0
+  || negativeDraftPointPairs.value.length > 0
+  || draftPolygonsXy.value.length > 0
   || maskDirty.value,
 ))
 const clearableGeometryParameters = computed(() => Array.from(new Set(
@@ -791,7 +878,11 @@ const clearableGeometryParameters = computed(() => Array.from(new Set(
 const hasClearableGeometry = computed(() => clearableGeometryParameters.value.length > 0)
 const canApplyInteraction = computed(() => {
   if (!interactionAvailable.value) return false
-  if (interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') return Boolean(draftBboxXyxy.value)
+  if (interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') {
+    return activeInteractionTool.value?.collection
+      ? draftBboxesXyxy.value.length > 0 || Boolean(draftBboxXyxy.value)
+      : Boolean(draftBboxXyxy.value)
+  }
   if (interactionTool.value === 'template-region') {
     const targetParameters = new Set(activeTargetParameters.value)
     const requiresTemplate = targetParameters.has('template_bbox_xyxy')
@@ -801,12 +892,25 @@ const canApplyInteraction = computed(() => {
     return Boolean(draftTemplateBboxXyxy.value || draftSearchBboxXyxy.value)
   }
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') {
+    if (activeInteractionTool.value?.collection) {
+      if (!collectionPolygonsValid.value) return false
+      return draftPolygonsXy.value.length > 0 || (
+        draftPointPairs.value.length >= activePolygonMinPoints.value
+        && !draftPolygonSelfIntersects.value
+      )
+    }
     const pointCount = draftPointPairs.value.length
     return pointCount >= activePolygonMinPoints.value
       && (activePolygonMaxPoints.value === null || pointCount <= activePolygonMaxPoints.value)
       && !draftPolygonSelfIntersects.value
   }
   if (interactionTool.value === 'point') return draftPointPairs.value.length === 1
+  if (interactionTool.value === 'positive-point') return positiveDraftPointPairs.value.length > 0
+  if (interactionTool.value === 'negative-point') {
+    // SAM3 允许用 Negative Point 排除区域，但一个对象仍必须至少有一个
+    // Positive Point。这里提前阻止仅含负点的无效 Prompt 流入后端。
+    return positiveDraftPointPairs.value.length > 0
+  }
   if (interactionTool.value === 'mask') {
     return Boolean(
       maskDirty.value
@@ -824,6 +928,25 @@ const previewActionDisabled = computed(() => Boolean(
   || props.previewRunning
   || props.interactionApplying
   || (hasInteractionDraft.value && !canApplyInteraction.value),
+))
+const interactionApplyStatusText = computed(() => {
+  if (!hasCollectionInteraction.value) return ''
+  if (interactionDraftState.value === 'dirty') return t('imageViewer.status.unsavedChanges')
+  if (interactionDraftState.value === 'applying') return t('imageViewer.status.applyingParameters')
+  if (interactionDraftState.value === 'failed') return t('imageViewer.status.applyFailed')
+  if (interactionDraftState.value === 'applied') return t('imageViewer.status.parametersApplied')
+  return ''
+})
+const interactionApplyButtonText = computed(() => {
+  if (interactionDraftState.value === 'applying') return t('imageViewer.status.applyingParameters')
+  if (interactionDraftState.value === 'applied') return t('imageViewer.status.parametersApplied')
+  return t('imageViewer.toolbar.applyParams')
+})
+const hasCollectionInteraction = computed(() => Boolean(
+  activeInteractionTool.value?.collection
+  || interactionTool.value === 'positive-point'
+  || interactionTool.value === 'negative-point'
+  || interactionTool.value === 'mask'
 ))
 const hasVisibleOverlay = computed(() => imageOverlays.value.length > 0 || hasInteractionDraft.value)
 const overlayPickingActive = computed(() => Boolean(interactionActive.value && interactionAvailable.value))
@@ -863,6 +986,11 @@ const interactionStatusText = computed(() => {
   if (interactionTool.value === 'grid') return draftBboxXyxy.value ? t('imageViewer.status.gridReady') : t('imageViewer.status.gridHint')
   if (interactionTool.value === 'template-region') return readTemplateRegionStatusText()
   if (interactionTool.value === 'point') return draftPointPairs.value.length === 1 ? t('imageViewer.status.pointReady') : t('imageViewer.status.pointHint')
+  if (interactionTool.value === 'positive-point' || interactionTool.value === 'negative-point') {
+    return activeCollectionPointPairs.value.length > 0
+      ? t('imageViewer.status.pointsReady', { count: activeCollectionPointPairs.value.length })
+      : t('imageViewer.status.pointsHint')
+  }
   if (interactionTool.value === 'mask') return maskHasForeground.value ? t('imageViewer.status.maskReady') : t('imageViewer.status.maskHint')
   if (interactionTool.value === 'polygon' && draftPolygonSelfIntersects.value) return t('imageViewer.status.polygonSelfIntersecting')
   if (interactionTool.value === 'polygon' || interactionTool.value === 'contour') return readPolygonInteractionStatusText()
@@ -880,11 +1008,11 @@ watch(() => [
   props.open,
   viewerImageSrc.value,
   props.image?.nodeId,
-  activeInteractionTool.value?.maskSrc,
-  activeInteractionTool.value?.sourceIdentity,
+  interactionInitializationIdentity.value,
 ] as const, ([open]) => {
   clearedGeometryLocally.value = false
   resetInteractionState()
+  initializeCollectionDrafts()
   initializeTuningParameterValues()
   if (!open) return
   resetView()
@@ -949,6 +1077,18 @@ function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
     addDraftPoint(point, 1)
     return true
   }
+  if (interactionTool.value === 'positive-point' || interactionTool.value === 'negative-point') {
+    const tool = interactionTool.value
+    draftPointCollections.value = {
+      ...draftPointCollections.value,
+      [tool]: [
+        ...(draftPointCollections.value[tool] ?? []),
+        [roundImageCoordinate(point.x), roundImageCoordinate(point.y)],
+      ],
+    }
+    markInteractionDraftDirty()
+    return true
+  }
   if (interactionTool.value === 'circle') {
     if (circleDraftMode.value === 'three-point') addDraftPoint(point, 3)
     else startCircleDraft(point)
@@ -962,7 +1102,9 @@ function tryHandleInteractionPointerDown(event: MouseEvent): boolean {
 }
 
 function startBboxDraft(point: ImagePoint): void {
-  clearShapeDrafts()
+  clearShapeDrafts({
+    keepBboxCollection: activeInteractionTool.value?.collection === true,
+  })
   draftBbox.value = { start: point, current: point }
   document.addEventListener('mousemove', moveBboxDraft)
   document.addEventListener('mouseup', stopBboxDraft)
@@ -989,7 +1131,26 @@ function stopBboxDraft(): void {
       showInteractionFeedback(t('imageViewer.feedback.searchReadyApply'), 'success')
     }
     draftBbox.value = null
+    return
   }
+  if (
+    interactionTool.value === 'bbox'
+    && activeInteractionTool.value?.collection
+    && draftBboxXyxy.value
+  ) {
+    draftBboxesXyxy.value = [
+      ...draftBboxesXyxy.value,
+      draftBboxXyxy.value,
+    ]
+    draftBbox.value = null
+    markInteractionDraftDirty()
+    showInteractionFeedback(
+      t('imageViewer.feedback.boxesAdded', { count: draftBboxesXyxy.value.length }),
+      'success',
+    )
+    return
+  }
+  if (draftBboxXyxy.value) markInteractionDraftDirty()
 }
 
 function startLineDraft(point: ImagePoint): void {
@@ -1070,7 +1231,7 @@ function toggleInteraction(): void {
 function selectInteractionTool(tool: string): void {
   if (!isSupportedInteractionTool(tool)) return
   selectedInteractionTool.value = tool
-  clearInteractionDraft()
+  clearTransientShapeDrafts()
   if (tool === 'mask') {
     const configuredBrushSize = activeInteractionTool.value?.brushSize
     if (typeof configuredBrushSize === 'number' && configuredBrushSize > 0) {
@@ -1102,6 +1263,9 @@ function selectTemplateRegionStage(stage: TemplateRegionStage): void {
 
 function clearInteractionDraft(): void {
   clearShapeDrafts()
+  draftBboxesXyxy.value = []
+  draftPolygonsXy.value = []
+  draftPointCollections.value = {}
   draftTemplateBboxXyxy.value = null
   draftSearchBboxXyxy.value = null
   templateRegionStage.value = 'template'
@@ -1119,6 +1283,7 @@ function handleClearInteraction(): void {
       // 空 Mask 不能应用；再次清除时删除已保存的 ObjectStore 引用。
     } else {
       clearInteractionDraft()
+      markInteractionDraftDirty()
       return
     }
   }
@@ -1137,18 +1302,85 @@ function handleClearInteraction(): void {
   showInteractionFeedback(t('imageViewer.feedback.geometryCleared'), 'success')
 }
 
-function clearShapeDrafts(options: { keepPoints?: boolean; keepPairLines?: boolean } = {}): void {
+function clearShapeDrafts(
+  options: {
+    keepPoints?: boolean
+    keepPairLines?: boolean
+    keepBboxCollection?: boolean
+  } = {},
+): void {
   draftBbox.value = null
   draftLine.value = null
   draftCircleCenter.value = null
   draftCircleEdge.value = null
   if (!options.keepPoints) draftPoints.value = []
   if (!options.keepPairLines) draftPairLines.value = []
+  if (!options.keepBboxCollection) draftBboxesXyxy.value = []
 }
 
 function deleteLastDraftPoint(): void {
   if (draftPoints.value.length === 0) return
   draftPoints.value = draftPoints.value.slice(0, -1)
+}
+
+function finishDraftPolygon(): void {
+  if (
+    draftPointPairs.value.length < activePolygonMinPoints.value
+    || draftPolygonSelfIntersects.value
+  ) return
+  draftPolygonsXy.value = [
+    ...draftPolygonsXy.value,
+    draftPointPairs.value.map(([pointX, pointY]) => [pointX, pointY]),
+  ]
+  draftPoints.value = []
+  markInteractionDraftDirty()
+  showInteractionFeedback(
+    t('imageViewer.feedback.polygonsAdded', { count: draftPolygonsXy.value.length }),
+    'success',
+  )
+}
+
+function clearTransientShapeDrafts(): void {
+  draftBbox.value = null
+  draftLine.value = null
+  draftCircleCenter.value = null
+  draftCircleEdge.value = null
+  draftPoints.value = []
+  draftPairLines.value = []
+  stopActiveDraftListeners()
+}
+
+function initializeCollectionDrafts(): void {
+  const pointCollections: Record<string, Array<[number, number]>> = {}
+  let initialBboxes: Array<[number, number, number, number]> = []
+  let initialPolygons: Array<Array<[number, number]>> = []
+  for (const tool of availableInteractionTools.value) {
+    if (tool.tool === 'positive-point' || tool.tool === 'negative-point') {
+      pointCollections[tool.tool] = (tool.initialPointsXy ?? []).map(
+        ([pointX, pointY]) => [pointX, pointY],
+      )
+    }
+    if (tool.tool === 'bbox' && tool.collection) {
+      initialBboxes = (tool.initialBboxesXyxy ?? []).map(
+        (bbox) => [...bbox] as [number, number, number, number],
+      )
+    }
+    if (tool.tool === 'polygon' && tool.collection) {
+      initialPolygons = (tool.initialPolygonsXy ?? []).map(
+        (polygon) => polygon.map(([pointX, pointY]) => [pointX, pointY]),
+      )
+    }
+  }
+  draftPointCollections.value = pointCollections
+  draftBboxesXyxy.value = initialBboxes
+  draftPolygonsXy.value = initialPolygons
+  const hasInitialGeometry = initialBboxes.length > 0
+    || initialPolygons.length > 0
+    || Object.values(pointCollections).some((points) => points.length > 0)
+    || availableInteractionTools.value.some(
+      (tool) => tool.tool === 'mask' && Boolean(tool.maskSrc),
+    )
+  interactionDraftState.value = hasInitialGeometry ? 'applied' : 'idle'
 }
 
 function stopActiveDraftListeners(): void {
@@ -1166,6 +1398,7 @@ function resetInteractionState(): void {
   maskHistoryIndex.value = -1
   maskDrawing.value = false
   maskLastPoint.value = null
+  interactionDraftState.value = 'idle'
 }
 
 function applyInteractionDraft(): void {
@@ -1175,7 +1408,47 @@ function applyInteractionDraft(): void {
     showInteractionFeedback(t('imageViewer.feedback.incompleteApply'), 'warning')
     return
   }
+  interactionDraftState.value = 'applying'
+  event.onApplied = (success) => {
+    interactionDraftState.value = success ? 'applied' : 'failed'
+    showInteractionFeedback(
+      success
+        ? t('imageViewer.feedback.parametersApplied', {
+            message: readAppliedFeedbackText(event),
+          })
+        : t('imageViewer.feedback.applyFailed'),
+      success ? 'success' : 'warning',
+    )
+  }
   emit('applyInteraction', event)
+}
+
+function updateDraftBboxes(value: ImageBboxTuple[]): void {
+  draftBboxesXyxy.value = value.map((bbox) => [...bbox] as ImageBboxTuple)
+}
+
+function updateDraftPolygons(value: ImagePointTuple[][]): void {
+  draftPolygonsXy.value = value.map(
+    (polygon) => polygon.map(([pointX, pointY]) => [pointX, pointY]),
+  )
+}
+
+function updatePositiveDraftPoints(value: ImagePointTuple[]): void {
+  draftPointCollections.value = {
+    ...draftPointCollections.value,
+    'positive-point': value.map(([pointX, pointY]) => [pointX, pointY]),
+  }
+}
+
+function updateNegativeDraftPoints(value: ImagePointTuple[]): void {
+  draftPointCollections.value = {
+    ...draftPointCollections.value,
+    'negative-point': value.map(([pointX, pointY]) => [pointX, pointY]),
+  }
+}
+
+function markInteractionDraftDirty(): void {
+  interactionDraftState.value = 'dirty'
 }
 
 function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
@@ -1192,6 +1465,19 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
     parameters: { ...(activeInteractionTool.value?.applyParameters ?? {}) },
   }
+  if (
+    interactionTool.value === 'bbox'
+    && activeInteractionTool.value?.collection
+    && (draftBboxesXyxy.value.length > 0 || draftBboxXyxy.value)
+  ) {
+    return {
+      ...baseEvent,
+      bboxesXyxy: [
+        ...draftBboxesXyxy.value,
+        ...(draftBboxXyxy.value ? [draftBboxXyxy.value] : []),
+      ],
+    }
+  }
   if ((interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
   }
@@ -1203,11 +1489,39 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
       searchBboxXyxy: draftSearchBboxXyxy.value ?? undefined,
     }
   }
+  if (
+    interactionTool.value === 'polygon'
+    && activeInteractionTool.value?.collection
+    && canApplyInteraction.value
+  ) {
+    const currentPolygon = (
+      draftPointPairs.value.length >= activePolygonMinPoints.value
+      && !draftPolygonSelfIntersects.value
+    ) ? [draftPointPairs.value] : []
+    return {
+      ...baseEvent,
+      polygonsXy: [...draftPolygonsXy.value, ...currentPolygon],
+    }
+  }
   if ((interactionTool.value === 'polygon' || interactionTool.value === 'contour') && canApplyInteraction.value) {
     return { ...baseEvent, pointsXy: draftPointPairs.value }
   }
   if (interactionTool.value === 'point' && canApplyInteraction.value) {
     return { ...baseEvent, pointsXy: draftPointPairs.value }
+  }
+  if (
+    (interactionTool.value === 'positive-point' || interactionTool.value === 'negative-point')
+    && canApplyInteraction.value
+  ) {
+    return {
+      ...baseEvent,
+      pointsXy: activeCollectionPointPairs.value,
+      parameters: {
+        ...baseEvent.parameters,
+        positive_points_xy: positiveDraftPointPairs.value,
+        negative_points_xy: negativeDraftPointPairs.value,
+      },
+    }
   }
   if (interactionTool.value === 'mask' && canApplyInteraction.value) {
     const dataUrl = maskCanvasRef.value?.toDataURL('image/png')
@@ -1340,6 +1654,7 @@ function drawMaskStroke(start: ImagePoint | null, end: ImagePoint | null): void 
   context.stroke()
   context.restore()
   maskDirty.value = true
+  markInteractionDraftDirty()
   if (maskDrawMode.value === 'brush') maskHasForeground.value = true
 }
 
@@ -1392,6 +1707,7 @@ function fillMaskDraft(): void {
   context.fillRect(0, 0, canvas.width, canvas.height)
   maskDirty.value = true
   maskHasForeground.value = true
+  markInteractionDraftDirty()
   commitMaskHistory()
 }
 
@@ -1402,7 +1718,10 @@ function clearMaskDraft(commitHistory = false): void {
   context.clearRect(0, 0, canvas.width, canvas.height)
   maskDirty.value = commitHistory
   maskHasForeground.value = false
-  if (commitHistory) commitMaskHistory()
+  if (commitHistory) {
+    markInteractionDraftDirty()
+    commitMaskHistory()
+  }
 }
 
 function updateMaskForegroundState(): void {
@@ -1492,6 +1811,12 @@ function runPreviewFromViewer(): void {
     return
   }
   const event = buildInteractionDraftEvent()
+  if (event) {
+    interactionDraftState.value = 'applying'
+    event.onApplied = (success) => {
+      interactionDraftState.value = success ? 'applied' : 'failed'
+    }
+  }
   const action = dispatchImageViewerPreview(
     hasInteractionDraft.value,
     event,
@@ -1512,6 +1837,7 @@ function runPreviewFromViewer(): void {
 }
 
 function readAppliedFeedbackText(event: ViewerImageInteractionApplyEvent): string {
+  if (event.tool === 'positive-point' || event.tool === 'negative-point') return t('imageViewer.applied.point')
   if (event.tool === 'bbox') return t('imageViewer.applied.bbox')
   if (event.tool === 'rect') return t('imageViewer.applied.rect')
   if (event.tool === 'template-region') return t('imageViewer.applied.templateRegion')

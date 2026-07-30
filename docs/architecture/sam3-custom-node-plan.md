@@ -29,8 +29,13 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 
 `prompt-regions.v1` 的固定语义：
 
-- Point 使用 `point_xy`，Box 使用 `bbox_xyxy`，Polygon 使用 `polygon_xy`。
-- 同一 `prompt_id` 的多条 Point 记录表示同一个对象的多个正负点，至少需要一个 Positive 点。
+- Point 节点参数使用 `positive_points_xy` 与 `negative_points_xy`，Box 节点参数使用
+  `bboxes_xyxy`，Polygon 节点参数使用 `polygons_xy`；公开 payload 中的单条记录仍分别使用
+  `point_xy`、`bbox_xyxy` 与 `polygon_xy`。
+- Point 节点把全部正负点输出为同一 `prompt_id` 的多条记录，表示同一个对象，至少需要
+  一个 Positive 点。
+- Box 与 Polygon 节点可分别创建多个对象，输出时为每个几何对象分配独立且稳定的
+  `prompt_id`。
 - 同一 `prompt_id` 不能混合 Point、Box、Polygon、Mask；非 Point 类型的 `prompt_id` 必须唯一。
 - Point、Box、Polygon 可接可选源图；源图变化后旧坐标必须拒绝执行。
 - 原子编辑节点的默认几何只作为草稿，只有点击“应用”后才写入有效 Prompt。
@@ -81,6 +86,11 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 - `min_component_area`
 - `polygon_simplify_ratio`
 
+只有 `SAM3 Interactive Segment` 声明：
+
+- `refine_iterations`：Mask Decoder 总执行轮数，范围 1–3，默认 2；精修复用同一张图片的
+  feature context，不重复执行视觉 Backbone。
+
 只有 `SAM3 Video Interactive Segment` 可以声明：
 
 - `tracking_mode`
@@ -117,6 +127,21 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
   该设置只加速不同 loader 的启动，不允许同一 session 并发推理。
 - 节点运行摘要必须记录实际模型资产、设备、精度、Prompt 数量、耗时和后处理参数。
 - 节点摘要不得公开 checkpoint 绝对路径；诊断信息分别记录 feature cache 命中、preprocess、backbone、Prompt 准备、Prompt encoder、decoder、postprocess 耗时和 CUDA 显存高水位，runtime 健康信息另行记录 checkpoint load 与分能力 warmup 耗时。
+- 节点摘要还必须记录等待同一 loader session lease 的耗时。模型已驻留但执行偶发变慢时，
+  先区分 feature cache miss、session 等待、Backbone、decoder 与 CPU postprocess，不能仅凭
+  显存占用判断模型是否重复加载。
+- 单个 Positive Point 使用 mask decoder 的多候选输出并按预测分数选择最佳 Mask；多点正负
+  组合、Box、Polygon 和 Mask 保持单候选语义，避免把不同对象候选错误合并。
+- Box 使用 PromptEncoder 的专用 `boxes` 输入，不伪装成带 Box 标签的普通 Point 序列；
+  同时按 SAM3 tracker 参考实现加入一个 `label=-1` 的空 Point token。Mask 和 Polygon
+  路径也加入相同空 token，保持 sparse prompt token 序列与参考推理一致。
+- Polygon 和 Mask 的二值草稿在进入 PromptEncoder 前转换为正负 coarse logits，不把
+  `0/1` 像素值错误当成上一轮 Mask Decoder 的 logits。
+- Decoder 必须先用 `object_score_logits > 0` 判定对象存在；不存在时将对应 Mask 设为
+  `NO_OBJ_SCORE`，不能把无对象 logits 继续交给阈值后处理。单点多候选只按 IoU head
+  选择最佳候选。
+- Interactive 默认按参考实现执行两轮 Mask Decoder。第二轮把上一轮恢复到模型输入
+  分辨率的 Mask logits 作为 Mask Prompt，并继续复用同一张图片的 Backbone feature。
 - 固定 1008 输入分辨率保持不变；channels-last、`torch.compile`、safetensors、ONNX 和 TensorRT 未完成一致性与长时间稳定测试前不得进入 Catalog。
 
 ## 版本与依赖
@@ -144,8 +169,8 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 
 | 能力 | 状态 | 固定边界 |
 | --- | --- | --- |
-| Core Prompt 节点 | 已实现 | 独立节点统一输出 `text-prompts.v1` 或 `prompt-regions.v1`，Point/Box/Polygon 已接图片取参 |
-| Mask Editor | 已实现 | Brush、Eraser、Fill、Clear、Undo、Redo；已保存 Mask 可重新载入；只把 ObjectStore key 和源图标识写入 workflow |
+| Core Prompt 节点 | 已实现 | 独立节点统一输出 `text-prompts.v1` 或 `prompt-regions.v1`；Point 支持同对象正负点数组，Box/Polygon 支持多对象数组 |
+| Mask Editor | 已实现 | Brush、Eraser、Fill、Clear、Undo、Redo；已保存 Mask 可重新载入；只把 ObjectStore key 和源图标识写入 workflow，节点/应用删除后的文件由应用保存边界统一回收 |
 | 多点对象分组 | 已实现 | 同一 prompt_id 的正负点作为一个对象编码，拒绝负点孤立对象和类型混用 |
 | SAM3 模型资产 | 已实现 | 使用 `model_asset_id`、`architecture_id` 和 SHA-256，不使用虚假 Scale |
 | Device 与 Precision | 已实现 | Catalog 按本机 PyTorch 能力生成下拉选项，运行时再次校验组合 |
@@ -159,6 +184,7 @@ SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 
 | Runtime session | 已实现 | 每个 AppRuntime 独立、启动预热验证、单 lease 串行、停止时显式释放 |
 | Feature context | 已实现 | 每个能力仅保留最近图片；同图 Prompt 修改命中缓存，新图覆盖旧上下文 |
 | Prompt batching | 已实现 | 单次调用内同类稀疏 Point/Box batching，不引入请求并发 |
+| 单点候选选择 | 已实现 | 单个 Positive Point 生成多个候选并按模型分数选择最佳 Mask |
 | Visual Prompt Editor | 稳定性门禁后实施 | 先完成原子节点现场验证；通过本文验收后再提供多对象列表编辑，不以逐点独立分割冒充多点对象 |
 | 示例与测试 | 已实现 | 包含 Prompt 画布闭环、Catalog、资产、CPU 和真实 checkpoint 回归 |
 

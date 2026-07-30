@@ -9,7 +9,10 @@ from backend.contracts.workflows.workflow_graph import (
     synchronize_flow_application_bindings,
     validate_flow_application_bindings,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.workflows.documents.contracts import (
     WorkflowApplicationDocument,
     WorkflowApplicationSummary,
@@ -26,9 +29,17 @@ from backend.service.application.workflows.documents.storage import (
     write_resource_summary,
     build_resource_summary_for_save,
 )
-from backend.service.application.workflows.documents.templates import WorkflowTemplateDocumentStore
-from backend.service.application.workflows.documents.validation import summarize_workflow_application
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.workflows.documents.templates import (
+    WorkflowTemplateDocumentStore,
+)
+from backend.service.application.workflows.documents.validation import (
+    summarize_workflow_application,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+
+_MASK_EDITOR_NODE_TYPE_ID = "core.input.mask-editor"
 
 
 class WorkflowApplicationDocumentStore:
@@ -69,7 +80,9 @@ class WorkflowApplicationDocumentStore:
             application=application,
         )
         try:
-            validate_flow_application_bindings(template=template, application=synchronized_application)
+            validate_flow_application_bindings(
+                template=template, application=synchronized_application
+            )
         except ValueError as exc:
             raise InvalidRequestError(
                 "workflow application 绑定校验失败",
@@ -82,7 +95,9 @@ class WorkflowApplicationDocumentStore:
             ) from exc
         return summarize_workflow_application(synchronized_application)
 
-    def list_applications(self, *, project_id: str) -> tuple[WorkflowApplicationSummary, ...]:
+    def list_applications(
+        self, *, project_id: str
+    ) -> tuple[WorkflowApplicationSummary, ...]:
         """列出指定 Project 下全部流程应用摘要。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
@@ -118,7 +133,9 @@ class WorkflowApplicationDocumentStore:
         """删除一份已保存的流程应用。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(application_id, "application_id")
+        normalized_application_id = normalize_identifier(
+            application_id, "application_id"
+        )
         object_key = build_application_object_key(
             project_id=normalized_project_id,
             application_id=normalized_application_id,
@@ -133,6 +150,12 @@ class WorkflowApplicationDocumentStore:
             )
         self.dataset_storage.delete_tree(
             build_application_directory_key(
+                project_id=normalized_project_id,
+                application_id=normalized_application_id,
+            )
+        )
+        self.dataset_storage.delete_tree(
+            _build_prompt_mask_root_key(
                 project_id=normalized_project_id,
                 application_id=normalized_application_id,
             )
@@ -182,11 +205,18 @@ class WorkflowApplicationDocumentStore:
             object_key=object_key,
             actor_id=actor_id,
         )
-        self.dataset_storage.write_json(object_key, normalized_application.model_dump(mode="json"))
+        self.dataset_storage.write_json(
+            object_key, normalized_application.model_dump(mode="json")
+        )
         write_resource_summary(
             dataset_storage=self.dataset_storage,
             object_key=object_key,
             summary=resource_summary,
+        )
+        self._prune_unreferenced_prompt_masks(
+            project_id=normalized_project_id,
+            application_id=normalized_application.application_id,
+            template=template_document.template,
         )
         return WorkflowApplicationDocument(
             project_id=normalized_project_id,
@@ -208,7 +238,9 @@ class WorkflowApplicationDocumentStore:
         """只更新流程应用的基础显示信息，不修改图模板引用和绑定。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(application_id, "application_id")
+        normalized_application_id = normalize_identifier(
+            application_id, "application_id"
+        )
         object_key = build_application_object_key(
             project_id=normalized_project_id,
             application_id=normalized_application_id,
@@ -227,7 +259,9 @@ class WorkflowApplicationDocumentStore:
         ).application
         updates: dict[str, object] = {}
         if display_name is not None:
-            normalized_display_name = normalize_optional_non_empty_text(display_name, "display_name")
+            normalized_display_name = normalize_optional_non_empty_text(
+                display_name, "display_name"
+            )
             if normalized_display_name is None:
                 raise InvalidRequestError("display_name 不能为空")
             updates["display_name"] = normalized_display_name
@@ -257,7 +291,9 @@ class WorkflowApplicationDocumentStore:
             object_key=object_key,
             actor_id=actor_id,
         )
-        self.dataset_storage.write_json(object_key, updated_application.model_dump(mode="json"))
+        self.dataset_storage.write_json(
+            object_key, updated_application.model_dump(mode="json")
+        )
         write_resource_summary(
             dataset_storage=self.dataset_storage,
             object_key=object_key,
@@ -310,7 +346,9 @@ class WorkflowApplicationDocumentStore:
         """读取已保存的流程应用 JSON。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(application_id, "application_id")
+        normalized_application_id = normalize_identifier(
+            application_id, "application_id"
+        )
         object_key = build_application_object_key(
             project_id=normalized_project_id,
             application_id=normalized_application_id,
@@ -323,7 +361,9 @@ class WorkflowApplicationDocumentStore:
                     "application_id": normalized_application_id,
                 },
             )
-        application = FlowApplication.model_validate(self.dataset_storage.read_json(object_key))
+        application = FlowApplication.model_validate(
+            self.dataset_storage.read_json(object_key)
+        )
         template_document = self.template_documents.get_template(
             project_id=normalized_project_id,
             template_id=application.template_ref.template_id,
@@ -361,8 +401,12 @@ class WorkflowApplicationDocumentStore:
         """复制一份流程应用到新的 application_id。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_source_application_id = normalize_identifier(source_application_id, "source_application_id")
-        normalized_target_application_id = normalize_identifier(target_application_id, "target_application_id")
+        normalized_source_application_id = normalize_identifier(
+            source_application_id, "source_application_id"
+        )
+        normalized_target_application_id = normalize_identifier(
+            target_application_id, "target_application_id"
+        )
         if normalized_source_application_id == normalized_target_application_id:
             raise InvalidRequestError(
                 "复制 workflow application 时目标 application_id 不能与源 application_id 相同",
@@ -394,7 +438,9 @@ class WorkflowApplicationDocumentStore:
                     or source_document.application.display_name
                 ),
                 "description": (
-                    source_document.application.description if description is None else description
+                    source_document.application.description
+                    if description is None
+                    else description
                 ),
             }
         )
@@ -412,7 +458,9 @@ class WorkflowApplicationDocumentStore:
     ) -> WorkflowApplicationSummary:
         """基于对象路径构建流程应用摘要。"""
 
-        application = FlowApplication.model_validate(self.dataset_storage.read_json(object_key))
+        application = FlowApplication.model_validate(
+            self.dataset_storage.read_json(object_key)
+        )
         validation_summary = summarize_workflow_application(application)
         resource_summary = read_resource_summary(
             dataset_storage=self.dataset_storage,
@@ -434,3 +482,55 @@ class WorkflowApplicationDocumentStore:
             input_binding_ids=validation_summary.input_binding_ids,
             output_binding_ids=validation_summary.output_binding_ids,
         )
+
+    def _prune_unreferenced_prompt_masks(
+        self,
+        *,
+        project_id: str,
+        application_id: str,
+        template: WorkflowGraphTemplate,
+    ) -> None:
+        """在应用保存成功后回收已删除节点和旧版本的 Mask PNG。"""
+
+        prompt_mask_root_key = _build_prompt_mask_root_key(
+            project_id=project_id,
+            application_id=application_id,
+        )
+        prompt_mask_root = self.dataset_storage.resolve(prompt_mask_root_key)
+        if not prompt_mask_root.is_dir():
+            return
+        allowed_prefix = f"{prompt_mask_root_key}/"
+        referenced_object_keys = {
+            object_key
+            for node in template.nodes
+            if node.node_type_id == _MASK_EDITOR_NODE_TYPE_ID
+            for object_key in (
+                str(node.parameters.get("mask_object_key") or "").strip(),
+            )
+            if object_key.startswith(allowed_prefix)
+        }
+        for prompt_mask_path in prompt_mask_root.rglob("*.png"):
+            object_key = to_object_key(
+                dataset_storage=self.dataset_storage,
+                path=prompt_mask_path,
+            )
+            if object_key not in referenced_object_keys:
+                self.dataset_storage.delete_tree(object_key)
+        for directory_path in sorted(
+            (path for path in prompt_mask_root.rglob("*") if path.is_dir()),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        ):
+            if not any(directory_path.iterdir()):
+                directory_path.rmdir()
+        if prompt_mask_root.is_dir() and not any(prompt_mask_root.iterdir()):
+            prompt_mask_root.rmdir()
+
+
+def _build_prompt_mask_root_key(*, project_id: str, application_id: str) -> str:
+    """构造单个 Workflow Application 的 Prompt Mask 根路径。"""
+
+    return (
+        f"projects/{project_id}/inputs/workflow-applications/"
+        f"{application_id}/prompt-masks"
+    )

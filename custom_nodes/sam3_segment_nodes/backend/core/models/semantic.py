@@ -617,7 +617,10 @@ class Sam3SemanticRuntimeSession:
     ) -> Sam3SemanticPrediction:
         """执行单图 semantic 推理。"""
 
-        image_sha256 = sha256(image_bytes).hexdigest()
+        image_sha256, image_identity_source = _resolve_image_content_identity(
+            image_bytes=image_bytes,
+            image_payload=image_payload,
+        )
         feature_cache_key = "|".join(
             (
                 self.model_asset_id,
@@ -762,9 +765,7 @@ class Sam3SemanticRuntimeSession:
             min_component_area=min_component_area,
             polygon_simplify_ratio=polygon_simplify_ratio,
         )
-        postprocess_ms = round(
-            (perf_counter() - postprocess_started_at) * 1000, 3
-        )
+        postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
         summary = {
             "project_native": True,
             "model_asset_id": self.model_asset_id,
@@ -815,6 +816,7 @@ class Sam3SemanticRuntimeSession:
                 "misses": self._feature_cache_misses,
                 "session_generation": self.session_generation,
                 "checkpoint_sha256": self.checkpoint_sha256 or None,
+                "identity_source": image_identity_source,
             },
             "timings_ms": {
                 "preprocess": preprocess_ms,
@@ -839,6 +841,20 @@ class Sam3SemanticRuntimeSession:
         self._feature_cache_value = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+
+def _resolve_image_content_identity(
+    *,
+    image_bytes: bytes,
+    image_payload: object,
+) -> tuple[str, str]:
+    """优先使用 image-ref 内容摘要，缺失时回退到实际读取字节。"""
+
+    if isinstance(image_payload, dict):
+        content_sha256 = str(image_payload.get("content_sha256") or "").strip()
+        if content_sha256:
+            return content_sha256, "payload-content-sha256"
+    return sha256(image_bytes).hexdigest(), "encoded-bytes-sha256"
 
 
 def _read_cuda_memory_summary(device_name: str) -> dict[str, int] | None:
