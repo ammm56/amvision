@@ -299,7 +299,17 @@ class VisionAttention(nn.Module):
             return q, k
         if self.freqs_cis is None:
             raise RuntimeError("rope 频率尚未初始化")
-        return apply_rotary_enc(q, k, freqs_cis=self.freqs_cis.to(q.device))
+        if self.freqs_cis.device != q.device:
+            # 频率是 complex tensor，不能交给 ``Module.to(dtype=...)``。
+            # 首次使用时只迁移一次，避免每个请求重复 CPU -> GPU 复制。
+            self.freqs_cis = self.freqs_cis.to(q.device)
+        return apply_rotary_enc(q, k, freqs_cis=self.freqs_cis)
+
+    def release_rotary_device_cache(self) -> None:
+        """把非 Parameter 的 complex RoPE cache 迁回 CPU。"""
+
+        if self.freqs_cis is not None and self.freqs_cis.device.type != "cpu":
+            self.freqs_cis = self.freqs_cis.cpu()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         cls_token_count = 1 if self.cls_token else 0
@@ -543,6 +553,40 @@ class ViT(nn.Module):
             block.attn._setup_rope_freqs(input_size=(imgsz[0] // self.patch_size, imgsz[1] // self.patch_size))
 
 
+def build_sam3_vit_trunk() -> ViT:
+    """构造 SAM3.1 Multiplex 三个视觉分支共用的 ViT trunk。
+
+    该工厂固定 checkpoint 对应的结构参数，避免 Interactive、Semantic 和
+    Propagation 各自复制一份容易漂移的构造代码。
+    """
+
+    return ViT(
+        img_size=1008,
+        pretrain_img_size=336,
+        patch_size=14,
+        embed_dim=1024,
+        depth=32,
+        num_heads=16,
+        mlp_ratio=4.625,
+        norm_layer="LayerNorm",
+        drop_path_rate=0.1,
+        qkv_bias=True,
+        use_abs_pos=True,
+        tile_abs_pos=True,
+        global_att_blocks=(7, 15, 23, 31),
+        use_rope=True,
+        use_interp_rope=True,
+        window_size=24,
+        pretrain_use_cls_token=True,
+        retain_cls_token=False,
+        ln_pre=True,
+        ln_post=False,
+        return_interm_layers=False,
+        bias_patch_embed=False,
+        use_act_checkpoint=False,
+    )
+
+
 class Sam3ViTDetNeck(nn.Module):
     """把 SAM3.1 multiplex checkpoint 的一个 FPN 分支映射成运行时输出。
 
@@ -609,9 +653,16 @@ class Sam3ViTDetNeck(nn.Module):
         tensor_list: torch.Tensor,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         xs = self.trunk(tensor_list)
-        x = xs[-1]
+        return self.forward_from_trunk(xs[-1])
+
+    def forward_from_trunk(
+        self,
+        trunk_feature: torch.Tensor,
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        """从已缓存的共享 ViT 输出执行当前 neck 分支。"""
+
         branch_convs = getattr(self, self.branch_name)
-        return self.sam_forward_feature_levels(x, branch_convs)
+        return self.sam_forward_feature_levels(trunk_feature, branch_convs)
 
     def set_imgsz(self, imgsz: list[int] = [1008, 1008]) -> None:
         self.trunk.set_imgsz(imgsz)
@@ -625,8 +676,18 @@ class SAM3VisualBackbone(nn.Module):
         self.vision_backbone = vision_backbone
         self.scalp = int(scalp)
 
-    def forward_image(self, samples: torch.Tensor) -> dict[str, object]:
-        sam3_features, sam3_pos = self.vision_backbone.forward(samples)
+    def forward_image(
+        self,
+        samples: torch.Tensor,
+        *,
+        trunk_feature: torch.Tensor | None = None,
+    ) -> dict[str, object]:
+        if trunk_feature is None:
+            sam3_features, sam3_pos = self.vision_backbone.forward(samples)
+        else:
+            sam3_features, sam3_pos = self.vision_backbone.forward_from_trunk(
+                trunk_feature
+            )
         if self.scalp > 0:
             sam3_features = sam3_features[: -self.scalp]
             sam3_pos = sam3_pos[: -self.scalp]
@@ -641,9 +702,20 @@ class SAM3VisualBackbone(nn.Module):
         self.vision_backbone.set_imgsz(imgsz)
 
 
+def release_rotary_device_caches(root_module: nn.Module) -> None:
+    """统一释放模型中不受 ``Module.to`` 管理的 complex RoPE cache。"""
+
+    for module in root_module.modules():
+        release_cache = getattr(module, "release_rotary_device_cache", None)
+        if callable(release_cache):
+            release_cache()
+
+
 __all__ = [
     "PositionEmbeddingSine",
     "SAM3VisualBackbone",
     "Sam3ViTDetNeck",
     "ViT",
+    "build_sam3_vit_trunk",
+    "release_rotary_device_caches",
 ]

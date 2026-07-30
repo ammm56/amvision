@@ -7,6 +7,7 @@ from time import perf_counter
 
 import cv2
 import numpy as np
+import torch
 
 from backend.contracts.workflows.workflow_graph import WorkflowGraphNode
 from backend.service.application.errors import ServiceConfigurationError
@@ -24,6 +25,16 @@ from custom_nodes.sam3_segment_nodes.backend.core import (
 )
 from custom_nodes.sam3_segment_nodes.backend.core.checkpoint.loader import (
     load_sam3_checkpoint_branches,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.models.shared_owner import (
+    Sam3SharedModelOwner,
+    build_sam3_shared_model_owner,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.models.multiplex_video import (
+    Sam3MultiplexRuntimeSession,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.state.multiplex import (
+    build_sam3_multiplex_state,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.pretrained import (
     normalize_device,
@@ -54,6 +65,8 @@ class Sam3WorkflowModelSession:
 
     interactive: Sam3InteractiveRuntimeSession | None = None
     semantic: Sam3SemanticRuntimeSession | None = None
+    multiplex: Sam3MultiplexRuntimeSession | None = None
+    shared_owner: Sam3SharedModelOwner | None = None
 
     def require_interactive(self) -> Sam3InteractiveRuntimeSession:
         """返回 interactive session。"""
@@ -69,15 +82,30 @@ class Sam3WorkflowModelSession:
             raise ServiceConfigurationError("SAM3 session 未加载 semantic 能力")
         return self.semantic
 
+    def require_multiplex(self) -> Sam3MultiplexRuntimeSession:
+        """返回 SAM3.1 Multiplex propagation session。"""
+
+        if self.multiplex is None:
+            raise ServiceConfigurationError(
+                "SAM3 session 未加载 Multiplex propagation 能力"
+            )
+        return self.multiplex
+
     def close(self) -> None:
         """按与加载相反的顺序释放全部模型。"""
 
+        if self.multiplex is not None:
+            self.multiplex.close()
+            self.multiplex = None
         if self.semantic is not None:
             self.semantic.close()
             self.semantic = None
         if self.interactive is not None:
             self.interactive.close()
             self.interactive = None
+        if self.shared_owner is not None:
+            self.shared_owner.close()
+            self.shared_owner = None
 
 
 class Sam3WorkflowModelSessionProvider:
@@ -113,6 +141,14 @@ class Sam3WorkflowModelSessionProvider:
         needs_semantic = bool(
             {"semantic", "video-semantic"}.intersection(capabilities)
         )
+        needs_multiplex = bool(
+            {"video-interactive", "video-semantic"}.intersection(
+                capabilities
+            )
+        )
+        needs_interactive_model = (
+            needs_interactive or "video-semantic" in capabilities
+        )
         session = Sam3WorkflowModelSession()
         load_started_at = perf_counter()
         try:
@@ -123,31 +159,99 @@ class Sam3WorkflowModelSessionProvider:
             checkpoint_read_ms = round(
                 (perf_counter() - checkpoint_started_at) * 1000, 3
             )
-            if needs_interactive:
-                session.interactive = Sam3InteractiveRuntimeSession(
+            if (
+                sum(
+                    (
+                        int(needs_interactive_model),
+                        int(needs_semantic),
+                        int(needs_multiplex),
+                    )
+                )
+                >= 2
+            ):
+                shared_build = build_sam3_shared_model_owner(
                     checkpoint_path=variant.checkpoint_path,
-                    model_asset_id=variant.model_asset_id,
-                    architecture_id=variant.architecture_id,
                     requested_device_name=requested_device,
                     precision=requested_precision,
                     checkpoint_branches=checkpoint_branches,
-                    checkpoint_sha256=checkpoint_sha256,
+                    include_interactive=needs_interactive_model,
+                    include_semantic=needs_semantic,
+                    include_multiplex=needs_multiplex,
                 )
-            if needs_semantic:
-                session.semantic = Sam3SemanticRuntimeSession(
-                    checkpoint_path=variant.checkpoint_path,
-                    model_asset_id=variant.model_asset_id,
-                    architecture_id=variant.architecture_id,
-                    requested_device_name=requested_device,
-                    precision=requested_precision,
-                    checkpoint_branches=checkpoint_branches,
-                    checkpoint_sha256=checkpoint_sha256,
-                )
+                session.shared_owner = shared_build.owner
+                if shared_build.owner.interactive_model is not None:
+                    shared_build.owner.interactive_model.checkpoint_compatibility_summary = (
+                        shared_build.compatibility_summary["interactive"]
+                    )
+                    session.interactive = Sam3InteractiveRuntimeSession(
+                        checkpoint_path=variant.checkpoint_path,
+                        model_asset_id=variant.model_asset_id,
+                        architecture_id=variant.architecture_id,
+                        requested_device_name=requested_device,
+                        precision=requested_precision,
+                        checkpoint_sha256=checkpoint_sha256,
+                        prebuilt_model=shared_build.owner.interactive_model,
+                        resolved_device_name=shared_build.resolved_device_name,
+                        runtime_torch_dtype=shared_build.runtime_torch_dtype,
+                        owns_model=False,
+                        shared_trunk_cache=shared_build.owner.feature_cache,
+                    )
+                if shared_build.owner.semantic_model is not None:
+                    shared_build.owner.semantic_model.checkpoint_compatibility_summary = (
+                        shared_build.compatibility_summary["semantic"]
+                    )
+                    session.semantic = Sam3SemanticRuntimeSession(
+                        checkpoint_path=variant.checkpoint_path,
+                        model_asset_id=variant.model_asset_id,
+                        architecture_id=variant.architecture_id,
+                        requested_device_name=requested_device,
+                        precision=requested_precision,
+                        checkpoint_sha256=checkpoint_sha256,
+                        prebuilt_model=shared_build.owner.semantic_model,
+                        resolved_device_name=shared_build.resolved_device_name,
+                        runtime_torch_dtype=shared_build.runtime_torch_dtype,
+                        owns_model=False,
+                        shared_trunk_cache=shared_build.owner.feature_cache,
+                    )
+                if shared_build.owner.multiplex_model is not None:
+                    session.multiplex = Sam3MultiplexRuntimeSession(
+                        model=shared_build.owner.multiplex_model,
+                        model_asset_id=variant.model_asset_id,
+                        architecture_id=variant.architecture_id,
+                        checkpoint_sha256=checkpoint_sha256,
+                        device_name=shared_build.resolved_device_name,
+                        runtime_torch_dtype=shared_build.runtime_torch_dtype,
+                        shared_trunk_cache=shared_build.owner.feature_cache,
+                        owns_model=False,
+                    )
+            else:
+                if needs_interactive_model:
+                    session.interactive = Sam3InteractiveRuntimeSession(
+                        checkpoint_path=variant.checkpoint_path,
+                        model_asset_id=variant.model_asset_id,
+                        architecture_id=variant.architecture_id,
+                        requested_device_name=requested_device,
+                        precision=requested_precision,
+                        checkpoint_branches=checkpoint_branches,
+                        checkpoint_sha256=checkpoint_sha256,
+                    )
+                if needs_semantic:
+                    session.semantic = Sam3SemanticRuntimeSession(
+                        checkpoint_path=variant.checkpoint_path,
+                        model_asset_id=variant.model_asset_id,
+                        architecture_id=variant.architecture_id,
+                        requested_device_name=requested_device,
+                        precision=requested_precision,
+                        checkpoint_branches=checkpoint_branches,
+                        checkpoint_sha256=checkpoint_sha256,
+                    )
             del checkpoint_branches
         except Exception:
             session.close()
             raise
-        loaded_runtime = session.interactive or session.semantic
+        loaded_runtime = (
+            session.interactive or session.semantic or session.multiplex
+        )
         if loaded_runtime is None:
             session.close()
             raise ServiceConfigurationError(
@@ -166,6 +270,14 @@ class Sam3WorkflowModelSessionProvider:
             metadata={
                 "architecture_id": variant.architecture_id,
                 "model_version": variant.model_version,
+                "resource_owner": (
+                    session.shared_owner.diagnostics()
+                    if session.shared_owner is not None
+                    else {
+                        "owner_kind": "single-capability",
+                        "model_instance_count": 1,
+                    }
+                ),
                 "timings_ms": {
                     "checkpoint_read": checkpoint_read_ms,
                     "model_build_and_device_transfer": round(
@@ -181,6 +293,7 @@ class Sam3WorkflowModelSessionProvider:
             },
         )
 
+    @torch.inference_mode()
     def warmup(
         self,
         *,
@@ -235,6 +348,89 @@ class Sam3WorkflowModelSessionProvider:
                 (perf_counter() - capability_started_at) * 1000,
                 3,
             )
+        if session.multiplex is not None:
+            capability_started_at = perf_counter()
+            if session.interactive is None:
+                raise ServiceConfigurationError(
+                    "SAM3 Multiplex warmup 需要 interactive 首帧初始化能力"
+                )
+            warmup_prompt = (
+                Sam3InteractivePromptItem(
+                    prompt_id="warmup-video-box",
+                    prompt_kind="box",
+                    display_name="Warmup Video Box",
+                    bbox_xyxy=(8.0, 8.0, 56.0, 56.0),
+                ),
+            )
+            interactive_context = (
+                session.interactive.prepare_frame_context(
+                    image_bytes=image_bytes,
+                    image_payload=image_payload,
+                )
+            )
+            seed = session.interactive.build_propagation_seed(
+                frame_context=interactive_context,
+                prompt_items=warmup_prompt,
+                refine_iterations=1,
+            )
+            first_context = session.multiplex.prepare_frame_context(
+                image_bytes=image_bytes,
+                image_payload=image_payload,
+            )
+            multiplex_state = build_sam3_multiplex_state(
+                object_ids=seed.prompt_ids,
+                device=seed.mask_logits.device,
+                dtype=first_context.features.pixel_feature.dtype,
+                multiplex_count=session.multiplex.model.multiplex_count,
+            )
+            object_pointers = (
+                session.multiplex.model.project_interactive_object_tokens(
+                    seed.object_tokens.to(
+                        dtype=first_context.features.pixel_feature.dtype
+                    )
+                )
+            )
+            object_score_logits = seed.mask_logits.new_full(
+                (len(seed.prompt_ids), 1),
+                10.0,
+            )
+            first_memory = session.multiplex.model.encode_memory(
+                frame_index=0,
+                frame_features=first_context.features,
+                multiplex_state=multiplex_state,
+                mask_logits=seed.mask_logits,
+                object_score_logits=object_score_logits,
+                object_pointers=multiplex_state.mux(object_pointers),
+                conditioning=True,
+            )
+            second_context = session.multiplex.prepare_frame_context(
+                image_bytes=image_bytes,
+                image_payload=image_payload,
+            )
+            propagation = session.multiplex.model.propagate(
+                frame_index=1,
+                frame_features=second_context.features,
+                multiplex_state=multiplex_state,
+                memory_entries=(first_memory,),
+                total_frame_count=2,
+            )
+            if (
+                propagation.mask_logits.shape[0] != len(seed.prompt_ids)
+                or not bool(torch.isfinite(propagation.mask_logits).all())
+            ):
+                raise ServiceConfigurationError(
+                    "SAM3 Multiplex warmup 输出无效"
+                )
+            summaries["multiplex"] = {
+                **session.multiplex.diagnostics(),
+                "project_native": True,
+                "propagated_object_count": len(seed.prompt_ids),
+                "second_frame_validated": True,
+            }
+            capability_timings_ms["multiplex"] = round(
+                (perf_counter() - capability_started_at) * 1000,
+                3,
+            )
         summaries["_warmup_timings_ms"] = {
             **capability_timings_ms,
             "total": round((perf_counter() - warmup_started_at) * 1000, 3),
@@ -254,12 +450,14 @@ class Sam3WorkflowModelSessionProvider:
         del consumer_node_type_ids, runtime_context
         if not isinstance(warmup_result, dict):
             raise ServiceConfigurationError("SAM3 warmup 没有返回有效摘要")
-        expected_modes = {
-            "interactive"
-            if capability in {"interactive", "video-interactive"}
-            else "semantic"
-            for capability in load_result.capabilities
-        }
+        expected_modes: set[str] = set()
+        for capability in load_result.capabilities:
+            if capability in {"interactive", "video-interactive"}:
+                expected_modes.add("interactive")
+            if capability in {"semantic", "video-semantic"}:
+                expected_modes.add("semantic")
+            if capability in {"video-interactive", "video-semantic"}:
+                expected_modes.add("multiplex")
         for mode in expected_modes:
             summary = warmup_result.get(mode)
             if not isinstance(summary, dict) or summary.get("project_native") is not True:
@@ -274,14 +472,25 @@ class Sam3WorkflowModelSessionProvider:
             for capability, runtime_session in (
                 ("interactive", session.interactive),
                 ("semantic", session.semantic),
+                ("multiplex-propagation", session.multiplex),
             )
             if runtime_session is not None
         ]
         return {
             "warmup": "passed",
             "validated_modes": sorted(expected_modes),
-            "runtime_instance_count": len(runtime_instances),
+            "runtime_instance_count": (
+                1 if session.shared_owner is not None else len(runtime_instances)
+            ),
             "runtime_instances": runtime_instances,
+            "resource_owner": (
+                session.shared_owner.diagnostics()
+                if session.shared_owner is not None
+                else {
+                    "owner_kind": "single-capability",
+                    "model_instance_count": len(runtime_instances),
+                }
+            ),
             "warmup_timings_ms": (
                 dict(warmup_timings)
                 if isinstance(warmup_timings, dict)

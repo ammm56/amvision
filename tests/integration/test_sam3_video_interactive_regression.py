@@ -6,17 +6,45 @@ import io
 from types import SimpleNamespace
 
 from PIL import Image, ImageDraw
+import pytest
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 from custom_nodes.sam3_segment_nodes.backend.nodes import video_interactive_segment
+from tests.sam3_workflow_session_test_support import (
+    build_real_video_workflow_session,
+    patch_real_video_workflow_session,
+)
 
 
-def test_sam3_video_interactive_long_window_large_displacement_smoke() -> None:
+@pytest.fixture(scope="module")
+def real_video_session():
+    """为本模块复用一个真实 AppRuntime 视频模型会话。"""
+
+    session = build_real_video_workflow_session(
+        device_name="cpu",
+        precision="fp32",
+        include_semantic=False,
+    )
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def test_sam3_video_interactive_long_window_large_displacement_smoke(
+    monkeypatch,
+    real_video_session,
+) -> None:
     """验证真实 project-native runtime 可以处理更长窗口与更大位移。"""
 
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        real_video_session,
+    )
     frame_window_payload, image_registry = _build_moving_object_frame_window_payload(
         frame_count=6,
         width=192,
@@ -61,13 +89,24 @@ def test_sam3_video_interactive_long_window_large_displacement_smoke() -> None:
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 6
-    assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
+    assert (
+        output["summary"]["frame_prompt_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert output["tracks"]["count"] >= 1
 
 
-def test_sam3_video_interactive_multi_object_smoke() -> None:
+def test_sam3_video_interactive_multi_object_smoke(
+    monkeypatch,
+    real_video_session,
+) -> None:
     """验证真实 project-native runtime 可以处理多对象 prompt。"""
 
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        real_video_session,
+    )
     frame_window_payload, image_registry = _build_two_object_frame_window_payload(
         frame_count=4,
         width=192,
@@ -110,15 +149,24 @@ def test_sam3_video_interactive_multi_object_smoke() -> None:
     assert output["summary"]["project_native"] is True
     assert output["summary"]["processed_frame_count"] == 4
     assert output["summary"]["prompt_count"] == 2
-    assert output["summary"]["frame_prompt_mode"] == "memory-prototype-state"
+    assert (
+        output["summary"]["frame_prompt_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert output["tracks"]["count"] >= 1
 
 
-def test_sam3_video_interactive_memory_attention_long_window_large_displacement_smoke() -> (
-    None
-):
-    """验证真实 project-native runtime 可以在 memory-attention 模式下处理长窗口和大位移。"""
+def test_sam3_video_interactive_multiplex_long_window_large_displacement_smoke(
+    monkeypatch,
+    real_video_session,
+) -> None:
+    """验证正式 Multiplex propagation 可以处理长窗口和大位移。"""
 
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        real_video_session,
+    )
     frame_window_payload, image_registry = _build_moving_object_frame_window_payload(
         frame_count=6,
         width=192,
@@ -141,7 +189,6 @@ def test_sam3_video_interactive_memory_attention_long_window_large_displacement_
             "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
-            "tracking_mode": "memory-attention-tracker",
         },
         input_values={
             "frames": frame_window_payload,
@@ -164,13 +211,24 @@ def test_sam3_video_interactive_memory_attention_long_window_large_displacement_
     assert output["summary"]["project_native"] is True
     assert output["summary"]["inference_mode"] == "video-interactive-segment"
     assert output["summary"]["processed_frame_count"] == 6
-    assert output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
+    assert (
+        output["summary"]["frame_prompt_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert output["tracks"]["count"] >= 1
 
 
-def test_sam3_video_interactive_memory_attention_multi_object_smoke() -> None:
-    """验证真实 project-native runtime 可以在 memory-attention 模式下处理多对象 prompt。"""
+def test_sam3_video_interactive_multiplex_multi_object_smoke(
+    monkeypatch,
+    real_video_session,
+) -> None:
+    """验证正式 Multiplex propagation 可以处理多对象 prompt。"""
 
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        real_video_session,
+    )
     frame_window_payload, image_registry = _build_four_object_frame_window_payload(
         frame_count=5,
         width=224,
@@ -185,7 +243,6 @@ def test_sam3_video_interactive_memory_attention_multi_object_smoke() -> None:
             "model_asset_id": "sam3/default",
             "device": "cpu",
             "precision": "fp32",
-            "tracking_mode": "memory-attention-tracker",
         },
         input_values={
             "frames": frame_window_payload,
@@ -226,7 +283,10 @@ def test_sam3_video_interactive_memory_attention_multi_object_smoke() -> None:
     assert output["summary"]["project_native"] is True
     assert output["summary"]["processed_frame_count"] == 5
     assert output["summary"]["prompt_count"] == 4
-    assert output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
+    assert (
+        output["summary"]["frame_prompt_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert output["tracks"]["count"] >= 1
 
 

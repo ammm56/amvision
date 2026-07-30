@@ -1,248 +1,226 @@
-"""SAM3 video-semantic-segment 节点测试。"""
+"""SAM3.1 Multiplex video-semantic 节点测试。"""
 
 from __future__ import annotations
 
+import io
 from types import SimpleNamespace
 
+import cv2
+import numpy as np
 from PIL import Image
+import torch
 
 from backend.nodes import ExecutionImageRegistry, build_memory_image_payload
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
-from custom_nodes.sam3_segment_nodes.backend.nodes import video_semantic_segment
-from tests.sam3_workflow_session_test_support import (
-    patch_real_semantic_session,
-    patch_semantic_session,
+from custom_nodes.sam3_segment_nodes.backend.core.postprocess.masks import (
+    Sam3RegionItem,
 )
+from custom_nodes.sam3_segment_nodes.backend.nodes import (
+    video_semantic_segment,
+)
+from tests.sam3_workflow_session_test_support import patch_video_sessions
 
 
-def test_video_semantic_segment_returns_tracks_and_summary(monkeypatch) -> None:
-    """验证 video-semantic 节点会返回 tracks 与 summary。"""
+def test_video_semantic_detects_first_frame_then_propagates(
+    monkeypatch,
+) -> None:
+    """验证文本检测只跑首帧，后续帧复用 Multiplex memory。"""
 
-    captured: dict[str, object] = {"predict_calls": 0, "prompt_groups": []}
-
-    class _FakeSession:
-        def predict(self, *, image_bytes: bytes, image_payload, prompt_items, **_):
-            captured["predict_calls"] = int(captured["predict_calls"]) + 1
-            history = list(captured["prompt_groups"])
-            history.append(prompt_items)
-            captured["prompt_groups"] = history
-            return SimpleNamespace(
-                regions=(
-                    SimpleNamespace(
-                        region_id="region-1",
-                        score=0.84,
-                        class_id=0,
-                        class_name="缺陷区域",
-                        bbox_xyxy=(8.0, 12.0, 44.0, 52.0),
-                        polygon_xy=(
-                            (8.0, 12.0),
-                            (44.0, 12.0),
-                            (44.0, 52.0),
-                            (8.0, 52.0),
-                        ),
-                        area=1440,
-                        prompt_id="prompt-1",
-                        source_prompt_text="defect || !background",
-                        source_prompt_positive_texts=("defect",),
-                        source_prompt_negative_texts=("background",),
-                        mask_png_bytes=_build_test_png_bytes(width=64, height=64),
-                        mask_width=64,
-                        mask_height=64,
-                    ),
-                ),
-                summary={
-                    "project_native": True,
-                    "model_asset_id": "sam3/default",
-                    "architecture_id": "sam3.1-multiplex.vision-1008.v1",
-                    "checkpoint_path": "fake-sam3.1_multiplex.pt",
-                    "device": "cpu",
-                    "precision": "fp32",
-                    "prompt_count": 1,
-                    "prompt_item_count": 2,
-                    "prompt_group_count": 1,
-                    "positive_prompt_count": 1,
-                    "negative_prompt_count": 1,
-                    "negative_prompt_weight": 0.5,
-                    "prompt_texts": ["defect || !background"],
-                    "region_count": 1,
-                    "inference_mode": "semantic-segment",
-                    "text_encoder": "checkpoint-language-backbone",
-                    "postprocess_profile": "sam3-default",
-                    "prompt_groups": [
-                        {
-                            "prompt_id": "prompt-1",
-                            "display_name": "缺陷区域",
-                            "positive_texts": ["defect"],
-                            "negative_texts": ["background"],
-                            "languages": [],
-                        }
-                    ],
-                },
-            )
-
-    patch_semantic_session(
-        monkeypatch, video_semantic_segment, _FakeSession()
+    semantic = _FakeSemanticSession()
+    interactive = _FakeInteractiveSession()
+    multiplex = _FakeMultiplexSession()
+    patch_video_sessions(
+        monkeypatch,
+        video_semantic_segment,
+        interactive=interactive,
+        semantic=semantic,
+        multiplex=multiplex,
     )
-
-    frame_window_payload, image_registry = _build_test_frame_window_payload(
-        frame_count=2, width=96, height=72
-    )
+    frame_window, registry = _build_frame_window(frame_count=3)
     request = WorkflowNodeExecutionRequest(
-        node_id="node-sam3-video-semantic",
+        node_id="sam3-video-semantic",
         node_definition=SimpleNamespace(
             node_type_id=video_semantic_segment.NODE_TYPE_ID
         ),
-        parameters={
-            "model_asset_id": "sam3/default",
-            "device": "cpu",
-            "precision": "fp32",
-        },
+        parameters={},
         input_values={
-            "frames": frame_window_payload,
+            "frames": frame_window,
             "prompts": {
                 "items": [
                     {
-                        "prompt_id": "prompt-1",
+                        "prompt_id": "defect",
                         "text": "defect",
-                        "display_name": "缺陷区域",
-                    },
-                    {
-                        "prompt_id": "prompt-1",
-                        "text": "background",
-                        "display_name": "缺陷区域",
-                        "negative": True,
-                    },
-                ]
-            },
-        },
-        execution_metadata={"execution_image_registry": image_registry},
-    )
-
-    output = video_semantic_segment.handle_node(request)
-
-    assert captured["predict_calls"] == 2
-    assert output["tracks"]["count"] == 2
-    assert output["tracks"]["items"][0]["track_id"] == "prompt-1"
-    assert output["tracks"]["items"][0]["state"] == "semantic"
-    assert output["tracks"]["items"][0]["source_prompt_positive_texts"] == ["defect"]
-    assert output["tracks"]["items"][0]["source_prompt_negative_texts"] == [
-        "background"
-    ]
-    assert output["summary"]["project_native"] is True
-    assert output["summary"]["inference_mode"] == "video-semantic-segment"
-    assert output["summary"]["processed_frame_count"] == 2
-    assert output["summary"]["unique_track_count"] == 1
-    assert output["summary"]["track_ids"] == ["prompt-1"]
-    assert output["summary"]["frame_prompt_mode"] == "shared-text-prompts-across-window"
-    assert output["summary"]["frame_region_counts"] == [1, 1]
-    assert output["summary"]["prompt_count"] == 1
-    assert output["summary"]["prompt_item_count"] == 2
-    assert output["summary"]["positive_prompt_count"] == 1
-    assert output["summary"]["negative_prompt_count"] == 1
-    prompt_groups = captured["prompt_groups"]
-    assert len(prompt_groups) == 2
-    assert prompt_groups[0][0].positive_texts == ("defect",)
-    assert prompt_groups[0][0].negative_texts == ("background",)
-
-
-def test_video_semantic_segment_runs_project_native_smoke(monkeypatch) -> None:
-    """验证 video-semantic 节点会加载本地 project-native runtime。"""
-
-    frame_window_payload, image_registry = _build_test_frame_window_payload(
-        frame_count=1, width=128, height=96
-    )
-    request = WorkflowNodeExecutionRequest(
-        node_id="node-sam3-video-semantic-real-smoke",
-        node_definition=SimpleNamespace(
-            node_type_id=video_semantic_segment.NODE_TYPE_ID
-        ),
-        parameters={
-            "model_asset_id": "sam3/default",
-            "device": "cpu",
-            "precision": "fp32",
-        },
-        input_values={
-            "frames": frame_window_payload,
-            "prompts": {
-                "items": [
-                    {
-                        "prompt_id": "prompt-1",
-                        "text": "object",
-                        "display_name": "object",
+                        "display_name": "Defect",
                     }
                 ]
             },
         },
-        execution_metadata={"execution_image_registry": image_registry},
+        execution_metadata={"execution_image_registry": registry},
     )
 
-    patch_real_semantic_session(monkeypatch, video_semantic_segment)
     output = video_semantic_segment.handle_node(request)
 
-    assert output["summary"]["project_native"] is True
-    assert output["summary"]["inference_mode"] == "video-semantic-segment"
-    assert output["summary"]["processed_frame_count"] == 1
-    assert output["summary"]["frame_prompt_mode"] == "shared-text-prompts-across-window"
-    assert output["summary"]["postprocess_profile"] == "sam3-default"
-    assert output["tracks"]["count"] >= 0
+    assert semantic.predict_calls == 1
+    assert interactive.seed_calls == 1
+    assert multiplex.model.propagate_calls == 2
+    assert output["tracks"]["count"] == 3
+    assert output["summary"]["propagation_branch"] == "sam3.1-multiplex"
+    assert output["summary"]["processed_frame_count"] == 3
+    assert output["summary"]["frame_prompt_mode"] == (
+        "sam3.1-multiplex-propagation"
+    )
 
 
-def _build_test_frame_window_payload(
+class _FakeSemanticSession:
+    def __init__(self) -> None:
+        self.predict_calls = 0
+
+    def predict(self, **_kwargs):
+        self.predict_calls += 1
+        mask = np.ones((72, 96), dtype=np.uint8)
+        encoded, buffer = cv2.imencode(".png", mask * 255)
+        assert encoded
+        return SimpleNamespace(
+            regions=(
+                Sam3RegionItem(
+                    region_id="region-defect",
+                    score=0.95,
+                    class_id=0,
+                    class_name="Defect",
+                    bbox_xyxy=(0.0, 0.0, 95.0, 71.0),
+                    polygon_xy=(
+                        (0.0, 0.0),
+                        (95.0, 0.0),
+                        (95.0, 71.0),
+                        (0.0, 71.0),
+                    ),
+                    area=int(mask.sum()),
+                    prompt_id="defect",
+                    mask_array=mask,
+                    mask_png_bytes=buffer.tobytes(),
+                    mask_width=96,
+                    mask_height=72,
+                    source_prompt_text="defect",
+                    source_prompt_positive_texts=("defect",),
+                    source_prompt_negative_texts=(),
+                ),
+            ),
+            summary={
+                "project_native": True,
+                "inference_mode": "semantic-segment",
+            },
+        )
+
+
+class _FakeInteractiveSession:
+    def __init__(self) -> None:
+        self.seed_calls = 0
+
+    def prepare_frame_context(self, **_kwargs):
+        return object()
+
+    def build_propagation_seed(self, *, prompt_items, **_kwargs):
+        self.seed_calls += 1
+        return SimpleNamespace(
+            mask_logits=torch.full((1, 1, 8, 8), 8.0),
+            object_tokens=torch.ones((1, 256)),
+            prompt_ids=tuple(item.prompt_id for item in prompt_items),
+        )
+
+
+class _FakeMultiplexModel:
+    multiplex_count = 16
+    num_mask_memory = 7
+
+    def __init__(self) -> None:
+        self.propagate_calls = 0
+
+    def project_interactive_object_tokens(self, tokens):
+        return tokens
+
+    def encode_memory(self, **kwargs):
+        return SimpleNamespace(
+            frame_index=kwargs["frame_index"],
+            conditioning=kwargs["conditioning"],
+        )
+
+    def propagate(self, *, frame_index, **_kwargs):
+        self.propagate_calls += 1
+        return SimpleNamespace(
+            mask_logits=torch.full((1, 1, 8, 8), 8.0),
+            iou_scores=torch.tensor([0.9]),
+            memory_entry=SimpleNamespace(
+                frame_index=frame_index,
+                conditioning=False,
+            ),
+        )
+
+
+class _FakeMultiplexSession:
+    def __init__(self) -> None:
+        self.model = _FakeMultiplexModel()
+
+    def prepare_frame_context(self, **_kwargs):
+        return SimpleNamespace(
+            prepared_image=SimpleNamespace(
+                target_width=8,
+                target_height=8,
+            ),
+            features=SimpleNamespace(
+                pixel_feature=torch.ones((1, 256, 4, 4))
+            ),
+            preprocess_ms=1.0,
+            backbone_ms=2.0,
+        )
+
+    def diagnostics(self):
+        return {
+            "project_native": True,
+            "runtime": "sam3.1-multiplex-propagation",
+        }
+
+
+def _build_frame_window(
     *,
     frame_count: int,
-    width: int,
-    height: int,
 ) -> tuple[dict[str, object], ExecutionImageRegistry]:
-    """构造测试 frame-window payload。"""
-
-    image_registry = ExecutionImageRegistry()
-    frame_items: list[dict[str, object]] = []
+    registry = ExecutionImageRegistry()
+    items: list[dict[str, object]] = []
     for frame_index in range(frame_count):
-        image_bytes = _build_test_png_bytes(width=width, height=height)
-        registered_image = image_registry.register_image_bytes(
-            content=image_bytes,
+        content = _build_png()
+        registered = registry.register_image_bytes(
+            content=content,
             media_type="image/png",
-            width=width,
-            height=height,
-            created_by_node_id="fixture",
+            width=96,
+            height=72,
+            created_by_node_id=f"frame-{frame_index}",
         )
-        frame_items.append(
+        items.append(
             {
                 "frame_index": frame_index,
-                "timestamp_ms": float(frame_index * 200),
+                "timestamp_ms": float(frame_index * 100),
                 "image": build_memory_image_payload(
-                    image_handle=registered_image.image_handle,
+                    image_handle=registered.image_handle,
                     media_type="image/png",
-                    width=width,
-                    height=height,
+                    width=96,
+                    height=72,
                 ),
             }
         )
     return (
         {
-            "transport_kind": "memory-window",
+            "source_video": {"media_type": "video/mp4"},
             "count": frame_count,
-            "window_start_index": 0,
-            "window_end_index": max(0, frame_count - 1),
-            "items": frame_items,
-            "source_video": {
-                "transport_kind": "local-path",
-                "local_path": "W:/videos/test.mp4",
-                "media_type": "video/mp4",
-            },
+            "items": items,
         },
-        image_registry,
+        registry,
     )
 
 
-def _build_test_png_bytes(*, width: int = 96, height: int = 72) -> bytes:
-    """构造测试 PNG 图片。"""
-
-    import io
-
-    image = Image.new("RGB", (width, height), color=(255, 255, 255))
+def _build_png() -> bytes:
+    image = Image.fromarray(np.full((72, 96, 3), 255, dtype=np.uint8))
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()

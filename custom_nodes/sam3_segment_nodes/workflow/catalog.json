@@ -329,7 +329,7 @@
       "node_type_id": "custom.sam3.video-interactive-segment",
       "display_name": "SAM3 Video Interactive Segment",
       "category": "sam3.video.interactive",
-      "description": "Track prompted objects across a frame window from visual Prompts.",
+      "description": "Initialize objects from visual Prompts on the first frame, then propagate masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -403,47 +403,12 @@
             "maximum": 0.1,
             "default": 0.002
           },
-          "tracking_mode": {
-            "type": "string",
-            "title": "Tracking Mode",
-            "enum": [
-              "memory-prototype-state",
-              "memory-attention-tracker",
-              "stateful-mask-propagation",
-              "shared-prompts-across-window"
-            ],
-            "default": "memory-prototype-state"
-          },
-          "history_limit": {
+          "refine_iterations": {
             "type": "integer",
-            "title": "History Limit",
-            "minimum": 1
-          },
-          "prototype_momentum": {
-            "type": "number",
-            "title": "Prototype Momentum",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "default": 0.7
-          },
-          "attention_temperature": {
-            "type": "number",
-            "title": "Attention Temperature",
-            "exclusiveMinimum": 0.0,
-            "default": 0.12
-          },
-          "prototype_blend_weight": {
-            "type": "number",
-            "title": "Prototype Blend Weight",
-            "minimum": 0.0,
-            "maximum": 1.0,
-            "default": 0.35
-          },
-          "max_memory_tokens_per_entry": {
-            "type": "integer",
-            "title": "Memory Tokens Per Frame",
+            "title": "Seed Refine Iterations",
             "minimum": 1,
-            "default": 256
+            "maximum": 3,
+            "default": 2
           }
         }
       },
@@ -467,7 +432,10 @@
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3",
-        "tracking_implementation": "project-native"
+        "tracking_implementation": "sam3.1-multiplex-propagation",
+        "memory_frame_limit": 7,
+        "object_pointer_limit": 16,
+        "bucket_size": 16
       }
     },
     {
@@ -475,7 +443,7 @@
       "node_type_id": "custom.sam3.video-semantic-segment",
       "display_name": "SAM3 Video Semantic Segment",
       "category": "sam3.video.semantic",
-      "description": "Segment matching concepts across a frame window from Text Prompts.",
+      "description": "Detect text concepts on the first frame, then propagate their masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
       "concurrency_policy": "serialized",
@@ -571,7 +539,11 @@
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3",
-        "tracking_implementation": "per-frame-semantic"
+        "tracking_implementation": "sam3.1-multiplex-propagation",
+        "first_frame_detector": "sam3.1-semantic",
+        "memory_frame_limit": 7,
+        "object_pointer_limit": 16,
+        "bucket_size": 16
       }
     }
   ],

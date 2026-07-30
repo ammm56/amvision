@@ -44,6 +44,8 @@ from ..nn.vision_backbone import (
     SAM3VisualBackbone,
     Sam3ViTDetNeck,
     ViT,
+    build_sam3_vit_trunk,
+    release_rotary_device_caches,
 )
 
 
@@ -64,6 +66,15 @@ class Sam3InteractiveFrameContext:
     low_res_feature_map: torch.Tensor
     mask_prompt_width: int
     mask_prompt_height: int
+
+
+@dataclass(frozen=True)
+class Sam3InteractivePropagationSeed:
+    """描述首帧交互结果交给视频 propagation 的内部 tensor。"""
+
+    mask_logits: torch.Tensor
+    object_tokens: torch.Tensor
+    prompt_ids: tuple[str, ...]
 
 
 def _resolve_runtime_torch_dtype(*, device_name: str, precision: str) -> torch.dtype:
@@ -158,7 +169,7 @@ class Sam3InteractiveImageModel(nn.Module):
 
     mask_threshold: float = 0.0
 
-    def __init__(self) -> None:
+    def __init__(self, *, shared_trunk: ViT | None = None) -> None:
         super().__init__()
         self.image_size = 1008
         self.backbone_stride = 14
@@ -179,31 +190,7 @@ class Sam3InteractiveImageModel(nn.Module):
                 d_model=256,
                 branch_name="interactive_convs",
                 scale_factors=(4.0, 2.0, 1.0),
-                trunk=ViT(
-                    img_size=1008,
-                    pretrain_img_size=336,
-                    patch_size=14,
-                    embed_dim=1024,
-                    depth=32,
-                    num_heads=16,
-                    mlp_ratio=4.625,
-                    norm_layer="LayerNorm",
-                    drop_path_rate=0.1,
-                    qkv_bias=True,
-                    use_abs_pos=True,
-                    tile_abs_pos=True,
-                    global_att_blocks=(7, 15, 23, 31),
-                    use_rope=True,
-                    use_interp_rope=True,
-                    window_size=24,
-                    pretrain_use_cls_token=True,
-                    retain_cls_token=False,
-                    ln_pre=True,
-                    ln_post=False,
-                    return_interm_layers=False,
-                    bias_patch_embed=False,
-                    use_act_checkpoint=False,
-                ),
+                trunk=shared_trunk or build_sam3_vit_trunk(),
             ),
             scalp=0,
         )
@@ -242,10 +229,18 @@ class Sam3InteractiveImageModel(nn.Module):
 
         self.no_mem_embed = nn.Parameter(torch.zeros(1, 1, self.hidden_dim))
 
-    def forward_image(self, image_tensor: torch.Tensor) -> dict[str, object]:
+    def forward_image(
+        self,
+        image_tensor: torch.Tensor,
+        *,
+        trunk_feature: torch.Tensor | None = None,
+    ) -> dict[str, object]:
         """抽取单图视觉特征。"""
 
-        backbone_out = self.image_encoder.forward_image(image_tensor)
+        backbone_out = self.image_encoder.forward_image(
+            image_tensor,
+            trunk_feature=trunk_feature,
+        )
         backbone_out["backbone_fpn"][0] = self.sam_mask_decoder.conv_s0(
             backbone_out["backbone_fpn"][0]
         )
@@ -288,11 +283,17 @@ class Sam3InteractiveImageModel(nn.Module):
         return backbone_out, vision_feats, vision_pos_embeds, feat_sizes
 
     def extract_interactive_features(
-        self, prepared_image: PreparedSam3Image
+        self,
+        prepared_image: PreparedSam3Image,
+        *,
+        trunk_feature: torch.Tensor | None = None,
     ) -> dict[str, object]:
         """把输入图片转换成 interactive prompt 推理需要的特征。"""
 
-        backbone_out = self.forward_image(prepared_image.image_tensor)
+        backbone_out = self.forward_image(
+            prepared_image.image_tensor,
+            trunk_feature=trunk_feature,
+        )
         _, vision_feats, _vision_pos_embeds, feat_sizes = (
             self._prepare_backbone_features(backbone_out)
         )
@@ -317,6 +318,35 @@ class Sam3InteractiveImageModel(nn.Module):
         prompts: PreparedSam3InteractivePrompts,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """运行 prompt encoder + mask decoder，输出低分辨率 mask logits 与得分。"""
+
+        mask_logits, iou_scores, final_scores, _object_tokens = (
+            self._predict_mask_logits_and_tokens(
+                features=features,
+                prompts=prompts,
+            )
+        )
+        return mask_logits, iou_scores, final_scores
+
+    def predict_mask_logits_and_tokens(
+        self,
+        *,
+        features: dict[str, object],
+        prompts: PreparedSam3InteractivePrompts,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """同时返回视频 propagation 所需的 interactive object tokens。"""
+
+        return self._predict_mask_logits_and_tokens(
+            features=features,
+            prompts=prompts,
+        )
+
+    def _predict_mask_logits_and_tokens(
+        self,
+        *,
+        features: dict[str, object],
+        prompts: PreparedSam3InteractivePrompts,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """执行 interactive decoder，并保留最佳 mask 对应的 token。"""
 
         image_embed = features["image_embed"]
         batch_size = _read_prepared_prompt_batch_size(prompts)
@@ -389,7 +419,6 @@ class Sam3InteractiveImageModel(nn.Module):
             (perf_counter() - decoder_started_at) * 1000,
             3,
         )
-        del sam_tokens_out
         # 与 SAM3 tracker 参考实现一致：object score 小于等于零时必须把
         # mask 设为 NO_OBJ_SCORE，不能把无对象 logits 继续交给阈值后处理。
         object_is_present = object_score_logits > 0
@@ -414,11 +443,16 @@ class Sam3InteractiveImageModel(nn.Module):
                 batch_indexes,
                 best_mask_indexes,
             ]
+            selected_sam_tokens = sam_tokens_out[
+                batch_indexes,
+                best_mask_indexes,
+            ]
             mask_logits = mask_logits[batch_indexes, best_mask_indexes].unsqueeze(1)
             iou_scores = selected_iou_scores.unsqueeze(1)
             final_scores = selected_iou_scores
         else:
             final_scores = final_scores.squeeze(1)
+            selected_sam_tokens = sam_tokens_out[:, 0]
         if object_score_logits.ndim == 2:
             final_scores = torch.where(
                 object_is_present.squeeze(1),
@@ -426,7 +460,7 @@ class Sam3InteractiveImageModel(nn.Module):
                 torch.zeros_like(final_scores),
             )
         self.last_multimask_output = multimask_output
-        return mask_logits, iou_scores, final_scores
+        return mask_logits, iou_scores, final_scores, selected_sam_tokens
 
     def set_imgsz(self, imgsz: list[int] = [1008, 1008]) -> None:
         """更新输入尺寸。"""
@@ -482,6 +516,11 @@ class Sam3InteractiveRuntimeSession:
         precision: str,
         checkpoint_branches: Sam3CheckpointBranches | None = None,
         checkpoint_sha256: str | None = None,
+        prebuilt_model: Sam3InteractiveImageModel | None = None,
+        resolved_device_name: str | None = None,
+        runtime_torch_dtype: torch.dtype | None = None,
+        owns_model: bool = True,
+        shared_trunk_cache: object | None = None,
     ) -> None:
         self.model_asset_id = model_asset_id
         self.architecture_id = architecture_id
@@ -489,14 +528,23 @@ class Sam3InteractiveRuntimeSession:
         self.precision = precision
         self.checkpoint_sha256 = str(checkpoint_sha256 or "").strip()
         self.session_generation = uuid4().hex
-        self.model, self.device_name, self.runtime_torch_dtype = (
-            build_sam3_interactive_image_model(
-                checkpoint_path=checkpoint_path,
-                requested_device_name=requested_device_name,
-                precision=precision,
-                checkpoint_branches=checkpoint_branches,
+        self._owns_model = bool(owns_model)
+        self._shared_trunk_cache = shared_trunk_cache
+        if prebuilt_model is None:
+            self.model, self.device_name, self.runtime_torch_dtype = (
+                build_sam3_interactive_image_model(
+                    checkpoint_path=checkpoint_path,
+                    requested_device_name=requested_device_name,
+                    precision=precision,
+                    checkpoint_branches=checkpoint_branches,
+                )
             )
-        )
+        else:
+            if resolved_device_name is None or runtime_torch_dtype is None:
+                raise ValueError("prebuilt_model 必须同时提供 device 与 dtype")
+            self.model = prebuilt_model
+            self.device_name = resolved_device_name
+            self.runtime_torch_dtype = runtime_torch_dtype
         self._feature_cache_key: str | None = None
         self._feature_cache_context: Sam3InteractiveFrameContext | None = None
         self._feature_cache_hits = 0
@@ -512,6 +560,7 @@ class Sam3InteractiveRuntimeSession:
         *,
         image_bytes: bytes,
         image_payload: object,
+        image_content_sha256: str | None = None,
     ) -> Sam3InteractiveFrameContext:
         """预处理图片并提取可复用的单帧 interactive 特征。"""
 
@@ -542,7 +591,24 @@ class Sam3InteractiveRuntimeSession:
         )
         _synchronize_cuda_tensor(prepared_image.image_tensor)
         backbone_started_at = perf_counter()
-        features = self.model.extract_interactive_features(prepared_image)
+        trunk_feature = None
+        if self._shared_trunk_cache is not None:
+            get_or_compute = getattr(
+                self._shared_trunk_cache,
+                "get_or_compute",
+                None,
+            )
+            if callable(get_or_compute):
+                cache_identity = image_content_sha256 or sha256(image_bytes).hexdigest()
+                trunk_feature = get_or_compute(
+                    image_identity=cache_identity,
+                    image_tensor=prepared_image.image_tensor,
+                    trunk=self.model.image_encoder.vision_backbone.trunk,
+                )
+        features = self.model.extract_interactive_features(
+            prepared_image,
+            trunk_feature=trunk_feature,
+        )
         _synchronize_cuda_tensor(features["image_embed"])
         self._last_backbone_ms = round(
             (perf_counter() - backbone_started_at) * 1000,
@@ -597,6 +663,7 @@ class Sam3InteractiveRuntimeSession:
         context = self.prepare_frame_context(
             image_bytes=image_bytes,
             image_payload=image_payload,
+            image_content_sha256=image_content_sha256,
         )
         self._feature_cache_context = context
         self._feature_cache_key = cache_key
@@ -783,6 +850,103 @@ class Sam3InteractiveRuntimeSession:
         return Sam3InteractivePrediction(regions=tuple(region_items), summary=summary)
 
     @torch.inference_mode()
+    def build_propagation_seed(
+        self,
+        *,
+        frame_context: Sam3InteractiveFrameContext,
+        prompt_items: tuple[object, ...],
+        refine_iterations: int = 2,
+    ) -> Sam3InteractivePropagationSeed:
+        """生成首帧 mask logits 与 object token，不执行区域后处理。"""
+
+        if not prompt_items:
+            raise InvalidRequestError("SAM3 视频 propagation 至少需要一个 prompt")
+        normalized_refine_iterations = max(1, int(refine_iterations))
+        prepared_image = frame_context.prepared_image
+        prompt_kinds = {
+            str(getattr(item, "prompt_kind", "")) for item in prompt_items
+        }
+        can_batch = len(prompt_kinds) == 1 and prompt_kinds.issubset(
+            {"point", "box"}
+        )
+        prompt_batches = (
+            (prompt_items,)
+            if can_batch
+            else tuple((item,) for item in prompt_items)
+        )
+        mask_logits_items: list[torch.Tensor] = []
+        object_token_items: list[torch.Tensor] = []
+        prompt_ids: list[str] = []
+        for prompt_batch in prompt_batches:
+            prompts = build_sam3_interactive_prompt_tensors(
+                tuple(prompt_batch),
+                source_width=prepared_image.original_width,
+                source_height=prepared_image.original_height,
+                target_width=prepared_image.target_width,
+                target_height=prepared_image.target_height,
+                mask_prompt_width=frame_context.mask_prompt_width,
+                mask_prompt_height=frame_context.mask_prompt_height,
+                device=self.model.no_mem_embed.device,
+                prompt_mask_dtype=self.runtime_torch_dtype,
+            )
+            (
+                current_mask_logits,
+                _iou_scores,
+                _final_scores,
+                current_object_tokens,
+            ) = self.model.predict_mask_logits_and_tokens(
+                features=frame_context.features,
+                prompts=prompts,
+            )
+            for _ in range(1, normalized_refine_iterations):
+                refine_mask = torch.nn.functional.interpolate(
+                    current_mask_logits,
+                    size=(
+                        prepared_image.target_height,
+                        prepared_image.target_width,
+                    ),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                refined_prompts = PreparedSam3InteractivePrompts(
+                    point_coords=None,
+                    point_labels=None,
+                    boxes=None,
+                    prompt_masks=refine_mask,
+                    prompt_ids=prompts.prompt_ids,
+                    prompt_kinds=tuple(
+                        "mask" for _ in prompts.prompt_kinds
+                    ),
+                )
+                (
+                    current_mask_logits,
+                    _iou_scores,
+                    _final_scores,
+                    current_object_tokens,
+                ) = self.model.predict_mask_logits_and_tokens(
+                    features=frame_context.features,
+                    prompts=refined_prompts,
+                )
+            mask_logits_items.append(
+                torch.nn.functional.interpolate(
+                    current_mask_logits.float(),
+                    size=(
+                        prepared_image.target_height,
+                        prepared_image.target_width,
+                    ),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            )
+            object_token_items.append(current_object_tokens)
+            prompt_ids.extend(prompts.prompt_ids)
+        return Sam3InteractivePropagationSeed(
+            mask_logits=torch.cat(mask_logits_items, dim=0),
+            object_tokens=torch.cat(object_token_items, dim=0),
+            prompt_ids=tuple(prompt_ids),
+        )
+
+    @torch.inference_mode()
     def predict(
         self,
         *,
@@ -813,10 +977,12 @@ class Sam3InteractiveRuntimeSession:
     def close(self) -> None:
         """释放模型引用和可回收的 CUDA 显存。"""
 
-        self.model.to(device=torch.device("cpu"))
+        if self._owns_model:
+            release_rotary_device_caches(self.model)
+            self.model.to(device=torch.device("cpu"))
         self._feature_cache_context = None
         self._feature_cache_key = None
-        if torch.cuda.is_available():
+        if self._owns_model and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
 

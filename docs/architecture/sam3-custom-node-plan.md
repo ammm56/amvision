@@ -1,215 +1,157 @@
-# SAM3 自定义节点完整实现规划
+# SAM3 自定义节点实现边界
 
 ## 文档目的
 
-本文档固定 SAM3 自定义节点的实现边界、节点清单、参数规则、运行时结构和验收标准。
+本文档固定 SAM3 自定义节点的节点协议、模型所有权、SAM3.1 Multiplex 视频传播、
+资源生命周期和验收边界。实现不得依赖 `projectsrc/`；该目录只用于开发期对照。
 
-后续修改 SAM3 节点时以本文档为准，不能重新引入虚假的模型 Scale、自由文本设备参数、外部手工构造 Prompt 或逐帧结果冒充视频跟踪等实现。
+当前系统、节点包和节点定义版本统一为 `0.1.3`。
 
-## 目标边界
+## 节点与共享协议
 
-SAM3 继续作为独立 custom node pack，不进入核心模型主链。共享 Prompt payload 和 Prompt 构造节点属于核心 workflow 基础能力，供 SAM3、YOLOE 和后续开放词汇模型共同使用。
-
-本项目运行时不得依赖 `projectsrc/`。SAM3 模型结构、checkpoint 映射和执行器必须在正式源码目录中实现并测试。
-
-## 固定节点清单
-
-### Core / Input / Prompt
-
-- `Text Prompt`
-- `Text Prompts Merge`
-- `Point Prompt`
-- `Box Prompt`
-- `Polygon Prompt`
-- `Mask Prompt`
-- `Mask Editor`
-- `Prompt Regions Merge`
-
-这些节点分别生产或合并 `text-prompts.v1`、`prompt-regions.v1`。当前仍处于开发阶段，视觉 Prompt 协议直接同步升级 `prompt-regions.v1`，不创建 `v2` 或兼容层。模型节点不接受普通字符串代替标准 Prompt payload。
-
-`prompt-regions.v1` 的固定语义：
-
-- Point 节点参数使用 `positive_points_xy` 与 `negative_points_xy`，Box 节点参数使用
-  `bboxes_xyxy`，Polygon 节点参数使用 `polygons_xy`；公开 payload 中的单条记录仍分别使用
-  `point_xy`、`bbox_xyxy` 与 `polygon_xy`。
-- Point 节点把全部正负点输出为同一 `prompt_id` 的多条记录，表示同一个对象，至少需要
-  一个 Positive 点。
-- Box 与 Polygon 节点可分别创建多个对象，输出时为每个几何对象分配独立且稳定的
-  `prompt_id`。
-- 同一 `prompt_id` 不能混合 Point、Box、Polygon、Mask；非 Point 类型的 `prompt_id` 必须唯一。
-- Point、Box、Polygon 可接可选源图；源图变化后旧坐标必须拒绝执行。
-- 原子编辑节点的默认几何只作为草稿，只有点击“应用”后才写入有效 Prompt。
-
-### SAM3 / Image
+SAM3 保持独立 custom node pack：
 
 - `SAM3 Load Checkpoint`
 - `SAM3 Interactive Segment`
 - `SAM3 Semantic Segment`
-
-### SAM3 / Video
-
 - `SAM3 Video Interactive Segment`
 - `SAM3 Video Semantic Segment`
 
-## 模型资产规则
+核心 Prompt 节点生产通用 `text-prompts.v1` 和 `prompt-regions.v1`。SAM3 只消费
+共享协议，不增加模型专用 Prompt payload。
 
-- 不使用 `nano / tiny / s / m / l / x / xx` 这类虚假 Scale。
-- 节点通过 `model_asset_id` 引用本地已安装且校验通过的模型资产。
-- 当前只有一份兼容资产时，模型选择仍显示为单选下拉，便于现场确认实际资产。
-- 多份资产同时存在时，选项来自资产目录扫描结果，不能在 Catalog 中写死。
-- 模型 manifest 必须声明模型版本、架构 id、checkpoint 路径、SHA-256、支持能力和最低运行环境。
-- checkpoint 加载必须使用 `weights_only=True`，并校验缺失 key、意外 key 和 tensor shape。
+视觉 Prompt 固定规则：
 
-## Device 与 Precision
+- Point 使用同一对象的 `positive_points_xy` 和 `negative_points_xy`。
+- Box 使用 `bboxes_xyxy`，Polygon 使用 `polygons_xy`，都允许多个对象。
+- Mask 只接受已应用、含前景且源图标识匹配的 ObjectStore 图片。
+- 同一个 `prompt_id` 不能混合不同几何类型。
+- 源图变化后，坐标和 Mask 立即失效。
 
-- `device` 默认值为 `auto`。
-- 可选设备只来自当前节点运行时真实支持的硬件，不直接复用系统检测到的全部设备。
-- 当前 PyTorch SAM3 runtime 只允许 `cpu` 和 `cuda:<index>`。
-- `precision` 与设备联动：
-  - CPU 只允许 `fp32`
-  - CUDA 允许 `fp32`、`fp16`
-  - 只有 `torch.cuda.is_bf16_supported()` 为真时才允许 `bf16`
-- 不允许把不支持的组合静默降级为其他设备或精度。
+## 模型资产与参数
 
-## 参数归属
+- Loader 通过 `model_asset_id` 引用本地 manifest，不提供虚构的 Model Scale。
+- 当前默认 checkpoint 是 `sam3.1_multiplex.pt`。
+- checkpoint 使用 `weights_only=True` 读取，并校验 Parameter 缺失、shape mismatch
+  和所需分支。
+- `device` 只允许当前 PyTorch runtime 实际支持的 CPU 或 CUDA 设备。
+- CPU 只允许 FP32；CUDA 按硬件能力允许 FP32、FP16、BF16。
+- Loader 独占 `model_asset_id / device / precision`。
+- Segment 节点只声明推理和后处理参数，不重复声明模型参数。
 
-只有 `SAM3 Load Checkpoint` 声明：
+## Checkpoint owner 与共享边界
 
-- `model_asset_id`
-- `device`
-- `precision`
+一个 `SAM3 Load Checkpoint` generation 对应一个 checkpoint owner：
 
-四个 Segment 节点都必须通过 `model: sam3-model-session.v1` 输入消费 loader 输出，不再重复声明模型资产、设备和精度。它们共享：
+1. checkpoint 文件只读取一次并在 CPU 拆分 detector/tracker 分支。
+2. 所需能力视图共用一个 ViT trunk。
+3. Interactive 保留 `interactive_convs`、Prompt Encoder 和 Interactive Mask Decoder。
+4. Semantic 保留 `convs`、文本编码、Image-Text Encoder 和 Semantic Head。
+5. 视频 Propagation 保留 `propagation_convs`、Memory Transformer、Mask Memory
+   Encoder 和 Multiplex Mask Decoder。
 
-- `mask_threshold`
-- `stability_offset`
-- `min_component_area`
-- `polygon_simplify_ratio`
+这里只共享权重和结构一致的 ViT trunk。训练目标不同的 neck、Prompt Encoder、
+Semantic Head、Interactive Decoder 和 Propagation Decoder 不强行共享。
 
-只有 `SAM3 Interactive Segment` 声明：
+每个 owner 只缓存最近一张图片的 trunk feature。缓存键包含 session generation、
+checkpoint SHA、设备、精度、推理配置和图片内容 SHA。新图片立即替换旧 feature，
+不建立跨应用或无限 LRU。
 
-- `refine_iterations`：Mask Decoder 总执行轮数，范围 1–3，默认 2；精修复用同一张图片的
-  feature context，不重复执行视觉 Backbone。
+## SAM3.1 Multiplex 视频传播
 
-只有 `SAM3 Video Interactive Segment` 可以声明：
+### Video Interactive
 
-- `tracking_mode`
-- `history_limit`
-- `prototype_momentum`
-- `attention_temperature`
-- `prototype_blend_weight`
-- `max_memory_tokens_per_entry`
+1. 首帧使用 Interactive Prompt 生成 Mask logits 和 decoder object token。
+2. object token 经 checkpoint 中的 `interactive_obj_ptr_proj` 得到 object pointer。
+3. 首帧 Mask、图像 feature、object pointer 写入请求内 conditioning memory。
+4. 后续帧通过 Propagation neck、Memory Transformer 和 16-slot bucket decoder
+   联合传播。
 
-单图 Semantic 节点不能包含视频跟踪参数。
+### Video Semantic
 
-## 运行时规则
+1. 首帧通过 Semantic 文本分割产生对象 Mask。
+2. 该 Mask 作为 Interactive mask prompt，仅用于生成训练匹配的 object pointer。
+3. Semantic Mask 与 object pointer 初始化 conditioning memory。
+4. 后续帧与 Video Interactive 共用同一 Multiplex propagation。
 
-- SAM3 使用通用 [Workflow Model Session 运行时](workflow-model-session-runtime.md)，不建立 SAM3 专用服务级模型池。
-- 每个 `WorkflowAppRuntime` 独立持有图中每个 `SAM3 Load Checkpoint` 对应的 session；不同 runtime 和 Preview 不共享。
-- Runtime 启动时先扫描 loader；不同 `SAM3 Load Checkpoint` 与其他模型 loader 通过通用
-  受限线程池并行准备，每个 loader 内仍按 checkpoint 加载、移入设备、受控 warmup 和
-  输出验证顺序执行，全部成功后才标记 ready/running。
-- 同一个 loader 可以连接多个 SAM3 Segment 节点；这些节点通过 lease 锁串行使用模型对象。
-- 编辑器 Preview 使用稳定的 Project + Application scope；snapshot 每次变化不触发 SAM3 重载，只有 Loader 配置或消费者能力变化才换代。
-- 同一应用 Preview 不允许并发或排队；切换应用受 Preview scope 上限约束，删除/禁用 Loader 会释放对应模型。
-- 单图 Semantic 加载完整视觉骨干、文本编码、image-text encoder 和 semantic segmentation head；当前节点只输出 semantic mask，不输出 detector object query 结果。
-- 单图 Interactive 使用完整 interactive predictor。
-- Video Semantic 复用持久化 semantic session 逐帧执行，并在摘要中明确标记为 `per-frame-semantic`；在接入正式 detector-tracker 前不能宣称具备官方视频记忆传播。
-- Video Interactive 使用持久化 interactive session 和项目内显式命名的 tracking mode，保留对象 id、Prompt 修正和遮挡恢复状态。
-- 项目自定义 prototype/attention 跟踪算法如需保留，应作为明确命名的独立跟踪模式，不得描述为官方 SAM3 video predictor。
-- 不使用跨 AppRuntime LRU、全局 pool、并发推理、额外模型队列或图片合并。
-- 单次节点调用可以对同类 Point/Box 对象执行 decoder batching；该 batching 不改变 session 串行边界，也不合并不同请求或图片。
-- 每个模型能力只保留最近一张图片的 feature context。缓存属于 loader session，新图立即替换旧图，不建立无限 LRU。
-- feature cache key 固定包含 session generation、checkpoint SHA、device、precision、推理配置和图片内容 SHA；缺少任一运行条件时不得跨 session 复用。
-- Interactive 和 Semantic 同时由一个 loader 使用时，checkpoint state_dict 只读取一次，再分别构造所需能力模型。两种能力是否进一步共享视觉骨干，必须先完成权重与输出一致性验证。
-- SAM3 node pack 默认执行超时为 300 秒；AppRuntime 模型启动等待时间由 `workflow_runtime.model_startup_timeout_seconds` 控制，默认 600 秒。
-- loader 启动线程上限由 `workflow_runtime.model_startup_parallelism` 控制，默认 2；
-  该设置只加速不同 loader 的启动，不允许同一 session 并发推理。
-- 节点运行摘要必须记录实际模型资产、设备、精度、Prompt 数量、耗时和后处理参数。
-- 节点摘要不得公开 checkpoint 绝对路径；诊断信息分别记录 feature cache 命中、preprocess、backbone、Prompt 准备、Prompt encoder、decoder、postprocess 耗时和 CUDA 显存高水位，runtime 健康信息另行记录 checkpoint load 与分能力 warmup 耗时。
-- 节点摘要还必须记录等待同一 loader session lease 的耗时。模型已驻留但执行偶发变慢时，
-  先区分 feature cache miss、session 等待、Backbone、decoder 与 CPU postprocess，不能仅凭
-  显存占用判断模型是否重复加载。
-- 单个 Positive Point 使用 mask decoder 的多候选输出并按预测分数选择最佳 Mask；多点正负
-  组合、Box、Polygon 和 Mask 保持单候选语义，避免把不同对象候选错误合并。
-- Box 使用 PromptEncoder 的专用 `boxes` 输入，不伪装成带 Box 标签的普通 Point 序列；
-  同时按 SAM3 tracker 参考实现加入一个 `label=-1` 的空 Point token。Mask 和 Polygon
-  路径也加入相同空 token，保持 sparse prompt token 序列与参考推理一致。
-- Polygon 和 Mask 的二值草稿在进入 PromptEncoder 前转换为正负 coarse logits，不把
-  `0/1` 像素值错误当成上一轮 Mask Decoder 的 logits。
-- Decoder 必须先用 `object_score_logits > 0` 判定对象存在；不存在时将对应 Mask 设为
-  `NO_OBJ_SCORE`，不能把无对象 logits 继续交给阈值后处理。单点多候选只按 IoU head
-  选择最佳候选。
-- Interactive 默认按参考实现执行两轮 Mask Decoder。第二轮把上一轮恢复到模型输入
-  分辨率的 Mask logits 作为 Mask Prompt，并继续复用同一张图片的 Backbone feature。
-- 固定 1008 输入分辨率保持不变；channels-last、`torch.compile`、safetensors、ONNX 和 TensorRT 未完成一致性与长时间稳定测试前不得进入 Catalog。
+### 固定模型参数
 
-## 版本与依赖
+- Mask memory：1 个 conditioning frame + 最近 6 个 non-conditioning frame。
+- Object pointer：最多 16 帧。
+- Multiplex bucket：每个 bucket 固定 16 个对象 slot；超过 16 个对象时按输入顺序
+  建立多个 bucket，输出按同一顺序 demux。
+- Propagation decoder：每个对象固定 3 个 checkpoint 候选，按 IoU head 选择最佳。
+- Mask memory 输入：`sigmoid(logits) * 2 - 1`，并附加 conditioning 1/0 通道。
+- 时序位置编码：使用 checkpoint 对应的 7 组 mask memory embedding 和
+  SAM3 的一维 sin-half/cos-half object pointer 编码。
 
-- 当前系统和 SAM3 node pack 版本统一为 `0.1.3`。
-- SAM3 Catalog 的全部节点必须填写 `node_pack_version: 0.1.3`。
-- manifest 和 NodeDefinition 必须声明 Torch、OpenCV、NumPy、Pillow 和 tokenizer 资产等真实运行依赖。
-- 权重文件作为本地资产管理，不提交到 git。
+视频 mutable memory 只存在于一次节点执行，不写入模型 session，不跨请求残留。
+同一 session 由 lease 串行保护，不实现请求并发、队列或图片合并。
+
+## AppRuntime 生命周期
+
+- 每个 Workflow AppRuntime 独立持有自己的 owner，不跨应用共享。
+- Preview 使用稳定的 `preview:<project_id>:<application_id>` scope；非 Loader
+  节点变化不会重建模型。
+- Loader 配置、直接消费能力集合或 generation 变化时受控创建新 owner。
+- 不同 Loader 可由通用受限线程池并行启动；单个 Loader 内保持确定的读取、构建、
+  迁移、warmup、验证顺序。
+- Runtime ready 前必须完成实际推理 warmup。视频能力必须完成首帧初始化和真实的
+  第二帧 Multiplex propagation，不能只检查对象是否可构造。
+- 关闭、删除或替换 Runtime 时，统一释放最近图像 feature、模型 Parameter 和
+  非 Parameter 的 complex RoPE device cache，再清理 CUDA allocator cache。
+
+complex RoPE 频率不能随 `Module.to(dtype=fp16)` 转成实数，否则会丢失虚部并破坏
+注意力位置编码。它采用显式设备 cache，首次推理只迁移一次，owner 关闭时迁回 CPU。
+
+## 诊断与性能
+
+Loader 元数据记录：
+
+- checkpoint read
+- 模型构建和设备迁移
+- 各能力 warmup
+- 总启动耗时
+- owner 能力视图与共享 trunk 验证
+
+节点摘要记录：
+
+- 实际资产、设备和精度
+- preprocess、backbone、Prompt encoder、decoder、postprocess
+- 最近图像 feature cache 命中
+- Multiplex bucket、memory 和传播模式
+- session lease 等待时间
+
+摘要不得输出 checkpoint 绝对路径。显存保持不等于模型重新加载；性能分析必须区分
+session 等待、cache miss、Backbone、decoder 和 CPU postprocess。
 
 ## 验收标准
 
-- 空 workflow 可以只通过画布节点构造 Text、Point、Box、Polygon、Mask Prompt 并连接 SAM3。
-- 同图修改 Prompt 不重新运行 Backbone；换图只重新运行一次，并替换旧 feature context。
-- 连续执行的显存保留量在固定高水位后稳定；AppRuntime 删除或停止后完全释放其模型与 feature context。
-- 无效点、零面积 Box、自交或不足三个点的 Polygon、空 Mask、无前景 Mask和尺寸不匹配 Mask 无法应用。
-- Catalog 不显示不存在的模型资产。
-- Device 和 Precision 下拉与当前 PyTorch 运行环境一致。
-- 不支持的设备、精度或 checkpoint 必须在执行前返回明确错误。
-- checkpoint 加载不存在未解释的 missing keys、unexpected keys 或 shape mismatch。
-- 单图和视频节点分别覆盖空结果、多实例、正负文本、多对象、遮挡恢复和 Prompt 修正。
-- CPU、CUDA、FP16、BF16 按支持矩阵测试；不支持的组合也必须有拒绝测试。
-- manifest、Catalog、示例 workflow、架构文档和测试使用相同的节点版本与参数名。
+- checkpoint 只读取一次，三个能力视图的 trunk 对象 identity 相同。
+- 真实 checkpoint 的 Propagation Parameter 全部匹配，无 Parameter 缺失和 shape mismatch。
+- 19 个以上对象经过多 bucket mux/demux 后顺序和 tensor 数据不变。
+- 首帧 Prompt 初始化、第二帧 propagation、后续 memory 更新可执行。
+- Video Semantic 首帧通过 Semantic Mask 和 Interactive object pointer 闭合传播链。
+- 同图修改 Prompt 不重跑 trunk；新图只计算一次并替换旧 feature。
+- 单 session 串行；并发请求不能同时进入同一个模型对象。
+- 连续视频请求结束后不保留请求内 memory。
+- Runtime close 后 owner、feature 和 RoPE GPU 引用全部释放。
+- CPU/CUDA 和支持的精度组合分别验证；不支持组合明确拒绝。
+- Catalog、manifest、节点实现、测试和本文档使用一致的 `0.1.3` 版本与参数。
 
-## 当前实现状态
+## 当前状态
 
-| 能力 | 状态 | 固定边界 |
-| --- | --- | --- |
-| Core Prompt 节点 | 已实现 | 独立节点统一输出 `text-prompts.v1` 或 `prompt-regions.v1`；Point 支持同对象正负点数组，Box/Polygon 支持多对象数组 |
-| Mask Editor | 已实现 | Brush、Eraser、Fill、Clear、Undo、Redo；已保存 Mask 可重新载入；只把 ObjectStore key 和源图标识写入 workflow，节点/应用删除后的文件由应用保存边界统一回收 |
-| 多点对象分组 | 已实现 | 同一 prompt_id 的正负点作为一个对象编码，拒绝负点孤立对象和类型混用 |
-| SAM3 模型资产 | 已实现 | 使用 `model_asset_id`、`architecture_id` 和 SHA-256，不使用虚假 Scale |
-| Device 与 Precision | 已实现 | Catalog 按本机 PyTorch 能力生成下拉选项，运行时再次校验组合 |
-| Image Interactive | 已实现 | 严格加载 compatible checkpoint，支持 Point、Box、Polygon、Mask |
-| Image Semantic | 已实现 | 加载视觉骨干、文本骨干、image-text encoder 与 semantic head |
-| Video Interactive | 已实现 | 使用持久化 interactive session 和项目内明确命名的跟踪模式 |
-| Video Semantic | 已实现 | 逐帧复用 semantic session，摘要固定标记 `per-frame-semantic` |
-| 官方视频记忆传播 | 未宣称实现 | 未接入正式 detector-tracker 前，不把逐帧 semantic 输出描述为官方跟踪 |
-| 后处理 | 已实现 | 四个节点统一支持阈值、稳定性、最小连通域和轮廓简化参数 |
-| Load Checkpoint | 已实现 | 独立节点输出 `sam3-model-session.v1`，Segment 节点不再重复模型参数 |
-| Runtime session | 已实现 | 每个 AppRuntime 独立、启动预热验证、单 lease 串行、停止时显式释放 |
-| Feature context | 已实现 | 每个能力仅保留最近图片；同图 Prompt 修改命中缓存，新图覆盖旧上下文 |
-| Prompt batching | 已实现 | 单次调用内同类稀疏 Point/Box batching，不引入请求并发 |
-| 单点候选选择 | 已实现 | 单个 Positive Point 生成多个候选并按模型分数选择最佳 Mask |
-| Visual Prompt Editor | 稳定性门禁后实施 | 先完成原子节点现场验证；通过本文验收后再提供多对象列表编辑，不以逐点独立分割冒充多点对象 |
-| 示例与测试 | 已实现 | 包含 Prompt 画布闭环、Catalog、资产、CPU 和真实 checkpoint 回归 |
+| 能力 | 状态 |
+| --- | --- |
+| Image Interactive | 已实现 |
+| Image Semantic | 已实现 |
+| Video Interactive Multiplex propagation | 已实现 |
+| Video Semantic Multiplex propagation | 已实现 |
+| 单 checkpoint owner 与共享 ViT trunk | 已实现 |
+| 7 帧 memory、16 pointer、16-slot bucket decoder | 已实现 |
+| 真实第二帧 warmup | 已实现 |
+| 请求内视频状态隔离与 session 串行 | 已实现 |
+| 资源释放和 complex RoPE cache 回收 | 已实现 |
 
-表中的“已实现”以本项目在本文定义的能力边界为准。后续若接入官方 detector-tracker、增加新的 checkpoint 架构或扩展硬件后端，必须先更新本文的固定边界、支持矩阵和验收标准，再修改 Catalog 与运行时。
-
-## 编辑器 Preview 的模型复用边界
-
-编辑器 Preview 使用稳定的应用级 scope：
-`preview:<project_id>:<application_id>`。`project_id` 保证不同项目隔离，
-`application_id` 保证同一个 Workflow App 的多次完整 Preview 和节点级 Preview
-复用同一组 loader lease。
-
-模型 lease 的生命周期由完整 Workflow App 图决定，单次执行范围只决定本次需要准备
-哪些 loader：
-
-- 非 loader 节点的参数、连线或调试范围变化，不释放也不重建已有模型。
-- `Preview Node Run` 的祖先闭包不含 loader 时，不加载模型，也不能把应用中已有的
-  loader 当作“已删除”回收。
-- loader 节点自身的模型资产、Device、Precision、启用状态、节点 id 或直接消费能力
-  集合变化时，才使该 loader 的 fingerprint 失效并受控重建。
-- loader 从完整图删除或应用 Preview scope 被显式关闭时，必须释放对应模型和最近图像
-  feature context。
-
-同一个 SAM3 Load Checkpoint 同时连接 Interactive 和 Semantic 节点时，当前会构造
-两个经过独立 warmup 和输出验证的 runtime instance。首次加载显存因此可能分两段上升，
-健康摘要必须如实报告 `runtime_instance_count` 和 `runtime_instances`。在权重兼容、
-输出一致性、显存和长期稳定性验证完成前，不强行共享两种能力的视觉骨干，也不能把这
-两段增长误报为同一模型被重复释放和加载。
+旧的 prototype、启发式 memory-attention、逐帧 semantic 和 shared-prompt 跟踪模式
+已被正式 Multiplex propagation 替代，不再作为 Catalog 或运行时兼容路径保留。

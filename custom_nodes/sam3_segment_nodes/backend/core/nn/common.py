@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import math
 
 import torch
 import torch.nn as nn
@@ -140,12 +139,24 @@ def xywh2xyxy(x: torch.Tensor) -> torch.Tensor:
     )
 
 
-def get_1d_sine_pe(positions: torch.Tensor, dim: int) -> torch.Tensor:
-    """生成一维正弦位置编码。"""
+def get_1d_sine_pe(
+    positions: torch.Tensor,
+    dim: int,
+    temperature: float = 10000.0,
+) -> torch.Tensor:
+    """按 SAM3 训练时的排列生成一维正弦位置编码。"""
 
     if dim % 2 != 0:
         raise ValueError(f"位置编码维度必须是偶数，实际得到 {dim}")
-    div_term = torch.arange(0, dim, 2, dtype=positions.dtype, device=positions.device)
-    div_term = torch.exp(-math.log(10000.0) * div_term / dim)
-    sinusoid_input = positions[:, None] * div_term[None, :]
-    return torch.stack((sinusoid_input.sin(), sinusoid_input.cos()), dim=-1).flatten(1)
+    pe_dim = dim // 2
+    dim_t = torch.arange(
+        pe_dim,
+        dtype=torch.float32,
+        device=positions.device,
+    )
+    dim_t = temperature ** (2 * torch.div(dim_t, 2, rounding_mode="floor") / pe_dim)
+    positional_input = positions.to(dtype=torch.float32).unsqueeze(-1) / dim_t
+    return torch.cat(
+        (positional_input.sin(), positional_input.cos()),
+        dim=-1,
+    )

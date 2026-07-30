@@ -442,6 +442,8 @@ release/
 
 ## `SAM3` 视频 / 多帧的分层位置
 
+> 当前实现已经收敛到 `sam3.1-multiplex-propagation`。本节后续出现的 prototype、shared-prompt、stateful-mask 和启发式 memory-attention 名称是早期规划记录，不再对应 Catalog 参数或运行时代码。当前实现细节见 [SAM3 自定义节点规划](sam3-custom-node-plan.md)。
+
 ### 应该属于 `SAM3` pack 的部分
 
 - `custom.sam3.video-interactive-segment`
@@ -595,12 +597,12 @@ workflow 编排时应根据任务实际复杂度选择，不必默认一律走�
 - `frame-window-preview`
 - 需要落盘并作为最终输出时再接 `video-save -> video-body`
 
-### `SAM3 memory-attention` 现场样例链
+### `SAM3.1 Multiplex` 现场样例链
 
 - `video-load-local`
 - `video-decode-frames`
 - `custom.sam3.video-interactive-segment`
-  - `tracking_mode = memory-attention-tracker`
+  - 固定 `sam3.1-multiplex-propagation`
 - `tracks-filter`
 - `video-overlay-render`
 - `video-save`
@@ -608,8 +610,8 @@ workflow 编排时应根据任务实际复杂度选择，不必默认一律走�
 
 对应源 JSON：
 
-- [docs/examples/workflows/sam3_video_memory_attention_review.template.json](../examples/workflows/sam3_video_memory_attention_review.template.json)
-- [docs/examples/workflows/sam3_video_memory_attention_review.application.json](../examples/workflows/sam3_video_memory_attention_review.application.json)
+- [docs/examples/workflows/sam3_video_multiplex_review.template.json](../examples/workflows/sam3_video_multiplex_review.template.json)
+- [docs/examples/workflows/sam3_video_multiplex_review.application.json](../examples/workflows/sam3_video_multiplex_review.application.json)
 
 ### `tracks / regions` 表格调试链
 
@@ -654,7 +656,7 @@ workflow 编排时应根据任务实际复杂度选择，不必默认一律走�
 12. 实现 `core.io.video-overlay-render`
 13. 实现 `core.io.video-save`
 14. 实现 `core.output.video-body`
-15. 继续补 `memory-attention-tracker` 的长窗口回归、参数调优和工程化验证
+15. 补 `sam3.1-multiplex-propagation` 的长窗口、多对象、资源释放和工程化验证
 
 ## 当前这轮代码实现范围
 
@@ -677,10 +679,10 @@ workflow 编排时应根据任务实际复杂度选择，不必默认一律走�
 
 当前这轮暂不实现：
 
-1. upstream 全量视频 tracker / 多帧传播全能力
+1. 直播流与跨 AppRuntime 的共享 tracker
 
 ## 下一步
 
-- 先继续补 `memory-attention-tracker` 的更长窗口回归、性能基线和现场使用说明
+- 继续补 `sam3.1-multiplex-propagation` 的更长窗口回归、性能基线和现场使用说明
 - 再补更长时长时序回归和视频链基准
 - `video-body` 已作为正式输出层补齐；后续只再评估是否需要独立的 `video-preview` 节点

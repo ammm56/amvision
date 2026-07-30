@@ -1,4 +1,4 @@
-"""SAM3 video-interactive memory-attention 长窗口多对象 soak / benchmark。"""
+"""SAM3 video-interactive Multiplex 长窗口多对象 soak / benchmark。"""
 
 from __future__ import annotations
 
@@ -20,68 +20,108 @@ from tests.integration.test_yoloe_sam3_soak_benchmark import (
     _run_cpu_soak_benchmark,
     _run_cuda_soak_benchmark,
 )
+from tests.sam3_workflow_session_test_support import (
+    build_real_video_workflow_session,
+    patch_real_video_workflow_session,
+)
 
 
-ATTENTION_VIDEO_CPU_SOAK_ITERATIONS = 1
-ATTENTION_VIDEO_GPU_SOAK_ITERATIONS = 1
+MULTIPLEX_VIDEO_CPU_SOAK_ITERATIONS = 1
+MULTIPLEX_VIDEO_GPU_SOAK_ITERATIONS = 1
 
 
-def test_sam3_video_interactive_attention_cpu_extended_benchmark() -> None:
-    """验证 memory-attention 模式在长窗口多对象场景下的 CPU 稳定性。"""
+def test_sam3_video_interactive_multiplex_cpu_extended_benchmark(
+    monkeypatch,
+) -> None:
+    """验证 Multiplex propagation 在长窗口多对象场景下的 CPU 稳定性。"""
 
-    request = _build_attention_benchmark_request(
-        device="cpu",
+    session = build_real_video_workflow_session(
+        device_name="cpu",
         precision="fp32",
+        include_semantic=False,
     )
-    warm_output = video_interactive_segment.handle_node(request)
-    assert warm_output["summary"]["project_native"] is True
-    assert warm_output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
-    assert warm_output["summary"]["prompt_count"] == 4
-    assert warm_output["summary"]["processed_frame_count"] == 6
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        session,
+    )
+    try:
+        request = _build_multiplex_benchmark_request(
+            device="cpu",
+            precision="fp32",
+        )
+        warm_output = video_interactive_segment.handle_node(request)
+        assert warm_output["summary"]["project_native"] is True
+        assert (
+            warm_output["summary"]["frame_prompt_mode"]
+            == "sam3.1-multiplex-propagation"
+        )
+        assert warm_output["summary"]["prompt_count"] == 4
+        assert warm_output["summary"]["processed_frame_count"] == 6
 
-    benchmark = _run_cpu_soak_benchmark(
-        benchmark_name="sam3-video-interactive-attention-cpu-extended",
-        iterations=ATTENTION_VIDEO_CPU_SOAK_ITERATIONS,
-        predict_once=lambda: SimpleNamespace(
-            summary=video_interactive_segment.handle_node(request)["summary"]
-        ),
-    )
-    assert benchmark["memory_drift_bytes"] <= CPU_MEMORY_DRIFT_LIMIT_BYTES
+        benchmark = _run_cpu_soak_benchmark(
+            benchmark_name="sam3-video-interactive-multiplex-cpu-extended",
+            iterations=MULTIPLEX_VIDEO_CPU_SOAK_ITERATIONS,
+            predict_once=lambda: SimpleNamespace(
+                summary=video_interactive_segment.handle_node(request)["summary"]
+            ),
+        )
+        assert benchmark["memory_drift_bytes"] <= CPU_MEMORY_DRIFT_LIMIT_BYTES
+    finally:
+        session.close()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="当前环境没有可用 CUDA")
-def test_sam3_video_interactive_attention_cuda_extended_benchmark() -> None:
-    """验证 memory-attention 模式在长窗口多对象场景下的 CUDA 稳定性。"""
+def test_sam3_video_interactive_multiplex_cuda_extended_benchmark(
+    monkeypatch,
+) -> None:
+    """验证 Multiplex propagation 在长窗口多对象场景下的 CUDA 稳定性。"""
 
-    request = _build_attention_benchmark_request(
-        device="cuda",
+    session = build_real_video_workflow_session(
+        device_name="cuda",
         precision="fp16",
+        include_semantic=False,
     )
-    warm_output = video_interactive_segment.handle_node(request)
-    assert warm_output["summary"]["project_native"] is True
-    assert warm_output["summary"]["frame_prompt_mode"] == "memory-attention-tracker"
-    assert warm_output["summary"]["prompt_count"] == 4
-    assert warm_output["summary"]["processed_frame_count"] == 6
-
-    benchmark = _run_cuda_soak_benchmark(
-        benchmark_name="sam3-video-interactive-attention-cuda-extended",
-        iterations=ATTENTION_VIDEO_GPU_SOAK_ITERATIONS,
-        predict_once=lambda: SimpleNamespace(
-            summary=video_interactive_segment.handle_node(request)["summary"]
-        ),
+    patch_real_video_workflow_session(
+        monkeypatch,
+        video_interactive_segment,
+        session,
     )
-    assert benchmark["memory_drift_bytes"] <= GPU_MEMORY_DRIFT_LIMIT_BYTES
+    try:
+        request = _build_multiplex_benchmark_request(
+            device="cuda",
+            precision="fp16",
+        )
+        warm_output = video_interactive_segment.handle_node(request)
+        assert warm_output["summary"]["project_native"] is True
+        assert (
+            warm_output["summary"]["frame_prompt_mode"]
+            == "sam3.1-multiplex-propagation"
+        )
+        assert warm_output["summary"]["prompt_count"] == 4
+        assert warm_output["summary"]["processed_frame_count"] == 6
+
+        benchmark = _run_cuda_soak_benchmark(
+            benchmark_name="sam3-video-interactive-multiplex-cuda-extended",
+            iterations=MULTIPLEX_VIDEO_GPU_SOAK_ITERATIONS,
+            predict_once=lambda: SimpleNamespace(
+                summary=video_interactive_segment.handle_node(request)["summary"]
+            ),
+        )
+        assert benchmark["memory_drift_bytes"] <= GPU_MEMORY_DRIFT_LIMIT_BYTES
+    finally:
+        session.close()
 
 
-def _build_attention_benchmark_request(
+def _build_multiplex_benchmark_request(
     *,
     device: str,
     precision: str,
 ) -> WorkflowNodeExecutionRequest:
-    """构造 memory-attention 长窗口多对象 benchmark 请求。"""
+    """构造 Multiplex 长窗口多对象 benchmark 请求。"""
 
     frame_window_payload, image_registry = (
-        _build_attention_benchmark_frame_window_payload(
+        _build_multiplex_benchmark_frame_window_payload(
             frame_count=6,
             width=192,
             height=144,
@@ -96,7 +136,6 @@ def _build_attention_benchmark_request(
             "model_asset_id": "sam3/default",
             "device": device,
             "precision": precision,
-            "tracking_mode": "memory-attention-tracker",
         },
         input_values={
             "frames": frame_window_payload,
@@ -133,13 +172,13 @@ def _build_attention_benchmark_request(
     )
 
 
-def _build_attention_benchmark_frame_window_payload(
+def _build_multiplex_benchmark_frame_window_payload(
     *,
     frame_count: int,
     width: int,
     height: int,
 ) -> tuple[dict[str, object], ExecutionImageRegistry]:
-    """构造长窗口多对象 benchmark 的 frame-window。"""
+    """构造长窗口多对象 Multiplex benchmark 的 frame-window。"""
 
     image_registry = ExecutionImageRegistry()
     frame_items: list[dict[str, object]] = []

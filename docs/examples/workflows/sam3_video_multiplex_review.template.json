@@ -1,9 +1,9 @@
 {
   "format_id": "amvision.workflow-graph-template.v1",
-  "template_id": "sam3-video-memory-attention-review-template",
+  "template_id": "sam3-video-multiplex-review-template",
   "template_version": "1.0.0",
-  "display_name": "SAM3 Video Memory Attention Review Template",
-  "description": "从本地磁盘载入视频，解码为帧窗口后执行 SAM3 video-interactive memory-attention 跟踪，叠加结果并返回可播放视频，同时暴露 tracks 与 summary 便于现场调试。",
+  "display_name": "SAM3 Video Multiplex Review Template",
+  "description": "从本地磁盘载入视频，解码为帧窗口后执行 SAM3.1 Multiplex propagation，叠加结果并返回可播放视频，同时暴露 tracks 与 summary 便于现场调试。",
   "nodes": [
     {
       "node_id": "video_load_local",
@@ -34,12 +34,7 @@
       "node_id": "segment_video",
       "node_type_id": "custom.sam3.video-interactive-segment",
       "parameters": {
-        "tracking_mode": "memory-attention-tracker",
-        "history_limit": 6,
-        "prototype_momentum": 0.72,
-        "attention_temperature": 0.12,
-        "prototype_blend_weight": 0.35,
-        "max_memory_tokens_per_entry": 256
+        "refine_iterations": 2
       }
     },
     {
@@ -74,7 +69,7 @@
       "node_id": "video_body",
       "node_type_id": "core.output.video-body",
       "parameters": {
-        "title": "SAM3 Memory Attention Review"
+        "title": "SAM3 Multiplex Review"
       }
     }
   ],
@@ -176,9 +171,9 @@
     }
   ],
   "metadata": {
-    "example_kind": "sam3-video-memory-attention-review",
-    "tracking_mode": "memory-attention-tracker",
-    "intended_scene": "现场本地视频复盘与复杂目标跟踪调试",
+    "example_kind": "sam3-video-multiplex-review",
+    "propagation_mode": "sam3.1-multiplex-propagation",
+    "intended_scene": "现场本地视频复盘与多目标传播调试",
     "node_groups": {
       "input": [
         "video_load_local",

@@ -603,7 +603,10 @@ def test_sam3_video_semantic_workflow_app_runtime_controlled_enable_smoke(
     summary_payload = payload["outputs"]["summary"]
     assert summary_payload["project_native"] is True
     assert summary_payload["inference_mode"] == "video-semantic-segment"
-    assert summary_payload["frame_prompt_mode"] == "shared-text-prompts-across-window"
+    assert (
+        summary_payload["frame_prompt_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert summary_payload["prompt_group_count"] == 2
     assert summary_payload["positive_prompt_count"] == 2
     assert summary_payload["negative_prompt_count"] == 2

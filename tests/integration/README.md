@@ -66,7 +66,7 @@ python -m pytest tests/integration/test_sam3_video_workflow_closure.py -q
 ```
 
 ```powershell
-python -m pytest tests/integration/test_sam3_video_memory_attention_benchmark.py -q -s
+python -m pytest tests/integration/test_sam3_video_multiplex_benchmark.py -q -s
 ```
 
 ```powershell

@@ -201,12 +201,12 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
 - `SAM3 video-semantic-segment` 的受控启用与 `WorkflowAppRuntime` invoke
 - pack 默认关闭、node-catalog 过滤、显式 enable、runtime start/stop 这条正式控制链
 
-### 8. `SAM3 memory-attention` 现场样例 workflow
+### 8. `SAM3.1 Multiplex` 现场样例 workflow
 
 当前已经提供一套可直接保存为 template/application 的源 JSON：
 
-- `docs/examples/workflows/sam3_video_memory_attention_review.template.json`
-- `docs/examples/workflows/sam3_video_memory_attention_review.application.json`
+- `docs/examples/workflows/sam3_video_multiplex_review.template.json`
+- `docs/examples/workflows/sam3_video_multiplex_review.application.json`
 
 推荐输入：
 
@@ -217,11 +217,7 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
   - `prompt-regions.v1`
   - 可直接输入 `box / point / polygon / mask`
 
-推荐先用这套样例做现场验证，再根据视频复杂度调整：
-
-- 简单任务：改成 `memory-prototype-state`
-- 更轻任务：改成 `stateful-mask-propagation`
-- 最轻短窗口：改成 `shared-prompts-across-window`
+该样例固定使用 checkpoint 内正式 propagation 分支和 16 槽 bucket decoder，不提供 prototype、stateful-mask 或 shared-prompt 降级模式。现场验证重点是首帧初始化、第二帧传播、多对象顺序、连续执行显存平台化和 runtime stop 后完整释放。
 
 ## 当前建议的上线策略
 

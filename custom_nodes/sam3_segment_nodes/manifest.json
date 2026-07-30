@@ -37,15 +37,16 @@
       "每个 WorkflowAppRuntime 独立加载、warmup 和验证模型；全部 loader ready 后 runtime 才接收请求。",
       "Segment 节点消费 sam3-model-session.v1，同一 session 串行执行，不跨 AppRuntime 共享，不做 batching 或图片合并。",
       "interactive-segment 使用 project-native runtime，读取登记的 sam3.1_multiplex.pt；运行时代码不依赖 projectsrc 参考目录。",
-      "SAM3.1 multiplex checkpoint 在单图节点中按能力选择分支：interactive 使用 interactive_convs，semantic 使用 convs，不加载 propagation 分支或不兼容的 bucketized decoder。",
+      "SAM3.1 Multiplex checkpoint 每个 loader generation 只读取一次；Interactive、Semantic 和视频 Propagation 共用同一个 checkpoint owner 与 ViT trunk，各自保留训练对应的 neck 和 head。",
+      "单图节点只构造实际需要的能力分支；视频节点额外构造 propagation neck、7 帧 mask memory、最多 16 帧 object pointer 和固定 16-slot bucketized decoder。",
       "interactive-segment 支持 box、point、polygon、mask prompt，并输出 regions.v1。",
       "semantic-segment 支持按 prompt_id 聚合的 positive/negative text-prompts.v1，并输出 regions.v1。",
       "device 和 precision 由系统 PyTorch runtime 的可用硬件动态生成；当前支持 CPU 和 CUDA。",
       "节点统一提供 mask threshold、stability offset、最小连通域面积和 polygon 简化参数。",
-      "video-interactive-segment 当前已接通 frame-window.v1 -> tracks.v1 的 project-native runtime，默认使用 memory-prototype-state 多帧跟踪，并继续以 prompt_id 作为稳定 track_id；当前也已提供更重的 memory-attention-tracker 可选模式，同时保留 stateful-mask-propagation 与 shared-prompts-across-window 兼容模式。",
-      "video-interactive-segment 当前已把 history_limit、prototype_momentum、attention_temperature、prototype_blend_weight、max_memory_tokens_per_entry 正式开放到节点参数面，供现场按视频复杂度调优。",
-      "docs/examples/workflows/sam3_video_memory_attention_review.template.json 提供了本地视频 -> decode -> memory-attention -> overlay -> save -> video-body 的现场样例 workflow。",
-      "video-semantic-segment 当前通过同一 semantic session 逐帧执行 text prompt，并按 prompt_id 输出稳定 track_id；它不宣称具备官方 SAM3 视频记忆传播能力。",
+      "video-interactive-segment 使用首帧 visual prompt 生成 mask 和 object pointer，后续帧统一通过 SAM3.1 Multiplex propagation 分支传播并输出 tracks.v1。",
+      "video-semantic-segment 使用首帧 Semantic 结果初始化 mask memory，并通过 Interactive head 生成已训练的 object pointer；后续帧与 Video Interactive 共用 Multiplex propagation。",
+      "视频请求的 mutable memory 只存在于单次节点执行；模型 session 按 AppRuntime 隔离并串行执行，不跨请求保留视频状态。",
+      "AppRuntime ready 前会执行真实的第二帧 propagation warmup；关闭、删除或 generation 替换 runtime 时统一释放模型、最近图像 trunk feature 和 complex RoPE device cache。",
       "text-prompts.v1 和 prompt-regions.v1 由核心 Prompt 输入节点构造，SAM3 节点包只消费共享协议。"
     ]
   }

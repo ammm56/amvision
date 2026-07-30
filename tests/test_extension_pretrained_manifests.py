@@ -92,13 +92,13 @@ def test_sync_extension_pretrained_manifests_moves_legacy_yoloe_root_and_writes_
         "image.interactive-segmentation",
         "image.semantic-segmentation",
         "video.interactive-segmentation",
-        "video.per-frame-semantic-segmentation",
+        "video.semantic-propagation",
     ]
     assert sam3_manifest["minimum_runtime"]["python"] == ">=3.12"
     assert sam3_manifest["metadata"]["upstream_mode"] == "multiplex"
     assert (
         sam3_manifest["metadata"]["runtime_scope"]
-        == "project-native-single-image"
+        == "workflow-app-isolated-multiplex"
     )
     assert "model_scale" not in sam3_manifest
 

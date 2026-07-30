@@ -184,6 +184,71 @@ def build_sam3_semantic_state_dict(
     return semantic_state_dict
 
 
+def build_sam3_multiplex_propagation_state_dict(
+    branches: Sam3CheckpointBranches,
+) -> dict[str, torch.Tensor]:
+    """构造 SAM3.1 视频 propagation 与 bucket decoder state_dict。"""
+
+    propagation_state_dict: dict[str, torch.Tensor] = {}
+    for key, value in branches.detector_state_dict.items():
+        normalized_key = key.removeprefix("detector.")
+        if normalized_key.startswith("backbone.vision_backbone.trunk."):
+            normalized_key = normalized_key.replace(
+                "backbone.vision_backbone.",
+                "image_encoder.vision_backbone.",
+                1,
+            )
+        elif normalized_key.startswith(
+            "backbone.vision_backbone.propagation_convs."
+        ):
+            normalized_key = normalized_key.replace(
+                "backbone.vision_backbone.",
+                "image_encoder.vision_backbone.",
+                1,
+            )
+        else:
+            continue
+        propagation_state_dict[normalized_key] = value
+
+    tracker_prefixes = (
+        "tracker.model.transformer.",
+        "tracker.model.maskmem_backbone.",
+        "tracker.model.sam_mask_decoder.",
+        "tracker.model.obj_ptr_proj.",
+        "tracker.model.interactive_obj_ptr_proj.",
+        "tracker.model.no_obj_ptr_linear.",
+        "tracker.model.obj_ptr_tpos_proj.",
+        "tracker.model.image_pe_layer.",
+    )
+    tracker_parameter_keys = {
+        "tracker.model.maskmem_tpos_enc",
+        "tracker.model.no_obj_embed_spatial",
+        "tracker.model.output_valid_embed",
+        "tracker.model.output_invalid_embed",
+    }
+    for key, value in branches.tracker_state_dict.items():
+        if key in tracker_parameter_keys:
+            propagation_state_dict[
+                key.removeprefix("tracker.model.")
+            ] = value
+            continue
+        if key.startswith(tracker_prefixes):
+            propagation_state_dict[
+                key.removeprefix("tracker.model.")
+            ] = value
+
+    normalized_items = tuple(propagation_state_dict.items())
+    for key, value in normalized_items:
+        normalized_key = key.replace(".mlp.lin1.", ".mlp.layers.0.").replace(
+            ".mlp.lin2.",
+            ".mlp.layers.1.",
+        )
+        if normalized_key != key:
+            propagation_state_dict[normalized_key] = value
+            del propagation_state_dict[key]
+    return propagation_state_dict
+
+
 def summarize_sam3_checkpoint_prefixes(
     state_dict: dict[str, torch.Tensor],
 ) -> list[tuple[str, int]]:

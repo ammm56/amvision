@@ -207,7 +207,7 @@ def _sync_sam3_manifests(sam3_root: Path, *, warnings: list[str]) -> list[Path]:
                 "image.interactive-segmentation",
                 "image.semantic-segmentation",
                 "video.interactive-segmentation",
-                "video.per-frame-semantic-segmentation",
+                "video.semantic-propagation",
             ],
             "minimum_runtime": {
                 "python": ">=3.12",
@@ -220,8 +220,12 @@ def _sync_sam3_manifests(sam3_root: Path, *, warnings: list[str]) -> list[Path]:
                 "upstream_weight_name": checkpoint_path.name,
                 "upstream_mode": "multiplex",
                 "node_usage": "custom-node",
-                "node_modes": ["semantic", "interactive"],
-                "runtime_scope": "project-native-single-image",
+                "node_modes": [
+                    "semantic",
+                    "interactive",
+                    "video-propagation",
+                ],
+                "runtime_scope": "workflow-app-isolated-multiplex",
             },
         }
         manifest_path = variant_dir / "manifest.json"

@@ -140,8 +140,8 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 
 ## 视频与跟踪样例
 
-- `sam3_video_memory_attention_review.template.json`
-- `sam3_video_memory_attention_review.application.json`
+- `sam3_video_multiplex_review.template.json`
+- `sam3_video_multiplex_review.application.json`
 
 该样例面向现场本地视频，链路固定为：
 
@@ -166,20 +166,17 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 - `tracks`：`tracks.v1`
 - `summary`：`value.v1`
 
-样例默认参数：
+样例使用固定的 `sam3.1-multiplex-propagation` 传播链路：
 
-- `tracking_mode = memory-attention-tracker`
-- `history_limit = 6`
-- `prototype_momentum = 0.72`
-- `attention_temperature = 0.12`
-- `prototype_blend_weight = 0.35`
-- `max_memory_tokens_per_entry = 256`
+- 首帧由 `prompt-regions.v1` 初始化对象和 object pointer
+- 后续帧使用最多 7 帧 memory 与最多 16 个 object pointer
+- decoder 以固定 16 槽 bucket 处理多对象
+- `refine_iterations = 2` 只影响首帧交互式初始化
 
 推荐使用方式：
 
-- 复杂遮挡、长窗口、大位移、多目标复盘，直接用这套样例
-- 简单任务先把 `tracking_mode` 改成 `memory-prototype-state`
-- 更轻场景再继续降到 `stateful-mask-propagation` 或 `shared-prompts-across-window`
+- 多目标视频复盘直接使用该样例
+- 传播模式不提供启发式降级参数，避免同一节点维护多套不一致语义
 
 ## USB / UVC 相机样例
 

@@ -22,27 +22,9 @@ from .models.semantic import (
 from .postprocess.masks import Sam3RegionItem, postprocess_sam3_interactive_masks
 from .preprocess.image import PreparedSam3Image, preprocess_sam3_image
 from .prompts.encoding import PreparedSam3InteractivePrompts, build_sam3_interactive_prompt_tensors
-from .state.interactive import (
-    Sam3InteractiveImageFeatures,
-    Sam3InteractiveMemoryEntry,
-    Sam3InteractiveState,
-)
 from .nn.common import DropPath, LayerNorm2d, LayerScale, MLP, MLPBlock, clone_module_list, get_1d_sine_pe, inverse_sigmoid, xywh2xyxy
 from .nn.prompt_mask_modules import PromptEncoder, SAM2MaskDecoder, SAM2TwoWayTransformer
 from .nn.vision_backbone import PositionEmbeddingSine, SAM3VisualBackbone, Sam3ViTDetNeck, ViT
-from .tracking.memory import (
-    Sam3MemoryPromptBuildResult,
-    Sam3VideoTrackState,
-    build_memory_prompt_mask,
-    update_track_state_from_region,
-)
-from .tracking.memory_attention import (
-    Sam3MemoryAttentionPromptBuildResult,
-    Sam3VideoAttentionMemoryEntry,
-    Sam3VideoAttentionTrackState,
-    build_memory_attention_prompt_mask,
-    update_attention_track_state_from_region,
-)
 
 __all__ = [
     "DropPath",
@@ -53,20 +35,12 @@ __all__ = [
     "PreparedSam3Image",
     "PreparedSam3InteractivePrompts",
     "Sam3InteractiveFrameContext",
-    "Sam3InteractiveImageFeatures",
     "Sam3InteractiveImageModel",
-    "Sam3InteractiveMemoryEntry",
     "Sam3InteractivePrediction",
     "Sam3InteractiveRuntimeSession",
-    "Sam3InteractiveState",
-    "Sam3MemoryAttentionPromptBuildResult",
-    "Sam3MemoryPromptBuildResult",
-    "Sam3VideoAttentionMemoryEntry",
-    "Sam3VideoAttentionTrackState",
     "Sam3SemanticImageModel",
     "Sam3SemanticPrediction",
     "Sam3SemanticRuntimeSession",
-    "Sam3VideoTrackState",
     "Sam3CheckpointBranches",
     "Sam3RegionItem",
     "PromptEncoder",
@@ -81,15 +55,11 @@ __all__ = [
     "build_sam3_interactive_image_model",
     "build_sam3_semantic_image_model",
     "clone_module_list",
-    "build_memory_prompt_mask",
-    "build_memory_attention_prompt_mask",
     "get_1d_sine_pe",
     "inverse_sigmoid",
     "load_sam3_checkpoint_branches",
     "load_sam3_checkpoint_state_dict",
     "postprocess_sam3_interactive_masks",
     "preprocess_sam3_image",
-    "update_attention_track_state_from_region",
-    "update_track_state_from_region",
     "xywh2xyxy",
 ]

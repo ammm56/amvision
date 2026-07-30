@@ -136,7 +136,9 @@ python -m pytest --basetemp .tmp/pytest tests/integration/test_sam3_video_memory
 2. 在继续扩大默认启用范围前，优先补 workflow app 侧接入说明、排障手册和视频/多帧扩展边界说明。
 3. 如果后面再扩到多帧、视频或更高分辨率资产，再单独新增对应的 integration soak 文件，而不是继续把更多场景塞进现有基础基线文件。
 
-## `SAM3 video-interactive memory-attention` 基线
+## `SAM3 video-interactive` 历史启发式基线
+
+> 本节数据来自已经删除的启发式 `memory-attention-tracker`，只保留为历史性能记录，不能代表当前 `sam3.1-multiplex-propagation`。当前显式 benchmark 文件为 `tests/integration/test_sam3_video_multiplex_benchmark.py`，新基线必须单独记录，不能与下表横向混算。
 
 ### 说明
 

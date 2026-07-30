@@ -3,12 +3,6 @@
 from __future__ import annotations
 
 import torch
-
-from custom_nodes.sam3_segment_nodes.backend.core.state.interactive import (
-    Sam3InteractiveImageFeatures,
-    Sam3InteractiveMemoryEntry,
-    Sam3InteractiveState,
-)
 from custom_nodes.sam3_segment_nodes.backend.core.nn.common import (
     LayerNorm2d,
     MLP,
@@ -56,40 +50,9 @@ def test_clone_module_list_inverse_sigmoid_and_xywh2xyxy() -> None:
     assert converted.tolist() == [[8.0, 16.0, 12.0, 24.0]]
 
 
-def test_get_1d_sine_pe_and_interactive_state_memory_inputs() -> None:
-    """验证一维位置编码与 interactive 状态 memory 规整。"""
+def test_get_1d_sine_pe_shape() -> None:
+    """验证一维位置编码的输出 shape。"""
 
     positions = torch.tensor([0.0, 1.0, 2.0], dtype=torch.float32)
     position_encoding = get_1d_sine_pe(positions, dim=8)
     assert tuple(position_encoding.shape) == (3, 8)
-
-    runtime_state = Sam3InteractiveState(
-        max_object_count=4,
-        hidden_dim=8,
-        device=torch.device("cpu"),
-        torch_dtype=torch.float32,
-    )
-    allocated_index = runtime_state.allocate_object_index(7)
-    assert allocated_index == 0
-    assert runtime_state.allocate_object_index(7) == 0
-
-    runtime_state.set_image_features(
-        Sam3InteractiveImageFeatures(
-            vision_feats=[torch.randn(4, 1, 8)],
-            vision_pos_embeds=[torch.randn(4, 1, 8)],
-            feat_sizes=[(2, 2)],
-            high_res_features=[torch.randn(1, 8, 4, 4)],
-        )
-    )
-    runtime_state.append_memory_entry(
-        Sam3InteractiveMemoryEntry(
-            maskmem_features=torch.randn(1, 8, 2, 2),
-            maskmem_pos_enc=[torch.randn(1, 8, 2, 2)],
-            pred_masks=torch.randn(1, 1, 2, 2),
-            obj_ptr=torch.randn(1, 8),
-            object_score_logits=torch.randn(1, 1),
-        )
-    )
-    memory, memory_pos = runtime_state.build_memory_attention_inputs(maskmem_tpos_enc=torch.zeros(1, 1, 8))
-    assert tuple(memory.shape) == (4, 1, 8)
-    assert tuple(memory_pos.shape) == (4, 1, 8)

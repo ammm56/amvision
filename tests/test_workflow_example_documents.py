@@ -313,15 +313,15 @@ def test_barcode_result_display_example_documents_are_valid() -> None:
     ]
 
 
-def test_sam3_video_memory_attention_review_example_documents_are_valid() -> None:
-    """验证 SAM3 memory-attention 视频样例模板与应用可以通过当前规则校验。"""
+def test_sam3_video_multiplex_review_example_documents_are_valid() -> None:
+    """验证 SAM3.1 Multiplex 视频样例模板与应用可以通过当前规则校验。"""
 
     example_dir = (
         Path(__file__).resolve().parents[1] / "docs" / "examples" / "workflows"
     )
-    template_path = example_dir / "sam3_video_memory_attention_review.template.json"
+    template_path = example_dir / "sam3_video_multiplex_review.template.json"
     application_path = (
-        example_dir / "sam3_video_memory_attention_review.application.json"
+        example_dir / "sam3_video_multiplex_review.application.json"
     )
     template = WorkflowGraphTemplate.model_validate(
         json.loads(template_path.read_text(encoding="utf-8"))
@@ -350,20 +350,18 @@ def test_sam3_video_memory_attention_review_example_documents_are_valid() -> Non
         "save_video",
         "video_body",
     ]
-    assert template.nodes[3].parameters["tracking_mode"] == "memory-attention-tracker"
-    assert template.nodes[3].parameters["history_limit"] == 6
-    assert template.nodes[3].parameters["prototype_momentum"] == 0.72
-    assert template.nodes[3].parameters["attention_temperature"] == 0.12
-    assert template.nodes[3].parameters["prototype_blend_weight"] == 0.35
-    assert template.nodes[3].parameters["max_memory_tokens_per_entry"] == 256
-    assert template.metadata["example_kind"] == "sam3-video-memory-attention-review"
-    assert template.metadata["tracking_mode"] == "memory-attention-tracker"
+    assert template.nodes[3].parameters["refine_iterations"] == 2
+    assert template.metadata["example_kind"] == "sam3-video-multiplex-review"
+    assert (
+        template.metadata["propagation_mode"]
+        == "sam3.1-multiplex-propagation"
+    )
     assert template.metadata["node_groups"]["tracking"] == [
         "segment_video",
         "filter_tracks",
     ]
     assert application.template_ref.source_uri == (
-        "docs/examples/workflows/sam3_video_memory_attention_review.template.json"
+        "docs/examples/workflows/sam3_video_multiplex_review.template.json"
     )
     assert application.runtime_mode == "python-json-workflow"
     assert [binding.binding_id for binding in application.bindings] == [

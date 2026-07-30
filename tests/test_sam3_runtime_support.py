@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import io
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
 import torch
-import torch.nn.functional as F
 
 from backend.contracts.workflows.workflow_graph import WorkflowGraphNode
 from backend.service.application.workflows.model_sessions import (
@@ -17,20 +17,11 @@ from backend.service.application.workflows.model_sessions import (
 )
 from custom_nodes.sam3_segment_nodes.backend.core import (
     Sam3CheckpointBranches,
-    Sam3VideoAttentionMemoryEntry,
-    Sam3VideoAttentionTrackState,
-    Sam3InteractiveFrameContext,
-    Sam3RegionItem,
-    Sam3VideoTrackState,
-    build_memory_attention_prompt_mask,
     build_sam3_interactive_prompt_tensors,
-    build_memory_prompt_mask,
     build_sam3_interactive_state_dict,
     load_sam3_checkpoint_branches,
     postprocess_sam3_interactive_masks,
     preprocess_sam3_image,
-    update_attention_track_state_from_region,
-    update_track_state_from_region,
 )
 from custom_nodes.sam3_segment_nodes.backend.payloads.types import (
     Sam3PretrainedVariant,
@@ -38,6 +29,9 @@ from custom_nodes.sam3_segment_nodes.backend.payloads.types import (
 import custom_nodes.sam3_segment_nodes.backend.runtime.workflow_session as workflow_session_module
 from custom_nodes.sam3_segment_nodes.backend.core.models import (
     interactive as interactive_model_module,
+)
+from custom_nodes.sam3_segment_nodes.backend.core.models.shared_owner import (
+    Sam3SharedTrunkFeatureCache,
 )
 from custom_nodes.sam3_segment_nodes.backend.core.prompts.encoding import (
     PreparedSam3InteractivePrompts,
@@ -79,14 +73,48 @@ def test_workflow_provider_reads_checkpoint_once_for_both_capabilities(
     )
     checkpoint_branches = object()
     checkpoint_loads: list[Path] = []
-    built_sessions: list[tuple[str, object, str | None]] = []
+    built_sessions: list[tuple[str, object, object, str | None]] = []
+    shared_builds: list[tuple[Path, object]] = []
+    shared_trunk_cache = object()
+    interactive_model = SimpleNamespace()
+    semantic_model = SimpleNamespace()
+
+    class _FakeSharedOwner:
+        def __init__(self) -> None:
+            self.interactive_model = interactive_model
+            self.semantic_model = semantic_model
+            self.multiplex_model = None
+            self.feature_cache = shared_trunk_cache
+
+        def diagnostics(self) -> dict[str, object]:
+            return {
+                "owner_kind": "shared-vit-trunk",
+                "model_instance_count": 1,
+            }
+
+        def close(self) -> None:
+            return None
+
+    shared_owner = _FakeSharedOwner()
 
     class _FakeRuntimeSession:
-        def __init__(self, *, checkpoint_branches, checkpoint_sha256=None, **_kwargs):
+        def __init__(
+            self,
+            *,
+            prebuilt_model,
+            shared_trunk_cache,
+            checkpoint_sha256=None,
+            **_kwargs,
+        ):
             self.device_name = "cpu"
             self.runtime_torch_dtype = torch.float32
             built_sessions.append(
-                (self.__class__.__name__, checkpoint_branches, checkpoint_sha256)
+                (
+                    self.__class__.__name__,
+                    prebuilt_model,
+                    shared_trunk_cache,
+                    checkpoint_sha256,
+                )
             )
 
         def close(self) -> None:
@@ -107,6 +135,22 @@ def test_workflow_provider_reads_checkpoint_once_for_both_capabilities(
         workflow_session_module,
         "load_sam3_checkpoint_branches",
         lambda path: checkpoint_loads.append(path) or checkpoint_branches,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "build_sam3_shared_model_owner",
+        lambda *, checkpoint_path, checkpoint_branches, **_kwargs: (
+            shared_builds.append((checkpoint_path, checkpoint_branches))
+            or SimpleNamespace(
+                owner=shared_owner,
+                resolved_device_name="cpu",
+                runtime_torch_dtype=torch.float32,
+                compatibility_summary={
+                    "interactive": {"loaded": True},
+                    "semantic": {"loaded": True},
+                },
+            )
+        ),
     )
     monkeypatch.setattr(
         workflow_session_module,
@@ -137,10 +181,192 @@ def test_workflow_provider_reads_checkpoint_once_for_both_capabilities(
     )
 
     assert checkpoint_loads == [checkpoint_path]
+    assert shared_builds == [(checkpoint_path, checkpoint_branches)]
     assert len(built_sessions) == 2
-    assert all(item[1] is checkpoint_branches for item in built_sessions)
-    assert all(item[2] == "abc123" for item in built_sessions)
+    assert built_sessions[0][1] is interactive_model
+    assert built_sessions[1][1] is semantic_model
+    assert all(item[2] is shared_trunk_cache for item in built_sessions)
+    assert all(item[3] == "abc123" for item in built_sessions)
     assert result.checkpoint_sha256 == "abc123"
+    assert result.metadata["resource_owner"]["model_instance_count"] == 1
+
+
+def test_video_semantic_provider_builds_one_shared_three_branch_owner(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """验证 Video Semantic 共用一次 checkpoint 和一个三分支 owner。"""
+
+    checkpoint_path = tmp_path / "sam3.1_multiplex.pt"
+    checkpoint_path.write_bytes(b"checkpoint")
+    variant = Sam3PretrainedVariant(
+        model_asset_id="sam3-default",
+        architecture_id="sam3",
+        manifest_path=tmp_path / "manifest.json",
+        checkpoint_path=checkpoint_path,
+        model_name="sam3",
+        model_version="0.1.3",
+        task_type="segmentation",
+        metadata={"checkpoint_sha256": "abc123"},
+    )
+    checkpoint_branches = object()
+    checkpoint_loads: list[Path] = []
+    build_options: list[dict[str, object]] = []
+    shared_trunk_cache = object()
+    interactive_model = SimpleNamespace()
+    semantic_model = SimpleNamespace()
+    multiplex_model = SimpleNamespace()
+
+    class _FakeSharedOwner:
+        feature_cache = shared_trunk_cache
+
+        def __init__(self) -> None:
+            self.interactive_model = interactive_model
+            self.semantic_model = semantic_model
+            self.multiplex_model = multiplex_model
+
+        def diagnostics(self) -> dict[str, object]:
+            return {
+                "owner_kind": "shared-vit-trunk",
+                "model_instance_count": 1,
+                "capability_views": [
+                    "interactive",
+                    "semantic",
+                    "multiplex-propagation",
+                ],
+            }
+
+        def close(self) -> None:
+            return None
+
+    shared_owner = _FakeSharedOwner()
+
+    class _FakeRuntimeSession:
+        device_name = "cpu"
+        runtime_torch_dtype = torch.float32
+
+        def __init__(self, **_kwargs) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        workflow_session_module,
+        "resolve_sam3_pretrained_variant",
+        lambda **_kwargs: variant,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "load_sam3_checkpoint_branches",
+        lambda path: checkpoint_loads.append(path) or checkpoint_branches,
+    )
+
+    def _build_shared_owner(**kwargs):
+        build_options.append(dict(kwargs))
+        return SimpleNamespace(
+            owner=shared_owner,
+            resolved_device_name="cpu",
+            runtime_torch_dtype=torch.float32,
+            compatibility_summary={
+                "interactive": {"loaded": True},
+                "semantic": {"loaded": True},
+                "multiplex": {"loaded": True},
+            },
+        )
+
+    monkeypatch.setattr(
+        workflow_session_module,
+        "build_sam3_shared_model_owner",
+        _build_shared_owner,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "Sam3InteractiveRuntimeSession",
+        _FakeRuntimeSession,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "Sam3SemanticRuntimeSession",
+        _FakeRuntimeSession,
+    )
+    monkeypatch.setattr(
+        workflow_session_module,
+        "Sam3MultiplexRuntimeSession",
+        _FakeRuntimeSession,
+    )
+
+    result = workflow_session_module.Sam3WorkflowModelSessionProvider().load(
+        loader_node=WorkflowGraphNode(
+            node_id="loader",
+            node_type_id="custom.sam3.load-checkpoint",
+            parameters={
+                "model_asset_id": "sam3-default",
+                "device": "cpu",
+                "precision": "fp32",
+            },
+        ),
+        consumer_node_type_ids=("custom.sam3.video-semantic-segment",),
+        runtime_context=object(),
+    )
+
+    assert checkpoint_loads == [checkpoint_path]
+    assert len(build_options) == 1
+    assert build_options[0]["checkpoint_branches"] is checkpoint_branches
+    assert build_options[0]["include_interactive"] is True
+    assert build_options[0]["include_semantic"] is True
+    assert build_options[0]["include_multiplex"] is True
+    session = result.session
+    assert isinstance(session, workflow_session_module.Sam3WorkflowModelSession)
+    assert session.interactive is not None
+    assert session.semantic is not None
+    assert session.multiplex is not None
+    assert session.shared_owner is shared_owner
+    assert result.metadata["resource_owner"]["model_instance_count"] == 1
+
+
+def test_shared_trunk_cache_reuses_only_latest_image() -> None:
+    """验证双能力只共享最近图像，并在图片变化时立即替换旧特征。"""
+
+    class _CountingTrunk(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, image_tensor: torch.Tensor) -> list[torch.Tensor]:
+            self.calls += 1
+            return [image_tensor + float(self.calls)]
+
+    cache = Sam3SharedTrunkFeatureCache()
+    trunk = _CountingTrunk()
+    image_a = torch.zeros((1, 3, 4, 4), dtype=torch.float32)
+    image_b = torch.ones((1, 3, 4, 4), dtype=torch.float32)
+
+    first = cache.get_or_compute(
+        image_identity="image-a",
+        image_tensor=image_a,
+        trunk=trunk,
+    )
+    repeated = cache.get_or_compute(
+        image_identity="image-a",
+        image_tensor=image_a,
+        trunk=trunk,
+    )
+    replaced = cache.get_or_compute(
+        image_identity="image-b",
+        image_tensor=image_b,
+        trunk=trunk,
+    )
+
+    assert repeated is first
+    assert replaced is not first
+    assert trunk.calls == 2
+    assert cache.diagnostics() == {
+        "scope": "shared-owner-latest-image",
+        "has_value": True,
+        "hits": 1,
+        "misses": 2,
+    }
 
 
 def test_workflow_provider_validation_exposes_warmup_timings() -> None:
@@ -672,289 +898,3 @@ def test_postprocess_sam3_interactive_masks_filters_small_components() -> None:
     region = region_items[0]
     assert region.area == 16
     assert region.bbox_xyxy == (5.0, 4.0, 8.0, 7.0)
-
-
-def test_sam3_video_memory_tracker_builds_prompt_from_state() -> None:
-    """验证视频 memory tracker 会基于对象状态生成新的 prompt mask。"""
-
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=preprocess_sam3_image(
-            _build_test_png_bytes(width=64, height=32),
-            image_payload=None,
-        ),
-        features={
-            "image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-            "high_res_feats": [],
-            "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        },
-        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-    low_res_mask = torch.zeros((8, 8), dtype=torch.float32)
-    low_res_mask[2:6, 2:6] = 1.0
-    track_state = Sam3VideoTrackState(
-        prompt_id="track-1",
-        display_name="tracked",
-        feature_prototype=torch.ones((8,), dtype=torch.float32),
-        low_res_mask_history=[low_res_mask],
-    )
-
-    memory_prompt = build_memory_prompt_mask(
-        frame_context=frame_context,
-        track_state=track_state,
-    )
-
-    assert memory_prompt.history_length == 1
-    assert memory_prompt.prototype_ready is True
-    assert memory_prompt.prompt_mask.shape == (32, 64)
-    assert int(memory_prompt.prompt_mask.sum()) > 0
-
-
-def test_sam3_video_memory_tracker_updates_track_state_from_region() -> None:
-    """验证视频 memory tracker 会用当前帧 region 更新状态。"""
-
-    prepared_image = preprocess_sam3_image(
-        _build_test_png_bytes(width=48, height=40),
-        image_payload=None,
-    )
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=prepared_image,
-        features={
-            "image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-            "high_res_feats": [],
-            "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        },
-        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-    region_mask = np.zeros((40, 48), dtype=np.uint8)
-    region_mask[10:28, 12:30] = 1
-    region = Sam3RegionItem(
-        region_id="region-1",
-        score=0.92,
-        class_id=0,
-        class_name="tracked",
-        bbox_xyxy=(12.0, 10.0, 29.0, 27.0),
-        polygon_xy=((12.0, 10.0), (29.0, 10.0), (29.0, 27.0), (12.0, 27.0)),
-        area=int(region_mask.sum()),
-        prompt_id="track-1",
-        mask_array=region_mask,
-        mask_png_bytes=_encode_mask_png_for_test(region_mask),
-        mask_width=48,
-        mask_height=40,
-    )
-    track_state = Sam3VideoTrackState(prompt_id="track-1", display_name="tracked")
-
-    update_track_state_from_region(
-        track_state=track_state,
-        frame_context=frame_context,
-        region=region,
-        frame_index=3,
-    )
-
-    assert track_state.feature_prototype is not None
-    assert len(track_state.low_res_mask_history) == 1
-    assert track_state.last_score == 0.92
-    assert track_state.last_frame_index == 3
-
-
-def test_sam3_video_memory_tracker_supports_large_displacement() -> None:
-    """验证对象大位移时 memory prompt 会跟着特征相似区域迁移。"""
-
-    prepared_image = preprocess_sam3_image(
-        _build_test_png_bytes(width=64, height=64),
-        image_payload=None,
-    )
-    feature_map = torch.zeros((1, 2, 8, 8), dtype=torch.float32)
-    feature_map[:, 1, :, :] = 1.0
-    feature_map[:, 0, 5:8, 5:8] = 4.0
-    feature_map[:, 1, 5:8, 5:8] = 0.0
-    track_state = Sam3VideoTrackState(
-        prompt_id="track-shift",
-        display_name="shifted-object",
-        feature_prototype=torch.tensor([1.0, 0.0], dtype=torch.float32),
-        low_res_mask_history=[],
-    )
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=prepared_image,
-        features={
-            "image_embed": feature_map,
-            "high_res_feats": [],
-            "low_res_feature_map": feature_map,
-        },
-        low_res_feature_map=feature_map,
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-
-    memory_prompt = build_memory_prompt_mask(
-        frame_context=frame_context,
-        track_state=track_state,
-    )
-
-    ys, xs = np.nonzero(memory_prompt.prompt_mask)
-    assert len(xs) > 0
-    assert float(xs.mean()) > 32.0
-    assert float(ys.mean()) > 32.0
-
-
-def test_sam3_video_memory_attention_tracker_builds_prompt_from_state() -> None:
-    """验证 memory-attention tracker 会基于对象 token memory 生成 prompt mask。"""
-
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=preprocess_sam3_image(
-            _build_test_png_bytes(width=64, height=32),
-            image_payload=None,
-        ),
-        features={
-            "image_embed": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-            "high_res_feats": [],
-            "low_res_feature_map": torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        },
-        low_res_feature_map=torch.ones((1, 8, 8, 8), dtype=torch.float32),
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-    low_res_mask = torch.zeros((8, 8), dtype=torch.float32)
-    low_res_mask[1:5, 2:6] = 1.0
-    object_tokens = torch.ones((12, 8), dtype=torch.float32)
-    track_state = Sam3VideoAttentionTrackState(
-        prompt_id="track-attention-1",
-        display_name="tracked",
-    )
-    track_state.memory_entries.append(
-        video_memory_attention_entry := Sam3VideoAttentionMemoryEntry(
-            object_tokens=object_tokens,
-            low_res_mask=low_res_mask,
-            score=0.88,
-            frame_index=0,
-        )
-    )
-    track_state.feature_prototype = torch.ones((8,), dtype=torch.float32)
-
-    memory_prompt = build_memory_attention_prompt_mask(
-        frame_context=frame_context,
-        track_state=track_state,
-    )
-
-    assert video_memory_attention_entry.frame_index == 0
-    assert memory_prompt.history_length == 1
-    assert memory_prompt.memory_entry_count == 1
-    assert memory_prompt.prototype_ready is True
-    assert memory_prompt.prompt_mask.shape == (32, 64)
-    assert int(memory_prompt.prompt_mask.sum()) > 0
-
-
-def test_sam3_video_memory_attention_tracker_updates_track_state_from_region() -> None:
-    """验证 memory-attention tracker 会写入对象 token memory。"""
-
-    prepared_image = preprocess_sam3_image(
-        _build_test_png_bytes(width=48, height=40),
-        image_payload=None,
-    )
-    feature_map = torch.ones((1, 8, 8, 8), dtype=torch.float32)
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=prepared_image,
-        features={
-            "image_embed": feature_map,
-            "high_res_feats": [],
-            "low_res_feature_map": feature_map,
-        },
-        low_res_feature_map=feature_map,
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-    region_mask = np.zeros((40, 48), dtype=np.uint8)
-    region_mask[10:28, 12:30] = 1
-    region = Sam3RegionItem(
-        region_id="region-att-1",
-        score=0.93,
-        class_id=0,
-        class_name="tracked",
-        bbox_xyxy=(12.0, 10.0, 29.0, 27.0),
-        polygon_xy=((12.0, 10.0), (29.0, 10.0), (29.0, 27.0), (12.0, 27.0)),
-        area=int(region_mask.sum()),
-        prompt_id="track-attention-1",
-        mask_array=region_mask,
-        mask_png_bytes=_encode_mask_png_for_test(region_mask),
-        mask_width=48,
-        mask_height=40,
-    )
-    track_state = Sam3VideoAttentionTrackState(
-        prompt_id="track-attention-1", display_name="tracked"
-    )
-
-    update_attention_track_state_from_region(
-        track_state=track_state,
-        frame_context=frame_context,
-        region=region,
-        frame_index=5,
-    )
-
-    assert track_state.feature_prototype is not None
-    assert len(track_state.memory_entries) == 1
-    assert track_state.memory_entries[0].object_tokens.ndim == 2
-    assert track_state.last_score == 0.93
-    assert track_state.last_frame_index == 5
-
-
-def test_sam3_video_memory_attention_tracker_supports_large_displacement() -> None:
-    """验证 memory-attention tracker 在大位移下仍能把 prompt 迁移到目标区域。"""
-
-    prepared_image = preprocess_sam3_image(
-        _build_test_png_bytes(width=64, height=64),
-        image_payload=None,
-    )
-    feature_map = torch.zeros((1, 2, 8, 8), dtype=torch.float32)
-    feature_map[:, 1, :, :] = 1.0
-    feature_map[:, 0, 5:8, 5:8] = 4.0
-    feature_map[:, 1, 5:8, 5:8] = 0.0
-    track_state = Sam3VideoAttentionTrackState(
-        prompt_id="track-attention-shift",
-        display_name="shifted-object",
-    )
-    track_state.feature_prototype = torch.tensor([1.0, 0.0], dtype=torch.float32)
-    track_state.memory_entries.append(
-        Sam3VideoAttentionMemoryEntry(
-            object_tokens=F.normalize(
-                torch.tensor([[1.0, 0.0], [1.0, 0.0]], dtype=torch.float32), dim=1
-            ),
-            low_res_mask=torch.zeros((8, 8), dtype=torch.float32),
-            score=0.9,
-            frame_index=0,
-        )
-    )
-    track_state.memory_entries[0].low_res_mask[5:8, 5:8] = 1.0
-    frame_context = Sam3InteractiveFrameContext(
-        prepared_image=prepared_image,
-        features={
-            "image_embed": feature_map,
-            "high_res_feats": [],
-            "low_res_feature_map": feature_map,
-        },
-        low_res_feature_map=feature_map,
-        mask_prompt_width=32,
-        mask_prompt_height=32,
-    )
-
-    memory_prompt = build_memory_attention_prompt_mask(
-        frame_context=frame_context,
-        track_state=track_state,
-    )
-
-    ys, xs = np.nonzero(memory_prompt.prompt_mask)
-    assert len(xs) > 0
-    assert float(xs.mean()) > 32.0
-    assert float(ys.mean()) > 32.0
-
-
-def _encode_mask_png_for_test(binary_mask: np.ndarray) -> bytes:
-    """把测试二值 mask 编码成 PNG。"""
-
-    buffer = io.BytesIO()
-    Image.fromarray((binary_mask > 0).astype(np.uint8) * 255, mode="L").save(
-        buffer, format="PNG"
-    )
-    return buffer.getvalue()

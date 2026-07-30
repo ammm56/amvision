@@ -38,6 +38,8 @@ from ..nn.vision_backbone import (
     SAM3VisualBackbone,
     Sam3ViTDetNeck,
     ViT,
+    build_sam3_vit_trunk,
+    release_rotary_device_caches,
 )
 
 
@@ -353,7 +355,7 @@ class Sam3SemanticSegmentationHead(nn.Module):
 class Sam3SemanticImageModel(nn.Module):
     """只覆盖单图 semantic 分割所需最小接口的 SAM3 模型。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, shared_trunk: ViT | None = None) -> None:
         super().__init__()
         self.image_size = 1008
         self.image_encoder = SAM3VisualBackbone(
@@ -367,31 +369,7 @@ class Sam3SemanticImageModel(nn.Module):
                 d_model=256,
                 branch_name="convs",
                 scale_factors=(4.0, 2.0, 1.0),
-                trunk=ViT(
-                    img_size=1008,
-                    pretrain_img_size=336,
-                    patch_size=14,
-                    embed_dim=1024,
-                    depth=32,
-                    num_heads=16,
-                    mlp_ratio=4.625,
-                    norm_layer="LayerNorm",
-                    drop_path_rate=0.1,
-                    qkv_bias=True,
-                    use_abs_pos=True,
-                    tile_abs_pos=True,
-                    global_att_blocks=(7, 15, 23, 31),
-                    use_rope=True,
-                    use_interp_rope=True,
-                    window_size=24,
-                    pretrain_use_cls_token=True,
-                    retain_cls_token=False,
-                    ln_pre=True,
-                    ln_post=False,
-                    return_interm_layers=False,
-                    bias_patch_embed=False,
-                    use_act_checkpoint=False,
-                ),
+                trunk=shared_trunk or build_sam3_vit_trunk(),
             ),
             scalp=0,
         )
@@ -399,10 +377,18 @@ class Sam3SemanticImageModel(nn.Module):
         self.encoder = Sam3SemanticEncoderFusion(d_model=256, num_layers=6)
         self.segmentation_head = Sam3SemanticSegmentationHead(hidden_dim=256)
 
-    def forward_image(self, image_tensor: torch.Tensor) -> dict[str, object]:
+    def forward_image(
+        self,
+        image_tensor: torch.Tensor,
+        *,
+        trunk_feature: torch.Tensor | None = None,
+    ) -> dict[str, object]:
         """抽取 SAM3 semantic 需要的视觉特征。"""
 
-        return self.image_encoder.forward_image(image_tensor)
+        return self.image_encoder.forward_image(
+            image_tensor,
+            trunk_feature=trunk_feature,
+        )
 
     def encode_text(self, texts: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
         """编码文本提示。"""
@@ -583,6 +569,11 @@ class Sam3SemanticRuntimeSession:
         precision: str,
         checkpoint_branches: Sam3CheckpointBranches | None = None,
         checkpoint_sha256: str | None = None,
+        prebuilt_model: Sam3SemanticImageModel | None = None,
+        resolved_device_name: str | None = None,
+        runtime_torch_dtype: torch.dtype | None = None,
+        owns_model: bool = True,
+        shared_trunk_cache: object | None = None,
     ) -> None:
         self.model_asset_id = model_asset_id
         self.architecture_id = architecture_id
@@ -590,14 +581,23 @@ class Sam3SemanticRuntimeSession:
         self.precision = precision
         self.checkpoint_sha256 = str(checkpoint_sha256 or "").strip()
         self.session_generation = uuid4().hex
-        self.model, self.device_name, self.runtime_torch_dtype = (
-            build_sam3_semantic_image_model(
-                checkpoint_path=checkpoint_path,
-                requested_device_name=requested_device_name,
-                precision=precision,
-                checkpoint_branches=checkpoint_branches,
+        self._owns_model = bool(owns_model)
+        self._shared_trunk_cache = shared_trunk_cache
+        if prebuilt_model is None:
+            self.model, self.device_name, self.runtime_torch_dtype = (
+                build_sam3_semantic_image_model(
+                    checkpoint_path=checkpoint_path,
+                    requested_device_name=requested_device_name,
+                    precision=precision,
+                    checkpoint_branches=checkpoint_branches,
+                )
             )
-        )
+        else:
+            if resolved_device_name is None or runtime_torch_dtype is None:
+                raise ValueError("prebuilt_model 必须同时提供 device 与 dtype")
+            self.model = prebuilt_model
+            self.device_name = resolved_device_name
+            self.runtime_torch_dtype = runtime_torch_dtype
         self._feature_cache_key: str | None = None
         self._feature_cache_value: tuple[PreparedSam3Image, object] | None = None
         self._feature_cache_hits = 0
@@ -671,7 +671,23 @@ class Sam3SemanticRuntimeSession:
                 3,
             )
             backbone_started_at = perf_counter()
-            backbone_out = self.model.forward_image(prepared_image.image_tensor)
+            trunk_feature = None
+            if self._shared_trunk_cache is not None:
+                get_or_compute = getattr(
+                    self._shared_trunk_cache,
+                    "get_or_compute",
+                    None,
+                )
+                if callable(get_or_compute):
+                    trunk_feature = get_or_compute(
+                        image_identity=image_sha256,
+                        image_tensor=prepared_image.image_tensor,
+                        trunk=self.model.image_encoder.vision_backbone.trunk,
+                    )
+            backbone_out = self.model.forward_image(
+                prepared_image.image_tensor,
+                trunk_feature=trunk_feature,
+            )
             backbone_ms = round(
                 (perf_counter() - backbone_started_at) * 1000,
                 3,
@@ -836,10 +852,12 @@ class Sam3SemanticRuntimeSession:
     def close(self) -> None:
         """释放模型引用和可回收的 CUDA 显存。"""
 
-        self.model.to(device=torch.device("cpu"))
+        if self._owns_model:
+            release_rotary_device_caches(self.model)
+            self.model.to(device=torch.device("cpu"))
         self._feature_cache_key = None
         self._feature_cache_value = None
-        if torch.cuda.is_available():
+        if self._owns_model and torch.cuda.is_available():
             torch.cuda.empty_cache()
 
 

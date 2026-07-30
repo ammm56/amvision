@@ -25,7 +25,7 @@ workflow app 侧的接入顺序、目标机器启用/禁用和运维排障，见
 - `YOLOE` 与 `SAM3` 这部分文档当前先固定资产目录、`manifest.json` 规则和节点输入输出 contract。
 - `projectsrc/` 只作为参考源码面，不参与运行时。
 - `YOLOE` 当前不会回退到已安装官方包或 `projectsrc` 参考代码执行推理；`prompt-free`、`text-prompt`、`visual-prompt` 三条 project-native runtime 已经接通，后续只继续扩能力面。
-- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，读取登记的 `sam3.1_multiplex.pt` 执行单图或多帧分割；其中单图 Interactive 与 Semantic 只加载各自需要的 multiplex 分支。`interactive` 当前支持 `box / point / polygon / mask`，`semantic` 当前支持按 `prompt_id` 聚合的 positive/negative `text-prompts.v1`，`video-interactive` 当前默认使用 `memory-prototype-state` 多帧跟踪并输出 `tracks.v1`，同时也提供更重的 `memory-attention-tracker` 可选模式，`video-semantic` 当前使用共享 `text-prompts.v1` 跨帧执行语义分割并输出 `tracks.v1`。这些项目内视频模式不宣称等同于最新参考仓库的完整 multiplex video predictor。
+- `SAM3` 当前已经接通 `interactive-segment`、`semantic-segment`、`video-interactive-segment` 和 `video-semantic-segment` 的 project-native runtime，读取登记的 `sam3.1_multiplex.pt` 执行单图或多帧分割。视频节点使用 checkpoint 内正式 propagation 分支、固定 16 槽 bucket decoder、7 帧 memory 和最多 16 个 object pointer，不再维护 prototype、shared-prompt、stateful-mask 或启发式 memory-attention 跟踪模式。
 
 ## 适用范围
 
@@ -322,7 +322,7 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
     "source": "local-pretrained",
     "upstream_weight_name": "sam3.1_multiplex.pt",
     "upstream_mode": "multiplex",
-    "runtime_scope": "project-native-single-image"
+    "runtime_scope": "workflow-app-isolated-multiplex"
   }
 }
 ```
@@ -453,6 +453,9 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 - `custom.sam3.video-interactive-segment`
   - 输入：`frame-window.v1`、`prompt-regions.v1`
   - 输出：`tracks.v1`、`value.v1`
+- `custom.sam3.video-semantic-segment`
+  - 输入：`frame-window.v1`、`text-prompts.v1`
+  - 输出：`tracks.v1`、`value.v1`
 
 说明：
 
@@ -460,11 +463,13 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 - 当前阶段支持 `box`、`point`、`polygon`、`mask` prompt。
 - `semantic-segment` 当前也已接通 project-native runtime。
 - `semantic-segment` 当前支持按 `prompt_id` 聚合的 `text-prompts.v1`，同组内可混合 positive/negative 文本。
-- `video-interactive-segment` 当前已接通 project-native runtime。
-- 当前阶段直接复用 `frame-window.v1`，逐帧执行 interactive 分割，并输出 `tracks.v1`。
-- 当前 `track_id` 继续稳定映射为 `prompt_id`；默认策略已升级为 `memory-prototype-state`，同时保留 `memory-attention-tracker`、`stateful-mask-propagation` 与 `shared-prompts-across-window` 可选模式。
+- `video-interactive-segment` 使用 Interactive 首帧提示生成 mask 与 object pointer，后续帧由 Multiplex propagation 传播。
+- `video-semantic-segment` 使用 Semantic 首帧生成候选 mask，再经 Interactive 分支生成训练一致的 object pointer，后续帧进入同一 Multiplex propagation。
+- `track_id` 稳定映射为 `prompt_id`；传播链路固定，不提供启发式模式选择参数。
 
-### SAM3 使用建议
+### 旧视频模式说明（已删除，不得作为当前实现依据）
+
+以下 prototype、shared-prompt、stateful-mask 和启发式 memory-attention 内容仅记录早期原型取舍。当前 Catalog、节点参数、运行时代码和测试均不再包含这些模式；当前实现依据统一以 [SAM3 自定义节点规划](sam3-custom-node-plan.md) 为准。
 
 `SAM3` 当前的单帧与多帧能力是分层存在的，实际编排时应按任务复杂度选择，而不是默认一律走最重模式。
 
@@ -572,8 +577,8 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 
 现场样例 workflow：
 
-- [docs/examples/workflows/sam3_video_memory_attention_review.template.json](../examples/workflows/sam3_video_memory_attention_review.template.json)
-- [docs/examples/workflows/sam3_video_memory_attention_review.application.json](../examples/workflows/sam3_video_memory_attention_review.application.json)
+- [docs/examples/workflows/sam3_video_multiplex_review.template.json](../examples/workflows/sam3_video_multiplex_review.template.json)
+- [docs/examples/workflows/sam3_video_multiplex_review.application.json](../examples/workflows/sam3_video_multiplex_review.application.json)
 
 这套样例固定使用：
 
@@ -586,7 +591,7 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 - 更长窗口和更大位移
 - 多目标跟踪调试
 
-### `video-semantic-segment` 当前边界与后续增强
+### `video-semantic-segment` 旧边界记录（已由 Multiplex propagation 替代）
 
 当前 `video-semantic-segment` 只提供：
 
@@ -623,7 +628,7 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 ### preview run
 
 - 单次执行
-- 允许一次性加载和释放模型
+- 使用稳定的应用级 preview scope；Load Checkpoint 配置未变化时复用同一模型 owner
 
 ### WorkflowAppRuntime
 
@@ -642,7 +647,7 @@ ComfyUI 兼容 loader 必须在模型构造后恢复这些 buffer，再按 capab
 - 不把 `YOLOE` 和 `SAM3` 并入当前核心模型训练、转换、`DeploymentInstance` 主链
 - 不做 workflow app 文档或旧模板修补
 - 不在节点中内置预览、overlay 或 debug 叠图逻辑
-- 不实现 upstream 全量视频 tracker、直播流和多帧传播全能力；当前先提供 `memory-prototype-state` 默认模式与 project-native `memory-attention-tracker` 可选增强模式
+- 不实现直播流和跨 AppRuntime 共享；视频传播只在当前 AppRuntime 和单次节点执行的请求状态内运行
 - 不在第一阶段接 `YOLOE segmentation`
 
 ## 后续实现顺序

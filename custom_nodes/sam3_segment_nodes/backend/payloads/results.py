@@ -172,9 +172,7 @@ def build_video_interactive_summary_payload(
     frame_predictions: tuple[dict[str, object], ...],
     tracking_mode: str,
     propagated_prompt_counts: tuple[int, ...] = (),
-    memory_track_history_lengths: dict[str, int] | None = None,
-    memory_similarity_peaks: tuple[dict[str, float], ...] = (),
-    memory_attention_peaks: tuple[dict[str, float], ...] = (),
+    object_memory_history_lengths: dict[str, int] | None = None,
     tracking_config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """构建 video-interactive 节点 summary。"""
@@ -208,22 +206,14 @@ def build_video_interactive_summary_payload(
     }
     if tracking_config:
         summary_payload["tracking_config"] = dict(tracking_config)
-    if memory_track_history_lengths:
-        summary_payload["memory_track_history_lengths"] = {
+    if object_memory_history_lengths:
+        summary_payload["object_memory_history_lengths"] = {
             str(prompt_id): int(history_length)
-            for prompt_id, history_length in memory_track_history_lengths.items()
+            for prompt_id, history_length in object_memory_history_lengths.items()
         }
-        summary_payload["memory_tracked_prompt_count"] = len(memory_track_history_lengths)
-    if memory_similarity_peaks:
-        summary_payload["memory_similarity_peaks"] = [
-            {str(prompt_id): float(similarity_peak) for prompt_id, similarity_peak in frame_peaks.items()}
-            for frame_peaks in memory_similarity_peaks
-        ]
-    if memory_attention_peaks:
-        summary_payload["memory_attention_peaks"] = [
-            {str(prompt_id): float(attention_peak) for prompt_id, attention_peak in frame_peaks.items()}
-            for frame_peaks in memory_attention_peaks
-        ]
+        summary_payload["memory_object_count"] = len(
+            object_memory_history_lengths
+        )
     return summary_payload
 
 
@@ -269,7 +259,7 @@ def build_video_semantic_summary_payload(
         "track_count": total_region_count,
         "unique_track_count": len(unique_track_ids),
         "track_ids": unique_track_ids,
-        "frame_prompt_mode": "shared-text-prompts-across-window",
+        "frame_prompt_mode": "sam3.1-multiplex-propagation",
         "frame_region_counts": frame_region_counts,
     }
 
