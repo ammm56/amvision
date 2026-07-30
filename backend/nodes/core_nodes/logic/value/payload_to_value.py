@@ -46,6 +46,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     for port_name in (
         "result",
         "body",
+        "prompts",
         "detections",
         "segments",
         "categories",
@@ -68,7 +69,7 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
 
     if not candidate_values:
         raise InvalidRequestError(
-            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、result、body、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
+            "payload-to-value 节点至少需要连接一个 value、boolean、roi、rois、result、body、prompts、detections、segments、categories、poses、obbs、video、frames、tracks 或 regions 输入",
             details={"node_id": request.node_id},
         )
     if len(candidate_values) > 1:
@@ -85,7 +86,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.logic.payload-to-value",
         display_name="Payload To Value",
         category="core.logic.transform",
-        description="把 value、boolean、roi、roi-list、result-record、response-body、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、for-each、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
+        description="把 value、boolean、roi、roi-list、result-record、response-body、prompt-regions、detections、segments、categories、poses、obbs、video、frame-window、tracks 或 regions 这类结构化结果包装成 value.v1，供 object-create、for-each、value-field-extract、response-envelope 和 value-preview 继续组合或预览。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -123,6 +124,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 name="body",
                 display_name="Body",
                 payload_type_id="response-body.v1",
+                required=False,
+            ),
+            NodePortDefinition(
+                name="prompts",
+                display_name="Prompts",
+                payload_type_id="prompt-regions.v1",
                 required=False,
             ),
             NodePortDefinition(

@@ -22,6 +22,10 @@ from backend.nodes.core_nodes.input.prompt.text_prompt import _handle_text_promp
 from backend.nodes.core_nodes.input.prompt.text_prompts_merge import (
     _handle_text_prompts_merge,
 )
+from backend.nodes.core_nodes.io.preview.value_preview import _value_preview_handler
+from backend.nodes.core_nodes.logic.value.payload_to_value import (
+    _payload_to_value_handler,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
@@ -31,9 +35,11 @@ from backend.service.application.workflows.graph_executor import (
 def test_core_catalog_contains_prompt_input_nodes() -> None:
     """验证共享 Prompt 节点完整进入 Core Catalog。"""
 
-    node_type_ids = {
-        definition.node_type_id for definition in get_core_workflow_node_definitions()
+    node_definitions = {
+        definition.node_type_id: definition
+        for definition in get_core_workflow_node_definitions()
     }
+    node_type_ids = set(node_definitions)
 
     assert {
         "core.input.text-prompt",
@@ -56,6 +62,11 @@ def test_core_catalog_contains_prompt_input_nodes() -> None:
         "core.input.polygon-prompt",
         "core.input.mask-editor",
     } <= prompt_editor_node_type_ids
+    payload_to_value_ports = {
+        port.name: port.payload_type_id
+        for port in node_definitions["core.logic.payload-to-value"].input_ports
+    }
+    assert payload_to_value_ports["prompts"] == "prompt-regions.v1"
 
 
 def test_text_prompt_and_merge_build_shared_payload() -> None:
@@ -160,6 +171,81 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None
     assert merged["items"][0]["point_xy"] == [12.0, 24.0]
     assert merged["items"][1]["bbox_xyxy"] == [2.0, 3.0, 20.0, 30.0]
     assert merged["items"][2]["mask_image"] == mask_image
+
+
+def test_prompt_regions_merge_can_be_previewed_as_value() -> None:
+    """验证合并后的视觉 Prompt 可透明转换并由 Value Preview 显示。"""
+
+    source_image = {
+        "transport_kind": "storage",
+        "object_key": "project/files/source.png",
+        "media_type": "image/png",
+        "width": 1280,
+        "height": 720,
+        "content_sha256": "source-sha256",
+    }
+    point_prompts = {
+        "source_image": source_image,
+        "items": [
+            {
+                "prompt_id": "part",
+                "display_name": "Part",
+                "prompt_kind": "point",
+                "point_xy": [120.0, 240.0],
+                "point_label": "positive",
+            },
+            {
+                "prompt_id": "part",
+                "display_name": "Part",
+                "prompt_kind": "point",
+                "point_xy": [20.0, 30.0],
+                "point_label": "negative",
+            },
+        ],
+    }
+    box_prompts = {
+        "source_image": source_image,
+        "items": [
+            {
+                "prompt_id": "fixture",
+                "display_name": "Fixture",
+                "prompt_kind": "box",
+                "bbox_xyxy": [300.0, 200.0, 600.0, 500.0],
+            }
+        ],
+    }
+
+    merged = _handle_prompt_regions_merge(
+        _request(
+            node_id="merge",
+            input_values={"prompts": (point_prompts, box_prompts)},
+        )
+    )["prompts"]
+    value_payload = _payload_to_value_handler(
+        _request(
+            node_id="payload-to-value",
+            input_values={"prompts": merged},
+        )
+    )["value"]
+    preview_body = _value_preview_handler(
+        _request(
+            node_id="value-preview",
+            input_values={"value": value_payload},
+            parameters={"title": "Prompt Regions"},
+        )
+    )["body"]
+
+    assert value_payload == {"value": merged}
+    assert preview_body == {
+        "type": "value-preview",
+        "title": "Prompt Regions",
+        "value": merged,
+    }
+    assert preview_body["value"]["source_image"] == source_image
+    assert preview_body["value"]["items"] == [
+        *point_prompts["items"],
+        *box_prompts["items"],
+    ]
 
 
 def test_point_prompt_rejects_missing_positive_point() -> None:
