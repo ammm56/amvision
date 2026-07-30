@@ -20,16 +20,37 @@ Point、Box、Polygon 应用时同时写入只读的 `prompt_source_identity`。
 
 ## Mask 持久化
 
+Mask Editor 的已应用状态由 `mask_object_key` 与
+`mask_source_identity` 共同组成，两个字段必须原子写回节点。交互面板从
+节点级 Preview 的 Mask tool 读取明确的 `source_identity`，不能通过通用
+`apply_parameters` 旁路传递。应用时按
+`project/application/node/content-sha256` 的 ObjectStore 路径保存不可变二值
+PNG。相同内容会复用，旧工作流版本引用不会被后续编辑覆盖。Prompt 资源回收
+必须由应用资源清理策略统一处理，不能在新 Mask 写入时直接删除旧内容。
+
+重新打开编辑面板时，节点级 Preview 会校验 `mask_source_identity`。源图未
+变化时，Mask tool 返回当前 `mask_object_key`，前端把已有二值 Mask 重新绘制
+到草稿画布后继续编辑；源图变化时不加载旧 Mask，也不产生 `mask_image`。
+
 - 画布内存只用于编辑草稿。
 - 未点击“应用”时，浏览器可以维护一张全透明草稿画布，但不得上传 ObjectStore、
   写入 workflow 或产生 `mask_image`。
 - 全黑 Mask 不是默认值，也不是有效 Prompt；没有前景像素时“应用”必须保持禁用。
 - 应用时通过 Project 写接口保存 PNG。
-- object key 使用 `projects/<project_id>/inputs/workflow-applications/<application_id>/prompt-masks/<id>.png`。
+- object key 使用
+  `projects/<project_id>/inputs/workflow-applications/<application_id>/prompt-masks/<node_id>/<content_sha256>.png`。
 - workflow JSON 只保存 `mask_object_key`，不保存 Base64。
 - 服务端统一二值化为 0/255，并拒绝空文件、无法解码图片和无前景 Mask。
+- 浏览器 Canvas 的 Eraser 通过 alpha 清除像素；服务端解码 RGBA PNG 时必须把
+  alpha 为 0 的像素视为背景，不能按灰度解码后丢失透明擦除结果。
+- 已应用 Mask 使用唯一 ObjectStore key；同一 runtime scope 内文件版本未变化时，
+  Mask Editor、Mask Prompt 和模型消费节点共用只读解码缓存，不重复读盘和 PNG 解码。
+- 缓存有条目和字节硬上限；Mask key 或文件版本变化时自动失效，应用删除、scope 回收和
+  runtime 停止时释放。
 - workflow 同时保存源图稳定标识；即使新旧图片尺寸相同，只要 object key 或内容 SHA 变化，旧 Mask 也必须失效。每次 Preview 随机生成的 memory `image_handle` 不能作为跨运行失效依据。
 - 再次打开编辑器时从 ObjectStore 读取已有 Mask，恢复为半透明画布后继续编辑。
+- “应用参数”完成后，当前 Preview display 应立即切换到新 ObjectStore Mask；
+  关闭再打开面板不要求额外执行 Preview，也不能恢复到上一次 Preview 的旧 Mask。
 - Undo/Redo 只保留有限历史，当前最多 12 个完整画布快照；鼠标移动期间不扫描整张图片，避免长时间编辑造成浏览器内存和 CPU 持续增长。
 
 源图发生变化时，旧 Mask 立即停止产生 `mask_image`，但 Mask Editor 仍应产生新源图的

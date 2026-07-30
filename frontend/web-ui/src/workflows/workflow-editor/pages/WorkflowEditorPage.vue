@@ -221,6 +221,7 @@
       :json="activePreviewJson"
       :preview-running="previewOperationRunning"
       :preview-disabled="previewDisabled"
+      :interaction-applying="imageInteractionApplying"
       @close-image="closeImageViewer"
       @close-table="closePreviewTableViewer"
       @close-json="closePreviewJsonViewer"
@@ -314,6 +315,11 @@ import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionStat
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
 import { updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
 import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
+import {
+  buildAppliedMaskBinding,
+  isAppliedMaskBinding,
+  type AppliedMaskBinding,
+} from '../interactions/maskEditorInteraction'
 import type { FlowApplicationBinding, WorkflowGraphEdge, WorkflowGraphGroup, WorkflowGraphInput, WorkflowGraphNode, WorkflowGraphOutput, WorkflowNodeCatalogResponse } from '../types'
 
 type AppBoundaryKind = WorkflowBoundaryKind
@@ -498,6 +504,7 @@ const {
   readPreviewNodeDisplayTooltip,
   openPreviewDisplayViewer,
   openImageViewer,
+  replaceMaskInteractionTool,
   openPreviewJsonViewer,
   closeImageViewer,
   closePreviewTableViewer,
@@ -1270,12 +1277,9 @@ async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyE
       return false
     }
     let normalizedEvent = event
+    let appliedMaskBinding: AppliedMaskBinding | null = null
     if (event.maskDataUrl) {
-      const maskSourceIdentity = (
-        typeof event.parameters?.mask_source_identity === 'string'
-          ? event.parameters.mask_source_identity.trim()
-          : ''
-      )
+      const maskSourceIdentity = event.maskSourceIdentity?.trim() ?? ''
       if (!maskSourceIdentity) {
         errorMessage.value = t('workflowEditor.feedback.maskSourceIdentityMissing')
         return false
@@ -1291,13 +1295,25 @@ async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyE
       }
       try {
         const maskBlob = await fetch(event.maskDataUrl).then((response) => response.blob())
-        const storedMask = await uploadWorkflowPromptMask(projectId, applicationId, maskBlob)
+        const storedMask = await uploadWorkflowPromptMask(
+          projectId,
+          applicationId,
+          event.nodeId,
+          maskBlob,
+        )
+        appliedMaskBinding = buildAppliedMaskBinding(
+          storedMask.object_key,
+          maskSourceIdentity,
+        )
+        if (!appliedMaskBinding) {
+          errorMessage.value = t('workflowEditor.feedback.maskSourceIdentityMissing')
+          return false
+        }
         normalizedEvent = {
           ...event,
           parameters: {
             ...(event.parameters ?? {}),
-            mask_object_key: storedMask.object_key,
-            mask_source_identity: maskSourceIdentity,
+            ...appliedMaskBinding,
           },
         }
       } catch (error) {
@@ -1316,6 +1332,23 @@ async function applyPreviewImageInteraction(event: PreviewImageInteractionApplyE
       return false
     }
     updateNodeParametersByName(targetNode, updates)
+    if (
+      appliedMaskBinding
+      && !isAppliedMaskBinding(
+        targetNode.node.parameters,
+        appliedMaskBinding,
+      )
+    ) {
+      errorMessage.value = t('workflowEditor.feedback.maskBindingWritebackFailed')
+      return false
+    }
+    if (appliedMaskBinding) {
+      await replaceMaskInteractionTool(
+        selectedProjectId.value,
+        event.nodeId,
+        appliedMaskBinding.mask_object_key,
+      )
+    }
     selectNode(event.nodeId)
     return true
   } finally {

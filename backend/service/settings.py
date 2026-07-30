@@ -322,9 +322,12 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     - operator_thread_count：Workflow 子进程内 OpenCV/BLAS 算子线程上限。
     - decoded_image_cache_max_entries：单次 Workflow Run 解码图片缓存条目上限。
     - decoded_image_cache_max_bytes：单次 Workflow Run 解码图片私有内存缓存硬字节上限。
+    - storage_image_cache_max_entries：同一 runtime scope 跨 Run 复用的磁盘图片缓存条目上限。
+    - storage_image_cache_max_bytes：跨 Run 磁盘图片解码缓存的总字节上限。
     - raw_result_cache_ttl_seconds：异步 WorkflowRun 原始公开 outputs 的进程内保留秒数。
     - raw_result_cache_max_items：异步 WorkflowRun 原始公开 outputs 的最大缓存条数。
     - model_startup_timeout_seconds：等待图中 Load Checkpoint 节点完成加载、warmup 和验证的上限。
+    - model_startup_parallelism：不同 Load Checkpoint 节点并行准备的线程上限。
     - preview_model_session_scope_limit：API 进程最多保留的编辑态 Preview 模型 scope 数量。
     """
 
@@ -343,6 +346,16 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
         gt=0,
         description="单次 Workflow Run 解码图片私有内存缓存硬上限；broker mmap view 不重复计费",
     )
+    storage_image_cache_max_entries: int = Field(
+        default=16,
+        gt=0,
+        description="同一 Workflow runtime scope 跨 Run 复用的磁盘图片解码缓存条目上限",
+    )
+    storage_image_cache_max_bytes: int = Field(
+        default=256 * 1024 * 1024,
+        gt=0,
+        description="跨 Run 磁盘图片解码缓存总字节上限；文件版本变化后自动失效",
+    )
     raw_result_cache_ttl_seconds: float = Field(
         default=900.0,
         ge=0.0,
@@ -357,6 +370,11 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
         default=600.0,
         gt=0,
         description="等待 Workflow AppRuntime 模型 session 全部 ready 的最长秒数",
+    )
+    model_startup_parallelism: int = Field(
+        default=2,
+        gt=0,
+        description="不同 Load Checkpoint 节点并行执行加载、warmup 和验证的线程上限",
     )
     preview_model_session_scope_limit: int = Field(
         default=1,

@@ -181,10 +181,14 @@ Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List I
 - loader 负责模型资产、设备和精度。
 - 推理/分割节点只消费 model session 引用和业务输入。
 - AppRuntime 启动时先加载、warmup 和验证全部 loader，完成后才 ready。
+- 不同 loader 使用有上限的独立线程并行准备；同一 loader 内仍严格按 load、warmup、
+  validate 顺序执行，并且只有全部成功后才统一发布 lease。
 - 每个 AppRuntime 独立持有模型；同一 session 串行执行。
 - 编辑器 Preview 按 Project + Application 使用稳定 scope，同一应用重复运行只在 Loader 配置变化时换代。
 - Preview 同一应用禁止重复提交；删除或禁用 Loader 后必须回收孤立 lease，API 进程保留的 Preview scope 数量必须有硬上限。
 - 不允许 node pack 绕过该边界建立服务全局模型池或跨 AppRuntime 共享。
+- ObjectStore 中未变化的 Mask 和模板图片可在同一 runtime scope 内复用只读解码结果；
+  文件版本变化、scope 回收或 runtime 停止时必须失效，不允许跨应用共享可变图片状态。
 
 节点组的正式边界：
 

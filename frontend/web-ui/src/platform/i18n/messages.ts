@@ -1252,6 +1252,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         interactionTargetNotFound: '未找到取参目标节点：{nodeId}',
         interactionUnsupported: '{node} 暂不支持当前图片取参结果',
         maskSourceIdentityMissing: 'Mask 源图标识缺失，请重新执行 Preview Node Run 后再应用 Mask',
+        maskBindingWritebackFailed: 'Mask 已上传，但节点绑定状态写回失败，未启动 Preview',
       },
       validation: {
         nodeRequired: '图至少需要一个节点。',
@@ -3082,6 +3083,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         interactionTargetNotFound: 'Image interaction target node not found: {nodeId}',
         interactionUnsupported: '{node} does not support the current image interaction result',
         maskSourceIdentityMissing: 'The Mask source identity is missing. Run Preview Node Run again before applying the Mask.',
+        maskBindingWritebackFailed: 'The Mask was uploaded, but its node binding could not be written back. Preview was not started.',
       },
       validation: {
         nodeRequired: 'The graph requires at least one node.',

@@ -255,6 +255,103 @@ def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
     assert registry.decoded_cache_total_bytes == image_matrix.nbytes
 
 
+def test_load_image_matrix_reuses_unchanged_storage_image_across_runs_and_invalidates_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证磁盘图片跨 Run 复用，文件版本变化后会重新读取和解码。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    shared_cache = ExecutionImageRegistry(
+        decoded_cache_max_entries=4,
+        decoded_cache_max_bytes=1024 * 1024,
+    )
+    payload = {
+        "object_key": "inputs/source.png",
+        "media_type": "image/png",
+    }
+    first_image = np.full((12, 16, 3), 63, dtype=np.uint8)
+    first_ok, first_encoded = cv2.imencode(".png", first_image)
+    assert first_ok is True
+    dataset_storage.write_bytes(
+        "inputs/source.png",
+        first_encoded.tobytes(),
+    )
+    decode_count = 0
+    original_decoder = runtime_support.decode_image_bytes_to_matrix
+
+    def counting_decoder(**kwargs):
+        """记录真实 OpenCV decode 次数。"""
+
+        nonlocal decode_count
+        decode_count += 1
+        return original_decoder(**kwargs)
+
+    monkeypatch.setattr(
+        runtime_support,
+        "decode_image_bytes_to_matrix",
+        counting_decoder,
+    )
+
+    def build_run_request() -> WorkflowNodeExecutionRequest:
+        """构造同一 runtime scope 的独立 Workflow Run。"""
+
+        return _build_request(
+            dataset_storage=dataset_storage,
+            image_registry=ExecutionImageRegistry(
+                shared_decoded_cache=shared_cache,
+                shared_cache_scope_id="runtime:storage-cache",
+            ),
+            payload=payload,
+        )
+
+    _, first_matrix = load_image_matrix(
+        build_run_request(),
+        cv2_module=cv2,
+        np_module=np,
+    )
+    _, second_matrix = load_image_matrix(
+        build_run_request(),
+        cv2_module=cv2,
+        np_module=np,
+    )
+
+    assert first_matrix is second_matrix
+    assert decode_count == 1
+    assert shared_cache.build_decoded_cache_summary() == {
+        "entry_count": 1,
+        "total_bytes": first_image.nbytes,
+        "max_entries": 4,
+        "max_bytes": 1024 * 1024,
+        "hits": 1,
+        "misses": 1,
+        "evictions": 0,
+        "in_flight_count": 0,
+    }
+
+    changed_image = np.full((13, 17, 3), 191, dtype=np.uint8)
+    changed_ok, changed_encoded = cv2.imencode(".png", changed_image)
+    assert changed_ok is True
+    dataset_storage.write_bytes(
+        "inputs/source.png",
+        changed_encoded.tobytes(),
+    )
+
+    _, changed_matrix = load_image_matrix(
+        build_run_request(),
+        cv2_module=cv2,
+        np_module=np,
+    )
+
+    assert decode_count == 2
+    assert changed_matrix is not first_matrix
+    assert np.array_equal(changed_matrix, changed_image)
+
+
 def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path) -> None:
     """验证要求可写副本时不会让节点修改执行期共享解码缓存。"""
 
@@ -404,6 +501,68 @@ def test_execution_image_registry_single_flight_decodes_once_for_parallel_reader
     assert decode_count == 1
     assert all(matrix is expected_matrix for matrix in matrices)
     assert expected_matrix.flags.writeable is False
+
+
+def test_execution_image_registry_reuses_storage_decode_across_runs_by_scope() -> None:
+    """验证未变化磁盘图片按 runtime scope 跨 Run 复用并可确定性失效。"""
+
+    np = pytest.importorskip("numpy")
+    shared_cache = ExecutionImageRegistry(
+        decoded_cache_max_entries=4,
+        decoded_cache_max_bytes=1024,
+    )
+    first_run = ExecutionImageRegistry(
+        shared_decoded_cache=shared_cache,
+        shared_cache_scope_id="runtime:one",
+    )
+    second_run = ExecutionImageRegistry(
+        shared_decoded_cache=shared_cache,
+        shared_cache_scope_id="runtime:one",
+    )
+    other_scope = ExecutionImageRegistry(
+        shared_decoded_cache=shared_cache,
+        shared_cache_scope_id="runtime:two",
+    )
+    decode_count = 0
+
+    def decode_matrix():
+        """返回可区分的新矩阵并记录解码次数。"""
+
+        nonlocal decode_count
+        decode_count += 1
+        return np.full((4, 4), decode_count, dtype=np.uint8)
+
+    first_matrix = first_run.get_or_decode_matrix(
+        cache_key="storage-version-one",
+        decoder=decode_matrix,
+        share_across_runs=True,
+    )
+    second_matrix = second_run.get_or_decode_matrix(
+        cache_key="storage-version-one",
+        decoder=decode_matrix,
+        share_across_runs=True,
+    )
+    other_matrix = other_scope.get_or_decode_matrix(
+        cache_key="storage-version-one",
+        decoder=decode_matrix,
+        share_across_runs=True,
+    )
+
+    assert first_matrix is second_matrix
+    assert other_matrix is not first_matrix
+    assert decode_count == 2
+    assert shared_cache.build_decoded_cache_summary()["hits"] == 1
+    assert shared_cache.build_decoded_cache_summary()["misses"] == 2
+
+    shared_cache.clear_shared_scope("runtime:one")
+    reloaded_matrix = second_run.get_or_decode_matrix(
+        cache_key="storage-version-one",
+        decoder=decode_matrix,
+        share_across_runs=True,
+    )
+    assert reloaded_matrix is not first_matrix
+    assert decode_count == 3
+    assert shared_cache.build_decoded_cache_summary()["entry_count"] == 2
 
 
 def test_execution_image_registry_bounds_lru_cache_and_releases_matrices() -> None:

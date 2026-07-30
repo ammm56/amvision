@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -10,7 +11,10 @@ from threading import Lock, RLock
 from time import monotonic
 from typing import Iterator
 
-from backend.contracts.workflows.workflow_graph import WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    WorkflowGraphNode,
+    WorkflowGraphTemplate,
+)
 from backend.service.application.errors import (
     ResourceInUseError,
     ServiceConfigurationError,
@@ -61,13 +65,43 @@ class WorkflowModelSessionLease:
             yield self.load_result.session
 
 
+@dataclass(frozen=True)
+class _ModelSessionPreparation:
+    """描述一个等待加载的独立 loader。"""
+
+    loader_node: WorkflowGraphNode
+    provider: WorkflowModelSessionProvider
+    consumer_node_type_ids: tuple[str, ...]
+    key: tuple[str, str]
+    configuration_fingerprint: str
+
+
+@dataclass(frozen=True)
+class _PreparedModelSession:
+    """描述已完成加载、warmup 和验证但尚未发布的 session。"""
+
+    preparation: _ModelSessionPreparation
+    load_result: WorkflowModelSessionLoadResult
+    validation_summary: dict[str, object]
+
+
 class WorkflowModelSessionManager:
     """管理一个进程内、按 scope 隔离的模型 session。"""
 
-    def __init__(self, *, runtime_registry: WorkflowNodeRuntimeRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        runtime_registry: WorkflowNodeRuntimeRegistry,
+        max_parallel_loads: int = 2,
+    ) -> None:
         """初始化空管理器；provider 从当前 runtime registry 动态读取。"""
 
+        if int(max_parallel_loads) <= 0:
+            raise ServiceConfigurationError(
+                "Workflow model session 并行加载数必须为正整数"
+            )
         self.runtime_registry = runtime_registry
+        self.max_parallel_loads = int(max_parallel_loads)
         self._leases: dict[tuple[str, str], WorkflowModelSessionLease] = {}
         self._generation_by_key: dict[tuple[str, str], int] = {}
         self._scope_locks: dict[str, RLock] = {}
@@ -164,10 +198,11 @@ class WorkflowModelSessionManager:
             scope_id=scope_id,
             expected_loader_node_ids=expected_loader_node_ids,
         )
-        for stale_lease in stale_leases:
-            self._close_lease(stale_lease)
+        self._close_leases_best_effort(stale_leases)
 
-        prepared: list[WorkflowModelSessionReference] = []
+        reused_references: dict[str, WorkflowModelSessionReference] = {}
+        pending_preparations: list[_ModelSessionPreparation] = []
+        replaced_leases: list[WorkflowModelSessionLease] = []
         for loader_node in loader_nodes:
             if loader_node.node_id not in normalized_active_loader_node_ids:
                 continue
@@ -198,41 +233,51 @@ class WorkflowModelSessionManager:
                     current is not None
                     and current.configuration_fingerprint == fingerprint
                 ):
-                    prepared.append(current.reference)
+                    reused_references[loader_node.node_id] = current.reference
                     continue
                 if current is not None:
                     self._leases.pop(key, None)
             if current is not None:
-                self._close_lease(current)
-            load_result: WorkflowModelSessionLoadResult | None = None
-            try:
-                load_result = provider.load(
+                replaced_leases.append(current)
+            pending_preparations.append(
+                _ModelSessionPreparation(
                     loader_node=loader_node,
+                    provider=provider,
                     consumer_node_type_ids=consumer_node_type_ids,
-                    runtime_context=runtime_context,
+                    key=key,
+                    configuration_fingerprint=fingerprint,
                 )
-                warmup_result = provider.warmup(
-                    load_result=load_result,
-                    consumer_node_type_ids=consumer_node_type_ids,
-                    runtime_context=runtime_context,
-                )
-                validation_summary = provider.validate(
-                    load_result=load_result,
-                    warmup_result=warmup_result,
-                    consumer_node_type_ids=consumer_node_type_ids,
-                    runtime_context=runtime_context,
-                )
-            except Exception:
-                if load_result is not None:
-                    provider.close(load_result.session)
-                raise
-            with self._lock:
-                generation = self._generation_by_key.get(key, 0) + 1
-                self._generation_by_key[key] = generation
+            )
+
+        # 先释放被替换的 generation，避免新旧模型同时驻留造成显存峰值。
+        # close 保持串行，设备 allocator 的释放顺序由 provider 明确控制。
+        self._close_leases_best_effort(tuple(replaced_leases))
+
+        newly_prepared = self._prepare_sessions_parallel(
+            preparations=tuple(pending_preparations),
+            runtime_context=runtime_context,
+        )
+        published_references: dict[str, WorkflowModelSessionReference] = {}
+        leases_to_publish: list[
+            tuple[
+                tuple[str, str],
+                str,
+                WorkflowModelSessionReference,
+                WorkflowModelSessionLease,
+            ]
+        ] = []
+        try:
+            for prepared_session in newly_prepared:
+                preparation = prepared_session.preparation
+                load_result = prepared_session.load_result
+                with self._lock:
+                    generation = (
+                        self._generation_by_key.get(preparation.key, 0) + 1
+                    )
                 reference = WorkflowModelSessionReference(
                     scope_id=scope_id,
-                    loader_node_id=loader_node.node_id,
-                    loader_node_type_id=loader_node.node_type_id,
+                    loader_node_id=preparation.loader_node.node_id,
+                    loader_node_type_id=preparation.loader_node.node_type_id,
                     generation=generation,
                     model_family=load_result.model_family,
                     model_asset_id=load_result.model_asset_id,
@@ -243,15 +288,157 @@ class WorkflowModelSessionManager:
                 )
                 lease = WorkflowModelSessionLease(
                     reference=reference,
-                    provider=provider,
+                    provider=preparation.provider,
                     load_result=load_result,
-                    configuration_fingerprint=fingerprint,
-                    validation_summary=dict(validation_summary),
+                    configuration_fingerprint=(
+                        preparation.configuration_fingerprint
+                    ),
+                    validation_summary=dict(
+                        prepared_session.validation_summary
+                    ),
                 )
+                leases_to_publish.append(
+                    (
+                        preparation.key,
+                        preparation.loader_node.node_id,
+                        reference,
+                        lease,
+                    )
+                )
+        except Exception as exc:
+            self._close_prepared_sessions_best_effort(
+                prepared_sessions=newly_prepared,
+                original_error=exc,
+            )
+            raise
+
+        # 单个 scope 已由 locked_scope 串行化；这里再一次性写入全局索引，确保
+        # 健康检查和节点解析不会观察到“只发布了一半 loader”的中间状态。
+        with self._lock:
+            for key, loader_node_id, reference, lease in leases_to_publish:
+                self._generation_by_key[key] = reference.generation
                 self._leases[key] = lease
-                prepared.append(reference)
+                published_references[loader_node_id] = reference
         self._touch_scope(scope_id)
-        return tuple(prepared)
+        return tuple(
+            reused_references.get(loader_node.node_id)
+            or published_references[loader_node.node_id]
+            for loader_node in loader_nodes
+            if loader_node.node_id in normalized_active_loader_node_ids
+        )
+
+    def _prepare_sessions_parallel(
+        self,
+        *,
+        preparations: tuple[_ModelSessionPreparation, ...],
+        runtime_context: object,
+    ) -> tuple[_PreparedModelSession, ...]:
+        """并行准备不同 loader，并在任一失败时回滚本轮全部新 session。"""
+
+        if not preparations:
+            return ()
+        if len(preparations) == 1:
+            return (
+                self._load_validate_session(
+                    preparation=preparations[0],
+                    runtime_context=runtime_context,
+                ),
+            )
+
+        worker_count = min(self.max_parallel_loads, len(preparations))
+        futures: list[Future[_PreparedModelSession]] = []
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="workflow-model-loader",
+        ) as executor:
+            futures = [
+                executor.submit(
+                    self._load_validate_session,
+                    preparation=preparation,
+                    runtime_context=runtime_context,
+                )
+                for preparation in preparations
+            ]
+
+        completed: list[_PreparedModelSession] = []
+        first_error: Exception | None = None
+        # 按图中 loader 顺序读取结果，保证错误与健康信息可重复。
+        for future in futures:
+            try:
+                completed.append(future.result())
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            self._close_prepared_sessions_best_effort(
+                prepared_sessions=tuple(completed),
+                original_error=first_error,
+            )
+            raise first_error
+        return tuple(completed)
+
+    @staticmethod
+    def _load_validate_session(
+        *,
+        preparation: _ModelSessionPreparation,
+        runtime_context: object,
+    ) -> _PreparedModelSession:
+        """在一个独立加载线程内完成 provider 的完整启动协议。"""
+
+        load_result: WorkflowModelSessionLoadResult | None = None
+        try:
+            load_result = preparation.provider.load(
+                loader_node=preparation.loader_node,
+                consumer_node_type_ids=preparation.consumer_node_type_ids,
+                runtime_context=runtime_context,
+            )
+            warmup_result = preparation.provider.warmup(
+                load_result=load_result,
+                consumer_node_type_ids=preparation.consumer_node_type_ids,
+                runtime_context=runtime_context,
+            )
+            validation_summary = preparation.provider.validate(
+                load_result=load_result,
+                warmup_result=warmup_result,
+                consumer_node_type_ids=preparation.consumer_node_type_ids,
+                runtime_context=runtime_context,
+            )
+            return _PreparedModelSession(
+                preparation=preparation,
+                load_result=load_result,
+                validation_summary=dict(validation_summary),
+            )
+        except Exception as exc:
+            if load_result is not None:
+                try:
+                    preparation.provider.close(load_result.session)
+                except Exception as close_error:
+                    exc.add_note(
+                        "模型启动失败后的 session 释放也失败："
+                        f"{type(close_error).__name__}: {close_error}"
+                    )
+            raise
+
+    @staticmethod
+    def _close_prepared_sessions_best_effort(
+        *,
+        prepared_sessions: tuple[_PreparedModelSession, ...],
+        original_error: Exception,
+    ) -> None:
+        """尽力关闭本轮全部未发布 session，并保留原始加载错误。"""
+
+        for prepared_session in prepared_sessions:
+            try:
+                prepared_session.preparation.provider.close(
+                    prepared_session.load_result.session
+                )
+            except Exception as close_error:
+                original_error.add_note(
+                    "未发布模型 session 释放失败："
+                    f"loader_node_id="
+                    f"{prepared_session.preparation.loader_node.node_id}, "
+                    f"{type(close_error).__name__}: {close_error}"
+                )
 
     def enforce_scope_limit(
         self,
@@ -359,8 +546,21 @@ class WorkflowModelSessionManager:
 
         with self._lock:
             scope_ids = tuple(sorted({scope_id for scope_id, _node_id in self._leases}))
+        first_error: Exception | None = None
         for scope_id in scope_ids:
-            self.close_scope(scope_id)
+            try:
+                self.close_scope(scope_id)
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+                else:
+                    first_error.add_note(
+                        "其他模型 scope 释放失败："
+                        f"scope_id={scope_id}, "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+        if first_error is not None:
+            raise first_error
 
     def build_health_summary(self, *, scope_id: str | None = None) -> dict[str, object]:
         """返回不包含模型对象和路径的健康摘要。"""
@@ -378,6 +578,8 @@ class WorkflowModelSessionManager:
                     else "workflow-runtime"
                 ),
                 "execution_policy": "single-session-serial",
+                "startup_policy": "parallel-loaders-atomic-publish",
+                "startup_parallelism": self.max_parallel_loads,
                 "scope_id": scope_id,
                 "managed_scope_count": len(
                     {lease_scope_id for lease_scope_id, _node_id in self._leases}
@@ -394,6 +596,14 @@ class WorkflowModelSessionManager:
                         "capabilities": list(lease.reference.capabilities),
                         "state": "ready",
                         "validation": dict(lease.validation_summary),
+                        "load_timings_ms": dict(
+                            lease.load_result.metadata.get("timings_ms", {})
+                        )
+                        if isinstance(
+                            lease.load_result.metadata.get("timings_ms"),
+                            dict,
+                        )
+                        else {},
                     }
                     for lease in leases
                 ],
@@ -449,8 +659,30 @@ class WorkflowModelSessionManager:
             keys = tuple(key for key in self._leases if key[0] == scope_id)
             leases = tuple(self._leases.pop(key) for key in keys)
             self._scope_last_used_monotonic.pop(scope_id, None)
+        self._close_leases_best_effort(leases)
+
+    @classmethod
+    def _close_leases_best_effort(
+        cls,
+        leases: tuple[WorkflowModelSessionLease, ...],
+    ) -> None:
+        """逐个释放 lease；单个 Provider 失败不能阻止其余资源回收。"""
+
+        first_error: Exception | None = None
         for lease in leases:
-            self._close_lease(lease)
+            try:
+                cls._close_lease(lease)
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+                else:
+                    first_error.add_note(
+                        "其他模型 lease 释放失败："
+                        f"loader_node_id={lease.reference.loader_node_id}, "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+        if first_error is not None:
+            raise first_error
 
     @staticmethod
     def _close_lease(lease: WorkflowModelSessionLease) -> None:

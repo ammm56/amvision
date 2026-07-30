@@ -131,6 +131,8 @@ class ExecutionImageRegistry:
         *,
         decoded_cache_max_entries: int = 8,
         decoded_cache_max_bytes: int = 256 * 1024 * 1024,
+        shared_decoded_cache: ExecutionImageRegistry | None = None,
+        shared_cache_scope_id: str | None = None,
     ) -> None:
         """初始化空的 execution image registry。
 
@@ -138,6 +140,8 @@ class ExecutionImageRegistry:
         - decoded_cache_max_entries：单次 Workflow Run 最多保留的解码矩阵数量。
         - decoded_cache_max_bytes：解码矩阵私有内存缓存硬上限；超过上限的单张图
           只在当前调用和同一 single-flight 的并发等待方之间共享，不进入长期缓存。
+        - shared_decoded_cache：可选的 runtime 级磁盘图片只读缓存。
+        - shared_cache_scope_id：跨 Run 缓存所属的应用或 runtime scope。
         """
 
         if int(decoded_cache_max_entries) <= 0:
@@ -153,6 +157,13 @@ class ExecutionImageRegistry:
         self._decoded_cache_max_bytes = int(decoded_cache_max_bytes)
         self._decoded_cache_total_bytes = 0
         self._decoded_cache_generation = 0
+        self._decoded_cache_hits = 0
+        self._decoded_cache_misses = 0
+        self._decoded_cache_evictions = 0
+        self._shared_decoded_cache = shared_decoded_cache
+        self._shared_cache_scope_id = _normalize_optional_text(
+            shared_cache_scope_id
+        )
         self._lock = RLock()
 
     def register_image_bytes(
@@ -297,12 +308,13 @@ class ExecutionImageRegistry:
         *,
         cache_key: str,
         decoder: Any,
+        share_across_runs: bool = False,
     ) -> Any:
-        """按输入引用和解码模式在单次 Workflow Run 内复用解码矩阵。
+        """按输入引用和解码模式复用解码矩阵。
 
         同一张 storage/buffer/frame 图片可能同时供多个定位节点使用。这里按 key
-        做 single-flight，避免大图被重复读取和解码，同时不把矩阵缓存扩展到 Run
-        之外，防止长期 runtime 持有现场图片。
+        做 single-flight，避免大图被重复读取和解码。只有显式标记的 storage 图片
+        可以委托给有容量上限的 runtime 级只读缓存；实时帧和内存图片不跨 Run。
         """
 
         normalized_cache_key = cache_key.strip() if isinstance(cache_key, str) else ""
@@ -310,14 +322,28 @@ class ExecutionImageRegistry:
             raise InvalidRequestError("execution image registry 解码缓存 key 不能为空")
         if not callable(decoder):
             raise InvalidRequestError("execution image registry decoder 必须可调用")
+        if (
+            share_across_runs
+            and self._shared_decoded_cache is not None
+            and self._shared_cache_scope_id is not None
+        ):
+            return self._shared_decoded_cache.get_or_decode_matrix(
+                cache_key=_build_shared_decoded_cache_key(
+                    scope_id=self._shared_cache_scope_id,
+                    cache_key=normalized_cache_key,
+                ),
+                decoder=decoder,
+            )
         owns_flight = False
         with self._lock:
             cached_matrix = self._decoded_matrices.get(normalized_cache_key)
             if cached_matrix is not None:
+                self._decoded_cache_hits += 1
                 self._decoded_matrices.move_to_end(normalized_cache_key)
                 return cached_matrix
             flight = self._decoded_matrix_flights.get(normalized_cache_key)
             if flight is None:
+                self._decoded_cache_misses += 1
                 flight = Future()
                 self._decoded_matrix_flights[normalized_cache_key] = flight
                 decode_generation = self._decoded_cache_generation
@@ -368,11 +394,46 @@ class ExecutionImageRegistry:
         with self._lock:
             return self._decoded_cache_total_bytes
 
+    def build_decoded_cache_summary(self) -> dict[str, int]:
+        """返回不包含图片内容、object key 或磁盘路径的缓存健康摘要。"""
+
+        with self._lock:
+            return {
+                "entry_count": len(self._decoded_matrices),
+                "total_bytes": self._decoded_cache_total_bytes,
+                "max_entries": self._decoded_cache_max_entries,
+                "max_bytes": self._decoded_cache_max_bytes,
+                "hits": self._decoded_cache_hits,
+                "misses": self._decoded_cache_misses,
+                "evictions": self._decoded_cache_evictions,
+                "in_flight_count": len(self._decoded_matrix_flights),
+            }
+
     def clear_decoded_matrices(self) -> None:
         """确定性释放当前 Run 的解码缓存，不删除 memory image handles。"""
 
         with self._lock:
             self._clear_decoded_matrices_locked()
+
+    def clear_shared_scope(self, scope_id: str) -> None:
+        """清理一个 runtime scope 的跨 Run 磁盘图片缓存。"""
+
+        normalized_scope_id = _normalize_optional_text(scope_id)
+        if normalized_scope_id is None:
+            return
+        prefix = _build_shared_decoded_cache_prefix(normalized_scope_id)
+        with self._lock:
+            keys = tuple(
+                key for key in self._decoded_matrices if key.startswith(prefix)
+            )
+            for key in keys:
+                self._decoded_matrices.pop(key, None)
+                self._decoded_cache_total_bytes -= (
+                    self._decoded_matrix_sizes.pop(key, 0)
+                )
+            self._decoded_cache_total_bytes = max(
+                0, self._decoded_cache_total_bytes
+            )
 
     def _clear_decoded_matrices_locked(self) -> None:
         """在持有 registry lock 时清空解码缓存和在途索引。"""
@@ -410,6 +471,7 @@ class ExecutionImageRegistry:
         ):
             evicted_key, _ = self._decoded_matrices.popitem(last=False)
             self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(evicted_key, 0)
+            self._decoded_cache_evictions += 1
 
     def release(self, image_handle: str) -> None:
         """释放一张已注册的内存图片。
@@ -1132,6 +1194,7 @@ def load_image_matrix(
     np_module: Any,
     imdecode_flags: int | None = None,
     copy_raw: bool = False,
+    error_message: str = "图片节点无法读取输入图片",
 ) -> tuple[dict[str, object], Any]:
     """读取 image-ref 并返回 OpenCV matrix。"""
 
@@ -1142,6 +1205,7 @@ def load_image_matrix(
         np_module=np_module,
         imdecode_flags=imdecode_flags,
         copy_raw=copy_raw,
+        error_message=error_message,
     )
 
 
@@ -1153,6 +1217,7 @@ def load_image_matrix_from_payload(
     np_module: Any,
     imdecode_flags: int | None = None,
     copy_raw: bool = False,
+    error_message: str = "图片节点无法读取输入图片",
 ) -> tuple[dict[str, object], Any]:
     """读取任意 image-ref payload 并转换为 OpenCV matrix。"""
 
@@ -1214,13 +1279,17 @@ def load_image_matrix_from_payload(
             image_bytes=image_bytes,
             image_payload=normalized_payload,
             imdecode_flags=imdecode_flags,
-            error_message="图片节点无法读取输入图片",
+            error_message=error_message,
             copy_raw=False,
         )
 
     matrix = image_registry.get_or_decode_matrix(
         cache_key=decode_cache_key,
         decoder=decode_matrix,
+        share_across_runs=(
+            normalized_payload.get("transport_kind")
+            == IMAGE_TRANSPORT_STORAGE
+        ),
     )
     return normalized_payload, matrix.copy() if copy_raw else matrix
 
@@ -1328,6 +1397,19 @@ def _build_decoded_matrix_cache_key(
         default=str,
     )
     return hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+
+
+def _build_shared_decoded_cache_prefix(scope_id: str) -> str:
+    """构造不会与普通 SHA key 冲突的 scope 前缀。"""
+
+    scope_digest = hashlib.sha256(scope_id.encode("utf-8")).hexdigest()
+    return f"scope:{scope_digest}:"
+
+
+def _build_shared_decoded_cache_key(*, scope_id: str, cache_key: str) -> str:
+    """构造 runtime scope 隔离的跨 Run 解码缓存 key。"""
+
+    return f"{_build_shared_decoded_cache_prefix(scope_id)}{cache_key}"
 
 
 def _estimate_matrix_nbytes(matrix: Any) -> int:

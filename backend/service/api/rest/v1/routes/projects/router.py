@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+import re
 from typing import Annotated
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse
@@ -52,6 +53,28 @@ from backend.service.api.rest.v1.routes.projects.services import (
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
 projects_router.include_router(sdk_config_packages_router)
+_WORKFLOW_STORAGE_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _decode_workflow_prompt_mask(content: bytes) -> np.ndarray:
+    """解码浏览器 Mask PNG，并把透明像素视为背景。"""
+
+    encoded = np.frombuffer(content, dtype=np.uint8)
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+    if decoded is None or decoded.size == 0:
+        raise InvalidRequestError("Mask 文件不是可解码的图片")
+    if decoded.ndim == 2:
+        foreground = decoded > 0
+    elif decoded.shape[2] == 4:
+        # Canvas 橡皮擦通过 alpha 清除像素；其 RGB 通道可能仍保留原值，
+        # 因此必须同时检查颜色和 alpha，不能直接按灰度解码。
+        color_foreground = np.any(decoded[:, :, :3] > 0, axis=2)
+        foreground = color_foreground & (decoded[:, :, 3] > 0)
+    else:
+        foreground = np.any(decoded[:, :, :3] > 0, axis=2)
+    if not bool(np.any(foreground)):
+        raise InvalidRequestError("Mask 至少需要一个前景像素")
+    return np.where(foreground, 255, 0).astype(np.uint8)
 
 
 @projects_router.post(
@@ -69,6 +92,9 @@ async def upload_workflow_prompt_mask(
     application_id: Annotated[
         str, Query(min_length=1, description="所属 Workflow Application id")
     ],
+    node_id: Annotated[
+        str, Query(min_length=1, description="所属 Mask Editor node id")
+    ],
 ) -> ProjectObjectMetadataResponse:
     """保存编辑器生成的二值 Prompt Mask。"""
 
@@ -76,8 +102,17 @@ async def upload_workflow_prompt_mask(
         principal=principal,
         project_id=project_id,
     )
-    if "/" in application_id or "\\" in application_id:
-        raise InvalidRequestError("application_id 不能包含路径分隔符")
+    for field_name, field_value in (
+        ("application_id", application_id),
+        ("node_id", node_id),
+    ):
+        if (
+            field_value in {".", ".."}
+            or not _WORKFLOW_STORAGE_SEGMENT_PATTERN.fullmatch(field_value)
+        ):
+            raise InvalidRequestError(
+                f"{field_name} 只能包含字母、数字、点、下划线和连字符"
+            )
     form = await request.form()
     upload = form.get("mask")
     if not isinstance(upload, UploadFile):
@@ -85,24 +120,20 @@ async def upload_workflow_prompt_mask(
     content = await upload.read()
     if not content:
         raise InvalidRequestError("Mask 文件不能为空")
-    encoded = np.frombuffer(content, dtype=np.uint8)
-    mask_matrix = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
-    if mask_matrix is None or mask_matrix.size == 0:
-        raise InvalidRequestError("Mask 文件不是可解码的图片")
-    foreground = mask_matrix > 0
-    if not bool(np.any(foreground)):
-        raise InvalidRequestError("Mask 至少需要一个前景像素")
-    normalized_mask = np.where(foreground, 255, 0).astype(np.uint8)
+    normalized_mask = _decode_workflow_prompt_mask(content)
     success, png_buffer = cv2.imencode(".png", normalized_mask)
     if not success:
         raise InvalidRequestError("Mask 无法编码为 PNG")
+    normalized_content = png_buffer.tobytes()
+    content_sha256 = sha256(normalized_content).hexdigest()
     object_key = (
         f"projects/{project_id}/inputs/workflow-applications/"
-        f"{application_id}/prompt-masks/{uuid4().hex}.png"
+        f"{application_id}/prompt-masks/{node_id}/{content_sha256}.png"
     )
     dataset_storage = require_dataset_storage(request)
-    dataset_storage.write_bytes(object_key, png_buffer.tobytes())
     file_path = dataset_storage.resolve(object_key)
+    if not file_path.is_file():
+        dataset_storage.write_bytes(object_key, normalized_content)
     return build_project_object_metadata_response(
         project_id=project_id,
         object_key=object_key,

@@ -262,6 +262,10 @@ class SnapshotExecutionService:
             image_registry = ExecutionImageRegistry(
                 decoded_cache_max_entries=self.decoded_image_cache_max_entries,
                 decoded_cache_max_bytes=self.decoded_image_cache_max_bytes,
+                shared_decoded_cache=(
+                    self.runtime_context.workflow_storage_image_cache
+                ),
+                shared_cache_scope_id=model_session_scope_id,
             )
             execution_metadata_payload["execution_image_registry"] = image_registry
         elif not isinstance(image_registry, ExecutionImageRegistry):
@@ -847,7 +851,10 @@ def run_workflow_snapshot_process_worker(
         )
         runtime_registry_loader.refresh()
         model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=runtime_registry_loader.get_runtime_registry()
+            runtime_registry=runtime_registry_loader.get_runtime_registry(),
+            max_parallel_loads=(
+                settings.workflow_runtime.model_startup_parallelism
+            ),
         )
         sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),

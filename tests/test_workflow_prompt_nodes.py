@@ -132,13 +132,11 @@ def test_visual_prompt_nodes_build_and_merge_shared_payload(monkeypatch) -> None
     }
     monkeypatch.setattr(
         mask_prompt_module,
-        "load_image_bytes_from_payload",
-        lambda _request, *, image_payload: (dict(image_payload), b"mask"),
-    )
-    monkeypatch.setattr(
-        mask_prompt_module,
-        "decode_image_bytes_to_matrix",
-        lambda **_kwargs: np.ones((8, 8), dtype=np.uint8),
+        "load_image_matrix_from_payload",
+        lambda _request, *, image_payload, **_kwargs: (
+            dict(image_payload),
+            np.ones((8, 8), dtype=np.uint8),
+        ),
     )
     mask = _handle_mask_prompt(
         _request(
@@ -189,10 +187,11 @@ def test_mask_editor_invalidates_mask_after_source_image_changes(
     monkeypatch.setattr(
         mask_editor_module,
         "build_debug_image_preview_output",
-        lambda *_args, **_kwargs: {
+        lambda *_args, **kwargs: {
             "debug_preview": {
                 "type": "image-preview",
                 "title": "Mask Editor",
+                "interaction": kwargs["interaction"],
             }
         },
     )
@@ -217,6 +216,11 @@ def test_mask_editor_invalidates_mask_after_source_image_changes(
 
     assert "mask_image" not in outputs
     assert outputs["debug_preview"]["type"] == "image-preview"
+    tool = outputs["debug_preview"]["interaction"]["tools"][0]
+    assert tool["mask_object_key"] == ""
+    assert tool["source_identity"] == "object_key:projects/project-1/b.png"
+    assert tool["source_changed"] is True
+    assert tool["applied"] is False
 
 
 def test_mask_editor_without_applied_mask_only_outputs_debug_preview(
@@ -251,12 +255,10 @@ def test_mask_editor_without_applied_mask_only_outputs_debug_preview(
 
     assert set(outputs) == {"debug_preview"}
     tool = outputs["debug_preview"]["interaction"]["tools"][0]
-    assert tool["mask_source_identity"] == (
+    assert tool["source_identity"] == (
         "object_key:projects/project-1/source.png"
     )
-    assert tool["apply_parameters"]["mask_source_identity"] == (
-        "object_key:projects/project-1/source.png"
-    )
+    assert "apply_parameters" not in tool
 
 
 def test_mask_editor_prefers_stable_content_sha_over_execution_image_handle(
@@ -291,10 +293,66 @@ def test_mask_editor_prefers_stable_content_sha_over_execution_image_handle(
     )
 
     tool = outputs["debug_preview"]["interaction"]["tools"][0]
-    assert tool["mask_source_identity"] == "content_sha256:abc123"
-    assert tool["apply_parameters"]["mask_source_identity"] == (
-        "content_sha256:abc123"
+    assert tool["source_identity"] == "content_sha256:abc123"
+    assert "apply_parameters" not in tool
+
+
+def test_mask_editor_restores_applied_mask_for_reediting(
+    monkeypatch,
+) -> None:
+    """验证相同源图再次打开时会返回已有 Mask 和编辑器绑定信息。"""
+
+    normalized_mask = {
+        "transport_kind": "storage",
+        "object_key": "projects/project-1/mask.png",
+        "media_type": "image/png",
+        "width": 64,
+        "height": 64,
+    }
+    mask_matrix = np.zeros((64, 64), dtype=np.uint8)
+    mask_matrix[10:20, 10:20] = 255
+    monkeypatch.setattr(
+        mask_editor_module,
+        "load_image_matrix_from_payload",
+        lambda *_args, **_kwargs: (normalized_mask, mask_matrix),
     )
+    monkeypatch.setattr(
+        mask_editor_module,
+        "build_debug_image_preview_output",
+        lambda *_args, **kwargs: {
+            "debug_preview": {
+                "type": "image-preview",
+                "interaction": kwargs["interaction"],
+            }
+        },
+    )
+
+    outputs = _handle_mask_editor(
+        _request(
+            node_id="mask-editor",
+            parameters={
+                "mask_object_key": "projects/project-1/mask.png",
+                "mask_source_identity": "content_sha256:abc123",
+            },
+            input_values={
+                "image": {
+                    "transport_kind": "memory",
+                    "image_handle": "img-current-run",
+                    "content_sha256": "abc123",
+                    "media_type": "image/png",
+                    "width": 64,
+                    "height": 64,
+                }
+            },
+        )
+    )
+
+    assert outputs["mask_image"] == normalized_mask
+    tool = outputs["debug_preview"]["interaction"]["tools"][0]
+    assert tool["mask_object_key"] == "projects/project-1/mask.png"
+    assert tool["source_identity"] == "content_sha256:abc123"
+    assert tool["applied"] is True
+    assert tool["source_changed"] is False
 
 
 @pytest.mark.parametrize(

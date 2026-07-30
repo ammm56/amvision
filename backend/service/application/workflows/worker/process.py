@@ -8,6 +8,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any
 import multiprocessing
 
+from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
@@ -71,6 +72,7 @@ def run_workflow_runtime_worker_process(
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
     model_session_manager: WorkflowModelSessionManager | None = None
+    storage_image_cache: ExecutionImageRegistry | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -88,7 +90,18 @@ def run_workflow_runtime_worker_process(
         )
         runtime_registry_loader.refresh()
         model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=runtime_registry_loader.get_runtime_registry()
+            runtime_registry=runtime_registry_loader.get_runtime_registry(),
+            max_parallel_loads=(
+                settings.workflow_runtime.model_startup_parallelism
+            ),
+        )
+        storage_image_cache = ExecutionImageRegistry(
+            decoded_cache_max_entries=(
+                settings.workflow_runtime.storage_image_cache_max_entries
+            ),
+            decoded_cache_max_bytes=(
+                settings.workflow_runtime.storage_image_cache_max_bytes
+            ),
         )
         sync_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
@@ -120,6 +133,7 @@ def run_workflow_runtime_worker_process(
             local_buffer_reader=local_buffer_reader,
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=model_session_manager,
+            workflow_storage_image_cache=storage_image_cache,
         )
         workflow_runtime_id = require_payload_str(runtime_payload, "workflow_runtime_id")
         application_id = require_payload_str(runtime_payload, "application_id")
@@ -178,6 +192,7 @@ def run_workflow_runtime_worker_process(
                 model_session_manager.build_health_summary(
                     scope_id=model_session_scope_id
                 ),
+                storage_image_cache.build_decoded_cache_summary(),
             )
 
         def build_state_message(*, message_type: str, request_id: str | None = None) -> dict[str, object]:
@@ -378,8 +393,12 @@ def run_workflow_runtime_worker_process(
             heartbeat_stop_event.set()
         if "heartbeat_thread" in locals():
             heartbeat_thread.join(timeout=1.0)
-        if model_session_manager is not None:
-            model_session_manager.close_all()
+        try:
+            if model_session_manager is not None:
+                model_session_manager.close_all()
+        finally:
+            if storage_image_cache is not None:
+                storage_image_cache.clear()
         if sync_supervisor is not None:
             sync_supervisor.stop()
         if async_supervisor is not None:

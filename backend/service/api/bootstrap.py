@@ -10,6 +10,7 @@ from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
+from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.auth.default_local_auth_seeder import (
@@ -470,7 +471,18 @@ class BackendServiceBootstrap(
             node_pack_loader=node_pack_loader,
         )
         workflow_model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry()
+            runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
+            max_parallel_loads=(
+                settings.workflow_runtime.model_startup_parallelism
+            ),
+        )
+        workflow_storage_image_cache = ExecutionImageRegistry(
+            decoded_cache_max_entries=(
+                settings.workflow_runtime.storage_image_cache_max_entries
+            ),
+            decoded_cache_max_bytes=(
+                settings.workflow_runtime.storage_image_cache_max_bytes
+            ),
         )
         local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
             settings=settings.local_buffer_broker,
@@ -573,6 +585,7 @@ class BackendServiceBootstrap(
             local_buffer_reader=local_buffer_broker_supervisor,
             published_inference_gateway=published_inference_gateway,
             workflow_model_session_manager=workflow_model_session_manager,
+            workflow_storage_image_cache=workflow_storage_image_cache,
         )
         workflow_runtime_worker_manager = WorkflowRuntimeWorkerManager(
             settings=settings,
@@ -793,8 +806,15 @@ class BackendServiceBootstrap(
         model_session_manager = (
             runtime.workflow_service_node_runtime_context.workflow_model_session_manager
         )
-        if model_session_manager is not None:
-            model_session_manager.close_all()
+        try:
+            if model_session_manager is not None:
+                model_session_manager.close_all()
+        finally:
+            storage_image_cache = (
+                runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
+            )
+            if storage_image_cache is not None:
+                storage_image_cache.clear()
         # 反序停止所有 deployment supervisor 和 gateway registry
         for component in reversed(list(runtime.iter_all_deployment_supervisors())):
             component.stop()

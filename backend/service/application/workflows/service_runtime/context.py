@@ -11,6 +11,7 @@ from backend.service.application.task_type_support import require_supported_plat
 from backend.service.domain.models.platform_model_support import get_supported_platform_model_types
 
 if TYPE_CHECKING:
+    from backend.nodes import ExecutionImageRegistry
     from backend.queue import QueueBackend
     from backend.service.application.deployments import PublishedInferenceGateway
     from backend.service.application.local_buffers import LocalBufferReader
@@ -40,6 +41,7 @@ class WorkflowServiceNodeRuntimeContext:
     - *_async_inference_gateway_dispatcher_registry：按 task_type 划分的 async gateway dispatcher registry。
     - local_buffer_reader：读取 LocalBufferBroker 引用的 client。
     - published_inference_gateway：调用已发布推理服务的稳定边界。
+    - workflow_storage_image_cache：按 runtime scope 隔离的磁盘图片解码缓存。
     """
 
     session_factory: SessionFactory
@@ -64,6 +66,7 @@ class WorkflowServiceNodeRuntimeContext:
     local_buffer_reader: LocalBufferReader | None = None
     published_inference_gateway: PublishedInferenceGateway | None = None
     workflow_model_session_manager: WorkflowModelSessionManager | None = None
+    workflow_storage_image_cache: ExecutionImageRegistry | None = None
 
     def require_workflow_model_session_manager(self) -> WorkflowModelSessionManager:
         """返回模型 Load Checkpoint 与消费节点共用的 session 管理器。"""

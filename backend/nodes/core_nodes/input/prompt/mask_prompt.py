@@ -14,10 +14,9 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.prompt import build_prompt_regions_payload
 from backend.nodes.runtime_support import (
-    load_image_bytes_from_payload,
+    load_image_matrix_from_payload,
     require_image_payload,
 )
-from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
@@ -36,15 +35,11 @@ def _handle_mask_prompt(request: WorkflowNodeExecutionRequest) -> dict[str, obje
         if source_image_value is None
         else require_image_payload(source_image_value)
     )
-    normalized_mask, mask_bytes = load_image_bytes_from_payload(
+    normalized_mask, mask_matrix = load_image_matrix_from_payload(
         request,
         image_payload=mask_image,
-    )
-    mask_matrix = decode_image_bytes_to_matrix(
         cv2_module=cv2,
         np_module=np,
-        image_bytes=mask_bytes,
-        image_payload=normalized_mask,
         imdecode_flags=cv2.IMREAD_GRAYSCALE,
         error_message="Mask Prompt 的 Mask 图片无法解码",
     )

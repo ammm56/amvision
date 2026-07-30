@@ -8,7 +8,11 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from backend.nodes.runtime_support import load_image_bytes, load_image_bytes_from_payload
+from backend.nodes.runtime_support import (
+    load_image_bytes,
+    load_image_bytes_from_payload,
+    load_image_matrix_from_payload,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -269,18 +273,21 @@ def read_interactive_prompt_items(
                 source_image_payload=source_image_payload,
                 source_image_bytes=source_image_bytes,
             )
-            normalized_mask_payload, mask_image_bytes = load_image_bytes_from_payload(
+            _normalized_mask_payload, mask_array = load_image_matrix_from_payload(
                 request,
                 image_payload=item.get("mask_image"),
+                cv2_module=cv2,
+                np_module=np,
+                imdecode_flags=cv2.IMREAD_GRAYSCALE,
+                error_message="SAM3 mask prompt 收到的 mask_image 不是有效图片",
             )
             prompt_items.append(
                 Sam3InteractivePromptItem(
                     prompt_id=prompt_id,
                     prompt_kind=prompt_kind,
                     display_name=display_name,
-                    prompt_mask=_decode_prompt_mask_image(
-                        mask_image_bytes,
-                        image_payload=normalized_mask_payload,
+                    prompt_mask=_normalize_prompt_mask_image(
+                        mask_array,
                         source_width=source_width,
                         source_height=source_height,
                     ),
@@ -499,26 +506,16 @@ def _rasterize_polygon_prompt_mask(
     return (mask_array > 0).astype(np.uint8)
 
 
-def _decode_prompt_mask_image(
-    image_bytes: bytes,
+def _normalize_prompt_mask_image(
+    mask_array: np.ndarray,
     *,
-    image_payload: object,
     source_width: int,
     source_height: int,
 ) -> np.ndarray:
-    """把 mask_image payload 解码成与源图对齐的二值 mask。"""
+    """把已解码 mask 对齐到源图并转换成独立的二值数组。"""
 
-    if not isinstance(image_bytes, bytes) or not image_bytes:
-        raise InvalidRequestError("SAM3 mask prompt 要求 mask_image 必须包含非空图片字节")
-    mask_array = decode_image_bytes_to_matrix(
-        cv2_module=cv2,
-        np_module=np,
-        image_bytes=image_bytes,
-        image_payload=image_payload,
-        imdecode_flags=cv2.IMREAD_GRAYSCALE,
-        error_message="SAM3 mask prompt 收到的 mask_image 不是有效图片",
-        copy_raw=True,
-    )
+    if not isinstance(mask_array, np.ndarray) or mask_array.size == 0:
+        raise InvalidRequestError("SAM3 mask prompt 要求 mask_image 必须包含有效图片")
     if int(mask_array.shape[1]) != source_width or int(mask_array.shape[0]) != source_height:
         mask_array = cv2.resize(
             mask_array,

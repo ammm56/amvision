@@ -227,13 +227,14 @@ export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Pr
 export async function uploadWorkflowPromptMask(
   projectId: string,
   applicationId: string,
+  nodeId: string,
   maskBlob: Blob,
 ): Promise<{ object_key: string; media_type: string; size_bytes: number }> {
   const form = new FormData()
   form.append('mask', maskBlob, 'prompt-mask.png')
   return apiRequest<{ object_key: string; media_type: string; size_bytes: number }>(`/projects/${encodePathPart(projectId)}/workflow-prompt-masks`, {
     method: 'POST',
-    query: { application_id: applicationId },
+    query: { application_id: applicationId, node_id: nodeId },
     body: form,
   })
 }

@@ -241,7 +241,10 @@ def run_workflow_application_process_worker(
         )
         runtime_registry_loader.refresh()
         model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=runtime_registry_loader.get_runtime_registry()
+            runtime_registry=runtime_registry_loader.get_runtime_registry(),
+            max_parallel_loads=(
+                settings.workflow_runtime.model_startup_parallelism
+            ),
         )
 
         sync_supervisor = LazyDeploymentProcessSupervisor(

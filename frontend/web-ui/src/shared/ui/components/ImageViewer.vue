@@ -61,7 +61,7 @@
               <Trash2 :size="15" />
               {{ t('imageViewer.toolbar.clear') }}
             </Button>
-            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction || previewDisabled || previewRunning" @click="applyInteractionDraft">
+            <Button size="sm" variant="primary" type="button" :title="t('imageViewer.toolbar.applyParams')" :disabled="!canApplyInteraction || previewDisabled || previewRunning || interactionApplying" @click="applyInteractionDraft">
               <Check :size="15" />
               {{ t('imageViewer.toolbar.applyParams') }}
             </Button>
@@ -402,6 +402,10 @@ import Button from './Button.vue'
 import ImageGeometryAnnotations from '../image-viewer/ImageGeometryAnnotations.vue'
 import { useImageGeometryAnnotations } from '../image-viewer/useImageGeometryAnnotations'
 import { dispatchImageViewerPreview } from '../image-viewer/dispatchImageViewerPreview'
+import {
+  normalizeImageInteractionTool,
+  type ViewerImageInteractionTool,
+} from '../image-viewer/normalizeImageInteractionTool'
 import { useImageViewerViewport } from '../image-viewer/useImageViewerViewport'
 
 interface ViewerImageCircleOverlay {
@@ -437,23 +441,6 @@ interface ViewerImageInteractionControl {
 interface ViewerImageInteractionControlOption {
   value: string
   label: string
-}
-
-interface ViewerImageInteractionTool {
-  tool: string
-  label?: string | null
-  targetParameters: string[]
-  clearParameters?: string[]
-  minPoints?: number | null
-  maxPoints?: number | null
-  angleToleranceDeg?: number | null
-  searchPaddingRatio?: number | null
-  searchPaddingMin?: number | null
-  applyParameters?: Record<string, unknown>
-  brushSize?: number | null
-  maskObjectKey?: string | null
-  maskSourceIdentity?: string | null
-  maskSrc?: string | null
 }
 
 interface ViewerImageInteraction {
@@ -503,6 +490,7 @@ interface ViewerImageInteractionApplyEvent {
   lineXyxy?: [number, number, number, number]
   pairLinesXyxy?: Array<[number, number, number, number]>
   maskDataUrl?: string
+  maskSourceIdentity?: string
 }
 
 interface ImagePoint {
@@ -561,6 +549,7 @@ const props = defineProps<{
   image: ViewerImage | null
   previewDisabled?: boolean
   previewRunning?: boolean
+  interactionApplying?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -593,6 +582,7 @@ const maskHistory = ref<ImageData[]>([])
 const maskHistoryIndex = ref(-1)
 const maskDirty = ref(false)
 const maskHasForeground = ref(false)
+let maskInitializationGeneration = 0
 const circleDraftMode = ref<CircleDraftMode>('center-radius')
 const templateRegionStage = ref<TemplateRegionStage>('template')
 const draftTemplateBboxXyxy = ref<[number, number, number, number] | null>(null)
@@ -817,7 +807,13 @@ const canApplyInteraction = computed(() => {
       && !draftPolygonSelfIntersects.value
   }
   if (interactionTool.value === 'point') return draftPointPairs.value.length === 1
-  if (interactionTool.value === 'mask') return maskDirty.value && maskHasForeground.value
+  if (interactionTool.value === 'mask') {
+    return Boolean(
+      maskDirty.value
+      && maskHasForeground.value
+      && activeInteractionTool.value?.sourceIdentity?.trim(),
+    )
+  }
   if (interactionTool.value === 'circle') return Boolean(draftCircle.value)
   if (interactionTool.value === 'line') return Boolean(draftLineXyxy.value)
   if (interactionTool.value === 'point-pair') return draftPairLines.value.length > 0 || Boolean(draftLineXyxy.value)
@@ -826,6 +822,7 @@ const canApplyInteraction = computed(() => {
 const previewActionDisabled = computed(() => Boolean(
   props.previewDisabled
   || props.previewRunning
+  || props.interactionApplying
   || (hasInteractionDraft.value && !canApplyInteraction.value),
 ))
 const hasVisibleOverlay = computed(() => imageOverlays.value.length > 0 || hasInteractionDraft.value)
@@ -879,14 +876,23 @@ const interactionStatusText = computed(() => {
   return ''
 })
 
-watch(() => [props.open, viewerImageSrc.value, props.image?.nodeId] as const, ([open]) => {
+watch(() => [
+  props.open,
+  viewerImageSrc.value,
+  props.image?.nodeId,
+  activeInteractionTool.value?.maskSrc,
+  activeInteractionTool.value?.sourceIdentity,
+] as const, ([open]) => {
   clearedGeometryLocally.value = false
   resetInteractionState()
   initializeTuningParameterValues()
   if (!open) return
   resetView()
   void nextTick(() => {
-    if (imageRef.value?.complete) scheduleFitImage()
+    if (!imageRef.value?.complete) return
+    updateNaturalImageSize()
+    scheduleFitImage()
+    if (interactionTool.value === 'mask') void initializeMaskCanvas()
   })
 })
 
@@ -1152,6 +1158,7 @@ function stopActiveDraftListeners(): void {
 }
 
 function resetInteractionState(): void {
+  maskInitializationGeneration += 1
   interactionActive.value = false
   selectedInteractionTool.value = ''
   clearInteractionDraft()
@@ -1162,13 +1169,13 @@ function resetInteractionState(): void {
 }
 
 function applyInteractionDraft(): void {
+  if (props.interactionApplying) return
   const event = buildInteractionDraftEvent()
   if (!event) {
     showInteractionFeedback(t('imageViewer.feedback.incompleteApply'), 'warning')
     return
   }
   emit('applyInteraction', event)
-  showInteractionFeedback(readAppliedFeedbackText(event), 'success')
 }
 
 function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
@@ -1183,12 +1190,7 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
     angleToleranceDeg: activeInteractionTool.value?.angleToleranceDeg ?? null,
     searchPaddingRatio: activeInteractionTool.value?.searchPaddingRatio ?? null,
     searchPaddingMin: activeInteractionTool.value?.searchPaddingMin ?? null,
-    parameters: {
-      ...(activeInteractionTool.value?.applyParameters ?? {}),
-      ...(interactionTool.value === 'mask' && activeInteractionTool.value?.maskSourceIdentity
-        ? { mask_source_identity: activeInteractionTool.value.maskSourceIdentity }
-        : {}),
-    },
+    parameters: { ...(activeInteractionTool.value?.applyParameters ?? {}) },
   }
   if ((interactionTool.value === 'bbox' || interactionTool.value === 'rect' || interactionTool.value === 'grid') && draftBboxXyxy.value) {
     return { ...baseEvent, bboxXyxy: draftBboxXyxy.value }
@@ -1209,7 +1211,14 @@ function buildInteractionDraftEvent(): ViewerImageInteractionApplyEvent | null {
   }
   if (interactionTool.value === 'mask' && canApplyInteraction.value) {
     const dataUrl = maskCanvasRef.value?.toDataURL('image/png')
-    return dataUrl ? { ...baseEvent, maskDataUrl: dataUrl } : null
+    const sourceIdentity = activeInteractionTool.value?.sourceIdentity?.trim()
+    return dataUrl && sourceIdentity
+      ? {
+          ...baseEvent,
+          maskDataUrl: dataUrl,
+          maskSourceIdentity: sourceIdentity,
+        }
+      : null
   }
   if (interactionTool.value === 'circle' && draftCircle.value) {
     return { ...baseEvent, circle: draftCircle.value }
@@ -1235,6 +1244,7 @@ function initializeTuningParameterValues(): void {
 }
 
 async function initializeMaskCanvas(): Promise<void> {
+  const generation = ++maskInitializationGeneration
   const canvas = maskCanvasRef.value
   if (!canvas) return
   const context = canvas.getContext('2d', { willReadFrequently: true })
@@ -1243,7 +1253,11 @@ async function initializeMaskCanvas(): Promise<void> {
   const maskSrc = activeInteractionTool.value?.maskSrc
   if (maskSrc) {
     const storedMask = await loadViewerImage(maskSrc)
-    if (storedMask && maskCanvasRef.value === canvas) {
+    if (
+      storedMask
+      && maskCanvasRef.value === canvas
+      && maskInitializationGeneration === generation
+    ) {
       const scratchCanvas = document.createElement('canvas')
       scratchCanvas.width = canvas.width
       scratchCanvas.height = canvas.height
@@ -1268,6 +1282,10 @@ async function initializeMaskCanvas(): Promise<void> {
       }
     }
   }
+  if (
+    maskCanvasRef.value !== canvas
+    || maskInitializationGeneration !== generation
+  ) return
   maskHistory.value = [context.getImageData(0, 0, canvas.width, canvas.height)]
   maskHistoryIndex.value = 0
   maskDirty.value = false
@@ -1676,22 +1694,12 @@ function bboxHeight(overlay: ViewerImageOverlay): number {
 
 function readAvailableInteractionTools(interaction: ViewerImageInteraction | null): ViewerImageInteractionTool[] {
   if (!interaction) return []
-  return interaction.tools.flatMap(normalizeInteractionTool)
-}
-
-function normalizeInteractionTool(toolItem: ViewerImageInteractionTool): ViewerImageInteractionTool[] {
-  if (!isSupportedInteractionTool(toolItem.tool) || toolItem.targetParameters.length === 0) return []
-  return [{
-    tool: toolItem.tool,
-    label: toolItem.label ?? readInteractionToolLabel(toolItem.tool),
-    targetParameters: toolItem.targetParameters,
-    clearParameters: toolItem.clearParameters ?? [],
-    minPoints: toolItem.minPoints ?? null,
-    maxPoints: toolItem.maxPoints ?? null,
-    angleToleranceDeg: toolItem.angleToleranceDeg ?? null,
-    searchPaddingRatio: toolItem.searchPaddingRatio ?? null,
-    searchPaddingMin: toolItem.searchPaddingMin ?? null,
-  }]
+  return interaction.tools.flatMap((toolItem) => (
+    normalizeImageInteractionTool(toolItem, {
+      isSupported: isSupportedInteractionTool,
+      fallbackLabel: readInteractionToolLabel,
+    })
+  ))
 }
 
 function readTemplateRegionStatusText(): string {

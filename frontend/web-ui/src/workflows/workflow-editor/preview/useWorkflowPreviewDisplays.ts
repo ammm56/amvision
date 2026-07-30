@@ -52,7 +52,7 @@ export interface PreviewImageInteractionTool {
   applyParameters: Record<string, unknown>
   brushSize: number | null
   maskObjectKey: string | null
-  maskSourceIdentity: string | null
+  sourceIdentity: string | null
   maskSrc: string | null
 }
 
@@ -81,6 +81,7 @@ export interface PreviewImageInteractionApplyEvent {
   lineXyxy?: [number, number, number, number]
   pairLinesXyxy?: Array<[number, number, number, number]>
   maskDataUrl?: string
+  maskSourceIdentity?: string
 }
 
 export interface PreviewViewerImage {
@@ -252,6 +253,35 @@ export function useWorkflowPreviewDisplays() {
     activeImageViewer.value = image
   }
 
+  async function replaceMaskInteractionTool(
+    projectId: string,
+    nodeId: string,
+    objectKey: string,
+  ): Promise<void> {
+    const normalizedProjectId = projectId.trim()
+    const normalizedNodeId = nodeId.trim()
+    const normalizedObjectKey = objectKey.trim()
+    if (!normalizedProjectId || !normalizedNodeId || !normalizedObjectKey) return
+    const displayImage = previewNodeDisplays.value[normalizedNodeId]?.image ?? null
+    const activeImage = activeImageViewer.value?.nodeId === normalizedNodeId
+      ? activeImageViewer.value
+      : null
+    if (
+      !hasMaskInteractionTool(displayImage)
+      && !hasMaskInteractionTool(activeImage)
+    ) return
+    const maskBlob = await readProjectObjectContentBlob(
+      normalizedProjectId,
+      normalizedObjectKey,
+    )
+    const maskSrc = URL.createObjectURL(maskBlob)
+    registerPreviewImageObjectUrl(maskSrc)
+    updateMaskInteractionTool(displayImage, normalizedObjectKey, maskSrc)
+    if (activeImage !== displayImage) {
+      updateMaskInteractionTool(activeImage, normalizedObjectKey, maskSrc)
+    }
+  }
+
   function openPreviewJsonViewer(title: string, value: unknown, statusText: string | null = null): void {
     activePreviewJson.value = {
       title,
@@ -299,11 +329,32 @@ export function useWorkflowPreviewDisplays() {
     readPreviewNodeDisplayTooltip,
     openPreviewDisplayViewer,
     openImageViewer,
+    replaceMaskInteractionTool,
     openPreviewJsonViewer,
     closeImageViewer,
     closePreviewTableViewer,
     closePreviewJsonViewer,
   }
+}
+
+function hasMaskInteractionTool(image: PreviewViewerImage | null): boolean {
+  return Boolean(image?.interaction?.tools.some((tool) => tool.tool === 'mask'))
+}
+
+export function updateMaskInteractionTool(
+  image: PreviewViewerImage | null,
+  objectKey: string,
+  maskSrc: string,
+): boolean {
+  const tools = image?.interaction?.tools ?? []
+  let updated = false
+  for (const tool of tools) {
+    if (tool.tool !== 'mask') continue
+    tool.maskObjectKey = objectKey
+    tool.maskSrc = maskSrc
+    updated = true
+  }
+  return updated
 }
 
 function readPreviewDisplayOutputs(previewRun: WorkflowPreviewRun): PreviewNodeOutput[] {
@@ -647,7 +698,7 @@ function readPreviewImageInteraction(value: unknown): PreviewImageInteraction | 
   }
 }
 
-function readPreviewImageInteractionTools(value: unknown): PreviewImageInteractionTool[] {
+export function readPreviewImageInteractionTools(value: unknown): PreviewImageInteractionTool[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((rawTool) => {
     if (!isPreviewJsonObject(rawTool)) return []
@@ -666,7 +717,7 @@ function readPreviewImageInteractionTools(value: unknown): PreviewImageInteracti
       applyParameters: readJsonObject(rawTool.apply_parameters),
       brushSize: readDisplayNumber(rawTool.brush_size),
       maskObjectKey: readDisplayText(rawTool.mask_object_key) || null,
-      maskSourceIdentity: readDisplayText(rawTool.mask_source_identity) || null,
+      sourceIdentity: readDisplayText(rawTool.source_identity) || null,
       maskSrc: null,
     }]
   })

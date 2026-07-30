@@ -179,7 +179,10 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
             response = client.post(
                 "/api/v1/projects/project-1/workflow-prompt-masks",
                 headers=build_test_headers(scopes="workflows:write"),
-                params={"application_id": "workflow-app-1"},
+                params={
+                    "application_id": "workflow-app-1",
+                    "node_id": "mask-editor-1",
+                },
                 files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
             )
     finally:
@@ -189,14 +192,71 @@ def test_workflow_prompt_mask_upload_persists_binary_project_asset(
     payload = response.json()
     assert payload["object_key"].startswith(
         "projects/project-1/inputs/workflow-applications/"
-        "workflow-app-1/prompt-masks/"
+        "workflow-app-1/prompt-masks/mask-editor-1/"
     )
+    assert payload["object_key"].endswith(".png")
     stored_mask = cv2.imread(
         str(dataset_storage.resolve(payload["object_key"])),
         cv2.IMREAD_GRAYSCALE,
     )
     assert stored_mask is not None
     assert set(np.unique(stored_mask).tolist()) == {0, 255}
+
+    try:
+        with client:
+            repeated_response = client.post(
+                "/api/v1/projects/project-1/workflow-prompt-masks",
+                headers=build_test_headers(scopes="workflows:write"),
+                params={
+                    "application_id": "workflow-app-1",
+                    "node_id": "mask-editor-1",
+                },
+                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert repeated_response.status_code == 201
+    assert repeated_response.json()["object_key"] == payload["object_key"]
+
+
+def test_workflow_prompt_mask_upload_honors_canvas_alpha_erasures(
+    tmp_path: Path,
+) -> None:
+    """Canvas 透明擦除区域必须保存为 Mask 背景，而不是残留白色前景。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-prompt-mask-alpha.db",
+        include_storage=True,
+    )
+    mask = np.full((12, 16, 4), 255, dtype=np.uint8)
+    mask[3:9, 4:12, 3] = 0
+    encoded, buffer = cv2.imencode(".png", mask)
+    assert encoded is True
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/workflow-prompt-masks",
+                headers=build_test_headers(scopes="workflows:write"),
+                params={
+                    "application_id": "workflow-app-1",
+                    "node_id": "mask-editor-1",
+                },
+                files={"mask": ("mask.png", buffer.tobytes(), "image/png")},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 201
+    object_key = str(response.json()["object_key"])
+    stored_mask = cv2.imread(
+        str(dataset_storage.resolve(object_key)),
+        cv2.IMREAD_GRAYSCALE,
+    )
+    assert stored_mask is not None
+    assert bool(np.all(stored_mask[3:9, 4:12] == 0))
+    assert bool(np.all(stored_mask[:3, :] == 255))
 
 
 def test_project_file_list_returns_public_files_with_file_ids(tmp_path: Path) -> None:

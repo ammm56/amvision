@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from threading import Event, Thread
+from threading import Barrier, Event, Lock, Thread
 from time import sleep
 
 import pytest
@@ -82,6 +82,170 @@ def test_prepare_template_is_serial_and_idempotent() -> None:
     assert manager.build_health_summary(scope_id="runtime:one")[
         "ready_session_count"
     ] == 1
+
+
+def test_different_loaders_prepare_in_parallel_and_publish_atomically() -> None:
+    """验证不同 loader 使用独立线程准备，并在全部成功后统一可见。"""
+
+    registry = WorkflowNodeRuntimeRegistry()
+    _register_fake_definition(registry)
+    barrier = Barrier(2)
+    event_lock = Lock()
+
+    class _ParallelProvider(_FakeProvider):
+        def load(self, **kwargs):
+            loader_node = kwargs["loader_node"]
+            with event_lock:
+                self.events.append(f"load:{loader_node.node_id}")
+            barrier.wait(timeout=1)
+            return WorkflowModelSessionLoadResult(
+                session=_FakeSession(),
+                model_family="fake",
+                model_asset_id=str(loader_node.parameters["model_asset_id"]),
+                checkpoint_sha256="abc",
+                resolved_device="cpu",
+                resolved_precision="fp32",
+                capabilities=("infer",),
+            )
+
+    provider = _ParallelProvider()
+    registry.register_model_session_provider(
+        "custom.fake.load-checkpoint",
+        provider,
+    )
+    manager = WorkflowModelSessionManager(
+        runtime_registry=registry,
+        max_parallel_loads=2,
+    )
+
+    references = manager.prepare_template(
+        scope_id="runtime:parallel",
+        template=_build_two_loader_template(),
+        runtime_context=object(),
+    )
+
+    assert [item.loader_node_id for item in references] == [
+        "loader-a",
+        "loader-b",
+    ]
+    health = manager.build_health_summary(scope_id="runtime:parallel")
+    assert health["ready_session_count"] == 2
+    assert health["startup_parallelism"] == 2
+
+
+def test_parallel_prepare_failure_closes_every_new_session() -> None:
+    """验证任一 loader 启动失败时不会留下半发布或未释放的 session。"""
+
+    registry = WorkflowNodeRuntimeRegistry()
+    _register_fake_definition(registry)
+    barrier = Barrier(2)
+
+    class _FailingProvider(_FakeProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sessions: list[_FakeSession] = []
+
+        def load(self, **kwargs):
+            loader_node = kwargs["loader_node"]
+            session = _FakeSession()
+            self.sessions.append(session)
+            barrier.wait(timeout=1)
+            return WorkflowModelSessionLoadResult(
+                session=session,
+                model_family="fake",
+                model_asset_id=str(loader_node.parameters["model_asset_id"]),
+                checkpoint_sha256="abc",
+                resolved_device="cpu",
+                resolved_precision="fp32",
+                capabilities=("infer",),
+                metadata={"loader_node_id": loader_node.node_id},
+            )
+
+        def validate(self, **kwargs):
+            loader_node_id = kwargs["load_result"].metadata["loader_node_id"]
+            if loader_node_id == "loader-b":
+                raise RuntimeError("loader-b failed")
+            return {"warmup": "passed"}
+
+    provider = _FailingProvider()
+    registry.register_model_session_provider(
+        "custom.fake.load-checkpoint",
+        provider,
+    )
+    manager = WorkflowModelSessionManager(
+        runtime_registry=registry,
+        max_parallel_loads=2,
+    )
+
+    with pytest.raises(RuntimeError, match="loader-b failed"):
+        manager.prepare_template(
+            scope_id="runtime:parallel-failure",
+            template=_build_two_loader_template(),
+            runtime_context=object(),
+        )
+
+    assert provider.sessions
+    assert all(session.closed for session in provider.sessions)
+    assert manager.build_health_summary(
+        scope_id="runtime:parallel-failure"
+    )["ready_session_count"] == 0
+
+
+def test_close_scope_attempts_every_lease_when_one_provider_close_fails() -> None:
+    """验证单个 Provider 释放失败不会让同 scope 的其他模型泄漏。"""
+
+    registry = WorkflowNodeRuntimeRegistry()
+    _register_fake_definition(registry)
+
+    class _CloseFailingProvider(_FakeProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sessions: list[_FakeSession] = []
+            self.close_count = 0
+
+        def load(self, **kwargs):
+            loader_node = kwargs["loader_node"]
+            session = _FakeSession()
+            self.sessions.append(session)
+            return WorkflowModelSessionLoadResult(
+                session=session,
+                model_family="fake",
+                model_asset_id=str(loader_node.parameters["model_asset_id"]),
+                checkpoint_sha256="abc",
+                resolved_device="cpu",
+                resolved_precision="fp32",
+                capabilities=("infer",),
+            )
+
+        def close(self, session):
+            self.close_count += 1
+            session.closed = True
+            if self.close_count == 1:
+                raise RuntimeError("first close failed")
+
+    provider = _CloseFailingProvider()
+    registry.register_model_session_provider(
+        "custom.fake.load-checkpoint",
+        provider,
+    )
+    manager = WorkflowModelSessionManager(
+        runtime_registry=registry,
+        max_parallel_loads=1,
+    )
+    manager.prepare_template(
+        scope_id="runtime:close-failure",
+        template=_build_two_loader_template(),
+        runtime_context=object(),
+    )
+
+    with pytest.raises(RuntimeError, match="first close failed"):
+        manager.close_scope("runtime:close-failure")
+
+    assert provider.close_count == 2
+    assert all(session.closed for session in provider.sessions)
+    assert manager.build_health_summary(
+        scope_id="runtime:close-failure"
+    )["ready_session_count"] == 0
 
 
 def test_scope_isolation_and_close_are_explicit() -> None:
@@ -342,6 +506,17 @@ def test_preview_scope_rejects_duplicate_execution_without_queueing() -> None:
 
 def _build_registry() -> tuple[WorkflowNodeRuntimeRegistry, _FakeProvider]:
     registry = WorkflowNodeRuntimeRegistry()
+    _register_fake_definition(registry)
+    provider = _FakeProvider()
+    registry.register_model_session_provider(
+        "custom.fake.load-checkpoint", provider
+    )
+    return registry, provider
+
+
+def _register_fake_definition(registry: WorkflowNodeRuntimeRegistry) -> None:
+    """注册测试使用的通用 loader 定义。"""
+
     registry.register_node_definition(
         NodeDefinition(
             node_type_id="custom.fake.load-checkpoint",
@@ -356,13 +531,6 @@ def _build_registry() -> tuple[WorkflowNodeRuntimeRegistry, _FakeProvider]:
             node_pack_version="0.1.3",
         )
     )
-    provider = _FakeProvider()
-    registry.register_model_session_provider(
-        "custom.fake.load-checkpoint", provider
-    )
-    return registry, provider
-
-
 def _build_template(
     *,
     model_asset_id: str = "fake/default",
@@ -385,6 +553,52 @@ def _build_template(
                 source_node_id="loader",
                 source_port="model",
                 target_node_id="consumer",
+                target_port="model",
+            ),
+        ),
+    )
+
+
+def _build_two_loader_template() -> WorkflowGraphTemplate:
+    """构造两个彼此独立、可以并行准备的 loader。"""
+
+    return WorkflowGraphTemplate(
+        template_id="template-parallel-model-session",
+        template_version="1.0.0",
+        display_name="Parallel Model Session",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="loader-a",
+                node_type_id="custom.fake.load-checkpoint",
+                parameters={"model_asset_id": "fake/a"},
+            ),
+            WorkflowGraphNode(
+                node_id="consumer-a",
+                node_type_id="custom.fake.infer",
+            ),
+            WorkflowGraphNode(
+                node_id="loader-b",
+                node_type_id="custom.fake.load-checkpoint",
+                parameters={"model_asset_id": "fake/b"},
+            ),
+            WorkflowGraphNode(
+                node_id="consumer-b",
+                node_type_id="custom.fake.infer",
+            ),
+        ),
+        edges=(
+            WorkflowGraphEdge(
+                edge_id="edge-model-a",
+                source_node_id="loader-a",
+                source_port="model",
+                target_node_id="consumer-a",
+                target_port="model",
+            ),
+            WorkflowGraphEdge(
+                edge_id="edge-model-b",
+                source_node_id="loader-b",
+                source_port="model",
+                target_node_id="consumer-b",
                 target_port="model",
             ),
         ),

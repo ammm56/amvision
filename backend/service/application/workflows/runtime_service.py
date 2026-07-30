@@ -441,13 +441,21 @@ class WorkflowRuntimeService:
         inline_events: list[dict[str, object]] = []
         try:
             if model_session_manager is not None and model_session_scope_id:
-                model_session_manager.enforce_scope_limit(
+                evicted_scope_ids = model_session_manager.enforce_scope_limit(
                     scope_prefix=WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
                     current_scope_id=model_session_scope_id,
                     max_scope_count=(
                         self.settings.workflow_runtime.preview_model_session_scope_limit
                     ),
                 )
+                storage_image_cache = (
+                    self.workflow_service_node_runtime_context.workflow_storage_image_cache
+                )
+                if storage_image_cache is not None:
+                    for evicted_scope_id in evicted_scope_ids:
+                        storage_image_cache.clear_shared_scope(
+                            evicted_scope_id
+                        )
             execution_result = SnapshotExecutionService(
                 dataset_storage=self.dataset_storage,
                 node_catalog_registry=self.node_catalog_registry,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
@@ -20,68 +22,52 @@ from backend.nodes.debug_image_panel import (
     build_interaction_tool,
 )
 from backend.nodes.runtime_support import (
-    load_image_bytes_from_payload,
+    load_image_matrix_from_payload,
     require_image_payload,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _MaskEditorBinding:
+    """Mask Editor 当前源图与已保存 Mask 的绑定状态。"""
+
+    object_key: str
+    source_identity: str
+    saved_source_identity: str
+
+    @property
+    def is_applied(self) -> bool:
+        """返回当前 Mask 是否完整绑定到当前源图。"""
+
+        return bool(
+            self.object_key
+            and self.saved_source_identity
+            and self.saved_source_identity == self.source_identity
+        )
+
+    @property
+    def source_changed(self) -> bool:
+        """返回已保存 Mask 是否因源图变化或旧绑定不完整而失效。"""
+
+        return bool(self.object_key and not self.is_applied)
+
+
 def _handle_mask_editor(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """读取已保存 Mask，并提供基于源图的编辑面板。"""
+    """解析已应用 Mask，并提供可重复打开的源图编辑面板。"""
 
     source_image = require_image_payload(request.input_values.get("image"))
     outputs: dict[str, object] = {}
-    object_key = str(request.parameters.get("mask_object_key") or "").strip()
-    source_identity = build_image_reference_identity(source_image)
-    if not source_identity:
-        raise InvalidRequestError(
-            "Mask Editor 的源图缺少 content SHA、image handle 或 object key"
-        )
-    saved_source_identity = str(
-        request.parameters.get("mask_source_identity") or ""
-    ).strip()
-    mask_source_changed = bool(
-        object_key
-        and (
-            not saved_source_identity
-            or saved_source_identity != source_identity
-        )
-    )
-    if object_key and not mask_source_changed:
-        mask_payload = {
-            "transport_kind": "storage",
-            "object_key": object_key,
-            "media_type": "image/png",
-        }
-        normalized_mask, mask_bytes = load_image_bytes_from_payload(
+    binding = _resolve_mask_editor_binding(request, source_image)
+    if binding.is_applied:
+        outputs["mask_image"] = _load_applied_mask(
             request,
-            image_payload=mask_payload,
+            source_image=source_image,
+            object_key=binding.object_key,
         )
-        mask_matrix = decode_image_bytes_to_matrix(
-            cv2_module=cv2,
-            np_module=np,
-            image_bytes=mask_bytes,
-            image_payload=normalized_mask,
-            imdecode_flags=cv2.IMREAD_GRAYSCALE,
-            error_message="Mask Editor 保存的 Mask 无法解码",
-        )
-        if not bool((mask_matrix > 0).any()):
-            raise InvalidRequestError("Mask Editor 不接受无前景像素的 Mask")
-        source_size = _read_image_size(source_image)
-        mask_height, mask_width = mask_matrix.shape[:2]
-        if source_size is not None and source_size != (mask_width, mask_height):
-            raise InvalidRequestError(
-                "Mask Editor 的 Mask 尺寸必须与源图一致",
-                details={
-                    "source_size": list(source_size),
-                    "mask_size": [mask_width, mask_height],
-                },
-            )
-        outputs["mask_image"] = normalized_mask
 
     outputs.update(
         build_debug_image_preview_output(
@@ -102,13 +88,13 @@ def _handle_mask_editor(request: WorkflowNodeExecutionRequest) -> dict[str, obje
                         extra={
                             "brush_size": 24,
                             "mask_object_key": (
-                                "" if mask_source_changed else object_key
+                                binding.object_key
+                                if binding.is_applied
+                                else ""
                             ),
-                            "mask_source_identity": source_identity,
-                            "source_changed": mask_source_changed,
-                            "apply_parameters": {
-                                "mask_source_identity": source_identity,
-                            },
+                            "source_identity": binding.source_identity,
+                            "source_changed": binding.source_changed,
+                            "applied": binding.is_applied,
                         },
                     )
                 ],
@@ -116,6 +102,64 @@ def _handle_mask_editor(request: WorkflowNodeExecutionRequest) -> dict[str, obje
         )
     )
     return outputs
+
+
+def _resolve_mask_editor_binding(
+    request: WorkflowNodeExecutionRequest,
+    source_image: dict[str, object],
+) -> _MaskEditorBinding:
+    """构造当前节点唯一可信的 Mask 绑定状态。"""
+
+    source_identity = build_image_reference_identity(source_image)
+    if not source_identity:
+        raise InvalidRequestError(
+            "Mask Editor 的源图缺少 content SHA、image handle 或 object key"
+        )
+    return _MaskEditorBinding(
+        object_key=str(
+            request.parameters.get("mask_object_key") or ""
+        ).strip(),
+        source_identity=source_identity,
+        saved_source_identity=str(
+            request.parameters.get("mask_source_identity") or ""
+        ).strip(),
+    )
+
+
+def _load_applied_mask(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    source_image: dict[str, object],
+    object_key: str,
+) -> dict[str, object]:
+    """加载并验证已经绑定到当前源图的二值 Mask。"""
+
+    mask_payload = {
+        "transport_kind": "storage",
+        "object_key": object_key,
+        "media_type": "image/png",
+    }
+    normalized_mask, mask_matrix = load_image_matrix_from_payload(
+        request,
+        image_payload=mask_payload,
+        cv2_module=cv2,
+        np_module=np,
+        imdecode_flags=cv2.IMREAD_GRAYSCALE,
+        error_message="Mask Editor 保存的 Mask 无法解码",
+    )
+    if not bool((mask_matrix > 0).any()):
+        raise InvalidRequestError("Mask Editor 不接受无前景像素的 Mask")
+    source_size = _read_image_size(source_image)
+    mask_height, mask_width = mask_matrix.shape[:2]
+    if source_size is not None and source_size != (mask_width, mask_height):
+        raise InvalidRequestError(
+            "Mask Editor 的 Mask 尺寸必须与源图一致",
+            details={
+                "source_size": list(source_size),
+                "mask_size": [mask_width, mask_height],
+            },
+        )
+    return normalized_mask
 
 
 def _read_image_size(

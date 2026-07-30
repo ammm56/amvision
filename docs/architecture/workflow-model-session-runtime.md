@@ -15,16 +15,26 @@
 
 ## 启动顺序
 
-Runtime worker 读取固定 application/template snapshot 后，按图中启用的 `Load Checkpoint` 节点顺序串行执行：
+Runtime worker 读取固定 application/template snapshot 后，先计算图中全部启用的
+`Load Checkpoint` 节点和直接消费者。不同 loader 通过受限线程池并行执行各自完整的
+启动协议：
 
 1. 解析模型资产和 checkpoint。
 2. 创建独立 session lease。
 3. 把模型移动到 loader 配置的目标设备。
 4. 使用 provider 定义的固定最小输入执行 warmup。
 5. 验证 warmup 输出、实际设备、精度和能力。
-6. 全部 loader 成功后才上报 runtime `running`。
+6. 全部 loader 成功后一次性发布新 lease，随后才上报 runtime `running`。
 
-任一步骤失败时关闭当前 scope 已创建的全部 session，runtime 启动失败，不接收第一条生产请求。控制面等待时间使用 `workflow_runtime.model_startup_timeout_seconds`，默认 600 秒。
+同一个 loader 内的步骤保持严格顺序，不拆散 load、warmup 和 validate。不同 loader
+互不共享模型对象和执行锁，默认最多使用
+`workflow_runtime.model_startup_parallelism=2` 个加载线程，避免无限并发导致 CPU、
+内存和显存峰值失控。该并行只发生在启动阶段，不引入推理请求并发。
+
+任一步骤失败时关闭本轮全部新 session，不发布半初始化 lease；runtime 启动失败，
+不接收第一条生产请求。已有且 fingerprint 未变化的 Preview lease 保持可用，配置变化
+的旧 generation 在新模型加载前先释放，避免新旧模型同时驻留。控制面等待时间使用
+`workflow_runtime.model_startup_timeout_seconds`，默认 600 秒。
 
 ## 执行规则
 
@@ -74,8 +84,27 @@ Runtime health summary 公开以下非敏感信息：
 - 实际 device 和 precision
 - capabilities
 - warmup/validation 状态
+- loader 启动并行策略、并行上限、checkpoint 读取/模型构建和 warmup 耗时
 
 健康信息不公开 checkpoint 本地绝对路径，也不保存模型对象。
+
+## 磁盘图片复用
+
+`storage` 类型的 `image-ref.v1` 使用 runtime scope 隔离的只读解码缓存。该缓存用于
+Mask、模板图和其他长期不变的 ObjectStore 图片：
+
+- key 包含 scope、object key、文件大小、mtime、ctime、媒体类型和解码模式。
+- 文件未变化时，多次 Workflow Run 只读取和解码一次；同一 Run 的不同节点也共用同一矩阵。
+- 文件版本变化时自动生成新 key，旧值只保留到 LRU 回收。
+- `memory`、`buffer` 和 `frame` 输入不得跨 Run 缓存。
+- 缓存条目数和总字节分别由 `storage_image_cache_max_entries` 和
+  `storage_image_cache_max_bytes` 约束。
+- AppRuntime 健康摘要公开缓存条目、字节数、命中、未命中、LRU 回收和在途
+  decode 数量，不公开 object key、磁盘路径或图片内容。
+- Preview scope 被回收、应用删除、runtime worker 停止或服务关闭时确定性清理对应缓存。
+
+共享矩阵始终标记为只读；需要修改输入的节点必须显式请求副本。该规则避免节点间污染，
+同时防止长期运行时因无界图片缓存造成内存增长。
 
 ## 明确不做
 

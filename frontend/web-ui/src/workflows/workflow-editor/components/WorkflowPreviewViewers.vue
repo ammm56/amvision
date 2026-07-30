@@ -4,6 +4,7 @@
     :image="image"
     :preview-running="previewRunning"
     :preview-disabled="previewDisabled"
+    :interaction-applying="interactionApplying"
     @close="emit('closeImage')"
     @apply-interaction="emit('applyImageInteraction', $event)"
     @preview-interaction="emit('previewImageInteraction', $event)"
@@ -26,6 +27,7 @@ defineProps<{
   json: PreviewJsonViewerState | null
   previewRunning?: boolean
   previewDisabled?: boolean
+  interactionApplying?: boolean
 }>()
 
 const emit = defineEmits<{

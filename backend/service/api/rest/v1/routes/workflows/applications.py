@@ -227,14 +227,18 @@ def delete_flow_application(
         None,
     )
     if isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
+        preview_scope_id = build_workflow_preview_model_session_scope_id(
+            project_id=project_id,
+            application_id=application_id,
+        )
         model_session_manager = runtime_context.workflow_model_session_manager
         if model_session_manager is not None:
             model_session_manager.close_scope(
-                build_workflow_preview_model_session_scope_id(
-                    project_id=project_id,
-                    application_id=application_id,
-                ),
+                preview_scope_id,
                 wait=False,
             )
+        storage_image_cache = runtime_context.workflow_storage_image_cache
+        if storage_image_cache is not None:
+            storage_image_cache.clear_shared_scope(preview_scope_id)
     service.delete_application(project_id=project_id, application_id=application_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
