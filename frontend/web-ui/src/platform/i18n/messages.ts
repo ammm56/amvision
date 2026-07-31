@@ -43,8 +43,14 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     preferences: {
       language: '语言',
       theme: '主题',
+      appearance: '外观',
       light: '亮色',
       dark: '暗色',
+    },
+    accountMenu: {
+      account: '账户',
+      open: '打开账户菜单',
+      logout: '退出登录',
     },
     navigation: {
       projects: '项目',
@@ -1877,8 +1883,14 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     preferences: {
       language: 'Language',
       theme: 'Theme',
+      appearance: 'Appearance',
       light: 'Light',
       dark: 'Dark',
+    },
+    accountMenu: {
+      account: 'Account',
+      open: 'Open account menu',
+      logout: 'Log out',
     },
     navigation: {
       projects: 'Projects',
@@ -3707,8 +3719,14 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     preferences: {
       language: '言語',
       theme: 'テーマ',
+      appearance: '外観',
       light: 'ライト',
       dark: 'ダーク',
+    },
+    accountMenu: {
+      account: 'アカウント',
+      open: 'アカウントメニューを開く',
+      logout: 'ログアウト',
     },
     navigation: {
       projects: 'プロジェクト',
@@ -5391,8 +5409,14 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
     preferences: {
       language: '언어',
       theme: '테마',
+      appearance: '화면 모드',
       light: '라이트',
       dark: '다크',
+    },
+    accountMenu: {
+      account: '계정',
+      open: '계정 메뉴 열기',
+      logout: '로그아웃',
     },
     navigation: {
       projects: '프로젝트',

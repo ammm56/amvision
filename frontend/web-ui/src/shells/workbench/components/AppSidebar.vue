@@ -17,17 +17,20 @@
         <span class="app-sidebar__link-label">{{ t(item.labelKey) }}</span>
       </RouterLink>
     </nav>
-    <button
-      class="app-sidebar__link app-sidebar__collapse-toggle"
-      type="button"
-      :title="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
-      :aria-label="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
-      @click="emit('toggleCollapsed')"
-    >
-      <PanelLeftOpen v-if="collapsed" :size="18" />
-      <PanelLeftClose v-else :size="18" />
-      <span class="app-sidebar__collapse-label">{{ collapsed ? t('navigation.expandSidebar') : t('navigation.collapseSidebar') }}</span>
-    </button>
+    <footer class="app-sidebar__footer">
+      <button
+        class="app-sidebar__link app-sidebar__collapse-toggle"
+        type="button"
+        :title="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
+        :aria-label="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
+        @click="emit('toggleCollapsed')"
+      >
+        <PanelLeftOpen v-if="collapsed" :size="18" />
+        <PanelLeftClose v-else :size="18" />
+        <span class="app-sidebar__collapse-label">{{ collapsed ? t('navigation.expandSidebar') : t('navigation.collapseSidebar') }}</span>
+      </button>
+      <UserMenu :compact="collapsed" />
+    </footer>
   </aside>
 </template>
 
@@ -52,6 +55,7 @@ import {
 
 import { navigationItems, type NavigationItem } from '@/config/navigation.config'
 import { useSessionStore } from '@/app/stores/session.store'
+import UserMenu from './UserMenu.vue'
 
 const route = useRoute()
 const { t } = useI18n()

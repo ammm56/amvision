@@ -296,11 +296,17 @@ a:hover {
 
 .app-sidebar__collapse-toggle {
   flex: 0 0 auto;
-  margin-top: auto;
   border: none;
   background: transparent;
   appearance: none;
   cursor: pointer;
+}
+
+.app-sidebar__footer {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-top: auto;
 }
 
 .app-sidebar__collapse-toggle:hover {
@@ -334,6 +340,10 @@ a:hover {
   width: 44px;
 }
 
+.app-sidebar.is-collapsed .app-sidebar__footer {
+  width: 44px;
+}
+
 .app-sidebar.is-collapsed .app-sidebar__collapse-toggle {
   border: 1px solid color-mix(in srgb, var(--sidebar-active) 82%, transparent);
 }
@@ -363,7 +373,6 @@ a:hover {
   padding: 0 18px;
 }
 
-.app-topbar__right,
 .page-actions {
   display: flex;
   align-items: center;
@@ -418,20 +427,7 @@ a:hover {
   color: var(--muted);
 }
 
-.locale-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-}
-
-.locale-switcher span {
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .project-switcher select,
-.locale-switcher select,
 .auth-form input {
   min-height: 34px;
   border: 1px solid var(--line-strong);
@@ -443,41 +439,6 @@ a:hover {
 
 .project-switcher .ui-select {
   min-width: 180px;
-}
-
-.locale-switcher .ui-select {
-  min-width: 112px;
-}
-
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 32px;
-  padding: 2px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--pill-bg);
-}
-
-.theme-toggle button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 26px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0 8px;
-  font-weight: 600;
-}
-
-.theme-toggle button.is-active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
 .connection-status,
@@ -501,9 +462,217 @@ a:hover {
   color: var(--danger);
 }
 
-.user-label {
+.app-topbar__account-fallback {
+  display: none;
+}
+
+.user-menu {
+  min-width: 0;
+  width: 100%;
+}
+
+.user-menu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--sidebar-text);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.user-menu__trigger:hover,
+.user-menu__trigger[aria-expanded='true'] {
+  background: var(--sidebar-active);
+}
+
+.user-menu__trigger:focus-visible,
+.user-menu__section-toggle:focus-visible,
+.user-menu__option:focus-visible,
+.user-menu__logout:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 68%, white);
+  outline-offset: 2px;
+}
+
+.user-menu__avatar {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.user-menu__trigger-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu--compact {
+  width: 44px;
+}
+
+.user-menu--compact .user-menu__trigger {
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.user-menu--compact .user-menu__avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 13px;
+}
+
+.user-menu__popover {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  width: min(220px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   color: var(--text);
-  font-weight: 600;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 18px 46px rgb(15 23 42 / 0.2);
+  backdrop-filter: blur(14px);
+}
+
+.user-menu__popover:focus {
+  outline: none;
+}
+
+.user-menu__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 5px 7px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.user-menu__header-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu__section {
+  display: grid;
+}
+
+.user-menu__section-toggle,
+.user-menu__logout {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.user-menu__section-toggle:hover,
+.user-menu__section-toggle[aria-expanded='true'],
+.user-menu__logout:hover {
+  background: var(--surface-muted);
+}
+
+.user-menu__current-value {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu__chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.user-menu__options {
+  display: grid;
+  gap: 2px;
+  padding: 2px 0 6px 27px;
+}
+
+.user-menu__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.user-menu__option:hover,
+.user-menu__option.is-selected {
+  color: var(--text);
+  background: var(--sidebar-active);
+}
+
+.user-menu__option-check,
+.user-menu__option > svg:last-child {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--accent-strong);
+}
+
+.user-menu__logout {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  color: var(--danger);
+}
+
+.user-menu-popover-enter-active,
+.user-menu-popover-leave-active {
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  transform-origin: left bottom;
+}
+
+.user-menu-popover-leave-active {
+  pointer-events: none;
+}
+
+.user-menu-popover-enter-from,
+.user-menu-popover-leave-to {
+  opacity: 0;
+  transform: translateY(5px) scale(0.98);
 }
 
 .page-stack {
@@ -4993,6 +5162,10 @@ textarea:focus-visible {
 
   .app-sidebar {
     display: none;
+  }
+
+  .app-topbar__account-fallback {
+    display: block;
   }
 }
 .image-viewer__tuning-panel {
