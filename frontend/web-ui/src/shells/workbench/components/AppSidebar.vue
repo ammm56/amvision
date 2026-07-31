@@ -1,9 +1,34 @@
 <template>
   <aside class="app-sidebar" :class="{ 'is-collapsed': collapsed }">
-    <RouterLink class="app-sidebar__brand" to="/projects" :title="collapsed ? 'amvision' : undefined">
-      <span class="brand-mark">AM</span>
-      <span class="app-sidebar__brand-name">amvision</span>
-    </RouterLink>
+    <header class="app-sidebar__header">
+      <template v-if="collapsed">
+        <button
+          class="app-sidebar__collapsed-expand"
+          type="button"
+          :title="t('navigation.expandSidebarTitle')"
+          :aria-label="t('navigation.expandSidebarTitle')"
+          @click="emit('toggleCollapsed')"
+        >
+          <span class="brand-mark app-sidebar__collapsed-brand" aria-hidden="true">AM</span>
+          <PanelLeftOpen class="app-sidebar__collapsed-expand-icon" :size="18" aria-hidden="true" />
+        </button>
+      </template>
+      <template v-else>
+        <RouterLink class="app-sidebar__brand" to="/projects">
+          <span class="brand-mark">AM</span>
+          <span class="app-sidebar__brand-name">amvision</span>
+        </RouterLink>
+        <button
+          class="app-sidebar__header-collapse"
+          type="button"
+          :title="t('navigation.collapseSidebarTitle')"
+          :aria-label="t('navigation.collapseSidebarTitle')"
+          @click="emit('toggleCollapsed')"
+        >
+          <PanelLeftClose :size="18" aria-hidden="true" />
+        </button>
+      </template>
+    </header>
     <nav class="app-sidebar__nav">
       <RouterLink
         v-for="item in visibleItems"
@@ -18,17 +43,6 @@
       </RouterLink>
     </nav>
     <footer class="app-sidebar__footer">
-      <button
-        class="app-sidebar__link app-sidebar__collapse-toggle"
-        type="button"
-        :title="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
-        :aria-label="collapsed ? t('navigation.expandSidebarTitle') : t('navigation.collapseSidebarTitle')"
-        @click="emit('toggleCollapsed')"
-      >
-        <PanelLeftOpen v-if="collapsed" :size="18" />
-        <PanelLeftClose v-else :size="18" />
-        <span class="app-sidebar__collapse-label">{{ collapsed ? t('navigation.expandSidebar') : t('navigation.collapseSidebar') }}</span>
-      </button>
       <UserMenu :compact="collapsed" />
     </footer>
   </aside>
