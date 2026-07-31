@@ -39,6 +39,26 @@ const classificationAutoAugmentOptions: TrainingParameterFieldOption[] = [
   { label: '关闭', value: 'none' },
 ]
 
+const classificationCropModeOptions: TrainingParameterFieldOption[] = [
+  { label: '等比缩放并中心裁剪', value: 'none' },
+  { label: '随机比例裁剪', value: 'random_resized_crop' },
+]
+
+const classificationCropScaleKeys = new Set(['crop_scale_min', 'crop_scale_max'])
+const classificationManualAugmentationKeys = new Set([
+  'rotation_degrees',
+  'translate_ratio',
+  'scale_min',
+  'scale_max',
+  'brightness_gain',
+  'contrast_gain',
+  'gamma_min',
+  'gamma_max',
+  'hue_gain',
+  'saturation_gain',
+  'value_gain',
+])
+
 export function buildTrainingDeviceOptions(
   devices: Record<string, unknown> | null | undefined,
 ): TrainingParameterFieldOption[] {
@@ -242,13 +262,44 @@ const detectionYoloXAugmentationFields: TrainingParameterField[] = withTrainingP
 ], 'augmentation')
 
 const classificationYoloAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
-  numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
-  numberField('hsv_prob', 'HSV 增强概率（关闭自动增强时）', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('flip_prob', '水平翻转概率（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
+  selectField('crop_mode', '裁剪方式', classificationCropModeOptions, {
+    defaultValue: 'random_resized_crop',
+  }),
+  numberField('crop_scale_min', '随机裁剪面积比例最小值（0.08–1）', { min: 0.08, max: 1, step: 0.01, defaultValue: '0.5' }),
+  numberField('crop_scale_max', '随机裁剪面积比例最大值（0.08–1）', { min: 0.08, max: 1, step: 0.01, defaultValue: '1.0' }),
   selectField('auto_augment', '自动增强策略', classificationAutoAugmentOptions, {
     defaultValue: 'randaugment',
   }),
-  numberField('random_erasing_prob', '随机擦除概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.4' }),
+  numberField('rotation_degrees', '最大旋转角度（±0–180°）', { min: 0, max: 180, step: 0.1, defaultValue: '0' }),
+  numberField('translate_ratio', '最大平移比例（±0–0.5）', { min: 0, max: 0.5, step: 0.01, defaultValue: '0' }),
+  numberField('scale_min', '仿射缩放最小值（0.1–2）', { min: 0.1, max: 2, step: 0.01, defaultValue: '1' }),
+  numberField('scale_max', '仿射缩放最大值（0.1–2）', { min: 0.1, max: 2, step: 0.01, defaultValue: '1' }),
+  numberField('brightness_gain', '亮度增益范围（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0' }),
+  numberField('contrast_gain', '对比度增益范围（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0' }),
+  numberField('gamma_min', 'Gamma 最小值（0.1–5）', { min: 0.1, max: 5, step: 0.01, defaultValue: '1' }),
+  numberField('gamma_max', 'Gamma 最大值（0.1–5）', { min: 0.1, max: 5, step: 0.01, defaultValue: '1' }),
+  numberField('hue_gain', '色相增益范围（0–0.5）', { min: 0, max: 0.5, step: 0.001, defaultValue: '0' }),
+  numberField('saturation_gain', '饱和度增益范围（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0' }),
+  numberField('value_gain', '明度增益范围（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0' }),
+  numberField('random_erasing_prob', '随机擦除概率（0–1）', { min: 0, max: 1, step: 0.01, defaultValue: '0.4' }),
 ], 'augmentation')
+
+export function normalizeTrainingParameterNumber(
+  field: TrainingParameterField,
+  rawValue: string,
+): string {
+  if (field.inputKind !== 'number') return rawValue
+  const numericValue = Number(rawValue)
+  if (!Number.isFinite(numericValue)) {
+    return field.defaultValue ?? ''
+  }
+  let normalizedValue = numericValue
+  if (field.min !== undefined) normalizedValue = Math.max(field.min, normalizedValue)
+  if (field.max !== undefined) normalizedValue = Math.min(field.max, normalizedValue)
+  if (field.valueKind === 'int') normalizedValue = Math.round(normalizedValue)
+  return String(normalizedValue)
+}
 
 const rfdetrAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
   selectField('rfdetr_augmentation_preset', 'RF-DETR 增强预设', rfdetrAugmentationPresetOptions, {
@@ -541,15 +592,46 @@ export function buildTrainingExtraOptions(
   }
 
   const assignClassificationAugmentationValues = (): void => {
-    for (const key of ['flip_prob', 'hsv_prob', 'auto_augment', 'random_erasing_prob']) {
+    for (const key of [
+      'flip_prob',
+      'crop_mode',
+      'crop_scale_min',
+      'crop_scale_max',
+      'auto_augment',
+      'rotation_degrees',
+      'translate_ratio',
+      'scale_min',
+      'scale_max',
+      'brightness_gain',
+      'contrast_gain',
+      'gamma_min',
+      'gamma_max',
+      'hue_gain',
+      'saturation_gain',
+      'value_gain',
+      'random_erasing_prob',
+    ]) {
       assignValue(key)
     }
   }
 
   const disableClassificationAugmentationValues = (): void => {
     result.flip_prob = 0
-    result.hsv_prob = 0
+    result.crop_mode = 'none'
+    result.crop_scale_min = 1
+    result.crop_scale_max = 1
     result.auto_augment = 'none'
+    result.rotation_degrees = 0
+    result.translate_ratio = 0
+    result.scale_min = 1
+    result.scale_max = 1
+    result.brightness_gain = 0
+    result.contrast_gain = 0
+    result.gamma_min = 1
+    result.gamma_max = 1
+    result.hue_gain = 0
+    result.saturation_gain = 0
+    result.value_gain = 0
     result.random_erasing_prob = 0
     result.disable_augmentation = true
   }
@@ -758,6 +840,24 @@ export function validateTrainingModelLayerValues(
     return null
   }
 
+  for (const field of getModelLayerTrainingFields(taskType, normalizedModelType)) {
+    if (field.inputKind !== 'number') continue
+    const rawValue = String(values[field.key] ?? '').trim()
+    if (!rawValue) continue
+    const numericValue = Number(rawValue)
+    if (
+      !Number.isFinite(numericValue)
+      || (field.min !== undefined && numericValue < field.min)
+      || (field.max !== undefined && numericValue > field.max)
+    ) {
+      return translate('modelOps.trainingParameters.parameterOutOfRange', {
+        label: field.label,
+        min: String(field.min ?? '-∞'),
+        max: String(field.max ?? '+∞'),
+      })
+    }
+  }
+
   const checkPair = (
     label: string,
     minKey: string,
@@ -784,5 +884,67 @@ export function validateTrainingModelLayerValues(
       ?? checkPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
   }
 
+  if (
+    taskType === 'classification'
+    && ['yolov8', 'yolo11', 'yolo26'].includes(normalizedModelType)
+  ) {
+    const cropMode = String(values.crop_mode ?? '').trim()
+    const autoAugment = String(values.auto_augment ?? '').trim()
+    if (!['none', 'random_resized_crop'].includes(cropMode)) {
+      return translate('modelOps.trainingParameters.invalidOption', {
+        label: 'crop_mode',
+      })
+    }
+    if (!['none', 'randaugment', 'autoaugment', 'augmix'].includes(autoAugment)) {
+      return translate('modelOps.trainingParameters.invalidOption', {
+        label: 'auto_augment',
+      })
+    }
+    const cropRangeError = checkNumericRangeOrder(
+      values,
+      'crop_scale',
+      'crop_scale_min',
+      'crop_scale_max',
+    )
+    if (cropRangeError) return cropRangeError
+    if (autoAugment === 'none') {
+      return checkNumericRangeOrder(values, 'scale', 'scale_min', 'scale_max')
+        ?? checkNumericRangeOrder(values, 'gamma', 'gamma_min', 'gamma_max')
+    }
+  }
+
   return null
+}
+
+function checkNumericRangeOrder(
+  values: TrainingParameterValues,
+  label: string,
+  minKey: string,
+  maxKey: string,
+): string | null {
+  const minimum = Number(values[minKey])
+  const maximum = Number(values[maxKey])
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) {
+    return translate('modelOps.trainingParameters.rangePairRequired', { label })
+  }
+  if (minimum > maximum) {
+    return translate('modelOps.trainingParameters.rangeOrderInvalid', { label })
+  }
+  return null
+}
+
+export function isTrainingAugmentationParameterDisabled(
+  field: TrainingParameterField,
+  values: TrainingParameterValues,
+  augmentationEnabled: boolean,
+): boolean {
+  if (!augmentationEnabled) return true
+  if (
+    classificationCropScaleKeys.has(field.key)
+    && String(values.crop_mode ?? '') !== 'random_resized_crop'
+  ) {
+    return true
+  }
+  return classificationManualAugmentationKeys.has(field.key)
+    && String(values.auto_augment ?? '') !== 'none'
 }

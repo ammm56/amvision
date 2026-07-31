@@ -19,6 +19,7 @@ from backend.service.application.models.training.classification_evaluation_repor
 )
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
+    build_yolo_classification_augmentation_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
     resolve_yolo_classification_dataloader_plan,
@@ -379,6 +380,9 @@ def run_yolo11_classification_training(
             "accumulate": runtime.training_schedule.accumulate,
             "scaled_weight_decay": runtime.training_schedule.scaled_weight_decay,
             "implementation_mode": YOLO11_CLASSIFICATION_IMPLEMENTATION_MODE,
+            "augmentation": build_yolo_classification_augmentation_summary(
+                augmentation_options
+            ),
         },
         validation_metrics_payload={
             "final_metrics": final_val_metrics,

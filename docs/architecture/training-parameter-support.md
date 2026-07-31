@@ -151,9 +151,43 @@
 | 项目 | 内容 |
 | --- | --- |
 | 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval` |
-| 当前前端已暴露 | 通用层字段 + classification 高级参数面 |
+| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval` 和下述 classification 数据增强参数 |
+| 当前前端已暴露 | 通用层字段 + classification 高级参数面 + classification 数据增强参数面 |
 | 当前缺口 | 公开接口没有显式 `evaluation_interval` 字段；当前靠 `extra_options` 传递；warm start 仍没有 classification 公开入口 |
+
+classification 数据增强由 YOLOv8、YOLO11 和 YOLO26 共用同一份通用协议：
+
+- `disable_augmentation`
+- `flip_prob`
+- `crop_mode=none | random_resized_crop`
+- `crop_scale_min / crop_scale_max`
+- `auto_augment=none | randaugment | autoaugment | augmix`
+- `rotation_degrees / translate_ratio / scale_min / scale_max`
+- `brightness_gain / contrast_gain / gamma_min / gamma_max`
+- `hue_gain / saturation_gain / value_gain`
+- `random_erasing_prob`
+
+执行边界如下：
+
+- `crop_mode=none` 表示确定性保持比例缩放和中心裁剪，不是业务 ROI。
+- classification 模型输入尺寸固定，因此 `crop_mode=none` 关闭的是随机裁剪，不代表跳过尺寸适配；中心裁剪可避免直接拉伸变形和填充边框。
+- `auto_augment` 启用时不叠加手动 rotation、translate、scale 和颜色增强。
+- `auto_augment=none` 时才执行手动仿射和颜色增强；crop 与手动仿射合并为一次重采样。
+- Random Erasing 在 Normalize 后最后执行。
+- `disable_augmentation=true` 强制关闭全部随机增强，只保留确定性输入预处理。
+- validation、test 和 runtime 不使用训练随机增强。
+- 最终解析后的增强参数写入训练指标摘要的 `augmentation` 字段，便于复查训练条件。
+- ROI 定位、业务裁剪和受保护区域不属于模型训练增强协议，由数据准备或 Workflow Node App 处理。
+
+参数防呆范围：
+
+- `crop_scale_min/max`：`0.08..1`，表示随机保留的源图面积比例。
+- `rotation_degrees`：`0..180`，实际角度从 `[-value, +value]` 采样；180° 已覆盖全部方向。
+- `translate_ratio`：`0..0.5`，实际平移从 `[-value, +value]` 采样。
+- `scale_min/max`：`0.1..2`。
+- `gamma_min/max`：`0.1..5`。
+- 概率、brightness、contrast、saturation 和 value：`0..1`；hue：`0..0.5`。
+- 前端数字输入失焦时钳制到字段合法范围，提交前再次校验；后端仍执行同一范围的强校验。
 
 ### segmentation
 

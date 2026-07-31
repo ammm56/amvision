@@ -6,6 +6,9 @@ import {
   getDefaultTrainingModelParameterValues,
   getModelLayerTrainingFields,
   isTrainingAugmentationField,
+  isTrainingAugmentationParameterDisabled,
+  normalizeTrainingParameterNumber,
+  validateTrainingModelLayerValues,
 } from './training-parameter-support'
 import type { ModelTaskType } from './services/model.service'
 
@@ -100,8 +103,21 @@ describe('training parameter augmentation support', () => {
     for (const modelType of ['yolov8', 'yolo11', 'yolo26']) {
       expect(augmentationFieldKeys('classification', modelType)).toEqual([
         'flip_prob',
-        'hsv_prob',
+        'crop_mode',
+        'crop_scale_min',
+        'crop_scale_max',
         'auto_augment',
+        'rotation_degrees',
+        'translate_ratio',
+        'scale_min',
+        'scale_max',
+        'brightness_gain',
+        'contrast_gain',
+        'gamma_min',
+        'gamma_max',
+        'hue_gain',
+        'saturation_gain',
+        'value_gain',
         'random_erasing_prob',
       ])
     }
@@ -191,10 +207,63 @@ describe('training parameter augmentation support', () => {
       }),
     ).toMatchObject({
       flip_prob: 0,
-      hsv_prob: 0,
+      crop_mode: 'none',
+      crop_scale_min: 1,
+      crop_scale_max: 1,
       auto_augment: 'none',
+      rotation_degrees: 0,
+      translate_ratio: 0,
+      scale_min: 1,
+      scale_max: 1,
+      brightness_gain: 0,
+      contrast_gain: 0,
+      gamma_min: 1,
+      gamma_max: 1,
+      hue_gain: 0,
+      saturation_gain: 0,
+      value_gain: 0,
       random_erasing_prob: 0,
       disable_augmentation: true,
     })
+  })
+
+  it('disables inactive classification controls without discarding their values', () => {
+    const fields = getModelLayerTrainingFields('classification', 'yolo11')
+    const values = defaultValues('classification', 'yolo11')
+    const field = (key: string) => fields.find((item) => item.key === key)!
+
+    expect(isTrainingAugmentationParameterDisabled(field('crop_scale_min'), values, true)).toBe(false)
+    expect(isTrainingAugmentationParameterDisabled(field('rotation_degrees'), values, true)).toBe(true)
+
+    values.crop_mode = 'none'
+    values.auto_augment = 'none'
+    expect(isTrainingAugmentationParameterDisabled(field('crop_scale_min'), values, true)).toBe(true)
+    expect(isTrainingAugmentationParameterDisabled(field('rotation_degrees'), values, true)).toBe(false)
+    expect(isTrainingAugmentationParameterDisabled(field('flip_prob'), values, false)).toBe(true)
+  })
+
+  it('rejects reversed classification ranges before submission', () => {
+    const values = defaultValues('classification', 'yolov8')
+    values.crop_scale_min = '0.9'
+    values.crop_scale_max = '0.4'
+    expect(validateTrainingModelLayerValues('classification', 'yolov8', values)).toContain('crop_scale')
+
+    values.crop_scale_min = '0.4'
+    values.crop_scale_max = '0.9'
+    values.auto_augment = 'none'
+    values.gamma_min = '1.2'
+    values.gamma_max = '0.8'
+    expect(validateTrainingModelLayerValues('classification', 'yolov8', values)).toContain('gamma')
+  })
+
+  it('normalizes classification numeric inputs to their safe bounds on blur', () => {
+    const fields = getModelLayerTrainingFields('classification', 'yolo11')
+    const field = (key: string) => fields.find((item) => item.key === key)!
+
+    expect(normalizeTrainingParameterNumber(field('translate_ratio'), '0.8')).toBe('0.5')
+    expect(normalizeTrainingParameterNumber(field('scale_min'), '0')).toBe('0.1')
+    expect(normalizeTrainingParameterNumber(field('scale_max'), '9')).toBe('2')
+    expect(normalizeTrainingParameterNumber(field('gamma_max'), '8')).toBe('5')
+    expect(normalizeTrainingParameterNumber(field('rotation_degrees'), '360')).toBe('180')
   })
 })

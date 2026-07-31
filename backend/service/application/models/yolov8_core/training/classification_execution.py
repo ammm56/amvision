@@ -27,6 +27,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 )
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
+    build_yolo_classification_augmentation_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
@@ -598,6 +599,9 @@ def run_yolov8_classification_training(
             "optimizer": training_schedule.optimizer_name,
             "accumulate": training_schedule.accumulate,
             "scaled_weight_decay": training_schedule.scaled_weight_decay,
+            "augmentation": build_yolo_classification_augmentation_summary(
+                augmentation_options
+            ),
         },
         validation_metrics_payload={
             "final_metrics": final_val_metrics,

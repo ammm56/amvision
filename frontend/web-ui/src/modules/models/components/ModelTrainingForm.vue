@@ -222,9 +222,6 @@
             <span>{{ trainingAugmentationEnabled ? t('modelOps.trainingParameters.augmentationEnabled') : t('modelOps.trainingParameters.augmentationDisabled') }}</span>
           </label>
         </div>
-        <p class="training-parameter-section__description">
-          {{ t('modelOps.trainingParameters.augmentationDescription') }}
-        </p>
         <div
           class="form-grid training-parameter-grid"
           :class="{ 'training-parameter-grid--disabled': !trainingAugmentationEnabled }"
@@ -233,14 +230,17 @@
             v-for="field in trainingAugmentationParameterFields"
             :key="field.key"
             class="field"
-            :class="{ 'field--wide': field.wide }"
+            :class="{
+              'field--wide': field.wide,
+              'field--disabled': isAugmentationFieldDisabled(field),
+            }"
           >
             <span>{{ localizeTrainingParameterLabel(field) }}</span>
             <SelectField
               v-if="field.inputKind === 'select'"
               :model-value="trainingModelParameterValues[field.key] ?? ''"
               :options="localizeTrainingParameterOptions(field)"
-              :disabled="!trainingAugmentationEnabled"
+              :disabled="isAugmentationFieldDisabled(field)"
               @update:model-value="$emit('update:trainingModelParameterValue', field.key, normalizeSelectValue($event))"
             />
             <input
@@ -251,8 +251,9 @@
               :max="field.max"
               :step="field.step"
               :placeholder="field.placeholder"
-              :disabled="!trainingAugmentationEnabled"
+              :disabled="isAugmentationFieldDisabled(field)"
               @input="emitModelParameterValue(field.key, $event)"
+              @blur="normalizeModelParameterNumber(field, $event)"
             />
           </label>
         </div>
@@ -291,6 +292,10 @@ import type {
   TrainingParameterFieldOption,
   TrainingParameterValues,
 } from '../training-parameter-support'
+import {
+  isTrainingAugmentationParameterDisabled,
+  normalizeTrainingParameterNumber,
+} from '../training-parameter-support'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
@@ -308,7 +313,7 @@ type UpdateStringEvent =
   | 'update:trainingDisplayName'
 type UpdateBooleanEvent = 'update:trainingAugmentationEnabled'
 
-defineProps<{
+const props = defineProps<{
   selectedTaskType: ModelTaskType
   loading: boolean
   baseModelsCount: number
@@ -377,9 +382,20 @@ function localizeTrainingParameterOptions(field: TrainingParameterField): Traini
   if (locale.value === 'zh-CN') return field.options ?? []
   return (field.options ?? []).map((option) => {
     if (option.value === 'true') return { ...option, label: t('modelOps.trainingParameters.enabled') }
+    if (field.key === 'crop_mode' && option.value === 'none') {
+      return { ...option, label: 'Center Crop' }
+    }
     if (option.value === 'false' || option.value === 'none') return { ...option, label: t('modelOps.trainingParameters.disabled') }
     return { ...option, label: humanizeParameterToken(option.value) }
   })
+}
+
+function isAugmentationFieldDisabled(field: TrainingParameterField): boolean {
+  return isTrainingAugmentationParameterDisabled(
+    field,
+    props.trainingModelParameterValues,
+    props.trainingAugmentationEnabled,
+  )
 }
 
 function normalizeSelectValue(value: SelectValue): string {
@@ -435,6 +451,17 @@ function emitBoolean(eventName: UpdateBooleanEvent, event: Event): void {
 function emitModelParameterValue(key: string, event: Event): void {
   emit('update:trainingModelParameterValue', key, getInputValue(event))
 }
+
+function normalizeModelParameterNumber(
+  field: TrainingParameterField,
+  event: Event,
+): void {
+  const normalizedValue = normalizeTrainingParameterNumber(
+    field,
+    getInputValue(event),
+  )
+  emit('update:trainingModelParameterValue', field.key, normalizedValue)
+}
 </script>
 
 <style scoped>
@@ -484,6 +511,10 @@ function emitModelParameterValue(key: string, event: Event): void {
 
 .training-parameter-grid--disabled {
   opacity: 0.72;
+}
+
+.field--disabled {
+  opacity: 0.58;
 }
 
 .training-augmentation-switch {
