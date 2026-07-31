@@ -1,8 +1,7 @@
 <template>
-  <label class="project-switcher">
-    <span>{{ t('common.project') }}</span>
+  <div class="project-switcher">
     <SelectField :model-value="projectStore.selectedProjectId" :options="projectOptions" @update:model-value="selectProject" />
-  </label>
+  </div>
 </template>
 
 <script setup lang="ts">

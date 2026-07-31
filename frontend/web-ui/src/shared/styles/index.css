@@ -209,14 +209,10 @@ a:hover {
 
 .workbench-shell__main {
   display: grid;
-  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   height: 100%;
   min-width: 0;
-}
-
-.workbench-shell__main--graph {
-  grid-template-rows: minmax(0, 1fr);
 }
 
 .workbench-shell__content {
@@ -401,18 +397,6 @@ a:hover {
   padding: 0;
 }
 
-.app-topbar {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.app-topbar {
-  justify-content: space-between;
-  padding: 0 18px;
-}
-
 .page-actions {
   display: flex;
   align-items: center;
@@ -443,31 +427,6 @@ a:hover {
 
 .project-switcher .ui-select {
   min-width: 180px;
-}
-
-.connection-status,
-.credential-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: var(--pill-bg);
-  color: var(--muted);
-}
-
-.connection-status--online svg {
-  fill: var(--success);
-  color: var(--success);
-}
-
-.connection-status--offline {
-  color: var(--danger);
-}
-
-.app-topbar__account-fallback {
-  display: none;
 }
 
 .user-menu {
@@ -5161,15 +5120,7 @@ textarea:focus-visible {
 
 @media (max-width: 700px) {
   .workbench-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .app-sidebar {
-    display: none;
-  }
-
-  .app-topbar__account-fallback {
-    display: block;
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 }
 .image-viewer__tuning-panel {

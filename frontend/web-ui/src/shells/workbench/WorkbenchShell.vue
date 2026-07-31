@@ -1,8 +1,7 @@
 <template>
   <main class="workbench-shell" :class="{ 'workbench-shell--sidebar-collapsed': sidebarCollapsed }">
     <AppSidebar :collapsed="sidebarCollapsed" @toggle-collapsed="toggleSidebarCollapsed" />
-    <section class="workbench-shell__main" :class="{ 'workbench-shell__main--graph': isGraphWorkbench }">
-      <AppTopbar v-if="!isGraphWorkbench" />
+    <section class="workbench-shell__main">
       <div class="workbench-shell__content" :class="{ 'workbench-shell__content--full-bleed': isGraphWorkbench }">
         <slot />
       </div>
@@ -15,7 +14,6 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppSidebar from './components/AppSidebar.vue'
-import AppTopbar from './components/AppTopbar.vue'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { readStorageValue, writeStorageValue } from '@/platform/storage/browser-storage'

@@ -1,8 +1,9 @@
 <template>
   <section class="page-stack">
     <header class="page-header">
-      <div>
-        <h1>{{ t('projects.title') }}</h1>
+      <div class="project-page-heading">
+        <h1>{{ t('common.project') }}</h1>
+        <ProjectSwitcher />
       </div>
       <div class="page-actions">
         <Button :disabled="generatingSdkConfigPackage || !projectStore.selectedProjectId" variant="secondary" @click="generateSdkConfigPackage">
@@ -168,6 +169,7 @@ import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
+import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
@@ -298,6 +300,13 @@ function resetProjectForm(): void {
 </script>
 
 <style scoped>
+.project-page-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .sdk-config-preview-panel {
   gap: 16px;
 }
