@@ -24,6 +24,7 @@ from backend.service.application.models.yolo11_core.data.detection_samples impor
 )
 from backend.service.application.models.yolo11_core.data.detection_splits import (
     resolve_yolo11_detection_splits,
+    resolve_yolo11_detection_test_split,
     resolve_yolo11_detection_train_split,
     resolve_yolo11_detection_validation_split,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "resolve_yolo11_task_augmentation_for_epoch",
     "resolve_yolo11_task_batch_input_size",
     "resolve_yolo11_detection_splits",
+    "resolve_yolo11_detection_test_split",
     "resolve_yolo11_detection_train_split",
     "resolve_yolo11_detection_validation_split",
     "serialize_yolo11_detection_augmentation_options",

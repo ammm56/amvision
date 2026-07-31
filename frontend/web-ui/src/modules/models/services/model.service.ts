@@ -116,6 +116,7 @@ export interface ModelTrainingTaskSummary {
   labels_object_key?: string | null
   metrics_object_key?: string | null
   validation_metrics_object_key?: string | null
+  test_metrics_object_key?: string | null
   summary_object_key?: string | null
   best_metric_name?: string | null
   best_metric_value?: number | null

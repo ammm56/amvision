@@ -14,6 +14,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 DetectionTrainingOutputFileName = Literal[
     "train-metrics",
     "validation-metrics",
+    "test-metrics",
     "summary",
     "labels",
     "best-checkpoint",
@@ -30,6 +31,11 @@ _DETECTION_TRAINING_OUTPUT_FILE_SPECS: dict[DetectionTrainingOutputFileName, dic
     "validation-metrics": {
         "object_key_field": "validation_metrics_object_key",
         "relative_path": "artifacts/reports/validation-metrics.json",
+        "file_kind": "json",
+    },
+    "test-metrics": {
+        "object_key_field": "test_metrics_object_key",
+        "relative_path": "artifacts/reports/test-metrics.json",
         "file_kind": "json",
     },
     "summary": {
@@ -57,6 +63,7 @@ _DETECTION_TRAINING_OUTPUT_FILE_SPECS: dict[DetectionTrainingOutputFileName, dic
 _DETECTION_TRAINING_OUTPUT_FILE_ORDER: tuple[DetectionTrainingOutputFileName, ...] = (
     "train-metrics",
     "validation-metrics",
+    "test-metrics",
     "summary",
     "labels",
     "best-checkpoint",

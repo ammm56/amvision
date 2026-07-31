@@ -42,6 +42,7 @@ class RfdetrSegmentationTrainingSavePoint:
     """描述 RF-DETR segmentation 保存点。"""
 
     latest_checkpoint_bytes: bytes
+    best_checkpoint_bytes: bytes | None
     train_metrics: dict[str, float]
     validation_metrics: dict[str, float]
     best_metric_value: float
@@ -104,6 +105,8 @@ class RfdetrSegmentationTrainingExecutionResult:
     labels: tuple[str, ...]
     aligned_input_size: tuple[int, int]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
 
 
 def run_rfdetr_segmentation_training(
@@ -141,6 +144,8 @@ def run_rfdetr_segmentation_training(
         labels=result.labels,
         aligned_input_size=result.aligned_input_size,
         warm_start_summary=result.warm_start_summary,
+        best_checkpoint_bytes=result.best_checkpoint_bytes,
+        test_metrics_payload=result.test_metrics_payload,
     )
 
 
@@ -179,6 +184,7 @@ def _emit_final_callbacks(
         request.savepoint_callback(
             RfdetrSegmentationTrainingSavePoint(
                 latest_checkpoint_bytes=result.latest_checkpoint_bytes,
+                best_checkpoint_bytes=result.best_checkpoint_bytes,
                 train_metrics=train_metrics,
                 validation_metrics=validation_metrics,
                 best_metric_value=result.best_metric_value,

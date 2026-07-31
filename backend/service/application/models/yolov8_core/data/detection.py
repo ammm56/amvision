@@ -10,6 +10,7 @@ from backend.service.application.models.yolov8_core.data.detection_samples impor
 )
 from backend.service.application.models.yolov8_core.data.detection_splits import (
     resolve_yolov8_detection_splits,
+    resolve_yolov8_detection_test_split,
     resolve_yolov8_detection_train_split,
     resolve_yolov8_detection_validation_split,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "build_yolov8_detection_training_batch",
     "load_yolov8_detection_training_samples",
     "resolve_yolov8_detection_splits",
+    "resolve_yolov8_detection_test_split",
     "resolve_yolov8_detection_train_split",
     "resolve_yolov8_detection_validation_split",
 ]

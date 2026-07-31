@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.training.classification_evaluation_report import (
+    build_classification_evaluation_report,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloClassificationDataLoaderPlan,
     build_yolo_classification_training_dataloader,
@@ -29,7 +32,10 @@ def evaluate_yolov8_classification_samples(
     precision: str,
     imports: Any,
     dataloader_plan: YoloClassificationDataLoaderPlan | None = None,
-) -> dict[str, float]:
+    include_details: bool = False,
+    split_name: str = "val",
+    checkpoint_role: str = "current",
+) -> dict[str, object]:
     """对验证样本执行 YOLOv8 classification 训练期评估。"""
 
     plan = dataloader_plan or YoloClassificationDataLoaderPlan(
@@ -56,6 +62,8 @@ def evaluate_yolov8_classification_samples(
     correct_top1 = 0
     correct_top5 = 0
     total = 0
+    targets: list[int] = []
+    predictions: list[int] = []
     with imports.torch.no_grad():
         for cpu_batch in validation_dataloader:
             if cpu_batch is None:
@@ -72,6 +80,10 @@ def evaluate_yolov8_classification_samples(
             )
             _, top1_prediction = imports.torch.max(probabilities, 1)
             correct_top1 += int((top1_prediction == batch.targets).sum().item())
+            targets.extend(int(value) for value in batch.targets.detach().cpu().tolist())
+            predictions.extend(
+                int(value) for value in top1_prediction.detach().cpu().tolist()
+            )
             _, topk_prediction = imports.torch.topk(
                 probabilities,
                 min(5, len(labels)),
@@ -85,13 +97,25 @@ def evaluate_yolov8_classification_samples(
     top1_accuracy = round(correct_top1 / max(1, total), 6) if total > 0 else 0.0
     top5_accuracy = round(correct_top5 / max(1, total), 6) if total > 0 else 0.0
     fitness = round((top1_accuracy + top5_accuracy) / 2.0, 6)
-    return {
+    metrics: dict[str, object] = {
         "top1_accuracy": top1_accuracy,
         "top5_accuracy": top5_accuracy,
         "metrics/accuracy_top1": top1_accuracy,
         "metrics/accuracy_top5": top5_accuracy,
         "fitness": fitness,
     }
+    if include_details:
+        metrics.update(
+            build_classification_evaluation_report(
+                split_name=split_name,
+                checkpoint_role=checkpoint_role,
+                labels=labels,
+                targets=targets,
+                predictions=predictions,
+                top5_correct=correct_top5,
+            )
+        )
+    return metrics
 
 
 __all__ = ["evaluate_yolov8_classification_samples"]

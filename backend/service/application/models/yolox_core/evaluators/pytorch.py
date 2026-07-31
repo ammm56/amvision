@@ -271,7 +271,14 @@ def resolve_yolox_evaluation_split(
         resolved_splits,
         train_split_name=train_split.name,
     )
-    return validation_split or train_split
+    if validation_split is None:
+        raise InvalidRequestError(
+            "评估需要独立 validation split，不能回退使用 train 或 test",
+            details={
+                "available_splits": [split.name for split in resolved_splits],
+            },
+        )
+    return validation_split
 
 
 def resolve_yolox_evaluation_device_name(*, torch_module: Any, requested_device_name: str) -> str:

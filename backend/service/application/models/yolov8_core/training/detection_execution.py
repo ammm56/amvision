@@ -26,6 +26,9 @@ from backend.service.domain.models.model_input_spec import (
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device,
 )
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_detection_training_batch,
 )
@@ -220,6 +223,9 @@ class YoloV8DetectionTrainingExecutionResult:
     validation_split_name: str | None
     validation_sample_count: int
     parameter_count: int
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -355,6 +361,8 @@ def run_yolov8_detection_training(
     category_names = yolov8_data_context.category_names
     category_ids = yolov8_data_context.category_ids
     validation_samples = yolov8_data_context.validation_samples
+    test_split = yolov8_data_context.test_split
+    test_samples = yolov8_data_context.test_samples
     input_size = _resolve_input_size(request.input_size)
     batch_size = max(1, int(request.batch_size or YOLOV8_DETECTION_DEFAULT_BATCH_SIZE))
     max_epochs = max(1, int(request.max_epochs or YOLOV8_DETECTION_DEFAULT_MAX_EPOCHS))
@@ -796,7 +804,7 @@ def run_yolov8_detection_training(
                 else False
             )
         )
-        should_write_savepoint = control_decision.save_checkpoint
+        should_write_savepoint = improved_best or control_decision.save_checkpoint
         should_pause_training = control_decision.pause_training
         should_terminate_training = control_decision.terminate_training
         if should_write_savepoint:
@@ -817,8 +825,24 @@ def run_yolov8_detection_training(
             )
             if request.savepoint_callback is not None:
                 request.savepoint_callback(savepoint)
-            if should_pause_training:
-                raise YoloV8DetectionTrainingPausedError(savepoint)
+        if should_pause_training:
+            savepoint_payload = build_yolov8_detection_training_savepoint_payload(
+                epoch=epoch,
+                latest_checkpoint_bytes=latest_checkpoint_bytes,
+                best_checkpoint_bytes=best_checkpoint_bytes,
+                best_metric_name=best_metric_name,
+                best_metric_value=best_metric_value,
+                has_validation=has_validation,
+            )
+            raise YoloV8DetectionTrainingPausedError(
+                YoloV8DetectionTrainingSavePoint(
+                    epoch=savepoint_payload.epoch,
+                    latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
+                    best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
+                    best_metric_name=savepoint_payload.best_metric_name,
+                    best_metric_value=savepoint_payload.best_metric_value,
+                )
+            )
         if should_terminate_training:
             raise YoloV8DetectionTrainingTerminatedError()
 
@@ -871,6 +895,56 @@ def run_yolov8_detection_training(
         "epoch_history": validation_history,
         "final_metrics": validation_history[-1] if validation_history else {},
     }
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=category_names,
+        reason="dataset export 未提供独立 test split",
+    )
+    if test_split is not None and test_samples:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        checkpoint_ema_state = (
+            checkpoint_payload.get("ema_state_dict")
+            if isinstance(checkpoint_payload, dict)
+            else None
+        )
+        if not isinstance(checkpoint_ema_state, dict):
+            raise InvalidRequestError(
+                "YOLOv8 detection best checkpoint 缺少 ema_state_dict"
+            )
+        ema.load_state_dict(checkpoint_ema_state, strict=False)
+        test_metrics = _evaluate_detection_model(
+            imports=imports,
+            model=ema.model,
+            samples=test_samples,
+            category_ids=category_ids,
+            annotation_file=test_split.annotation_file,
+            annotation_payload=test_split.annotation_payload,
+            input_size=input_size,
+            batch_size=batch_size,
+            device=device,
+            runtime_precision=runtime_precision,
+            num_classes=len(category_names),
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            confidence_threshold=evaluation_confidence_threshold,
+            nms_threshold=evaluation_nms_threshold,
+            dataloader_plan=dataloader_plan,
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(test_samples),
+            metrics=test_metrics,
+            category_names=category_names,
+        )
     metrics_payload = {
         "implementation_mode": request.implementation_mode,
         "device": device,
@@ -949,6 +1023,7 @@ def run_yolov8_detection_training(
         latest_checkpoint_bytes=latest_checkpoint_bytes,
         metrics_payload=metrics_payload,
         validation_metrics_payload=validation_metrics_payload,
+        test_metrics_payload=test_metrics_payload,
         warm_start_summary=warm_start_summary,
         implementation_mode=request.implementation_mode,
         best_metric_name=best_metric_name,
@@ -970,6 +1045,8 @@ def run_yolov8_detection_training(
         if validation_split is not None
         else None,
         validation_sample_count=len(validation_samples),
+        test_split_name=test_split.name if test_split is not None else None,
+        test_sample_count=len(test_samples),
         parameter_count=parameter_count,
     )
 

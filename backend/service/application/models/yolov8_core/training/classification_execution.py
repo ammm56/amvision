@@ -17,6 +17,9 @@ from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
     resolve_torch_amp_device_type,
 )
+from backend.service.application.models.training.classification_evaluation_report import (
+    build_unavailable_test_metrics_report,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -104,6 +107,7 @@ class YoloV8ClassificationTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,6 +176,7 @@ class YoloV8ClassificationTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
         Callable[
@@ -194,6 +199,8 @@ class YoloV8ClassificationTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
 
 
 def run_yolov8_classification_training(
@@ -212,7 +219,12 @@ def run_yolov8_classification_training(
     precision = request.precision
     input_size = request.input_size or YOLOV8_CLASSIFICATION_DEFAULT_INPUT_SIZE
 
-    labels, train_annotations, val_annotations = _load_classification_manifest(
+    (
+        labels,
+        train_annotations,
+        val_annotations,
+        test_annotations,
+    ) = _load_classification_manifest(
         dataset_storage=request.dataset_storage,
         manifest_payload=request.manifest_payload,
         cv2_module=imports.cv2,
@@ -323,9 +335,11 @@ def run_yolov8_classification_training(
     global_iteration = 0
     metrics_history: list[dict[str, float]] = []
     validation_history: list[dict[str, float]] = []
-    best_metric_value = 0.0
+    # accuracy 合法下界为 0；使用 -1 保证首次 validation 即使为 0 也会成为真实 best。
+    best_metric_value = -1.0
     best_metric_name = "val_top1_accuracy"
     checkpoint_bytes = b""
+    best_checkpoint_bytes = b""
     if resume_state is not None:
         _resolve_model_state(model, resume_state.model_state_dict, imports, device_name)
         optimizer.load_state_dict(resume_state.optimizer_state_dict)
@@ -444,7 +458,7 @@ def run_yolov8_classification_training(
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
         current_metric_value = current_val_metric if should_evaluate else None
-        is_best = current_val_metric > best_metric_value
+        is_best = should_evaluate and current_val_metric > best_metric_value
         if is_best:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
@@ -469,6 +483,8 @@ def run_yolov8_classification_training(
             min_lr_ratio=min_lr_ratio,
             imports=imports,
         )
+        if is_best:
+            best_checkpoint_bytes = checkpoint_bytes
         epoch_progress = YoloV8ClassificationTrainingEpochProgress(
             epoch=epoch,
             max_epochs=max_epochs,
@@ -498,7 +514,10 @@ def run_yolov8_classification_training(
         cmd = None
         if request.epoch_callback is not None:
             cmd = request.epoch_callback(epoch_progress)
-        if cmd is not None and cmd.save_checkpoint and request.savepoint_callback is not None:
+        manual_save_requested = cmd is not None and cmd.save_checkpoint
+        if request.savepoint_callback is not None and (
+            is_best or manual_save_requested
+        ):
             request.savepoint_callback(
                 YoloV8ClassificationTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
@@ -508,6 +527,7 @@ def run_yolov8_classification_training(
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=is_best,
                 )
             )
         if cmd is not None and cmd.pause_training:
@@ -515,6 +535,51 @@ def run_yolov8_classification_training(
         if cmd is not None and cmd.terminate_training:
             raise YoloV8ClassificationTrainingTerminatedError()
     final_val_metrics = validation_history[-1] if validation_history else {}
+    if (
+        not best_checkpoint_bytes
+        and request.previous_best_checkpoint_path is not None
+        and request.previous_best_checkpoint_path.is_file()
+    ):
+        best_checkpoint_bytes = request.previous_best_checkpoint_path.read_bytes()
+    if not best_checkpoint_bytes:
+        best_checkpoint_bytes = checkpoint_bytes
+    test_metrics_payload = build_unavailable_test_metrics_report(
+        reason="dataset export 未提供独立 test split"
+    )
+    if test_annotations:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        ema_state_dict = (
+            checkpoint_payload.get("ema_state_dict")
+            if isinstance(checkpoint_payload, dict)
+            else None
+        )
+        if not isinstance(ema_state_dict, dict):
+            raise ServiceConfigurationError(
+                "YOLOv8 classification best checkpoint 缺少 ema_state_dict"
+            )
+        ema.model.load_state_dict(ema_state_dict, strict=True)
+        ema.model.to(device_name)
+        test_metrics_payload = evaluate_yolov8_classification_samples(
+            model=ema.model,
+            samples=test_annotations,
+            labels=labels,
+            batch_size=batch_size,
+            input_size=input_size,
+            device=device_name,
+            precision=precision,
+            imports=imports,
+            dataloader_plan=replace_yolo_classification_dataloader_plan_seed(
+                plan=dataloader_plan,
+                seed=200_000,
+            ),
+            include_details=True,
+            split_name="test",
+            checkpoint_role="best",
+        )
     return YoloV8ClassificationTrainingExecutionResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
@@ -540,6 +605,8 @@ def run_yolov8_classification_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
     )
 
 
@@ -552,6 +619,7 @@ def _load_classification_manifest(
     tuple[str, ...],
     list[_ResolvedClassificationTrainingAnnotation],
     list[_ResolvedClassificationTrainingAnnotation],
+    list[_ResolvedClassificationTrainingAnnotation],
 ]:
     splits = manifest_payload.get("splits")
     if not isinstance(splits, list) or len(splits) < 1:
@@ -559,6 +627,7 @@ def _load_classification_manifest(
     all_labels: dict[int, str] = {}
     train_annotations: list[_ResolvedClassificationTrainingAnnotation] = []
     val_annotations: list[_ResolvedClassificationTrainingAnnotation] = []
+    test_annotations: list[_ResolvedClassificationTrainingAnnotation] = []
     for split in splits:
         if not isinstance(split, dict):
             continue
@@ -609,26 +678,57 @@ def _load_classification_manifest(
                 )
         if split_name == "train":
             train_annotations = resolved
-        elif split_name == "val":
+        elif split_name in {"val", "valid", "validation"}:
             val_annotations = resolved
+        elif split_name == "test":
+            test_annotations = resolved
+    if not train_annotations:
+        raise InvalidRequestError(
+            "YOLOv8 classification 训练 manifest 缺少有效 train 样本"
+        )
+    if not val_annotations:
+        raise InvalidRequestError(
+            "YOLOv8 classification 训练 manifest 缺少独立 validation 样本"
+        )
     sorted_labels = sorted(all_labels.items())
     labels = tuple(name for _cid, name in sorted_labels)
     category_id_to_index = {cid: idx for idx, (cid, _name) in enumerate(sorted_labels)}
-    remapped_train = [
-        _ResolvedClassificationTrainingAnnotation(
-            image_path=annotation.image_path,
-            class_id=category_id_to_index.get(annotation.class_id, 0),
+    remapped_train = _remap_classification_annotations(
+        annotations=train_annotations,
+        category_id_to_index=category_id_to_index,
+    )
+    remapped_val = _remap_classification_annotations(
+        annotations=val_annotations,
+        category_id_to_index=category_id_to_index,
+    )
+    remapped_test = _remap_classification_annotations(
+        annotations=test_annotations,
+        category_id_to_index=category_id_to_index,
+    )
+    return labels, remapped_train, remapped_val, remapped_test
+
+
+def _remap_classification_annotations(
+    *,
+    annotations: list[_ResolvedClassificationTrainingAnnotation],
+    category_id_to_index: dict[int, int],
+) -> list[_ResolvedClassificationTrainingAnnotation]:
+    """把原始 category id 严格映射为连续训练 id。"""
+
+    remapped: list[_ResolvedClassificationTrainingAnnotation] = []
+    for annotation in annotations:
+        if annotation.class_id not in category_id_to_index:
+            raise InvalidRequestError(
+                "YOLOv8 classification 标注引用了未声明的 category_id",
+                details={"category_id": annotation.class_id},
+            )
+        remapped.append(
+            _ResolvedClassificationTrainingAnnotation(
+                image_path=annotation.image_path,
+                class_id=category_id_to_index[annotation.class_id],
+            )
         )
-        for annotation in train_annotations
-    ]
-    remapped_val = [
-        _ResolvedClassificationTrainingAnnotation(
-            image_path=annotation.image_path,
-            class_id=category_id_to_index.get(annotation.class_id, 0),
-        )
-        for annotation in val_annotations
-    ]
-    return labels, remapped_train, remapped_val
+    return remapped
 
 
 def _require_training_imports() -> _ClassificationTrainingImports:

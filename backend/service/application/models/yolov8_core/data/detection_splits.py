@@ -53,9 +53,20 @@ def resolve_yolov8_detection_validation_split(
 ) -> YoloV8DetectionResolvedSplit | None:
     """选择 YOLOv8 detection validation split。"""
 
-    validation_names = {"val", "valid", "validation", "test"}
+    validation_names = {"val", "valid", "validation"}
     for split in resolved_splits:
         if split.name.lower() in validation_names:
+            return split
+    return None
+
+
+def resolve_yolov8_detection_test_split(
+    resolved_splits: tuple[YoloV8DetectionResolvedSplit, ...],
+) -> YoloV8DetectionResolvedSplit | None:
+    """选择独立的 YOLOv8 detection test split。"""
+
+    for split in resolved_splits:
+        if split.name.lower() == "test":
             return split
     return None
 
@@ -369,6 +380,7 @@ def _parse_yolo_detection_label_file(
 
 __all__ = [
     "resolve_yolov8_detection_splits",
+    "resolve_yolov8_detection_test_split",
     "resolve_yolov8_detection_train_split",
     "resolve_yolov8_detection_validation_split",
 ]

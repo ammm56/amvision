@@ -7,6 +7,7 @@ from .coco import (
     load_coco_ground_truth_silently,
     resolve_coco_splits,
     resolve_train_split,
+    resolve_test_split,
     resolve_validation_split,
 )
 from .detection import (
@@ -45,6 +46,7 @@ __all__ = [
     "read_voc_annotation_objects",
     "resolve_coco_splits",
     "resolve_train_split",
+    "resolve_test_split",
     "resolve_validation_split",
     "resolve_voc_splits",
     "resolve_yolox_detection_splits",

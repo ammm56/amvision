@@ -65,6 +65,7 @@ class Yolo26PoseTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class Yolo26PoseTrainingLoopResult:
     best_metric_value: float
     best_metric_name: str
     latest_checkpoint_bytes: bytes
+    best_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
 
@@ -128,6 +130,7 @@ def run_yolo26_pose_training_loop(
     validation_history: list[dict[str, float]],
     best_metric_value: float,
     best_metric_name: str,
+    previous_best_checkpoint_bytes: bytes = b"",
     epoch_callback: Callable[
         [Yolo26PoseTrainingEpochProgress],
         Yolo26PoseTrainingControlCommand | None,
@@ -139,6 +142,7 @@ def run_yolo26_pose_training_loop(
     """执行 YOLO26 pose 从 start epoch 到 max epoch 的完整训练循环。"""
 
     checkpoint_bytes = b""
+    best_checkpoint_bytes = previous_best_checkpoint_bytes
     resolved_dataloader_plan = dataloader_plan or resolve_yolo_task_dataloader_plan(
         extra_options={},
         device=device_name,
@@ -216,7 +220,10 @@ def run_yolo26_pose_training_loop(
         if validation_metrics:
             validation_history.append({"epoch": epoch, **validation_metrics})
         current_metric = float(validation_metrics.get("map50_95", 0.0))
-        if current_metric > best_metric_value:
+        best_metric_improved = (
+            bool(validation_metrics) and current_metric > best_metric_value
+        )
+        if best_metric_improved:
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
 
@@ -253,7 +260,12 @@ def run_yolo26_pose_training_loop(
             keypoint_confidence_threshold=keypoint_confidence_threshold,
             torch_module=imports.torch,
         )
-        if command is not None and savepoint_callback is not None:
+        if best_metric_improved:
+            best_checkpoint_bytes = checkpoint_bytes
+        manual_save_requested = command is not None and command.save_checkpoint
+        if savepoint_callback is not None and (
+            best_metric_improved or manual_save_requested
+        ):
             savepoint_callback(
                 Yolo26PoseTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
@@ -263,15 +275,19 @@ def run_yolo26_pose_training_loop(
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=best_metric_improved,
                 )
             )
         if command is not None and command.pause_training:
             raise Yolo26PoseTrainingPausedError()
 
+    if not best_checkpoint_bytes:
+        best_checkpoint_bytes = checkpoint_bytes
     return Yolo26PoseTrainingLoopResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
         latest_checkpoint_bytes=checkpoint_bytes,
+        best_checkpoint_bytes=best_checkpoint_bytes,
         metrics_history=metrics_history,
         validation_history=validation_history,
     )

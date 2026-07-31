@@ -676,6 +676,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         labels_object_key = output_keys.labels_object_key
         metrics_object_key = output_keys.metrics_object_key
         validation_metrics_object_key = output_keys.validation_metrics_object_key
+        test_metrics_object_key = output_keys.test_metrics_object_key
         summary_object_key = output_keys.summary_object_key
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
         started_at = self._now_iso()
@@ -713,6 +714,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                         "runner_mode": "yolox-detection-core",
                         "output_object_prefix": output_object_prefix,
                         "validation_metrics_object_key": validation_metrics_object_key,
+                        "test_metrics_object_key": test_metrics_object_key,
                         "requested_precision": request.precision,
                         "requested_gpu_count": request.gpu_count,
                         "requested_evaluation_interval": resolved_evaluation_interval,
@@ -725,6 +727,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                         "labels_object_key": labels_object_key,
                         "metrics_object_key": metrics_object_key,
                         "validation_metrics_object_key": validation_metrics_object_key,
+                        "test_metrics_object_key": test_metrics_object_key,
                         "summary_object_key": summary_object_key,
                     },
                 },
@@ -846,6 +849,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                             "latest_checkpoint_object_key": latest_checkpoint_object_key,
                             "metrics_object_key": metrics_object_key,
                             "validation_metrics_object_key": validation_metrics_object_key,
+                            "test_metrics_object_key": test_metrics_object_key,
                             "summary_object_key": summary_object_key,
                             "model_version_id": None,
                             "latest_checkpoint_model_version_id": None,
@@ -1129,6 +1133,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         labels_object_key = output_keys.labels_object_key
         metrics_object_key = output_keys.metrics_object_key
         validation_metrics_object_key = output_keys.validation_metrics_object_key
+        test_metrics_object_key = output_keys.test_metrics_object_key
         summary_object_key = output_keys.summary_object_key
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
 
@@ -1228,6 +1233,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                         "metadata": {
                             "output_object_prefix": output_object_prefix,
                             "validation_metrics_object_key": validation_metrics_object_key,
+                            "test_metrics_object_key": test_metrics_object_key,
                             "requested_precision": request.precision,
                             "requested_gpu_count": request.gpu_count,
                             "requested_evaluation_interval": resolved_evaluation_interval,
@@ -1274,6 +1280,30 @@ class SqlAlchemyYoloXTrainingTaskService(
                 updated_control["pause_requested_at"] = control.get("pause_requested_at")
                 updated_control["pause_requested_by"] = control.get("pause_requested_by")
                 updated_control["save_reason"] = "pause"
+            manual_checkpoint_requested = any(
+                read_yolox_training_control_flag(control, key)
+                for key in ("save_requested", "pause_requested")
+            )
+            if not manual_checkpoint_requested:
+                self.task_service.append_task_event(
+                    AppendTaskEventRequest(
+                        task_id=task_record.task_id,
+                        event_type="progress",
+                        message="yolox training best checkpoint persisted",
+                        payload={
+                            "state": "running",
+                            "attempt_no": attempt_no,
+                            "progress": {
+                                "best_checkpoint_saved_epoch": savepoint.epoch,
+                                "best_checkpoint_saved_at": saved_at,
+                            },
+                            "metadata": {
+                                YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                            },
+                        },
+                    )
+                )
+                return
             auto_registration_source = self._build_existing_result(current_task)
             if auto_registration_source is None:
                 auto_registration_source = YoloXTrainingTaskResult(
@@ -1289,6 +1319,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                     labels_object_key=labels_object_key,
                     metrics_object_key=metrics_object_key,
                     validation_metrics_object_key=validation_metrics_object_key,
+                    test_metrics_object_key=test_metrics_object_key,
                     summary_object_key=summary_object_key,
                     best_metric_name=savepoint.best_metric_name,
                     best_metric_value=savepoint.best_metric_value,
@@ -1311,6 +1342,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                             "labels_object_key": labels_object_key,
                             "metrics_object_key": metrics_object_key,
                             "validation_metrics_object_key": validation_metrics_object_key,
+                            "test_metrics_object_key": test_metrics_object_key,
                             "summary_object_key": summary_object_key,
                         },
                     },
@@ -1411,6 +1443,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                     "labels_object_key": labels_object_key,
                     "metrics_object_key": metrics_object_key,
                     "validation_metrics_object_key": validation_metrics_object_key,
+                    "test_metrics_object_key": test_metrics_object_key,
                     "summary_object_key": summary_object_key,
                 },
             }
@@ -1430,6 +1463,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                 labels_object_key=labels_object_key,
                 metrics_object_key=metrics_object_key,
                 validation_metrics_object_key=validation_metrics_object_key,
+                test_metrics_object_key=test_metrics_object_key,
                 summary_object_key=summary_object_key,
                 best_metric_name=paused_error.savepoint.best_metric_name,
                 best_metric_value=paused_error.savepoint.best_metric_value,
@@ -1450,6 +1484,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             labels_object_key=labels_object_key,
             metrics_object_key=metrics_object_key,
             validation_metrics_object_key=validation_metrics_object_key,
+            test_metrics_object_key=test_metrics_object_key,
             summary_object_key=summary_object_key,
         )
         training_config = build_detection_training_config_payload(
@@ -1525,6 +1560,13 @@ class SqlAlchemyYoloXTrainingTaskService(
             validation_summary=validation_summary,
             warm_start_summary=dict(execution_result.warm_start_summary),
         )
+        summary["test"] = {
+            "enabled": execution_result.test_split_name is not None,
+            "split_name": execution_result.test_split_name,
+            "sample_count": execution_result.test_sample_count,
+            "metrics_object_key": test_metrics_object_key,
+            "metrics": dict(execution_result.test_metrics_payload or {}),
+        }
 
         return YoloXTrainingTaskResult(
             task_id=task_record.task_id,
@@ -1539,6 +1581,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             labels_object_key=labels_object_key,
             metrics_object_key=metrics_object_key,
             validation_metrics_object_key=validation_metrics_object_key,
+            test_metrics_object_key=test_metrics_object_key,
             summary_object_key=summary_object_key,
             best_metric_name=execution_result.best_metric_name,
             best_metric_value=execution_result.best_metric_value,

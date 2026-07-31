@@ -875,11 +875,15 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
             epoch_metrics=epoch_metrics,
             metric_name=best_metric_name,
         )
-        if current_metric_value is not None and is_yolox_metric_improved(
+        best_metric_improved = (
+            current_metric_value is not None
+            and is_yolox_metric_improved(
             current_metric_value=current_metric_value,
             best_metric_value=best_metric_value,
             higher_is_better=request.validation_loader is not None,
-        ):
+            )
+        )
+        if best_metric_improved:
             best_metric_value = current_metric_value
             best_checkpoint_state = build_yolox_checkpoint_state(
                 model=checkpoint_model,
@@ -982,9 +986,10 @@ def run_yolox_training_loop(request: YoloXTrainingLoopRequest) -> YoloXTrainingL
         if control_command is not None and control_command.terminate_training:
             return YoloXTrainingLoopResult(status="terminated")
 
-        if control_command is not None and (
+        manual_save_requested = control_command is not None and (
             control_command.save_checkpoint or control_command.pause_training
-        ):
+        )
+        if best_metric_improved or manual_save_requested:
             latest_checkpoint_state = build_yolox_checkpoint_state(
                 model=checkpoint_model,
                 optimizer=request.optimizer,

@@ -30,6 +30,7 @@ def build_yolo_detection_training_output_files(
         labels_object_key=f"{output_object_prefix}/artifacts/labels/labels.txt",
         metrics_object_key=f"{output_object_prefix}/artifacts/reports/training-metrics.json",
         validation_metrics_object_key=f"{output_object_prefix}/artifacts/reports/validation-metrics.json",
+        test_metrics_object_key=f"{output_object_prefix}/artifacts/reports/test-metrics.json",
         summary_object_key=f"{output_object_prefix}/artifacts/reports/training-summary.json",
     )
 
@@ -44,6 +45,7 @@ def require_complete_yolo_detection_training_output_files(
         or output_files.labels_object_key is None
         or output_files.metrics_object_key is None
         or output_files.validation_metrics_object_key is None
+        or output_files.test_metrics_object_key is None
         or output_files.summary_object_key is None
     ):
         raise ServiceConfigurationError("当前 YOLO detection 训练输出文件布局不完整")
@@ -62,6 +64,7 @@ def write_yolo_detection_training_execution_outputs(
     assert output_files.labels_object_key is not None
     assert output_files.metrics_object_key is not None
     assert output_files.validation_metrics_object_key is not None
+    assert output_files.test_metrics_object_key is not None
 
     dataset_storage.write_bytes(
         output_files.checkpoint_object_key, execution_result.checkpoint_bytes
@@ -81,6 +84,10 @@ def write_yolo_detection_training_execution_outputs(
     dataset_storage.write_json(
         output_files.validation_metrics_object_key,
         execution_result.validation_metrics_payload,
+    )
+    dataset_storage.write_json(
+        output_files.test_metrics_object_key,
+        dict(execution_result.test_metrics_payload or {}),
     )
 
 

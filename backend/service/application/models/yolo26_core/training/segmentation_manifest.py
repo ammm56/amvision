@@ -35,6 +35,7 @@ class Yolo26SegmentationTrainingManifest:
     labels: tuple[str, ...]
     train_annotations: list[Yolo26SegmentationTrainingAnnotation]
     val_annotations: list[Yolo26SegmentationTrainingAnnotation]
+    test_annotations: list[Yolo26SegmentationTrainingAnnotation]
 
 
 def load_yolo26_segmentation_training_manifest(
@@ -63,10 +64,11 @@ def load_yolo26_segmentation_training_manifest(
     all_categories: dict[int, str] = {}
     train_annotations: list[Yolo26SegmentationTrainingAnnotation] = []
     val_annotations: list[Yolo26SegmentationTrainingAnnotation] = []
+    test_annotations: list[Yolo26SegmentationTrainingAnnotation] = []
     for split_payload in splits:
         if not isinstance(split_payload, dict):
             continue
-        split_name = str(split_payload.get("name", ""))
+        split_name = str(split_payload.get("name", "")).strip().lower()
         image_root = str(split_payload.get("image_root", ""))
         payload = _load_yolo26_segmentation_split_payload(
             dataset_storage=dataset_storage,
@@ -84,12 +86,22 @@ def load_yolo26_segmentation_training_manifest(
         )
         if split_name == "train":
             train_annotations = split_annotations
-        elif split_name == "val":
+        elif split_name in {"val", "valid", "validation"}:
             val_annotations = split_annotations
+        elif split_name == "test":
+            test_annotations = split_annotations
 
     labels, category_id_to_index = _build_yolo26_segmentation_label_mapping(
         all_categories
     )
+    if not labels:
+        raise InvalidRequestError("YOLO26 segmentation 训练集没有合法类别")
+    if not train_annotations:
+        raise InvalidRequestError("YOLO26 segmentation 训练集没有合法样本")
+    if not val_annotations:
+        raise InvalidRequestError(
+            "YOLO26 segmentation 训练需要独立 validation split，禁止使用 train 或 test 回退"
+        )
     return Yolo26SegmentationTrainingManifest(
         labels=labels,
         train_annotations=_remap_yolo26_segmentation_annotation_classes(
@@ -98,6 +110,10 @@ def load_yolo26_segmentation_training_manifest(
         ),
         val_annotations=_remap_yolo26_segmentation_annotation_classes(
             val_annotations,
+            category_id_to_index,
+        ),
+        test_annotations=_remap_yolo26_segmentation_annotation_classes(
+            test_annotations,
             category_id_to_index,
         ),
     )
@@ -178,7 +194,7 @@ def _build_yolo26_segmentation_split_annotations(
                 image_payload.get("file_name", "")
             )
 
-    annotations: list[Yolo26SegmentationTrainingAnnotation] = []
+    annotations_by_image: dict[int, Yolo26SegmentationTrainingAnnotation] = {}
     for annotation_payload in payload.get("annotations") or []:
         if not isinstance(annotation_payload, dict):
             continue
@@ -189,20 +205,26 @@ def _build_yolo26_segmentation_split_annotations(
         bbox = annotation_payload.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
-        annotations.append(
-            Yolo26SegmentationTrainingAnnotation(
+        current = annotations_by_image.get(image_id)
+        if current is None:
+            current = Yolo26SegmentationTrainingAnnotation(
                 image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
-                boxes_xywh=[bbox],
-                class_ids=[int(annotation_payload.get("category_id", 0))],
-                segmentations=_extract_yolo26_segmentation_polygons(annotation_payload),
+                boxes_xywh=[],
+                class_ids=[],
+                segmentations=[],
             )
-        )
-    return annotations
+            annotations_by_image[image_id] = current
+        current.boxes_xywh.append([float(value) for value in bbox])
+        current.class_ids.append(int(annotation_payload.get("category_id", -1)))
+        polygons = _extract_yolo26_segmentation_polygons(annotation_payload)
+        assert current.segmentations is not None
+        current.segmentations.append(polygons if polygons else None)
+    return list(annotations_by_image.values())
 
 
 def _extract_yolo26_segmentation_polygons(
     annotation_payload: dict[str, object],
-) -> list[list[list[float]] | None] | None:
+) -> list[list[float]] | None:
     """从 COCO annotation 提取 segmentation 多边形。"""
 
     segmentation = annotation_payload.get("segmentation")
@@ -232,18 +254,32 @@ def _remap_yolo26_segmentation_annotation_classes(
 ) -> list[Yolo26SegmentationTrainingAnnotation]:
     """把原始 category_id 重映射为连续 class index。"""
 
-    return [
-        Yolo26SegmentationTrainingAnnotation(
-            image_path=annotation.image_path,
-            boxes_xywh=annotation.boxes_xywh,
-            class_ids=[
-                category_id_to_index.get(class_id, 0)
+    remapped: list[Yolo26SegmentationTrainingAnnotation] = []
+    for annotation in annotations:
+        unknown_ids = sorted(
+            {
+                class_id
                 for class_id in annotation.class_ids
-            ],
-            segmentations=annotation.segmentations,
+                if class_id not in category_id_to_index
+            }
         )
-        for annotation in annotations
-    ]
+        if unknown_ids:
+            raise InvalidRequestError(
+                "YOLO26 segmentation 标注引用了未声明类别",
+                details={"category_ids": unknown_ids, "image_path": annotation.image_path},
+            )
+        remapped.append(
+            Yolo26SegmentationTrainingAnnotation(
+                image_path=annotation.image_path,
+                boxes_xywh=annotation.boxes_xywh,
+                class_ids=[
+                    category_id_to_index[class_id]
+                    for class_id in annotation.class_ids
+                ],
+                segmentations=annotation.segmentations,
+            )
+        )
+    return remapped
 
 
 __all__ = [

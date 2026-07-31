@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,66 @@ from backend.service.domain.models.model_task_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RfdetrCheckpointArtifacts:
+    """描述 RF-DETR 可发布 best 与可恢复 latest checkpoint。"""
+
+    best_checkpoint_bytes: bytes
+    latest_checkpoint_bytes: bytes
+
+
+def read_or_build_checkpoint_artifacts(
+    *,
+    output_dir: Path,
+    module: Any,
+    model_config: Any,
+    train_config: TrainConfig,
+    trainer: Any,
+) -> RfdetrCheckpointArtifacts:
+    """分别读取 best 权重和 latest Lightning 恢复状态。"""
+
+    best_checkpoint_path = next(
+        (
+            output_dir / file_name
+            for file_name in (
+                "checkpoint_best_total.pth",
+                "checkpoint_best_regular.pth",
+                "checkpoint_0.pth",
+                "checkpoint_1.pth",
+            )
+            if (output_dir / file_name).is_file()
+        ),
+        None,
+    )
+    if best_checkpoint_path is None:
+        best_checkpoint_path = output_dir / "checkpoint_best_total.pth"
+        model = getattr(module.model, "_orig_mod", module.model)
+        torch.save(
+            {
+                "model": model.state_dict(),
+                "args": train_config.model_dump(),
+                "model_config": model_config.model_dump(),
+                "epoch": int(getattr(trainer, "current_epoch", 0)),
+            },
+            best_checkpoint_path,
+        )
+
+    latest_checkpoint_path = output_dir / "last.ckpt"
+    if not latest_checkpoint_path.is_file():
+        save_checkpoint = getattr(trainer, "save_checkpoint", None)
+        if callable(save_checkpoint):
+            save_checkpoint(str(latest_checkpoint_path))
+    if not latest_checkpoint_path.is_file():
+        # 极简测试 trainer 可能不提供 Lightning save_checkpoint；此时明确回退，
+        # 但真实训练器必须生成 last.ckpt。
+        latest_checkpoint_path = best_checkpoint_path
+
+    return RfdetrCheckpointArtifacts(
+        best_checkpoint_bytes=best_checkpoint_path.read_bytes(),
+        latest_checkpoint_bytes=latest_checkpoint_path.read_bytes(),
+    )
 
 
 def prepare_pretrain_checkpoint(
@@ -105,27 +166,13 @@ def read_or_build_checkpoint_bytes(
 ) -> bytes:
     """读取训练输出 checkpoint；缺少文件时按当前 module 状态补一个标准 checkpoint。"""
 
-    for file_name in (
-        "checkpoint_best_total.pth",
-        "checkpoint_best_regular.pth",
-        "checkpoint_0.pth",
-        "checkpoint_1.pth",
-        "last.ckpt",
-    ):
-        candidate = output_dir / file_name
-        if candidate.is_file():
-            return candidate.read_bytes()
-
-    model = getattr(module.model, "_orig_mod", module.model)
-    payload = {
-        "model": model.state_dict(),
-        "args": train_config.model_dump(),
-        "model_config": model_config.model_dump(),
-        "epoch": int(getattr(trainer, "current_epoch", 0)),
-    }
-    checkpoint_path = output_dir / "checkpoint_best_total.pth"
-    torch.save(payload, checkpoint_path)
-    return checkpoint_path.read_bytes()
+    return read_or_build_checkpoint_artifacts(
+        output_dir=output_dir,
+        module=module,
+        model_config=model_config,
+        train_config=train_config,
+        trainer=trainer,
+    ).best_checkpoint_bytes
 
 
 def build_metrics_payload(

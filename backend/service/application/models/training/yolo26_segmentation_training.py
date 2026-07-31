@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -111,6 +115,7 @@ class Yolo26SegmentationTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,7 @@ class Yolo26SegmentationTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
         Callable[
@@ -162,6 +168,10 @@ class Yolo26SegmentationTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 class Yolo26SegmentationTrainingPausedError(Exception):
@@ -197,6 +207,7 @@ def run_yolo26_segmentation_training(
     labels = manifest.labels
     train_annotations = manifest.train_annotations
     val_annotations = manifest.val_annotations
+    test_annotations = manifest.test_annotations
 
     model = build_yolo26_model(
         task_type=SEGMENTATION_TASK_TYPE,
@@ -331,9 +342,15 @@ def run_yolo26_segmentation_training(
     global_iteration = 0
     metrics_history: list[dict[str, float]] = []
     validation_history: list[dict[str, float]] = []
-    best_metric_value = 0.0
+    best_metric_value = -1.0
     best_metric_name = "val_map50_95"
     latest_checkpoint_bytes = b""
+    best_checkpoint_bytes = (
+        request.previous_best_checkpoint_path.read_bytes()
+        if request.previous_best_checkpoint_path is not None
+        and request.previous_best_checkpoint_path.is_file()
+        else b""
+    )
     if resume is not None:
         restore_yolo26_segmentation_training_state(
             model=model,
@@ -436,7 +453,8 @@ def run_yolo26_segmentation_training(
         if val_metrics:
             validation_history.append({"epoch": epoch, **val_metrics})
         current_metric = float(val_metrics.get("map50_95", 0.0))
-        if current_metric > best_metric_value:
+        best_metric_improved = bool(val_metrics) and current_metric > best_metric_value
+        if best_metric_improved:
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
 
@@ -472,7 +490,12 @@ def run_yolo26_segmentation_training(
             evaluation_nms_threshold=eval_nms,
             torch_module=imports.torch,
         )
-        if command is not None and request.savepoint_callback is not None:
+        if best_metric_improved:
+            best_checkpoint_bytes = latest_checkpoint_bytes
+        manual_save_requested = command is not None and command.save_checkpoint
+        if request.savepoint_callback is not None and (
+            best_metric_improved or manual_save_requested
+        ):
             request.savepoint_callback(
                 Yolo26SegmentationTrainingSavePoint(
                     latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -482,11 +505,52 @@ def run_yolo26_segmentation_training(
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=best_metric_improved,
                 )
             )
         if command is not None and command.pause_training:
             raise Yolo26SegmentationTrainingPausedError()
 
+    if not best_checkpoint_bytes:
+        best_checkpoint_bytes = latest_checkpoint_bytes
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=labels,
+        reason="dataset export does not contain an independent test split",
+        task_type="segmentation",
+    )
+    if test_annotations:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        best_state_dict = checkpoint_payload.get("ema_state_dict")
+        if not isinstance(best_state_dict, dict):
+            best_state_dict = checkpoint_payload.get("model_state_dict")
+        if not isinstance(best_state_dict, dict):
+            raise InvalidRequestError("YOLO26 segmentation best checkpoint 缺少模型权重")
+        ema.model.load_state_dict(best_state_dict, strict=False)
+        ema.model.to(device)
+        test_metrics = evaluate_yolo26_segmentation_samples(
+            model=ema.model,
+            samples=test_annotations,
+            labels=labels,
+            input_size=input_size,
+            device=device,
+            precision=precision,
+            evaluation_confidence_threshold=eval_conf,
+            evaluation_nms_threshold=eval_nms,
+            imports=imports,
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(test_annotations),
+            metrics=test_metrics,
+            category_names=labels,
+            task_type="segmentation",
+        )
     final_validation = validation_history[-1] if validation_history else {}
     return Yolo26SegmentationTrainingExecutionResult(
         best_metric_value=best_metric_value,
@@ -506,6 +570,10 @@ def run_yolo26_segmentation_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
+        test_split_name="test" if test_annotations else None,
+        test_sample_count=len(test_annotations),
     )
 
 

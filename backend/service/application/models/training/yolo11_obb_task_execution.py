@@ -33,6 +33,7 @@ class Yolo11ObbTaskExecutionRequest(Protocol):
     warm_start_checkpoint_path: Path | None
     warm_start_source_summary: dict[str, object] | None
     resume_checkpoint_path: Path | None
+    previous_best_checkpoint_path: Path | None
     extra_options: dict[str, object] | None
     epoch_callback: Any
     savepoint_callback: Any
@@ -65,6 +66,9 @@ def run_yolo11_obb_training_from_task_request(
             warm_start_checkpoint_path=request.warm_start_checkpoint_path,
             warm_start_source_summary=request.warm_start_source_summary,
             resume_checkpoint_path=request.resume_checkpoint_path,
+            previous_best_checkpoint_path=getattr(
+                request, "previous_best_checkpoint_path", None
+            ),
             extra_options=request.extra_options,
             epoch_callback=_build_yolo11_epoch_callback(request),
             savepoint_callback=_build_yolo11_savepoint_callback(request),

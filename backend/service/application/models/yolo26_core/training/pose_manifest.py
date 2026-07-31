@@ -39,6 +39,7 @@ class Yolo26PoseTrainingManifest:
     labels: tuple[str, ...]
     train_annotations: list[Yolo26PoseTrainingAnnotation]
     val_annotations: list[Yolo26PoseTrainingAnnotation]
+    test_annotations: list[Yolo26PoseTrainingAnnotation]
     keypoint_shape: tuple[int, int]
 
 
@@ -49,7 +50,7 @@ def load_yolo26_pose_training_manifest(
 ) -> Yolo26PoseTrainingManifest:
     """加载 COCO keypoints 或 YOLO pose DatasetExport manifest。"""
 
-    labels, train_annotations, val_annotations = _load_pose_annotations(
+    labels, train_annotations, val_annotations, test_annotations = _load_pose_annotations(
         dataset_storage=dataset_storage,
         manifest=manifest_payload,
     )
@@ -57,6 +58,7 @@ def load_yolo26_pose_training_manifest(
         manifest=manifest_payload,
         train_annotations=train_annotations,
         val_annotations=val_annotations,
+        test_annotations=test_annotations,
     )
     return Yolo26PoseTrainingManifest(
         labels=labels,
@@ -71,13 +73,18 @@ def resolve_yolo26_pose_keypoint_shape(
     manifest: dict[str, object],
     train_annotations: list[Yolo26PoseTrainingAnnotation],
     val_annotations: list[Yolo26PoseTrainingAnnotation],
+    test_annotations: list[Yolo26PoseTrainingAnnotation] | None = None,
 ) -> tuple[int, int]:
     """从 manifest 或标注内容推断 YOLO26 pose keypoint shape。"""
 
     manifest_shape = read_yolo26_pose_keypoint_shape(manifest)
     if manifest_shape is not None:
         return manifest_shape
-    for annotation in (*train_annotations, *val_annotations):
+    for annotation in (
+        *train_annotations,
+        *val_annotations,
+        *(test_annotations or []),
+    ):
         for keypoints in annotation.keypoints or []:
             if len(keypoints) > 0 and len(keypoints) % 3 == 0:
                 return (len(keypoints) // 3, 3)
@@ -113,6 +120,7 @@ def _load_pose_annotations(
     tuple[str, ...],
     list[Yolo26PoseTrainingAnnotation],
     list[Yolo26PoseTrainingAnnotation],
+    list[Yolo26PoseTrainingAnnotation],
 ]:
     """加载并规整 YOLO26 pose 训练和验证标注。"""
 
@@ -129,10 +137,11 @@ def _load_pose_annotations(
     all_categories: dict[int, str] = {}
     train_annotations: list[Yolo26PoseTrainingAnnotation] = []
     val_annotations: list[Yolo26PoseTrainingAnnotation] = []
+    test_annotations: list[Yolo26PoseTrainingAnnotation] = []
     for split in splits or []:
         if not isinstance(split, dict):
             continue
-        split_name = str(split.get("name", ""))
+        split_name = str(split.get("name", "")).strip().lower()
         image_root = str(split.get("image_root", ""))
         payload = _load_pose_split_payload(
             dataset_storage=dataset_storage,
@@ -155,16 +164,27 @@ def _load_pose_annotations(
             train_annotations = records
         elif split_name in {"val", "valid", "validation"}:
             val_annotations = records
+        elif split_name == "test":
+            test_annotations = records
 
     sorted_categories = sorted(all_categories.items())
     category_id_map = {
         category_id: index for index, (category_id, _) in enumerate(sorted_categories)
     }
     labels = tuple(name for _, name in sorted_categories)
+    if not labels:
+        raise InvalidRequestError("YOLO26 pose 训练集没有合法类别")
+    if not train_annotations:
+        raise InvalidRequestError("YOLO26 pose 训练集没有合法样本")
+    if not val_annotations:
+        raise InvalidRequestError(
+            "YOLO26 pose 训练需要独立 validation split，禁止使用 train 或 test 回退"
+        )
     return (
         labels,
         _remap_pose_categories(train_annotations, category_id_map),
         _remap_pose_categories(val_annotations, category_id_map),
+        _remap_pose_categories(test_annotations, category_id_map),
     )
 
 
@@ -249,7 +269,7 @@ def _build_pose_split_records(
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
             boxes.append([float(value) for value in bbox])
-            class_ids.append(int(annotation.get("category_id", 0)))
+            class_ids.append(int(annotation.get("category_id", -1)))
             raw_keypoints = annotation.get("keypoints")
             keypoints.append(
                 [float(value) for value in raw_keypoints]
@@ -276,18 +296,32 @@ def _remap_pose_categories(
 ) -> list[Yolo26PoseTrainingAnnotation]:
     """把原始 category id 映射为连续训练类别索引。"""
 
-    return [
-        Yolo26PoseTrainingAnnotation(
-            image_path=annotation.image_path,
-            boxes_xywh=annotation.boxes_xywh,
-            class_ids=[
-                category_id_map.get(category_id, 0)
+    remapped: list[Yolo26PoseTrainingAnnotation] = []
+    for annotation in annotations:
+        unknown_ids = sorted(
+            {
+                category_id
                 for category_id in annotation.class_ids
-            ],
-            keypoints=annotation.keypoints,
+                if category_id not in category_id_map
+            }
         )
-        for annotation in annotations
-    ]
+        if unknown_ids:
+            raise InvalidRequestError(
+                "YOLO26 pose 标注引用了未声明类别",
+                details={"category_ids": unknown_ids, "image_path": annotation.image_path},
+            )
+        remapped.append(
+            Yolo26PoseTrainingAnnotation(
+                image_path=annotation.image_path,
+                boxes_xywh=annotation.boxes_xywh,
+                class_ids=[
+                    category_id_map[category_id]
+                    for category_id in annotation.class_ids
+                ],
+                keypoints=annotation.keypoints,
+            )
+        )
+    return remapped
 
 
 __all__ = [

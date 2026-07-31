@@ -23,6 +23,7 @@ class RfdetrPreparedDataset:
 
     dataset_dir: Path
     labels: tuple[str, ...]
+    has_test_split: bool = False
 
 
 _SPLIT_NAME_MAP: dict[str, str] = {
@@ -77,8 +78,9 @@ def prepare_roboflow_coco_dataset(
     if "train" not in prepared_splits:
         raise InvalidRequestError("RF-DETR 训练数据缺少 train split")
     if "valid" not in prepared_splits:
-        prepared_splits["valid"] = json.loads(json.dumps(prepared_splits["train"]))
-        _copy_split_directory(dataset_dir / "train", dataset_dir / "valid")
+        raise InvalidRequestError(
+            "RF-DETR 训练数据缺少独立 validation split，禁止复用 train 或 test"
+        )
 
     for split_name, prepared_payload in prepared_splits.items():
         split_dir = dataset_dir / split_name
@@ -95,7 +97,11 @@ def prepare_roboflow_coco_dataset(
     )
     if not labels:
         raise InvalidRequestError("RF-DETR 训练数据缺少类别")
-    return RfdetrPreparedDataset(dataset_dir=dataset_dir, labels=labels)
+    return RfdetrPreparedDataset(
+        dataset_dir=dataset_dir,
+        labels=labels,
+        has_test_split="test" in prepared_splits,
+    )
 
 
 def _read_manifest_splits(manifest_payload: dict[str, object]) -> list[dict[str, object]]:
@@ -214,11 +220,3 @@ def _build_rfdetr_roboflow_file_name(*, split_name: str, file_name: str) -> str:
     if parts and parts[0] == split_name:
         return str(PurePosixPath(*parts))
     return str(PurePosixPath(split_name) / normalized_file_name.name)
-
-
-def _copy_split_directory(source_dir: Path, target_dir: Path) -> None:
-    """复制已有 split 目录，用于缺少 valid split 时复用 train split。"""
-
-    if target_dir.exists():
-        shutil.rmtree(target_dir)
-    shutil.copytree(source_dir, target_dir)

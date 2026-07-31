@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,9 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import YoloModelEMA
+from backend.service.application.models.training.classification_evaluation_report import (
+    build_unavailable_test_metrics_report,
+)
 from backend.service.application.models.yolo_core_common.data import (
     build_yolo_classification_augmentation_options,
 )
@@ -53,6 +57,9 @@ from backend.service.application.models.yolo11_core.training.classification_impo
 from backend.service.application.models.yolo11_core.weights import (
     load_yolo11_checkpoint_file,
 )
+from backend.service.application.models.yolo11_core.evaluation import (
+    evaluate_yolo11_classification_samples,
+)
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -78,6 +85,7 @@ class Yolo11ClassificationTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
         Callable[
@@ -102,6 +110,8 @@ class Yolo11ClassificationTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
 
 
 class Yolo11ClassificationTrainingPausedError(Exception):
@@ -138,6 +148,7 @@ def run_yolo11_classification_training(
     labels = resolved_manifest.labels
     train_annotations = resolved_manifest.train_annotations
     val_annotations = resolved_manifest.val_annotations
+    test_annotations = resolved_manifest.test_annotations
 
     model = build_yolo11_model(
         task_type=CLASSIFICATION_TASK_TYPE,
@@ -231,7 +242,7 @@ def run_yolo11_classification_training(
     global_iteration = 0
     metrics_history: list[dict[str, float]] = []
     validation_history: list[dict[str, float]] = []
-    best_metric_value = 0.0
+    best_metric_value = -1.0
     best_metric_name = "val_top1_accuracy"
     if resume_state is not None:
         load_yolo11_classification_model_state(
@@ -303,6 +314,52 @@ def run_yolo11_classification_training(
     final_val_metrics = (
         loop_result.validation_history[-1] if loop_result.validation_history else {}
     )
+    best_checkpoint_bytes = loop_result.best_checkpoint_bytes
+    if (
+        best_checkpoint_bytes is None
+        and request.previous_best_checkpoint_path is not None
+        and request.previous_best_checkpoint_path.is_file()
+    ):
+        best_checkpoint_bytes = request.previous_best_checkpoint_path.read_bytes()
+    if best_checkpoint_bytes is None:
+        best_checkpoint_bytes = loop_result.latest_checkpoint_bytes
+    test_metrics_payload = build_unavailable_test_metrics_report(
+        reason="dataset export 未提供独立 test split"
+    )
+    if test_annotations:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        ema_state_dict = (
+            checkpoint_payload.get("ema_state_dict")
+            if isinstance(checkpoint_payload, dict)
+            else None
+        )
+        if not isinstance(ema_state_dict, dict):
+            raise InvalidRequestError(
+                "YOLO11 classification best checkpoint 缺少 ema_state_dict"
+            )
+        load_yolo11_classification_model_state(
+            model=ema.model,
+            state_dict=ema_state_dict,
+            device_name=device_name,
+        )
+        test_metrics_payload = evaluate_yolo11_classification_samples(
+            model=ema.model,
+            samples=test_annotations,
+            labels=labels,
+            batch_size=batch_size,
+            input_size=input_size,
+            device=device_name,
+            precision=precision,
+            imports=imports,
+            dataloader_plan=dataloader_plan,
+            include_details=True,
+            split_name="test",
+            checkpoint_role="best",
+        )
     return Yolo11ClassificationTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,
         best_metric_name=loop_result.best_metric_name,
@@ -329,6 +386,8 @@ def run_yolo11_classification_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
     )
 
 

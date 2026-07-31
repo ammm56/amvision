@@ -299,18 +299,25 @@ def resolve_validation_split(
     *,
     train_split_name: str,
 ) -> ResolvedCocoSplit | None:
-    """优先选择 val / valid / validation / test 作为验证 split。"""
+    """只选择 val / valid / validation 作为验证 split。"""
 
-    preferred_validation_names = ("val", "valid", "validation", "test")
+    preferred_validation_names = ("val", "valid", "validation")
     for preferred_name in preferred_validation_names:
         for split in resolved_splits:
             if split.name == preferred_name and split.name != train_split_name:
                 return split
 
-    for split in resolved_splits:
-        if split.name != train_split_name:
-            return split
+    return None
 
+
+def resolve_test_split(
+    resolved_splits: tuple[ResolvedCocoSplit, ...],
+) -> ResolvedCocoSplit | None:
+    """选择独立 test split。"""
+
+    for split in resolved_splits:
+        if split.name == "test":
+            return split
     return None
 
 

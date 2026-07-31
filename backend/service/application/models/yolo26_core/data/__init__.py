@@ -32,6 +32,7 @@ from backend.service.application.models.yolo26_core.data.detection_samples impor
 )
 from backend.service.application.models.yolo26_core.data.detection_splits import (
     resolve_yolo26_detection_splits,
+    resolve_yolo26_detection_test_split,
     resolve_yolo26_detection_train_split,
     resolve_yolo26_detection_validation_split,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "load_yolo26_classification_training_manifest",
     "load_yolo26_detection_training_samples",
     "resolve_yolo26_detection_splits",
+    "resolve_yolo26_detection_test_split",
     "resolve_yolo26_detection_train_split",
     "resolve_yolo26_detection_validation_split",
     "resolve_yolo26_task_augmentation_for_epoch",

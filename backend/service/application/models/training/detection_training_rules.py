@@ -18,6 +18,7 @@ class DetectionTrainingOutputFiles:
     labels_object_key: str | None = None
     metrics_object_key: str | None = None
     validation_metrics_object_key: str | None = None
+    test_metrics_object_key: str | None = None
     summary_object_key: str | None = None
 
 
@@ -33,6 +34,7 @@ def build_detection_training_output_files_payload(
         "labels_object_key": output_files.labels_object_key,
         "metrics_object_key": output_files.metrics_object_key,
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
+        "test_metrics_object_key": output_files.test_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
     }
 
@@ -199,6 +201,7 @@ def build_detection_training_summary_base(
         "labels_object_key": output_files.labels_object_key,
         "metrics_object_key": output_files.metrics_object_key,
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
+        "test_metrics_object_key": output_files.test_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
         "training_config": dict(training_config),
         "validation": dict(validation_summary),

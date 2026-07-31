@@ -252,6 +252,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
         validation_metrics_object_key = (
             f"{output_prefix}/output-files/validation-metrics.json"
         )
+        test_metrics_object_key = f"{output_prefix}/output-files/test-metrics.json"
         labels_object_key = f"{output_prefix}/output-files/labels.txt"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
@@ -322,10 +323,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
                 latest_checkpoint_object_key,
                 savepoint.latest_checkpoint_bytes,
             )
-            validation_accuracy = float(
-                savepoint.validation_metrics.get("top1_accuracy", 0.0)
-            )
-            if validation_accuracy >= savepoint.best_metric_value:
+            if savepoint.is_best:
                 self.dataset_storage.write_bytes(
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
@@ -381,6 +379,11 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
                 else None
             ),
             resume_checkpoint_path=resume_checkpoint_path,
+            previous_best_checkpoint_path=(
+                temporary_best_checkpoint_path
+                if temporary_best_checkpoint_path.is_file()
+                else None
+            ),
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
             savepoint_callback=on_savepoint,
@@ -461,14 +464,18 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             latest_checkpoint_object_key,
             execution_result.latest_checkpoint_bytes,
         )
-        best_checkpoint_bytes = execution_result.latest_checkpoint_bytes
-        if temporary_best_checkpoint_path.is_file():
-            best_checkpoint_bytes = temporary_best_checkpoint_path.read_bytes()
-        else:
-            self.dataset_storage.write_bytes(
-                str(temporary_best_checkpoint_path),
-                best_checkpoint_bytes,
+        best_checkpoint_bytes = (
+            execution_result.best_checkpoint_bytes
+            or (
+                temporary_best_checkpoint_path.read_bytes()
+                if temporary_best_checkpoint_path.is_file()
+                else execution_result.latest_checkpoint_bytes
             )
+        )
+        self.dataset_storage.write_bytes(
+            str(temporary_best_checkpoint_path),
+            best_checkpoint_bytes,
+        )
         self.dataset_storage.write_bytes(checkpoint_object_key, best_checkpoint_bytes)
         self.dataset_storage.write_json(
             train_metrics_object_key,
@@ -477,6 +484,10 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
         self.dataset_storage.write_json(
             validation_metrics_object_key,
             execution_result.validation_metrics_payload,
+        )
+        self.dataset_storage.write_json(
+            test_metrics_object_key,
+            dict(execution_result.test_metrics_payload or {}),
         )
         self._write_labels_text(
             labels_object_key=labels_object_key,
@@ -494,6 +505,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             labels_object_key=labels_object_key,
             train_metrics_object_key=train_metrics_object_key,
             validation_metrics_object_key=validation_metrics_object_key,
+            test_metrics_object_key=test_metrics_object_key,
             summary_object_key=summary_object_key,
         )
         model_version_id = self._register_training_output_model_version(
@@ -523,6 +535,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             "labels_object_key": labels_object_key,
             "metrics_object_key": train_metrics_object_key,
             "validation_metrics_object_key": validation_metrics_object_key,
+            "test_metrics_object_key": test_metrics_object_key,
             "summary_object_key": summary_object_key,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,
@@ -677,6 +690,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
         labels_object_key: str,
         train_metrics_object_key: str,
         validation_metrics_object_key: str,
+        test_metrics_object_key: str,
         summary_object_key: str,
     ) -> dict[str, object]:
         """构建 YOLO26 classification 训练摘要。"""
@@ -708,6 +722,7 @@ class SqlAlchemyYolo26ClassificationTrainingTaskService:
             labels_object_key=labels_object_key,
             metrics_object_key=train_metrics_object_key,
             validation_metrics_object_key=validation_metrics_object_key,
+            test_metrics_object_key=test_metrics_object_key,
             summary_object_key=summary_object_key,
         )
         return {

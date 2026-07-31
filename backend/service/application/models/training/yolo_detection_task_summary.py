@@ -102,6 +102,7 @@ def build_yolo_detection_training_summary(
     )
     summary["metrics_payload"] = execution_result.metrics_payload
     summary["validation_metrics_payload"] = execution_result.validation_metrics_payload
+    summary["test_metrics_payload"] = execution_result.test_metrics_payload
     return summary
 
 

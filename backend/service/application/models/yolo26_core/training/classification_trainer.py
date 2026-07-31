@@ -73,6 +73,7 @@ class Yolo26ClassificationTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ class Yolo26ClassificationTrainingLoopResult:
     latest_checkpoint_bytes: bytes
     metrics_history: list[dict[str, float]]
     validation_history: list[dict[str, float]]
+    best_checkpoint_bytes: bytes | None = None
 
 
 class Yolo26ClassificationTrainingPausedError(Exception):
@@ -136,6 +138,7 @@ def run_yolo26_classification_training_loop(
     """执行 YOLO26 classification 从 start epoch 到 max epoch 的完整训练循环。"""
 
     checkpoint_bytes = b""
+    best_checkpoint_bytes = b""
     resolved_dataloader_plan = (
         dataloader_plan
         or resolve_yolo_classification_dataloader_plan(
@@ -240,7 +243,8 @@ def run_yolo26_classification_training_loop(
 
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
         current_metric_value = current_val_metric if should_evaluate else None
-        if current_val_metric > best_metric_value:
+        best_metric_improved = should_evaluate and current_val_metric > best_metric_value
+        if best_metric_improved:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"
 
@@ -266,6 +270,8 @@ def run_yolo26_classification_training_loop(
             min_lr_ratio=min_lr_ratio,
             torch_module=imports.torch,
         )
+        if best_metric_improved:
+            best_checkpoint_bytes = checkpoint_bytes
         epoch_progress = Yolo26ClassificationTrainingEpochProgress(
             epoch=epoch,
             max_epochs=max_epochs,
@@ -293,7 +299,10 @@ def run_yolo26_classification_training_loop(
             best_metric_value=best_metric_value,
         )
         cmd = epoch_callback(epoch_progress) if epoch_callback is not None else None
-        if cmd is not None and cmd.save_checkpoint and savepoint_callback is not None:
+        manual_save_requested = cmd is not None and cmd.save_checkpoint
+        if savepoint_callback is not None and (
+            best_metric_improved or manual_save_requested
+        ):
             savepoint_callback(
                 Yolo26ClassificationTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
@@ -303,6 +312,7 @@ def run_yolo26_classification_training_loop(
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=best_metric_improved,
                 )
             )
         if cmd is not None and cmd.pause_training:
@@ -316,6 +326,7 @@ def run_yolo26_classification_training_loop(
         latest_checkpoint_bytes=checkpoint_bytes,
         metrics_history=metrics_history,
         validation_history=validation_history,
+        best_checkpoint_bytes=best_checkpoint_bytes or None,
     )
 
 

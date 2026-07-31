@@ -102,6 +102,7 @@ def load_yolov8_classification_image(
         input_size=input_size,
         training=training,
         cv2_module=cv2_module,
+        augmentation_options=augmentation_options,
     )
     resized = apply_yolo_classification_augmentation(
         image=resized,

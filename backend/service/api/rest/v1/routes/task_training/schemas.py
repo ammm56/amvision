@@ -140,6 +140,9 @@ class TrainingTaskSummaryResponse(BaseModel):
     validation_metrics_object_key: str | None = Field(
         default=None, description="验证指标文件 object key"
     )
+    test_metrics_object_key: str | None = Field(
+        default=None, description="独立测试指标文件 object key"
+    )
     summary_object_key: str | None = Field(
         default=None, description="训练摘要文件 object key"
     )
@@ -172,4 +175,3 @@ class TrainingTaskSubmissionResponse(BaseModel):
     status: str = Field(description="当前状态")
     queue_name: str = Field(description="提交到的队列名称")
     queue_task_id: str = Field(description="队列任务 id")
-

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -26,6 +27,7 @@ class Yolo11ObbTrainingManifest:
     labels: tuple[str, ...]
     train_annotations: list[Yolo11ObbTrainingAnnotation]
     val_annotations: list[Yolo11ObbTrainingAnnotation]
+    test_annotations: list[Yolo11ObbTrainingAnnotation]
 
 
 def load_yolo11_obb_training_manifest(
@@ -38,10 +40,11 @@ def load_yolo11_obb_training_manifest(
     all_categories: dict[int, str] = {}
     train_annotations: list[Yolo11ObbTrainingAnnotation] = []
     val_annotations: list[Yolo11ObbTrainingAnnotation] = []
+    test_annotations: list[Yolo11ObbTrainingAnnotation] = []
     for split in manifest_payload.get("splits", []) or []:
         if not isinstance(split, dict):
             continue
-        split_name = str(split.get("name", ""))
+        split_name = str(split.get("name", "")).strip().lower()
         image_root = str(split.get("image_root", ""))
         annotation_file = str(split.get("annotation_file", ""))
         annotation_path = dataset_storage.resolve(annotation_file)
@@ -60,16 +63,27 @@ def load_yolo11_obb_training_manifest(
             train_annotations = records
         elif split_name in {"val", "valid", "validation"}:
             val_annotations = records
+        elif split_name == "test":
+            test_annotations = records
 
     sorted_categories = sorted(all_categories.items())
     category_id_map = {
         category_id: index for index, (category_id, _) in enumerate(sorted_categories)
     }
     labels = tuple(name for _, name in sorted_categories)
+    if not labels:
+        raise InvalidRequestError("YOLO11 OBB 训练集没有合法类别")
+    if not train_annotations:
+        raise InvalidRequestError("YOLO11 OBB 训练集没有合法样本")
+    if not val_annotations:
+        raise InvalidRequestError(
+            "YOLO11 OBB 训练需要独立 validation split，禁止使用 train 或 test 回退"
+        )
     return Yolo11ObbTrainingManifest(
         labels=labels,
         train_annotations=_remap_obb_categories(train_annotations, category_id_map),
         val_annotations=_remap_obb_categories(val_annotations, category_id_map),
+        test_annotations=_remap_obb_categories(test_annotations, category_id_map),
     )
 
 
@@ -111,7 +125,7 @@ def _build_obb_split_records(
             if box_xywhr is None:
                 continue
             boxes_xywhr.append(box_xywhr)
-            class_ids.append(int(annotation.get("category_id", 0)))
+            class_ids.append(int(annotation.get("category_id", -1)))
         if boxes_xywhr:
             records.append(
                 Yolo11ObbTrainingAnnotation(
@@ -186,17 +200,31 @@ def _remap_obb_categories(
 ) -> list[Yolo11ObbTrainingAnnotation]:
     """把原始 category id 映射为连续训练类别索引。"""
 
-    return [
-        Yolo11ObbTrainingAnnotation(
-            image_path=annotation.image_path,
-            boxes_xywhr=annotation.boxes_xywhr,
-            class_ids=[
-                category_id_map.get(category_id, 0)
+    remapped: list[Yolo11ObbTrainingAnnotation] = []
+    for annotation in annotations:
+        unknown_ids = sorted(
+            {
+                category_id
                 for category_id in annotation.class_ids
-            ],
+                if category_id not in category_id_map
+            }
         )
-        for annotation in annotations
-    ]
+        if unknown_ids:
+            raise InvalidRequestError(
+                "YOLO11 OBB 标注引用了未声明类别",
+                details={"category_ids": unknown_ids, "image_path": annotation.image_path},
+            )
+        remapped.append(
+            Yolo11ObbTrainingAnnotation(
+                image_path=annotation.image_path,
+                boxes_xywhr=annotation.boxes_xywhr,
+                class_ids=[
+                    category_id_map[category_id]
+                    for category_id in annotation.class_ids
+                ],
+            )
+        )
+    return remapped
 
 
 __all__ = [

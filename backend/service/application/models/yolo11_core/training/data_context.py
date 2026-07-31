@@ -12,6 +12,7 @@ from backend.service.application.models.yolo11_core.data import (
     load_yolo11_detection_training_samples,
     resolve_yolo11_detection_splits,
     resolve_yolo11_detection_train_split,
+    resolve_yolo11_detection_test_split,
     resolve_yolo11_detection_validation_split,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -26,8 +27,10 @@ class Yolo11DetectionTrainingDataContext:
     resolved_splits: tuple[Yolo11DetectionResolvedSplit, ...]
     train_split: Yolo11DetectionResolvedSplit
     validation_split: Yolo11DetectionResolvedSplit | None
+    test_split: Yolo11DetectionResolvedSplit | None
     train_samples: tuple[Yolo11DetectionTrainingSample, ...]
     validation_samples: tuple[Yolo11DetectionTrainingSample, ...]
+    test_samples: tuple[Yolo11DetectionTrainingSample, ...]
     category_names: tuple[str, ...]
     category_ids: tuple[int, ...]
     validation_category_names: tuple[str, ...] | None
@@ -50,6 +53,7 @@ def prepare_yolo11_detection_training_data_context(
     )
     train_split = resolve_yolo11_detection_train_split(resolved_splits)
     validation_split = resolve_yolo11_detection_validation_split(resolved_splits)
+    test_split = resolve_yolo11_detection_test_split(resolved_splits)
     train_samples, category_names, category_ids = (
         load_yolo11_detection_training_samples(
             split=train_split,
@@ -83,13 +87,29 @@ def prepare_yolo11_detection_training_data_context(
                     "validation_category_ids": list(validation_category_ids),
                 },
             )
+    if validation_split is None or not validation_samples:
+        raise InvalidRequestError(
+            "YOLO11 detection 训练 manifest 缺少独立 validation 样本"
+        )
+
+    test_samples: tuple[Yolo11DetectionTrainingSample, ...] = ()
+    if test_split is not None:
+        test_samples, test_category_names, test_category_ids = (
+            load_yolo11_detection_training_samples(split=test_split)
+        )
+        if test_category_names != category_names or test_category_ids != category_ids:
+            raise InvalidRequestError(
+                "YOLO11 detection test split 的 categories 与训练 split 不一致"
+            )
 
     return Yolo11DetectionTrainingDataContext(
         resolved_splits=resolved_splits,
         train_split=train_split,
         validation_split=validation_split,
+        test_split=test_split,
         train_samples=train_samples,
         validation_samples=validation_samples,
+        test_samples=test_samples,
         category_names=category_names,
         category_ids=category_ids,
         validation_category_names=validation_category_names,

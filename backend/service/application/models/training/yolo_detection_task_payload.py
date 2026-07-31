@@ -169,6 +169,9 @@ def build_yolo_detection_existing_result_kwargs(
         "validation_metrics_object_key": _read_optional_str(
             result.get("validation_metrics_object_key")
         ),
+        "test_metrics_object_key": _read_optional_str(
+            result.get("test_metrics_object_key")
+        ),
         "summary_object_key": _read_optional_str(result.get("summary_object_key")),
         "best_metric_name": _read_optional_str(result.get("best_metric_name")),
         "best_metric_value": _read_optional_float(result.get("best_metric_value")),
@@ -210,6 +213,7 @@ def build_yolo_detection_partial_result_kwargs(
         "labels_object_key": output_files.labels_object_key,
         "metrics_object_key": output_files.metrics_object_key,
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
+        "test_metrics_object_key": output_files.test_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
         "best_metric_name": best_metric_name,
         "best_metric_value": best_metric_value,
@@ -229,6 +233,7 @@ def build_yolo_detection_output_files_summary(
         "labels_object_key": output_files.labels_object_key,
         "metrics_object_key": output_files.metrics_object_key,
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
+        "test_metrics_object_key": output_files.test_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
     }
 
@@ -254,6 +259,7 @@ def serialize_yolo_detection_training_task_result(
         "labels_object_key": task_result.labels_object_key,
         "metrics_object_key": task_result.metrics_object_key,
         "validation_metrics_object_key": task_result.validation_metrics_object_key,
+        "test_metrics_object_key": task_result.test_metrics_object_key,
         "summary_object_key": task_result.summary_object_key,
         "best_metric_name": task_result.best_metric_name,
         "best_metric_value": task_result.best_metric_value,

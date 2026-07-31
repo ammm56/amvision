@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import io
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolo26_core import build_yolo26_model
 from backend.service.application.models.yolo26_core.data import (
     build_yolo26_task_augmentation_options,
+)
+from backend.service.application.models.yolo26_core.evaluation import (
+    evaluate_yolo26_obb_samples,
 )
 from backend.service.application.models.yolo26_core.training.obb_checkpoint import (
     load_yolo26_obb_resume_state,
@@ -80,6 +87,7 @@ class Yolo26ObbTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
         Callable[
@@ -102,6 +110,10 @@ class Yolo26ObbTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 def run_yolo26_obb_training(
@@ -224,7 +236,7 @@ def run_yolo26_obb_training(
     global_iteration = 0
     metrics_history: list[dict[str, float]] = []
     validation_history: list[dict[str, float]] = []
-    best_metric_value = 0.0
+    best_metric_value = -1.0
     best_metric_name = "val_map50_95"
     if resume_state is not None:
         restore_yolo26_obb_training_state(
@@ -283,6 +295,12 @@ def run_yolo26_obb_training(
         validation_history=validation_history,
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
+        previous_best_checkpoint_bytes=(
+            request.previous_best_checkpoint_path.read_bytes()
+            if request.previous_best_checkpoint_path is not None
+            and request.previous_best_checkpoint_path.is_file()
+            else b""
+        ),
         epoch_callback=request.epoch_callback,
         savepoint_callback=request.savepoint_callback,
         dataloader_plan=resolve_yolo_task_dataloader_plan(
@@ -290,6 +308,44 @@ def run_yolo26_obb_training(
             device=device_name,
         ),
     )
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=labels,
+        reason="dataset export does not contain an independent test split",
+        task_type="obb",
+    )
+    if manifest.test_annotations:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(loop_result.best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        best_state_dict = checkpoint_payload.get("ema_state_dict")
+        if not isinstance(best_state_dict, dict):
+            best_state_dict = checkpoint_payload.get("model_state_dict")
+        if not isinstance(best_state_dict, dict):
+            raise InvalidRequestError("YOLO26 OBB best checkpoint 缺少模型权重")
+        ema.model.load_state_dict(best_state_dict, strict=False)
+        ema.model.to(device_name)
+        test_metrics = evaluate_yolo26_obb_samples(
+            model=ema.model,
+            samples=manifest.test_annotations,
+            labels=labels,
+            input_size=input_size,
+            device=device_name,
+            precision=precision,
+            score_threshold=eval_conf,
+            nms_threshold=eval_nms,
+            imports=imports,
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(manifest.test_annotations),
+            metrics=test_metrics,
+            category_names=labels,
+            task_type="obb",
+        )
     return Yolo26ObbTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,
         best_metric_name=loop_result.best_metric_name,
@@ -309,6 +365,10 @@ def run_yolo26_obb_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=loop_result.best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
+        test_split_name="test" if manifest.test_annotations else None,
+        test_sample_count=len(manifest.test_annotations),
     )
 
 

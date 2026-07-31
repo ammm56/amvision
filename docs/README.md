@@ -17,6 +17,7 @@
 - [docs/architecture/model-support-matrix.md](architecture/model-support-matrix.md) 汇总当前主干代码里 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 的真实支持矩阵
 - [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md) 汇总训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
 - [docs/architecture/model-training-input-size-rules.md](architecture/model-training-input-size-rules.md) 汇总 YOLOX / RF-DETR / YOLOv8 / YOLO11 / YOLO26 的训练输入尺寸规则、常用尺寸和前端训练页面展示约束
+- [docs/architecture/model-training-evaluation-contract.md](architecture/model-training-evaluation-contract.md) 固定所有模型训练任务的 warm start、resume、best/latest checkpoint、validation/test 隔离和评估输出契约
 - [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md) 固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
 - [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md) 固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 在本项目中的完整 core 实现边界，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
 - [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md) 固定模型 core / runtime 之外的代码结构收口顺序和目标目录

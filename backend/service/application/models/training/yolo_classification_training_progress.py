@@ -191,10 +191,11 @@ def build_yolo_classification_output_files_summary(
     metrics_object_key: str,
     validation_metrics_object_key: str,
     summary_object_key: str,
+    test_metrics_object_key: str | None = None,
 ) -> dict[str, object]:
     """构建 classification summary 中的 output_files 字段。"""
 
-    return {
+    output_files = {
         "output_object_prefix": output_prefix,
         "checkpoint_object_key": checkpoint_object_key,
         "latest_checkpoint_object_key": latest_checkpoint_object_key,
@@ -203,6 +204,9 @@ def build_yolo_classification_output_files_summary(
         "validation_metrics_object_key": validation_metrics_object_key,
         "summary_object_key": summary_object_key,
     }
+    if test_metrics_object_key is not None:
+        output_files["test_metrics_object_key"] = test_metrics_object_key
+    return output_files
 
 
 def build_yolo_classification_savepoint_summary(

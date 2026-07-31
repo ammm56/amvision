@@ -264,6 +264,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             validation_metrics_object_key=(
                 f"{output_prefix}/output-files/validation-metrics.json"
             ),
+            test_metrics_object_key=(
+                f"{output_prefix}/output-files/test-metrics.json"
+            ),
             summary_object_key=f"{output_prefix}/output-files/training-summary.json",
         )
         started_at = self._now_iso()
@@ -330,9 +333,14 @@ class SqlAlchemyRfdetrTrainingTaskService:
             )
             raise
 
+        best_checkpoint_bytes = getattr(
+            execution_result,
+            "best_checkpoint_bytes",
+            None,
+        )
         dataset_storage.write_bytes(
             output_files.checkpoint_object_key,
-            execution_result.latest_checkpoint_bytes,
+            best_checkpoint_bytes or execution_result.latest_checkpoint_bytes,
         )
         if output_files.latest_checkpoint_object_key is not None:
             dataset_storage.write_bytes(
@@ -348,6 +356,18 @@ class SqlAlchemyRfdetrTrainingTaskService:
             dataset_storage.write_json(
                 output_files.validation_metrics_object_key,
                 execution_result.validation_metrics_payload,
+            )
+        if output_files.test_metrics_object_key is not None:
+            dataset_storage.write_json(
+                output_files.test_metrics_object_key,
+                dict(
+                    getattr(
+                        execution_result,
+                        "test_metrics_payload",
+                        None,
+                    )
+                    or {}
+                ),
             )
         if output_files.labels_object_key is not None:
             self._write_labels_text(
@@ -388,6 +408,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "labels_object_key": output_files.labels_object_key,
             "metrics_object_key": output_files.metrics_object_key,
             "validation_metrics_object_key": output_files.validation_metrics_object_key,
+            "test_metrics_object_key": output_files.test_metrics_object_key,
             "summary_object_key": output_files.summary_object_key,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,

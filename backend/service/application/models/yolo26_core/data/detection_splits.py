@@ -55,9 +55,20 @@ def resolve_yolo26_detection_validation_split(
 ) -> Yolo26DetectionResolvedSplit | None:
     """选择 YOLO26 detection validation split。"""
 
-    validation_names = {"val", "valid", "validation", "test"}
+    validation_names = {"val", "valid", "validation"}
     for split in resolved_splits:
         if split.name.lower() in validation_names:
+            return split
+    return None
+
+
+def resolve_yolo26_detection_test_split(
+    resolved_splits: tuple[Yolo26DetectionResolvedSplit, ...],
+) -> Yolo26DetectionResolvedSplit | None:
+    """选择独立的 YOLO26 detection test split。"""
+
+    for split in resolved_splits:
+        if split.name.lower() == "test":
             return split
     return None
 
@@ -354,6 +365,7 @@ def _parse_yolo_detection_label_file(
 
 __all__ = [
     "resolve_yolo26_detection_splits",
+    "resolve_yolo26_detection_test_split",
     "resolve_yolo26_detection_train_split",
     "resolve_yolo26_detection_validation_split",
 ]

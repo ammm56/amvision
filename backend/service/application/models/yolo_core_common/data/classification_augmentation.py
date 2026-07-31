@@ -17,6 +17,7 @@ class YoloClassificationAugmentationOptions:
     hsv_prob: float = 1.0
     random_erasing_prob: float = 0.4
     auto_augment: str | None = "randaugment"
+    crop_min_scale: float = 0.5
 
 
 def build_yolo_classification_augmentation_options(
@@ -35,6 +36,7 @@ def build_yolo_classification_augmentation_options(
             hsv_prob=0.0,
             random_erasing_prob=0.0,
             auto_augment=None,
+            crop_min_scale=1.0,
         )
 
     auto_augment = _read_auto_augment_option(extra.get("auto_augment", "randaugment"))
@@ -47,6 +49,10 @@ def build_yolo_classification_augmentation_options(
             _read_float_option(extra, "random_erasing_prob", default=0.4)
         ),
         auto_augment=auto_augment,
+        crop_min_scale=max(
+            0.05,
+            min(1.0, _read_float_option(extra, "crop_min_scale", default=0.5)),
+        ),
     )
 
 
@@ -56,16 +62,29 @@ def prepare_yolo_classification_image(
     input_size: tuple[int, int],
     training: bool,
     cv2_module: Any,
+    augmentation_options: YoloClassificationAugmentationOptions | None = None,
 ) -> Any:
     """按 Ultralytics classification 语义执行训练裁剪或验证中心裁剪。"""
 
     target_height = max(1, int(input_size[0]))
     target_width = max(1, int(input_size[1]))
     if training:
+        crop_min_scale = (
+            augmentation_options.crop_min_scale
+            if augmentation_options is not None
+            else 0.5
+        )
+        if crop_min_scale >= 1.0:
+            return _resize_and_center_crop(
+                image=image,
+                target_size=(target_height, target_width),
+                cv2_module=cv2_module,
+            )
         return _random_resized_crop(
             image=image,
             target_size=(target_height, target_width),
             cv2_module=cv2_module,
+            minimum_scale=crop_min_scale,
         )
     return _resize_and_center_crop(
         image=image,
@@ -79,6 +98,7 @@ def _random_resized_crop(
     image: Any,
     target_size: tuple[int, int],
     cv2_module: Any,
+    minimum_scale: float,
 ) -> Any:
     """实现 torchvision RandomResizedCrop 的默认 scale/ratio 采样规则。"""
 
@@ -87,7 +107,7 @@ def _random_resized_crop(
     log_ratio = (math.log(3.0 / 4.0), math.log(4.0 / 3.0))
     for _ in range(10):
         # Ultralytics 默认 scale=0.5，因此 classification crop 面积范围为 0.5..1.0。
-        target_area = random.uniform(0.5, 1.0) * source_area
+        target_area = random.uniform(float(minimum_scale), 1.0) * source_area
         aspect_ratio = math.exp(random.uniform(*log_ratio))
         crop_width = int(round(math.sqrt(target_area * aspect_ratio)))
         crop_height = int(round(math.sqrt(target_area / aspect_ratio)))

@@ -31,6 +31,9 @@ from backend.service.application.models.yolo11_core.data import (
     resolve_yolo11_task_batch_input_size,
     serialize_yolo11_detection_augmentation_options,
 )
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolo11_core.training.pytorch_dataloader import (
     Yolo11DetectionDataLoaderPlan,
     build_yolo11_detection_training_dataloader,
@@ -145,6 +148,8 @@ def run_yolo11_detection_training(
     category_names = data_context.category_names
     category_ids = data_context.category_ids
     validation_samples = data_context.validation_samples
+    test_split = data_context.test_split
+    test_samples = data_context.test_samples
 
     input_size = resolve_yolo11_detection_input_size(request.input_size)
     batch_size = max(1, int(request.batch_size or YOLO11_DETECTION_DEFAULT_BATCH_SIZE))
@@ -496,6 +501,58 @@ def run_yolo11_detection_training(
         evaluated_epochs=evaluated_epochs,
         validation_history=validation_history,
     )
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=category_names,
+        reason="dataset export 未提供独立 test split",
+    )
+    if test_split is not None and test_samples:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        checkpoint_ema_state = (
+            checkpoint_payload.get("ema_state_dict")
+            if isinstance(checkpoint_payload, dict)
+            else None
+        )
+        if not isinstance(checkpoint_ema_state, dict):
+            raise InvalidRequestError(
+                "YOLO11 detection best checkpoint 缺少 ema_state_dict"
+            )
+        ema.load_state_dict(checkpoint_ema_state, strict=False)
+        test_metrics = _evaluate_yolo11_detection_model(
+            imports=imports,
+            model=ema.model,
+            samples=test_samples,
+            category_ids=category_ids,
+            annotation_file=test_split.annotation_file,
+            annotation_payload=test_split.annotation_payload,
+            input_size=input_size,
+            batch_size=batch_size,
+            device=device,
+            runtime_precision=runtime_precision,
+            num_classes=len(category_names),
+            class_loss_weight=training_options["class_loss_weight"],
+            box_loss_weight=training_options["box_loss_weight"],
+            dfl_loss_weight=training_options["dfl_loss_weight"],
+            assign_topk=training_options["assign_topk"],
+            assign_alpha=training_options["assign_alpha"],
+            assign_beta=training_options["assign_beta"],
+            confidence_threshold=training_options[
+                "evaluation_confidence_threshold"
+            ],
+            nms_threshold=training_options["evaluation_nms_threshold"],
+            dataloader_plan=dataloader_plan,
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(test_samples),
+            metrics=test_metrics,
+            category_names=category_names,
+        )
     metrics_payload = _build_yolo11_metrics_payload(
         request=request,
         resolved_splits=resolved_splits,
@@ -522,6 +579,7 @@ def run_yolo11_detection_training(
         optimizer=optimizer,
         training_schedule=training_runtime.schedule,
         validation_metrics_payload=validation_metrics_payload,
+        test_metrics_payload=test_metrics_payload,
         augmentation_options=augmentation_options,
     )
     return Yolo11DetectionTrainingExecutionResult(
@@ -529,6 +587,7 @@ def run_yolo11_detection_training(
         latest_checkpoint_bytes=latest_checkpoint_bytes,
         metrics_payload=metrics_payload,
         validation_metrics_payload=validation_metrics_payload,
+        test_metrics_payload=test_metrics_payload,
         warm_start_summary=warm_start_summary,
         implementation_mode=request.implementation_mode,
         best_metric_name=best_metric_name,
@@ -548,6 +607,8 @@ def run_yolo11_detection_training(
         precision=runtime_precision,
         validation_split_name=validation_split_name,
         validation_sample_count=len(validation_samples),
+        test_split_name=test_split.name if test_split is not None else None,
+        test_sample_count=len(test_samples),
         parameter_count=parameter_count,
     )
 

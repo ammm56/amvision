@@ -71,6 +71,7 @@ class Yolo11TrainingTaskResult:
     labels_object_key: str | None = None
     metrics_object_key: str | None = None
     validation_metrics_object_key: str | None = None
+    test_metrics_object_key: str | None = None
     summary_object_key: str | None = None
     best_metric_name: str | None = None
     best_metric_value: float | None = None

@@ -298,3 +298,38 @@ def test_random_resized_crop_is_seeded_random_but_validation_is_deterministic() 
     assert np.array_equal(training_a, training_b)
     assert not np.array_equal(training_a, training_c)
     assert np.array_equal(validation_a, validation_b)
+
+
+def test_disabled_classification_augmentation_does_not_keep_random_crop() -> None:
+    """关闭增强时训练预处理必须与 validation 一样确定，不能隐藏随机裁剪。"""
+
+    yy, xx = np.mgrid[:120, :200]
+    image = np.stack((xx % 256, yy % 256, (xx + yy) % 256), axis=-1).astype(np.uint8)
+    options = classification_augmentation.build_yolo_classification_augmentation_options(
+        extra_options={"disable_augmentation": True},
+    )
+    random.seed(11)
+    training_a = prepare_yolo_classification_image(
+        image=image,
+        input_size=(64, 96),
+        training=True,
+        cv2_module=cv2,
+        augmentation_options=options,
+    )
+    random.seed(91)
+    training_b = prepare_yolo_classification_image(
+        image=image,
+        input_size=(64, 96),
+        training=True,
+        cv2_module=cv2,
+        augmentation_options=options,
+    )
+    validation = prepare_yolo_classification_image(
+        image=image,
+        input_size=(64, 96),
+        training=False,
+        cv2_module=cv2,
+    )
+
+    assert np.array_equal(training_a, training_b)
+    assert np.array_equal(training_a, validation)

@@ -134,6 +134,16 @@ def build_summary_response(task: TaskRecord) -> TrainingTaskSummaryResponse:
         or read_optional_str(
             result_output_files_payload.get("validation_metrics_object_key")
         ),
+        test_metrics_object_key=read_optional_str(
+            result.get("test_metrics_object_key")
+        )
+        or read_optional_str(training_summary_payload.get("test_metrics_object_key"))
+        or read_optional_str(
+            summary_output_files_payload.get("test_metrics_object_key")
+        )
+        or read_optional_str(
+            result_output_files_payload.get("test_metrics_object_key")
+        ),
         summary_object_key=read_optional_str(result.get("summary_object_key"))
         or read_optional_str(training_summary_payload.get("summary_object_key"))
         or read_optional_str(summary_output_files_payload.get("summary_object_key"))

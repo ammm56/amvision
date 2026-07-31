@@ -75,6 +75,9 @@ class YoloDetectionTrainingExecutionResult:
     validation_split_name: str | None
     validation_sample_count: int
     parameter_count: int
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 __all__ = [

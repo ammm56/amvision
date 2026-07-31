@@ -347,8 +347,10 @@ def test_yolox_training_worker_accepts_voc_dataset_export(tmp_path: Path) -> Non
         session_factory.engine.dispose()
 
 
-def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing(tmp_path: Path) -> None:
-    """验证当 manifest 只有 train 和 test 时，会使用 test 作为验证 split。"""
+def test_yolox_training_worker_rejects_test_as_validation_when_val_is_missing(
+    tmp_path: Path,
+) -> None:
+    """验证 train/test 数据不会把 test 泄漏为调参用 validation。"""
 
     session_factory, dataset_storage, queue_backend = _create_worker_runtime(tmp_path)
     _seed_completed_dataset_export(
@@ -392,22 +394,8 @@ def test_yolox_training_worker_uses_test_split_as_validation_when_val_is_missing
             submission.task_id,
             include_events=True,
         )
-        assert completed_task.task.state == "succeeded"
-        assert completed_task.task.result["summary"]["validation"]["enabled"] is True
-        assert completed_task.task.result["summary"]["validation"]["split_name"] == "test"
-
-        validation_metrics_payload = dataset_storage.read_json(
-            completed_task.task.result["validation_metrics_object_key"]
-        )
-        assert validation_metrics_payload["split_name"] == "test"
-
-        progress_event = next(
-            event
-            for event in completed_task.events
-            if event.event_type == "progress"
-            and event.payload["progress"].get("granularity") == "epoch"
-        )
-        assert progress_event.payload["progress"]["validation_ran"] is True
+        assert completed_task.task.state == "failed"
+        assert "validation" in str(completed_task.task.error_message).lower()
     finally:
         session_factory.engine.dispose()
 

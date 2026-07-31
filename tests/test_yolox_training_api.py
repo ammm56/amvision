@@ -925,7 +925,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
 
         assert output_files_response.status_code == 200
         output_files_payload = output_files_response.json()
-        assert len(output_files_payload) == 6
+        assert len(output_files_payload) == 7
         output_files_by_name = {
             item["file_name"]: item
             for item in output_files_payload
@@ -934,6 +934,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
         assert output_files_by_name["labels"]["file_kind"] == "text"
         assert output_files_by_name["best-checkpoint"]["file_kind"] == "checkpoint"
         assert output_files_by_name["latest-checkpoint"]["file_status"] == "ready"
+        assert output_files_by_name["test-metrics"]["file_status"] == "ready"
 
         with client:
             summary_response = client.get(

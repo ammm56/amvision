@@ -22,6 +22,7 @@ class YoloXTrainingOutputObjectKeys:
     labels_object_key: str
     metrics_object_key: str
     validation_metrics_object_key: str
+    test_metrics_object_key: str
     summary_object_key: str
 
 
@@ -48,6 +49,7 @@ class YoloXTrainingTaskOutputsMixin:
             validation_metrics_object_key=(
                 f"{output_files_root}/reports/validation-metrics.json"
             ),
+            test_metrics_object_key=f"{output_files_root}/reports/test-metrics.json",
             summary_object_key=f"{output_files_root}/training-summary.json",
         )
 
@@ -105,6 +107,11 @@ class YoloXTrainingTaskOutputsMixin:
             output_keys.validation_metrics_object_key,
             execution_result.validation_metrics_payload,
         )
+        if execution_result.test_metrics_payload is not None:
+            dataset_storage.write_json(
+                output_keys.test_metrics_object_key,
+                execution_result.test_metrics_payload,
+            )
 
     def _write_training_summary_payload(
         self,

@@ -335,6 +335,7 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     prepared_dataset = SimpleNamespace(
         labels=("part",),
         dataset_dir=tmp_path / "prepared-dataset",
+        has_test_split=False,
     )
     model_to = Mock()
     module = SimpleNamespace(model=SimpleNamespace(to=model_to))
@@ -399,8 +400,11 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     )
     monkeypatch.setattr(
         platform_runner_module,
-        "read_or_build_checkpoint_bytes",
-        lambda **kwargs: b"checkpoint",
+        "read_or_build_checkpoint_artifacts",
+        lambda **kwargs: SimpleNamespace(
+            best_checkpoint_bytes=b"best-checkpoint",
+            latest_checkpoint_bytes=b"checkpoint",
+        ),
     )
     monkeypatch.setattr(
         platform_runner_module,
@@ -435,6 +439,7 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     result = platform_runner_module.run_rfdetr_platform_training(request)
 
     assert result.latest_checkpoint_bytes == b"checkpoint"
+    assert result.best_checkpoint_bytes == b"best-checkpoint"
     assert trainer.fit_calls == [
         {
             "module": module,
@@ -446,3 +451,22 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
     assert prepare_pretrain.call_args.args[0] is None
     model_to.assert_called_once_with("cpu")
     release_resources.assert_called_once_with(trainer, data_module, module)
+
+
+def test_rfdetr_warm_start_summary_does_not_expose_local_checkpoint_path(
+    tmp_path: Path,
+) -> None:
+    """训练摘要只能暴露可追溯来源，不得泄漏宿主机绝对路径。"""
+
+    checkpoint_path = tmp_path / "private" / "warm-start.pth"
+
+    summary = platform_runner_module._build_warm_start_summary(
+        warm_start_checkpoint_path=checkpoint_path,
+        source_summary={"source_model_version_id": "model-version-1"},
+        resume_checkpoint_path=None,
+    )
+
+    assert summary["enabled"] is True
+    assert summary["source_model_version_id"] == "model-version-1"
+    assert summary["load_summary"] == {"loader": "rfdetr-full-core-pretrain"}
+    assert str(checkpoint_path) not in str(summary)

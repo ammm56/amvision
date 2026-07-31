@@ -236,7 +236,16 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(content)
+        temporary_path = target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            # checkpoint 等二进制文件同样必须原子替换，避免进程中断留下半截文件。
+            temporary_path.write_bytes(content)
+            temporary_path.replace(target_path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
 
     def write_stream(
         self,

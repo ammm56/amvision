@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -26,6 +26,9 @@ class Yolo11ClassificationTrainingManifest:
     labels: tuple[str, ...]
     train_annotations: list[Yolo11ClassificationTrainingAnnotation]
     val_annotations: list[Yolo11ClassificationTrainingAnnotation]
+    test_annotations: list[Yolo11ClassificationTrainingAnnotation] = field(
+        default_factory=list
+    )
 
 
 def load_yolo11_classification_training_manifest(
@@ -42,6 +45,7 @@ def load_yolo11_classification_training_manifest(
     all_labels: dict[int, str] = {}
     train_annotations: list[Yolo11ClassificationTrainingAnnotation] = []
     val_annotations: list[Yolo11ClassificationTrainingAnnotation] = []
+    test_annotations: list[Yolo11ClassificationTrainingAnnotation] = []
     for split in splits:
         if not isinstance(split, dict):
             continue
@@ -53,9 +57,19 @@ def load_yolo11_classification_training_manifest(
         )
         if split_name == "train":
             train_annotations = resolved
-        elif split_name == "val":
+        elif split_name in {"val", "valid", "validation"}:
             val_annotations = resolved
+        elif split_name == "test":
+            test_annotations = resolved
 
+    if not train_annotations:
+        raise InvalidRequestError(
+            "YOLO11 classification 训练 manifest 缺少有效 train 样本"
+        )
+    if not val_annotations:
+        raise InvalidRequestError(
+            "YOLO11 classification 训练 manifest 缺少独立 validation 样本"
+        )
     labels, category_id_to_index = _build_yolo11_classification_label_mapping(
         all_labels
     )
@@ -67,6 +81,10 @@ def load_yolo11_classification_training_manifest(
         ),
         val_annotations=_remap_yolo11_classification_annotations(
             annotations=val_annotations,
+            category_id_to_index=category_id_to_index,
+        ),
+        test_annotations=_remap_yolo11_classification_annotations(
+            annotations=test_annotations,
             category_id_to_index=category_id_to_index,
         ),
     )
@@ -185,13 +203,20 @@ def _remap_yolo11_classification_annotations(
 ) -> list[Yolo11ClassificationTrainingAnnotation]:
     """把原始 category id 重新映射为连续训练类别 id。"""
 
-    return [
-        Yolo11ClassificationTrainingAnnotation(
-            image_path=annotation.image_path,
-            class_id=category_id_to_index.get(annotation.class_id, 0),
+    remapped: list[Yolo11ClassificationTrainingAnnotation] = []
+    for annotation in annotations:
+        if annotation.class_id not in category_id_to_index:
+            raise InvalidRequestError(
+                "YOLO11 classification 标注引用了未声明的 category_id",
+                details={"category_id": annotation.class_id},
+            )
+        remapped.append(
+            Yolo11ClassificationTrainingAnnotation(
+                image_path=annotation.image_path,
+                class_id=category_id_to_index[annotation.class_id],
+            )
         )
-        for annotation in annotations
-    ]
+    return remapped
 
 
 __all__ = [

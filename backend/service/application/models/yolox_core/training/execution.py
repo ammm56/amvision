@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import io
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,9 @@ from backend.service.application.models.yolox_core.data.datasets import (
     resolve_validation_split as _core_resolve_validation_split,
 )
 from backend.service.application.models.yolox_core.data.datasets import (
+    resolve_test_split as _core_resolve_test_split,
+)
+from backend.service.application.models.yolox_core.data.datasets import (
     resolve_yolox_detection_splits as _core_resolve_yolox_detection_splits,
 )
 from backend.service.application.models.yolox_core.dependencies import (
@@ -40,6 +44,9 @@ from backend.service.application.models.yolox_core.evaluators import (
     evaluate_yolox_coco_map,
     evaluate_yolox_voc_map,
     evaluate_yolox_validation_losses,
+)
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
 )
 from backend.service.application.models.yolox_core.models.build import (
     build_yolox_detection_model,
@@ -195,6 +202,9 @@ class YoloXDetectionTrainingExecutionResult:
     validation_split_name: str | None
     validation_sample_count: int
     parameter_count: int
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 _YoloXDetectionDataset = _CoreYoloXDetectionDataset
@@ -434,6 +444,11 @@ def run_yolox_detection_training_execution(
         resolved_splits,
         train_split_name=train_split.name,
     )
+    if validation_split is None:
+        raise InvalidRequestError(
+            "YOLOX detection 训练 manifest 缺少独立 validation split"
+        )
+    test_split = _core_resolve_test_split(resolved_splits)
     validation_dataset: _YoloXDetectionDataset | None = None
     validation_loader = None
     warm_start_summary: dict[str, object] = {"enabled": False}
@@ -456,6 +471,25 @@ def run_yolox_detection_training_execution(
             drop_last=False,
         )
     validation_split_name = validation_split.name if validation_split is not None else None
+    test_dataset: _YoloXDetectionDataset | None = None
+    test_loader = None
+    if test_split is not None:
+        test_dataset = _build_yolox_detection_dataset(
+            split=test_split,
+            input_size=input_size,
+            imports=imports,
+            flip_prob=0.0,
+            hsv_prob=0.0,
+            max_labels=max_labels,
+        )
+        test_loader = imports.torch.utils.data.DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=runtime.device.startswith("cuda"),
+            drop_last=False,
+        )
     train_category_names = train_base_dataset.category_names
 
     base_model = build_yolox_detection_model(
@@ -526,7 +560,7 @@ def run_yolox_detection_training_execution(
 
         nonlocal base_model, grad_scaler, model_ema, optimizer, scheduler, training_model
         nonlocal train_base_dataset, train_dataset, train_loader, validation_dataset
-        nonlocal validation_loader
+        nonlocal test_dataset, test_loader, validation_loader
         model_ema = None
         training_model = None
         base_model = None
@@ -535,9 +569,11 @@ def run_yolox_detection_training_execution(
         grad_scaler = None
         train_loader = None
         validation_loader = None
+        test_loader = None
         train_dataset = None
         train_base_dataset = None
         validation_dataset = None
+        test_dataset = None
         release_yolox_training_runtime_resources(
             imports=imports,
             runtime=runtime,
@@ -546,6 +582,7 @@ def run_yolox_detection_training_execution(
     total_sample_count = sum(split.sample_count for split in resolved_splits)
     train_sample_count = len(train_base_dataset)
     validation_sample_count = len(validation_dataset) if validation_dataset is not None else 0
+    test_sample_count = len(test_dataset) if test_dataset is not None else 0
     epoch_history: list[dict[str, object]] = []
     validation_epoch_history: list[dict[str, object]] = []
     best_metric_name = "val_map50_95" if validation_loader is not None else "train_total_loss"
@@ -701,11 +738,100 @@ def run_yolox_detection_training_execution(
         _release_current_training_objects()
         raise ServiceConfigurationError("YOLOX 训练没有生成有效结果")
 
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=train_category_names,
+        reason="dataset export 未提供独立 test split",
+    )
+    if test_loader is not None and test_dataset is not None:
+        best_checkpoint_payload = imports.torch.load(
+            io.BytesIO(loop_result.checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        best_model_state = (
+            best_checkpoint_payload.get("model")
+            if isinstance(best_checkpoint_payload, dict)
+            else None
+        )
+        if not isinstance(best_model_state, dict):
+            _release_current_training_objects()
+            raise InvalidRequestError("YOLOX best checkpoint 缺少 model state")
+        base_model.load_state_dict(best_model_state, strict=True)
+        base_model.to(runtime.device)
+        test_metrics = evaluate_yolox_validation_losses(
+            torch_module=imports.torch,
+            autocast_context_factory=_build_autocast_context,
+            model=base_model,
+            loader=test_loader,
+            device=runtime.device,
+            precision=precision,
+        )
+        if isinstance(test_dataset, _CocoDetectionExportDataset):
+            test_detection_metrics = evaluate_yolox_coco_map(
+                torch_module=imports.torch,
+                postprocess=imports.postprocess,
+                autocast_context_factory=_build_autocast_context,
+                coco_class=imports.COCO,
+                cocoeval_class=imports.COCOeval,
+                model=base_model,
+                loader=test_loader,
+                device=runtime.device,
+                precision=precision,
+                input_size=input_size,
+                num_classes=len(train_category_names),
+                category_ids=test_dataset.category_ids,
+                category_names=train_category_names,
+                annotation_file=_get_yolox_detection_evaluation_annotation_file(
+                    test_dataset
+                ),
+                score_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
+            )
+        elif isinstance(test_dataset, _VocDetectionExportDataset):
+            test_detection_metrics = evaluate_yolox_voc_map(
+                torch_module=imports.torch,
+                postprocess=imports.postprocess,
+                autocast_context_factory=_build_autocast_context,
+                model=base_model,
+                loader=test_loader,
+                device=runtime.device,
+                precision=precision,
+                input_size=input_size,
+                num_classes=len(train_category_names),
+                dataset=test_dataset,
+                category_names=train_category_names,
+                score_threshold=evaluation_confidence_threshold,
+                nms_threshold=evaluation_nms_threshold,
+            )
+        else:
+            _release_current_training_objects()
+            raise TypeError(
+                f"不支持的 YOLOX test dataset 类型: {type(test_dataset)!r}"
+            )
+        test_metrics.update(
+            {
+                "map50": test_detection_metrics.map50,
+                "map50_95": test_detection_metrics.map50_95,
+                "per_class_metrics": [
+                    dict(item) for item in test_detection_metrics.per_class_metrics
+                ],
+            }
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=test_sample_count,
+            metrics=test_metrics,
+            category_names=train_category_names,
+        )
+
     execution_result = YoloXDetectionTrainingExecutionResult(
         checkpoint_bytes=loop_result.checkpoint_bytes,
         latest_checkpoint_bytes=loop_result.latest_checkpoint_bytes,
         metrics_payload=dict(loop_result.metrics_payload),
         validation_metrics_payload=dict(loop_result.validation_metrics_payload),
+        test_metrics_payload=test_metrics_payload,
         warm_start_summary=warm_start_summary,
         implementation_mode=YOLOX_DETECTION_CORE_IMPLEMENTATION_MODE,
         best_metric_name=loop_result.best_metric_name,
@@ -725,6 +851,8 @@ def run_yolox_detection_training_execution(
         precision=precision,
         validation_split_name=validation_split.name if validation_split is not None else None,
         validation_sample_count=len(validation_dataset) if validation_dataset is not None else 0,
+        test_split_name=test_split.name if test_split is not None else None,
+        test_sample_count=test_sample_count,
         parameter_count=int(parameter_count),
     )
     _release_current_training_objects()
@@ -788,8 +916,8 @@ def _resolve_validation_split(
     - train_split_name：已经选定的训练 split 名称。
 
     返回：
-    - _ResolvedYoloXDetectionSplit | None：优先返回 val、valid、validation；
-      缺失时回退 test；再缺失时回退第一个非训练 split。
+    - _ResolvedYoloXDetectionSplit | None：只返回 val、valid、validation；
+      缺失时返回 None，禁止把 test 泄漏为训练调参用 validation。
     """
 
     return _core_resolve_validation_split(

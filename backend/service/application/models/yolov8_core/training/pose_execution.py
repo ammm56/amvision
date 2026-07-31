@@ -17,6 +17,9 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
 )
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     YoloUltralyticsOptimizerStep,
@@ -105,6 +108,7 @@ class YoloV8PoseTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,6 +150,7 @@ class YoloV8PoseTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable | None = None
     savepoint_callback: Callable | None = None
@@ -160,6 +165,10 @@ class YoloV8PoseTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 def run_yolov8_pose_training(
@@ -186,7 +195,7 @@ def run_yolov8_pose_training(
     input_size = request.input_size or _POSE_DEF_INPUT_SIZE
     use_amp = precision == "fp16" and device.startswith("cuda")
 
-    labels, train_anns, val_anns = _load_pose_manifest(
+    labels, train_anns, val_anns, test_anns = _load_pose_manifest(
         request.dataset_storage, request.manifest_payload
     )
     num_classes = len(labels)
@@ -281,7 +290,7 @@ def run_yolov8_pose_training(
         metrics_history = list(ckpt.get("metrics_history", []))
 
     best_metric_value = float(
-        resume_payload.get("best_metric_value", 0.0) if resume_payload else 0.0
+        resume_payload.get("best_metric_value", -1.0) if resume_payload else -1.0
     )
     best_metric_name = str(
         resume_payload.get("best_metric_name", "val_map50_95")
@@ -289,6 +298,12 @@ def run_yolov8_pose_training(
         else "val_map50_95"
     )
     ckpt_bytes = b""
+    best_checkpoint_bytes = (
+        request.previous_best_checkpoint_path.read_bytes()
+        if request.previous_best_checkpoint_path is not None
+        and request.previous_best_checkpoint_path.is_file()
+        else b""
+    )
     validation_history: list[dict[str, object]] = list(
         resume_payload.get("validation_history", []) if resume_payload else []
     )
@@ -451,9 +466,12 @@ def run_yolov8_pose_training(
             )
             validation_history.append({"epoch": epoch, **val_metrics})
             current_metric = float(val_metrics.get("map50_95", 0.0))
-            if current_metric > best_metric_value:
+            best_metric_improved = current_metric > best_metric_value
+            if best_metric_improved:
                 best_metric_value = current_metric
                 best_metric_name = "val_map50_95"
+        else:
+            best_metric_improved = False
 
         scheduler.step()
         # 保存 checkpoint
@@ -476,8 +494,13 @@ def run_yolov8_pose_training(
             buf,
         )
         ckpt_bytes = buf.getvalue()
+        if best_metric_improved:
+            best_checkpoint_bytes = ckpt_bytes
 
-        if cmd and cmd.save_checkpoint and request.savepoint_callback:
+        manual_save_requested = bool(cmd and cmd.save_checkpoint)
+        if request.savepoint_callback and (
+            best_metric_improved or manual_save_requested
+        ):
             request.savepoint_callback(
                 YoloV8PoseTrainingSavePoint(
                     latest_checkpoint_bytes=ckpt_bytes,
@@ -487,12 +510,57 @@ def run_yolov8_pose_training(
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=best_metric_improved,
                 )
             )
 
         if cmd and cmd.pause_training:
             raise YoloV8PoseTrainingPausedError()
 
+    if not best_checkpoint_bytes:
+        best_checkpoint_bytes = ckpt_bytes
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=labels,
+        reason="dataset export does not contain an independent test split",
+        task_type="pose",
+    )
+    if test_anns:
+        checkpoint_payload = torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        best_state_dict = checkpoint_payload.get("ema_state_dict")
+        if not isinstance(best_state_dict, dict):
+            best_state_dict = checkpoint_payload.get("model_state_dict")
+        if not isinstance(best_state_dict, dict):
+            raise InvalidRequestError("YOLOv8 pose best checkpoint 缺少模型权重")
+        ema.model.load_state_dict(best_state_dict, strict=False)
+        ema.model.to(device)
+        test_metrics = evaluate_yolov8_pose_samples(
+            model=ema.model,
+            samples=test_anns,
+            labels=labels,
+            input_size=input_size,
+            device=device,
+            precision=precision,
+            score_threshold=float(extra.get("evaluation_confidence_threshold", 0.001)),
+            nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
+            keypoint_confidence_threshold=float(
+                extra.get("keypoint_confidence_threshold", 0.25)
+            ),
+            kpt_shape=kpt_shape,
+            imports=_build_yolo_training_imports(cv2, np, torch),
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(test_anns),
+            metrics=test_metrics,
+            category_names=labels,
+            task_type="pose",
+        )
     return YoloV8PoseTrainingExecutionResult(
         best_metric_value=best_metric_value,
         best_metric_name=best_metric_name,
@@ -508,6 +576,10 @@ def run_yolov8_pose_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
+        test_split_name="test" if test_anns else None,
+        test_sample_count=len(test_anns),
     )
 
 
@@ -558,7 +630,12 @@ def _contains_pose_tensor(value: Any, torch: Any) -> bool:
 def _load_pose_manifest(
     dataset_storage: LocalDatasetStorage,
     manifest: dict[str, object],
-) -> tuple[tuple[str, ...], list[_PoseAnnotation], list[_PoseAnnotation]]:
+) -> tuple[
+    tuple[str, ...],
+    list[_PoseAnnotation],
+    list[_PoseAnnotation],
+    list[_PoseAnnotation],
+]:
     """加载 COCO keypoints 格式的 Pose manifest。"""
 
     splits = manifest.get("splits", [])
@@ -574,11 +651,12 @@ def _load_pose_manifest(
     all_categories: dict[int, str] = {}
     train_anns: list[_PoseAnnotation] = []
     val_anns: list[_PoseAnnotation] = []
+    test_anns: list[_PoseAnnotation] = []
 
     for split in splits or []:
         if not isinstance(split, dict):
             continue
-        split_name = str(split.get("name", ""))
+        split_name = str(split.get("name", "")).strip().lower()
         image_root = str(split.get("image_root", ""))
         if format_id == YOLO_POSE_DATASET_FORMAT:
             label_root = str(split.get("label_root", ""))
@@ -638,7 +716,7 @@ def _load_pose_manifest(
                 if not isinstance(bb, list) or len(bb) != 4:
                     continue
                 boxes.append([float(v) for v in bb])
-                class_ids.append(int(ann.get("category_id", 0)))
+                class_ids.append(int(ann.get("category_id", -1)))
                 kp = ann.get("keypoints")
                 if isinstance(kp, list) and len(kp) > 0:
                     keypoints.append([float(v) for v in kp])
@@ -660,23 +738,51 @@ def _load_pose_manifest(
             train_anns = records
         elif split_name in ("val", "valid", "validation"):
             val_anns = records
+        elif split_name == "test":
+            test_anns = records
 
     sorted_cats = sorted(all_categories.items())
     cat_id_map = {cid: idx for idx, (cid, _) in enumerate(sorted_cats)}
     labels = tuple(name for _, name in sorted_cats)
 
-    def remap(anns: list[_PoseAnnotation]) -> list[_PoseAnnotation]:
-        return [
-            _PoseAnnotation(
-                a.image_path,
-                a.boxes_xywh,
-                [cat_id_map.get(c, 0) for c in a.class_ids],
-                a.keypoints,
-            )
-            for a in anns
-        ]
+    if not labels:
+        raise InvalidRequestError("YOLOv8 pose 训练集没有合法类别")
+    if not train_anns:
+        raise InvalidRequestError("YOLOv8 pose 训练集没有合法样本")
+    if not val_anns:
+        raise InvalidRequestError(
+            "YOLOv8 pose 训练需要独立 validation split，禁止使用 train 或 test 回退"
+        )
 
-    return labels, remap(train_anns), remap(val_anns)
+    def remap(anns: list[_PoseAnnotation]) -> list[_PoseAnnotation]:
+        remapped: list[_PoseAnnotation] = []
+        for annotation in anns:
+            unknown_ids = sorted(
+                {
+                    class_id
+                    for class_id in annotation.class_ids
+                    if class_id not in cat_id_map
+                }
+            )
+            if unknown_ids:
+                raise InvalidRequestError(
+                    "YOLOv8 pose 标注引用了未声明类别",
+                    details={
+                        "category_ids": unknown_ids,
+                        "image_path": annotation.image_path,
+                    },
+                )
+            remapped.append(
+                _PoseAnnotation(
+                    annotation.image_path,
+                    annotation.boxes_xywh,
+                    [cat_id_map[class_id] for class_id in annotation.class_ids],
+                    annotation.keypoints,
+                )
+            )
+        return remapped
+
+    return labels, remap(train_anns), remap(val_anns), remap(test_anns)
 
 
 def _resolve_pose_keypoint_shape_from_manifest(

@@ -16,6 +16,7 @@ from backend.service.application.datasets.exports import (
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
 )
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.pose_evaluation import _parse_pose_manifest
 from backend.service.application.models.yolov8_core.training.pose_execution import (
     _load_pose_manifest,
@@ -147,7 +148,7 @@ def test_segmentation_training_manifest_supports_yolo_export(tmp_path: Path) -> 
     """验证 segmentation 训练入口可直接解析 yolo-instance-seg-v1。"""
 
     storage = _seed_yolo_segmentation_storage(tmp_path)
-    labels, train_annotations, val_annotations = _seg_load_manifest(
+    labels, train_annotations, val_annotations, test_annotations = _seg_load_manifest(
         storage,
         {
             "format_id": YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
@@ -172,6 +173,49 @@ def test_segmentation_training_manifest_supports_yolo_export(tmp_path: Path) -> 
     assert train_annotations[0].class_ids == [0]
     assert train_annotations[0].boxes_xywh[0] == pytest.approx([10.0, 5.0, 60.0, 20.0])
     assert len(val_annotations) == 1
+    assert test_annotations == []
+
+
+def test_segmentation_training_manifest_groups_multiple_instances_per_image(
+    tmp_path: Path,
+) -> None:
+    """验证 COCO 同一图片的多个实例不会被拆分或覆盖。"""
+
+    storage, manifest = _seed_coco_segmentation_storage(tmp_path)
+
+    labels, train_annotations, val_annotations, test_annotations = _seg_load_manifest(
+        storage,
+        manifest,
+    )
+
+    assert labels == ("part",)
+    assert len(train_annotations) == 1
+    assert train_annotations[0].class_ids == [0, 0]
+    assert np.asarray(train_annotations[0].boxes_xywh) == pytest.approx(
+        np.asarray([[10.0, 5.0, 20.0, 10.0], [50.0, 20.0, 30.0, 15.0]])
+    )
+    assert train_annotations[0].segmentations == [
+        [[10.0, 5.0, 30.0, 5.0, 30.0, 15.0, 10.0, 15.0]],
+        [[50.0, 20.0, 80.0, 20.0, 80.0, 35.0, 50.0, 35.0]],
+    ]
+    assert len(val_annotations) == 1
+    assert test_annotations == []
+
+
+def test_segmentation_training_manifest_rejects_missing_category_id(
+    tmp_path: Path,
+) -> None:
+    """验证缺少 category_id 的标注不会被静默归入类别 0。"""
+
+    storage, manifest = _seed_coco_segmentation_storage(
+        tmp_path,
+        omit_train_category_id=True,
+    )
+
+    with pytest.raises(InvalidRequestError, match="未声明类别") as error:
+        _seg_load_manifest(storage, manifest)
+
+    assert error.value.details["category_ids"] == [-1]
 
 
 def test_segmentation_evaluation_manifest_supports_yolo_export(tmp_path: Path) -> None:
@@ -204,7 +248,7 @@ def test_pose_training_manifest_supports_yolo_export(tmp_path: Path) -> None:
     """验证 pose 训练入口可直接解析 yolo-pose-v1。"""
 
     storage = _seed_yolo_pose_storage(tmp_path)
-    labels, train_annotations, val_annotations = _load_pose_manifest(
+    labels, train_annotations, val_annotations, test_annotations = _load_pose_manifest(
         storage,
         {
             "format_id": YOLO_POSE_DATASET_FORMAT,
@@ -230,6 +274,7 @@ def test_pose_training_manifest_supports_yolo_export(tmp_path: Path) -> None:
     assert train_annotations[0].boxes_xywh[0] == pytest.approx([10.0, 5.0, 60.0, 20.0])
     assert train_annotations[0].keypoints == [[10.0, 5.0, 2.0, 70.0, 25.0, 1.0]]
     assert len(val_annotations) == 1
+    assert test_annotations == []
 
 
 def test_pose_evaluation_manifest_supports_yolo_export(tmp_path: Path) -> None:
@@ -277,6 +322,86 @@ def _seed_yolo_segmentation_storage(tmp_path: Path) -> LocalDatasetStorage:
     (train_label_root / "sample-1.txt").write_text(label_line, encoding="utf-8")
     (val_label_root / "sample-1.txt").write_text(label_line, encoding="utf-8")
     return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(storage_root)))
+
+
+def _seed_coco_segmentation_storage(
+    tmp_path: Path,
+    *,
+    omit_train_category_id: bool = False,
+) -> tuple[LocalDatasetStorage, dict[str, object]]:
+    """写入包含一图多实例的最小 COCO segmentation 数据。"""
+
+    storage_root = tmp_path / "dataset-storage"
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(storage_root)))
+    for split_name in ("train", "val"):
+        _write_image(
+            storage.resolve(f"exports/sample/images/{split_name}/sample-1.jpg"),
+            width=100,
+            height=50,
+        )
+
+    first_train_annotation: dict[str, object] = {
+        "id": 1,
+        "image_id": 1,
+        "bbox": [10.0, 5.0, 20.0, 10.0],
+        "segmentation": [[10.0, 5.0, 30.0, 5.0, 30.0, 15.0, 10.0, 15.0]],
+    }
+    if not omit_train_category_id:
+        first_train_annotation["category_id"] = 1
+    common_payload = {
+        "images": [{"id": 1, "file_name": "sample-1.jpg"}],
+        "categories": [{"id": 1, "name": "part"}],
+    }
+    storage.write_json(
+        "exports/sample/annotations/instances_train.json",
+        {
+            **common_payload,
+            "annotations": [
+                first_train_annotation,
+                {
+                    "id": 2,
+                    "image_id": 1,
+                    "category_id": 1,
+                    "bbox": [50.0, 20.0, 30.0, 15.0],
+                    "segmentation": [
+                        [50.0, 20.0, 80.0, 20.0, 80.0, 35.0, 50.0, 35.0]
+                    ],
+                },
+            ],
+        },
+    )
+    storage.write_json(
+        "exports/sample/annotations/instances_val.json",
+        {
+            **common_payload,
+            "annotations": [
+                {
+                    "id": 3,
+                    "image_id": 1,
+                    "category_id": 1,
+                    "bbox": [10.0, 5.0, 20.0, 10.0],
+                    "segmentation": [
+                        [10.0, 5.0, 30.0, 5.0, 30.0, 15.0, 10.0, 15.0]
+                    ],
+                }
+            ],
+        },
+    )
+    return storage, {
+        "format_id": "coco-instance-segmentation-v1",
+        "splits": [
+            {
+                "name": "train",
+                "image_root": "exports/sample/images/train",
+                "annotation_file": "exports/sample/annotations/instances_train.json",
+            },
+            {
+                "name": "val",
+                "image_root": "exports/sample/images/val",
+                "annotation_file": "exports/sample/annotations/instances_val.json",
+            },
+        ],
+    }
 
 
 def _seed_yolo_pose_storage(tmp_path: Path) -> LocalDatasetStorage:

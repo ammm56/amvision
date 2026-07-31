@@ -22,6 +22,7 @@ from backend.service.application.models.yolov8_core.data.detection import (
     build_yolov8_detection_training_batch,
     load_yolov8_detection_training_samples,
     resolve_yolov8_detection_splits,
+    resolve_yolov8_detection_test_split,
     resolve_yolov8_detection_train_split,
     resolve_yolov8_detection_validation_split,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "load_yolov8_classification_image",
     "load_yolov8_detection_training_samples",
     "resolve_yolov8_detection_splits",
+    "resolve_yolov8_detection_test_split",
     "resolve_yolov8_detection_train_split",
     "resolve_yolov8_detection_validation_split",
     "resolve_yolov8_task_augmentation_for_epoch",

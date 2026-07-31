@@ -227,6 +227,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
         validation_metrics_object_key = (
             f"{output_prefix}/output-files/validation-metrics.json"
         )
+        test_metrics_object_key = f"{output_prefix}/output-files/test-metrics.json"
         labels_object_key = f"{output_prefix}/output-files/labels.txt"
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
@@ -288,13 +289,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 str(temporary_latest_checkpoint_path),
                 savepoint.latest_checkpoint_bytes,
             )
-            validation_metric = float(
-                savepoint.validation_metrics.get("loss", savepoint.best_metric_value)
-            )
-            if (
-                validation_metric <= savepoint.best_metric_value
-                or savepoint.best_metric_value == 0.0
-            ):
+            if savepoint.is_best:
                 self.dataset_storage.write_bytes(
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
@@ -324,6 +319,11 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 else None
             ),
             resume_checkpoint_path=resume_checkpoint_path,
+            previous_best_checkpoint_path=(
+                temporary_best_checkpoint_path
+                if temporary_best_checkpoint_path.is_file()
+                else None
+            ),
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
             savepoint_callback=on_savepoint,
@@ -406,8 +406,14 @@ class SqlAlchemyYoloV8ObbTrainingService:
             latest_checkpoint_object_key,
             execution_result.latest_checkpoint_bytes,
         )
-        best_checkpoint_bytes = execution_result.latest_checkpoint_bytes
-        if temporary_best_checkpoint_path.is_file():
+        best_checkpoint_bytes = (
+            execution_result.best_checkpoint_bytes
+            or execution_result.latest_checkpoint_bytes
+        )
+        if (
+            execution_result.best_checkpoint_bytes is None
+            and temporary_best_checkpoint_path.is_file()
+        ):
             best_checkpoint_bytes = temporary_best_checkpoint_path.read_bytes()
         else:
             self.dataset_storage.write_bytes(
@@ -422,6 +428,10 @@ class SqlAlchemyYoloV8ObbTrainingService:
         self.dataset_storage.write_json(
             validation_metrics_object_key,
             execution_result.validation_metrics_payload,
+        )
+        self.dataset_storage.write_json(
+            test_metrics_object_key,
+            dict(execution_result.test_metrics_payload or {}),
         )
         self._write_labels_text(
             labels_object_key=labels_object_key,
@@ -441,6 +451,10 @@ class SqlAlchemyYoloV8ObbTrainingService:
             validation_metrics_object_key=validation_metrics_object_key,
             summary_object_key=summary_object_key,
         )
+        output_files = summary.setdefault("output_files", {})
+        if isinstance(output_files, dict):
+            output_files["test_metrics_object_key"] = test_metrics_object_key
+        summary["test_metrics_object_key"] = test_metrics_object_key
         model_version_id = self._register_training_output_model_version(
             task_record=task_record,
             dataset_export=dataset_export,
@@ -468,6 +482,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
             "labels_object_key": labels_object_key,
             "metrics_object_key": train_metrics_object_key,
             "validation_metrics_object_key": validation_metrics_object_key,
+            "test_metrics_object_key": test_metrics_object_key,
             "summary_object_key": summary_object_key,
             "best_metric_name": execution_result.best_metric_name,
             "best_metric_value": execution_result.best_metric_value,

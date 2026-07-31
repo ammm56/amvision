@@ -275,7 +275,7 @@ def run_yolo11_detection_training_loop(
             has_validation=has_validation,
             metrics_history=metrics_history,
         )
-        if control_decision.save_checkpoint:
+        if improved_best or control_decision.save_checkpoint:
             savepoint = build_yolo11_detection_training_savepoint_payload(
                 epoch=epoch,
                 latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -286,8 +286,16 @@ def run_yolo11_detection_training_loop(
             )
             if savepoint_callback is not None:
                 savepoint_callback(savepoint)
-            if control_decision.pause_training:
-                raise Yolo11DetectionTrainingPausedError(savepoint)
+        if control_decision.pause_training:
+            savepoint = build_yolo11_detection_training_savepoint_payload(
+                epoch=epoch,
+                latest_checkpoint_bytes=latest_checkpoint_bytes,
+                best_checkpoint_bytes=best_checkpoint_bytes,
+                best_metric_name=best_metric_name,
+                best_metric_value=current_best_metric_value,
+                has_validation=has_validation,
+            )
+            raise Yolo11DetectionTrainingPausedError(savepoint)
         if control_decision.terminate_training:
             raise Yolo11DetectionTrainingTerminatedError()
 

@@ -84,6 +84,7 @@ class DetectionTrainingTaskSummaryResponse(BaseModel):
     labels_object_key: str | None = Field(default=None, description="标签文件 object key")
     metrics_object_key: str | None = Field(default=None, description="训练指标文件 object key")
     validation_metrics_object_key: str | None = Field(default=None, description="验证指标文件 object key")
+    test_metrics_object_key: str | None = Field(default=None, description="独立测试指标文件 object key")
     summary_object_key: str | None = Field(default=None, description="训练摘要文件 object key")
     best_metric_name: str | None = Field(default=None, description="最佳指标名称")
     best_metric_value: float | None = Field(default=None, description="最佳指标值")
@@ -156,6 +157,7 @@ def build_detection_training_task_summary_response(
         labels_object_key=_read_optional_str(result, "labels_object_key"),
         metrics_object_key=_read_optional_str(result, "metrics_object_key"),
         validation_metrics_object_key=_read_optional_str(result, "validation_metrics_object_key"),
+        test_metrics_object_key=_read_optional_str(result, "test_metrics_object_key"),
         summary_object_key=_read_optional_str(result, "summary_object_key"),
         best_metric_name=_read_optional_str(result, "best_metric_name"),
         best_metric_value=float(best_metric_value) if isinstance(best_metric_value, int | float) else None,

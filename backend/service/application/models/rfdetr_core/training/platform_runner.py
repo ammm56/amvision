@@ -35,7 +35,7 @@ from backend.service.application.models.rfdetr_core.training.platform_artifacts 
     build_validation_metrics_payload,
     prepare_pretrain_checkpoint,
     prepare_resume_checkpoint,
-    read_or_build_checkpoint_bytes,
+    read_or_build_checkpoint_artifacts,
     resolve_best_metric,
 )
 from backend.service.application.models.rfdetr_core.training.platform_dataset import (
@@ -81,6 +81,8 @@ class RfdetrPlatformTrainingResult:
     labels: tuple[str, ...]
     aligned_input_size: tuple[int, int]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
 
 
 def run_rfdetr_platform_training(
@@ -158,6 +160,7 @@ def run_rfdetr_platform_training(
                 extra_options=extra_options,
                 device_selection=device_selection,
                 resume_checkpoint_path=resume_checkpoint_path,
+                run_test=prepared_dataset.has_test_split,
             )
             RFDETRDataModule, RFDETRModelModule, build_trainer = (
                 _load_rfdetr_lightning_training_components()
@@ -177,7 +180,7 @@ def run_rfdetr_platform_training(
                 ckpt_path=train_config.resume or None,
             )
 
-            latest_checkpoint_bytes = read_or_build_checkpoint_bytes(
+            checkpoint_artifacts = read_or_build_checkpoint_artifacts(
                 output_dir=output_dir,
                 module=module,
                 model_config=model_config,
@@ -190,6 +193,10 @@ def run_rfdetr_platform_training(
                 aligned_input_size=aligned_input_size,
             )
             validation_metrics_payload = build_validation_metrics_payload(trainer)
+            test_metrics_payload = _build_rfdetr_test_metrics_payload(
+                validation_metrics_payload=validation_metrics_payload,
+                has_test_split=prepared_dataset.has_test_split,
+            )
             best_metric_name, best_metric_value = resolve_best_metric(
                 task_type=request.task_type,
                 validation_metrics=validation_metrics_payload,
@@ -197,12 +204,14 @@ def run_rfdetr_platform_training(
             return RfdetrPlatformTrainingResult(
                 best_metric_value=best_metric_value,
                 best_metric_name=best_metric_name,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
+                best_checkpoint_bytes=checkpoint_artifacts.best_checkpoint_bytes,
+                latest_checkpoint_bytes=checkpoint_artifacts.latest_checkpoint_bytes,
                 metrics_payload=metrics_payload,
                 validation_metrics_payload=validation_metrics_payload,
                 labels=prepared_dataset.labels,
                 aligned_input_size=aligned_input_size,
                 warm_start_summary=warm_start_summary,
+                test_metrics_payload=test_metrics_payload,
             )
     finally:
         _release_rfdetr_training_resources(
@@ -227,6 +236,35 @@ def resolve_rfdetr_platform_training_input_size(
     )
     resolution = max(aligned_height, aligned_width)
     return resolution, resolution
+
+
+def _build_rfdetr_test_metrics_payload(
+    *,
+    validation_metrics_payload: dict[str, object],
+    has_test_split: bool,
+) -> dict[str, object]:
+    """从 Lightning 最终指标中分离独立 test 结果。"""
+
+    test_metrics = {
+        str(key): value
+        for key, value in validation_metrics_payload.items()
+        if str(key).startswith("test/")
+    }
+    return {
+        "available": bool(has_test_split and test_metrics),
+        "split_name": "test",
+        "checkpoint_role": "best",
+        "metrics": test_metrics,
+        "reason": (
+            None
+            if has_test_split and test_metrics
+            else (
+                "RF-DETR test 执行未产生指标"
+                if has_test_split
+                else "dataset export 未提供独立 test split"
+            )
+        ),
+    }
 
 
 def _release_rfdetr_training_resources(
@@ -286,7 +324,6 @@ def _build_warm_start_summary(
         {
             "enabled": True,
             "load_summary": {
-                "checkpoint_path": str(warm_start_checkpoint_path),
                 "loader": "rfdetr-full-core-pretrain",
             },
         }
@@ -303,6 +340,7 @@ def _build_train_config(
     extra_options: dict[str, object],
     device_selection: SingleTrainingDeviceSelection,
     resume_checkpoint_path: str | None = None,
+    run_test: bool = False,
 ) -> TrainConfig:
     """把平台训练参数转换成 RF-DETR core 训练配置。"""
 
@@ -369,8 +407,8 @@ def _build_train_config(
         "expanded_scales": _read_bool_option(extra_options, "expanded_scales", True),
         "square_resize_div_64": True,
         "checkpoint_interval": 1,
-        "run_test": False,
-        "log_per_class_metrics": False,
+        "run_test": run_test,
+        "log_per_class_metrics": True,
         "aug_config": _resolve_rfdetr_aug_config(extra_options),
         "augmentation_backend": _resolve_rfdetr_augmentation_backend(extra_options),
     }

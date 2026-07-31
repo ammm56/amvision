@@ -5,12 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolov8_core.data import (
     YoloV8DetectionResolvedSplit,
     YoloV8DetectionTrainingSample,
     load_yolov8_detection_training_samples,
     resolve_yolov8_detection_splits,
     resolve_yolov8_detection_train_split,
+    resolve_yolov8_detection_test_split,
     resolve_yolov8_detection_validation_split,
 )
 from backend.service.application.models.yolov8_core.training.dataloader import (
@@ -35,8 +37,10 @@ class YoloV8DetectionTrainingDataContext:
     resolved_splits: tuple[YoloV8DetectionResolvedSplit, ...]
     train_split: YoloV8DetectionResolvedSplit
     validation_split: YoloV8DetectionResolvedSplit | None
+    test_split: YoloV8DetectionResolvedSplit | None
     train_samples: tuple[YoloV8DetectionTrainingSample, ...]
     validation_samples: tuple[YoloV8DetectionTrainingSample, ...]
+    test_samples: tuple[YoloV8DetectionTrainingSample, ...]
     category_names: tuple[str, ...]
     category_ids: tuple[int, ...]
     validation_category_names: tuple[str, ...] | None
@@ -72,6 +76,7 @@ def prepare_yolov8_detection_training_data_context(
     )
     train_split = resolve_yolov8_detection_train_split(resolved_splits)
     validation_split = resolve_yolov8_detection_validation_split(resolved_splits)
+    test_split = resolve_yolov8_detection_test_split(resolved_splits)
     train_samples, category_names, category_ids = load_yolov8_detection_training_samples(
         split=train_split,
     )
@@ -85,6 +90,20 @@ def prepare_yolov8_detection_training_data_context(
             validation_category_names,
             validation_category_ids,
         ) = load_yolov8_detection_training_samples(split=validation_split)
+    if validation_split is None or not validation_samples:
+        raise InvalidRequestError(
+            "YOLOv8 detection 训练 manifest 缺少独立 validation 样本"
+        )
+
+    test_samples: tuple[YoloV8DetectionTrainingSample, ...] = ()
+    if test_split is not None:
+        test_samples, test_category_names, test_category_ids = (
+            load_yolov8_detection_training_samples(split=test_split)
+        )
+        if test_category_names != category_names or test_category_ids != category_ids:
+            raise InvalidRequestError(
+                "YOLOv8 detection test split 的 categories 与训练 split 不一致"
+            )
 
     validation_split_name = validation_split.name if validation_split is not None else None
     sample_plan = plan_yolov8_detection_training_samples(
@@ -100,8 +119,10 @@ def prepare_yolov8_detection_training_data_context(
         resolved_splits=resolved_splits,
         train_split=train_split,
         validation_split=validation_split,
+        test_split=test_split,
         train_samples=train_samples,
         validation_samples=validation_samples,
+        test_samples=test_samples,
         category_names=category_names,
         category_ids=category_ids,
         validation_category_names=validation_category_names,

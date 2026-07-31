@@ -21,6 +21,9 @@ from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
     resolve_torch_amp_device_type,
 )
+from backend.service.application.models.training.detection_evaluation_report import (
+    build_detection_test_metrics_report,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     YoloUltralyticsOptimizerStep,
@@ -117,6 +120,7 @@ class YoloV8SegmentationTrainingSavePoint:
     best_metric_name: str
     epoch: int
     learning_rate: float
+    is_best: bool = False
 
 
 @dataclass(frozen=True)
@@ -197,6 +201,7 @@ class YoloV8SegmentationTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     resume_checkpoint_path: Path | None = None
+    previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: (
         Callable[
@@ -219,6 +224,10 @@ class YoloV8SegmentationTrainingExecutionResult:
     validation_metrics_payload: dict[str, object]
     labels: tuple[str, ...]
     warm_start_summary: dict[str, object]
+    best_checkpoint_bytes: bytes | None = None
+    test_metrics_payload: dict[str, object] | None = None
+    test_split_name: str | None = None
+    test_sample_count: int = 0
 
 
 def run_yolov8_segmentation_training(
@@ -237,7 +246,7 @@ def run_yolov8_segmentation_training(
     precision = request.precision
     input_size = request.input_size or _SEG_DEFAULT_INPUT_SIZE
 
-    labels, train_anns, val_anns = _seg_load_manifest(
+    labels, train_anns, val_anns, test_anns = _seg_load_manifest(
         request.dataset_storage,
         request.manifest_payload,
     )
@@ -349,8 +358,15 @@ def run_yolov8_segmentation_training(
     start_epoch = 0
     g_iter = 0
     m_hist, v_hist = [], []
-    best_val, best_name = 0.0, "val_map50_95"
+    # AP 合法下界为 0；使用 -1 保证首次 validation 即使为 0 也会保存 best。
+    best_val, best_name = -1.0, "val_map50_95"
     latest_checkpoint_bytes = b""
+    best_checkpoint_bytes = (
+        request.previous_best_checkpoint_path.read_bytes()
+        if request.previous_best_checkpoint_path is not None
+        and request.previous_best_checkpoint_path.is_file()
+        else b""
+    )
     if resume is not None:
         _seg_apply_resume(model, optimizer, scheduler, scaler, resume, imports, device)
         m_hist, v_hist = list(resume.metrics_history), list(resume.validation_history)
@@ -578,7 +594,8 @@ def run_yolov8_segmentation_training(
             )
             v_hist.append({"epoch": epoch, **val_metrics})
         current_val = float(val_metrics.get("map50_95", 0.0))
-        if current_val > best_val:
+        best_metric_improved = bool(val_metrics) and current_val > best_val
+        if best_metric_improved:
             best_val = current_val
             best_name = "val_map50_95"
 
@@ -613,7 +630,12 @@ def run_yolov8_segmentation_training(
             eval_nms=eval_nms,
             imports=imports,
         )
-        if cmd is not None and request.savepoint_callback is not None:
+        if best_metric_improved:
+            best_checkpoint_bytes = latest_checkpoint_bytes
+        manual_save_requested = cmd is not None and cmd.save_checkpoint
+        if request.savepoint_callback is not None and (
+            best_metric_improved or manual_save_requested
+        ):
             request.savepoint_callback(
                 YoloV8SegmentationTrainingSavePoint(
                     latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -623,11 +645,52 @@ def run_yolov8_segmentation_training(
                     best_metric_name=best_name,
                     epoch=epoch + 1,
                     learning_rate=float(scheduler.get_last_lr()[0]),
+                    is_best=best_metric_improved,
                 )
             )
         if cmd is not None and cmd.pause_training:
             raise YoloV8SegmentationTrainingPausedError()
 
+    if not best_checkpoint_bytes:
+        best_checkpoint_bytes = latest_checkpoint_bytes
+    test_metrics_payload = build_detection_test_metrics_report(
+        available=False,
+        sample_count=0,
+        category_names=labels,
+        reason="dataset export does not contain an independent test split",
+        task_type="segmentation",
+    )
+    if test_anns:
+        checkpoint_payload = imports.torch.load(
+            io.BytesIO(best_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        best_state_dict = checkpoint_payload.get("ema_state_dict")
+        if not isinstance(best_state_dict, dict):
+            best_state_dict = checkpoint_payload.get("model_state_dict")
+        if not isinstance(best_state_dict, dict):
+            raise InvalidRequestError("YOLOv8 segmentation best checkpoint 缺少模型权重")
+        ema.model.load_state_dict(best_state_dict, strict=False)
+        ema.model.to(device)
+        test_metrics = evaluate_yolov8_segmentation_samples(
+            model=ema.model,
+            samples=test_anns,
+            labels=labels,
+            input_size=input_size,
+            device=device,
+            precision=precision,
+            evaluation_confidence_threshold=eval_conf,
+            evaluation_nms_threshold=eval_nms,
+            imports=imports,
+        )
+        test_metrics_payload = build_detection_test_metrics_report(
+            available=True,
+            sample_count=len(test_anns),
+            metrics=test_metrics,
+            category_names=labels,
+            task_type="segmentation",
+        )
     final_v = v_hist[-1] if v_hist else {}
     return YoloV8SegmentationTrainingExecutionResult(
         best_metric_value=best_val,
@@ -647,6 +710,10 @@ def run_yolov8_segmentation_training(
         },
         labels=labels,
         warm_start_summary=warm_start_summary,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        test_metrics_payload=test_metrics_payload,
+        test_split_name="test" if test_anns else None,
+        test_sample_count=len(test_anns),
     )
 
 
@@ -689,6 +756,7 @@ def _seg_load_manifest(
     tuple[str, ...],
     list[_SegTrainingAnnotation],
     list[_SegTrainingAnnotation],
+    list[_SegTrainingAnnotation],
 ]:
     splits = manifest.get("splits")
     if not isinstance(splits, list):
@@ -705,11 +773,11 @@ def _seg_load_manifest(
         else ()
     )
     all_cats: dict[int, str] = {}
-    train_a, val_a = [], []
+    train_a, val_a, test_a = [], [], []
     for sp in splits:
         if not isinstance(sp, dict):
             continue
-        sn = str(sp.get("name", ""))
+        sn = str(sp.get("name", "")).strip().lower()
         im_root = str(sp.get("image_root", ""))
         if format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
             label_root = str(sp.get("label_root", ""))
@@ -748,7 +816,7 @@ def _seg_load_manifest(
         for im in payload.get("images") or []:
             if isinstance(im, dict):
                 img_map[int(im.get("id", -1))] = str(im.get("file_name", ""))
-        result = []
+        annotations_by_image: dict[int, _SegTrainingAnnotation] = {}
         for ann in payload.get("annotations") or []:
             if not isinstance(ann, dict):
                 continue
@@ -759,49 +827,77 @@ def _seg_load_manifest(
             bbox = ann.get("bbox")
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
-            result.append(
-                _SegTrainingAnnotation(
+            current = annotations_by_image.get(img_id)
+            if current is None:
+                current = _SegTrainingAnnotation(
                     image_path=str(dataset_storage.resolve(f"{im_root}/{fn}")),
-                    boxes_xywh=[bbox],
-                    class_ids=[int(ann.get("category_id", 0))],
-                    segmentations=_extract_segmentation_polygons(ann),
+                    boxes_xywh=[],
+                    class_ids=[],
+                    segmentations=[],
                 )
-            )
+                annotations_by_image[img_id] = current
+            current.boxes_xywh.append([float(value) for value in bbox])
+            current.class_ids.append(int(ann.get("category_id", -1)))
+            polygons = _extract_segmentation_polygons(ann)
+            assert current.segmentations is not None
+            current.segmentations.append(polygons if polygons else None)
+        result = list(annotations_by_image.values())
         if sn == "train":
             train_a = result
-        elif sn == "val":
+        elif sn in {"val", "valid", "validation"}:
             val_a = result
+        elif sn == "test":
+            test_a = result
     sorted_cats = sorted(all_cats.items())
     cat_id_to_idx = {cid: idx for idx, (cid, _) in enumerate(sorted_cats)}
     labels = tuple(name for _, name in sorted_cats)
-    remapped_train = [
-        _SegTrainingAnnotation(
-            image_path=annotation.image_path,
-            boxes_xywh=annotation.boxes_xywh,
-            class_ids=[
-                cat_id_to_idx.get(class_id, 0) for class_id in annotation.class_ids
-            ],
-            segmentations=annotation.segmentations,
+    if not labels:
+        raise InvalidRequestError("YOLOv8 segmentation 训练集没有合法类别")
+    if not train_a:
+        raise InvalidRequestError("YOLOv8 segmentation 训练集没有合法样本")
+    if not val_a:
+        raise InvalidRequestError(
+            "YOLOv8 segmentation 训练需要独立 validation split，禁止使用 train 或 test 回退"
         )
-        for annotation in train_a
-    ]
-    remapped_val = [
-        _SegTrainingAnnotation(
-            image_path=annotation.image_path,
-            boxes_xywh=annotation.boxes_xywh,
-            class_ids=[
-                cat_id_to_idx.get(class_id, 0) for class_id in annotation.class_ids
-            ],
-            segmentations=annotation.segmentations,
-        )
-        for annotation in val_a
-    ]
-    return labels, remapped_train, remapped_val
+
+    def remap(
+        annotations: list[_SegTrainingAnnotation],
+    ) -> list[_SegTrainingAnnotation]:
+        remapped: list[_SegTrainingAnnotation] = []
+        for annotation in annotations:
+            unknown_ids = sorted(
+                {
+                    class_id
+                    for class_id in annotation.class_ids
+                    if class_id not in cat_id_to_idx
+                }
+            )
+            if unknown_ids:
+                raise InvalidRequestError(
+                    "YOLOv8 segmentation 标注引用了未声明类别",
+                    details={
+                        "category_ids": unknown_ids,
+                        "image_path": annotation.image_path,
+                    },
+                )
+            remapped.append(
+                _SegTrainingAnnotation(
+                    image_path=annotation.image_path,
+                    boxes_xywh=annotation.boxes_xywh,
+                    class_ids=[
+                        cat_id_to_idx[class_id] for class_id in annotation.class_ids
+                    ],
+                    segmentations=annotation.segmentations,
+                )
+            )
+        return remapped
+
+    return labels, remap(train_a), remap(val_a), remap(test_a)
 
 
 def _extract_segmentation_polygons(
     annotation: dict[str, object],
-) -> list[list[list[float]] | None] | None:
+) -> list[list[float]] | None:
     """从 COCO 标注提取 segmentation 多边形数据。"""
 
     seg = annotation.get("segmentation")
