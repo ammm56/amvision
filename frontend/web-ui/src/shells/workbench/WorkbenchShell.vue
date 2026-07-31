@@ -6,7 +6,6 @@
       <div class="workbench-shell__content" :class="{ 'workbench-shell__content--full-bleed': isGraphWorkbench }">
         <slot />
       </div>
-      <AppBottomPanel v-if="!isGraphWorkbench" />
     </section>
   </main>
 </template>
@@ -15,7 +14,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
-import AppBottomPanel from './components/AppBottomPanel.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import AppTopbar from './components/AppTopbar.vue'
 import { useProjectStore } from '@/app/stores/project.store'
