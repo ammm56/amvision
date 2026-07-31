@@ -175,7 +175,6 @@
           <div>
             <h3>{{ trainingModelParameterSectionTitle }}</h3>
           </div>
-          <span class="training-parameter-section__hint">{{ t('modelOps.trainingParameters.defaultsHint') }}</span>
         </div>
         <div class="form-grid training-parameter-grid">
           <label
@@ -207,9 +206,6 @@
               @input="emitModelParameterValue(field.key, $event)"
               @blur="normalizeModelParameterNumber(field, $event)"
             />
-            <small v-if="field.key === 'learning_rate' && isModelFieldDisabled(field)" class="field-help">
-              {{ locale === 'zh-CN' ? '由优化器、类别数和迭代量自动解析' : 'Resolved automatically from optimizer, class count, and iterations.' }}
-            </small>
           </label>
         </div>
       </section>
@@ -524,12 +520,6 @@ function normalizeModelParameterNumber(
   font-size: 18px;
 }
 
-.training-parameter-section__hint {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .training-parameter-section__description {
   margin: 0;
   color: var(--muted);
@@ -547,12 +537,6 @@ function normalizeModelParameterNumber(
 
 .field--disabled {
   opacity: 0.58;
-}
-
-.field-help {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .training-augmentation-switch {
