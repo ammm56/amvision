@@ -9,6 +9,7 @@ from backend.service.application.models.training.yolov8_training_service import 
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
+from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 from backend.workers.training.yolov8_trainer_runner import SqlAlchemyYoloV8TrainerRunner
 
 
@@ -42,6 +43,11 @@ class YoloV8TrainingQueueWorker:
         if queue_task is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=queue_task,
+        )
+        lease.start()
         try:
             task_id = self._read_task_id(queue_task)
             training_backend = self.training_backend or SqlAlchemyYoloV8TrainerRunner(
@@ -57,6 +63,9 @@ class YoloV8TrainingQueueWorker:
                 )
             )
         except ServiceError as error:
+            queue_task = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
@@ -68,6 +77,9 @@ class YoloV8TrainingQueueWorker:
             )
             return True
         except Exception as error:
+            queue_task = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
@@ -79,6 +91,9 @@ class YoloV8TrainingQueueWorker:
             )
             return True
 
+        queue_task = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             queue_task,
             metadata={

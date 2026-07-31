@@ -63,6 +63,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
+from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner
 
 
@@ -99,6 +100,11 @@ class ClassificationTrainingQueueWorker:
         if qt is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=qt,
+        )
+        lease.start()
         try:
             task_id = _read_task_id(qt)
             training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
@@ -115,6 +121,9 @@ class ClassificationTrainingQueueWorker:
                 )
             )
         except OperationCancelledError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.complete(
                 qt,
                 metadata={
@@ -125,6 +134,9 @@ class ClassificationTrainingQueueWorker:
             )
             return True
         except ServiceError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -137,6 +149,9 @@ class ClassificationTrainingQueueWorker:
             )
             return True
         except Exception as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -149,6 +164,9 @@ class ClassificationTrainingQueueWorker:
             )
             return True
 
+        qt = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             qt,
             metadata={
@@ -213,6 +231,11 @@ class SegmentationTrainingQueueWorker:
         if qt is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=qt,
+        )
+        lease.start()
         try:
             task_id = _read_task_id(qt)
             training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
@@ -229,6 +252,9 @@ class SegmentationTrainingQueueWorker:
                 )
             )
         except OperationCancelledError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.complete(
                 qt,
                 metadata={
@@ -239,6 +265,9 @@ class SegmentationTrainingQueueWorker:
             )
             return True
         except ServiceError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -251,6 +280,9 @@ class SegmentationTrainingQueueWorker:
             )
             return True
         except Exception as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -263,6 +295,9 @@ class SegmentationTrainingQueueWorker:
             )
             return True
 
+        qt = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             qt,
             metadata={
@@ -309,6 +344,11 @@ class PoseTrainingQueueWorker:
         if qt is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=qt,
+        )
+        lease.start()
         try:
             task_id = _read_task_id(qt)
             training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
@@ -325,6 +365,9 @@ class PoseTrainingQueueWorker:
                 )
             )
         except OperationCancelledError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.complete(
                 qt,
                 metadata={
@@ -335,6 +378,9 @@ class PoseTrainingQueueWorker:
             )
             return True
         except ServiceError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -347,6 +393,9 @@ class PoseTrainingQueueWorker:
             )
             return True
         except Exception as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -359,6 +408,9 @@ class PoseTrainingQueueWorker:
             )
             return True
 
+        qt = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             qt,
             metadata={
@@ -405,6 +457,11 @@ class ObbTrainingQueueWorker:
         if qt is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=qt,
+        )
+        lease.start()
         try:
             task_id = _read_task_id(qt)
             training_backend = self.training_backend or SqlAlchemyYoloTrainingRunner(
@@ -421,6 +478,9 @@ class ObbTrainingQueueWorker:
                 )
             )
         except OperationCancelledError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.complete(
                 qt,
                 metadata={
@@ -431,6 +491,9 @@ class ObbTrainingQueueWorker:
             )
             return True
         except ServiceError as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -443,6 +506,9 @@ class ObbTrainingQueueWorker:
             )
             return True
         except Exception as error:
+            qt = lease.stop()
+            if lease.lease_lost:
+                return True
             _mark_training_task_failed(
                 session_factory=self.session_factory,
                 payload=qt.payload,
@@ -455,6 +521,9 @@ class ObbTrainingQueueWorker:
             )
             return True
 
+        qt = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             qt,
             metadata={

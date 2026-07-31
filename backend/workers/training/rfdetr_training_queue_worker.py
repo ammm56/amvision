@@ -9,6 +9,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.rfdetr_trainer_runner import SqlAlchemyRfdetrTrainerRunner
+from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 
 
 RFDETR_TRAINING_QUEUE_NAME = "rfdetr-trainings"
@@ -51,6 +52,11 @@ class RfdetrTrainingQueueWorker:
         if queue_task is None:
             return False
 
+        lease = TrainingLeaseHeartbeat(
+            queue_backend=self.queue_backend,
+            queue_message=queue_task,
+        )
+        lease.start()
         try:
             task_id = self._read_task_id(queue_task)
             training_backend = self.training_backend or SqlAlchemyRfdetrTrainerRunner(
@@ -68,6 +74,9 @@ class RfdetrTrainingQueueWorker:
                 )
             )
         except OperationCancelledError as error:
+            queue_task = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.complete(
                 queue_task,
                 metadata={
@@ -78,6 +87,9 @@ class RfdetrTrainingQueueWorker:
             )
             return True
         except ServiceError as error:
+            queue_task = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.fail(
                 queue_task,
                 error_message=error.message,
@@ -85,6 +97,9 @@ class RfdetrTrainingQueueWorker:
             )
             return True
         except Exception as error:
+            queue_task = lease.stop()
+            if lease.lease_lost:
+                return True
             self.queue_backend.fail(
                 queue_task,
                 error_message=str(error),
@@ -92,6 +107,9 @@ class RfdetrTrainingQueueWorker:
             )
             return True
 
+        queue_task = lease.stop()
+        if lease.lease_lost:
+            return True
         self.queue_backend.complete(
             queue_task,
             metadata={

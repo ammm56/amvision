@@ -84,6 +84,16 @@ class QueueBackend(Protocol):
 
         ...
 
+    def refresh_lease(
+        self,
+        queue_message: QueueMessage,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> QueueMessage:
+        """刷新当前 worker 持有的任务 lease，并返回最新队列消息。"""
+
+        ...
+
     def complete(
         self,
         queue_message: QueueMessage,
