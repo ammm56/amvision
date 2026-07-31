@@ -7,6 +7,7 @@ import {
   getModelLayerTrainingFields,
   isTrainingAugmentationField,
   isTrainingAugmentationParameterDisabled,
+  isTrainingModelParameterDisabled,
   normalizeTrainingParameterNumber,
   validateTrainingModelLayerValues,
 } from './training-parameter-support'
@@ -97,6 +98,43 @@ describe('training parameter augmentation support', () => {
         )
       }
     }
+  })
+
+  it('uses an explicit optimizer for every ordinary YOLO task', () => {
+    for (const taskType of ['detection', 'classification', 'segmentation', 'pose', 'obb'] as const) {
+      for (const modelType of ['yolov8', 'yolo11', 'yolo26']) {
+        expect(fieldKeys(taskType, modelType)).toContain('optimizer')
+        expect(defaultValues(taskType, modelType).optimizer).toBe('auto')
+      }
+    }
+  })
+
+  it('does not submit an Auto placeholder learning rate', () => {
+    const values = defaultValues('classification', 'yolo11')
+    expect(isTrainingModelParameterDisabled(
+      getModelLayerTrainingFields('classification', 'yolo11').find((field) => field.key === 'learning_rate')!,
+      values,
+    )).toBe(true)
+    expect(buildTrainingExtraOptions('classification', 'yolo11', values)).not.toHaveProperty('learning_rate')
+    values.optimizer = 'adamw'
+    values.learning_rate = '0.001'
+    expect(buildTrainingExtraOptions('classification', 'yolo11', values)).toMatchObject({
+      optimizer: 'adamw',
+      learning_rate: 0.001,
+    })
+  })
+
+  it('uses explicit RF-DETR scheduler semantics', () => {
+    const stepValues = defaultValues('segmentation', 'rfdetr')
+    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).toMatchObject({
+      lr_scheduler: 'step',
+    })
+    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).not.toHaveProperty('min_lr_ratio')
+    stepValues.lr_scheduler = 'cosine'
+    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).toMatchObject({
+      lr_scheduler: 'cosine',
+      min_lr_ratio: 0.01,
+    })
   })
 
   it('exposes classification image augmentation fields for ordinary YOLO models', () => {

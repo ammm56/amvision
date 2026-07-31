@@ -82,6 +82,7 @@ from backend.service.application.models.yolo_core_common.geometry import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolov8_core import (
     build_yolov8_model,
@@ -467,6 +468,7 @@ def run_yolov8_detection_training(
     training_runtime = build_yolov8_detection_training_runtime(
         torch_module=imports.torch,
         model=model,
+        optimizer_name=str(extra_options.get("optimizer", "auto")),
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         max_epochs=max_epochs,
@@ -972,7 +974,11 @@ def run_yolov8_detection_training(
         "warm_start": warm_start_summary,
         "optimizer": {
             "name": training_runtime.schedule.optimizer_name,
-            "learning_rate": training_runtime.schedule.initial_lr,
+            "initial_learning_rate": training_runtime.schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_runtime.schedule.initial_lr,
+            ),
             "weight_decay": training_runtime.schedule.weight_decay,
             "scaled_weight_decay": training_runtime.schedule.scaled_weight_decay,
             "nominal_batch_size": training_runtime.schedule.nominal_batch_size,

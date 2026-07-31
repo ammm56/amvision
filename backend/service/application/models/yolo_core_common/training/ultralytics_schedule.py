@@ -8,8 +8,11 @@ weight decay 缩放和 nominal batch size 规则。模型结构、loss、target 
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any
+
+from .musgd import create_musgd_optimizer
 
 
 YOLO_ULTRALYTICS_DEFAULT_NOMINAL_BATCH_SIZE = 64
@@ -163,6 +166,24 @@ def build_yolo_ultralytics_scheduler(
     )
 
 
+def resolve_yolo_optimizer_base_learning_rate(
+    *, optimizer: Any, initial_learning_rate: float
+) -> float:
+    """读取基础参数组的当前学习率，排除 MuSGD 三倍学习率分组。"""
+
+    expected_initial_lr = float(initial_learning_rate)
+    for group in optimizer.param_groups:
+        group_initial_lr = float(group.get("initial_lr", expected_initial_lr))
+        if math.isclose(
+            group_initial_lr,
+            expected_initial_lr,
+            rel_tol=1e-9,
+            abs_tol=1e-12,
+        ):
+            return float(group["lr"])
+    return float(optimizer.param_groups[0]["lr"])
+
+
 def compute_yolo_ultralytics_lr_factor(
     *,
     epoch: int,
@@ -254,7 +275,7 @@ def _resolve_yolo_optimizer_auto(
     if requested_name == "auto":
         lr_fit = round(0.002 * 5.0 / float(4 + max(1, int(num_classes))), 6)
         if int(iterations) > 10000:
-            return "SGD", 0.01, 0.9, warmup_bias_lr
+            return "MuSGD", 0.01, 0.9, warmup_bias_lr
         return "AdamW", lr_fit, 0.9, 0.0
     supported_names = {
         "adam": "Adam",
@@ -263,6 +284,7 @@ def _resolve_yolo_optimizer_auto(
         "radam": "RAdam",
         "rmsprop": "RMSProp",
         "sgd": "SGD",
+        "musgd": "MuSGD",
     }
     resolved_name = supported_names.get(requested_name)
     if resolved_name is None:
@@ -284,48 +306,100 @@ def _build_yolo_optimizer_param_groups(
     norm_types = tuple(
         value for key, value in torch_module.nn.__dict__.items() if "Norm" in key
     )
-    decay_params: list[Any] = []
-    norm_params: list[Any] = []
-    bias_params: list[Any] = []
+    decay_params: list[tuple[str, Any]] = []
+    norm_params: list[tuple[str, Any]] = []
+    bias_params: list[tuple[str, Any]] = []
+    muon_params: list[tuple[str, Any]] = []
     for module_name, module in model.named_modules():
         for param_name, parameter in module.named_parameters(recurse=False):
             if not getattr(parameter, "requires_grad", False):
                 continue
             full_name = f"{module_name}.{param_name}" if module_name else param_name
-            if "bias" in full_name:
-                bias_params.append(parameter)
+            if optimizer_name == "MuSGD" and parameter.ndim >= 2:
+                muon_params.append((full_name, parameter))
+            elif "bias" in full_name:
+                bias_params.append((full_name, parameter))
             elif isinstance(module, norm_types) or "logit_scale" in full_name:
-                norm_params.append(parameter)
+                norm_params.append((full_name, parameter))
             else:
-                decay_params.append(parameter)
+                decay_params.append((full_name, parameter))
     base_options = _build_yolo_optimizer_group_options(
         optimizer_name=optimizer_name,
         learning_rate=learning_rate,
         momentum=momentum,
     )
-    return [
+    groups = [
         {
-            "params": decay_params,
+            "params": [parameter for _, parameter in decay_params],
             **base_options,
             "weight_decay": float(weight_decay),
             "param_group": "weight",
             "initial_lr": float(learning_rate),
         },
         {
-            "params": norm_params,
+            "params": [parameter for _, parameter in norm_params],
             **base_options,
             "weight_decay": 0.0,
             "param_group": "bn",
             "initial_lr": float(learning_rate),
         },
         {
-            "params": bias_params,
+            "params": [parameter for _, parameter in bias_params],
             **base_options,
             "weight_decay": 0.0,
             "param_group": "bias",
             "initial_lr": float(learning_rate),
         },
     ]
+    if optimizer_name == "MuSGD":
+        groups = _split_musgd_finetune_groups(
+            named_groups=(decay_params, norm_params, bias_params, muon_params),
+            base_options=base_options,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+        )
+    return groups
+
+
+def _split_musgd_finetune_groups(
+    *,
+    named_groups: tuple[list[tuple[str, Any]], ...],
+    base_options: dict[str, object],
+    learning_rate: float,
+    weight_decay: float,
+) -> list[dict[str, object]]:
+    """按参考规则为 MuSGD 特定检测头参数使用三倍学习率。"""
+
+    boost_pattern = re.compile(r"(?=.*23)(?=.*cv3)|proto\.semseg")
+    group_names = ("weight", "bn", "bias", "muon")
+    group_decays = (float(weight_decay), 0.0, 0.0, float(weight_decay))
+    result: list[dict[str, object]] = []
+    for group_name, group_decay, named_parameters in zip(
+        group_names, group_decays, named_groups, strict=True
+    ):
+        boosted = [
+            parameter
+            for name, parameter in named_parameters
+            if boost_pattern.search(name)
+        ]
+        regular = [
+            parameter
+            for name, parameter in named_parameters
+            if not boost_pattern.search(name)
+        ]
+        for parameters, lr_multiplier in ((boosted, 3.0), (regular, 1.0)):
+            group = {
+                "params": parameters,
+                **base_options,
+                "lr": float(learning_rate) * lr_multiplier,
+                "weight_decay": group_decay,
+                "param_group": group_name,
+                "initial_lr": float(learning_rate) * lr_multiplier,
+            }
+            if group_name == "muon":
+                group["use_muon"] = True
+            result.append(group)
+    return result
 
 
 def _build_yolo_optimizer_group_options(
@@ -337,7 +411,7 @@ def _build_yolo_optimizer_group_options(
         return {"lr": float(learning_rate), "betas": (float(momentum), 0.999)}
     if optimizer_name == "RMSProp":
         return {"lr": float(learning_rate), "momentum": float(momentum)}
-    if optimizer_name == "SGD":
+    if optimizer_name in {"SGD", "MuSGD"}:
         return {
             "lr": float(learning_rate),
             "momentum": float(momentum),
@@ -351,6 +425,11 @@ def _create_yolo_optimizer(
 ) -> Any:
     """创建 torch optimizer 实例。"""
 
+    if optimizer_name == "MuSGD":
+        return create_musgd_optimizer(
+            torch_module=torch_module,
+            param_groups=param_groups,
+        )
     optimizer_cls = getattr(torch_module.optim, optimizer_name, None)
     if optimizer_cls is None:
         raise ValueError(f"当前 torch 环境不支持 optimizer: {optimizer_name}")
@@ -386,5 +465,6 @@ __all__ = [
     "build_yolo_ultralytics_optimizer",
     "build_yolo_ultralytics_scheduler",
     "compute_yolo_ultralytics_lr_factor",
+    "resolve_yolo_optimizer_base_learning_rate",
     "resolve_yolo_ultralytics_accumulate",
 ]

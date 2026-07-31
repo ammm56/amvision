@@ -123,7 +123,10 @@ def build_yolo_detection_resolved_extra_options_payload(
     gradient_summary = dict(metrics_payload.get("gradient_control") or {})
     augmentation_summary = dict(metrics_payload.get("augmentation") or {})
     return {
-        "learning_rate": optimizer_summary.get("learning_rate"),
+        "learning_rate": optimizer_summary.get(
+            "initial_learning_rate", optimizer_summary.get("learning_rate")
+        ),
+        "optimizer": optimizer_summary.get("name"),
         "weight_decay": optimizer_summary.get("weight_decay"),
         "class_loss_weight": loss_weight_summary.get("class_loss_weight"),
         "box_loss_weight": loss_weight_summary.get("box_loss_weight"),

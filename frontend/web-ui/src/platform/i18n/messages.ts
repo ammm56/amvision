@@ -655,6 +655,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         stage: '阶段',
         epoch: 'Epoch',
         learningRate: 'Learning rate',
+        optimizer: '优化器',
+        initialLearningRate: '初始学习率',
+        finalLearningRate: '最终学习率',
         currentMetric: '当前指标',
       },
       actions: {
@@ -2487,6 +2490,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         stage: 'Stage',
         epoch: 'Epoch',
         learningRate: 'Learning rate',
+        optimizer: 'Optimizer',
+        initialLearningRate: 'Initial learning rate',
+        finalLearningRate: 'Final learning rate',
         currentMetric: 'Current metric',
       },
       actions: {

@@ -44,6 +44,22 @@ const classificationCropModeOptions: TrainingParameterFieldOption[] = [
   { label: '随机比例裁剪', value: 'random_resized_crop' },
 ]
 
+const yoloOptimizerOptions: TrainingParameterFieldOption[] = [
+  { label: 'Auto（默认）', value: 'auto' },
+  { label: 'MuSGD', value: 'musgd' },
+  { label: 'SGD', value: 'sgd' },
+  { label: 'AdamW', value: 'adamw' },
+  { label: 'Adam', value: 'adam' },
+  { label: 'NAdam', value: 'nadam' },
+  { label: 'RAdam', value: 'radam' },
+  { label: 'RMSProp', value: 'rmsprop' },
+]
+
+const rfdetrSchedulerOptions: TrainingParameterFieldOption[] = [
+  { label: 'Step（默认）', value: 'step' },
+  { label: 'Cosine', value: 'cosine' },
+]
+
 const classificationCropScaleKeys = new Set(['crop_scale_min', 'crop_scale_max'])
 const classificationManualAugmentationKeys = new Set([
   'rotation_degrees',
@@ -323,7 +339,8 @@ const detectionYoloXFields: TrainingParameterField[] = [
 ]
 
 const detectionYoloPrimaryFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
+  selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
+  numberField('learning_rate', '基础学习率', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloDetectionDefaultWeightDecay }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
@@ -339,6 +356,8 @@ const detectionYoloPrimaryFields: TrainingParameterField[] = [
 
 const detectionRfdetrFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
+  selectField('lr_scheduler', '学习率调度器', rfdetrSchedulerOptions, { defaultValue: 'step' }),
+  numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   numberField('class_cost', '分类匹配代价', { min: 0, step: 0.1, defaultValue: '2.0' }),
   numberField('bbox_cost', '框匹配代价', { min: 0, step: 0.1, defaultValue: '5.0' }),
   numberField('giou_cost', 'GIoU 匹配代价', { min: 0, step: 0.1, defaultValue: '2.0' }),
@@ -349,14 +368,16 @@ const detectionRfdetrFields: TrainingParameterField[] = [
 ]
 
 const classificationFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
+  numberField('learning_rate', '基础学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...classificationYoloAugmentationFields,
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
+  numberField('learning_rate', '基础学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
@@ -374,7 +395,8 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
 const segmentationRfdetrFields: TrainingParameterField[] = [
   numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: '0.0001' }),
-  numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
+  selectField('lr_scheduler', '学习率调度器', rfdetrSchedulerOptions, { defaultValue: 'step' }),
+  numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   numberField('class_cost', '分类匹配代价', { min: 0, step: 0.1, defaultValue: '2.0' }),
   numberField('bbox_cost', '框匹配代价', { min: 0, step: 0.1, defaultValue: '5.0' }),
   numberField('giou_cost', 'GIoU 匹配代价', { min: 0, step: 0.1, defaultValue: '2.0' }),
@@ -387,7 +409,8 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
 ]
 
 const poseFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
+  numberField('learning_rate', '基础学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
@@ -404,13 +427,14 @@ const poseFields: TrainingParameterField[] = [
 ]
 
 const obbFields: TrainingParameterField[] = [
-  numberField('learning_rate', '学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
+  numberField('learning_rate', '基础学习率', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   ...obbYoloEvaluationThresholdFields,
   numberField('class_loss_weight', '分类损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, step: 0.1, defaultValue: '1.5' }),
-  numberField('angle_loss_weight', '角度损失权重', { min: 0, step: 0.1, defaultValue: '0.5' }),
+  numberField('angle_loss_weight', '角度损失权重', { min: 0, step: 0.1, defaultValue: '1.0' }),
   numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, step: 1, defaultValue: '10' }),
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, step: 0.1, defaultValue: '6.0' }),
@@ -641,6 +665,20 @@ export function buildTrainingExtraOptions(
     assignValue('augmentation_backend')
   }
 
+  const assignYoloOptimizerValues = (): void => {
+    assignValue('optimizer')
+    if (String(values.optimizer ?? 'auto').trim().toLowerCase() !== 'auto') {
+      assignValue('learning_rate')
+    }
+  }
+
+  const assignRfdetrSchedulerValues = (): void => {
+    assignValue('lr_scheduler')
+    if (String(values.lr_scheduler ?? 'step').trim().toLowerCase() === 'cosine') {
+      assignValue('min_lr_ratio')
+    }
+  }
+
   const disableRfdetrAugmentationValues = (): void => {
     result.disable_augmentation = true
   }
@@ -688,14 +726,15 @@ export function buildTrainingExtraOptions(
       ]) {
         assignValue(key)
       }
+      assignRfdetrSchedulerValues()
       assignRfdetrAugmentationValues()
       if (!augmentationEnabled) {
         disableRfdetrAugmentationValues()
       }
       return result
     }
+    assignYoloOptimizerValues()
     for (const key of [
-      'learning_rate',
       'weight_decay',
       'class_loss_weight',
       'box_loss_weight',
@@ -717,7 +756,8 @@ export function buildTrainingExtraOptions(
   }
 
   if (taskType === 'classification') {
-    for (const key of ['learning_rate', 'weight_decay', 'min_lr_ratio']) {
+    assignYoloOptimizerValues()
+    for (const key of ['weight_decay', 'min_lr_ratio']) {
       assignValue(key)
     }
     assignClassificationAugmentationValues()
@@ -732,7 +772,6 @@ export function buildTrainingExtraOptions(
       for (const key of [
         'learning_rate',
         'weight_decay',
-        'min_lr_ratio',
         'class_cost',
         'bbox_cost',
         'giou_cost',
@@ -744,14 +783,15 @@ export function buildTrainingExtraOptions(
       ]) {
         assignValue(key)
       }
+      assignRfdetrSchedulerValues()
       assignRfdetrAugmentationValues()
       if (!augmentationEnabled) {
         disableRfdetrAugmentationValues()
       }
       return result
     }
+    assignYoloOptimizerValues()
     for (const key of [
-      'learning_rate',
       'weight_decay',
       'min_lr_ratio',
       'evaluation_confidence_threshold',
@@ -775,8 +815,8 @@ export function buildTrainingExtraOptions(
   }
 
   if (taskType === 'pose') {
+    assignYoloOptimizerValues()
     for (const key of [
-      'learning_rate',
       'weight_decay',
       'min_lr_ratio',
       'evaluation_confidence_threshold',
@@ -801,8 +841,8 @@ export function buildTrainingExtraOptions(
   }
 
   if (taskType === 'obb') {
+    assignYoloOptimizerValues()
     for (const key of [
-      'learning_rate',
       'weight_decay',
       'evaluation_confidence_threshold',
       'evaluation_nms_threshold',
@@ -841,6 +881,7 @@ export function validateTrainingModelLayerValues(
   }
 
   for (const field of getModelLayerTrainingFields(taskType, normalizedModelType)) {
+    if (isTrainingModelParameterDisabled(field, values)) continue
     if (field.inputKind !== 'number') continue
     const rawValue = String(values[field.key] ?? '').trim()
     if (!rawValue) continue
@@ -947,4 +988,17 @@ export function isTrainingAugmentationParameterDisabled(
   }
   return classificationManualAugmentationKeys.has(field.key)
     && String(values.auto_augment ?? '') !== 'none'
+}
+
+export function isTrainingModelParameterDisabled(
+  field: TrainingParameterField,
+  values: TrainingParameterValues,
+): boolean {
+  if (field.key === 'learning_rate') {
+    return String(values.optimizer ?? '').trim().toLowerCase() === 'auto'
+  }
+  if (field.key === 'min_lr_ratio' && 'lr_scheduler' in values) {
+    return String(values.lr_scheduler ?? 'step').trim().toLowerCase() !== 'cosine'
+  }
+  return false
 }

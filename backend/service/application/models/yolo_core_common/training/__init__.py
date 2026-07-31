@@ -6,6 +6,7 @@ from backend.service.application.models.yolo_core_common.training.ultralytics_sc
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
     compute_yolo_ultralytics_lr_factor,
+    resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_ultralytics_accumulate,
 )
 from backend.service.application.models.yolo_core_common.training.ema import (
@@ -65,5 +66,6 @@ __all__ = [
     "resolve_yolo_dataloader_worker_count",
     "resolve_yolo_task_evaluation_dataloader_plan",
     "resolve_yolo_task_dataloader_plan",
+    "resolve_yolo_optimizer_base_learning_rate",
     "resolve_yolo_ultralytics_accumulate",
 ]

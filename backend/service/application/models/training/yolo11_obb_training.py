@@ -51,6 +51,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
+    resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_task_dataloader_plan,
 )
 from backend.service.domain.models.model_task_types import OBB_TASK_TYPE
@@ -355,6 +356,12 @@ def run_yolo11_obb_training(
             if loop_result.metrics_history
             else {},
             "epoch_history": loop_result.metrics_history,
+            "optimizer": training_schedule.optimizer_name,
+            "initial_learning_rate": training_schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             "implementation_mode": YOLO11_OBB_IMPLEMENTATION_MODE,
         },
         validation_metrics_payload={

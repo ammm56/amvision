@@ -182,13 +182,17 @@
             v-for="field in trainingModelParameterFields"
             :key="field.key"
             class="field"
-            :class="{ 'field--wide': field.wide }"
+            :class="{
+              'field--wide': field.wide,
+              'field--disabled': isModelFieldDisabled(field),
+            }"
           >
             <span>{{ localizeTrainingParameterLabel(field) }}</span>
             <SelectField
               v-if="field.inputKind === 'select'"
               :model-value="trainingModelParameterValues[field.key] ?? ''"
               :options="localizeTrainingParameterOptions(field)"
+              :disabled="isModelFieldDisabled(field)"
               @update:model-value="$emit('update:trainingModelParameterValue', field.key, normalizeSelectValue($event))"
             />
             <input
@@ -199,8 +203,13 @@
               :max="field.max"
               :step="field.step"
               :placeholder="field.placeholder"
+              :disabled="isModelFieldDisabled(field)"
               @input="emitModelParameterValue(field.key, $event)"
+              @blur="normalizeModelParameterNumber(field, $event)"
             />
+            <small v-if="field.key === 'learning_rate' && isModelFieldDisabled(field)" class="field-help">
+              {{ locale === 'zh-CN' ? '由优化器、类别数和迭代量自动解析' : 'Resolved automatically from optimizer, class count, and iterations.' }}
+            </small>
           </label>
         </div>
       </section>
@@ -294,6 +303,7 @@ import type {
 } from '../training-parameter-support'
 import {
   isTrainingAugmentationParameterDisabled,
+  isTrainingModelParameterDisabled,
   normalizeTrainingParameterNumber,
 } from '../training-parameter-support'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -380,12 +390,30 @@ function localizeTrainingParameterLabel(field: TrainingParameterField): string {
 
 function localizeTrainingParameterOptions(field: TrainingParameterField): TrainingParameterFieldOption[] {
   if (locale.value === 'zh-CN') return field.options ?? []
+  const canonicalOptionLabels: Record<string, Record<string, string>> = {
+    optimizer: {
+      auto: 'Auto',
+      musgd: 'MuSGD',
+      sgd: 'SGD',
+      adamw: 'AdamW',
+      adam: 'Adam',
+      nadam: 'NAdam',
+      radam: 'RAdam',
+      rmsprop: 'RMSProp',
+    },
+    lr_scheduler: {
+      step: 'Step',
+      cosine: 'Cosine',
+    },
+  }
   return (field.options ?? []).map((option) => {
     if (option.value === 'true') return { ...option, label: t('modelOps.trainingParameters.enabled') }
     if (field.key === 'crop_mode' && option.value === 'none') {
       return { ...option, label: 'Center Crop' }
     }
     if (option.value === 'false' || option.value === 'none') return { ...option, label: t('modelOps.trainingParameters.disabled') }
+    const canonicalLabel = canonicalOptionLabels[field.key]?.[option.value]
+    if (canonicalLabel) return { ...option, label: canonicalLabel }
     return { ...option, label: humanizeParameterToken(option.value) }
   })
 }
@@ -396,6 +424,10 @@ function isAugmentationFieldDisabled(field: TrainingParameterField): boolean {
     props.trainingModelParameterValues,
     props.trainingAugmentationEnabled,
   )
+}
+
+function isModelFieldDisabled(field: TrainingParameterField): boolean {
+  return isTrainingModelParameterDisabled(field, props.trainingModelParameterValues)
 }
 
 function normalizeSelectValue(value: SelectValue): string {
@@ -515,6 +547,12 @@ function normalizeModelParameterNumber(
 
 .field--disabled {
   opacity: 0.58;
+}
+
+.field-help {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .training-augmentation-switch {

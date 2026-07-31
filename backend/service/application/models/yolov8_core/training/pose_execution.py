@@ -28,6 +28,7 @@ from backend.service.application.models.yolo_core_common.training import (
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
+    resolve_yolo_optimizer_base_learning_rate,
     replace_yolo_task_dataloader_plan_seed,
     resolve_yolo_task_dataloader_plan,
 )
@@ -568,6 +569,12 @@ def run_yolov8_pose_training(
         metrics_payload={
             "final_metrics": metrics_history[-1] if metrics_history else {},
             "epoch_history": metrics_history,
+            "optimizer": training_schedule.optimizer_name,
+            "initial_learning_rate": training_schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             "kpt_shape": list(kpt_shape),
         },
         validation_metrics_payload={

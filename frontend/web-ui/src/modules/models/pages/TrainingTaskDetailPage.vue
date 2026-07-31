@@ -112,6 +112,18 @@
           <span>{{ t('trainingDetail.fields.currentMetric') }}</span>
           <strong>{{ currentMetricText }}</strong>
         </div>
+        <div v-if="actualOptimizerText !== '-'">
+          <span>{{ t('trainingDetail.fields.optimizer') }}</span>
+          <strong>{{ actualOptimizerText }}</strong>
+        </div>
+        <div v-if="initialLearningRateText !== '-'">
+          <span>{{ t('trainingDetail.fields.initialLearningRate') }}</span>
+          <strong>{{ initialLearningRateText }}</strong>
+        </div>
+        <div v-if="finalLearningRateText !== '-'">
+          <span>{{ t('trainingDetail.fields.finalLearningRate') }}</span>
+          <strong>{{ finalLearningRateText }}</strong>
+        </div>
       </div>
       <div class="training-metric-panels">
         <article class="training-metric-panel">
@@ -231,6 +243,7 @@ const loading = ref(false)
 const actionRunning = ref<string | null>(null)
 const deleteDialogOpen = ref(false)
 const errorMessage = ref<string | null>(null)
+const trainingMetricsPayload = ref<Record<string, unknown>>({})
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
 const taskType = computed<ModelTaskType | null>(() => {
@@ -254,6 +267,18 @@ const progressEpochText = computed(() => {
   return `${epoch ?? '-'} / ${maxEpochs ?? '-'}`
 })
 const learningRateText = computed(() => formatMetricValue(progressSnapshot.value.learning_rate))
+const optimizerPayload = computed(() => readRecord(trainingMetricsPayload.value.optimizer))
+const actualOptimizerText = computed(() => formatPlainValue(
+  optimizerPayload.value?.name ?? trainingMetricsPayload.value.optimizer,
+))
+const initialLearningRateText = computed(() => formatMetricValue(
+  trainingMetricsPayload.value.initial_learning_rate
+    ?? optimizerPayload.value?.initial_learning_rate,
+))
+const finalLearningRateText = computed(() => formatMetricValue(
+  trainingMetricsPayload.value.final_learning_rate
+    ?? optimizerPayload.value?.final_learning_rate,
+))
 const currentMetricText = computed(() => {
   const name = formatPlainValue(progressSnapshot.value.current_metric_name)
   const value = formatMetricValue(progressSnapshot.value.current_metric_value)
@@ -312,6 +337,14 @@ async function refreshPage(): Promise<void> {
     ])
     task.value = taskDetail
     outputFiles.value = files
+    const metricsFile = files.find((file) => file.file_name === 'train-metrics')
+    trainingMetricsPayload.value = metricsFile
+      ? (await getModelTrainingOutputFileDetail(
+          currentTaskType,
+          taskId.value,
+          metricsFile.file_name,
+        )).payload
+      : {}
     const selectedFileName = selectedOutputFile.value?.file_name
     const nextFileName = files.some((file) => file.file_name === selectedFileName)
       ? selectedFileName

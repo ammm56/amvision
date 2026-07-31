@@ -35,6 +35,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsOptimizerStep,
     build_yolo_ultralytics_optimizer,
     compute_yolo_ultralytics_lr_factor,
+    resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolo_core_common.weights import (
     restore_yolo_checkpoint_module_attributes,
@@ -193,6 +194,82 @@ def test_optimizer_groups_accumulation_weight_decay_and_ema() -> None:
 
     assert not torch.equal(model[0].weight.detach(), original)
     assert ema.updates == 1
+
+
+def test_auto_optimizer_resolves_adamw_or_musgd_and_restores_state() -> None:
+    """验证 Auto 边界、MuSGD 参数分组和 checkpoint 恢复。"""
+
+    small_model = nn.Linear(4, 2)
+    _, small_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=small_model,
+        num_classes=2,
+        batch_size=16,
+        train_sample_count=64,
+        max_epochs=10,
+    )
+    assert small_schedule.optimizer_name == "AdamW"
+    assert small_schedule.initial_lr == pytest.approx(0.001667)
+
+    model = nn.Linear(4, 2)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=2,
+        batch_size=16,
+        train_sample_count=20_000,
+        max_epochs=40,
+    )
+    assert schedule.optimizer_name == "MuSGD"
+    assert {group["param_group"] for group in optimizer.param_groups} >= {
+        "muon",
+        "bias",
+    }
+    loss = model(torch.ones((2, 4))).square().mean()
+    loss.backward()
+    optimizer.step()
+    state_dict = optimizer.state_dict()
+
+    restored, _ = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=nn.Linear(4, 2),
+        num_classes=2,
+        batch_size=16,
+        train_sample_count=20_000,
+        max_epochs=40,
+    )
+    restored.load_state_dict(state_dict)
+    assert restored.state_dict()["state"]
+
+
+def test_musgd_uses_reference_finetune_learning_rate_groups() -> None:
+    """验证检测头和语义原型参数按参考规则使用三倍学习率。"""
+
+    blocks = [nn.Identity() for _ in range(23)]
+    detection_head = nn.Module()
+    detection_head.cv3 = nn.Linear(4, 2)
+    blocks.append(detection_head)
+    model = nn.Sequential(*blocks)
+    optimizer, _ = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=2,
+        batch_size=16,
+        train_sample_count=20_000,
+        max_epochs=40,
+    )
+    boosted_muon_groups = [
+        group
+        for group in optimizer.param_groups
+        if group["param_group"] == "muon" and group["lr"] == pytest.approx(0.03)
+    ]
+    assert len(boosted_muon_groups) == 1
+    assert len(boosted_muon_groups[0]["params"]) == 1
+    assert boosted_muon_groups[0]["params"][0] is detection_head.cv3.weight
+    assert resolve_yolo_optimizer_base_learning_rate(
+        optimizer=optimizer,
+        initial_learning_rate=0.01,
+    ) == pytest.approx(0.01)
 
 
 class _AttributeBlock(nn.Module):

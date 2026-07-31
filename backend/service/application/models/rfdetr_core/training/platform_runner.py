@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -192,6 +193,16 @@ def run_rfdetr_platform_training(
                 trainer=trainer,
                 aligned_input_size=aligned_input_size,
             )
+            metrics_payload.update(
+                {
+                    "optimizer": "AdamW",
+                    "initial_learning_rate": float(train_config.lr),
+                    "final_learning_rate": _resolve_rfdetr_final_learning_rate(
+                        trainer=trainer,
+                        fallback=float(train_config.lr),
+                    ),
+                }
+            )
             validation_metrics_payload = build_validation_metrics_payload(trainer)
             test_metrics_payload = _build_rfdetr_test_metrics_payload(
                 validation_metrics_payload=validation_metrics_payload,
@@ -265,6 +276,18 @@ def _build_rfdetr_test_metrics_payload(
             )
         ),
     }
+
+
+def _resolve_rfdetr_final_learning_rate(*, trainer: Any, fallback: float) -> float:
+    """从训练器 optimizer 读取最终基础学习率。"""
+
+    optimizers = list(getattr(trainer, "optimizers", []) or [])
+    if not optimizers:
+        return float(fallback)
+    param_groups = list(getattr(optimizers[0], "param_groups", []) or [])
+    if not param_groups:
+        return float(fallback)
+    return float(param_groups[0].get("lr", fallback))
 
 
 def _release_rfdetr_training_resources(
@@ -355,12 +378,7 @@ def _build_train_config(
         if request.task_type == SEGMENTATION_TASK_TYPE
         else TrainConfig
     )
-    lr_scheduler = str(
-        extra_options.get(
-            "lr_scheduler",
-            "cosine" if "min_lr_ratio" in extra_options else "step",
-        )
-    ).strip().lower()
+    lr_scheduler = str(extra_options.get("lr_scheduler", "step")).strip().lower()
     if lr_scheduler not in {"step", "cosine"}:
         raise InvalidRequestError(
             "RF-DETR lr_scheduler 只支持 step 或 cosine",
@@ -379,7 +397,11 @@ def _build_train_config(
         "lr": float(extra_options.get("learning_rate", 1e-4)),
         "weight_decay": float(extra_options.get("weight_decay", 1e-4)),
         "lr_scheduler": lr_scheduler,
-        "lr_min_factor": float(extra_options.get("min_lr_ratio", 0.0)),
+        "lr_min_factor": (
+            float(extra_options.get("min_lr_ratio", 0.01))
+            if lr_scheduler == "cosine"
+            else 0.0
+        ),
         "set_cost_class": float(extra_options.get("class_cost", 2.0)),
         "set_cost_bbox": float(extra_options.get("bbox_cost", 5.0)),
         "set_cost_giou": float(extra_options.get("giou_cost", 2.0)),

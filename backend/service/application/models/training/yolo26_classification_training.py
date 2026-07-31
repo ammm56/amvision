@@ -13,7 +13,10 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_disabled_warm_start_summary,
     build_yolo_warm_start_summary,
 )
-from backend.service.application.models.yolo_core_common.training import YoloModelEMA
+from backend.service.application.models.yolo_core_common.training import (
+    YoloModelEMA,
+    resolve_yolo_optimizer_base_learning_rate,
+)
 from backend.service.application.models.training.classification_evaluation_report import (
     build_unavailable_test_metrics_report,
 )
@@ -377,6 +380,11 @@ def run_yolo26_classification_training(
             "epoch_history": loop_result.metrics_history,
             "scheduler": "LambdaLR",
             "optimizer": runtime.training_schedule.optimizer_name,
+            "initial_learning_rate": runtime.training_schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=runtime.optimizer,
+                initial_learning_rate=runtime.training_schedule.initial_lr,
+            ),
             "accumulate": runtime.training_schedule.accumulate,
             "scaled_weight_decay": runtime.training_schedule.scaled_weight_decay,
             "implementation_mode": YOLO26_CLASSIFICATION_IMPLEMENTATION_MODE,

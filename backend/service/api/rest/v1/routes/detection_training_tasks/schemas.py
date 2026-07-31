@@ -78,7 +78,13 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
         description="单卡训练 device；支持 auto、cpu、cuda、cuda:<index>，空值按 CUDA 可用性自动选择",
     )
     max_labels: int | None = Field(default=None, description="单张图片保留的最大标签数；YOLOX 当前默认 120")
-    learning_rate: float | None = Field(default=None, description="训练学习率；YOLOv8/YOLO11/YOLO26 detection 默认 0.01，YOLOX 按 batch size 缩放")
+    optimizer: Literal[
+        "auto", "musgd", "sgd", "adamw", "adam", "nadam", "radam", "rmsprop"
+    ] | None = Field(
+        default=None,
+        description="YOLO 主线 optimizer；auto 会按类别数和迭代量解析 AdamW 或 MuSGD",
+    )
+    learning_rate: float | None = Field(default=None, description="显式 optimizer 的基础学习率；auto 模式会重新解析，YOLOX 按 batch size 缩放")
     weight_decay: float | None = Field(default=None, description="训练 weight decay；YOLOv8/YOLO11/YOLO26 detection 默认 5e-4，YOLOX 默认 5e-4")
     class_loss_weight: float | None = Field(default=None, description="分类损失权重；YOLO 主线 detection 当前默认 0.5")
     box_loss_weight: float | None = Field(default=None, description="框回归损失权重；YOLO 主线 detection 当前默认 7.5")
@@ -94,7 +100,11 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
     assign_topk: int | None = Field(default=None, description="标签分配 top-k；YOLO 主线 detection 当前默认 10")
     assign_alpha: float | None = Field(default=None, description="标签分配 alpha；YOLO 主线 detection 当前默认 0.5")
     assign_beta: float | None = Field(default=None, description="标签分配 beta；YOLO 主线 detection 当前默认 6.0")
-    min_lr_ratio: float | None = Field(default=None, description="余弦退火最小学习率比例；YOLO 主线 detection 当前默认 0.01")
+    lr_scheduler: Literal["step", "cosine"] | None = Field(
+        default=None,
+        description="RF-DETR 学习率调度器；默认 step",
+    )
+    min_lr_ratio: float | None = Field(default=None, description="最小学习率比例；YOLO 主线按现有调度使用，RF-DETR 仅在 lr_scheduler=cosine 时使用")
     grad_clip_norm: float | None = Field(default=None, description="梯度裁剪上限；YOLO 主线 detection 当前默认 10.0")
     flip_prob: float | None = Field(default=None, description="随机水平翻转概率；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 0.5")
     hsv_prob: float | None = Field(default=None, description="HSV 抖动概率；YOLOv8/YOLO11/YOLO26 和 YOLOX 默认 1.0")

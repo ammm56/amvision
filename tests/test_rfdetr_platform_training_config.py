@@ -27,6 +27,7 @@ from backend.service.application.models.rfdetr_core.training.callbacks.best_mode
 from backend.service.application.models.rfdetr_core.training.platform_runner import (
     RfdetrPlatformTrainingRequest,
     _build_train_config,
+    _resolve_rfdetr_final_learning_rate,
     resolve_rfdetr_platform_training_input_size,
 )
 from backend.service.application.models.rfdetr_core.training import (
@@ -76,6 +77,18 @@ def test_rfdetr_export_keeps_aligned_non_square_input() -> None:
 
     assert effective == (384, 640)
     assert summary["effective"] == {"width": 640, "height": 384}
+
+
+def test_rfdetr_final_learning_rate_uses_actual_optimizer_state() -> None:
+    """训练摘要必须读取 optimizer 的实际最终学习率。"""
+
+    trainer = SimpleNamespace(
+        optimizers=[SimpleNamespace(param_groups=[{"lr": 2.5e-5}])]
+    )
+    assert _resolve_rfdetr_final_learning_rate(
+        trainer=trainer,
+        fallback=1e-4,
+    ) == pytest.approx(2.5e-5)
 
 
 def _request(
@@ -200,6 +213,7 @@ def test_rfdetr_segmentation_platform_maps_mask_and_cosine_options(
     """Segmentation mask 权重和最小学习率比例不得被静默忽略。"""
 
     options = {
+        "lr_scheduler": "cosine",
         "min_lr_ratio": 0.03,
         "class_loss_weight": 1.25,
         "mask_ce_weight": 6.0,
@@ -225,6 +239,18 @@ def test_rfdetr_segmentation_platform_maps_mask_and_cosine_options(
     assert namespace.cls_loss_coef == pytest.approx(1.25)
     assert namespace.mask_ce_loss_coef == pytest.approx(6.0)
     assert namespace.mask_dice_loss_coef == pytest.approx(7.0)
+
+
+def test_rfdetr_step_scheduler_ignores_cosine_minimum_ratio(tmp_path: Path) -> None:
+    """Step 为默认策略，不能因 min_lr_ratio 存在而隐式切换。"""
+
+    train_config = _build_config(
+        tmp_path,
+        task_type=SEGMENTATION_TASK_TYPE,
+        extra_options={"min_lr_ratio": 0.03},
+    )
+    assert train_config.lr_scheduler == "step"
+    assert train_config.lr_min_factor == pytest.approx(0.0)
 
 
 def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(

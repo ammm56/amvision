@@ -20,6 +20,12 @@ function normalizeText(value: string | null | undefined): string {
   return String(value ?? '').trim().toLowerCase()
 }
 
+function resolveOptimizerLearningRate(optimizer: string): string {
+  return ['adam', 'adamw', 'nadam', 'radam'].includes(normalizeText(optimizer))
+    ? '0.001'
+    : '0.01'
+}
+
 function normalizeModelNameSegment(value: string | null | undefined): string {
   return String(value ?? '')
     .trim()
@@ -144,7 +150,18 @@ export function useTrainingParameters(options: {
   }
 
   function setTrainingModelParameterValue(key: string, value: SelectValue): void {
-    trainingModelParameterValues[key] = selectValueToString(value)
+    const nextValue = selectValueToString(value)
+    if (key === 'optimizer') {
+      const previousOptimizer = trainingModelParameterValues.optimizer ?? 'auto'
+      const previousDefault = resolveOptimizerLearningRate(previousOptimizer)
+      const currentLearningRate = trainingModelParameterValues.learning_rate ?? ''
+      trainingModelParameterValues.optimizer = nextValue
+      if (!currentLearningRate || currentLearningRate === previousDefault) {
+        trainingModelParameterValues.learning_rate = resolveOptimizerLearningRate(nextValue)
+      }
+      return
+    }
+    trainingModelParameterValues[key] = nextValue
   }
 
   function alignTrainingInputSizeForSubmit(): { width: number; height: number } {

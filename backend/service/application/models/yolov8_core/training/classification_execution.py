@@ -37,6 +37,7 @@ from backend.service.application.models.yolo_core_common.training import (
     build_yolo_classification_training_dataloader,
     load_yolo_classification_dataloader_imports,
     move_yolo_classification_batch_to_device,
+    resolve_yolo_optimizer_base_learning_rate,
     replace_yolo_classification_dataloader_plan_seed,
     resolve_yolo_classification_dataloader_plan,
 )
@@ -597,6 +598,11 @@ def run_yolov8_classification_training(
             "epoch_history": metrics_history,
             "scheduler": "LambdaLR",
             "optimizer": training_schedule.optimizer_name,
+            "initial_learning_rate": training_schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             "accumulate": training_schedule.accumulate,
             "scaled_weight_decay": training_schedule.scaled_weight_decay,
             "augmentation": build_yolo_classification_augmentation_summary(

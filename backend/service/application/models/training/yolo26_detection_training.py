@@ -87,6 +87,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
+    resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolo26_core.training.execution import (
     YOLO26_DETECTION_CORE_IMPLEMENTATION_MODE,
@@ -193,6 +194,7 @@ def run_yolo26_detection_training(
     training_runtime = build_yolo26_detection_training_runtime(
         torch_module=imports.torch,
         model=model,
+        optimizer_name=str(extra_options.get("optimizer", "auto")),
         learning_rate=training_options["learning_rate"],
         weight_decay=training_options["weight_decay"],
         max_epochs=max_epochs,
@@ -1402,7 +1404,11 @@ def _build_yolo26_metrics_payload(
         "warm_start": warm_start_summary,
         "optimizer": {
             "name": training_schedule.optimizer_name,
-            "learning_rate": training_schedule.initial_lr,
+            "initial_learning_rate": training_schedule.initial_lr,
+            "final_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             "weight_decay": training_schedule.weight_decay,
             "scaled_weight_decay": training_schedule.scaled_weight_decay,
             "nominal_batch_size": training_schedule.nominal_batch_size,

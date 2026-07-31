@@ -36,7 +36,7 @@ def compute_yolo11_obb_loss(
     class_loss_weight: float = 0.5,
     box_loss_weight: float = 7.5,
     dfl_loss_weight: float = 1.5,
-    angle_loss_weight: float = 0.5,
+    angle_loss_weight: float = 1.0,
     assign_topk: int = 10,
     assign_alpha: float = 0.5,
     assign_beta: float = 6.0,
