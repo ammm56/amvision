@@ -1,23 +1,23 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
+    <PageHeader>
+      <template #heading>
         <div class="heading-with-hint">
           <h1>TriggerSource</h1>
           <InfoHint :text="t('triggerSources.description')" />
         </div>
-      </div>
-      <div class="page-actions">
+      </template>
+      <template #actions>
         <ButtonLink v-if="selectedRuntime" :to="appDetailPath">
           <Workflow :size="16" />
           {{ t('triggerSources.actions.backToApp') }}
         </ButtonLink>
-        <Button variant="secondary" :disabled="loading" @click="loadPage">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
     <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
@@ -27,7 +27,7 @@
         <div>
           <h2>{{ t('triggerSources.createTitle') }}</h2>
         </div>
-        <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime">
+        <Button variant="primary" type="submit" :disabled="saving || !selectedRuntime" :loading="saving">
           <Save :size="16" />
           {{ t('triggerSources.actions.create') }}
         </Button>
@@ -275,19 +275,19 @@
               <td>{{ formatError(sourceHealth(source)?.last_error ?? source.last_error) || '-' }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
-                  <Button v-if="!source.enabled" size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="setTriggerSourceEnabled(source, true)">
+                  <Button v-if="!source.enabled" size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'state')" @click="setTriggerSourceEnabled(source, true)">
                     <Power :size="14" />
                     {{ t('triggerSources.actions.enable') }}
                   </Button>
-                  <Button v-else size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="setTriggerSourceEnabled(source, false)">
+                  <Button v-else size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'state')" @click="setTriggerSourceEnabled(source, false)">
                     <PowerOff :size="14" />
                     {{ t('triggerSources.actions.disable') }}
                   </Button>
-                  <Button size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="refreshTriggerSourceHealth(source)">
+                  <Button size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'health')" @click="refreshTriggerSourceHealth(source)">
                     <Activity :size="14" />
                     health
                   </Button>
-                  <Button size="sm" variant="danger" :disabled="busyTriggerSourceId === source.trigger_source_id" @click="deleteTriggerSource(source)">
+                  <Button size="sm" variant="danger" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'delete')" @click="requestDeleteTriggerSource(source)">
                     <Trash2 :size="14" />
                     {{ t('triggerSources.actions.delete') }}
                   </Button>
@@ -310,6 +310,17 @@
         @next="loadNextTriggerSourcePage"
       />
     </section>
+
+    <ConfirmDialog
+      v-if="pendingDeleteTriggerSource"
+      :title="t('common.confirmDelete')"
+      :message="t('triggerSources.messages.confirmDelete', { triggerSourceId: pendingDeleteTriggerSource.trigger_source_id })"
+      :confirm-label="t('triggerSources.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="isTriggerSourceAction(pendingDeleteTriggerSource, 'delete')"
+      @cancel="pendingDeleteTriggerSource = null"
+      @confirm="deleteTriggerSource"
+    />
   </section>
 </template>
 
@@ -325,12 +336,14 @@ import { getSystemConfig } from '@/shared/api/system-config'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { getWorkflowApp, type WorkflowAppDocument } from '@/workflows/workflow-editor/services/workflow-app.service'
 import {
   listWorkflowAppRuntimes,
@@ -353,6 +366,7 @@ import {
 type MappingMode = 'source' | 'static' | 'skip'
 type ProtocolTemplateId = 'zeromq-image-trigger' | 'webhook-json'
 type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
+type TriggerSourceAction = 'state' | 'health' | 'delete'
 type SelectValue = string | number | boolean | null
 
 interface SelectOption {
@@ -496,6 +510,8 @@ const returnDiagnostics = ref('false')
 const enableAfterCreate = ref('false')
 const mappingRows = ref<MappingRow[]>([])
 const busyTriggerSourceId = ref<string | null>(null)
+const busyTriggerSourceAction = ref<TriggerSourceAction | null>(null)
+const pendingDeleteTriggerSource = ref<WorkflowTriggerSource | null>(null)
 const healthByTriggerSourceId = ref<Record<string, WorkflowTriggerSourceHealth>>({})
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -1090,6 +1106,7 @@ async function submitTriggerSource(): Promise<void> {
 
 async function setTriggerSourceEnabled(source: WorkflowTriggerSource, enabled: boolean): Promise<void> {
   busyTriggerSourceId.value = source.trigger_source_id
+  busyTriggerSourceAction.value = 'state'
   errorMessage.value = null
   try {
     const updatedSource = enabled
@@ -1104,11 +1121,13 @@ async function setTriggerSourceEnabled(source: WorkflowTriggerSource, enabled: b
     errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.updateStateFailed')
   } finally {
     busyTriggerSourceId.value = null
+    busyTriggerSourceAction.value = null
   }
 }
 
 async function refreshTriggerSourceHealth(source: WorkflowTriggerSource): Promise<void> {
   busyTriggerSourceId.value = source.trigger_source_id
+  busyTriggerSourceAction.value = 'health'
   errorMessage.value = null
   try {
     const health = await getWorkflowTriggerSourceHealth(source.trigger_source_id)
@@ -1121,13 +1140,20 @@ async function refreshTriggerSourceHealth(source: WorkflowTriggerSource): Promis
     errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.healthFailed')
   } finally {
     busyTriggerSourceId.value = null
+    busyTriggerSourceAction.value = null
   }
 }
 
-async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void> {
-  const confirmed = window.confirm(t('triggerSources.messages.confirmDelete', { triggerSourceId: source.trigger_source_id }))
-  if (!confirmed) return
+function requestDeleteTriggerSource(source: WorkflowTriggerSource): void {
+  if (busyTriggerSourceId.value === source.trigger_source_id) return
+  pendingDeleteTriggerSource.value = source
+}
+
+async function deleteTriggerSource(): Promise<void> {
+  const source = pendingDeleteTriggerSource.value
+  if (!source) return
   busyTriggerSourceId.value = source.trigger_source_id
+  busyTriggerSourceAction.value = 'delete'
   errorMessage.value = null
   try {
     await deleteWorkflowTriggerSource(source.trigger_source_id)
@@ -1143,7 +1169,13 @@ async function deleteTriggerSource(source: WorkflowTriggerSource): Promise<void>
     errorMessage.value = error instanceof Error ? error.message : t('triggerSources.messages.deleteFailed')
   } finally {
     busyTriggerSourceId.value = null
+    busyTriggerSourceAction.value = null
+    pendingDeleteTriggerSource.value = null
   }
+}
+
+function isTriggerSourceAction(source: WorkflowTriggerSource, action: TriggerSourceAction): boolean {
+  return busyTriggerSourceId.value === source.trigger_source_id && busyTriggerSourceAction.value === action
 }
 
 function loadPreviousTriggerSourcePage(): void {

@@ -1,30 +1,35 @@
 <template>
-  <div class="confirm-dialog-backdrop" @click="emit('cancel')">
+  <div class="confirm-dialog-backdrop" @click="cancelDialog">
     <section
+      ref="dialogRef"
       class="confirm-dialog"
       role="dialog"
       aria-modal="true"
-      :aria-label="title"
+      :aria-labelledby="titleId"
+      :aria-describedby="messageId"
+      :aria-busy="busy"
+      tabindex="-1"
       @click.stop
-      @keydown.esc.prevent="emit('cancel')"
+      @keydown.esc.prevent="cancelDialog"
+      @keydown.tab="trapFocus"
     >
       <header class="confirm-dialog__header">
         <div>
           <div class="confirm-dialog__title">
-            <h2>{{ title }}</h2>
+            <h2 :id="titleId">{{ title }}</h2>
             <InfoHint v-if="details" :text="details" />
           </div>
         </div>
-        <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" @click="emit('cancel')">
+        <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy" @click="cancelDialog">
           <X :size="16" />
         </button>
       </header>
 
-      <p class="confirm-dialog__message">{{ message }}</p>
+      <p :id="messageId" class="confirm-dialog__message">{{ message }}</p>
 
       <footer class="confirm-dialog__actions">
-        <Button variant="secondary" :disabled="busy" @click="emit('cancel')">{{ cancelLabel }}</Button>
-        <Button :variant="confirmVariant" :disabled="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
+        <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
+        <Button :variant="confirmVariant" :disabled="busy" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
       </footer>
     </section>
   </div>
@@ -32,11 +37,12 @@
 
 <script setup lang="ts">
 import { X } from '@lucide/vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 
 import Button from './Button.vue'
 import InfoHint from './InfoHint.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     title: string
     message: string
@@ -57,6 +63,57 @@ const emit = defineEmits<{
   cancel: []
   confirm: []
 }>()
+
+const componentId = useId()
+const titleId = `${componentId}-title`
+const messageId = `${componentId}-message`
+const dialogRef = ref<HTMLElement | null>(null)
+let previouslyFocusedElement: HTMLElement | null = null
+let previousBodyOverflow = ''
+
+function readFocusableElements(): HTMLElement[] {
+  if (!dialogRef.value) return []
+  return [...dialogRef.value.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+  )]
+}
+
+function trapFocus(event: KeyboardEvent): void {
+  const focusableElements = readFocusableElements()
+  if (focusableElements.length === 0) {
+    event.preventDefault()
+    dialogRef.value?.focus()
+    return
+  }
+  const firstElement = focusableElements[0]
+  const lastElement = focusableElements[focusableElements.length - 1]
+  if (event.shiftKey && document.activeElement === firstElement) {
+    event.preventDefault()
+    lastElement?.focus()
+  } else if (!event.shiftKey && document.activeElement === lastElement) {
+    event.preventDefault()
+    firstElement?.focus()
+  }
+}
+
+function cancelDialog(): void {
+  if (!props.busy) emit('cancel')
+}
+
+onMounted(() => {
+  previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  previousBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  void nextTick(() => {
+    const cancelButton = dialogRef.value?.querySelector<HTMLElement>('[data-confirm-cancel]')
+    ;(cancelButton ?? dialogRef.value)?.focus({ preventScroll: true })
+  })
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = previousBodyOverflow
+  previouslyFocusedElement?.focus({ preventScroll: true })
+})
 </script>
 
 <style scoped>
@@ -67,7 +124,7 @@ const emit = defineEmits<{
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgb(16 20 24 / 0.42);
+  background: var(--am-overlay);
 }
 
 .confirm-dialog {
@@ -76,9 +133,9 @@ const emit = defineEmits<{
   width: min(520px, calc(100vw - 36px));
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: 0 24px 48px rgb(0 0 0 / 0.2);
+  border-radius: var(--am-radius-md);
+  background: var(--am-surface-raised);
+  box-shadow: var(--am-shadow-modal);
 }
 
 .confirm-dialog__header {
@@ -111,7 +168,7 @@ const emit = defineEmits<{
   width: 34px;
   height: 34px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--am-radius-sm);
   color: var(--text);
   background: var(--button-secondary-bg);
   cursor: pointer;
@@ -119,6 +176,11 @@ const emit = defineEmits<{
 
 .confirm-dialog__close:hover {
   border-color: var(--accent);
+}
+
+.confirm-dialog__close:disabled {
+  color: var(--am-text-disabled);
+  cursor: not-allowed;
 }
 
 .confirm-dialog__actions {

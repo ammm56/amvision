@@ -76,7 +76,7 @@
         </Button>
       </div>
       <div class="workflow-graph-toolbar__group">
-        <Button variant="secondary" :disabled="previewDisabled" @click="emit('preview')">
+        <Button variant="secondary" :disabled="previewDisabled" :loading="previewing" @click="emit('preview')">
           <Play :size="16" />
           {{ t('workflowEditor.actions.previewRun') }}
         </Button>
@@ -96,7 +96,7 @@
           {{ t('workflowEditor.editor.inspectorTitle') }}
         </Button>
       </div>
-      <Button variant="primary" :disabled="saveDisabled" @click="emit('save')">
+      <Button variant="primary" :disabled="saveDisabled" :loading="saving" @click="emit('save')">
         <Save :size="16" />
         {{ t('workflowEditor.actions.saveWorkflowApp') }}
       </Button>
@@ -121,7 +121,9 @@ const props = defineProps<{
   statusMessage: string | null
   loading: boolean
   previewDisabled: boolean
+  previewing: boolean
   saveDisabled: boolean
+  saving: boolean
   groupCreateMode: boolean
   inspectorCollapsed: boolean
 }>()

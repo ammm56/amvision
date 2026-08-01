@@ -409,7 +409,7 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  color: #fff;
+  color: var(--am-brand-on-primary);
   background: var(--accent);
   font-size: 12px;
   font-weight: 800;

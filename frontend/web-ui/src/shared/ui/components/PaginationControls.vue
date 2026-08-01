@@ -83,7 +83,7 @@ const pageText = computed(() => {
   gap: 14px;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--am-radius-md);
   background: var(--surface);
 }
 

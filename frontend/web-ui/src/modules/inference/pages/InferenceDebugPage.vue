@@ -1,20 +1,17 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('inferenceOps.title') }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="t('inferenceOps.title')">
+      <template #actions>
         <label class="segmented-field">
           <span>task_type</span>
           <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
         </label>
-        <Button variant="secondary" :disabled="loading" @click="refreshPage">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -97,11 +94,17 @@
         </label>
       </div>
       <div class="form-actions">
-        <Button variant="primary" type="submit" :disabled="inferenceRunning">
+        <Button variant="primary" type="submit" :disabled="inferenceRunning" :loading="inferenceOperation === 'direct'">
           <Send :size="16" />
           {{ t('inferenceOps.actions.directInfer') }}
         </Button>
-        <Button variant="secondary" type="button" :disabled="!canWriteTasks || inferenceRunning" @click="submitAsyncInferenceTask">
+        <Button
+          variant="secondary"
+          type="button"
+          :disabled="!canWriteTasks || inferenceRunning"
+          :loading="inferenceOperation === 'async'"
+          @click="submitAsyncInferenceTask"
+        >
           <UploadCloud :size="16" />
           {{ t('inferenceOps.actions.submitAsyncTask') }}
         </Button>
@@ -111,7 +114,13 @@
           {{ t('inferenceOps.messages.submitted') }}
           <RouterLink :to="`/tasks/${asyncInferenceSubmission.task_id}`">{{ asyncInferenceSubmission.task_id }}</RouterLink>
         </span>
-        <Button size="sm" variant="secondary" :disabled="inferenceResultLoading === asyncInferenceSubmission.task_id" @click="toggleInferenceTaskResult(asyncInferenceSubmission.task_id)">
+        <Button
+          size="sm"
+          variant="secondary"
+          :disabled="inferenceResultLoading === asyncInferenceSubmission.task_id"
+          :loading="inferenceResultLoading === asyncInferenceSubmission.task_id"
+          @click="toggleInferenceTaskResult(asyncInferenceSubmission.task_id)"
+        >
           <Eye :size="14" />
           {{ expandedInferenceTaskId === asyncInferenceSubmission.task_id ? t('inferenceOps.actions.collapseResult') : t('inferenceOps.actions.fetchResult') }}
         </Button>
@@ -151,7 +160,7 @@
         <div>
           <h2>{{ t('inferenceOps.tasksTitle') }}</h2>
         </div>
-        <Button variant="secondary" size="sm" :disabled="inferenceTasksLoading" @click="loadInferenceTasks">
+        <Button variant="secondary" size="sm" :disabled="inferenceTasksLoading" :loading="inferenceTasksLoading" @click="loadInferenceTasks">
           <RefreshCw :size="14" />
           {{ t('common.refresh') }}
         </Button>
@@ -181,7 +190,13 @@
               <td>{{ task.latency_ms ?? '-' }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
-                  <Button size="sm" variant="secondary" :disabled="inferenceResultLoading === task.task_id" @click="toggleInferenceTaskResult(task.task_id)">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    :disabled="inferenceResultLoading === task.task_id"
+                    :loading="inferenceResultLoading === task.task_id"
+                    @click="toggleInferenceTaskResult(task.task_id)"
+                  >
                     <Eye :size="14" />{{ expandedInferenceTaskId === task.task_id ? t('inferenceOps.actions.collapseResult') : t('inferenceOps.actions.fetchResult') }}
                   </Button>
                   <RouterLink :to="`/tasks/${task.task_id}`">{{ t('inferenceOps.actions.openTask') }}</RouterLink>
@@ -253,6 +268,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
@@ -272,7 +288,8 @@ const deployments = ref<TaskDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')
 const selectedTaskType = ref<ModelTaskType>('detection')
 const loading = ref(false)
-const inferenceRunning = ref(false)
+const inferenceOperation = ref<'direct' | 'async' | null>(null)
+const inferenceRunning = computed(() => inferenceOperation.value !== null)
 const inferenceTasksLoading = ref(false)
 const inferenceResultLoading = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
@@ -441,7 +458,7 @@ async function runDirectInference(): Promise<void> {
     errorMessage.value = t('inferenceOps.messages.inputRequired')
     return
   }
-  inferenceRunning.value = true
+  inferenceOperation.value = 'direct'
   errorMessage.value = null
   try {
     const nextResult = await inferTaskDeployment(buildInferenceInput())
@@ -449,7 +466,7 @@ async function runDirectInference(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {
-    inferenceRunning.value = false
+    inferenceOperation.value = null
   }
 }
 
@@ -458,7 +475,7 @@ async function submitAsyncInferenceTask(): Promise<void> {
     errorMessage.value = t('inferenceOps.messages.inputRequired')
     return
   }
-  inferenceRunning.value = true
+  inferenceOperation.value = 'async'
   errorMessage.value = null
   try {
     asyncInferenceSubmission.value = await createTaskInferenceTask(buildInferenceInput())
@@ -466,7 +483,7 @@ async function submitAsyncInferenceTask(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('inferenceOps.messages.inferenceFailed')
   } finally {
-    inferenceRunning.value = false
+    inferenceOperation.value = null
   }
 }
 

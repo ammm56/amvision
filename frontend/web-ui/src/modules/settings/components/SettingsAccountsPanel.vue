@@ -97,7 +97,12 @@
                     <Power :size="15" />
                     {{ user.is_active ? t('settingsDiagnostics.actions.disable') : t('settingsDiagnostics.actions.enable') }}
                   </Button>
-                  <Button variant="danger" :disabled="!canWrite || user.user_id === currentUserId" @click="removeUser(user.user_id)">
+                  <Button
+                    variant="danger"
+                    :disabled="!canWrite || user.user_id === currentUserId || accountDangerActionKey !== null"
+                    :loading="accountDangerActionKey === `user:${user.user_id}`"
+                    @click="requestRemoveUser(user)"
+                  >
                     <Trash2 :size="15" />
                     {{ t('settingsDiagnostics.actions.delete') }}
                   </Button>
@@ -188,7 +193,12 @@
                 <td>{{ formatDate(token.expires_at) }}</td>
                 <td>{{ formatDate(token.last_used_at) }}</td>
                 <td>
-                  <Button variant="danger" :disabled="!canWrite || Boolean(token.revoked_at)" @click="revokeToken(token.token_id)">
+                  <Button
+                    variant="danger"
+                    :disabled="!canWrite || Boolean(token.revoked_at) || accountDangerActionKey !== null"
+                    :loading="accountDangerActionKey === `token:${token.token_id}`"
+                    @click="requestRevokeToken(token)"
+                  >
                     <Trash2 :size="15" />
                     {{ t('settingsDiagnostics.actions.revoke') }}
                   </Button>
@@ -240,6 +250,28 @@
         </div>
       </section>
     </section>
+
+    <ConfirmDialog
+      v-if="pendingDeleteUser"
+      :title="t('common.confirmDelete')"
+      :message="t('settingsDiagnostics.messages.confirmDeleteUser', { username: pendingDeleteUser.display_name || pendingDeleteUser.username })"
+      :confirm-label="t('settingsDiagnostics.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="accountDangerActionKey === `user:${pendingDeleteUser.user_id}`"
+      @cancel="pendingDeleteUser = null"
+      @confirm="removeUser"
+    />
+
+    <ConfirmDialog
+      v-if="pendingRevokeToken"
+      :title="t('settingsDiagnostics.actions.revoke')"
+      :message="t('settingsDiagnostics.messages.confirmRevokeToken', { tokenName: pendingRevokeToken.token_name })"
+      :confirm-label="t('settingsDiagnostics.actions.revoke')"
+      :cancel-label="t('common.cancel')"
+      :busy="accountDangerActionKey === `token:${pendingRevokeToken.token_id}`"
+      @cancel="pendingRevokeToken = null"
+      @confirm="revokeToken"
+    />
   </section>
 </template>
 
@@ -252,6 +284,7 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import type { LocalAuthUser } from '@/shared/contracts'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
@@ -280,6 +313,9 @@ const usersLoading = ref(false)
 const tokensLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
+const accountDangerActionKey = ref<string | null>(null)
+const pendingDeleteUser = ref<LocalAuthUser | null>(null)
+const pendingRevokeToken = ref<LocalAuthUserToken | null>(null)
 
 const createUserForm = reactive({
   username: '',
@@ -399,8 +435,16 @@ async function toggleUser(userId: string, isActive: boolean): Promise<void> {
   }
 }
 
-async function removeUser(userId: string): Promise<void> {
-  if (!globalThis.confirm(t('settingsDiagnostics.messages.confirmDeleteUser'))) return
+function requestRemoveUser(user: LocalAuthUser): void {
+  if (!canWrite.value || user.user_id === currentUserId.value || accountDangerActionKey.value) return
+  pendingDeleteUser.value = user
+}
+
+async function removeUser(): Promise<void> {
+  const user = pendingDeleteUser.value
+  if (!user) return
+  const userId = user.user_id
+  accountDangerActionKey.value = `user:${userId}`
   errorMessage.value = null
   try {
     await deleteLocalAuthUser(userId)
@@ -413,6 +457,9 @@ async function removeUser(userId: string): Promise<void> {
     statusMessage.value = t('settingsDiagnostics.messages.userDeleted')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.userDeleteFailed')
+  } finally {
+    accountDangerActionKey.value = null
+    pendingDeleteUser.value = null
   }
 }
 
@@ -435,15 +482,27 @@ async function createToken(): Promise<void> {
   }
 }
 
-async function revokeToken(tokenId: string): Promise<void> {
-  if (!selectedUser.value || !globalThis.confirm(t('settingsDiagnostics.messages.confirmRevokeToken'))) return
+function requestRevokeToken(token: LocalAuthUserToken): void {
+  if (!selectedUser.value || !canWrite.value || token.revoked_at || accountDangerActionKey.value) return
+  pendingRevokeToken.value = token
+}
+
+async function revokeToken(): Promise<void> {
+  const user = selectedUser.value
+  const token = pendingRevokeToken.value
+  if (!user || !token) return
+  const tokenId = token.token_id
+  accountDangerActionKey.value = `token:${tokenId}`
   errorMessage.value = null
   try {
-    await revokeLocalAuthUserToken(selectedUser.value.user_id, tokenId)
-    await loadTokens(selectedUser.value.user_id)
+    await revokeLocalAuthUserToken(user.user_id, tokenId)
+    await loadTokens(user.user_id)
     statusMessage.value = t('settingsDiagnostics.messages.tokenRevoked')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.tokenRevokeFailed')
+  } finally {
+    accountDangerActionKey.value = null
+    pendingRevokeToken.value = null
   }
 }
 

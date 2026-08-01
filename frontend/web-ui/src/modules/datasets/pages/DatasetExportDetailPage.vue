@@ -1,10 +1,7 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ datasetExportId }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="datasetExportId">
+      <template #actions>
         <ButtonLink to="/datasets">
           <ArrowLeft :size="16" />
           {{ t('datasetExportDetail.actions.backToDatasets') }}
@@ -20,6 +17,7 @@
           v-if="detail"
           variant="secondary"
           :disabled="packaging || !canWriteDatasets"
+          :loading="packaging"
           @click="packageCurrentExport"
         >
           <PackageCheck :size="16" />
@@ -29,6 +27,7 @@
           v-if="detail"
           variant="secondary"
           :disabled="!detail.package_object_key || downloading"
+          :loading="downloading"
           @click="downloadCurrentExport"
         >
           <Download :size="16" />
@@ -38,17 +37,18 @@
           v-if="detail"
           variant="danger"
           :disabled="!canDeleteCurrentExport || deleting"
+          :loading="deleting"
           @click="deleteDialogOpen = true"
         >
           <Trash2 :size="16" />
           {{ t('datasetExportDetail.actions.delete') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="loadDetail">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDetail">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -204,6 +204,7 @@ import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()

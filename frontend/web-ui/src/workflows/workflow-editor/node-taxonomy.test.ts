@@ -4,6 +4,7 @@ import {
   compareNodeCategories,
   readNodeCategoryLabel,
   readNodeCategoryParts,
+  readNodeVisualCategory,
 } from './node-taxonomy'
 
 describe('workflow node taxonomy', () => {
@@ -34,5 +35,14 @@ describe('workflow node taxonomy', () => {
       'opencv.measurement.geometry',
       'opencv.output.workflow',
     ])
+  })
+
+  it('maps node definitions to stable visual categories', () => {
+    expect(readNodeVisualCategory('core.io.image')).toBe('input-output')
+    expect(readNodeVisualCategory('core.model.inference')).toBe('model')
+    expect(readNodeVisualCategory('core.logic.condition')).toBe('logic')
+    expect(readNodeVisualCategory('opencv.matching.template')).toBe('vision')
+    expect(readNodeVisualCategory('custom', 'vendor.protocol.http')).toBe('integration')
+    expect(readNodeVisualCategory('custom.utility')).toBe('utility')
   })
 })

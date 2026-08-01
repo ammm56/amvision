@@ -21,21 +21,10 @@
       <span class="workflow-graph-minimap__viewport" :style="viewportStyle" />
     </div>
   </div>
-  <button
-    v-else
-    type="button"
-    class="workflow-graph-minimap-toggle"
-    :title="t('workflowEditor.editor.showMinimap')"
-    :aria-label="t('workflowEditor.editor.showMinimap')"
-    @mousedown.stop
-    @click.stop="emit('toggle')"
-  >
-    <MapIcon :size="16" />
-  </button>
 </template>
 
 <script setup lang="ts">
-import { Map as MapIcon, X } from '@lucide/vue'
+import { X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 interface WorkflowMinimapNode {

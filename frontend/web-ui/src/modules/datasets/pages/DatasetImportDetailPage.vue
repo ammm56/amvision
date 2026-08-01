@@ -1,10 +1,7 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ datasetImportId }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="datasetImportId">
+      <template #actions>
         <ButtonLink to="/datasets">
           <ArrowLeft :size="16" />
           {{ t('datasetImportDetail.actions.backToDatasets') }}
@@ -20,17 +17,18 @@
           v-if="detail"
           variant="danger"
           :disabled="!canDeleteCurrentImport || deleting"
+          :loading="deleting"
           @click="deleteDialogOpen = true"
         >
           <Trash2 :size="16" />
           {{ t('datasetImportDetail.actions.delete') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="loadDetail">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDetail">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -159,6 +157,7 @@ import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()

@@ -22,13 +22,10 @@ defineProps<{
   align-items: center;
   gap: 16px;
   min-height: 180px;
-  padding: 28px;
+  padding: var(--am-space-2xl);
   border: 1px solid var(--line);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 12% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 28%),
-    linear-gradient(135deg, var(--surface), var(--summary-bg));
-  box-shadow: 0 18px 36px rgba(17, 24, 39, 0.08);
+  border-radius: var(--am-radius-md);
+  background: var(--surface);
 }
 
 .loading-panel h2 {
@@ -50,7 +47,7 @@ defineProps<{
   width: 54px;
   height: 54px;
   flex: 0 0 auto;
-  border-radius: 18px;
+  border-radius: var(--am-radius-md);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
@@ -68,7 +65,7 @@ defineProps<{
 .loading-panel--compact {
   min-height: auto;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--am-radius-md);
   box-shadow: none;
 }
 
@@ -84,7 +81,7 @@ defineProps<{
 .loading-panel--compact .loading-panel__spinner {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--am-radius-md);
 }
 
 .loading-panel--compact .loading-panel__spinner::before {
@@ -96,6 +93,12 @@ defineProps<{
 @keyframes loading-panel-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-panel__spinner::before {
+    animation: none;
   }
 }
 

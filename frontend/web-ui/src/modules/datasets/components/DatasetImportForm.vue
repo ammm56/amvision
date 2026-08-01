@@ -44,7 +44,7 @@
       </label>
     </div>
     <div class="form-actions">
-      <Button variant="primary" type="submit" :disabled="!canWriteDatasets || submittingImport">
+      <Button variant="primary" type="submit" :disabled="!canWriteDatasets || submittingImport" :loading="submittingImport">
         <UploadCloud :size="16" />
         {{ submittingImport ? t('datasetOps.actions.submitting') : t('datasetOps.actions.submitImport') }}
       </Button>

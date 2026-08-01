@@ -87,6 +87,7 @@
         variant="primary"
         type="submit"
         :disabled="!canWriteTasks || conversionSubmitting || !conversionSelectedModelSummary || !conversionSourceModelVersionId.trim()"
+        :loading="conversionSubmitting"
       >
         <Wand2 :size="16" />
         {{ conversionSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitConversion') }}

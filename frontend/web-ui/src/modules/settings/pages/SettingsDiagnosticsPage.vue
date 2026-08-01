@@ -1,34 +1,23 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('settingsDiagnostics.title') }}</h1>
-      </div>
-      <div class="page-actions">
-        <Button variant="secondary" :disabled="loading" @click="loadDiagnostics">
+    <PageHeader :title="t('settingsDiagnostics.title')">
+      <template #actions>
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
-    <div class="view-tabs settings-diagnostics__tabs" role="tablist" aria-label="Settings sections">
-      <button
-        v-for="tab in categoryTabs"
-        :key="tab.id"
-        class="view-tab"
-        :class="{ 'is-active': activeCategory === tab.id }"
-        type="button"
-        role="tab"
-        :aria-selected="activeCategory === tab.id"
-        @click="activeCategory = tab.id"
-      >
-        <component :is="tab.icon" :size="15" />
-        <span>{{ tab.label }}</span>
-      </button>
-    </div>
+    <TabList
+      class="settings-diagnostics__tabs"
+      :model-value="activeCategory"
+      :tabs="categoryTabs"
+      :label="t('settingsDiagnostics.title')"
+      @update:model-value="selectCategory"
+    />
 
     <div class="summary-grid settings-diagnostics__summary">
       <div>
@@ -426,6 +415,8 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
+import TabList from '@/shared/ui/navigation/TabList.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import SettingsAccountsPanel from '../components/SettingsAccountsPanel.vue'
 import { getSystemDiagnostics, type SystemDiagnosticsResponse } from '../services/settings-diagnostics.service'
@@ -556,6 +547,12 @@ const serviceRows = computed(() => [
   buildStatusRow('database', 'Database', recordValue(services.value, 'database', 'database')),
   buildStatusRow('local_buffer_broker', 'LocalBufferBroker', recordValue(services.value, 'local_buffer_broker', 'state')),
 ])
+
+function selectCategory(categoryId: string): void {
+  if (categoryId === 'preferences' || categoryId === 'services' || categoryId === 'system' || categoryId === 'security' || categoryId === 'accounts') {
+    activeCategory.value = categoryId
+  }
+}
 
 onMounted(() => {
   void loadDiagnostics()

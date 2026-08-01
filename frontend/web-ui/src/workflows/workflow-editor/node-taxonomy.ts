@@ -70,6 +70,32 @@ export interface NodeCategoryParts {
   childLabel: string
 }
 
+export type WorkflowNodeVisualCategory =
+  | 'input-output'
+  | 'vision'
+  | 'model'
+  | 'transform'
+  | 'logic'
+  | 'integration'
+  | 'utility'
+
+const visualCategoryKeywords: Array<[WorkflowNodeVisualCategory, string[]]> = [
+  ['input-output', ['core.io', '.io.', '.input', '.output', '.response', '.preview']],
+  ['model', ['.model.', '.inference', '.deployment', '.runtime']],
+  ['logic', ['.logic.', '.condition', '.branch', '.iteration', '.parallel', '.rule', '.variable']],
+  ['integration', ['.integration', '.protocol', '.http', '.api', '.plc', '.trigger', '.camera']],
+  ['vision', ['core.vision', 'opencv.', '.inspection', '.measurement', '.detection', '.matching', '.segmentation']],
+  ['transform', ['.transform', '.filter', '.threshold', '.morphology', '.geometry', '.calibration']],
+]
+
+export function readNodeVisualCategory(category: string, nodeTypeId = ''): WorkflowNodeVisualCategory {
+  const searchableValue = `${category} ${nodeTypeId}`.toLowerCase()
+  for (const [visualCategory, keywords] of visualCategoryKeywords) {
+    if (keywords.some((keyword) => searchableValue.includes(keyword))) return visualCategory
+  }
+  return 'utility'
+}
+
 export function readNodeCategoryParts(category: string): NodeCategoryParts {
   const rawTokens = category
     .split(/[./]+/)

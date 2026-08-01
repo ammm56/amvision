@@ -1,20 +1,17 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('workflowEditor.applications.title') }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="t('workflowEditor.applications.title')">
+      <template #actions>
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
         <Button v-if="canWriteWorkflows" variant="primary" @click="openNewGraph">
           <Plus :size="16" />
           {{ t('workflowEditor.actions.newWorkflowGraph') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="refreshPage">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
-        </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -101,8 +98,9 @@
                     size="sm"
                     variant="danger"
                     :disabled="deletingApplicationId === workflowApp.application.application_id || workflowApp.runtimes.length > 0"
+                    :loading="deletingApplicationId === workflowApp.application.application_id"
                     :title="workflowApp.runtimes.length > 0 ? t('workflowEditor.applications.deleteBlocked') : t('workflowEditor.applications.deleteHint')"
-                    @click="deleteWorkflowApp(workflowApp)"
+                    @click="requestDeleteWorkflowApp(workflowApp)"
                   >
                     <Trash2 :size="14" />
                     {{ t('workflowEditor.applications.delete') }}
@@ -126,6 +124,18 @@
         @next="loadNextPage"
       />
     </section>
+
+    <ConfirmDialog
+      v-if="pendingDeleteWorkflowApp"
+      :title="t('common.confirmDelete')"
+      :message="deleteWorkflowAppMessage"
+      :details="t('workflowEditor.applications.deleteHint')"
+      :confirm-label="t('workflowEditor.applications.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="deletingApplicationId === pendingDeleteWorkflowApp.application.application_id"
+      @cancel="pendingDeleteWorkflowApp = null"
+      @confirm="deleteWorkflowApp"
+    />
   </section>
 </template>
 
@@ -140,10 +150,12 @@ import { useSessionStore } from '@/app/stores/session.store'
 import type { PaginationMeta } from '@/shared/api/pagination'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { getWorkflowNodeCatalog } from '../services/node-catalog.service'
 import { deleteWorkflowApplication } from '../services/workflow-application.service'
 import { deleteWorkflowTemplateVersion } from '../services/workflow-template.service'
@@ -162,12 +174,23 @@ const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApps = ref<WorkflowAppSummary[]>([])
 const appRuntimes = ref<WorkflowAppRuntime[]>([])
 const deletingApplicationId = ref<string | null>(null)
+const pendingDeleteWorkflowApp = ref<WorkflowAppSummary | null>(null)
 const applicationPagination = ref<PaginationMeta>(createPaginationState())
 
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const canWriteWorkflows = computed(() => sessionStore.hasScopes(['workflows:write']))
 const runningRuntimeCount = computed(() => appRuntimes.value.filter((runtime) => runtime.observed_state === 'running').length)
 const applicationCount = computed(() => applicationPagination.value.totalCount ?? workflowApps.value.length)
+const deleteWorkflowAppMessage = computed(() => {
+  const workflowApp = pendingDeleteWorkflowApp.value
+  if (!workflowApp) return ''
+  return t(
+    isGraphVersionOnlyUsedByApplication(workflowApp)
+      ? 'workflowEditor.applications.confirmDeleteWithGraph'
+      : 'workflowEditor.applications.confirmDelete',
+    { applicationId: workflowApp.application.application_id },
+  )
+})
 
 function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   if (state === 'running') return 'success'
@@ -240,15 +263,17 @@ async function loadPage(offset?: number): Promise<void> {
   }
 }
 
-async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void> {
+function requestDeleteWorkflowApp(workflowApp: WorkflowAppSummary): void {
+  if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
+  pendingDeleteWorkflowApp.value = workflowApp
+}
+
+async function deleteWorkflowApp(): Promise<void> {
+  const workflowApp = pendingDeleteWorkflowApp.value
+  if (!workflowApp) return
   if (!canWriteWorkflows.value || workflowApp.runtimes.length > 0) return
   const applicationId = workflowApp.application.application_id
   const shouldDeleteGraph = isGraphVersionOnlyUsedByApplication(workflowApp)
-  const confirmed = window.confirm(t(
-    shouldDeleteGraph ? 'workflowEditor.applications.confirmDeleteWithGraph' : 'workflowEditor.applications.confirmDelete',
-    { applicationId },
-  ))
-  if (!confirmed) return
   deletingApplicationId.value = applicationId
   errorMessage.value = null
   try {
@@ -268,6 +293,7 @@ async function deleteWorkflowApp(workflowApp: WorkflowAppSummary): Promise<void>
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.applications.deleteFailed')
   } finally {
     deletingApplicationId.value = null
+    pendingDeleteWorkflowApp.value = null
   }
 }
 

@@ -1,20 +1,17 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('deploymentOps.title') }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="t('deploymentOps.title')">
+      <template #actions>
         <label class="segmented-field">
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
           <SelectField :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
-        <Button variant="secondary" :disabled="loading" @click="refreshPage">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -24,7 +21,7 @@
           <div>
             <h2>{{ t('deploymentOps.createTitle') }}</h2>
           </div>
-          <Button type="button" variant="secondary" :disabled="sourceModelsLoading" @click="openDeploymentSourcePicker">
+          <Button type="button" variant="secondary" :disabled="sourceModelsLoading" :loading="sourceModelsLoading" @click="openDeploymentSourcePicker">
             {{ selectedDeploymentSource ? t('deploymentOps.source.change') : t('deploymentOps.source.choose') }}
           </Button>
         </div>
@@ -247,7 +244,7 @@
           </label>
         </div>
         <div class="form-actions">
-          <Button variant="primary" type="submit" :disabled="!canWriteModels || creating">
+          <Button variant="primary" type="submit" :disabled="!canWriteModels || creating" :loading="creating">
             <Zap :size="16" />
             {{ creating ? t('deploymentOps.actions.creating') : t('deploymentOps.actions.create') }}
           </Button>
@@ -541,6 +538,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()

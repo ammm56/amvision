@@ -1,16 +1,23 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div class="project-page-heading">
-        <h1>{{ t('common.project') }}</h1>
-        <ProjectSwitcher />
-      </div>
-      <div class="page-actions">
-        <Button :disabled="generatingSdkConfigPackage || !projectStore.selectedProjectId" variant="secondary" @click="generateSdkConfigPackage">
+    <PageHeader>
+      <template #heading>
+        <div class="project-page-heading">
+          <h1>{{ t('common.project') }}</h1>
+          <ProjectSwitcher />
+        </div>
+      </template>
+      <template #actions>
+        <Button
+          :disabled="generatingSdkConfigPackage || !projectStore.selectedProjectId"
+          :loading="generatingSdkConfigPackage"
+          variant="secondary"
+          @click="generateSdkConfigPackage"
+        >
           <PackageCheck :size="16" />
           {{ t('projects.generateSdkConfigPackage') }}
         </Button>
-        <Button variant="secondary" @click="loadProjectsWithSummary">
+        <Button variant="secondary" :loading="projectStore.loading" @click="loadProjectsWithSummary">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -20,15 +27,16 @@
         </Button>
         <Button
           v-if="canBootstrapProject && !defaultProjectExists"
-          variant="primary"
+          variant="secondary"
           :disabled="bootstrappingDefaultProject"
+          :loading="bootstrappingDefaultProject"
           @click="bootstrapDefaultProject"
         >
           <Plus :size="16" />
           {{ t('projects.initDefault') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="projectStore.error" />
     <InlineError :message="formError" />
@@ -80,7 +88,7 @@
       </div>
       <div class="page-actions">
         <Button variant="secondary" @click="resetProjectForm">{{ t('common.cancel') }}</Button>
-        <Button variant="primary" :disabled="creatingProject" @click="createProject">
+        <Button variant="primary" :disabled="creatingProject" :loading="creatingProject" @click="createProject">
           <Plus :size="16" />
           {{ t('projects.createProject') }}
         </Button>
@@ -96,6 +104,7 @@
         v-if="canBootstrapProject && !defaultProjectExists"
         variant="primary"
         :disabled="bootstrappingDefaultProject"
+        :loading="bootstrappingDefaultProject"
         @click="bootstrapDefaultProject"
       >
         <Plus :size="16" />
@@ -169,6 +178,7 @@ import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
 
 const projectStore = useProjectStore()

@@ -1,0 +1,41 @@
+:root {
+  --am-brand-primary: #00d992;
+  --am-brand-primary-soft: #2fd6a1;
+  --am-brand-primary-deep: #10b981;
+  --am-brand-primary-text-light: #087a56;
+  --am-brand-on-primary: #101010;
+
+  --am-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --am-font-mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --am-space-xxs: 2px;
+  --am-space-xs: 4px;
+  --am-space-sm: 8px;
+  --am-space-md: 12px;
+  --am-space-lg: 16px;
+  --am-space-xl: 20px;
+  --am-space-2xl: 24px;
+  --am-space-3xl: 32px;
+  --am-space-4xl: 40px;
+  --am-space-5xl: 48px;
+  --am-space-6xl: 64px;
+
+  --am-radius-none: 0;
+  --am-radius-xs: 4px;
+  --am-radius-sm: 6px;
+  --am-radius-md: 8px;
+  --am-radius-pill: 9999px;
+
+  --am-shadow-floating: 0 12px 28px rgb(0 0 0 / 0.18);
+  --am-shadow-modal: 0 20px 60px rgb(0 0 0 / 0.28);
+
+  --am-motion-fast: 120ms;
+  --am-motion-normal: 160ms;
+  --am-motion-panel: 200ms;
+  --am-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --am-z-dropdown: 60;
+  --am-z-popover: 90;
+  --am-z-modal: 100;
+  --am-z-tooltip: 2600;
+}

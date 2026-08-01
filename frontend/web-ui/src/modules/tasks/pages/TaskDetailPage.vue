@@ -1,11 +1,8 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ taskStore.selectedTask?.task_id || taskId }}</h1>
-      </div>
-      <div class="page-actions">
-        <Button variant="secondary" :disabled="isTaskDetailLoading" @click="loadTaskDetail(taskId)">
+    <PageHeader :title="taskStore.selectedTask?.task_id || taskId">
+      <template #actions>
+        <Button variant="secondary" :disabled="isTaskDetailLoading" :loading="isTaskDetailLoading" @click="loadTaskDetail(taskId)">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -13,8 +10,8 @@
           <Ban :size="16" />
           {{ t('common.cancel') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="taskStore.error" />
 
@@ -107,6 +104,7 @@ import { useTaskEvents } from '../composables/useTaskEvents'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import type { TaskEvent } from '@/shared/contracts'
 
 type JsonRecord = Record<string, unknown>

@@ -31,4 +31,39 @@ describe('ConfirmDialog', () => {
 
     wrapper.unmount()
   })
+
+  it('危险操作默认聚焦取消按钮', async () => {
+    const wrapper = mount(ConfirmDialog, {
+      attachTo: document.body,
+      props: {
+        title: '删除应用',
+        message: '确认删除应用？',
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+      },
+    })
+
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('[data-confirm-cancel]').element)
+    wrapper.unmount()
+  })
+
+  it('busy 状态阻止关闭并显示确认加载状态', async () => {
+    const wrapper = mount(ConfirmDialog, {
+      attachTo: document.body,
+      props: {
+        title: '删除应用',
+        message: '确认删除应用？',
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+        busy: true,
+      },
+    })
+
+    await wrapper.get('.confirm-dialog-backdrop').trigger('click')
+    await wrapper.get('.confirm-dialog').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('cancel')).toBeUndefined()
+    expect(wrapper.get('.ui-button--danger').classes()).toContain('is-loading')
+    wrapper.unmount()
+  })
 })

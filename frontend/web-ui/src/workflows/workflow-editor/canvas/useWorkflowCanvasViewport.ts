@@ -44,6 +44,7 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
   const viewportY = ref(0)
   const viewportScale = ref(1)
   const stageSize = ref({ width: 1, height: 1 })
+  const viewportScalePercent = computed(() => Math.round(viewportScale.value * 100))
 
   const worldTransformStyle = computed(() => ({
     transform: `translate(${viewportX.value}px, ${viewportY.value}px) scale(${viewportScale.value})`,
@@ -130,14 +131,14 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
   }
 
   function calculateWorldBounds(): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
-    if (options.graphNodes.value.length === 0) {
+    const boundaryNodes = options.readBoundaryNodes()
+    if (options.graphNodes.value.length === 0 && boundaryNodes.length === 0) {
       const viewLeft = -viewportX.value / viewportScale.value
       const viewTop = -viewportY.value / viewportScale.value
       const viewWidth = stageSize.value.width / viewportScale.value
       const viewHeight = stageSize.value.height / viewportScale.value
       return { minX: viewLeft, minY: viewTop, maxX: viewLeft + viewWidth, maxY: viewTop + viewHeight, width: viewWidth, height: viewHeight }
     }
-    const boundaryNodes = options.readBoundaryNodes()
     const minX = Math.min(...options.graphNodes.value.map((node) => node.x), ...boundaryNodes.map((boundary) => boundary.x)) - 160
     const minY = Math.min(...options.graphNodes.value.map((node) => node.y), ...boundaryNodes.map((boundary) => boundary.y)) - 120
     const maxX = Math.max(...options.graphNodes.value.map((node) => node.x + node.width), ...boundaryNodes.map((boundary) => boundary.x + boundary.width)) + 160
@@ -173,9 +174,32 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
 
   function fitView(): void {
     const bounds = worldBounds.value
+    const availableWidth = Math.max(stageSize.value.width - 64, 1)
+    const availableHeight = Math.max(stageSize.value.height - 64, 1)
+    viewportScale.value = clampNumber(
+      Math.min(availableWidth / Math.max(bounds.width, 1), availableHeight / Math.max(bounds.height, 1)),
+      minViewportScale,
+      maxViewportScale,
+    )
     viewportX.value = stageSize.value.width / 2 - (bounds.minX + bounds.width / 2) * viewportScale.value
     viewportY.value = stageSize.value.height / 2 - (bounds.minY + bounds.height / 2) * viewportScale.value
     options.clearTransientUi()
+  }
+
+  function zoomViewport(step: number): void {
+    const canvasBounds = options.canvasRef.value?.getBoundingClientRect()
+    if (!canvasBounds) return
+    const nextScale = clampNumber(viewportScale.value * Math.pow(1.2, step), minViewportScale, maxViewportScale)
+    zoomViewportAt(canvasBounds.left + canvasBounds.width / 2, canvasBounds.top + canvasBounds.height / 2, nextScale)
+    options.clearTransientUi()
+  }
+
+  function zoomIn(): void {
+    zoomViewport(1)
+  }
+
+  function zoomOut(): void {
+    zoomViewport(-1)
   }
 
   function focusGraphNode(nodeId: string): void {
@@ -211,6 +235,7 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
     viewportX,
     viewportY,
     viewportScale,
+    viewportScalePercent,
     stageSize,
     worldTransformStyle,
     minimapNodes,
@@ -219,6 +244,8 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
     handleStageWheel,
     clampNumber,
     fitView,
+    zoomIn,
+    zoomOut,
     focusGraphNode,
     resetView,
     toggleMinimap,

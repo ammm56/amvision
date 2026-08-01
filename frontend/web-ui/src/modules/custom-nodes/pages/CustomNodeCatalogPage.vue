@@ -1,38 +1,27 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('customNodes.title') }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="t('customNodes.title')">
+      <template #actions>
         <label v-if="activeTab === 'nodes'" class="segmented-field custom-node-catalog__runtime-filter">
           <span>{{ t('customNodes.fields.runtimeKind') }}</span>
           <SelectField :model-value="runtimeKindFilter" :options="runtimeKindOptions" @update:model-value="setRuntimeKindFilter" />
         </label>
-        <Button variant="secondary" :disabled="loading" @click="loadCatalog">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadCatalog">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
-    <div class="view-tabs custom-node-catalog__tabs" role="tablist" aria-label="Custom node views">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="view-tab"
-        :class="{ 'is-active': activeTab === tab.id }"
-        type="button"
-        role="tab"
-        :aria-selected="activeTab === tab.id"
-        @click="selectTab(tab.id)"
-      >
-        <span>{{ tab.label }}</span>
-        <strong>{{ tab.count }}</strong>
-      </button>
-    </div>
+    <TabList
+      class="custom-node-catalog__tabs"
+      :model-value="activeTab"
+      :tabs="tabs"
+      :label="t('customNodes.title')"
+      @update:model-value="selectTab"
+    />
 
     <div class="summary-grid custom-node-catalog__summary">
       <div>
@@ -485,6 +474,8 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
+import TabList from '@/shared/ui/navigation/TabList.vue'
 
 type SelectValue = string | number | boolean | null
 type CatalogTabId = 'nodes' | 'packs' | 'diagnostics'
@@ -826,8 +817,8 @@ function selectNode(node: NodeDefinition): void {
   selectedNode.value = node
 }
 
-function selectTab(tabId: CatalogTabId): void {
-  activeTab.value = tabId
+function selectTab(tabId: string): void {
+  if (tabId === 'nodes' || tabId === 'packs' || tabId === 'diagnostics') activeTab.value = tabId
 }
 
 function selectNodePack(packId: string): void {

@@ -9,6 +9,7 @@
       'is-selected': selectedNodeId === node.node.node_id,
       'is-runtime-failed': lastPreviewFailureNodeId === node.node.node_id,
       'is-disabled': node.node.enabled === false,
+      [`workflow-graph-node--category-${readNodeVisualCategory(node.definition?.category || '', node.node.node_type_id)}`]: true,
     }"
     :style="{
       left: `${node.x}px`,
@@ -106,6 +107,7 @@ import { useTranslation } from '@/platform/i18n'
 
 import WorkflowNodeParameterWidgets from './WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePreviewDisplay from './WorkflowNodePreviewDisplay.vue'
+import { readNodeVisualCategory } from '../node-taxonomy'
 import type { PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import type { WorkflowNodePortRowView } from '../nodes/useWorkflowNodeDisplayHelpers'

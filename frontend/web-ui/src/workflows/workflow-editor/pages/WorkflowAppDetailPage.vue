@@ -1,11 +1,10 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ application?.display_name || applicationId }}</h1>
-        <p class="page-description">{{ application?.description || t('workflowEditor.appDetail.description') }}</p>
-      </div>
-      <div class="page-actions">
+    <PageHeader
+      :title="application?.display_name || applicationId"
+      :description="application?.description || t('workflowEditor.appDetail.description')"
+    >
+      <template #actions>
         <Button variant="secondary" @click="openAppList">
           <ArrowLeft :size="16" />
           {{ t('workflowEditor.appDetail.actions.backToList') }}
@@ -14,12 +13,12 @@
           <Workflow :size="16" />
           {{ t('workflowEditor.actions.openGraphEditor') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="loadPage">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
     <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
@@ -230,8 +229,9 @@
                       size="sm"
                       variant="danger"
                       :disabled="!canDeleteRuntime(runtime)"
+                      :loading="busyRuntimeId === runtime.workflow_runtime_id && pendingDeleteRuntime?.workflow_runtime_id === runtime.workflow_runtime_id"
                       :title="deleteRuntimeTitle(runtime)"
-                      @click="deleteRuntime(runtime)"
+                      @click="requestDeleteRuntime(runtime)"
                     >
                       <Trash2 :size="14" />
                       {{ t('workflowEditor.appDetail.actions.delete') }}
@@ -382,6 +382,17 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
         </div>
       </section>
     </template>
+
+    <ConfirmDialog
+      v-if="pendingDeleteRuntime"
+      :title="t('common.confirmDelete')"
+      :message="t('workflowEditor.appDetail.messages.confirmDeleteRuntime', { runtimeId: pendingDeleteRuntime.workflow_runtime_id })"
+      :confirm-label="t('workflowEditor.appDetail.actions.delete')"
+      :cancel-label="t('common.cancel')"
+      :busy="busyRuntimeId === pendingDeleteRuntime.workflow_runtime_id"
+      @cancel="pendingDeleteRuntime = null"
+      @confirm="deleteRuntime"
+    />
   </section>
 </template>
 
@@ -411,10 +422,12 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import {
   listWorkflowTriggerSources,
   refreshWorkflowTriggerSourceStatuses,
@@ -471,6 +484,7 @@ const workflowApp = ref<WorkflowAppDocument | null>(null)
 const triggerSources = ref<WorkflowTriggerSource[]>([])
 const selectedRuntimeId = ref('')
 const busyRuntimeId = ref<string | null>(null)
+const pendingDeleteRuntime = ref<WorkflowAppRuntime | null>(null)
 const runtimePayloadText = ref('{}')
 const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
@@ -950,10 +964,15 @@ async function refreshRuntimeHealth(runtime: WorkflowAppRuntime): Promise<void> 
   }
 }
 
-async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
+function requestDeleteRuntime(runtime: WorkflowAppRuntime): void {
   if (!workflowApp.value || !canDeleteRuntime(runtime)) return
-  const confirmed = window.confirm(t('workflowEditor.appDetail.messages.confirmDeleteRuntime', { runtimeId: runtime.workflow_runtime_id }))
-  if (!confirmed) return
+  pendingDeleteRuntime.value = runtime
+}
+
+async function deleteRuntime(): Promise<void> {
+  const runtime = pendingDeleteRuntime.value
+  if (!runtime) return
+  if (!workflowApp.value || !canDeleteRuntime(runtime)) return
   busyRuntimeId.value = runtime.workflow_runtime_id
   errorMessage.value = null
   try {
@@ -966,6 +985,7 @@ async function deleteRuntime(runtime: WorkflowAppRuntime): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.deleteRuntimeFailed')
   } finally {
     busyRuntimeId.value = null
+    pendingDeleteRuntime.value = null
   }
 }
 

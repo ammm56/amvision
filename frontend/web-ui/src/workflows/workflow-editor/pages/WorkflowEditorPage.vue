@@ -17,7 +17,9 @@
         :status-message="toolbarStatusMessage"
         :loading="loading"
         :preview-disabled="previewDisabled"
+        :previewing="previewOperationRunning"
         :save-disabled="saveDisabled"
+        :saving="saving"
         :group-create-mode="groupCreateMode"
         :inspector-collapsed="inspectorCollapsed"
         @begin-title-edit="beginEditorTitleEdit"
@@ -179,6 +181,7 @@
 
       <WorkflowGraphOverlayLayer
         :minimap-visible="minimapVisible"
+        :viewport-scale-percent="viewportScalePercent"
         :minimap-nodes="minimapNodes"
         :minimap-viewport-style="minimapViewportStyle"
         :is-minimap-node-selected="isMinimapNodeSelected"
@@ -204,6 +207,8 @@
         @delete-edge="deleteSelectedEdge"
         @reset-boundary-position="resetContextBoundaryPosition"
         @fit-view="fitView"
+        @zoom-in="zoomIn"
+        @zoom-out="zoomOut"
         @reset-view="resetView"
         @save="saveCurrentWorkflowApp"
         @preview="runPreview"
@@ -412,6 +417,7 @@ const {
   viewportX,
   viewportY,
   viewportScale,
+  viewportScalePercent,
   stageSize,
   worldTransformStyle,
   minimapNodes,
@@ -419,6 +425,8 @@ const {
   screenToWorld,
   handleStageWheel,
   fitView,
+  zoomIn,
+  zoomOut,
   focusGraphNode,
   resetView,
   toggleMinimap,

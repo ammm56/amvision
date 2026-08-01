@@ -8,6 +8,16 @@
     @toggle="emit('toggleMinimap')"
   />
 
+  <WorkflowGraphViewportControls
+    :scale-percent="viewportScalePercent"
+    :minimap-visible="minimapVisible"
+    @zoom-out="emit('zoomOut')"
+    @reset-view="emit('resetView')"
+    @zoom-in="emit('zoomIn')"
+    @fit-view="emit('fitView')"
+    @toggle-minimap="emit('toggleMinimap')"
+  />
+
   <WorkflowGraphContextMenu
     v-if="contextMenu"
     :context-menu="contextMenu"
@@ -57,6 +67,7 @@ import { useI18n } from 'vue-i18n'
 import WorkflowCanvasEmptyState from './WorkflowCanvasEmptyState.vue'
 import WorkflowGraphContextMenu from './WorkflowGraphContextMenu.vue'
 import WorkflowGraphMinimap from './WorkflowGraphMinimap.vue'
+import WorkflowGraphViewportControls from './WorkflowGraphViewportControls.vue'
 import WorkflowNodePicker from './WorkflowNodePicker.vue'
 import type { WorkflowNodePickerState } from '../nodes/useWorkflowNodePicker'
 import type { WorkflowContextMenuState } from '../context/useWorkflowContextMenu'
@@ -69,6 +80,7 @@ interface WorkflowMinimapNode {
 
 defineProps<{
   minimapVisible: boolean
+  viewportScalePercent: number
   minimapNodes: WorkflowMinimapNode[]
   minimapViewportStyle: Record<string, string>
   isMinimapNodeSelected: (nodeId: string) => boolean
@@ -97,6 +109,8 @@ const emit = defineEmits<{
   deleteEdge: []
   resetBoundaryPosition: []
   fitView: []
+  zoomIn: []
+  zoomOut: []
   resetView: []
   save: []
   preview: []

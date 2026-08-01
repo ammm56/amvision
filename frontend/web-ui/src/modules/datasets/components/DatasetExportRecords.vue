@@ -34,6 +34,7 @@
                   size="sm"
                   variant="secondary"
                   :disabled="!canWriteDatasets || packagingExportId === item.dataset_export_id"
+                  :loading="packagingExportId === item.dataset_export_id"
                   @click="$emit('package', item.dataset_export_id)"
                 >
                   <PackageCheck :size="14" />

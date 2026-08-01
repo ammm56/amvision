@@ -106,7 +106,7 @@
     <div
       v-if="draftRect"
       class="workflow-graph-group workflow-graph-group--draft"
-      :style="rectStyle(draftRect, '#22b8cf')"
+      :style="rectStyle(draftRect, defaultGroupColor)"
     >
       <div class="workflow-graph-group__header">
         <span class="workflow-graph-group__name">{{ t('workflowEditor.editor.newGroup') }}</span>
@@ -146,8 +146,8 @@ const editingGroupId = ref<string | null>(null)
 const nameDraft = ref('')
 const nameInputs = new Map<string, HTMLInputElement>()
 const colorPickerGroupId = ref<string | null>(null)
-const defaultGroupColor = '#22b8cf'
-const groupColorOptions = ['#22b8cf', '#4dabf7', '#40c057', '#fab005', '#ff922b', '#da77f2', '#748ffc', '#f06595']
+const defaultGroupColor = '#2a9d8f'
+const groupColorOptions = ['#2a9d8f', '#3f7fd1', '#8169c9', '#b8792d', '#c9653d', '#bd5c78']
 
 function groupStyle(group: WorkflowGraphGroup): Record<string, string> {
   return rectStyle(group.rect, readGroupColor(group))

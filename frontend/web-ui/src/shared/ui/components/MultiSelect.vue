@@ -5,9 +5,10 @@
       type="button"
       :disabled="disabled"
       :aria-expanded="open"
+      :aria-controls="menuId"
+      aria-haspopup="listbox"
       @click="toggleOpen"
-      @keydown.escape.prevent="close"
-      @keydown.down.prevent="open = true"
+      @keydown="handleTriggerKeydown"
     >
       <span v-if="selectedOptions.length === 0" class="ui-multi-select__placeholder">{{ resolvedPlaceholder }}</span>
       <span v-else class="ui-multi-select__chips">
@@ -17,16 +18,18 @@
       </span>
       <ChevronDown :size="16" />
     </button>
-    <div v-if="open" class="ui-multi-select__menu" role="listbox" aria-multiselectable="true">
+    <div v-if="open" :id="menuId" class="ui-multi-select__menu" role="listbox" aria-multiselectable="true">
       <button
-        v-for="option in options"
+        v-for="(option, index) in options"
         :key="optionKey(option.value)"
+        :id="optionId(index)"
         class="ui-multi-select__option"
-        :class="{ 'is-selected': isSelected(option.value) }"
+        :class="{ 'is-selected': isSelected(option.value), 'is-active': activeIndex === index }"
         type="button"
         role="option"
         :aria-selected="isSelected(option.value)"
         @click.prevent.stop="toggleOption(option.value)"
+        @mouseenter="activeIndex = index"
       >
         <span class="ui-multi-select__option-check">
           <Check v-if="isSelected(option.value)" :size="14" />
@@ -41,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
 import { useTranslation } from '@/platform/i18n'
 
@@ -74,6 +77,8 @@ const emit = defineEmits<{
 
 const rootElement = ref<HTMLElement | null>(null)
 const open = ref(false)
+const activeIndex = ref(-1)
+const menuId = `${useId()}-listbox`
 
 const selectedOptions = computed(() => props.options.filter((option) => props.modelValue.includes(option.value)))
 const resolvedPlaceholder = computed(() => props.placeholder || t('common.selectPlaceholder'))
@@ -88,11 +93,55 @@ function isSelected(value: MultiSelectValue): boolean {
 
 function toggleOpen(): void {
   if (props.disabled) return
-  open.value = !open.value
+  if (open.value) {
+    close()
+    return
+  }
+  openMenu()
 }
 
 function close(): void {
   open.value = false
+  activeIndex.value = -1
+}
+
+function optionId(index: number): string {
+  return `${menuId}-option-${index}`
+}
+
+function openMenu(direction: 1 | -1 = 1): void {
+  if (props.options.length === 0) return
+  open.value = true
+  const selectedIndex = props.options.findIndex((option) => isSelected(option.value))
+  activeIndex.value = selectedIndex >= 0 ? selectedIndex : direction > 0 ? 0 : props.options.length - 1
+}
+
+function moveActiveOption(direction: 1 | -1): void {
+  if (!open.value) {
+    openMenu(direction)
+    return
+  }
+  const optionCount = props.options.length
+  if (optionCount === 0) return
+  activeIndex.value = (activeIndex.value + direction + optionCount) % optionCount
+}
+
+function handleTriggerKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    if (open.value) event.preventDefault()
+    close()
+    return
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveActiveOption(event.key === 'ArrowDown' ? 1 : -1)
+    return
+  }
+  if ((event.key === 'Enter' || event.key === ' ') && open.value && activeIndex.value >= 0) {
+    event.preventDefault()
+    const option = props.options[activeIndex.value]
+    if (option) toggleOption(option.value)
+  }
 }
 
 function toggleOption(value: MultiSelectValue): void {

@@ -1,10 +1,6 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t(titleKey) }}</h1>
-      </div>
-    </header>
+    <PageHeader :title="t(titleKey)" />
     <section class="placeholder-panel">
       <p>{{ t(descriptionKey) }}</p>
     </section>
@@ -13,6 +9,8 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 defineProps<{
   titleKey: string

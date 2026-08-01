@@ -83,7 +83,12 @@
       </label>
     </div>
     <div class="form-actions">
-      <Button variant="primary" type="submit" :disabled="!canWriteDatasets || submittingExport || !resolvedDatasetVersionId || !exportFormatId">
+      <Button
+        variant="primary"
+        type="submit"
+        :disabled="!canWriteDatasets || submittingExport || !resolvedDatasetVersionId || !exportFormatId"
+        :loading="submittingExport"
+      >
         <PackageCheck :size="16" />
         {{ submittingExport ? t('datasetOps.actions.submitting') : t('datasetOps.actions.submitExport') }}
       </Button>

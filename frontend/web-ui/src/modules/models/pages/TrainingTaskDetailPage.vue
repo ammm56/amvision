@@ -1,10 +1,7 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ task?.display_name || taskId }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="task?.display_name || taskId">
+      <template #actions>
         <ButtonLink to="/models">
           <ArrowLeft :size="16" />
           {{ t('trainingDetail.actions.backToModels') }}
@@ -20,17 +17,18 @@
           v-if="task && canDeleteTask"
           variant="danger"
           :disabled="actionRunning !== null"
+          :loading="actionRunning === 'delete'"
           @click="openDeleteDialog"
         >
           <Trash2 :size="16" />
           {{ t('trainingDetail.actions.delete') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="refreshPage">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -67,6 +65,7 @@
           size="sm"
           :variant="action === 'terminate' ? 'danger' : 'secondary'"
           :disabled="actionRunning !== null"
+          :loading="actionRunning === action"
           @click="runAction(action)"
         >
           <component :is="actionIcon(action)" :size="14" />
@@ -77,6 +76,7 @@
           size="sm"
           variant="secondary"
           :disabled="!canRegisterCheckpoint || actionRunning !== null"
+          :loading="actionRunning === 'register-model-version'"
           @click="registerCheckpoint"
         >
           <UploadCloud :size="14" />
@@ -230,6 +230,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()

@@ -1,14 +1,13 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('tasks.title') }}</h1>
-      </div>
-      <Button variant="secondary" :disabled="taskStore.loading" @click="refreshTasks">
-        <RefreshCw :size="16" />
-        {{ t('common.refresh') }}
-      </Button>
-    </header>
+    <PageHeader :title="t('tasks.title')">
+      <template #actions>
+        <Button variant="secondary" :disabled="taskStore.loading" :loading="taskStore.loading" @click="refreshTasks">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <InlineError :message="taskStore.error" />
 
@@ -73,6 +72,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const taskStore = useTaskStore()

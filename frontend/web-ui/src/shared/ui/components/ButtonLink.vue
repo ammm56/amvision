@@ -2,7 +2,7 @@
   <RouterLink
     :to="to"
     class="ui-button"
-    :class="[`ui-button--${variant}`, `ui-button--${size}`, { 'ui-button--disabled': disabled }]"
+    :class="[`ui-button--${variant}`, `ui-button--${size}`, { 'ui-button--disabled': disabled, 'ui-button--icon-only': iconOnly }]"
     :aria-disabled="disabled ? 'true' : undefined"
     :tabindex="disabled ? -1 : undefined"
     @click="handleClick"
@@ -20,11 +20,13 @@ const props = withDefaults(
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
     size?: 'sm' | 'md'
     disabled?: boolean
+    iconOnly?: boolean
   }>(),
   {
     variant: 'secondary',
     size: 'md',
     disabled: false,
+    iconOnly: false,
   },
 )
 

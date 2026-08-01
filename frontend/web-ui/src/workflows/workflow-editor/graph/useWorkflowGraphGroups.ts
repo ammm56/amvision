@@ -52,7 +52,7 @@ export interface WorkflowGraphGroupsOptions<NodeView extends WorkflowGraphGroupN
 
 const minimumGroupWidth = 180
 const minimumGroupHeight = 120
-const defaultGroupColor = '#22b8cf'
+const defaultGroupColor = '#2a9d8f'
 
 export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeView>(
   options: WorkflowGraphGroupsOptions<NodeView>,

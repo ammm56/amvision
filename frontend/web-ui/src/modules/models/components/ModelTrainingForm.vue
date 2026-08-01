@@ -269,6 +269,7 @@
         variant="primary"
         type="submit"
         :disabled="!canWriteTasks || trainingSubmitting"
+        :loading="trainingSubmitting"
       >
         <Play :size="16" />
         {{ trainingSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitTraining') }}

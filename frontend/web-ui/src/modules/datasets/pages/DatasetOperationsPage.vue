@@ -1,16 +1,13 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ t('datasetOps.title') }}</h1>
-      </div>
-      <div class="page-actions">
-        <Button variant="secondary" :disabled="loading" @click="refreshPage">
+    <PageHeader :title="t('datasetOps.title')">
+      <template #actions>
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -112,6 +109,7 @@ import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
 import Button from '@/shared/ui/components/Button.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()

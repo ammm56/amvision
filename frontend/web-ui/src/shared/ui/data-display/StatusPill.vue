@@ -36,12 +36,13 @@ function inferTone(status: string): StatusPillTone {
   if (['queued', 'pending', 'checking', 'starting', 'stopping', 'warming', 'created', 'probing'].includes(normalized)) {
     return 'info'
   }
-  if (['warning', 'warn', 'pending', 'queued', 'degraded', 'missing', 'unavailable', 'unregistered', 'not_configured', 'disabled', 'stopped', 'offline', 'stale', 'partial'].includes(normalized)) {
+  if (['warning', 'warn', 'degraded', 'missing', 'unavailable', 'unregistered', 'not_configured', 'stale', 'partial'].includes(normalized)) {
     return 'warning'
   }
-  if (['failed', 'error', 'unhealthy', 'unreachable', 'cancelled', 'revoked', 'misconfigured'].includes(normalized)) {
+  if (['failed', 'error', 'unhealthy', 'unreachable', 'offline', 'cancelled', 'revoked', 'misconfigured'].includes(normalized)) {
     return 'danger'
   }
+  if (['disabled', 'stopped', 'idle', 'unknown'].includes(normalized)) return 'neutral'
   return 'neutral'
 }
 </script>

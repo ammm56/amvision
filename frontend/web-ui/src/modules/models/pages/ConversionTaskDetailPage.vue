@@ -1,10 +1,7 @@
 <template>
   <section class="page-stack">
-    <header class="page-header">
-      <div>
-        <h1>{{ task?.display_name || taskId }}</h1>
-      </div>
-      <div class="page-actions">
+    <PageHeader :title="task?.display_name || taskId">
+      <template #actions>
         <ButtonLink to="/models">
           <ArrowLeft :size="16" />
           {{ t('conversionDetail.actions.backToModels') }}
@@ -20,17 +17,18 @@
           v-if="task && canWriteTasks"
           variant="danger"
           :disabled="deleting || !canDeleteCurrentTask"
+          :loading="deleting"
           @click="deleteDialogOpen = true"
         >
           <Trash2 :size="16" />
           {{ t('conversionDetail.actions.delete') }}
         </Button>
-        <Button variant="secondary" :disabled="loading" @click="loadDetail">
+        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDetail">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <InlineError :message="errorMessage" />
 
@@ -163,6 +161,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()
