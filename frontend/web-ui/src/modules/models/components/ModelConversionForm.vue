@@ -197,7 +197,7 @@ function emitString(eventName: UpdateStringEvent, event: Event): void {
 }
 
 .model-picker-field__title > span:first-child {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-weight: 600;
 }
 
@@ -212,9 +212,9 @@ function emitString(eventName: UpdateStringEvent, event: Event): void {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .model-picker-summary.is-empty {
@@ -246,7 +246,7 @@ function emitString(eventName: UpdateStringEvent, event: Event): void {
 .model-picker-summary__identity span,
 .model-picker-summary.is-empty span,
 .model-picker-summary__footer {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -263,8 +263,8 @@ function emitString(eventName: UpdateStringEvent, event: Event): void {
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }

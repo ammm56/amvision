@@ -6,7 +6,7 @@
       role="dialog"
       aria-modal="true"
       :aria-labelledby="titleId"
-      :aria-describedby="messageId"
+      :aria-describedby="details ? `${messageId} ${detailsId}` : messageId"
       :aria-busy="busy"
       tabindex="-1"
       @click.stop
@@ -15,10 +15,7 @@
     >
       <header class="confirm-dialog__header">
         <div>
-          <div class="confirm-dialog__title">
-            <h2 :id="titleId">{{ title }}</h2>
-            <InfoHint v-if="details" :text="details" />
-          </div>
+          <h2 :id="titleId">{{ title }}</h2>
         </div>
         <button type="button" class="confirm-dialog__close" :aria-label="cancelLabel" :disabled="busy" @click="cancelDialog">
           <X :size="16" />
@@ -26,6 +23,7 @@
       </header>
 
       <p :id="messageId" class="confirm-dialog__message">{{ message }}</p>
+      <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
 
       <footer class="confirm-dialog__actions">
         <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
@@ -40,7 +38,6 @@ import { X } from '@lucide/vue'
 import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 
 import Button from './Button.vue'
-import InfoHint from './InfoHint.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -67,6 +64,7 @@ const emit = defineEmits<{
 const componentId = useId()
 const titleId = `${componentId}-title`
 const messageId = `${componentId}-message`
+const detailsId = `${componentId}-details`
 const dialogRef = ref<HTMLElement | null>(null)
 let previouslyFocusedElement: HTMLElement | null = null
 let previousBodyOverflow = ''
@@ -132,7 +130,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   width: min(520px, calc(100vw - 36px));
   padding: 18px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
   background: var(--am-surface-raised);
   box-shadow: var(--am-shadow-modal);
@@ -150,15 +148,16 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.confirm-dialog__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.confirm-dialog__message {
+  color: var(--am-text-muted);
+  line-height: 1.6;
 }
 
-.confirm-dialog__message {
-  color: var(--muted);
-  line-height: 1.6;
+.confirm-dialog__details {
+  margin: -8px 0 0;
+  color: var(--am-text-subtle);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .confirm-dialog__close {
@@ -167,15 +166,15 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--am-border-strong);
   border-radius: var(--am-radius-sm);
-  color: var(--text);
-  background: var(--button-secondary-bg);
+  color: var(--am-text);
+  background: var(--am-surface);
   cursor: pointer;
 }
 
 .confirm-dialog__close:hover {
-  border-color: var(--accent);
+  border-color: var(--am-action-primary);
 }
 
 .confirm-dialog__close:disabled {

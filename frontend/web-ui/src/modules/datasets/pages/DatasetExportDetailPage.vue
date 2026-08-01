@@ -323,11 +323,11 @@ async function deleteCurrentExport(): Promise<void> {
   display: grid;
   gap: 4px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--am-border);
 }
 
 .summary-list span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-weight: 700;
   font-size: 0.86rem;
 }

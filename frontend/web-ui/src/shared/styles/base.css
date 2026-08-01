@@ -1,8 +1,8 @@
 :root {
   font-family: var(--am-font-sans);
   font-size: 14px;
-  color: var(--text);
-  background: var(--page);
+  color: var(--am-text);
+  background: var(--am-page);
 }
 
 * {
@@ -19,8 +19,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100%;
-  color: var(--text);
-  background: var(--page);
+  color: var(--am-text);
+  background: var(--am-page);
 }
 
 button,
@@ -31,7 +31,7 @@ textarea {
 }
 
 a {
-  color: var(--accent-strong);
+  color: var(--am-action-primary-strong);
   text-decoration: none;
 }
 

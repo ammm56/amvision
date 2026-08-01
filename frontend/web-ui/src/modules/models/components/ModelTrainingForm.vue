@@ -503,9 +503,9 @@ function normalizeModelParameterNumber(
   display: grid;
   gap: 14px;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .training-parameter-section__header {
@@ -523,7 +523,7 @@ function normalizeModelParameterNumber(
 
 .training-parameter-section__description {
   margin: 0;
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -546,10 +546,10 @@ function normalizeModelParameterNumber(
   gap: 8px;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 999px;
-  background: var(--summary-bg);
-  color: var(--text);
+  background: var(--am-surface-soft);
+  color: var(--am-text);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -558,20 +558,20 @@ function normalizeModelParameterNumber(
 .training-augmentation-switch input {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--am-action-primary);
 }
 
 .training-inline-summary {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .training-inline-summary.is-empty {
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .training-inline-summary strong {
@@ -579,7 +579,7 @@ function normalizeModelParameterNumber(
 }
 
 .training-inline-summary span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -601,7 +601,7 @@ function normalizeModelParameterNumber(
 }
 
 .model-picker-field__title > span:first-child {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-weight: 600;
 }
 
@@ -616,9 +616,9 @@ function normalizeModelParameterNumber(
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .model-picker-summary.is-empty {
@@ -650,7 +650,7 @@ function normalizeModelParameterNumber(
 .model-picker-summary__identity span,
 .model-picker-summary.is-empty span,
 .model-picker-summary__footer {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -665,13 +665,13 @@ function normalizeModelParameterNumber(
   gap: 4px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .model-picker-summary__item span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
   font-weight: 600;
 }
@@ -693,8 +693,8 @@ function normalizeModelParameterNumber(
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }

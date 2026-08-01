@@ -40,8 +40,8 @@
 }
 
 .local-tabs__tab.is-active {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
+  color: var(--am-action-primary-strong);
+  background: var(--am-action-soft);
 }
 
 .local-tabs__tab:focus-visible,
@@ -49,7 +49,7 @@
 .catalog-group-button:focus-visible,
 .catalog-list-button:focus-visible,
 .settings-section-link:focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--am-focus-ring);
   outline-offset: 2px;
 }
 
@@ -70,8 +70,8 @@
 }
 
 .local-tabs__tab.is-active .local-tabs__count {
-  color: var(--accent-strong);
-  background: color-mix(in srgb, var(--accent) 12%, var(--am-surface));
+  color: var(--am-action-primary-strong);
+  background: color-mix(in srgb, var(--am-action-primary) 12%, var(--am-surface));
 }
 
 .catalog-workbench,
@@ -149,8 +149,8 @@
 
 .settings-segmented-control button.is-active {
   border-color: transparent;
-  color: var(--accent-strong);
-  background: var(--accent-soft);
+  color: var(--am-action-primary-strong);
+  background: var(--am-action-soft);
 }
 
 .trigger-mapping-row {

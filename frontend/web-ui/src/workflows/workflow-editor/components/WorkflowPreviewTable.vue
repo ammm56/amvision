@@ -61,12 +61,12 @@ function formatCell(value: unknown): string {
   display: grid;
   gap: 6px;
   min-height: 0;
-  --workflow-preview-table-line: var(--graph-line, rgb(208 220 226 / 0.92));
-  --workflow-preview-table-surface: var(--graph-panel, #ffffff);
-  --workflow-preview-table-surface-soft: var(--graph-panel-soft, rgb(238 243 245 / 0.96));
-  --workflow-preview-table-header-color: var(--graph-text-strong, rgb(23 34 40 / 0.94));
-  --workflow-preview-table-cell-color: var(--graph-text, rgb(31 42 48 / 0.9));
-  --workflow-preview-table-muted: var(--graph-muted, rgb(96 113 124 / 0.86));
+  --workflow-preview-table-line: var(--am-graph-node-border);
+  --workflow-preview-table-surface: var(--am-graph-panel);
+  --workflow-preview-table-surface-soft: var(--am-graph-panel-soft);
+  --workflow-preview-table-header-color: var(--am-graph-text-strong);
+  --workflow-preview-table-cell-color: var(--am-graph-text);
+  --workflow-preview-table-muted: var(--am-graph-text-muted);
 }
 
 .workflow-preview-table__scroller {

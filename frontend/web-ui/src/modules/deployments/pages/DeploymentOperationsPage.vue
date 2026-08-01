@@ -1810,13 +1810,13 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   min-height: 74px;
   align-content: center;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .source-empty-card span {
-  color: var(--muted);
+  color: var(--am-text-muted);
 }
 
 .deployment-workspace-grid {
@@ -1849,13 +1849,13 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   min-height: 34px;
   align-content: center;
   padding: 7px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface-muted);
+  background: var(--am-surface-muted);
 }
 
 .deployment-profile-summary span {
-  color: var(--text);
+  color: var(--am-text);
   font-weight: 500;
 }
 
@@ -1874,15 +1874,15 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
   cursor: pointer;
 }
 
 .deployment-instance-card--selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: var(--am-action-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--am-action-primary) 45%, transparent);
 }
 
 .deployment-instance-card__header {
@@ -1908,7 +1908,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 .deployment-instance-card__title span,
 .deployment-instance-card__details span,
 .deployment-instance-card__details small {
-  color: var(--muted);
+  color: var(--am-text-muted);
 }
 
 .deployment-instance-card__states {
@@ -1955,9 +1955,9 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   gap: 8px;
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--warning-border, #d8a52d);
+  border: 1px solid var(--am-warning-border);
   border-radius: 8px;
-  background: var(--warning-surface, #fff8df);
+  background: var(--am-warning-surface);
 }
 
 .runtime-configuration-warnings ul {
@@ -1972,9 +1972,9 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
 }
 
 .runtime-configuration-diagnostics details {
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .runtime-configuration-diagnostics summary {
@@ -1988,7 +1988,7 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   margin: 0;
   padding: 12px;
   overflow: auto;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--am-border);
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

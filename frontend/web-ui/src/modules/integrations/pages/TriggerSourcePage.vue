@@ -1,12 +1,6 @@
 <template>
   <section class="page-stack">
-    <PageHeader>
-      <template #heading>
-        <div class="heading-with-hint">
-          <h1>TriggerSource</h1>
-          <InfoHint :text="t('triggerSources.description')" />
-        </div>
-      </template>
+    <PageHeader title="TriggerSource">
       <template #actions>
         <ButtonLink v-if="selectedRuntime" :to="appDetailPath">
           <Workflow :size="16" />
@@ -88,10 +82,7 @@
             <input v-model="endpoint" />
           </label>
           <label v-if="selectedProtocolTemplate.templateId === 'zeromq-image-trigger'" class="field">
-            <span class="field-label">
-              pool_name
-              <InfoHint :text="t('triggerSources.hints.poolName')" />
-            </span>
+            <span>pool_name</span>
             <SelectField
               :model-value="localBufferPoolName"
               :options="localBufferPoolOptions"
@@ -109,10 +100,7 @@
         <div class="trigger-source-inference">
           <div class="section-heading">
             <div>
-              <div class="heading-with-hint">
-                <h2>{{ t('triggerSources.inferenceTitle') }}</h2>
-                <InfoHint :text="t('triggerSources.hints.inference')" />
-              </div>
+              <h2>{{ t('triggerSources.inferenceTitle') }}</h2>
             </div>
             <StatusBadge tone="info">{{ protocolTemplateDisplayName(selectedProtocolTemplate) }}</StatusBadge>
           </div>
@@ -145,59 +133,35 @@
           <div class="trigger-source-advanced__content">
             <div class="form-grid">
               <label class="field">
-                <span class="field-label">
-                  submit_mode
-                  <InfoHint :text="t('triggerSources.hints.submitMode')" />
-                </span>
+                <span>submit_mode</span>
                 <SelectField :model-value="submitMode" :options="submitModeOptions" @update:model-value="setSubmitMode" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  result_mode
-                  <InfoHint :text="t('triggerSources.hints.resultMode')" />
-                </span>
+                <span>result_mode</span>
                 <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  ack_policy
-                  <InfoHint :text="t('triggerSources.hints.ackPolicy')" />
-                </span>
+                <span>ack_policy</span>
                 <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" @update:model-value="setAckPolicy" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  reply_timeout_seconds
-                  <InfoHint :text="t('triggerSources.hints.replyTimeout')" />
-                </span>
+                <span>reply_timeout_seconds</span>
                 <input v-model="replyTimeoutSeconds" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDefault')" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  debounce_window_ms
-                  <InfoHint :text="t('triggerSources.hints.debounce')" />
-                </span>
+                <span>debounce_window_ms</span>
                 <input v-model="debounceWindowMs" inputmode="numeric" :placeholder="t('triggerSources.placeholders.emptyDisabled')" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  idempotency_key_path
-                  <InfoHint :text="t('triggerSources.hints.idempotency')" />
-                </span>
+                <span>idempotency_key_path</span>
                 <input v-model="idempotencyKeyPath" placeholder="payload.request_id" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  {{ t('triggerSources.fields.workflowRunRecord') }}
-                  <InfoHint :text="t('triggerSources.hints.workflowRunRecord')" />
-                </span>
+                <span>{{ t('triggerSources.fields.workflowRunRecord') }}</span>
                 <SelectField :model-value="workflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setWorkflowRunRecordMode" />
               </label>
               <label class="field">
-                <span class="field-label">
-                  {{ t('triggerSources.fields.returnDiagnostics') }}
-                  <InfoHint :text="t('triggerSources.hints.returnDiagnostics')" />
-                </span>
+                <span>{{ t('triggerSources.fields.returnDiagnostics') }}</span>
                 <SelectField :model-value="returnDiagnostics" :options="returnDiagnosticsOptions" @update:model-value="setReturnDiagnostics" />
               </label>
             </div>
@@ -337,7 +301,6 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
@@ -1218,9 +1181,9 @@ watch(
 
 .trigger-source-advanced {
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .trigger-source-advanced__summary {
@@ -1235,7 +1198,7 @@ watch(
 }
 
 .trigger-source-advanced[open] .trigger-source-advanced__summary {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--am-border);
 }
 
 .trigger-source-advanced__content {

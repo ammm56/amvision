@@ -483,7 +483,7 @@ function formatPlainValue(value: unknown): string {
 }
 
 .training-progress-percent {
-  color: var(--accent-strong);
+  color: var(--am-action-primary-strong);
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
@@ -491,15 +491,15 @@ function formatPlainValue(value: unknown): string {
 .training-progress-track {
   height: 8px;
   overflow: hidden;
-  background: var(--surface-muted);
-  border: 1px solid var(--line);
+  background: var(--am-surface-muted);
+  border: 1px solid var(--am-border);
   border-radius: 999px;
 }
 
 .training-progress-track span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--am-action-primary);
   border-radius: inherit;
   transition: width 160ms ease;
 }
@@ -519,14 +519,14 @@ function formatPlainValue(value: unknown): string {
   gap: 10px;
   min-width: 0;
   padding: 12px;
-  background: var(--summary-bg);
-  border: 1px solid var(--line);
+  background: var(--am-surface-soft);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
 }
 
 .training-metric-panel h3 {
   margin: 0;
-  color: var(--text);
+  color: var(--am-text);
   font-size: 13px;
 }
 
@@ -545,18 +545,18 @@ function formatPlainValue(value: unknown): string {
 }
 
 .training-metric-list dt {
-  color: var(--muted);
+  color: var(--am-text-muted);
 }
 
 .training-metric-list dd {
-  color: var(--text);
+  color: var(--am-text);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .training-muted-value {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-weight: 700;
 }
 

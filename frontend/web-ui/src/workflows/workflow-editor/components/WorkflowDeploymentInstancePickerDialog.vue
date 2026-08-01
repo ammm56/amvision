@@ -187,7 +187,7 @@ function inputSizeLabel(inputSize: { width: number; height: number } | null | un
 
 .workflow-deployment-picker__list-actions,
 .workflow-deployment-picker__apply {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -201,18 +201,18 @@ function inputSizeLabel(inputSize: { width: number; height: number } | null | un
   gap: 8px;
   width: 100%;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 10px;
-  color: var(--text);
-  background: var(--summary-bg);
+  color: var(--am-text);
+  background: var(--am-surface-soft);
   text-align: left;
   cursor: pointer;
 }
 
 .workflow-deployment-picker__card:hover,
 .workflow-deployment-picker__card.is-selected {
-  border-color: var(--accent);
-  background: var(--selected-row-bg);
+  border-color: var(--am-action-primary);
+  background: var(--am-row-selected);
 }
 
 .workflow-deployment-picker__card-heading strong,
@@ -227,7 +227,7 @@ function inputSizeLabel(inputSize: { width: number; height: number } | null | un
 .workflow-deployment-picker__id,
 .workflow-deployment-picker__card-meta,
 .workflow-deployment-picker__detail-heading span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -253,20 +253,20 @@ function inputSizeLabel(inputSize: { width: number; height: number } | null | un
   gap: 5px;
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .workflow-deployment-picker__detail-grid span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
 .workflow-deployment-picker__warning {
-  border-color: color-mix(in srgb, var(--warning) 46%, var(--line));
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 12%, var(--summary-bg));
+  border-color: color-mix(in srgb, var(--am-warning-text) 46%, var(--am-border));
+  color: var(--am-warning-text);
+  background: color-mix(in srgb, var(--am-warning-text) 12%, var(--am-surface-soft));
 }
 
 .workflow-deployment-picker__apply {

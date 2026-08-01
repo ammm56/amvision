@@ -1,5 +1,5 @@
 ---
-version: alpha
+version: 0.1.3
 name: AMVision-frontend-design-system
 description: AMVision 前端设计规则，面向本地优先的工业视觉平台、工作站界面和流程编排场景，统一定义默认 Light 与可切换 Dark 主题下的色彩、排版、间距、组件层级和交互状态。界面强调信息密度、操作稳定性、低延迟反馈和长时间使用的可读性，不采用营销站式视觉表达。
 
@@ -288,15 +288,6 @@ spacing:
   6xl: 64px
 
 components:
-  nav-bar:
-    backgroundColor:
-      light: "{colors.light.surface}"
-      dark: "{colors.dark.surface}"
-    textColor:
-      light: "{colors.light.text}"
-      dark: "{colors.dark.text}"
-    typography: "{typography.body-sm}"
-    padding: "{spacing.md} {spacing.3xl}"
   nav-link:
     textColor:
       light: "{colors.light.text-muted}"
@@ -329,24 +320,7 @@ components:
     typography: "{typography.button-md}"
     rounded: "{rounded.sm}"
     padding: "{spacing.md} {spacing.lg}"
-  button-outline-on-dark:
-    description: "兼容旧名称；新实现统一映射到 button-secondary 的 Dark 状态。"
-    backgroundColor: "{colors.dark.surface}"
-    textColor: "{colors.dark.text}"
-    borderColor: "{colors.dark.border}"
-    typography: "{typography.button-md}"
-    rounded: "{rounded.sm}"
-    padding: "{spacing.md} {spacing.lg}"
   button-ghost:
-    backgroundColor: transparent
-    textColor:
-      light: "{colors.light.action-primary}"
-      dark: "{colors.brand.primary-soft}"
-    typography: "{typography.button-md}"
-    rounded: "{rounded.sm}"
-    padding: "{spacing.md} {spacing.lg}"
-  button-ghost-green:
-    description: "兼容旧名称；新实现统一映射到 button-ghost。"
     backgroundColor: transparent
     textColor:
       light: "{colors.light.action-primary}"
@@ -430,126 +404,6 @@ components:
     typography: "{typography.code}"
     rounded: "{rounded.sm}"
     padding: "{spacing.xxs} {spacing.sm}"
-  hero-band:
-    backgroundColor:
-      light: "{colors.light.page}"
-      dark: "{colors.dark.page}"
-    textColor:
-      light: "{colors.light.text}"
-      dark: "{colors.dark.text}"
-    typography: "{typography.display-xl}"
-    padding: "{spacing.5xl} {spacing.3xl}"
-  content-band:
-    backgroundColor:
-      light: "{colors.light.page}"
-      dark: "{colors.dark.page}"
-    textColor:
-      light: "{colors.light.text}"
-      dark: "{colors.dark.text}"
-    typography: "{typography.display-lg}"
-    padding: "{spacing.5xl} {spacing.3xl}"
-  green-divider-band:
-    backgroundColor:
-      light: "{colors.light.page}"
-      dark: "{colors.dark.page}"
-    borderColor: "{colors.brand.primary}"
-  footer:
-    backgroundColor:
-      light: "{colors.light.surface}"
-      dark: "{colors.dark.surface}"
-    textColor:
-      light: "{colors.light.text-muted}"
-      dark: "{colors.dark.text-muted}"
-    typography: "{typography.body-sm}"
-    padding: "{spacing.4xl} {spacing.3xl}"
-
-  # ─── 示例（仅用于说明）——由工具自动派生；需要在人工判断阶段处理 TO_FILL 标记 ───
-  ex-pricing-tier:
-    description: "默认资源方案卡片。复用 card-feature 的边框和层级，并使用 surface-soft 作为区分背景。"
-    backgroundColor:
-      light: "{colors.light.surface-soft}"
-      dark: "{colors.dark.surface-soft}"
-    textColor:
-      light: "{colors.light.text}"
-      dark: "{colors.dark.text}"
-    borderColor:
-      light: "{colors.light.border}"
-      dark: "{colors.dark.border}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-  ex-pricing-tier-featured:
-    description: "重点资源方案卡片。通过反转表面与文字对比突出当前选项，必须同时保证 Light 与 Dark 主题下的可读性。"
-    backgroundColor: "{colors.brand.primary}"
-    textColor: "{colors.brand.on-primary}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-  ex-product-selector:
-    description: "能力与依赖摘要卡片，用于展示模型、节点包、运行时或部署目标包含的内容，不表示商品画廊。"
-    backgroundColor:
-      light: "{colors.light.surface-soft}"
-      dark: "{colors.dark.surface-soft}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-  ex-cart-drawer:
-    description: "操作配置摘要面板，用于汇总部署、转换或流程执行参数，不表示购物车或订阅结算。"
-    backgroundColor:
-      light: "{colors.light.surface-raised}"
-      dark: "{colors.dark.surface-raised}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-    item-divider:
-      light: "{colors.light.border}"
-      dark: "{colors.dark.border}"
-  ex-app-shell-row:
-    description: "App Shell 左侧导航行。当前路由使用 primary 作为状态指示，并保持图标、文字与折叠状态对齐。"
-    backgroundColor:
-      light: "{colors.light.sidebar}"
-      dark: "{colors.dark.sidebar}"
-    activeIndicator: "{colors.brand.primary}"
-    rounded: "{rounded.sm}"
-    padding: "{spacing.md} {spacing.lg}"
-  ex-data-table-cell:
-    description: "数据表格 th 与 td 的默认样式。表头使用 caption，表体使用 body-sm，并保持高密度信息下的清晰分隔。"
-    headerBackground:
-      light: "{colors.light.table-header}"
-      dark: "{colors.dark.table-header}"
-    headerTypography: "{typography.caption}"
-    bodyTypography: "{typography.body-sm}"
-    cellPadding: "{spacing.md} {spacing.lg}"
-    rowBorder:
-      light: "{colors.light.border}"
-      dark: "{colors.dark.border}"
-  ex-auth-form-card:
-    description: "登录表单卡片。复用 card-feature 的容器样式，并在内部使用 text-input 等基础组件。"
-    backgroundColor:
-      light: "{colors.light.surface}"
-      dark: "{colors.dark.surface}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-  ex-modal-card:
-    description: "Modal 对话框表面。复用 card-feature 的边框和圆角，并通过更高层级阴影与内容区分离。"
-    backgroundColor:
-      light: "{colors.light.surface-raised}"
-      dark: "{colors.dark.surface-raised}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.2xl}"
-  ex-empty-state-card:
-    description: "空状态容器，用于说明尚无数据、尚未配置或当前筛选无结果，并提供明确的下一步操作。"
-    backgroundColor:
-      light: "{colors.light.surface-soft}"
-      dark: "{colors.dark.surface-soft}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.3xl}"
-    captionTypography: "{typography.body-md}"
-  ex-toast:
-    description: "Toast 通知表面。采用 card-feature 的形状和中等阴影，用于短时反馈操作结果。"
-    backgroundColor:
-      light: "{colors.light.surface-raised}"
-      dark: "{colors.dark.surface-raised}"
-    rounded: "{rounded.md}"
-    padding: "{spacing.md} {spacing.lg}"
-    typography: "{typography.body-sm}"
-
 ---
 
 
@@ -785,12 +639,12 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 **`button-secondary`** — Light 与 Dark 表面上的次要按钮。
 
-- 背景、文字和边框分别使用当前主题的 surface、text 和 border token。`button-outline-on-dark` 只作为旧名称兼容，不再作为新组件名称。
+- 背景、文字和边框分别使用当前主题的 surface、text 和 border token。
 - 用于刷新、打开节点组、取消和其他不会改变主要流程的操作。
 
 **`button-ghost`** — 低层级文字操作。
 
-- Light 文字使用 `{colors.light.action-primary}`，Dark 文字使用 `{colors.brand.primary-soft}`，默认不显示边框。`button-ghost-green` 只作为旧名称兼容。
+- Light 文字使用 `{colors.light.action-primary}`，Dark 文字使用 `{colors.brand.primary-soft}`，默认不显示边框。
 - 适合“查看详情”“重试”等上下文明确的操作，不用于破坏性行为。
 
 **`button-pill-tag`** — 状态或分类标签。
@@ -831,11 +685,6 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 ### Navigation
 
-**`nav-bar`** — 保留为局部导航或兼容 token，不代表全局固定顶部栏。
-
-- 可用于 Modal 内部标签导航、局部工具区或后续独立页面。
-- AMVision 的全局导航以左侧 App Sidebar 为主。
-
 **`nav-link`** — 导航项。
 
 - 默认使用次级文字色，active 状态同时通过背景、文字或 indicator 表达。
@@ -853,10 +702,6 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 - 侧栏与主内容保持同一内容层级，不模拟第二套 App Sidebar；Desktop 可 sticky，窄屏降为普通文档流。
 - 当前项使用背景与文字权重表达，不使用单侧 indicator 或额外轮廓，hover 不等同于 selected。
 - 长名称允许截断，但必须保留可访问名称；目录数量与名称对齐且使用次级文字色。
-
-**`footer`** — 保留为内容型页面或兼容 token。
-
-- 工作台页面不使用固定 footer，也不放置长期占用内容空间的就绪状态栏。
 
 ### 浮动工具条
 
@@ -907,23 +752,6 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 - **Badge**：用于任务状态、部署状态、运行时状态和版本标签。
 - **Progress**：训练、转换、部署和文件导入应显示可追踪进度；无法提供百分比时使用明确的阶段文本。
 - **Connection state**：只在连接状态影响当前操作时显示，不设置无实际操作价值的固定底栏。
-
-## 示例映射
-
-YAML 中的 `ex-*` 名称来自通用设计工具的固定示例接口。为保持 `/preview-design`、`/generate-kit` 和相关脚本兼容，不修改这些 key；它们在 AMVision 中按以下语义使用：
-
-| 示例 key | AMVision 语义 |
-|---|---|
-| `ex-pricing-tier` | 普通资源方案、运行时配置或部署目标卡片。 |
-| `ex-pricing-tier-featured` | 当前选中的资源方案或推荐配置。 |
-| `ex-product-selector` | 模型、节点包、运行时或能力依赖摘要。 |
-| `ex-cart-drawer` | 转换、部署或流程执行前的配置摘要。 |
-| `ex-app-shell-row` | App Sidebar 导航行。 |
-| `ex-data-table-cell` | 数据集、任务、模型、部署和应用列表单元格。 |
-| `ex-auth-form-card` | 登录表单。当前阶段不扩展为通用账号中心。 |
-| `ex-modal-card` | Modal 和阻断式确认对话框。 |
-| `ex-empty-state-card` | 无数据、未配置或无筛选结果状态。 |
-| `ex-toast` | 保存、刷新、复制和提交结果的短时通知。 |
 
 ## 交互与状态
 

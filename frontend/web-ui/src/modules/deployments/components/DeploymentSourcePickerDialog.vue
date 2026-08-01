@@ -446,9 +446,9 @@ function readRecord(
 .deployment-source-detail__sources,
 .deployment-source-detail__empty {
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 10px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .deployment-model-selection__stage,
@@ -476,8 +476,8 @@ function readRecord(
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  color: var(--accent-on);
-  background: var(--accent);
+  color: var(--am-on-action);
+  background: var(--am-action-primary);
   font-size: 12px;
   font-weight: 800;
 }
@@ -493,11 +493,11 @@ function readRecord(
 .deployment-trained-model {
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  color: var(--text);
+  color: var(--am-text);
   text-align: left;
-  background: var(--surface);
+  background: var(--am-surface);
   cursor: pointer;
 }
 
@@ -510,8 +510,8 @@ function readRecord(
 .deployment-model-family:hover,
 .deployment-model-scale:hover,
 .deployment-trained-model:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-muted);
+  border-color: var(--am-border-strong);
+  background: var(--am-surface-muted);
 }
 
 .deployment-model-family.is-selected,
@@ -519,7 +519,7 @@ function readRecord(
 .deployment-trained-model.is-selected,
 .compact-list__item.is-active {
   border-color: transparent;
-  background: var(--selected-row-bg);
+  background: var(--am-row-selected);
 }
 
 .deployment-model-scale-list {
@@ -573,7 +573,7 @@ function readRecord(
 .deployment-trained-model__identity span,
 .deployment-source-build-meta span,
 .deployment-source-detail__empty span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -590,8 +590,8 @@ function readRecord(
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  color: var(--muted);
-  background: var(--button-secondary-bg);
+  color: var(--am-text-muted);
+  background: var(--am-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -629,16 +629,16 @@ function readRecord(
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }
 
 .deployment-source-pill--warning {
-  color: #8a4b00;
-  border-color: #f2c66d;
-  background: #fff4d6;
+  border-color: transparent;
+  color: var(--am-warning-text);
+  background: var(--am-warning-surface);
 }
 
 .deployment-source-detail__empty {
@@ -656,8 +656,8 @@ function readRecord(
 .deployment-source-detail__spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--line-strong);
-  border-top-color: var(--accent);
+  border: 2px solid var(--am-border-strong);
+  border-top-color: var(--am-action-primary);
   border-radius: 50%;
   animation: deployment-source-detail-spin 0.8s linear infinite;
 }

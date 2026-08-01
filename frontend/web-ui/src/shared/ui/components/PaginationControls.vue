@@ -82,14 +82,14 @@ const pageText = computed(() => {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .pagination-controls__summary {
   margin: 0;
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
   font-weight: 600;
 }
@@ -101,7 +101,7 @@ const pageText = computed(() => {
 }
 
 .pagination-controls__page {
-  color: var(--text);
+  color: var(--am-text);
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;

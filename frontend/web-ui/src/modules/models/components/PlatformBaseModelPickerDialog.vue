@@ -382,9 +382,9 @@ const versionGroups = computed<VersionListGroup[]>(() => {
 .platform-model-detail__versions,
 .platform-model-detail__empty {
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 10px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .platform-model-selection__stage {
@@ -409,8 +409,8 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  color: var(--accent-on);
-  background: var(--accent);
+  color: var(--am-on-action);
+  background: var(--am-action-primary);
   font-size: 12px;
   font-weight: 800;
 }
@@ -427,25 +427,25 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   align-items: center;
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  color: var(--text);
+  color: var(--am-text);
   text-align: left;
-  background: var(--surface);
+  background: var(--am-surface);
   cursor: pointer;
 }
 
 .platform-model-family:hover,
 .platform-model-scale:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-muted);
+  border-color: var(--am-border-strong);
+  background: var(--am-surface-muted);
 }
 
 .platform-model-family.is-selected,
 .platform-model-scale.is-selected,
 .compact-list__item.is-active {
   border-color: transparent;
-  background: var(--selected-row-bg);
+  background: var(--am-row-selected);
 }
 
 .platform-model-scale-list {
@@ -484,7 +484,7 @@ const versionGroups = computed<VersionListGroup[]>(() => {
 
 .platform-model-detail__identity span,
 .platform-model-detail__empty span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -523,8 +523,8 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  color: var(--muted);
-  background: var(--button-secondary-bg);
+  color: var(--am-text-muted);
+  background: var(--am-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -535,8 +535,8 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -549,8 +549,8 @@ const versionGroups = computed<VersionListGroup[]>(() => {
 .platform-model-detail__spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--line-strong);
-  border-top-color: var(--accent);
+  border: 2px solid var(--am-border-strong);
+  border-top-color: var(--am-action-primary);
   border-radius: 50%;
   animation: platform-model-detail-spin 0.8s linear infinite;
 }

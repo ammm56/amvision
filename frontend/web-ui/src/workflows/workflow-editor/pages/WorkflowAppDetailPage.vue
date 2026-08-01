@@ -1033,10 +1033,10 @@ onMounted(loadPage)
 <style scoped>
 .result-details {
   margin-top: 16px;
-  border: 1px solid var(--ui-border-subtle, rgba(148, 163, 184, 0.24));
-  border-radius: 14px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
   padding: 12px 14px;
-  background: var(--ui-surface-raised, rgba(15, 23, 42, 0.02));
+  background: var(--am-surface-soft);
 }
 
 .result-details summary {

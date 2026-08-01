@@ -79,7 +79,7 @@
         <div class="summary-grid">
           <div v-for="service in serviceRows" :key="service.name">
             <span>{{ service.label }}</span>
-            <StatusPill :status="service.status" :label="service.statusLabel" with-dot />
+            <StatusBadge :status="service.status" :label="service.statusLabel" with-dot />
           </div>
         </div>
         <dl class="settings-info-list">
@@ -131,10 +131,7 @@
 
       <section class="resource-section diagnostic-section">
         <div>
-          <h2 class="heading-with-hint">
-            {{ t('settingsDiagnostics.sections.projects') }}
-            <InfoHint :text="t('settingsDiagnostics.sections.projectsHint')" />
-          </h2>
+          <h2>{{ t('settingsDiagnostics.sections.projects') }}</h2>
         </div>
         <div class="resource-table diagnostic-section__table">
           <table>
@@ -150,15 +147,9 @@
               <tr v-for="project in visibleProjects" :key="project.project_id">
                 <td>{{ project.display_name || project.project_id }}</td>
                 <td>{{ project.project_id }}</td>
+                <td>{{ formatProjectSource(project.project_source) }}</td>
                 <td>
-                  <StatusPill
-                    :status="project.project_source === 'local_disk' ? 'local_disk' : 'configured'"
-                    :label="formatProjectSource(project.project_source)"
-                    :tone="project.project_source === 'local_disk' ? 'info' : 'success'"
-                  />
-                </td>
-                <td>
-                  <StatusPill
+                  <StatusBadge
                     :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'"
                     :label="booleanText(project.project_id === projectStore.selectedProjectId)"
                     :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'"
@@ -195,7 +186,7 @@
                 <td>{{ provider.login_mode }}</td>
                 <td>{{ formatProviderCapabilities(provider) }}</td>
                 <td>
-                  <StatusPill
+                  <StatusBadge
                     :status="provider.enabled ? 'enabled' : 'disabled'"
                     :label="provider.enabled ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')"
                   />
@@ -226,7 +217,7 @@
             <div>
               <h2>{{ t('settingsDiagnostics.sections.about') }}</h2>
             </div>
-            <StatusBadge tone="info">{{ stringValue(about.app_version) }}</StatusBadge>
+            <span class="section-heading__meta">{{ stringValue(about.app_version) }}</span>
           </div>
           <dl class="settings-info-list">
             <InfoRow :label="t('settingsDiagnostics.fields.appName')" :value="stringValue(about.app_name)" />
@@ -356,7 +347,7 @@
           <div class="summary-grid">
             <div v-for="runtime in deviceRuntimeRows" :key="runtime.name">
               <span>{{ runtime.label }}</span>
-              <StatusPill :status="runtime.status" :label="runtime.statusLabel" with-dot />
+              <StatusBadge :status="runtime.status" :label="runtime.statusLabel" with-dot />
             </div>
           </div>
           <div class="resource-table diagnostic-section__table">
@@ -389,7 +380,7 @@
           <div class="summary-grid">
             <div v-for="service in serviceRows" :key="service.name">
               <span>{{ service.label }}</span>
-              <StatusPill :status="service.status" :label="service.statusLabel" with-dot />
+              <StatusBadge :status="service.status" :label="service.statusLabel" with-dot />
             </div>
           </div>
         </section>
@@ -410,10 +401,8 @@ import { supportedLocaleOptions, type SupportedLocale } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { AuthProvider, ProjectCatalogItem, SystemCapabilities } from '@/shared/contracts'
 import Button from '@/shared/ui/components/Button.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
-import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'

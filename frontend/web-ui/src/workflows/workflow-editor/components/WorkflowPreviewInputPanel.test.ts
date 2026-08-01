@@ -46,7 +46,7 @@ describe('WorkflowPreviewInputPanel', () => {
   it('直接显示阻断信息且不再呈现 hover 帮助图标', () => {
     const wrapper = mountPanel(['至少填写一个图片入口'])
 
-    expect(wrapper.find('.info-hint').exists()).toBe(false)
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false)
     expect(wrapper.get('[role="alert"]').text()).toContain('至少填写一个图片入口')
     expect(wrapper.text()).toContain('缺少输入')
   })

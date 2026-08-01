@@ -23,20 +23,20 @@ defineProps<{
   gap: 16px;
   min-height: 180px;
   padding: var(--am-space-2xl);
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: var(--am-radius-md);
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .loading-panel h2 {
   margin: 0 0 8px;
-  color: var(--text);
+  color: var(--am-text);
   font-size: 20px;
 }
 
 .loading-panel p {
   margin: 0;
-  color: var(--muted);
+  color: var(--am-text-muted);
   line-height: 1.6;
 }
 
@@ -48,7 +48,7 @@ defineProps<{
   height: 54px;
   flex: 0 0 auto;
   border-radius: var(--am-radius-md);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--am-action-primary) 10%, transparent);
 }
 
 .loading-panel__spinner::before {
@@ -56,8 +56,8 @@ defineProps<{
   position: absolute;
   width: 36px;
   height: 36px;
-  border: 3px solid color-mix(in srgb, var(--accent) 18%, transparent);
-  border-top-color: var(--accent);
+  border: 3px solid color-mix(in srgb, var(--am-action-primary) 18%, transparent);
+  border-top-color: var(--am-action-primary);
   border-radius: 999px;
   animation: loading-panel-spin 0.9s linear infinite;
 }

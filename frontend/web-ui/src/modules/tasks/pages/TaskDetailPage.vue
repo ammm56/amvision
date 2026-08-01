@@ -63,12 +63,9 @@
           <div>
             <dt>{{ t('common.websocket') }}</dt>
             <dd>
-              <span
-                class="status-badge"
-                :class="taskEvents.streamState.value?.connected ? 'status-badge--success' : 'status-badge--neutral'"
-              >
+              <StatusBadge :tone="taskEvents.streamState.value?.connected ? 'success' : 'neutral'">
                 {{ taskEvents.streamState.value?.connected ? t('tasks.connected') : t('tasks.notConnected') }}
-              </span>
+              </StatusBadge>
             </dd>
           </div>
           <div>
@@ -102,6 +99,7 @@ import TaskStatusBadge from '../components/TaskStatusBadge.vue'
 import { getTaskProgressPercent, normalizeTaskState, useTaskStore } from '../stores/task.store'
 import { useTaskEvents } from '../composables/useTaskEvents'
 import Button from '@/shared/ui/components/Button.vue'
+import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
@@ -296,15 +294,15 @@ onBeforeUnmount(() => {
 
 .task-status-panel__list > div {
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .task-status-panel__list dt {
   display: block;
   margin-bottom: 4px;
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -319,10 +317,10 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 10px;
   overflow: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
+  background: var(--am-surface);
+  color: var(--am-text);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.45;

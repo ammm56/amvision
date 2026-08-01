@@ -8,7 +8,7 @@ describe('ConfirmDialog', () => {
     document.body.innerHTML = ''
   })
 
-  it('keeps the confirmation concise and exposes details through InfoHint', async () => {
+  it('shows important confirmation details without a hidden tooltip', () => {
     const wrapper = mount(ConfirmDialog, {
       attachTo: document.body,
       props: {
@@ -21,13 +21,8 @@ describe('ConfirmDialog', () => {
     })
 
     expect(wrapper.find('.confirm-dialog__message').text()).toBe('确认删除？')
-    expect(wrapper.text()).not.toContain('任务记录、事件和运行磁盘数据会一起删除。')
-
-    await wrapper.find('.info-hint').trigger('mouseenter')
-    await flushPromises()
-
-    const tooltip = document.body.querySelector('[role="tooltip"]')
-    expect(tooltip?.textContent).toBe('任务记录、事件和运行磁盘数据会一起删除。')
+    expect(wrapper.find('.confirm-dialog__details').text()).toBe('任务记录、事件和运行磁盘数据会一起删除。')
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false)
 
     wrapper.unmount()
   })

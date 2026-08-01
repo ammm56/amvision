@@ -117,12 +117,7 @@
         <thead>
           <tr>
             <th>{{ t('projects.columns.project') }}</th>
-            <th>
-              <span class="heading-with-hint">
-                {{ t('projects.columns.source') }}
-                <InfoHint :text="t('projects.sourceHint')" />
-              </span>
-            </th>
+            <th>{{ t('projects.columns.source') }}</th>
             <th>{{ t('projects.columns.datasets') }}</th>
             <th>{{ t('projects.columns.training') }}</th>
             <th>{{ t('projects.columns.deployments') }}</th>
@@ -140,13 +135,7 @@
               <strong>{{ readProjectDisplayName(project) }}</strong>
               <span>{{ project.project_id }}</span>
             </td>
-            <td>
-              <StatusPill
-                :status="project.project_source === 'local_disk' ? 'local_disk' : 'configured'"
-                :label="project.project_source === 'local_disk' ? t('projects.sources.localDisk') : t('projects.sources.configured')"
-                :tone="project.project_source === 'local_disk' ? 'info' : 'success'"
-              />
-            </td>
+            <td>{{ project.project_source === 'local_disk' ? t('projects.sources.localDisk') : t('projects.sources.configured') }}</td>
             <td>{{ formatCount(project.summary?.datasets?.dataset_total) }}</td>
             <td>{{ formatCount(project.summary?.training?.total) }}</td>
             <td>{{ formatCount(project.summary?.deployments?.deployment_instance_total) }}</td>
@@ -174,10 +163,8 @@ import {
   type SdkConfigPackagePreview,
 } from '@/modules/projects/services/project.service'
 import Button from '@/shared/ui/components/Button.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
 
@@ -324,6 +311,6 @@ function resetProjectForm(): void {
 .sdk-config-preview-panel__warnings {
   margin: 0;
   padding-left: 18px;
-  color: var(--color-warning-text, #8a5a00);
+  color: var(--am-warning-text);
 }
 </style>

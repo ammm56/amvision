@@ -454,9 +454,9 @@ onUnmounted(() => {
 
 .runtime-body-viewer__summary-card,
 .runtime-body-viewer__image-card {
-  border: 1px solid var(--ui-border-subtle, rgba(148, 163, 184, 0.24));
-  border-radius: 16px;
-  background: var(--ui-surface-raised, rgba(15, 23, 42, 0.02));
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+  background: var(--am-surface-soft);
 }
 
 .runtime-body-viewer__summary-card {
@@ -469,13 +469,13 @@ onUnmounted(() => {
 .runtime-body-viewer__image-meta span,
 .runtime-body-viewer__group-heading span,
 .runtime-body-viewer__kicker {
-  color: var(--ui-text-muted, rgba(71, 85, 105, 0.9));
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
 .runtime-body-viewer__summary-card strong,
 .runtime-body-viewer__image-meta strong {
-  color: var(--ui-text-strong, inherit);
+  color: var(--am-text-strong);
 }
 
 .runtime-body-viewer__group {
@@ -518,9 +518,9 @@ onUnmounted(() => {
   min-height: 180px;
   padding: 0;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--am-radius-md);
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.08));
+  background: linear-gradient(135deg, var(--am-surface-muted), var(--am-surface-soft));
   cursor: pointer;
 }
 
@@ -537,9 +537,9 @@ onUnmounted(() => {
 .runtime-body-viewer__video-preview {
   display: grid;
   min-height: 180px;
-  border-radius: 12px;
+  border-radius: var(--am-radius-md);
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.08));
+  background: linear-gradient(135deg, var(--am-surface-muted), var(--am-surface-soft));
 }
 
 .runtime-body-viewer__video-preview video {
@@ -553,7 +553,7 @@ onUnmounted(() => {
   padding: 20px;
   text-align: center;
   line-height: 1.6;
-  color: var(--ui-text-muted, rgba(71, 85, 105, 0.9));
+  color: var(--am-text-muted);
 }
 
 .runtime-body-viewer__image-meta {
@@ -568,10 +568,10 @@ onUnmounted(() => {
 }
 
 .runtime-body-viewer__raw {
-  border: 1px solid var(--ui-border-subtle, rgba(148, 163, 184, 0.24));
-  border-radius: 14px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
   padding: 12px 14px;
-  background: var(--ui-surface-raised, rgba(15, 23, 42, 0.02));
+  background: var(--am-surface-soft);
 }
 
 .runtime-body-viewer__raw summary {

@@ -161,7 +161,7 @@ const { t } = useI18n()
 }
 
 .dataset-version-field__header > span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-weight: 600;
 }
 
@@ -169,9 +169,9 @@ const { t } = useI18n()
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .dataset-version-summary.is-empty {
@@ -185,7 +185,7 @@ const { t } = useI18n()
 }
 
 .dataset-version-summary.is-empty span {
-  color: var(--muted);
+  color: var(--am-text-muted);
 }
 
 .dataset-version-summary__top {
@@ -208,7 +208,7 @@ const { t } = useI18n()
 }
 
 .dataset-version-summary__identity span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -225,8 +225,8 @@ const { t } = useI18n()
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -242,13 +242,13 @@ const { t } = useI18n()
   gap: 4px;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .dataset-version-summary__item span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
   font-weight: 600;
 }

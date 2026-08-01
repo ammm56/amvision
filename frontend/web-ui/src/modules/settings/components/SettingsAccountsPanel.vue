@@ -77,14 +77,9 @@
                 <span>{{ user.username }} / {{ user.user_id }}</span>
               </td>
               <td class="status-cell">
-                <StatusPill :status="user.is_active ? 'enabled' : 'disabled'" :label="user.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
+                <StatusBadge :status="user.is_active ? 'enabled' : 'disabled'" :label="user.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
               </td>
-              <td>
-                <span class="compact-info-value">
-                  {{ formatScopeSummary(user.scopes) }}
-                  <InfoHint v-if="user.scopes.length > 0" :text="formatScopeHint(user.scopes)" />
-                </span>
-              </td>
+              <td>{{ formatScopeSummary(user.scopes) }}</td>
               <td>{{ formatProjectVisibility(user.project_ids) }}</td>
               <td>{{ formatDate(user.last_login_at) }}</td>
               <td>
@@ -122,16 +117,13 @@
         <div>
           <h2>{{ selectedUser.display_name || selectedUser.username }}</h2>
         </div>
-        <StatusPill :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
+        <StatusBadge :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
       </div>
 
       <section class="settings-account-subsection">
         <div class="settings-account-subsection__heading">
           <div>
-            <h3 class="heading-with-hint">
-              {{ t('settingsDiagnostics.sections.tokenManagement') }}
-              <InfoHint :text="tokenManagementHint" />
-            </h3>
+            <h3>{{ t('settingsDiagnostics.sections.tokenManagement') }}</h3>
           </div>
         </div>
 
@@ -155,10 +147,7 @@
 
         <div v-if="issuedToken" class="issued-token-panel">
           <div class="issued-token-panel__meta">
-            <span class="heading-with-hint">
-              {{ t('settingsDiagnostics.fields.tokenPlaintext') }}
-              <InfoHint :text="t('settingsDiagnostics.messages.tokenPlaintextHelp')" />
-            </span>
+            <span>{{ t('settingsDiagnostics.fields.tokenPlaintext') }}</span>
             <strong>{{ issuedToken.token_name }}</strong>
           </div>
           <input :value="issuedToken.token" readonly />
@@ -184,10 +173,9 @@
               <tr v-for="token in tokens" :key="token.token_id">
                 <td>
                   <strong>{{ token.token_name }}</strong>
-                  <InfoHint :text="tokenIdHint(token.token_id)" />
                 </td>
                 <td class="status-cell">
-                  <StatusPill :status="token.revoked_at ? 'revoked' : 'enabled'" :label="token.revoked_at ? t('settingsDiagnostics.status.revoked') : t('settingsDiagnostics.status.enabled')" />
+                  <StatusBadge :status="token.revoked_at ? 'revoked' : 'enabled'" :label="token.revoked_at ? t('settingsDiagnostics.status.revoked') : t('settingsDiagnostics.status.enabled')" />
                 </td>
                 <td>{{ formatDate(token.created_at) }}</td>
                 <td>{{ formatDate(token.expires_at) }}</td>
@@ -215,10 +203,7 @@
       <section class="settings-account-subsection">
         <div class="settings-account-subsection__heading">
           <div>
-            <h3 class="heading-with-hint">
-              {{ t('settingsDiagnostics.sections.passwordReset') }}
-              <InfoHint :text="t('settingsDiagnostics.messages.passwordResetHint')" />
-            </h3>
+            <h3>{{ t('settingsDiagnostics.sections.passwordReset') }}</h3>
           </div>
         </div>
 
@@ -285,9 +270,8 @@ import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import type { LocalAuthUser } from '@/shared/contracts'
 import Button from '@/shared/ui/components/Button.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
-import StatusPill from '@/shared/ui/data-display/StatusPill.vue'
+import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import {
   createLocalAuthUser,
@@ -332,7 +316,6 @@ const passwordForm = reactive({ newPassword: '', revokeSessions: true, revokeUse
 const canWrite = computed(() => sessionStore.hasScopes(['auth:write']))
 const currentUserId = computed(() => sessionStore.currentUser?.principal_id ?? '')
 const selectedUser = computed(() => users.value.find((user) => user.user_id === selectedUserId.value) ?? null)
-const tokenManagementHint = computed(() => `${t('settingsDiagnostics.messages.tokenUsageHint')} ${t('settingsDiagnostics.messages.tokenListHint')}`)
 const scopeOptions = computed(() => [
   { label: t('settingsDiagnostics.fields.allScopes'), value: '*', description: '*' },
   { label: 'workflows:read', value: 'workflows:read' },
@@ -547,15 +530,7 @@ function formatProjectVisibility(value: string[]): string {
 function formatScopeSummary(value: string[]): string {
   if (value.includes('*')) return t('settingsDiagnostics.fields.allScopes')
   if (value.length === 0) return '-'
-  return t('settingsDiagnostics.messages.selectedScopeCount', { count: value.length })
-}
-
-function formatScopeHint(value: string[]): string {
-  return value.includes('*') ? '*' : value.join(', ')
-}
-
-function tokenIdHint(tokenId: string): string {
-  return `${t('settingsDiagnostics.fields.tokenManagementId')}: ${tokenId}`
+  return value.join(', ')
 }
 
 function updateCreateUserScopes(value: string[]): void {

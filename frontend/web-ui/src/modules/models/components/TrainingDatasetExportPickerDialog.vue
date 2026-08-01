@@ -228,9 +228,9 @@ function handleSearchInput(event: Event): void {
   width: min(1080px, calc(100vw - 36px));
   max-height: min(720px, calc(100vh - 36px));
   padding: 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 10px;
-  background: var(--surface);
+  background: var(--am-surface);
   box-shadow: var(--am-shadow-modal);
 }
 
@@ -248,7 +248,7 @@ function handleSearchInput(event: Event): void {
 
 .dataset-export-picker__description {
   margin-top: 8px !important;
-  color: var(--muted);
+  color: var(--am-text-muted);
 }
 
 .dataset-export-picker__close {
@@ -257,10 +257,10 @@ function handleSearchInput(event: Event): void {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--am-border-strong);
   border-radius: 8px;
-  color: var(--text);
-  background: var(--button-secondary-bg);
+  color: var(--am-text);
+  background: var(--am-surface);
   cursor: pointer;
 }
 
@@ -270,14 +270,14 @@ function handleSearchInput(event: Event): void {
   gap: 8px;
   min-height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--am-border-strong);
   border-radius: 8px;
-  color: var(--muted);
-  background: var(--input-bg);
+  color: var(--am-text-muted);
+  background: var(--am-input);
 }
 
 .dataset-export-picker__search:focus-within {
-  border-color: var(--accent);
+  border-color: var(--am-action-primary);
 }
 
 .dataset-export-picker__search input {
@@ -285,7 +285,7 @@ function handleSearchInput(event: Event): void {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: var(--input-text);
+  color: var(--am-text);
   background: transparent;
 }
 
@@ -318,8 +318,8 @@ function handleSearchInput(event: Event): void {
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  color: var(--muted);
-  background: var(--button-secondary-bg);
+  color: var(--am-text-muted);
+  background: var(--am-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -337,9 +337,9 @@ function handleSearchInput(event: Event): void {
 .dataset-export-detail__summary,
 .dataset-export-picker__empty {
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 10px;
-  background: var(--summary-bg);
+  background: var(--am-surface-soft);
 }
 
 .dataset-export-picker__item {
@@ -348,19 +348,19 @@ function handleSearchInput(event: Event): void {
   justify-content: space-between;
   gap: 14px;
   width: 100%;
-  color: var(--text);
+  color: var(--am-text);
   text-align: left;
   cursor: pointer;
 }
 
 .dataset-export-picker__item:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-muted);
+  border-color: var(--am-border-strong);
+  background: var(--am-surface-muted);
 }
 
 .dataset-export-picker__item.is-selected {
   border-color: transparent;
-  background: var(--selected-row-bg);
+  background: var(--am-row-selected);
 }
 
 .dataset-export-picker__item-main,
@@ -397,7 +397,7 @@ function handleSearchInput(event: Event): void {
 .dataset-export-detail__identity span,
 .dataset-export-picker__empty span,
 .dataset-export-detail__item span {
-  color: var(--muted);
+  color: var(--am-text-muted);
   font-size: 12px;
 }
 
@@ -414,8 +414,8 @@ function handleSearchInput(event: Event): void {
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--badge-neutral-text);
-  background: var(--badge-neutral-bg);
+  color: var(--am-neutral-text);
+  background: var(--am-neutral-surface);
   font-size: 12px;
   font-weight: 700;
 }
@@ -430,9 +430,9 @@ function handleSearchInput(event: Event): void {
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--am-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--am-surface);
 }
 
 .dataset-export-detail__actions {
