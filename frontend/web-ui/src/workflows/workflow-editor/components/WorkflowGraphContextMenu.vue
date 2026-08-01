@@ -45,11 +45,6 @@
       <MapIcon :size="15" />
       {{ minimapVisible ? t('workflowEditor.editor.hideMinimap') : t('workflowEditor.editor.showMinimap') }}
     </button>
-    <button type="button" @click="emit('toggle-theme')">
-      <Sun v-if="graphTheme === 'dark'" :size="15" />
-      <Moon v-else :size="15" />
-      {{ graphTheme === 'dark' ? lightLabel : darkLabel }}
-    </button>
     <button type="button" :disabled="saveDisabled" @click="emit('save')">
       <Save :size="15" />
       {{ saveLabel }}
@@ -71,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, Map as MapIcon, Moon, Play, Plus, RefreshCw, Save, Sun, Trash2 } from '@lucide/vue'
+import { ChevronRight, Map as MapIcon, Play, Plus, RefreshCw, Save, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 type AppBoundaryKind = 'entry' | 'result'
@@ -99,12 +94,9 @@ defineProps<{
   contextMenu: WorkflowGraphContextMenuState
   menuStyle: Record<string, string>
   minimapVisible: boolean
-  graphTheme: string
   saveDisabled: boolean
   previewDisabled: boolean
   addNodeLabel: string
-  lightLabel: string
-  darkLabel: string
   saveLabel: string
   previewLabel: string
   previewNodeLabel: string
@@ -121,7 +113,6 @@ const emit = defineEmits<{
   'fit-view': []
   'reset-view': []
   'toggle-minimap': []
-  'toggle-theme': []
   save: []
   preview: []
   'preview-node': []

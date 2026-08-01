@@ -114,22 +114,10 @@
       @open-json="(title, value, statusText) => emit('openPreviewJson', title, value, statusText)"
     />
   </aside>
-
-  <button
-    v-else
-    type="button"
-    class="workflow-graph-inspector-toggle"
-    :title="t('workflowEditor.editor.showInspector')"
-    :aria-label="t('workflowEditor.editor.showInspector')"
-    @mousedown.stop
-    @click.stop="emit('expand')"
-  >
-    <PanelRightOpen :size="16" />
-  </button>
 </template>
 
 <script setup lang="ts">
-import { PanelRightClose, PanelRightOpen } from '@lucide/vue'
+import { PanelRightClose } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
@@ -190,7 +178,6 @@ defineProps<{
 
 const emit = defineEmits<{
   collapse: []
-  expand: []
   updateNewAppDisplayName: [event: Event]
   updateNewAppApplicationId: [event: Event]
   updateNewAppGraphId: [event: Event]

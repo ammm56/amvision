@@ -13,12 +13,9 @@
     :context-menu="contextMenu"
     :menu-style="contextMenuStyle"
     :minimap-visible="minimapVisible"
-    :graph-theme="graphTheme"
     :save-disabled="saveDisabled"
     :preview-disabled="previewDisabled"
     :add-node-label="t('workflowEditor.nodePicker.addNode')"
-    :light-label="t('preferences.light')"
-    :dark-label="t('preferences.dark')"
     :save-label="t('workflowEditor.actions.saveWorkflowApp')"
     :preview-label="t('workflowEditor.actions.previewRun')"
     :preview-node-label="t('workflowEditor.actions.previewNodeRun')"
@@ -32,7 +29,6 @@
     @fit-view="emit('fitView')"
     @reset-view="emit('resetView')"
     @toggle-minimap="emit('toggleMinimap')"
-    @toggle-theme="emit('toggleTheme')"
     @save="emit('save')"
     @preview="emit('preview')"
     @preview-node="emit('previewNode')"
@@ -78,7 +74,6 @@ defineProps<{
   isMinimapNodeSelected: (nodeId: string) => boolean
   contextMenu: WorkflowContextMenuState | null
   contextMenuStyle: Record<string, string>
-  graphTheme: string
   saveDisabled: boolean
   previewDisabled: boolean
   nodePicker: WorkflowNodePickerState | null
@@ -103,7 +98,6 @@ const emit = defineEmits<{
   resetBoundaryPosition: []
   fitView: []
   resetView: []
-  toggleTheme: []
   save: []
   preview: []
   previewNode: []

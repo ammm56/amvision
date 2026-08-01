@@ -1,29 +1,5 @@
 <template>
   <section class="workflow-graph-workbench" :class="`workflow-graph-workbench--${graphTheme}`">
-    <WorkflowGraphToolbar
-      :editor-title="editorTitle"
-      :title-draft="editorTitleDraft"
-      :title-editing="editorTitleEditing"
-      :title-saving="editorTitleSaving"
-      :title-editable="editorTitleEditable"
-      :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
-      :status-message="toolbarStatusMessage"
-      :loading="loading"
-      :graph-theme="graphTheme"
-      :preview-disabled="previewDisabled"
-      :save-disabled="saveDisabled"
-      :group-create-mode="groupCreateMode"
-      @begin-title-edit="beginEditorTitleEdit"
-      @update-title-draft="updateEditorTitleDraft"
-      @commit-title="commitEditorTitleEdit"
-      @cancel-title="cancelEditorTitleEdit"
-      @refresh="loadPage"
-      @toggle-group-create-mode="toggleGroupCreateMode"
-      @toggle-theme="toggleGraphTheme"
-      @preview="runPreview"
-      @save="saveCurrentWorkflowApp"
-    />
-
     <div
       ref="canvasRef"
       class="workflow-graph-stage"
@@ -31,6 +7,30 @@
       @wheel="handleStageWheel"
       @contextmenu.prevent="openStageContextMenu"
     >
+      <WorkflowGraphToolbar
+        :editor-title="editorTitle"
+        :title-draft="editorTitleDraft"
+        :title-editing="editorTitleEditing"
+        :title-saving="editorTitleSaving"
+        :title-editable="editorTitleEditable"
+        :runtime-state="workflowApp?.primaryRuntime?.observed_state ?? null"
+        :status-message="toolbarStatusMessage"
+        :loading="loading"
+        :preview-disabled="previewDisabled"
+        :save-disabled="saveDisabled"
+        :group-create-mode="groupCreateMode"
+        :inspector-collapsed="inspectorCollapsed"
+        @begin-title-edit="beginEditorTitleEdit"
+        @update-title-draft="updateEditorTitleDraft"
+        @commit-title="commitEditorTitleEdit"
+        @cancel-title="cancelEditorTitleEdit"
+        @refresh="loadPage"
+        @toggle-group-create-mode="toggleGroupCreateMode"
+        @toggle-inspector="toggleInspector"
+        @preview="runPreview"
+        @save="saveCurrentWorkflowApp"
+      />
+
       <InlineError v-if="errorMessage" class="workflow-graph-error" :message="errorMessage" />
 
       <div class="workflow-graph-world" :style="worldTransformStyle">
@@ -154,7 +154,6 @@
         :last-preview-http-response-body-json="lastPreviewHttpResponseBodyJson"
         :has-preview-node-displays="hasPreviewNodeDisplays"
         @collapse="collapseInspector"
-        @expand="expandInspector"
         @update-new-app-display-name="updateNewWorkflowDraftField('displayName', $event)"
         @update-new-app-application-id="updateNewWorkflowDraftField('applicationId', $event)"
         @update-new-app-graph-id="updateNewWorkflowDraftField('graphId', $event)"
@@ -185,7 +184,6 @@
         :is-minimap-node-selected="isMinimapNodeSelected"
         :context-menu="contextMenu"
         :context-menu-style="contextMenuStyle"
-        :graph-theme="graphTheme"
         :save-disabled="saveDisabled"
         :preview-disabled="previewDisabled"
         :node-picker="nodePicker"
@@ -207,7 +205,6 @@
         @reset-boundary-position="resetContextBoundaryPosition"
         @fit-view="fitView"
         @reset-view="resetView"
-        @toggle-theme="toggleGraphTheme"
         @save="saveCurrentWorkflowApp"
         @preview="runPreview"
         @preview-node="runPreviewNodeFromContextMenu"
@@ -295,7 +292,6 @@ import { useWorkflowInspectorPanel } from '../panels/useWorkflowInspectorPanel'
 import { useWorkflowInspectorViewModel } from '../panels/useWorkflowInspectorViewModel'
 import { useWorkflowEditorKeyboard } from '../shell/useWorkflowEditorKeyboard'
 import { useWorkflowEditorLifecycle } from '../shell/useWorkflowEditorLifecycle'
-import { useWorkflowGraphTheme } from '../shell/useWorkflowGraphTheme'
 import { useWorkflowToolbarStatus } from '../shell/useWorkflowToolbarStatus'
 import { useWorkflowPublicBindings, type WorkflowBoundaryKind } from '../bindings/useWorkflowPublicBindings'
 import { useWorkflowBindingEditorActions } from '../bindings/useWorkflowBindingEditorActions'
@@ -384,6 +380,14 @@ const {
   collapseInspector,
   expandInspector,
 } = useWorkflowInspectorPanel()
+
+function toggleInspector(): void {
+  if (inspectorCollapsed.value) {
+    expandInspector()
+    return
+  }
+  collapseInspector()
+}
 const {
   readGraphNodeTitle,
   readNodePortLabel,
@@ -392,20 +396,7 @@ const {
 } = useWorkflowNodeDisplayHelpers({
   currentLocale,
 })
-const {
-  graphTheme,
-  toggleGraphTheme,
-} = useWorkflowGraphTheme({
-  readTheme: () => preferencesStore.theme,
-  setTheme: (theme) => {
-    preferencesStore.setTheme(theme)
-  },
-  lightTheme: 'light',
-  darkTheme: 'dark',
-  clearContextMenu: () => {
-    contextMenu.value = null
-  },
-})
+const graphTheme = computed(() => preferencesStore.theme)
 const {
   nodeDefinitionsById,
   nodePickerDefinitions,

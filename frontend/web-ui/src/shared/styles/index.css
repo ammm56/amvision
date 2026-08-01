@@ -2679,7 +2679,7 @@ textarea:focus-visible {
 
 .workflow-graph-workbench {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   color: #e8ecef;
@@ -2687,16 +2687,20 @@ textarea:focus-visible {
 }
 
 .workflow-graph-toolbar {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
-  align-items: center;
-  gap: 16px;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  left: 14px;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
-  padding: 0 16px;
-  border-bottom: 1px solid #323a3f;
-  background: #24292d;
+  pointer-events: none;
 }
 
+.workflow-graph-toolbar__leading,
 .workflow-graph-toolbar__title,
 .workflow-graph-toolbar__actions,
 .workflow-graph-toolbar__meta {
@@ -2706,7 +2710,21 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.workflow-graph-toolbar__leading {
+  flex: 0 1 320px;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: auto;
+}
+
 .workflow-graph-toolbar__title {
+  max-width: 320px;
+  min-height: 42px;
+  padding: 5px 7px 5px 12px;
+  border: 1px solid #3a444a;
+  border-radius: 10px;
+  background: #272d31;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.2);
   overflow: hidden;
 }
 
@@ -2801,14 +2819,43 @@ textarea:focus-visible {
   background: #202529;
 }
 
+.workflow-graph-toolbar__actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.workflow-graph-toolbar__group {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 4px;
+  border: 1px solid #3a444a;
+  border-radius: 10px;
+  background: #272d31;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.2);
+}
+
 .workflow-graph-toolbar .ui-button--secondary {
+  min-height: 32px;
+  border-color: transparent;
   color: #e8ecef;
-  border-color: #4a555b;
-  background: #2a3034;
+  background: transparent;
 }
 
 .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled) {
   background: #323a3f;
+}
+
+.workflow-graph-toolbar .ui-button--secondary.is-active {
+  color: #9ae2ec;
+  background: rgb(82 184 200 / 0.16);
+}
+
+.workflow-graph-toolbar > .workflow-graph-toolbar__actions > .ui-button--primary {
+  min-height: 42px;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.22);
 }
 
 .workflow-graph-toolbar .ui-button:disabled {
@@ -2816,26 +2863,33 @@ textarea:focus-visible {
 }
 
 @media (max-width: 720px) {
-  .workflow-graph-workbench {
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
   .workflow-graph-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-    gap: 6px;
-    overflow: visible;
-    padding: 8px 10px;
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .workflow-graph-toolbar__title,
   .workflow-graph-toolbar__actions,
   .workflow-graph-toolbar__meta {
     flex-wrap: wrap;
   }
 
+  .workflow-graph-toolbar__leading {
+    flex-basis: 190px;
+  }
+
+  .workflow-graph-toolbar__actions {
+    margin-left: auto;
+  }
+
+  .workflow-graph-toolbar__title {
+    max-width: 190px;
+  }
+
   .workflow-graph-toolbar__title h1 {
-    max-width: 180px;
+    max-width: 132px;
   }
 
   .workflow-graph-toolbar__meta span,
@@ -2864,7 +2918,7 @@ textarea:focus-visible {
 
 .workflow-graph-error {
   position: absolute;
-  top: 14px;
+  top: 70px;
   left: 50%;
   z-index: 6;
   width: min(720px, calc(100% - 520px));
@@ -3095,14 +3149,28 @@ textarea:focus-visible {
 }
 
 .workflow-graph-inspector-panel {
-  top: 14px;
+  top: 70px;
   right: 14px;
   width: 320px;
-  max-height: calc(100% - 28px);
+  max-height: calc(100% - 84px);
   padding: 12px;
   overflow-x: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+@media (max-width: 720px) {
+  .workflow-graph-inspector-panel {
+    top: 116px;
+    right: 10px;
+    width: min(320px, calc(100% - 20px));
+    max-height: calc(100% - 126px);
+  }
+
+  .workflow-graph-error {
+    top: 116px;
+    width: calc(100% - 20px);
+  }
 }
 
 .workflow-graph-panel__header,
@@ -3560,8 +3628,8 @@ textarea:focus-visible {
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar {
-  border-bottom-color: var(--graph-line);
-  background: var(--graph-toolbar);
+  color: var(--graph-text);
+  background: transparent;
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar__title h1,
@@ -3581,7 +3649,8 @@ textarea:focus-visible {
   color: var(--graph-muted);
 }
 
-.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary,
+.workflow-graph-workbench .workflow-graph-toolbar__title,
+.workflow-graph-workbench .workflow-graph-toolbar__group,
 .workflow-graph-workbench .workflow-graph-toolbar__title-edit,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor button,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor input {
@@ -3590,10 +3659,21 @@ textarea:focus-visible {
   background: var(--graph-panel);
 }
 
+.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary {
+  color: var(--graph-text);
+  border-color: transparent;
+  background: transparent;
+}
+
 .workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary:hover:not(:disabled),
 .workflow-graph-workbench .workflow-graph-toolbar__title-edit:hover,
 .workflow-graph-workbench .workflow-graph-toolbar__title-editor button:hover:not(:disabled) {
   background: var(--graph-panel-strong);
+}
+
+.workflow-graph-workbench .workflow-graph-toolbar .ui-button--secondary.is-active {
+  color: color-mix(in srgb, var(--graph-accent) 76%, var(--graph-text-strong));
+  background: color-mix(in srgb, var(--graph-accent) 16%, transparent);
 }
 
 .workflow-graph-workbench .workflow-graph-toolbar__meta span,
@@ -3826,7 +3906,6 @@ textarea:focus-visible {
 
 .workflow-graph-minimap__close,
 .workflow-graph-panel__icon-button,
-.workflow-graph-inspector-toggle,
 .workflow-graph-minimap-toggle {
   display: inline-flex;
   align-items: center;
@@ -3844,7 +3923,6 @@ textarea:focus-visible {
 
 .workflow-graph-minimap__close:hover,
 .workflow-graph-panel__icon-button:hover,
-.workflow-graph-inspector-toggle:hover,
 .workflow-graph-minimap-toggle:hover {
   color: var(--graph-text-strong);
   border-color: var(--graph-accent);
@@ -3853,7 +3931,6 @@ textarea:focus-visible {
 
 .workflow-graph-minimap__close:focus-visible,
 .workflow-graph-panel__icon-button:focus-visible,
-.workflow-graph-inspector-toggle:focus-visible,
 .workflow-graph-minimap-toggle:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--graph-accent) 44%, white 24%);
   outline-offset: 2px;
@@ -3879,17 +3956,6 @@ textarea:focus-visible {
   position: absolute;
   right: 14px;
   bottom: 14px;
-  z-index: 6;
-  width: 38px;
-  height: 34px;
-  border-radius: 8px;
-  box-shadow: 0 14px 28px rgb(0 0 0 / 0.2);
-}
-
-.workflow-graph-inspector-toggle {
-  position: absolute;
-  top: 14px;
-  right: 14px;
   z-index: 6;
   width: 38px;
   height: 34px;

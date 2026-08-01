@@ -1,90 +1,112 @@
 <template>
-  <header class="workflow-graph-toolbar">
-    <div class="workflow-graph-toolbar__title">
-      <div class="workflow-graph-toolbar__title-main">
-        <div v-if="titleEditing" class="workflow-graph-toolbar__title-editor">
-          <input
-            ref="titleInputRef"
-            :value="titleDraft"
-            :disabled="titleSaving"
-            @input="emit('updateTitleDraft', readInputValue($event))"
-            @keydown.enter.prevent="emit('commitTitle')"
-            @keydown.esc.prevent="emit('cancelTitle')"
-          />
-          <button
-            type="button"
-            :title="t('workflowEditor.actions.saveAppName')"
-            :aria-label="t('workflowEditor.actions.saveAppName')"
-            :disabled="titleSaving || !titleDraft.trim()"
-            @mousedown.prevent
-            @click="emit('commitTitle')"
-          >
-            <Check :size="14" />
-          </button>
-          <button
-            type="button"
-            :title="t('workflowEditor.actions.cancelAppNameEdit')"
-            :aria-label="t('workflowEditor.actions.cancelAppNameEdit')"
-            :disabled="titleSaving"
-            @mousedown.prevent
-            @click="emit('cancelTitle')"
-          >
-            <X :size="14" />
-          </button>
-        </div>
-        <div v-else class="workflow-graph-toolbar__title-view">
-          <h1
-            :title="titleEditable ? t('workflowEditor.actions.renameWorkflowApp') : editorTitle"
-            @dblclick="titleEditable && emit('beginTitleEdit')"
-          >
-            {{ editorTitle }}
-          </h1>
-          <button
-            v-if="titleEditable"
-            type="button"
-            class="workflow-graph-toolbar__title-edit"
-            :title="t('workflowEditor.actions.renameWorkflowApp')"
-            :aria-label="t('workflowEditor.actions.renameWorkflowApp')"
-            @click="emit('beginTitleEdit')"
-          >
-            <SquarePen :size="14" />
-          </button>
+  <div
+    class="workflow-graph-toolbar"
+    role="toolbar"
+    @mousedown.stop
+    @wheel.stop
+    @contextmenu.stop
+  >
+    <div class="workflow-graph-toolbar__leading">
+      <div class="workflow-graph-toolbar__title">
+        <div class="workflow-graph-toolbar__title-main">
+          <div v-if="titleEditing" class="workflow-graph-toolbar__title-editor">
+            <input
+              ref="titleInputRef"
+              :value="titleDraft"
+              :disabled="titleSaving"
+              @input="emit('updateTitleDraft', readInputValue($event))"
+              @keydown.enter.prevent="emit('commitTitle')"
+              @keydown.esc.prevent="emit('cancelTitle')"
+            />
+            <button
+              type="button"
+              :title="t('workflowEditor.actions.saveAppName')"
+              :aria-label="t('workflowEditor.actions.saveAppName')"
+              :disabled="titleSaving || !titleDraft.trim()"
+              @mousedown.prevent
+              @click="emit('commitTitle')"
+            >
+              <Check :size="14" />
+            </button>
+            <button
+              type="button"
+              :title="t('workflowEditor.actions.cancelAppNameEdit')"
+              :aria-label="t('workflowEditor.actions.cancelAppNameEdit')"
+              :disabled="titleSaving"
+              @mousedown.prevent
+              @click="emit('cancelTitle')"
+            >
+              <X :size="14" />
+            </button>
+          </div>
+          <div v-else class="workflow-graph-toolbar__title-view">
+            <h1
+              :title="titleEditable ? t('workflowEditor.actions.renameWorkflowApp') : editorTitle"
+              @dblclick="titleEditable && emit('beginTitleEdit')"
+            >
+              {{ editorTitle }}
+            </h1>
+            <button
+              v-if="titleEditable"
+              type="button"
+              class="workflow-graph-toolbar__title-edit"
+              :title="t('workflowEditor.actions.renameWorkflowApp')"
+              :aria-label="t('workflowEditor.actions.renameWorkflowApp')"
+              @click="emit('beginTitleEdit')"
+            >
+              <SquarePen :size="14" />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-    <div v-if="runtimeState || statusMessage" class="workflow-graph-toolbar__meta">
-      <span v-if="runtimeState">{{ runtimeState }}</span>
-      <span v-if="statusMessage">{{ statusMessage }}</span>
+      <div v-if="runtimeState || statusMessage" class="workflow-graph-toolbar__meta">
+        <span v-if="runtimeState">{{ runtimeState }}</span>
+        <span v-if="statusMessage">{{ statusMessage }}</span>
+      </div>
     </div>
     <div class="workflow-graph-toolbar__actions">
-      <Button :variant="groupCreateMode ? 'primary' : 'secondary'" :disabled="loading" @click="emit('toggleGroupCreateMode')">
-        <BoxSelect :size="16" />
-        {{ t('workflowEditor.editor.nodeGroup') }}
-      </Button>
-      <Button variant="secondary" :disabled="loading" @click="emit('refresh')">
-        <RefreshCw :size="16" />
-        {{ t('common.refresh') }}
-      </Button>
-      <Button variant="secondary" @click="emit('toggleTheme')">
-        <Sun v-if="graphTheme === 'dark'" :size="16" />
-        <Moon v-else :size="16" />
-        {{ graphTheme === 'dark' ? t('preferences.light') : t('preferences.dark') }}
-      </Button>
-      <Button variant="secondary" :disabled="previewDisabled" @click="emit('preview')">
-        <Play :size="16" />
-        {{ t('workflowEditor.actions.previewRun') }}
-      </Button>
+      <div class="workflow-graph-toolbar__group">
+        <Button :class="{ 'is-active': groupCreateMode }" variant="secondary" :disabled="loading" @click="emit('toggleGroupCreateMode')">
+          <BoxSelect :size="16" />
+          {{ t('workflowEditor.editor.nodeGroup') }}
+        </Button>
+        <Button variant="secondary" :disabled="loading" @click="emit('refresh')">
+          <RefreshCw :size="16" />
+          {{ t('common.refresh') }}
+        </Button>
+      </div>
+      <div class="workflow-graph-toolbar__group">
+        <Button variant="secondary" :disabled="previewDisabled" @click="emit('preview')">
+          <Play :size="16" />
+          {{ t('workflowEditor.actions.previewRun') }}
+        </Button>
+      </div>
+      <div class="workflow-graph-toolbar__group">
+        <Button
+          class="workflow-graph-toolbar__inspector-action"
+          :class="{ 'is-active': !inspectorCollapsed }"
+          variant="secondary"
+          :title="inspectorCollapsed ? t('workflowEditor.editor.showInspector') : t('workflowEditor.editor.hideInspector')"
+          :aria-label="inspectorCollapsed ? t('workflowEditor.editor.showInspector') : t('workflowEditor.editor.hideInspector')"
+          :aria-pressed="!inspectorCollapsed"
+          @click="emit('toggleInspector')"
+        >
+          <PanelRightOpen v-if="inspectorCollapsed" :size="16" />
+          <PanelRightClose v-else :size="16" />
+          {{ t('workflowEditor.editor.inspectorTitle') }}
+        </Button>
+      </div>
       <Button variant="primary" :disabled="saveDisabled" @click="emit('save')">
         <Save :size="16" />
         {{ t('workflowEditor.actions.saveWorkflowApp') }}
       </Button>
     </div>
-  </header>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { BoxSelect, Check, Moon, Play, RefreshCw, Save, SquarePen, Sun, X } from '@lucide/vue'
+import { BoxSelect, Check, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, SquarePen, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
@@ -98,10 +120,10 @@ const props = defineProps<{
   runtimeState: string | null
   statusMessage: string | null
   loading: boolean
-  graphTheme: string
   previewDisabled: boolean
   saveDisabled: boolean
   groupCreateMode: boolean
+  inspectorCollapsed: boolean
 }>()
 
 const emit = defineEmits<{
@@ -111,9 +133,9 @@ const emit = defineEmits<{
   cancelTitle: []
   refresh: []
   toggleGroupCreateMode: []
-  toggleTheme: []
   preview: []
   save: []
+  toggleInspector: []
 }>()
 
 const { t } = useI18n()
