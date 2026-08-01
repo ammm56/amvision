@@ -18,29 +18,36 @@ colors:
     on-primary: "#101010"
 
   light:
-    page: "#f5f7f8"
+    page: "#f6f7f9"
     surface: "#ffffff"
-    surface-soft: "#f0f3f4"
+    surface-soft: "#f4f5f7"
+    surface-muted: "#eceff2"
     surface-raised: "#ffffff"
-    text: "#172026"
-    text-strong: "#0b1115"
-    text-muted: "#637079"
-    text-disabled: "#929da4"
-    border: "#d7dee2"
-    border-strong: "#a9b5bc"
+    text: "#344054"
+    text-strong: "#171a1f"
+    text-muted: "#667085"
+    text-disabled: "#98a2b3"
+    border: "#e4e7ec"
+    border-strong: "#d0d5dd"
     input: "#ffffff"
-    sidebar: "#fbfcfc"
-    sidebar-active: "#e5f8f1"
-    table-header: "#eef2f3"
-    row-selected: "#e7f8f2"
-    overlay: "rgba(11, 17, 21, 0.42)"
-    code-surface: "#edf1f2"
-    code-text: "#243038"
+    sidebar: "#f3f5f7"
+    sidebar-active: "#eaf6f1"
+    table-header: "#f7f8fa"
+    row-selected: "#eaf6f1"
+    overlay: "rgba(17, 24, 39, 0.44)"
+    code-surface: "#f2f4f7"
+    code-text: "#344054"
+    action-primary: "#087a56"
+    action-primary-hover: "#066647"
+    action-primary-active: "#05543c"
+    action-soft: "#eaf6f1"
+    on-action: "#ffffff"
 
   dark:
     page: "#101010"
     surface: "#171918"
     surface-soft: "#1a1a1a"
+    surface-muted: "#242825"
     surface-raised: "#202321"
     text: "#f2f2f2"
     text-strong: "#ffffff"
@@ -80,10 +87,10 @@ colors:
         surface: "#e8f2fd"
         border: "#abc9ea"
       neutral:
-        text: "#536169"
-        icon: "#637079"
-        surface: "#edf1f2"
-        border: "#cbd4d8"
+        text: "#475467"
+        icon: "#667085"
+        surface: "#f2f4f7"
+        border: "#d9dee5"
     dark:
       success:
         text: "#62d5a9"
@@ -300,8 +307,12 @@ components:
     activeIndicator: "{colors.brand.primary}"
     typography: "{typography.body-sm}"
   button-primary:
-    backgroundColor: "{colors.brand.primary}"
-    textColor: "{colors.brand.on-primary}"
+    backgroundColor:
+      light: "{colors.light.action-primary}"
+      dark: "{colors.brand.primary}"
+    textColor:
+      light: "{colors.light.on-action}"
+      dark: "{colors.brand.on-primary}"
     typography: "{typography.button-md}"
     rounded: "{rounded.sm}"
     padding: "{spacing.md} {spacing.lg}"
@@ -329,7 +340,7 @@ components:
   button-ghost:
     backgroundColor: transparent
     textColor:
-      light: "{colors.brand.primary-text-light}"
+      light: "{colors.light.action-primary}"
       dark: "{colors.brand.primary-soft}"
     typography: "{typography.button-md}"
     rounded: "{rounded.sm}"
@@ -338,7 +349,7 @@ components:
     description: "兼容旧名称；新实现统一映射到 button-ghost。"
     backgroundColor: transparent
     textColor:
-      light: "{colors.brand.primary-text-light}"
+      light: "{colors.light.action-primary}"
       dark: "{colors.brand.primary-soft}"
     typography: "{typography.button-md}"
     rounded: "{rounded.sm}"
@@ -366,7 +377,9 @@ components:
     borderColor:
       light: "{colors.light.border-strong}"
       dark: "{colors.dark.border-strong}"
-    focusBorderColor: "{colors.brand.primary}"
+    focusBorderColor:
+      light: "{colors.light.action-primary}"
+      dark: "{colors.brand.primary}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.sm}"
     padding: "{spacing.md} {spacing.lg}"
@@ -558,9 +571,9 @@ AMVision 是面向本地部署、工业工作站和边缘设备的视觉处理�
 
 ### 核心特征
 
-- 使用单一主强调色 `{colors.brand.primary}`（`#00d992`）表达主要操作、选中状态、连接状态和必要的运行反馈；错误、警告和信息状态必须使用独立的 Semantic color，不得全部替换为主色。
+- 品牌识别统一使用 `{colors.brand.primary}`（`#00d992`），但交互色按主题适配。Light 主要操作使用更深的 `{colors.light.action-primary}`，Dark 主要操作使用品牌色；错误、警告和信息状态必须使用独立的 Semantic color，不得全部替换为品牌色。
 - 同时支持 Light 与 Dark 主题，并以 Light 作为默认外观。Dark 是完整的等价主题，不是只供 Workflow 使用的特殊模式；两种主题必须保持相同的信息层级与交互语义。
-- 通过 1 px hairline、表面明度差和少量阴影建立层级。长驻面板和数据卡片优先依靠边框，不依赖夸张阴影。
+- 通过表面明度差、留白和必要的 1 px hairline 建立层级。一个层级不同时叠加明显底色、边框和阴影；阴影只用于真正浮动的内容。
 - Inter 承担界面正文和标题，SF Mono 仅用于 ID、路径、协议值、日志、代码、模型输入输出和其他机器可读内容。
 - 按钮使用 `{rounded.sm}`，卡片和浮动面板使用 `{rounded.md}`，`{rounded.pill}` 只用于状态、计数和短标签。
 - 所有状态同时通过文字、图标或形状表达，不只依赖颜色。
@@ -569,7 +582,7 @@ AMVision 是面向本地部署、工业工作站和边缘设备的视觉处理�
 
 ### 品牌色与强调色
 
-- **Primary**（`{colors.brand.primary}` — `#00d992`）：主要按钮、当前选项、有效连接、运行中状态和关键焦点。大面积背景上应谨慎使用，避免降低信息辨识度。
+- **Primary**（`{colors.brand.primary}` — `#00d992`）：Logo、品牌标记、Dark 主题主要操作和必要的运行反馈。Light 主题不直接把该亮绿色用于大面积按钮或选中背景。
 - **Primary Soft**（`{colors.brand.primary-soft}` — `#2fd6a1`）：Dark 主题中的 hover、focus、轻量提示和低强度强调。
 - **Primary Deep**（`{colors.brand.primary-deep}` — `#10b981`）：选中边框、按压状态和需要更稳定轮廓的品牌色。
 - **Primary Text Light**（`{colors.brand.primary-text-light}` — `#087a56`）：Light 主题中作为链接或文字使用的品牌色，避免直接使用亮绿色正文导致对比度不足。
@@ -582,11 +595,16 @@ Light 是 AMVision 默认外观，适用于常规工作站、数据管理、配�
 - `{colors.light.page}`：页面大面积背景。
 - `{colors.light.surface}`：Card、表格、侧面内容区和普通面板。
 - `{colors.light.surface-soft}`：表头、输入辅助区域、摘要区和次级内容。
+- `{colors.light.surface-muted}`：hover、只读区和需要比 soft 更明确但仍不应形成 Card 的弱表面。
 - `{colors.light.surface-raised}`：Modal、Popover、Dropdown 和其他浮动层。
 - `{colors.light.text}`、`text-strong`、`text-muted`、`text-disabled`：四级文字层级。
 - `{colors.light.border}` 与 `border-strong`：普通分隔和交互控件边界。
 - `{colors.light.sidebar}` 与 `sidebar-active`：左侧 App Sidebar 的默认和当前路由状态。
 - `{colors.light.table-header}` 与 `row-selected`：高密度表格的结构和选中状态。
+- `{colors.light.action-primary}`、`action-primary-hover`、`action-primary-active` 与 `on-action`：Light 主题主要操作的完整状态。它们与品牌亮绿色分离，以保证白色页面上的稳定对比度。
+- `{colors.light.action-soft}`：当前 Tab、当前选项和低强度品牌强调，不用于成功状态。
+
+Light 页面使用偏中性的冷灰背景和白色主表面。长期显示的一级 Card 可以使用极淡边框，内部摘要和选项组优先使用无边框 soft surface；同一区域不得连续嵌套多个带边框 Card。普通信息分组依靠标题、留白、圆角和表面差，不使用连续横线模拟表格。
 
 ### Dark 主题
 
@@ -729,14 +747,14 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 | 层级 | 处理方式 | 用途 |
 |---|---|---|
 | Level 0 — Flat | 无阴影、无边框。 | 页面背景和 Workflow 画布。 |
-| Level 1 — Hairline | 对应主题的 surface 上使用 1 px border token。 | 表格、卡片、按钮和长驻面板。 |
+| Level 1 — Surface | 使用 surface 与 page 的明度差，必要时增加 1 px border。 | 表格、一级 Card、按钮和长驻面板。 |
 | Level 2 — Floating | 轻量阴影与清晰边框。 | 悬浮工具条、Dropdown、Popover 和节点选择器。 |
 | Level 3 — Modal | `0 20px 60px rgba(0,0,0,0.7)` 外部阴影和细微 inset ring。 | Modal、阻断式确认和最高层级对话框。 |
 
 ### 使用原则
 
-- 长驻布局使用边框和表面差建立层级，阴影只用于真正浮动或临时出现的内容。
-- 选中卡片、节点和当前导航可使用 1–2 px primary 边框或 indicator，不增加多层 glow。
+- 长驻布局优先使用表面差与留白，只有边界不明确时才增加边框；同一层级不重复叠加边框。阴影只用于真正浮动或临时出现的内容。
+- 普通列表、Tab 和导航选中状态优先使用完整的 soft background 与文字权重，不使用单侧色条或额外轮廓。只有表单控件、画布节点和必须强调边界的对象才使用 focus 或 selected border。
 - Workflow 画布的浮动工具条应形成一个完整工具组，内部按钮使用分隔线，不为每个按钮叠加独立大阴影。
 - Modal、Popover、Dropdown、Toast 和 Tooltip 必须有明确的 z-index 层级，避免属性面板、工具条和节点菜单相互覆盖错误。
 
@@ -761,7 +779,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 **`button-primary`** — 主要操作按钮。
 
-- 背景使用 `{colors.brand.primary}`，文字使用 `{colors.brand.on-primary}`，排版使用 `{typography.button-md}`。
+- Light 背景使用 `{colors.light.action-primary}`，文字使用 `{colors.light.on-action}`；Dark 背景使用 `{colors.brand.primary}`，文字使用 `{colors.brand.on-primary}`。排版使用 `{typography.button-md}`。
 - 用于创建、保存、发布、开始训练等每个操作区中最重要的一个动作。
 - 同一区域一般只保留一个 primary button，避免多个操作争夺注意力。
 
@@ -772,7 +790,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 **`button-ghost`** — 低层级文字操作。
 
-- Light 文字使用 `{colors.brand.primary-text-light}`，Dark 文字使用 `{colors.brand.primary-soft}`，默认不显示边框。`button-ghost-green` 只作为旧名称兼容。
+- Light 文字使用 `{colors.light.action-primary}`，Dark 文字使用 `{colors.brand.primary-soft}`，默认不显示边框。`button-ghost-green` 只作为旧名称兼容。
 - 适合“查看详情”“重试”等上下文明确的操作，不用于破坏性行为。
 
 **`button-pill-tag`** — 状态或分类标签。
@@ -784,7 +802,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 **`card-feature`** — 默认内容卡片。
 
-- 使用当前主题的 surface 背景、1 px border 边框、`{spacing.2xl}` 内边距和 `{rounded.md}`。
+- 使用当前主题的 surface 背景、`{spacing.2xl}` 内边距和 `{rounded.md}`。一级 Card 在边界不明确时使用 1 px border，嵌套的摘要和选项组改用无边框 surface-soft。
 - 适合摘要、配置分组和空状态，不应把表格的每一行转换为独立 Card。
 
 **`card-feature-emphasized`** — 重点卡片。
@@ -825,7 +843,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 **`local-tabs`** — 页面内容区内的局部视图切换。
 
-- 只切换当前页面内的同级内容，不承担全局路由导航；选中项使用 surface-raised、border 和明确文字色共同表达。
+- 只切换当前页面内的同级内容，不承担全局路由导航。Tab 之间保持 8 px 间距，容器不使用连续外框；Light 选中项使用 action-soft 背景和 action-primary 文字，Dark 使用对应主题的强调表面。
 - 数量使用 `{rounded.pill}` 的紧凑 count badge，不能让数量成为比标签更强的视觉主体。
 - 使用 `tablist`、`tab` 和 `aria-selected` 语义；支持 Left、Right、Home、End 键切换，并跳过 disabled 项。
 - 窄屏下允许水平滚动或等宽扩展，不截断到无法识别的图标集合。
@@ -875,6 +893,12 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 - 行选中状态只使用 `row-selected` 背景表达；hover 只表示可操作性，不等同于选中。键盘焦点使用独立的 `focus-visible` 样式。
 - 行级操作在需要时显示，破坏性操作必须与常规操作分组，并提供确认或撤销路径。
 - 空数据、加载中、请求失败和无筛选结果是四种不同状态，不能共用一段模糊提示。
+
+### 详情与信息列表
+
+- 普通详情、运行配置和诊断信息使用 metadata grid 或 soft surface 分组，不使用每行 `border-bottom` 形成连续横线。
+- Label 使用次级文字，Value 使用正文或 Mono；长 URL、路径和 ID 可以跨越整行并提供复制能力。
+- 只有具有列语义和需要横向比较的数据才使用 Table 及其行分隔，不能用 Table 外观呈现普通说明文本。
 
 ### 状态反馈
 
@@ -950,10 +974,10 @@ YAML 中的 `ex-*` 名称来自通用设计工具的固定示例接口。为保�
 
 ## 应当遵循
 
-- 使用主色强调当前页面最重要的操作、选中状态和有效连接。
+- 使用当前主题的 action token 强调最重要的操作和选中状态；品牌色只承担品牌识别及 Dark 主题主操作。
 - 使用 semantic color 区分 success、warning、danger 和 info。
 - 同时维护 Light 与 Dark 主题，组件通过 semantic CSS variable 取色。
-- 使用 1 px 边框、表面差和有限阴影建立清晰层级。
+- 使用表面差、留白和必要边框建立清晰层级，阴影只用于浮动内容。
 - 使用 Inter 表达界面语言，使用 SF Mono 表达机器可读内容。
 - 使用页面自身的操作区，不恢复所有页面共享的固定顶部栏或固定底部状态栏。
 - 让 Workflow 画布保持 full-bleed，工具条和属性面板以浮动层存在。

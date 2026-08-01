@@ -409,7 +409,7 @@ const versionGroups = computed<VersionListGroup[]>(() => {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  color: var(--am-brand-on-primary);
+  color: var(--accent-on);
   background: var(--accent);
   font-size: 12px;
   font-weight: 800;
@@ -436,11 +436,15 @@ const versionGroups = computed<VersionListGroup[]>(() => {
 }
 
 .platform-model-family:hover,
+.platform-model-scale:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
 .platform-model-family.is-selected,
-.platform-model-scale:hover,
 .platform-model-scale.is-selected,
 .compact-list__item.is-active {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--selected-row-bg);
 }
 

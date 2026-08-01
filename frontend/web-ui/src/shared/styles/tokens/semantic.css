@@ -16,10 +16,10 @@
   --am-info-icon: #2f73bd;
   --am-info-surface: #e8f2fd;
   --am-info-border: #abc9ea;
-  --am-neutral-text: #536169;
-  --am-neutral-icon: #637079;
-  --am-neutral-surface: #edf1f2;
-  --am-neutral-border: #cbd4d8;
+  --am-neutral-text: #475467;
+  --am-neutral-icon: #667085;
+  --am-neutral-surface: #f2f4f7;
+  --am-neutral-border: #d9dee5;
 }
 
 [data-theme='dark'] {

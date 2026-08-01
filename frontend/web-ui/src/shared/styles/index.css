@@ -47,7 +47,7 @@
   width: 34px;
   height: 34px;
   border-radius: var(--am-radius-md);
-  background: var(--accent);
+  background: var(--am-brand-primary);
   color: var(--am-brand-on-primary);
   font-weight: 700;
 }
@@ -221,10 +221,16 @@
   user-select: none;
 }
 
-.app-sidebar__link:hover,
-.app-sidebar__link.is-active {
+.app-sidebar__link:hover {
   background: var(--sidebar-active);
   color: var(--sidebar-text);
+  text-decoration: none;
+}
+
+.app-sidebar__link.is-active {
+  color: var(--accent-strong);
+  background: var(--sidebar-active);
+  font-weight: 650;
   text-decoration: none;
 }
 
@@ -339,7 +345,7 @@
   place-items: center;
   border-radius: 999px;
   color: var(--am-brand-on-primary);
-  background: var(--accent);
+  background: var(--am-brand-primary);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -817,18 +823,6 @@ textarea:focus-visible {
   text-decoration: none;
 }
 
-.app-sidebar__link.is-active::before {
-  position: absolute;
-  top: 50%;
-  left: 4px;
-  width: 3px;
-  height: 18px;
-  border-radius: var(--am-radius-pill);
-  background: var(--am-brand-primary-deep);
-  content: '';
-  transform: translateY(-50%);
-}
-
 .ui-button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
@@ -846,11 +840,15 @@ textarea:focus-visible {
 
 .ui-button--primary {
   background: var(--accent);
-  color: var(--am-brand-on-primary);
+  color: var(--accent-on);
 }
 
 .ui-button--primary:hover:not(:disabled) {
-  background: var(--am-brand-primary-deep);
+  background: var(--accent-hover);
+}
+
+.ui-button--primary:active:not(:disabled) {
+  background: var(--accent-active);
 }
 
 .ui-button--secondary {
@@ -2020,8 +2018,12 @@ textarea:focus-visible {
 .detail-list,
 .settings-info-list {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
   margin: 0;
+  padding: 16px;
+  border-radius: var(--am-radius-md);
+  background: var(--am-surface-soft);
 }
 
 .detail-list div,
@@ -2031,8 +2033,8 @@ textarea:focus-visible {
   gap: 12px;
   align-items: start;
   min-width: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
+  border: 0;
 }
 
 .detail-list dt,
@@ -5257,11 +5259,16 @@ textarea:focus-visible {
   }
 
   .catalog-toolbar,
-  .detail-list div,
-  .settings-info-list div,
+  .detail-list,
+  .settings-info-list,
   .settings-account-subsection__heading,
   .issued-token-panel {
     grid-template-columns: 1fr;
+  }
+
+  .detail-list div,
+  .settings-info-list div {
+    grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
   }
 
   .catalog-toolbar {

@@ -225,7 +225,7 @@ input[type='radio'] {
 .summary-grid div {
   min-width: 0;
   padding: var(--am-space-lg);
-  border-color: var(--am-border);
+  border-color: transparent;
   border-radius: var(--am-radius-sm);
   background: var(--am-surface-soft);
 }

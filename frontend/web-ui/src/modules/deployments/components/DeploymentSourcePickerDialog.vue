@@ -476,7 +476,7 @@ function readRecord(
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  color: var(--am-brand-on-primary);
+  color: var(--accent-on);
   background: var(--accent);
   font-size: 12px;
   font-weight: 800;
@@ -508,13 +508,17 @@ function readRecord(
 }
 
 .deployment-model-family:hover,
-.deployment-model-family.is-selected,
 .deployment-model-scale:hover,
+.deployment-trained-model:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
+.deployment-model-family.is-selected,
 .deployment-model-scale.is-selected,
-.deployment-trained-model:hover,
 .deployment-trained-model.is-selected,
 .compact-list__item.is-active {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--selected-row-bg);
 }
 

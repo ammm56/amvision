@@ -110,7 +110,7 @@ onMounted(() => {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgb(16 20 24 / 0.38);
+  background: var(--am-overlay);
 }
 
 .dataset-version-picker {
@@ -123,7 +123,7 @@ onMounted(() => {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
-  box-shadow: 0 24px 48px rgb(0 0 0 / 0.18);
+  box-shadow: var(--am-shadow-modal);
 }
 
 .dataset-version-picker__header {
@@ -224,9 +224,13 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.dataset-version-picker__item:hover,
+.dataset-version-picker__item:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
 .dataset-version-picker__item.is-selected {
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--selected-row-bg);
 }
 
