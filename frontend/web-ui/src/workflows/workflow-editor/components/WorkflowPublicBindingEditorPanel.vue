@@ -18,7 +18,7 @@
     >
       <div class="workflow-graph-public-binding-editor__title">
         <strong>{{ binding.binding_id }}</strong>
-        <small>{{ readEndpointText(binding) }}</small>
+        <small>{{ readEndpointText(binding) }} · {{ getPayloadTypeId(binding) || 'unknown' }}</small>
       </div>
       <label class="workflow-graph-preview-field">
         <span>{{ t('workflowEditor.editor.publicId') }}</span>
@@ -40,10 +40,6 @@
         <input type="checkbox" :checked="binding.required" @change="emit('update-required', binding, $event)" />
         <span>{{ t('workflowEditor.editor.requiredInput') }}</span>
       </label>
-      <div class="workflow-graph-inspector-row">
-        <span>payload type</span>
-        <strong>{{ getPayloadTypeId(binding) || 'unknown' }}</strong>
-      </div>
       <Button variant="danger" type="button" @click="emit('delete-binding', binding)">
         <Trash2 :size="16" />
         {{ t('workflowEditor.editor.deletePublicBinding') }}

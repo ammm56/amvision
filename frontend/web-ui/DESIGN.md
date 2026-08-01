@@ -622,7 +622,7 @@ Graph 不是第三种主题。当前外观为 Light 时使用 `colors.graph.ligh
 
 Workflow Node 需要区分“类别”“端口方向”“交互状态”和“运行状态”，四者不能混在同一颜色上：
 
-- `node-category`：使用标题左侧 indicator、图标或小标签区分 input-output、vision、model、transform、logic、integration、utility。节点主体背景仍使用统一的 graph node surface，避免形成彩色卡片墙。
+- `node-category`：通过类别文字、图标或节点目录中的小标签区分 input-output、vision、model、transform、logic、integration、utility。画布中的普通节点使用统一的 graph node surface 和中性边框，不持续显示类别色边框，避免普通节点长期处于强调状态。
 - `input-port`、`output-port`、`control-port`：区分输入、输出和控制连接。若后续按数据类型着色，应在公开 schema 稳定后增加 data-type token，不能临时硬编码。
 - `selected`、`link-hover`、`invalid`：表示选中、可连接和非法连接等交互状态。
 - 节点运行状态继续引用 Semantic color：running 使用 brand primary，success 使用 semantic success，warning 使用 semantic warning，failed 使用 semantic danger，disabled 使用 neutral/text-disabled。
@@ -851,10 +851,22 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 ### Workflow 画布导航
 
 - 大型 Workflow 在首次载入和“定位全部节点”时同时计算缩放比例与中心位置，不能只改变画布偏移。
-- 画布左下角常驻紧凑 viewport controls，提供缩小、当前比例、放大、定位全部节点和 Minimap 开关。
+- 画布右下角使用统一的 Navigation Dock：Minimap 位于上方，紧凑 viewport controls 位于下方，二者与属性面板使用相同的右侧基准并保持 8 px 间距。
+- viewport controls 提供缩小、当前比例、放大、定位全部节点和 Minimap 开关；Minimap 隐藏后只保留 controls。
 - 当前比例按钮恢复到 100% 和初始位置；缩放以可见画布中心为锚点，滚轮缩放仍以指针位置为锚点。
-- Minimap 位于右下角，与 viewport controls 分开；窄屏隐藏 Minimap 开关，但保留缩放和定位能力。
+- Navigation Dock 始终停靠画布最右侧，不因属性面板展开而向左移动。属性面板底部停在 viewport controls 上方，避免长期遮挡缩放操作。
+- Minimap 从 viewport controls 上方向上展开，层级高于属性面板；展开时允许覆盖属性面板下部，关闭后不改变 controls 和属性面板的位置。
+- 窄屏隐藏 Minimap 开关和 Minimap，但保留缩放和定位能力。
 - viewport controls 使用 `toolbar` 和明确的 `aria-label`，图标按钮必须提供本地化 Tooltip 和可访问名称。
+
+### Workflow 属性面板
+
+- 属性面板使用单一 Level 2 浮动表面，标题固定在顶部，内容区独立滚动；不能让面板标题随长表单滚出可见区域。
+- 当前节点、连线、应用边界或应用摘要与 Preview 输入在同一连续内容区中依次展示，不使用 Tab 隐藏 Preview 输入。图片选择和拖放入口必须始终可直接访问。
+- 属性信息使用低对比度 soft surface 分组，通过留白、圆角和文字层级建立关系，不使用连续横线模拟表格。仅保留识别对象和完成操作所需的信息。
+- Node type、路径和协议值使用 Mono 字体或紧凑辅助文字；Node ID 等调试信息不作为常驻主内容，需要时通过轻量复制入口提供。
+- Preview 输入只显示必要的字段、必填或可选状态和直接校验结果。不得使用感叹号图标或依赖 hover 的说明气泡承载常规帮助文本。
+- 没有错误时不额外显示“已就绪”状态；缺少输入时在对应字段附近显示简短 danger 文本，避免重复的全局警告、图标和 Tooltip。
 
 ### 数据表格
 

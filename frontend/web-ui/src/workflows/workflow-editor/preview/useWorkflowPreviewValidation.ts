@@ -114,16 +114,6 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
     return messages
   })
 
-  const previewHelpText = computed(() => {
-    const messages = [...previewBlockingMessages.value]
-    if (options.previewAlternativeImageBindingIds.value.length > 1) {
-      messages.push(translate('workflowEditor.feedback.previewAlternativeImages', {
-        bindings: options.previewAlternativeImageBindingIds.value.join(translate('workflowEditor.feedback.orSeparator')),
-      }))
-    }
-    return messages.join('；')
-  })
-
   const lastPreviewHttpResponse = computed(() => {
     const outputs = options.lastPreviewRun.value?.outputs
     if (!isWorkflowJsonObject(outputs)) return null
@@ -152,7 +142,6 @@ export function useWorkflowPreviewValidation(options: WorkflowPreviewValidationO
     missingRequiredPreviewBindingIds,
     missingAlternativePreviewBindingGroups,
     previewBlockingMessages,
-    previewHelpText,
     lastPreviewHttpResponse,
     lastPreviewHttpStatus,
     lastPreviewHttpResponseJson,

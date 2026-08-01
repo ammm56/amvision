@@ -1,22 +1,24 @@
 <template>
-  <WorkflowGraphMinimap
-    :visible="minimapVisible"
-    :nodes="minimapNodes"
-    :viewport-style="minimapViewportStyle"
-    :is-node-selected="isMinimapNodeSelected"
-    @start-navigation="emit('startMinimapNavigation', $event)"
-    @toggle="emit('toggleMinimap')"
-  />
+  <div class="workflow-graph-navigation-dock">
+    <WorkflowGraphMinimap
+      :visible="minimapVisible"
+      :nodes="minimapNodes"
+      :viewport-style="minimapViewportStyle"
+      :is-node-selected="isMinimapNodeSelected"
+      @start-navigation="emit('startMinimapNavigation', $event)"
+      @toggle="emit('toggleMinimap')"
+    />
 
-  <WorkflowGraphViewportControls
-    :scale-percent="viewportScalePercent"
-    :minimap-visible="minimapVisible"
-    @zoom-out="emit('zoomOut')"
-    @reset-view="emit('resetView')"
-    @zoom-in="emit('zoomIn')"
-    @fit-view="emit('fitView')"
-    @toggle-minimap="emit('toggleMinimap')"
-  />
+    <WorkflowGraphViewportControls
+      :scale-percent="viewportScalePercent"
+      :minimap-visible="minimapVisible"
+      @zoom-out="emit('zoomOut')"
+      @reset-view="emit('resetView')"
+      @zoom-in="emit('zoomIn')"
+      @fit-view="emit('fitView')"
+      @toggle-minimap="emit('toggleMinimap')"
+    />
+  </div>
 
   <WorkflowGraphContextMenu
     v-if="contextMenu"

@@ -1,22 +1,14 @@
 <template>
-  <div class="workflow-graph-inspector-body">
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.application') }}</span>
+  <section class="workflow-graph-inspector-card workflow-graph-application-summary">
+    <span class="workflow-graph-inspector-card__summary">
       <strong>{{ applicationId }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.applicationInputs') }}</span>
-      <strong>{{ templateInputText || emptyText }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.applicationOutputs') }}</span>
-      <strong>{{ templateOutputText || emptyText }}</strong>
-    </div>
-    <div v-if="previewRunText" class="workflow-graph-inspector-row">
-      <span>Preview run</span>
-      <strong>{{ previewRunText }}</strong>
-    </div>
-  </div>
+      <small>
+        {{ t('workflowEditor.editor.applicationInputs') }} {{ templateInputText || emptyText }}
+        · {{ t('workflowEditor.editor.applicationOutputs') }} {{ templateOutputText || emptyText }}
+      </small>
+    </span>
+    <small v-if="previewRunText" class="workflow-graph-application-summary__run">{{ previewRunText }}</small>
+  </section>
 </template>
 
 <script setup lang="ts">

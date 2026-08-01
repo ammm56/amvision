@@ -29,7 +29,7 @@
         @refresh="loadPage"
         @toggle-group-create-mode="toggleGroupCreateMode"
         @toggle-inspector="toggleInspector"
-        @preview="runPreview"
+        @preview="requestPreviewRun"
         @save="saveCurrentWorkflowApp"
       />
 
@@ -44,7 +44,7 @@
           :draft-path="draftLinkPath"
           :link-path="linkPath"
           :is-link-selected="isGraphLinkSelected"
-          @select-link="selectGraphLink"
+          @select-link="handleGraphLinkSelection"
           @open-link-context-menu="openGraphLinkContextMenu"
           @start-edge-target-reconnect="startEdgeTargetReconnect"
         />
@@ -72,7 +72,7 @@
           :is-boundary-port-connected="isBoundaryPortConnected"
           :get-binding-payload-type-id="getBindingPayloadTypeId"
           @start-boundary-drag="startBoundaryDrag"
-          @select-boundary="selectApplicationBoundary"
+          @select-boundary="handleBoundarySelection"
           @open-boundary-context-menu="openBoundaryContextMenu"
           @start-boundary-port-connection="startBoundaryPortConnection"
           @select-boundary-binding="selectBoundaryBinding"
@@ -105,7 +105,7 @@
           :read-preview-display="getPreviewNodeDisplay"
           :read-preview-display-tooltip="readPreviewNodeDisplayTooltip"
           @start-node-drag="startNodeDrag"
-          @node-click="handleNodeClick"
+          @node-click="handleGraphNodeSelection"
           @open-node-context-menu="openNodeContextMenu"
           @start-port-connection="startPortConnection"
           @select-port-endpoint="selectPortEndpoint"
@@ -139,9 +139,7 @@
         :preview-input-bindings="previewInputBindings"
         :preview-input-state="previewInputState"
         :preview-blocking-messages="previewBlockingMessages"
-        :preview-help-text="previewHelpText"
         :image-ref-transport-kind-options="imageRefTransportKindOptions"
-        :preview-binding-help-text="previewBindingHelpText"
         :last-preview-run="lastPreviewRun"
         :last-preview-failure-message="lastPreviewFailureMessage"
         :last-preview-failure-node-label="lastPreviewFailureNodeLabel"
@@ -211,7 +209,7 @@
         @zoom-out="zoomOut"
         @reset-view="resetView"
         @save="saveCurrentWorkflowApp"
-        @preview="runPreview"
+        @preview="requestPreviewRun"
         @preview-node="runPreviewNodeFromContextMenu"
         @select-node-from-picker="selectNodeFromPicker"
         @close-node-picker="closeNodePicker"
@@ -392,6 +390,23 @@ function toggleInspector(): void {
     return
   }
   collapseInspector()
+}
+
+function handleGraphNodeSelection(nodeId: string): void {
+  handleNodeClick(nodeId)
+}
+
+function handleGraphLinkSelection(link: GraphLinkView): void {
+  selectGraphLink(link)
+}
+
+function handleBoundarySelection(boundaryKind: AppBoundaryKind): void {
+  selectApplicationBoundary(boundaryKind)
+}
+
+async function requestPreviewRun(): Promise<void> {
+  expandInspector()
+  await runPreview()
 }
 const {
   readGraphNodeTitle,
@@ -1190,7 +1205,6 @@ const previewAlternativeImageBindingIds = computed(() => {
 })
 const {
   previewBlockingMessages,
-  previewHelpText,
   lastPreviewHttpResponse,
   lastPreviewHttpStatus,
   lastPreviewHttpResponseJson,
@@ -1210,12 +1224,10 @@ const {
   hasPreviewBindingValue,
 })
 const {
-  previewBindingHelpText,
   buildPreviewInputBindings,
 } = useWorkflowPreviewInputHelpers({
   previewInputBindings,
   previewBlockingMessages,
-  getBindingPayloadTypeId,
   buildPreviewInputBindingsPayload,
   hasPreviewBindingValue,
   setErrorMessage: (message) => {

@@ -1,37 +1,25 @@
 <template>
-  <div class="workflow-graph-inspector-body">
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.node') }}</span>
-      <strong>{{ readTitle(node) }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>Node ID</span>
-      <strong>{{ node.node.node_id }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>Node type</span>
-      <strong>{{ node.node.node_type_id }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.category') }}</span>
-      <strong>{{ node.definition?.category || 'unknown' }}</strong>
-    </div>
-    <div class="workflow-graph-inspector-row">
-      <span>{{ t('workflowEditor.editor.ports') }}</span>
-      <strong>{{ node.inputs.length }} in / {{ node.outputs.length }} out</strong>
-    </div>
-    <label class="workflow-graph-inspector-toggle-row">
-      <span>
-        <strong>{{ t('workflowEditor.editor.enableNode') }}</strong>
-        <small>{{ t('workflowEditor.editor.enableNodeHint') }}</small>
+  <section class="workflow-graph-inspector-card workflow-graph-node-summary">
+    <div class="workflow-graph-inspector-card__header">
+      <span class="workflow-graph-inspector-card__summary">
+        <strong>{{ readTitle(node) }}</strong>
+        <small :title="node.node.node_type_id">
+          {{ node.node.node_type_id }} · {{ node.definition?.category || 'unknown' }}
+        </small>
       </span>
-      <input
-        type="checkbox"
-        :checked="node.node.enabled !== false"
-        @change="emit('updateEnabled', node, $event)"
-      />
-    </label>
-  </div>
+      <label
+        class="workflow-graph-inspector-switch"
+        :title="t('workflowEditor.editor.enableNode')"
+      >
+        <input
+          type="checkbox"
+          :aria-label="t('workflowEditor.editor.enableNode')"
+          :checked="node.node.enabled !== false"
+          @change="emit('updateEnabled', node, $event)"
+        />
+      </label>
+    </div>
+  </section>
 </template>
 
 <script setup lang="ts">

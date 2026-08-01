@@ -62,10 +62,7 @@ const { t } = useI18n()
 
 <style scoped>
 .workflow-graph-viewport-controls {
-  position: absolute;
-  bottom: 14px;
-  left: 14px;
-  z-index: 7;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -122,11 +119,6 @@ const { t } = useI18n()
 }
 
 @media (max-width: 720px) {
-  .workflow-graph-viewport-controls {
-    bottom: 10px;
-    left: 10px;
-  }
-
   .workflow-graph-viewport-controls__minimap {
     display: none !important;
   }

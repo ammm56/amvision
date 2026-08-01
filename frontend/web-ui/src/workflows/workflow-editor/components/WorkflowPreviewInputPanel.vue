@@ -2,15 +2,12 @@
   <div class="workflow-graph-preview-inputs">
     <div class="workflow-graph-panel__header">
       <h2>{{ t('workflowEditor.editor.previewInputs') }}</h2>
-      <div class="workflow-graph-panel__tools">
-        <InfoHint
-          v-if="helpText"
-          :text="helpText"
-        />
-        <StatusBadge :tone="blockingMessages.length ? 'danger' : 'success'">
-          {{ blockingMessages.length ? t('workflowEditor.editor.missingInputs') : t('common.ready') }}
-        </StatusBadge>
-      </div>
+      <StatusBadge v-if="blockingMessages.length" tone="danger">
+        {{ t('workflowEditor.editor.missingInputs') }}
+      </StatusBadge>
+    </div>
+    <div v-if="blockingMessages.length" class="workflow-graph-preview-errors" role="alert">
+      <p>{{ blockingMessages[0] }}</p>
     </div>
     <section v-for="binding in bindings" :key="binding.binding_id" class="workflow-graph-preview-binding">
       <div class="workflow-graph-preview-binding__header">
@@ -19,7 +16,6 @@
           <small>{{ getPayloadTypeId(binding) || 'unknown' }}</small>
         </span>
         <div class="workflow-graph-preview-binding__tools">
-          <InfoHint :text="readBindingHelpText(binding)" />
           <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">
             {{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }}
           </StatusBadge>
@@ -90,7 +86,6 @@ import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
-import InfoHint from '@/shared/ui/components/InfoHint.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import type { FlowApplicationBinding } from '../types'
@@ -100,10 +95,8 @@ defineProps<{
   bindings: FlowApplicationBinding[]
   states: Record<string, PreviewInputState>
   blockingMessages: string[]
-  helpText: string
   imageRefTransportKindOptions: PreviewSelectOption[]
   getPayloadTypeId: (binding: FlowApplicationBinding) => string
-  readBindingHelpText: (binding: FlowApplicationBinding) => string
 }>()
 
 const emit = defineEmits<{
