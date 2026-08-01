@@ -212,7 +212,6 @@ input[type='radio'] {
 
 .resource-table tr.is-selected {
   background: var(--am-row-selected);
-  box-shadow: inset 3px 0 0 var(--am-brand-primary-deep);
 }
 
 .resource-table tbody tr:last-child td {

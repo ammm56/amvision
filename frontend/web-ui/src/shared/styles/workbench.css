@@ -109,7 +109,8 @@
 
 .catalog-group-button.is-active,
 .catalog-list-button.is-active {
-  box-shadow: inset 3px 0 0 var(--am-brand-primary-deep);
+  border-color: transparent;
+  color: var(--am-text-strong);
 }
 
 .catalog-workbench__main,
