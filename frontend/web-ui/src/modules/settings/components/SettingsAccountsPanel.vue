@@ -45,11 +45,23 @@
             <span class="settings-mono-value">{{ selectedUser.user_id }}</span>
           </div>
           <div class="settings-panel__actions">
-            <Button variant="secondary" size="sm" :disabled="!canWrite" @click="toggleUser(selectedUser.user_id, !selectedUser.is_active)">
+            <Button
+              variant="secondary"
+              size="sm"
+              :disabled="!canWrite || (isSelectedSoleAmvar && selectedUser.is_active)"
+              :title="isSelectedSoleAmvar && selectedUser.is_active ? soleAmvarProtectionMessage : undefined"
+              @click="toggleUser(selectedUser.user_id, !selectedUser.is_active)"
+            >
               <Power :size="15" />
               {{ selectedUser.is_active ? t('settingsDiagnostics.actions.disable') : t('settingsDiagnostics.actions.enable') }}
             </Button>
-            <Button variant="danger" size="sm" :disabled="!canWrite || selectedUser.user_id === currentUserId || accountDangerActionKey !== null" @click="requestRemoveUser(selectedUser)">
+            <Button
+              variant="danger"
+              size="sm"
+              :disabled="!canWrite || selectedUser.user_id === currentUserId || isSelectedSoleAmvar || accountDangerActionKey !== null"
+              :title="isSelectedSoleAmvar ? soleAmvarProtectionMessage : undefined"
+              @click="requestRemoveUser(selectedUser)"
+            >
               <Trash2 :size="15" />
               {{ t('settingsDiagnostics.actions.delete') }}
             </Button>
@@ -170,6 +182,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import { isProtectedSoleAmvarUser } from '../account-protection'
 import {
   createLocalAuthUser,
   createLocalAuthUserToken,
@@ -215,6 +228,8 @@ const passwordForm = reactive({ newPassword: '', revokeSessions: true, revokeUse
 const canWrite = computed(() => sessionStore.hasScopes(['auth:write']))
 const currentUserId = computed(() => sessionStore.currentUser?.principal_id ?? '')
 const selectedUser = computed(() => users.value.find((user) => user.user_id === selectedUserId.value) ?? null)
+const isSelectedSoleAmvar = computed(() => isProtectedSoleAmvarUser(users.value, selectedUser.value?.user_id))
+const soleAmvarProtectionMessage = computed(() => t('settingsDiagnostics.messages.soleAmvarProtected'))
 const scopeOptions = computed(() => [
   { label: t('settingsDiagnostics.fields.allScopes'), value: '*', description: '*' },
   { label: 'workflows:read', value: 'workflows:read' },
@@ -308,6 +323,7 @@ async function createUser(): Promise<void> {
 }
 
 async function toggleUser(userId: string, isActive: boolean): Promise<void> {
+  if (!canWrite.value || (!isActive && isProtectedSoleAmvarUser(users.value, userId))) return
   errorMessage.value = null
   try {
     await updateLocalAuthUser(userId, { is_active: isActive })
@@ -319,7 +335,7 @@ async function toggleUser(userId: string, isActive: boolean): Promise<void> {
 }
 
 function requestRemoveUser(user: LocalAuthUser): void {
-  if (!canWrite.value || user.user_id === currentUserId.value || accountDangerActionKey.value) return
+  if (!canWrite.value || user.user_id === currentUserId.value || isProtectedSoleAmvarUser(users.value, user.user_id) || accountDangerActionKey.value) return
   pendingDeleteUser.value = user
 }
 

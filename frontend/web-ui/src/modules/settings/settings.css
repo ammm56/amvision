@@ -92,18 +92,10 @@
   display: none;
 }
 
-.settings-desktop-refresh {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 40px;
-  margin-bottom: var(--am-space-xl);
-}
-
 .settings-page {
   gap: var(--am-space-xl);
 }
 
-.settings-refresh-control,
 .settings-panel__heading,
 .settings-panel__actions,
 .settings-account-detail__header,
@@ -114,7 +106,6 @@
   gap: var(--am-space-md);
 }
 
-.settings-refresh-control__time,
 .settings-panel__meta {
   color: var(--am-text-muted);
   font-size: 12px;
@@ -164,13 +155,14 @@
 
 .settings-preference-list {
   display: grid;
+  width: min(100%, 680px);
 }
 
 .settings-preference-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(240px, 320px);
+  grid-template-columns: 136px minmax(280px, 420px);
   align-items: center;
-  gap: var(--am-space-xl);
+  gap: var(--am-space-3xl);
   min-height: 64px;
   padding: var(--am-space-md) 0;
 }
@@ -314,7 +306,7 @@
 
 .settings-account-workspace {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: 208px minmax(0, 1fr);
   gap: var(--am-space-xl);
   min-width: 0;
 }
@@ -381,6 +373,13 @@
   min-width: 0;
 }
 
+.settings-account-detail__header .settings-mono-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-account-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -405,7 +404,31 @@
 }
 
 .settings-account-token-table table {
-  min-width: 720px;
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.settings-account-token-table th,
+.settings-account-token-table td {
+  overflow-wrap: anywhere;
+}
+
+.settings-account-token-table th:nth-child(1) {
+  width: 24%;
+}
+
+.settings-account-token-table th:nth-child(2) {
+  width: 15%;
+}
+
+.settings-account-token-table th:nth-child(3),
+.settings-account-token-table th:nth-child(4) {
+  width: 22%;
+}
+
+.settings-account-token-table th:nth-child(5) {
+  width: 17%;
 }
 
 .settings-password-form {
@@ -548,10 +571,6 @@
     flex: 0 0 auto;
   }
 
-  .settings-desktop-refresh {
-    display: none;
-  }
-
   .settings-account-workspace {
     grid-template-columns: 1fr;
   }
@@ -570,10 +589,6 @@
 @media (max-width: 720px) {
   .settings-panel {
     padding: var(--am-space-lg);
-  }
-
-  .settings-refresh-control__time {
-    display: none;
   }
 
   .settings-preference-row,

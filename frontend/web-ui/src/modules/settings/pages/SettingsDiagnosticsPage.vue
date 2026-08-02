@@ -61,19 +61,7 @@
     </aside>
 
     <div class="settings-workspace__content">
-      <PageHeader class="settings-mobile-header" :title="t('settingsDiagnostics.title')">
-        <template v-if="showDiagnosticsRefresh" #actions>
-          <div class="settings-refresh-control">
-            <span v-if="diagnostics?.generated_at" class="settings-refresh-control__time">
-              {{ formatSystemDateTime(diagnostics.generated_at) }}
-            </span>
-            <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
-              <RefreshCw :size="16" />
-              {{ t('common.refresh') }}
-            </Button>
-          </div>
-        </template>
-      </PageHeader>
+      <PageHeader class="settings-mobile-header" :title="t('settingsDiagnostics.title')" />
 
       <div class="settings-mobile-navigation">
         <TabList
@@ -107,18 +95,6 @@
             <span>{{ section.label }}</span>
           </button>
         </nav>
-      </div>
-
-      <div v-if="showDiagnosticsRefresh" class="settings-desktop-refresh">
-        <div class="settings-refresh-control">
-          <span v-if="diagnostics?.generated_at" class="settings-refresh-control__time">
-            {{ formatSystemDateTime(diagnostics.generated_at) }}
-          </span>
-          <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
-            <RefreshCw :size="16" />
-            {{ t('common.refresh') }}
-          </Button>
-        </div>
       </div>
 
       <section class="page-stack settings-page">
@@ -333,7 +309,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
-import { Cpu, HardDrive, Info, Moon, RefreshCw, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
+import { Cpu, HardDrive, Info, Moon, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -343,7 +319,6 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { supportedLocaleOptions, type SupportedLocale } from '@/platform/i18n'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { AuthProvider, ProjectCatalogItem, SystemCapabilities } from '@/shared/contracts'
-import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
@@ -404,7 +379,6 @@ const runtimeConfig = getRuntimeConfig()
 const frontendVersion = __AMVISION_FRONTEND_VERSION__
 
 const diagnostics = ref<SystemDiagnosticsResponse | null>(null)
-const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const activeCategory = ref<SettingsCategoryId>('system')
 const activeSystemSection = ref<SystemSectionId>('about')
@@ -428,12 +402,6 @@ const accessSections = computed(() => [
   { id: 'session', label: t('settingsDiagnostics.sections.security'), icon: ShieldCheck },
   { id: 'accounts', label: t('settingsDiagnostics.sections.accounts'), icon: UsersRound },
 ])
-const showDiagnosticsRefresh = computed(() =>
-  activeCategory.value === 'services'
-  || activeCategory.value === 'system'
-  || (activeCategory.value === 'security' && activeAccessSection.value === 'session'),
-)
-
 const about = computed(() => diagnostics.value?.about ?? {})
 const system = computed(() => diagnostics.value?.system ?? {})
 const pythonRuntime = computed(() => diagnostics.value?.python_runtime ?? {})
@@ -564,7 +532,6 @@ function setTheme(theme: ThemeMode): void {
 }
 
 async function loadDiagnostics(): Promise<void> {
-  loading.value = true
   errorMessage.value = null
   try {
     const [nextDiagnostics] = await Promise.all([
@@ -574,8 +541,6 @@ async function loadDiagnostics(): Promise<void> {
     diagnostics.value = nextDiagnostics
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.loadFailed')
-  } finally {
-    loading.value = false
   }
 }
 
