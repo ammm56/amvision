@@ -183,69 +183,76 @@
       </section>
     </section>
 
-    <section v-else class="settings-category-panel">
-      <TabList
-        class="settings-access-tabs"
-        :model-value="activeAccessSection"
-        :tabs="accessTabs"
-        :label="t('settingsDiagnostics.tabs.security')"
-        @update:model-value="selectAccessSection"
-      />
+    <section v-else class="settings-diagnostic-layout">
+      <nav class="settings-section-nav" :aria-label="t('settingsDiagnostics.tabs.security')">
+        <button
+          v-for="section in accessSections"
+          :key="section.id"
+          type="button"
+          :class="{ 'is-active': activeAccessSection === section.id }"
+          @click="selectAccessSection(section.id)"
+        >
+          <component :is="section.icon" :size="16" />
+          <span>{{ section.label }}</span>
+        </button>
+      </nav>
 
-      <template v-if="activeAccessSection === 'session'">
-        <section class="settings-panel">
-          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.security') }}</h2></header>
-          <dl class="settings-metadata-grid">
-            <InfoRow :label="t('settingsDiagnostics.fields.currentUser')" :value="sessionStore.displayName || sessionStore.currentUser?.principal_id || '-'" />
-            <InfoRow :label="t('settingsDiagnostics.fields.loginState')" :value="sessionStore.loginState" />
-            <InfoRow :label="t('settingsDiagnostics.fields.authMode')" :value="sessionStore.authMode || '-'" />
-            <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
-            <InfoRow :label="t('settingsDiagnostics.fields.projectVisibility')" :value="formatProjectVisibility(sessionStore.currentUser?.project_ids)" />
-          </dl>
-          <details class="settings-advanced">
-            <summary>{{ t('settingsDiagnostics.fields.credentialKind') }}</summary>
+      <section class="settings-category-panel">
+        <template v-if="activeAccessSection === 'session'">
+          <section class="settings-panel">
+            <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.security') }}</h2></header>
             <dl class="settings-metadata-grid">
-              <InfoRow :label="t('settingsDiagnostics.fields.credentialKind')" :value="sessionStore.credentialKind || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authProviderId')" :value="sessionStore.currentUser?.auth_provider_id || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authProviderKind')" :value="sessionStore.currentUser?.auth_provider_kind || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authCredentialId')" :value="sessionStore.currentUser?.auth_credential_id || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authSessionId')" :value="sessionStore.currentUser?.auth_session_id || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authTokenId')" :value="sessionStore.currentUser?.auth_token_id || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.authTokenName')" :value="sessionStore.currentUser?.auth_token_name || '-'" />
-              <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
-              <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
+              <InfoRow :label="t('settingsDiagnostics.fields.currentUser')" :value="sessionStore.displayName || sessionStore.currentUser?.principal_id || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.loginState')" :value="sessionStore.loginState" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authMode')" :value="sessionStore.authMode || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.projectVisibility')" :value="formatProjectVisibility(sessionStore.currentUser?.project_ids)" />
             </dl>
-          </details>
-        </section>
+            <details class="settings-advanced">
+              <summary>{{ t('settingsDiagnostics.fields.credentialKind') }}</summary>
+              <dl class="settings-metadata-grid">
+                <InfoRow :label="t('settingsDiagnostics.fields.credentialKind')" :value="sessionStore.credentialKind || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authProviderId')" :value="sessionStore.currentUser?.auth_provider_id || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authProviderKind')" :value="sessionStore.currentUser?.auth_provider_kind || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authCredentialId')" :value="sessionStore.currentUser?.auth_credential_id || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authSessionId')" :value="sessionStore.currentUser?.auth_session_id || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authTokenId')" :value="sessionStore.currentUser?.auth_token_id || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.authTokenName')" :value="sessionStore.currentUser?.auth_token_name || '-'" />
+                <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
+                <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
+              </dl>
+            </details>
+          </section>
 
-        <section class="settings-panel settings-table-panel">
-          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.projects') }}</h2></header>
-          <div class="resource-table settings-diagnostic-table">
-            <table>
-              <thead><tr><th>{{ t('settingsDiagnostics.columns.project') }}</th><th>{{ t('settingsDiagnostics.columns.projectId') }}</th><th>{{ t('settingsDiagnostics.columns.projectSource') }}</th><th>{{ t('settingsDiagnostics.columns.selected') }}</th></tr></thead>
-              <tbody>
-                <tr v-for="project in visibleProjects" :key="project.project_id"><td>{{ project.display_name || project.project_id }}</td><td class="settings-mono-value">{{ project.project_id }}</td><td>{{ formatProjectSource(project.project_source) }}</td><td><StatusBadge :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'" :label="booleanText(project.project_id === projectStore.selectedProjectId)" :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'" /></td></tr>
-                <tr v-if="visibleProjects.length === 0"><td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+          <section class="settings-panel settings-table-panel">
+            <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.projects') }}</h2></header>
+            <div class="resource-table settings-diagnostic-table">
+              <table>
+                <thead><tr><th>{{ t('settingsDiagnostics.columns.project') }}</th><th>{{ t('settingsDiagnostics.columns.projectId') }}</th><th>{{ t('settingsDiagnostics.columns.projectSource') }}</th><th>{{ t('settingsDiagnostics.columns.selected') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="project in visibleProjects" :key="project.project_id"><td>{{ project.display_name || project.project_id }}</td><td class="settings-mono-value">{{ project.project_id }}</td><td>{{ formatProjectSource(project.project_source) }}</td><td><StatusBadge :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'" :label="booleanText(project.project_id === projectStore.selectedProjectId)" :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'" /></td></tr>
+                  <tr v-if="visibleProjects.length === 0"><td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-        <section class="settings-panel settings-table-panel">
-          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.providers') }}</h2></header>
-          <div class="resource-table settings-diagnostic-table">
-            <table>
-              <thead><tr><th>{{ t('settingsDiagnostics.columns.provider') }}</th><th>{{ t('settingsDiagnostics.columns.type') }}</th><th>{{ t('settingsDiagnostics.columns.mode') }}</th><th>{{ t('settingsDiagnostics.columns.capabilities') }}</th><th>{{ t('settingsDiagnostics.columns.enabled') }}</th></tr></thead>
-              <tbody>
-                <tr v-for="provider in bootstrapProviders" :key="provider.provider_id"><td>{{ provider.display_name }}</td><td>{{ provider.provider_kind }}</td><td>{{ provider.login_mode }}</td><td>{{ formatProviderCapabilities(provider) }}</td><td><StatusBadge :status="provider.enabled ? 'enabled' : 'disabled'" :label="provider.enabled ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" /></td></tr>
-                <tr v-if="bootstrapProviders.length === 0"><td colspan="5">{{ t('settingsDiagnostics.emptyProviders') }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </template>
+          <section class="settings-panel settings-table-panel">
+            <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.providers') }}</h2></header>
+            <div class="resource-table settings-diagnostic-table">
+              <table>
+                <thead><tr><th>{{ t('settingsDiagnostics.columns.provider') }}</th><th>{{ t('settingsDiagnostics.columns.type') }}</th><th>{{ t('settingsDiagnostics.columns.mode') }}</th><th>{{ t('settingsDiagnostics.columns.capabilities') }}</th><th>{{ t('settingsDiagnostics.columns.enabled') }}</th></tr></thead>
+                <tbody>
+                  <tr v-for="provider in bootstrapProviders" :key="provider.provider_id"><td>{{ provider.display_name }}</td><td>{{ provider.provider_kind }}</td><td>{{ provider.login_mode }}</td><td>{{ formatProviderCapabilities(provider) }}</td><td><StatusBadge :status="provider.enabled ? 'enabled' : 'disabled'" :label="provider.enabled ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" /></td></tr>
+                  <tr v-if="bootstrapProviders.length === 0"><td colspan="5">{{ t('settingsDiagnostics.emptyProviders') }}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
 
-      <SettingsAccountsPanel v-else />
+        <SettingsAccountsPanel v-else />
+      </section>
     </section>
   </section>
 </template>
@@ -343,7 +350,7 @@ const sections = computed<SectionItem[]>(() => [
   { id: 'python', label: t('settingsDiagnostics.sections.python'), icon: Wrench },
   { id: 'devices', label: t('settingsDiagnostics.sections.devices'), icon: Cpu },
 ])
-const accessTabs = computed(() => [
+const accessSections = computed(() => [
   { id: 'session', label: t('settingsDiagnostics.sections.security'), icon: ShieldCheck },
   { id: 'accounts', label: t('settingsDiagnostics.sections.accounts'), icon: UsersRound },
 ])

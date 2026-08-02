@@ -19,8 +19,7 @@
   font-size: 12px;
 }
 
-.settings-diagnostics__tabs,
-.settings-access-tabs {
+.settings-diagnostics__tabs {
   gap: var(--am-space-sm);
 }
 
@@ -58,7 +57,8 @@
 }
 
 .settings-preferences-panel {
-  max-width: 820px;
+  width: 100%;
+  max-width: none;
 }
 
 .settings-preference-list {
@@ -248,10 +248,6 @@
 .settings-table-panel {
   padding-bottom: 0;
   overflow: hidden;
-}
-
-.settings-access-tabs {
-  margin-bottom: var(--am-space-xs);
 }
 
 .settings-account-workspace {
