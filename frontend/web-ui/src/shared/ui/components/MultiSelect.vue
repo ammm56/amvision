@@ -18,33 +18,43 @@
       </span>
       <ChevronDown :size="16" />
     </button>
-    <div v-if="open" :id="menuId" class="ui-multi-select__menu" role="listbox" aria-multiselectable="true">
-      <button
-        v-for="(option, index) in options"
-        :key="optionKey(option.value)"
-        :id="optionId(index)"
-        class="ui-multi-select__option"
-        :class="{ 'is-selected': isSelected(option.value), 'is-active': activeIndex === index }"
-        type="button"
-        role="option"
-        :aria-selected="isSelected(option.value)"
-        @click.prevent.stop="toggleOption(option.value)"
-        @mouseenter="activeIndex = index"
+    <Teleport to="body">
+      <div
+        v-if="open"
+        :id="menuId"
+        ref="menuElement"
+        class="ui-multi-select__menu"
+        :style="menuStyle"
+        role="listbox"
+        aria-multiselectable="true"
       >
-        <span class="ui-multi-select__option-check">
-          <Check v-if="isSelected(option.value)" :size="14" />
-        </span>
-        <span class="ui-multi-select__option-text">
-          <span>{{ option.label }}</span>
-          <small v-if="option.description">{{ option.description }}</small>
-        </span>
-      </button>
-    </div>
+        <button
+          v-for="(option, index) in options"
+          :key="optionKey(option.value)"
+          :id="optionId(index)"
+          class="ui-multi-select__option"
+          :class="{ 'is-selected': isSelected(option.value), 'is-active': activeIndex === index }"
+          type="button"
+          role="option"
+          :aria-selected="isSelected(option.value)"
+          @click.prevent.stop="toggleOption(option.value)"
+          @mouseenter="activeIndex = index"
+        >
+          <span class="ui-multi-select__option-check">
+            <Check v-if="isSelected(option.value)" :size="14" />
+          </span>
+          <span class="ui-multi-select__option-text">
+            <span>{{ option.label }}</span>
+            <small v-if="option.description">{{ option.description }}</small>
+          </span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, type CSSProperties } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
 import { useTranslation } from '@/platform/i18n'
 
@@ -76,9 +86,14 @@ const emit = defineEmits<{
 }>()
 
 const rootElement = ref<HTMLElement | null>(null)
+const menuElement = ref<HTMLElement | null>(null)
 const open = ref(false)
 const activeIndex = ref(-1)
+const menuStyle = ref<CSSProperties>({})
 const menuId = `${useId()}-listbox`
+const menuGap = 4
+const menuMaxHeight = 220
+const viewportMargin = 8
 
 const selectedOptions = computed(() => props.options.filter((option) => props.modelValue.includes(option.value)))
 const resolvedPlaceholder = computed(() => props.placeholder || t('common.selectPlaceholder'))
@@ -103,6 +118,7 @@ function toggleOpen(): void {
 function close(): void {
   open.value = false
   activeIndex.value = -1
+  menuStyle.value = {}
 }
 
 function optionId(index: number): string {
@@ -114,6 +130,31 @@ function openMenu(direction: 1 | -1 = 1): void {
   open.value = true
   const selectedIndex = props.options.findIndex((option) => isSelected(option.value))
   activeIndex.value = selectedIndex >= 0 ? selectedIndex : direction > 0 ? 0 : props.options.length - 1
+  void nextTick(updateMenuPosition)
+}
+
+function updateMenuPosition(): void {
+  if (!open.value || !rootElement.value) return
+  const triggerRect = rootElement.value.getBoundingClientRect()
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const spaceBelow = viewportHeight - triggerRect.bottom - viewportMargin - menuGap
+  const spaceAbove = triggerRect.top - viewportMargin - menuGap
+  const openAbove = spaceBelow < menuMaxHeight && spaceAbove > spaceBelow
+  const availableHeight = Math.max(96, Math.min(menuMaxHeight, openAbove ? spaceAbove : spaceBelow))
+  const menuWidth = Math.min(triggerRect.width, viewportWidth - viewportMargin * 2)
+  const menuLeft = Math.min(
+    Math.max(viewportMargin, triggerRect.left),
+    Math.max(viewportMargin, viewportWidth - menuWidth - viewportMargin),
+  )
+
+  menuStyle.value = {
+    top: openAbove ? 'auto' : `${triggerRect.bottom + menuGap}px`,
+    bottom: openAbove ? `${viewportHeight - triggerRect.top + menuGap}px` : 'auto',
+    left: `${menuLeft}px`,
+    width: `${menuWidth}px`,
+    maxHeight: `${availableHeight}px`,
+  }
 }
 
 function moveActiveOption(direction: 1 | -1): void {
@@ -128,7 +169,10 @@ function moveActiveOption(direction: 1 | -1): void {
 
 function handleTriggerKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
-    if (open.value) event.preventDefault()
+    if (open.value) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
     close()
     return
   }
@@ -157,14 +201,19 @@ function handleDocumentPointerDown(event: PointerEvent): void {
   const target = event.target
   if (!(target instanceof Node)) return
   if (rootElement.value?.contains(target)) return
+  if (menuElement.value?.contains(target)) return
   close()
 }
 
 onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointerDown)
+  window.addEventListener('resize', updateMenuPosition)
+  window.addEventListener('scroll', updateMenuPosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
+  window.removeEventListener('resize', updateMenuPosition)
+  window.removeEventListener('scroll', updateMenuPosition, true)
 })
 </script>

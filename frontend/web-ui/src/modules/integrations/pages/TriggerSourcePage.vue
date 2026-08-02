@@ -1,6 +1,6 @@
 <template>
   <section class="page-stack">
-    <PageHeader title="TriggerSource">
+    <PageHeader :title="t('triggerSources.title')">
       <template #actions>
         <ButtonLink v-if="selectedRuntime" :to="appDetailPath">
           <Workflow :size="16" />
@@ -29,6 +29,7 @@
 
       <EmptyState
         v-if="runtimes.length === 0"
+        class="trigger-source-runtime-empty"
         :title="t('triggerSources.emptyRuntimeTitle')"
         :description="t('triggerSources.emptyRuntimeDescription')"
       />
@@ -36,7 +37,7 @@
       <template v-else>
         <div class="form-grid">
           <label class="field field--wide">
-            <span>WorkflowAppRuntime</span>
+            <span>{{ t('triggerSources.fields.runtimeInstance') }}</span>
             <SelectField :model-value="selectedRuntimeId" :options="runtimeOptions" :placeholder="t('triggerSources.placeholders.selectRuntime')" @update:model-value="selectRuntime" />
           </label>
           <label class="field">
@@ -51,20 +52,20 @@
 
         <div v-if="selectedRuntime" class="summary-grid">
           <div>
-            <span>runtime</span>
+            <span>{{ t('triggerSources.fields.runtime') }}</span>
             <strong>{{ selectedRuntime.workflow_runtime_id }}</strong>
           </div>
           <div>
-            <span>application</span>
+            <span>{{ t('triggerSources.fields.application') }}</span>
             <strong>{{ selectedRuntime.application_id }}</strong>
           </div>
           <div>
-            <span>state</span>
+            <span>{{ t('triggerSources.fields.state') }}</span>
             <strong>{{ selectedRuntime.desired_state }} / {{ selectedRuntime.observed_state }}</strong>
           </div>
           <div>
-            <span>bindings</span>
-            <strong>{{ appInputBindings.length }} input / {{ appOutputBindings.length }} output</strong>
+            <span>{{ t('triggerSources.fields.bindings') }}</span>
+            <strong>{{ appInputBindings.length }} {{ t('triggerSources.values.input') }} / {{ appOutputBindings.length }} {{ t('triggerSources.values.output') }}</strong>
           </div>
         </div>
 
@@ -212,12 +213,12 @@
         <table>
           <thead>
             <tr>
-              <th>TriggerSource</th>
-              <th>runtime</th>
-              <th>kind</th>
-              <th>state</th>
-              <th>health</th>
-              <th>last_error</th>
+              <th>{{ t('triggerSources.fields.triggerSource') }}</th>
+              <th>{{ t('triggerSources.fields.runtime') }}</th>
+              <th>{{ t('triggerSources.fields.kind') }}</th>
+              <th>{{ t('triggerSources.fields.state') }}</th>
+              <th>{{ t('triggerSources.fields.health') }}</th>
+              <th>{{ t('triggerSources.fields.lastError') }}</th>
               <th>{{ t('triggerSources.fields.actions') }}</th>
             </tr>
           </thead>
@@ -230,7 +231,7 @@
               <td>{{ source.workflow_runtime_id }}</td>
               <td>{{ source.trigger_kind }}</td>
               <td>
-                <StatusBadge :tone="sourceStateTone(source)">{{ source.enabled ? 'enabled' : 'disabled' }} / {{ source.observed_state }}</StatusBadge>
+                <StatusBadge :tone="sourceStateTone(source)">{{ source.enabled ? t('triggerSources.values.enabled') : t('triggerSources.values.disabled') }} / {{ source.observed_state }}</StatusBadge>
               </td>
               <td>
                 <strong>{{ formatHealthSummary(sourceHealth(source)?.health_summary ?? source.health_summary) || '-' }}</strong>
@@ -249,7 +250,7 @@
                   </Button>
                   <Button size="sm" variant="secondary" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'health')" @click="refreshTriggerSourceHealth(source)">
                     <Activity :size="14" />
-                    health
+                    {{ t('triggerSources.actions.refreshHealth') }}
                   </Button>
                   <Button size="sm" variant="danger" :disabled="busyTriggerSourceId === source.trigger_source_id" :loading="isTriggerSourceAction(source, 'delete')" @click="requestDeleteTriggerSource(source)">
                     <Trash2 :size="14" />
@@ -1174,6 +1175,11 @@ watch(
 </script>
 
 <style scoped>
+.trigger-source-runtime-empty {
+  border: 0;
+  background: transparent;
+}
+
 .trigger-source-inference {
   display: grid;
   gap: 12px;

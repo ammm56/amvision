@@ -83,7 +83,8 @@
 .settings-workspace__content {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: clamp(var(--am-space-xl), 2vw, var(--am-space-3xl));
 }
 
@@ -300,13 +301,18 @@
 }
 
 .settings-table-panel {
-  padding-bottom: 0;
+  padding-bottom: var(--am-space-xl);
   overflow: hidden;
+}
+
+.settings-accounts-panel {
+  container-type: inline-size;
+  container-name: settings-accounts;
 }
 
 .settings-account-workspace {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: 176px minmax(0, 1fr);
   gap: var(--am-space-xl);
   min-width: 0;
 }
@@ -536,7 +542,7 @@
   align-items: end;
 }
 
-@media (max-width: 960px) {
+@container workbench-main (max-width: 899px) {
   .settings-workspace {
     grid-template-columns: 1fr;
   }
@@ -570,7 +576,9 @@
   .settings-mobile-subnav button {
     flex: 0 0 auto;
   }
+}
 
+@container settings-accounts (max-width: 699px) {
   .settings-account-workspace {
     grid-template-columns: 1fr;
   }
@@ -579,10 +587,12 @@
     display: flex;
     max-height: none;
     overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: var(--am-space-xs);
   }
 
   .settings-user-item {
-    flex: 0 0 min(260px, 80vw);
+    flex: 0 0 min(220px, 80vw);
   }
 }
 
