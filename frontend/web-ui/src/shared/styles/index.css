@@ -1980,7 +1980,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-link.is-selected {
-  stroke: var(--graph-link-selected, #008cff);
+  stroke: var(--graph-link-selected, #10b981);
   stroke-width: 6;
   opacity: 1;
 }
@@ -1991,8 +1991,8 @@ textarea:focus-visible {
 }
 
 .workflow-graph-link-handle {
-  fill: var(--graph-link-selected, #008cff);
-  stroke: var(--graph-link-selected, #008cff);
+  fill: var(--graph-link-selected, #10b981);
+  stroke: var(--graph-link-selected, #10b981);
   stroke-width: 3;
   cursor: crosshair;
   pointer-events: all;
@@ -2007,7 +2007,7 @@ textarea:focus-visible {
 }
 
 .workflow-graph-link-midpoint.is-selected {
-  fill: var(--graph-link-selected, #008cff);
+  fill: var(--graph-link-selected, #10b981);
   stroke: var(--graph-panel, #ffffff);
 }
 
@@ -2022,7 +2022,7 @@ textarea:focus-visible {
   border: 1px solid var(--graph-node-line);
   border-radius: 8px;
   background: var(--graph-node-bg);
-  color: #e7ecef;
+  color: var(--graph-text, #e8eeea);
   text-align: left;
   box-shadow: 0 10px 20px rgb(0 0 0 / 0.24);
   cursor: grab;
@@ -2036,7 +2036,7 @@ textarea:focus-visible {
 
 .workflow-graph-node.is-selected {
   border-color: var(--graph-accent);
-  box-shadow: 0 0 0 2px rgb(82 184 200 / 0.24), 0 10px 20px rgb(0 0 0 / 0.24);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--graph-accent) 28%, transparent), 0 10px 20px rgb(0 0 0 / 0.2);
 }
 
 .workflow-graph-node.is-disabled {
@@ -2080,7 +2080,7 @@ textarea:focus-visible {
 .workflow-graph-node__type,
 .workflow-graph-port,
 .workflow-graph-node-widget span {
-  color: #b5c0c6;
+  color: var(--graph-muted, #a9b5ad);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -2136,8 +2136,8 @@ textarea:focus-visible {
 
 .workflow-graph-port--input .workflow-graph-port__dot {
   left: 0;
-  border-color: #d5657b;
-  color: #d5657b;
+  border-color: var(--graph-input-port, #d5657b);
+  color: var(--graph-input-port, #d5657b);
 }
 
 .workflow-graph-port--output {
@@ -2148,8 +2148,8 @@ textarea:focus-visible {
 
 .workflow-graph-port--output .workflow-graph-port__dot {
   right: 0;
-  border-color: #69addf;
-  color: #69addf;
+  border-color: var(--graph-output-port, #69addf);
+  color: var(--graph-output-port, #69addf);
 }
 
 .workflow-graph-port.is-connected .workflow-graph-port__dot {
@@ -2159,16 +2159,16 @@ textarea:focus-visible {
 
 .workflow-graph-port.is-selected-endpoint .workflow-graph-port__dot,
 .workflow-graph-port.is-draft-anchor .workflow-graph-port__dot {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-accent, #168da0) 42%, transparent), 0 0 12px color-mix(in srgb, currentColor 68%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-accent, #10b981) 42%, transparent), 0 0 12px color-mix(in srgb, currentColor 68%, transparent);
 }
 
 .workflow-graph-port.is-draft-anchor .workflow-graph-port__dot {
-  background: var(--graph-accent, #168da0);
-  border-color: var(--graph-accent, #168da0);
+  background: var(--graph-accent, #10b981);
+  border-color: var(--graph-accent, #10b981);
 }
 
 .workflow-graph-port:hover {
-  color: #f5fbfd;
+  color: var(--graph-text-strong, #f6faf7);
 }
 
 .workflow-graph-port:hover .workflow-graph-port__dot {
@@ -2226,11 +2226,75 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
-.workflow-graph-node-widget input[type='checkbox'],
-.workflow-graph-parameter-field input[type='checkbox'] {
+.workflow-graph-checkbox {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
   width: 18px;
+  height: 18px;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.workflow-graph-node-widget > .workflow-graph-checkbox,
+.workflow-graph-parameter-field .workflow-graph-checkbox {
+  align-self: center;
   justify-self: end;
-  accent-color: var(--graph-accent, #168da0);
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.workflow-graph-checkbox__control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--graph-line, #4a554e);
+  border-radius: 4px;
+  color: transparent;
+  background: var(--graph-panel, #242925);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-text-strong) 3%, transparent);
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:hover + .workflow-graph-checkbox__control {
+  border-color: color-mix(in srgb, var(--graph-accent) 54%, var(--graph-line));
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:focus-visible + .workflow-graph-checkbox__control {
+  border-color: var(--graph-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--graph-accent) 24%, transparent);
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:checked + .workflow-graph-checkbox__control {
+  border-color: var(--graph-control-checked, var(--graph-accent));
+  color: var(--graph-control-on-checked, #ffffff);
+  background: var(--graph-control-checked, var(--graph-accent));
+  box-shadow: none;
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:disabled {
+  cursor: not-allowed;
+}
+
+.workflow-graph-checkbox > .workflow-graph-checkbox__input:disabled + .workflow-graph-checkbox__control {
+  opacity: 0.5;
 }
 
 .workflow-graph-node-widget small {
@@ -2294,9 +2358,9 @@ textarea:focus-visible {
 }
 
 .workflow-graph-node-widget__deployment button:hover:not(:disabled) {
-  border-color: var(--graph-accent, #168da0);
+  border-color: var(--graph-accent, #10b981);
   color: var(--graph-text-strong, #172228);
-  background: color-mix(in srgb, var(--graph-panel-soft, #eef3f5) 82%, var(--graph-accent, #168da0));
+  background: color-mix(in srgb, var(--graph-panel-soft, #eef3f5) 82%, var(--graph-accent, #10b981));
 }
 
 .workflow-graph-node-widget__deployment button:disabled {
@@ -2604,8 +2668,8 @@ textarea:focus-visible {
 }
 
 .workflow-graph-toolbar .ui-button--secondary.is-active {
-  color: #9ae2ec;
-  background: rgb(82 184 200 / 0.16);
+  color: color-mix(in srgb, var(--graph-accent, #10b981) 76%, var(--graph-text-strong));
+  background: color-mix(in srgb, var(--graph-accent, #10b981) 16%, transparent);
 }
 
 .workflow-graph-toolbar > .workflow-graph-toolbar__actions > .ui-button--primary {
@@ -2705,19 +2769,19 @@ textarea:focus-visible {
   position: absolute;
   min-width: 180px;
   min-height: 120px;
-  border: 2px solid color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 78%, transparent);
+  border: 2px solid color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 62%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 10%, transparent);
+  background: color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 7%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-text-strong) 5%, transparent);
   pointer-events: auto;
 }
 
 .workflow-graph-group.is-selected {
-  border-color: var(--workflow-graph-group-color, var(--am-graph-group-mint));
-  background: color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 16%, transparent);
+  border-color: var(--graph-accent);
+  background: color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 11%, transparent);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--graph-text-strong) 8%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--workflow-graph-group-color, var(--am-graph-group-mint)) 24%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--graph-accent) 22%, transparent);
 }
 
 .workflow-graph-group.is-disabled {
@@ -2785,13 +2849,13 @@ textarea:focus-visible {
 }
 
 .workflow-graph-group__lock.is-active {
-  color: var(--graph-text-strong);
-  background: var(--graph-panel-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-text-strong) 18%, var(--graph-line));
+  color: color-mix(in srgb, var(--graph-accent) 78%, var(--graph-text-strong));
+  background: color-mix(in srgb, var(--graph-accent) 12%, var(--graph-panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--graph-accent) 28%, var(--graph-line));
 }
 
 .workflow-graph-group__lock.is-active:hover {
-  background: color-mix(in srgb, var(--graph-text-strong) 12%, var(--graph-panel-soft));
+  background: color-mix(in srgb, var(--graph-accent) 18%, var(--graph-panel));
 }
 
 .workflow-graph-group__color-picker {
@@ -3066,13 +3130,6 @@ textarea:focus-visible {
   display: inline-flex;
   flex: 0 0 auto;
   cursor: pointer;
-}
-
-.workflow-graph-inspector-switch input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--graph-accent);
 }
 
 .workflow-graph-edge-summary {
@@ -3451,6 +3508,8 @@ textarea:focus-visible {
   --graph-link-hover: var(--am-graph-link-hover);
   --graph-link-selected: var(--am-graph-link-selected);
   --graph-accent: var(--am-graph-selected);
+  --graph-control-checked: var(--am-graph-control-checked);
+  --graph-control-on-checked: var(--am-graph-control-on-checked);
   --graph-input-port: var(--am-graph-input-port);
   --graph-output-port: var(--am-graph-output-port);
   --graph-grid-minor: var(--am-graph-grid-minor);
@@ -4186,10 +4245,6 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-}
-
-.workflow-graph-public-binding-editor__checkbox input {
-  accent-color: var(--graph-accent);
 }
 
 .workflow-graph-preview-hint {

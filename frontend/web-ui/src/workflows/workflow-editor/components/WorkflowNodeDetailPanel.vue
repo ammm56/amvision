@@ -11,8 +11,7 @@
         class="workflow-graph-inspector-switch"
         :title="t('workflowEditor.editor.enableNode')"
       >
-        <input
-          type="checkbox"
+        <WorkflowGraphCheckbox
           :aria-label="t('workflowEditor.editor.enableNode')"
           :checked="node.node.enabled !== false"
           @change="emit('updateEnabled', node, $event)"
@@ -26,6 +25,7 @@
 import { useTranslation } from '@/platform/i18n'
 
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
+import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 
 const { t } = useTranslation()
 

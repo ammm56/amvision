@@ -37,7 +37,11 @@
         />
       </label>
       <label v-if="binding.direction === 'input'" class="workflow-graph-public-binding-editor__checkbox">
-        <input type="checkbox" :checked="binding.required" @change="emit('update-required', binding, $event)" />
+        <WorkflowGraphCheckbox
+          :checked="binding.required"
+          :aria-label="t('workflowEditor.editor.requiredInput')"
+          @change="emit('update-required', binding, $event)"
+        />
         <span>{{ t('workflowEditor.editor.requiredInput') }}</span>
       </label>
       <Button variant="danger" type="button" @click="emit('delete-binding', binding)">
@@ -57,6 +61,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import type { FlowApplicationBinding } from '../types'
+import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 
 const { t } = useTranslation()
 

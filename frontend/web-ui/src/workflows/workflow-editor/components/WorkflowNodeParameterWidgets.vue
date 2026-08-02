@@ -39,11 +39,11 @@
           {{ t('workflowEditor.deploymentPicker.selectAction') }}
         </button>
       </div>
-      <input
+      <WorkflowGraphCheckbox
         v-else-if="isBoolean(field)"
-        type="checkbox"
         :checked="readBooleanValue(node, field)"
         :disabled="field.readonly"
+        :aria-label="readLabel(field)"
         @change="emit('update-checkbox', node, field, $event)"
       />
       <input
@@ -78,6 +78,7 @@ import { ListFilter } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import SelectField from '@/shared/ui/components/Select.vue'
+import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
 

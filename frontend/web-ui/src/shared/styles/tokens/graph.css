@@ -16,8 +16,10 @@
   --am-graph-grid-major: rgb(27 41 35 / 0.13);
   --am-graph-link: #d99018;
   --am-graph-link-hover: #b87300;
-  --am-graph-link-selected: #008cff;
   --am-graph-selected: var(--am-brand-primary-deep);
+  --am-graph-link-selected: var(--am-graph-selected);
+  --am-graph-control-checked: #087a56;
+  --am-graph-control-on-checked: #ffffff;
   --am-graph-input-port: #bd4865;
   --am-graph-output-port: #287fb8;
   --am-graph-control-port: #9a6b20;
@@ -41,8 +43,10 @@
   --am-graph-grid-major: rgb(255 255 255 / 0.075);
   --am-graph-link: #f2b84b;
   --am-graph-link-hover: #ffd166;
-  --am-graph-link-selected: #00a8e8;
   --am-graph-selected: var(--am-brand-primary);
+  --am-graph-link-selected: var(--am-graph-selected);
+  --am-graph-control-checked: var(--am-brand-primary);
+  --am-graph-control-on-checked: #101010;
   --am-graph-input-port: #d5657b;
   --am-graph-output-port: #69addf;
   --am-graph-control-port: #d4a84e;

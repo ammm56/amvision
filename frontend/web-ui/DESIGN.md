@@ -136,8 +136,10 @@ colors:
       grid-major: "rgba(27, 41, 35, 0.13)"
       link: "#d99018"
       link-hover: "#b87300"
-      link-selected: "#008cff"
+      link-selected: "#10b981"
       selected: "#10b981"
+      control-checked: "#087a56"
+      on-control-checked: "#ffffff"
       input-port: "#bd4865"
       output-port: "#287fb8"
       control-port: "#9a6b20"
@@ -159,8 +161,10 @@ colors:
       grid-major: "rgba(255, 255, 255, 0.075)"
       link: "#f2b84b"
       link-hover: "#ffd166"
-      link-selected: "#00a8e8"
+      link-selected: "#00d992"
       selected: "#00d992"
+      control-checked: "#00d992"
+      on-control-checked: "#101010"
       input-port: "#d5657b"
       output-port: "#69addf"
       control-port: "#d4a84e"
@@ -498,9 +502,10 @@ Workflow Node 需要区分“类别”“端口方向”“交互状态”和“
 
 - `node-category`：通过类别文字、图标或节点目录中的小标签区分 input-output、vision、model、transform、logic、integration、utility。画布中的普通节点使用统一的 graph node surface 和中性边框，不持续显示类别色边框，避免普通节点长期处于强调状态。
 - `input-port`、`output-port`、`control-port`：区分输入、输出和控制连接。若后续按数据类型着色，应在公开 schema 稳定后增加 data-type token，不能临时硬编码。
-- `selected`、`link-hover`、`link-selected`、`invalid`：分别表示节点或工具选中、连线 hover、连线选中和非法连接等交互状态。普通连线使用高能量金色，形成独立的数据流语义；选中连线使用 Zima Blue。连线色不复用品牌绿色、Semantic warning 或节点组选色。
+- `selected`、`link-hover`、`link-selected`、`invalid`：分别表示节点或工具选中、连线 hover、连线选中和非法连接等交互状态。普通连线使用高能量金色，形成独立的数据流语义；连线选中回到品牌绿色，和节点、节点组及画布工具的选中语义保持一致。普通连线色不复用 Semantic warning 或节点组选色。
+- `control-checked`、`on-control-checked`：用于画布节点、属性面板和应用边界中的勾选控件。Light 使用较深的绿色底和白色图标，Dark 使用品牌绿色底和深色图标；不能依赖浏览器原生 `accent-color`，避免不同平台出现黑色对勾或对比度漂移。
 - 节点运行状态继续引用 Semantic color：running 使用 brand primary，success 使用 semantic success，warning 使用 semantic warning，failed 使用 semantic danger，disabled 使用 neutral/text-disabled。
-- `group`：为节点组提供有限的可选 indicator 色。组颜色只用于标题条、边框或低透明度背景，不覆盖节点状态色。
+- `group`：为节点组提供有限的可选 indicator 色。组颜色只用于标题条、色块、边框或低透明度背景，不覆盖节点状态色；节点组被选中时仍使用品牌绿色外轮廓。
 
 视觉检测叠加层还需要独立的颜色体系，用于搜索区域、参考对象、检测结果、选中结果、拒绝结果和草稿。叠加颜色不得直接复用普通按钮色，并应在 Light、Dark、图像亮区和图像暗区上保持可区分性。
 
