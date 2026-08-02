@@ -484,6 +484,25 @@ describe('DeploymentOperationsPage', () => {
     expect(wrapper.find('.deployment-events-panel .section-heading .page-description').exists()).toBe(false)
   })
 
+  it('localizes runtime mode choices without changing their protocol values', async () => {
+    const wrapper = mount(DeploymentOperationsPage, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
+    await flushPromises()
+
+    const runtimeModeSelect = wrapper.find('.page-actions .ui-select')
+    expect(runtimeModeSelect.find('.ui-select__button').text()).toContain('同步')
+
+    await runtimeModeSelect.find('.ui-select__button').trigger('click')
+    await nextTick()
+    expect(runtimeModeSelect.findAll('.ui-select__option').map((item) => item.text())).toEqual([
+      '同步',
+      '异步',
+    ])
+  })
+
   it('renders deployment runtime health and dispatches runtime actions', async () => {
     const wrapper = mount(DeploymentOperationsPage, {
       global: {

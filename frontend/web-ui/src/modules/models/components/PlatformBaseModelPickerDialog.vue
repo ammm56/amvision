@@ -15,7 +15,7 @@
   >
     <template #list>
       <EmptyState
-        v-if="!loading && models.length === 0"
+        v-if="models.length === 0"
         :title="emptyTitle"
         :description="emptyDescription"
       />

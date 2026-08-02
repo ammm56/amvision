@@ -58,13 +58,18 @@
   margin-left: var(--am-space-xs);
 }
 
-.page-actions .segmented-field {
-  min-width: min(220px, 100%);
+.page-actions:has(.segmented-field) {
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
-.page-actions:has(.segmented-field) {
-  min-width: min(320px, 70vw);
-  flex-wrap: nowrap;
+.page-actions .segmented-field {
+  min-width: 0;
+}
+
+.page-actions .segmented-field .ui-select__button,
+.page-actions > .ui-button:not(.ui-button--sm) {
+  min-height: 40px;
 }
 
 .ui-button.is-loading > svg:not(.ui-button__spinner) {
@@ -136,6 +141,13 @@
     border-color var(--am-motion-fast) var(--am-ease-standard),
     background-color var(--am-motion-fast) var(--am-ease-standard),
     box-shadow var(--am-motion-fast) var(--am-ease-standard);
+}
+
+.field .ui-select__button,
+.field .ui-multi-select__button,
+.field-control-row .ui-select__button,
+.field-control-row .ui-multi-select__button {
+  min-height: 40px;
 }
 
 .field textarea {

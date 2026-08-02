@@ -24,7 +24,7 @@
           </Button>
         </div>
         <EmptyState
-          v-if="!loading && !errorMessage && deployments.length === 0"
+          v-if="!errorMessage && deployments.length === 0"
           :title="t('workflowEditor.deploymentPicker.emptyTitle')"
           :description="t('workflowEditor.deploymentPicker.emptyDescription', { taskType: taskTypeLabel })"
         />

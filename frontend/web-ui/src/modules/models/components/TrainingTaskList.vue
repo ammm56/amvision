@@ -4,7 +4,7 @@
       <h2>{{ t('modelOps.trainingHistoryTitle') }}</h2>
     </div>
     <EmptyState
-      v-if="!loading && trainingTasks.length === 0"
+      v-if="trainingTasks.length === 0"
       :title="t('modelOps.emptyTrainingTitle')"
       :description="t('modelOps.emptyTrainingDescription')"
     />
@@ -50,7 +50,6 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 defineProps<{
-  loading: boolean
   selectedTaskType: ModelTaskType
   trainingTasks: ModelTrainingTaskSummary[]
 }>()

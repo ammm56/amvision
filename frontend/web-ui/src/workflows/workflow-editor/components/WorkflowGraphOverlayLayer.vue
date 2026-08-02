@@ -60,7 +60,7 @@
     @close="emit('closeNodePicker')"
   />
 
-  <WorkflowCanvasEmptyState :loading="loading" :node-count="nodeCount" :is-new-app="isNewApp" />
+  <WorkflowCanvasEmptyState :node-count="nodeCount" />
 </template>
 
 <script setup lang="ts">
@@ -95,9 +95,7 @@ defineProps<{
   nodePickerTitle: string
   nodePickerRequiredPortDirection: 'input' | 'output' | null
   nodePickerRequiredPayloadTypeId: string | null
-  loading: boolean
   nodeCount: number
-  isNewApp: boolean
 }>()
 
 const emit = defineEmits<{

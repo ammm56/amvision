@@ -5,7 +5,7 @@
         <h2>{{ t('datasetOps.importHistoryTitle') }}</h2>
       </div>
     </div>
-    <EmptyState v-if="!loading && imports.length === 0" :title="t('datasetOps.emptyImportsTitle')" :description="t('datasetOps.emptyImportsDescription')" />
+    <EmptyState v-if="imports.length === 0" :title="t('datasetOps.emptyImportsTitle')" :description="t('datasetOps.emptyImportsDescription')" />
     <div v-else class="resource-table">
       <table>
         <thead>
@@ -45,7 +45,6 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   imports: DatasetImportSummary[]
-  loading: boolean
   statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 

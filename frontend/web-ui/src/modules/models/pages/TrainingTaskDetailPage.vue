@@ -153,7 +153,7 @@
       <div>
         <h2>{{ t('trainingDetail.outputsTitle') }}</h2>
       </div>
-      <EmptyState v-if="!loading && outputFiles.length === 0" :title="t('trainingDetail.emptyOutputsTitle')" :description="t('trainingDetail.emptyOutputsDescription')" />
+      <EmptyState v-if="outputFiles.length === 0" :title="t('trainingDetail.emptyOutputsTitle')" :description="t('trainingDetail.emptyOutputsDescription')" />
       <div v-else class="detail-layout">
         <div class="resource-table">
           <table>

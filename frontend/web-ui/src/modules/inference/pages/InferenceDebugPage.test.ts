@@ -155,6 +155,41 @@ describe('InferenceDebugPage', () => {
     expect(wrapper.find('.page-kicker').exists()).toBe(false)
   })
 
+  it('keeps empty content mounted while a task type refresh is pending', async () => {
+    let resolveRefresh!: (value: TaskDeploymentInstance[]) => void
+    const refreshPromise = new Promise<TaskDeploymentInstance[]>((resolve) => {
+      resolveRefresh = resolve
+    })
+    vi.mocked(listTaskDeployments)
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(refreshPromise)
+
+    const wrapper = mount(InferenceDebugPage, {
+      global: {
+        plugins: [pinia, i18n],
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+    })
+    await flushPromises()
+
+    const targetSection = wrapper.findAll('section.resource-section')[0]!
+    const emptyStateElement = targetSection.find('.empty-state').element
+    const taskTypeSelect = wrapper.find('.page-actions .ui-select')
+    await taskTypeSelect.find('.ui-select__button').trigger('click')
+    const classificationOption = taskTypeSelect.findAll('.ui-select__option')
+      .find((option) => option.text() === '图像分类')
+    expect(classificationOption, 'classification option exists').toBeTruthy()
+    await classificationOption!.trigger('click')
+
+    expect(targetSection.find('.empty-state').element).toBe(emptyStateElement)
+    expect(targetSection.find('.form-grid').exists()).toBe(false)
+
+    resolveRefresh([])
+    await flushPromises()
+
+    expect(targetSection.find('.empty-state').element).toBe(emptyStateElement)
+  })
+
   it('keeps the previous result mounted until the next inference completes', async () => {
     const firstResult = inferencePayload('request-1', 31.435)
     let resolveSecondResult!: (value: TaskInferencePayload) => void

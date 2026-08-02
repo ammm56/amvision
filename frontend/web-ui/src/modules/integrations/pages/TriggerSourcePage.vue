@@ -28,7 +28,7 @@
       </div>
 
       <EmptyState
-        v-if="!loading && runtimes.length === 0"
+        v-if="runtimes.length === 0"
         :title="t('triggerSources.emptyRuntimeTitle')"
         :description="t('triggerSources.emptyRuntimeDescription')"
       />
@@ -204,7 +204,7 @@
         <StatusBadge tone="neutral">{{ totalTriggerSourceCount }}</StatusBadge>
       </div>
       <EmptyState
-        v-if="!loading && triggerSources.length === 0"
+        v-if="triggerSources.length === 0"
         :title="t('triggerSources.emptyTitle')"
         :description="t('triggerSources.emptyDescription')"
       />

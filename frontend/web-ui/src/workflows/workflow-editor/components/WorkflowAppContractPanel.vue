@@ -2,7 +2,7 @@
   <div class="workflow-graph-app-contract">
     <div class="workflow-graph-panel__header workflow-graph-panel__header--compact">
       <h2>{{ t('workflowEditor.editor.applicationInputs') }}</h2>
-      <StatusBadge tone="info">{{ inputBindings.length }} / {{ outputBindings.length }}</StatusBadge>
+      <StatusBadge tone="neutral">{{ inputBindings.length }} / {{ outputBindings.length }}</StatusBadge>
     </div>
     <section class="workflow-graph-contract-section">
       <div class="workflow-graph-contract-actions">

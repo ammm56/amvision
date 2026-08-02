@@ -74,13 +74,11 @@
 
     <DatasetImportRecords
       :imports="imports"
-      :loading="loading"
       :status-tone="statusTone"
     />
 
     <DatasetExportRecords
       :exports="exports"
-      :loading="loading"
       :can-write-datasets="canWriteDatasets"
       :packaging-export-id="packagingExportId"
       :status-tone="statusTone"

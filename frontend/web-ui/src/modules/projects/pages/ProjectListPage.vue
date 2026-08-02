@@ -96,7 +96,7 @@
     </section>
 
     <EmptyState
-      v-if="!projectStore.loading && projectStore.projects.length === 0"
+      v-if="projectStore.projects.length === 0"
       :title="t('projects.emptyTitle')"
       :description="t('projects.emptyDescription')"
     >

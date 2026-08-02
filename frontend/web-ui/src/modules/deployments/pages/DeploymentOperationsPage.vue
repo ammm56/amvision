@@ -4,7 +4,7 @@
       <template #actions>
         <label class="segmented-field">
           <span>{{ t('deploymentOps.fields.runtimeMode') }}</span>
-          <SelectField :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
+          <SelectField fit-options :model-value="runtimeMode" :options="runtimeModeOptions" @update:model-value="setRuntimeMode" />
         </label>
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
@@ -259,9 +259,9 @@
           <div>
             <h2>{{ t('deploymentOps.listTitle') }}</h2>
           </div>
-          <StatusBadge tone="info">{{ deployments.length }}</StatusBadge>
+          <StatusBadge tone="neutral">{{ deployments.length }}</StatusBadge>
         </div>
-        <EmptyState v-if="!loading && deployments.length === 0" :title="t('deploymentOps.emptyTitle')" :description="t('deploymentOps.emptyDescription')" />
+        <EmptyState v-if="deployments.length === 0" :title="t('deploymentOps.emptyTitle')" :description="t('deploymentOps.emptyDescription')" />
         <div v-else class="deployment-instance-list">
           <article
             v-for="item in deployments"
@@ -476,7 +476,7 @@
             <h2>{{ t('deploymentOps.eventsTitle') }}</h2>
           </div>
         </div>
-        <EmptyState v-if="!eventsLoading && deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
+        <EmptyState v-if="deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
         <ol v-else class="event-timeline event-timeline--compact">
           <li v-for="event in sortedDeploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
             <time>{{ formatSystemDateTime(event.created_at) }}</time>
@@ -557,10 +557,10 @@ interface DeploymentRuntimeSnapshot {
   health: TaskDeploymentRuntimeHealth | null
 }
 
-const runtimeModeOptions = [
-  { label: 'sync', value: 'sync' },
-  { label: 'async', value: 'async' },
-]
+const runtimeModeOptions = computed(() => [
+  { label: t('deploymentOps.runtimeModes.sync'), value: 'sync' },
+  { label: t('deploymentOps.runtimeModes.async'), value: 'async' },
+])
 const RUNTIME_REFRESH_CONCURRENCY = 8
 const DEFAULT_KEEP_WARM_INTERVAL_SECONDS = 0.1
 

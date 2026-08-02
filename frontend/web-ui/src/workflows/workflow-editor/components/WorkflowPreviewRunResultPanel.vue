@@ -13,7 +13,7 @@
           <small>{{ createdAtText }}</small>
         </span>
         <div class="workflow-graph-preview-binding__tools">
-          <StatusBadge tone="info">{{ previewRun.node_records.length }} records</StatusBadge>
+          <StatusBadge tone="neutral">{{ previewRun.node_records.length }} records</StatusBadge>
         </div>
       </div>
       <div v-if="previewRun.state === 'failed'" class="workflow-graph-preview-result workflow-graph-preview-result--error">

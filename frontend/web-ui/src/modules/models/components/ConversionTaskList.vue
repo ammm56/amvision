@@ -4,7 +4,7 @@
       <h2>{{ t('modelOps.conversionHistoryTitle') }}</h2>
     </div>
     <EmptyState
-      v-if="!loading && conversionTasks.length === 0"
+      v-if="conversionTasks.length === 0"
       :title="t('modelOps.emptyConversionTitle')"
       :description="t('modelOps.emptyConversionDescription')"
     />
@@ -50,7 +50,6 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 
 defineProps<{
-  loading: boolean
   selectedTaskType: ModelTaskType
   conversionTasks: ModelConversionTaskSummary[]
 }>()

@@ -4,7 +4,7 @@
       <div>
         <h2>{{ title }}</h2>
       </div>
-      <StatusBadge tone="info">{{ bindings.length }}</StatusBadge>
+      <StatusBadge tone="neutral">{{ bindings.length }}</StatusBadge>
     </div>
     <EmptyState
       v-if="bindings.length === 0"

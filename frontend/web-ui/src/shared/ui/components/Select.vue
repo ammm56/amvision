@@ -1,5 +1,15 @@
 <template>
-  <div ref="rootElement" class="ui-select" :class="{ 'is-open': open, 'is-disabled': disabled }">
+  <div
+    ref="rootElement"
+    class="ui-select"
+    :class="{ 'ui-select--fit-options': fitOptions, 'is-open': open, 'is-disabled': disabled }"
+  >
+    <span v-if="fitOptions" class="ui-select__sizer" aria-hidden="true">
+      <span v-for="option in options" :key="`sizer-${optionKey(option.value)}`" class="ui-select__sizer-option">
+        <span>{{ option.label }}</span>
+        <small v-if="option.description">{{ option.description }}</small>
+      </span>
+    </span>
     <button
       class="ui-select__button"
       type="button"
@@ -55,10 +65,12 @@ const props = withDefaults(
     options: SelectOption[]
     placeholder?: string
     disabled?: boolean
+    fitOptions?: boolean
   }>(),
   {
     placeholder: '',
     disabled: false,
+    fitOptions: false,
   },
 )
 

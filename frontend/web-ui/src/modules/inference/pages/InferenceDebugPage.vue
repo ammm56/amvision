@@ -3,8 +3,8 @@
     <PageHeader :title="t('inferenceOps.title')">
       <template #actions>
         <label class="segmented-field">
-          <span>task_type</span>
-          <SelectField :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
+          <span>{{ t('inferenceOps.fields.taskType') }}</span>
+          <SelectField fit-options :model-value="selectedTaskType" :options="taskTypeOptions" @update:model-value="setTaskType" />
         </label>
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="refreshPage">
           <RefreshCw :size="16" />
@@ -19,7 +19,7 @@
       <div>
         <h2>{{ t('inferenceOps.targetTitle') }}</h2>
       </div>
-      <EmptyState v-if="!loading && deployments.length === 0" :title="t('inferenceOps.emptyDeploymentsTitle')" :description="t('inferenceOps.emptyDeploymentsDescription')" />
+      <EmptyState v-if="deployments.length === 0" :title="t('inferenceOps.emptyDeploymentsTitle')" :description="t('inferenceOps.emptyDeploymentsDescription')" />
       <div v-else class="form-grid">
         <label class="field field--wide">
           <span>{{ t('inferenceOps.fields.deploymentId') }}</span>
@@ -165,7 +165,7 @@
           {{ t('common.refresh') }}
         </Button>
       </div>
-      <EmptyState v-if="!inferenceTasksLoading && inferenceTasks.length === 0" :title="t('inferenceOps.emptyTasksTitle')" :description="t('inferenceOps.emptyTasksDescription')" />
+      <EmptyState v-if="inferenceTasks.length === 0" :title="t('inferenceOps.emptyTasksTitle')" :description="t('inferenceOps.emptyTasksDescription')" />
       <div v-else class="resource-table">
         <table>
           <thead>
@@ -276,13 +276,13 @@ const { t } = useI18n()
 
 type SelectValue = string | number | boolean | null
 
-const taskTypeOptions = [
-  { label: 'detection', value: 'detection' },
-  { label: 'classification', value: 'classification' },
-  { label: 'segmentation', value: 'segmentation' },
-  { label: 'pose', value: 'pose' },
-  { label: 'obb', value: 'obb' },
-]
+const taskTypeOptions = computed(() => [
+  { label: t('inferenceOps.taskTypes.detection'), value: 'detection' },
+  { label: t('inferenceOps.taskTypes.classification'), value: 'classification' },
+  { label: t('inferenceOps.taskTypes.segmentation'), value: 'segmentation' },
+  { label: t('inferenceOps.taskTypes.pose'), value: 'pose' },
+  { label: t('inferenceOps.taskTypes.obb'), value: 'obb' },
+])
 
 const deployments = ref<TaskDeploymentInstance[]>([])
 const selectedDeploymentId = ref('')

@@ -15,7 +15,7 @@
   >
     <template #list>
       <EmptyState
-        v-if="!loading && projectModels.length === 0"
+        v-if="projectModels.length === 0"
         :title="t('deploymentOps.sourcePicker.emptyModelsTitle')"
         :description="t('deploymentOps.sourcePicker.emptyModelsDescription')"
       />

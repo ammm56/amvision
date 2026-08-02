@@ -5,7 +5,7 @@
         <h2>{{ t('datasetOps.exportHistoryTitle') }}</h2>
       </div>
     </div>
-    <EmptyState v-if="!loading && exports.length === 0" :title="t('datasetOps.emptyExportsTitle')" :description="t('datasetOps.emptyExportsDescription')" />
+    <EmptyState v-if="exports.length === 0" :title="t('datasetOps.emptyExportsTitle')" :description="t('datasetOps.emptyExportsDescription')" />
     <div v-else class="resource-table">
       <table>
         <thead>
@@ -65,7 +65,6 @@ import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   exports: DatasetExportSummary[]
-  loading: boolean
   canWriteDatasets: boolean
   packagingExportId: string | null
   statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'

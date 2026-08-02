@@ -917,6 +917,28 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.ui-select--fit-options {
+  display: inline-grid;
+  width: max-content;
+  max-width: 100%;
+}
+
+.ui-select__sizer {
+  grid-area: 1 / 1;
+  display: grid;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ui-select__sizer-option {
+  display: grid;
+  gap: 2px;
+  padding: 7px 34px 7px 8px;
+  white-space: nowrap;
+}
+
 .ui-select__button {
   display: inline-flex;
   align-items: center;
@@ -930,6 +952,11 @@ textarea:focus-visible {
   color: var(--am-text);
   background: var(--am-input);
   cursor: pointer;
+}
+
+.ui-select--fit-options .ui-select__button {
+  grid-area: 1 / 1;
+  min-width: 100%;
 }
 
 .ui-select__button:disabled {
@@ -983,6 +1010,12 @@ textarea:focus-visible {
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.ui-select__option > span,
+.ui-select__option > small {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ui-select__option:hover,
@@ -1215,9 +1248,9 @@ textarea:focus-visible {
   max-width: 100%;
   min-height: 22px;
   gap: 6px;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border: 0;
-  border-radius: var(--am-radius-xs);
+  border-radius: var(--am-radius-pill);
   font-size: 12px;
   font-weight: 650;
   line-height: 18px;
@@ -1679,7 +1712,8 @@ textarea:focus-visible {
 .custom-node-catalog__table {
   max-height: calc(100vh - 220px);
   max-height: calc(100dvh - 220px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .custom-node-catalog__table th {

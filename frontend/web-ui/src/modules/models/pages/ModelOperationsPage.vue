@@ -86,13 +86,11 @@
     </div>
 
     <TrainingTaskList
-      :loading="loading"
       :selected-task-type="selectedTaskType"
       :training-tasks="trainingTasks"
     />
 
     <ConversionTaskList
-      :loading="loading"
       :selected-task-type="selectedTaskType"
       :conversion-tasks="conversionTasks"
     />

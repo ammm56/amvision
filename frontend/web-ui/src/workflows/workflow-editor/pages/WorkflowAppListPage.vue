@@ -43,7 +43,7 @@
       <div>
         <h2>{{ t('workflowEditor.applications.listTitle') }}</h2>
       </div>
-      <EmptyState v-if="!loading && workflowApps.length === 0" :title="t('workflowEditor.applications.emptyTitle')" :description="t('workflowEditor.applications.emptyDescription')" />
+      <EmptyState v-if="workflowApps.length === 0" :title="t('workflowEditor.applications.emptyTitle')" :description="t('workflowEditor.applications.emptyDescription')" />
       <div v-else class="resource-table">
         <table>
           <thead>

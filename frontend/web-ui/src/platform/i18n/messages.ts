@@ -425,6 +425,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyDescription: '从 ModelVersion 或 ModelBuild 创建部署实例后，记录会显示在这里。',
       emptyEventsTitle: '暂无部署事件',
       emptyEventsDescription: '启动、停止、预热、健康检查和推理调用事件会显示在这里。',
+      runtimeModes: {
+        sync: '同步',
+        async: '异步',
+      },
       source: {
         title: '部署来源模型',
         choose: '选择部署来源',
@@ -589,7 +593,15 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTasksTitle: '暂无异步推理任务',
       emptyTasksDescription: '提交异步推理任务后，最近结果会显示在这里。',
       filePickerDescription: '支持 JPG、PNG、BMP 等常见图片，可点击选择或拖拽到此处。',
+      taskTypes: {
+        detection: '目标检测',
+        classification: '图像分类',
+        segmentation: '图像分割',
+        pose: '姿态估计',
+        obb: '旋转框检测',
+      },
       fields: {
+        taskType: '任务类型',
         deploymentId: 'DeploymentInstance id',
         status: '状态',
         model: '模型',
@@ -1470,7 +1482,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         all: '全部',
       },
       sourceOptions: {
-        core: '平台节点',
+        core: '核心节点',
         custom: '自定义节点',
       },
       groups: {
@@ -2260,6 +2272,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyDescription: 'Deployment records will appear here after a ModelVersion or ModelBuild is published.',
       emptyEventsTitle: 'No deployment events',
       emptyEventsDescription: 'Start, stop, warmup, health check, and inference events will appear here.',
+      runtimeModes: {
+        sync: 'Synchronous',
+        async: 'Asynchronous',
+      },
       source: {
         title: 'Deployment Source Model',
         choose: 'Select Source',
@@ -2424,7 +2440,15 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTasksTitle: 'No async inference tasks',
       emptyTasksDescription: 'Recent results will appear here after an async inference task is submitted.',
       filePickerDescription: 'Supports common image formats such as JPG, PNG, and BMP. Click to choose or drag one here.',
+      taskTypes: {
+        detection: 'Detection',
+        classification: 'Classification',
+        segmentation: 'Segmentation',
+        pose: 'Pose estimation',
+        obb: 'Oriented bounding box',
+      },
       fields: {
+        taskType: 'Task type',
         deploymentId: 'DeploymentInstance id',
         status: 'Status',
         model: 'Model',
@@ -3306,7 +3330,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         all: 'All',
       },
       sourceOptions: {
-        core: 'Platform nodes',
+        core: 'Core nodes',
         custom: 'Custom nodes',
       },
       groups: {
@@ -4091,6 +4115,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyDescription: 'ModelVersion または ModelBuild からデプロイを作成すると、記録がここに表示されます。',
       emptyEventsTitle: 'デプロイイベントはありません',
       emptyEventsDescription: '開始、停止、warmup、health、推論呼び出しのイベントがここに表示されます。',
+      runtimeModes: {
+        sync: '同期',
+        async: '非同期',
+      },
       source: {
         title: 'デプロイ元モデル',
         choose: 'デプロイ元を選択',
@@ -4255,7 +4283,15 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTasksTitle: 'async 推論タスクはありません',
       emptyTasksDescription: 'async 推論タスクを送信すると、最近の結果がここに表示されます。',
       filePickerDescription: 'JPG、PNG、BMP など一般的な画像形式に対応します。クリックして選択するか、ここへドラッグしてください。',
+      taskTypes: {
+        detection: '物体検出',
+        classification: '画像分類',
+        segmentation: '画像セグメンテーション',
+        pose: '姿勢推定',
+        obb: '回転矩形検出',
+      },
       fields: {
+        taskType: 'タスク種別',
         deploymentId: 'DeploymentInstance id',
         status: '状態',
         model: 'モデル',
@@ -4997,7 +5033,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         all: 'すべて',
       },
       sourceOptions: {
-        core: 'プラットフォームノード',
+        core: 'コアノード',
         custom: 'カスタムノード',
       },
       groups: {
@@ -5782,6 +5818,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyDescription: 'ModelVersion 또는 ModelBuild 에서 배포를 만들면 기록이 여기에 표시됩니다.',
       emptyEventsTitle: '배포 이벤트 없음',
       emptyEventsDescription: '시작, 중지, warmup, health, 추론 호출 이벤트가 여기에 표시됩니다.',
+      runtimeModes: {
+        sync: '동기',
+        async: '비동기',
+      },
       source: {
         title: '배포 소스 모델',
         choose: '배포 소스 선택',
@@ -5946,7 +5986,15 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTasksTitle: 'async 추론 작업 없음',
       emptyTasksDescription: 'async 추론 작업을 제출하면 최근 결과가 여기에 표시됩니다.',
       filePickerDescription: 'JPG, PNG, BMP 등 일반 이미지 형식을 지원합니다. 클릭해서 선택하거나 여기로 드래그하세요.',
+      taskTypes: {
+        detection: '객체 감지',
+        classification: '이미지 분류',
+        segmentation: '이미지 분할',
+        pose: '자세 추정',
+        obb: '회전 경계 상자 감지',
+      },
       fields: {
+        taskType: '작업 유형',
         deploymentId: 'DeploymentInstance id',
         status: '상태',
         model: '모델',
@@ -6688,7 +6736,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         all: '전체',
       },
       sourceOptions: {
-        core: '플랫폼 노드',
+        core: '코어 노드',
         custom: '커스텀 노드',
       },
       groups: {

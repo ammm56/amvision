@@ -12,7 +12,7 @@
     <InlineError :message="taskStore.error" />
 
     <EmptyState
-      v-if="!taskStore.loading && taskStore.tasks.length === 0"
+      v-if="taskStore.tasks.length === 0"
       :title="t('tasks.emptyTitle')"
       :description="t('tasks.emptyDescription')"
     />

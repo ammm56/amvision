@@ -41,7 +41,7 @@
           </header>
 
           <EmptyState
-            v-if="!loading && exports.length === 0"
+            v-if="exports.length === 0"
             :title="emptyTitle"
             :description="emptyDescription"
           />

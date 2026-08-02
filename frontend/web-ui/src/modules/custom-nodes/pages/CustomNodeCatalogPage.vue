@@ -73,7 +73,7 @@
         </div>
 
         <EmptyState
-          v-if="!loading && filteredNodes.length === 0"
+          v-if="filteredNodes.length === 0"
           :title="t('customNodes.emptyTitle')"
           :description="t('customNodes.emptyDescription')"
         />
