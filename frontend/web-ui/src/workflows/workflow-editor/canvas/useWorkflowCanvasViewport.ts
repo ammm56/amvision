@@ -33,7 +33,7 @@ interface WorkflowCanvasViewportOptions<NodeView extends WorkflowCanvasViewportN
 const minimapWidth = 184
 const minimapHeight = 116
 const minimapPadding = 10
-const minViewportScale = 0.35
+const minViewportScale = 0.15
 const maxViewportScale = 2.4
 
 export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewportNodeView, BoundaryView extends WorkflowCanvasViewportBoundaryView>(

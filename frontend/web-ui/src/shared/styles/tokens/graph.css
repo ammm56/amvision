@@ -14,8 +14,9 @@
   --am-graph-text-muted: #607068;
   --am-graph-grid-minor: rgb(27 41 35 / 0.07);
   --am-graph-grid-major: rgb(27 41 35 / 0.13);
-  --am-graph-link: #a16d36;
-  --am-graph-link-hover: #7d522a;
+  --am-graph-link: #d99018;
+  --am-graph-link-hover: #b87300;
+  --am-graph-link-selected: #008cff;
   --am-graph-selected: var(--am-brand-primary-deep);
   --am-graph-input-port: #bd4865;
   --am-graph-output-port: #287fb8;
@@ -38,8 +39,9 @@
   --am-graph-text-muted: #a9b5ad;
   --am-graph-grid-minor: rgb(255 255 255 / 0.035);
   --am-graph-grid-major: rgb(255 255 255 / 0.075);
-  --am-graph-link: #d1a05d;
-  --am-graph-link-hover: #e7ba78;
+  --am-graph-link: #f2b84b;
+  --am-graph-link-hover: #ffd166;
+  --am-graph-link-selected: #00a8e8;
   --am-graph-selected: var(--am-brand-primary);
   --am-graph-input-port: #d5657b;
   --am-graph-output-port: #69addf;
@@ -55,10 +57,10 @@
   --am-node-category-logic: #477fd1;
   --am-node-category-integration: #c9653d;
   --am-node-category-utility: #6f7d75;
-  --am-graph-group-teal: #2a9d8f;
-  --am-graph-group-blue: #3f7fd1;
-  --am-graph-group-violet: #8169c9;
-  --am-graph-group-amber: #b8792d;
-  --am-graph-group-orange: #c9653d;
-  --am-graph-group-rose: #bd5c78;
+  --am-graph-group-mint: #10b981;
+  --am-graph-group-cyan: #00b8d9;
+  --am-graph-group-azure: #2f80ed;
+  --am-graph-group-violet: #7c5cfc;
+  --am-graph-group-magenta: #d946ef;
+  --am-graph-group-amber: #f5a524;
 }

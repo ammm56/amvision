@@ -134,8 +134,9 @@ colors:
       text-muted: "#607068"
       grid-minor: "rgba(27, 41, 35, 0.07)"
       grid-major: "rgba(27, 41, 35, 0.13)"
-      link: "#a16d36"
-      link-hover: "#7d522a"
+      link: "#d99018"
+      link-hover: "#b87300"
+      link-selected: "#008cff"
       selected: "#10b981"
       input-port: "#bd4865"
       output-port: "#287fb8"
@@ -156,8 +157,9 @@ colors:
       text-muted: "#a9b5ad"
       grid-minor: "rgba(255, 255, 255, 0.035)"
       grid-major: "rgba(255, 255, 255, 0.075)"
-      link: "#d1a05d"
-      link-hover: "#e7ba78"
+      link: "#f2b84b"
+      link-hover: "#ffd166"
+      link-selected: "#00a8e8"
       selected: "#00d992"
       input-port: "#d5657b"
       output-port: "#69addf"
@@ -172,12 +174,12 @@ colors:
       integration: "#c9653d"
       utility: "#6f7d75"
     group:
-      teal: "#2a9d8f"
-      blue: "#3f7fd1"
-      violet: "#8169c9"
-      amber: "#b8792d"
-      orange: "#c9653d"
-      rose: "#bd5c78"
+      mint: "#10b981"
+      cyan: "#00b8d9"
+      azure: "#2f80ed"
+      violet: "#7c5cfc"
+      magenta: "#d946ef"
+      amber: "#f5a524"
 
 typography:
   display-xl:
@@ -496,7 +498,7 @@ Workflow Node 需要区分“类别”“端口方向”“交互状态”和“
 
 - `node-category`：通过类别文字、图标或节点目录中的小标签区分 input-output、vision、model、transform、logic、integration、utility。画布中的普通节点使用统一的 graph node surface 和中性边框，不持续显示类别色边框，避免普通节点长期处于强调状态。
 - `input-port`、`output-port`、`control-port`：区分输入、输出和控制连接。若后续按数据类型着色，应在公开 schema 稳定后增加 data-type token，不能临时硬编码。
-- `selected`、`link-hover`、`invalid`：表示选中、可连接和非法连接等交互状态。
+- `selected`、`link-hover`、`link-selected`、`invalid`：分别表示节点或工具选中、连线 hover、连线选中和非法连接等交互状态。普通连线使用高能量金色，形成独立的数据流语义；选中连线使用 Zima Blue。连线色不复用品牌绿色、Semantic warning 或节点组选色。
 - 节点运行状态继续引用 Semantic color：running 使用 brand primary，success 使用 semantic success，warning 使用 semantic warning，failed 使用 semantic danger，disabled 使用 neutral/text-disabled。
 - `group`：为节点组提供有限的可选 indicator 色。组颜色只用于标题条、边框或低透明度背景，不覆盖节点状态色。
 
@@ -714,6 +716,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 ### Workflow 画布导航
 
 - 大型 Workflow 在首次载入和“定位全部节点”时同时计算缩放比例与中心位置，不能只改变画布偏移。
+- 画布缩放范围为 15%–240%。缩放按钮、滚轮缩放和“定位全部节点”必须共享同一范围，不能在不同入口产生不同边界。
 - 画布右下角使用统一的 Navigation Dock：Minimap 位于上方，紧凑 viewport controls 位于下方，二者与属性面板使用相同的右侧基准并保持 8 px 间距。
 - viewport controls 提供缩小、当前比例、放大、定位全部节点和 Minimap 开关；Minimap 隐藏后只保留 controls。
 - 当前比例按钮恢复到 100% 和初始位置；缩放以可见画布中心为锚点，滚轮缩放仍以指针位置为锚点。

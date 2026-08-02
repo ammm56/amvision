@@ -122,6 +122,7 @@ import { useTranslation } from '@/platform/i18n'
 
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
 import type { WorkflowGraphGroupState } from '../graph/useWorkflowGraphGroups'
+import { defaultWorkflowGraphGroupColor, workflowGraphGroupColors } from '../graph/workflowGraphPalette'
 
 const { t } = useTranslation()
 const props = defineProps<{
@@ -146,8 +147,8 @@ const editingGroupId = ref<string | null>(null)
 const nameDraft = ref('')
 const nameInputs = new Map<string, HTMLInputElement>()
 const colorPickerGroupId = ref<string | null>(null)
-const defaultGroupColor = '#2a9d8f'
-const groupColorOptions = ['#2a9d8f', '#3f7fd1', '#8169c9', '#b8792d', '#c9653d', '#bd5c78']
+const defaultGroupColor = defaultWorkflowGraphGroupColor
+const groupColorOptions = workflowGraphGroupColors
 
 function groupStyle(group: WorkflowGraphGroup): Record<string, string> {
   return rectStyle(group.rect, readGroupColor(group))

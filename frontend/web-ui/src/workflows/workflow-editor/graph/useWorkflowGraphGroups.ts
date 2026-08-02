@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
+import { defaultWorkflowGraphGroupColor } from './workflowGraphPalette'
 
 export type WorkflowGraphGroupState = 'enabled' | 'disabled' | 'mixed' | 'empty'
 
@@ -52,7 +53,6 @@ export interface WorkflowGraphGroupsOptions<NodeView extends WorkflowGraphGroupN
 
 const minimumGroupWidth = 180
 const minimumGroupHeight = 120
-const defaultGroupColor = '#2a9d8f'
 
 export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeView>(
   options: WorkflowGraphGroupsOptions<NodeView>,
@@ -329,7 +329,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
       },
       member_node_ids: [],
       membership_policy: 'full-containment',
-      color: defaultGroupColor,
+      color: defaultWorkflowGraphGroupColor,
       collapsed: false,
       locked: false,
       metadata: {},

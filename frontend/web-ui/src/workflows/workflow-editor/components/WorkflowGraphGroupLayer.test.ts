@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import type { WorkflowGraphGroup } from '../types'
+import { workflowGraphGroupColors } from '../graph/workflowGraphPalette'
 import WorkflowGraphGroupLayer from './WorkflowGraphGroupLayer.vue'
 
 function createGroup(locked: boolean): WorkflowGraphGroup {
@@ -74,5 +75,24 @@ describe('WorkflowGraphGroupLayer', () => {
     expect(wrapper.emitted('toggleGroupLocked')?.[0]).toEqual([group])
     wrapper.unmount()
     host.remove()
+  })
+
+  it('提供统一的未来感节点组颜色选项', async () => {
+    const wrapper = mount(WorkflowGraphGroupLayer, {
+      props: {
+        groups: [createGroup(false)],
+        selectedGroupId: null,
+        draftRect: null,
+        readGroupState: () => 'enabled',
+      },
+    })
+
+    await wrapper.get('.workflow-graph-group__color-button').trigger('click')
+
+    const swatches = wrapper.findAll('.workflow-graph-group__swatch')
+    expect(swatches).toHaveLength(workflowGraphGroupColors.length)
+    expect(swatches.map((swatch) => swatch.attributes('style'))).toEqual(
+      workflowGraphGroupColors.map((color) => `--workflow-graph-group-swatch-color: ${color};`),
+    )
   })
 })

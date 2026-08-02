@@ -5,6 +5,8 @@
       :key="`${link.edgeId}-hit-area`"
       class="workflow-graph-link-hit-area"
       :d="linkPath(link)"
+      @mouseenter="hoveredEdgeId = link.edgeId"
+      @mouseleave="clearHoveredLink(link.edgeId)"
       @click.stop="emit('selectLink', link)"
       @contextmenu.prevent.stop="emit('openLinkContextMenu', $event, link)"
     />
@@ -12,8 +14,14 @@
       v-for="link in links"
       :key="link.edgeId"
       class="workflow-graph-link"
-      :class="{ 'is-selected': isLinkSelected(link), 'workflow-graph-link--boundary': link.linkKind !== 'edge' }"
+      :class="{
+        'is-hovered': hoveredEdgeId === link.edgeId,
+        'is-selected': isLinkSelected(link),
+        'workflow-graph-link--boundary': link.linkKind !== 'edge',
+      }"
       :d="linkPath(link)"
+      @mouseenter="hoveredEdgeId = link.edgeId"
+      @mouseleave="clearHoveredLink(link.edgeId)"
       @click.stop="emit('selectLink', link)"
       @contextmenu.prevent.stop="emit('openLinkContextMenu', $event, link)"
     />
@@ -25,6 +33,8 @@
       :cx="marker.x"
       :cy="marker.y"
       r="4.5"
+      @mouseenter="hoveredEdgeId = marker.edgeId"
+      @mouseleave="clearHoveredLink(marker.edgeId)"
       @click.stop="emit('selectLink', marker.link)"
       @contextmenu.prevent.stop="emit('openLinkContextMenu', $event, marker.link)"
     />
@@ -44,12 +54,19 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+
 import { useTranslation } from '@/platform/i18n'
 
 import type { WorkflowEdgeHandleView } from '../canvas/useWorkflowEdgeHandles'
 import type { WorkflowGraphLinkView } from '../geometry/useWorkflowGraphGeometry'
 
 const { t } = useTranslation()
+const hoveredEdgeId = ref<string | null>(null)
+
+function clearHoveredLink(edgeId: string): void {
+  if (hoveredEdgeId.value === edgeId) hoveredEdgeId.value = null
+}
 
 defineProps<{
   links: WorkflowGraphLinkView[]

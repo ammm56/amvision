@@ -68,4 +68,53 @@ describe('useWorkflowCanvasViewport', () => {
     viewport.resetView()
     expect(viewport.viewportScale.value).toBe(1)
   })
+
+  it('连续缩小时不低于 15%', () => {
+    const canvasRef = ref({
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLElement)
+    const viewport = useWorkflowCanvasViewport({
+      canvasRef,
+      graphNodes: ref<TestNode[]>([{ id: 'node-1', x: 0, y: 0, width: 200, height: 100 }]),
+      readBoundaryNodes: () => [],
+      readNodeId: (node) => node.id,
+      readNodeHeight: (node) => node.height,
+      readBoundaryHeight: () => 0,
+      selectNode: vi.fn(),
+      shouldIgnoreWheelTarget: () => false,
+      clearTransientUi: vi.fn(),
+    })
+
+    viewport.updateStageSize()
+    for (let index = 0; index < 24; index += 1) viewport.zoomOut()
+
+    expect(viewport.viewportScale.value).toBeCloseTo(0.15)
+    expect(viewport.viewportScalePercent.value).toBe(15)
+  })
+
+  it('定位超大流程时将缩放限制在 15%', () => {
+    const canvasRef = ref({
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLElement)
+    const viewport = useWorkflowCanvasViewport({
+      canvasRef,
+      graphNodes: ref<TestNode[]>([
+        { id: 'node-1', x: 0, y: 0, width: 200, height: 100 },
+        { id: 'node-2', x: 12000, y: 8000, width: 200, height: 100 },
+      ]),
+      readBoundaryNodes: () => [],
+      readNodeId: (node) => node.id,
+      readNodeHeight: (node) => node.height,
+      readBoundaryHeight: () => 0,
+      selectNode: vi.fn(),
+      shouldIgnoreWheelTarget: () => false,
+      clearTransientUi: vi.fn(),
+    })
+
+    viewport.updateStageSize()
+    viewport.fitView()
+
+    expect(viewport.viewportScale.value).toBeCloseTo(0.15)
+    expect(viewport.viewportScalePercent.value).toBe(15)
+  })
 })
