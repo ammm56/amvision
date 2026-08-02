@@ -6,6 +6,6 @@ export const settingsRoutes: RouteRecordRaw[] = [
   {
     path: '/settings',
     component: SettingsDiagnosticsPage,
-    meta: { requiredScopes: ['auth:read'] },
+    meta: { requiredScopes: ['auth:read'], fullBleed: true },
   },
 ]

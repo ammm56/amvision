@@ -2,7 +2,7 @@
   <main class="workbench-shell" :class="{ 'workbench-shell--sidebar-collapsed': sidebarCollapsed }">
     <AppSidebar :collapsed="sidebarCollapsed" @toggle-collapsed="toggleSidebarCollapsed" />
     <section class="workbench-shell__main">
-      <div class="workbench-shell__content" :class="{ 'workbench-shell__content--full-bleed': isGraphWorkbench }">
+      <div class="workbench-shell__content" :class="{ 'workbench-shell__content--full-bleed': isFullBleed }">
         <slot />
       </div>
     </section>
@@ -28,7 +28,7 @@ const sidebarCollapsed = ref(readStorageValue(SIDEBAR_COLLAPSED_STORAGE_KEY, 'lo
 let sidebarAutoCollapseMedia: MediaQueryList | null = null
 let removeSidebarAutoCollapseListener: (() => void) | null = null
 
-const isGraphWorkbench = computed(() => route.meta.graphWorkbench === true)
+const isFullBleed = computed(() => route.meta.graphWorkbench === true || route.meta.fullBleed === true)
 
 function setSidebarCollapsed(collapsed: boolean): void {
   sidebarCollapsed.value = collapsed

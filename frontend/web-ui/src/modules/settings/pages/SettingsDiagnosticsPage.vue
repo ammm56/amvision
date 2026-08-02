@@ -1,7 +1,115 @@
 <template>
-  <section class="page-stack settings-page">
-    <PageHeader :title="t('settingsDiagnostics.title')">
-      <template #actions>
+  <section class="settings-workspace">
+    <aside class="settings-workspace__sidebar">
+      <div class="settings-workspace__sidebar-title">{{ t('settingsDiagnostics.title') }}</div>
+      <nav class="settings-workspace-nav" :aria-label="t('settingsDiagnostics.title')">
+        <button
+          type="button"
+          class="settings-workspace-nav__item"
+          :class="{ 'is-active': activeCategory === 'preferences' }"
+          @click="selectCategory('preferences')"
+        >
+          <Settings2 :size="16" />
+          <span>{{ t('settingsDiagnostics.tabs.preferences') }}</span>
+        </button>
+        <button
+          type="button"
+          class="settings-workspace-nav__item"
+          :class="{ 'is-active': activeCategory === 'services' }"
+          @click="selectCategory('services')"
+        >
+          <ServerCog :size="16" />
+          <span>{{ t('settingsDiagnostics.tabs.services') }}</span>
+        </button>
+
+        <section class="settings-workspace-nav__group">
+          <div class="settings-workspace-nav__group-title">
+            <HardDrive :size="15" />
+            <span>{{ t('settingsDiagnostics.tabs.system') }}</span>
+          </div>
+          <button
+            v-for="section in sections"
+            :key="section.id"
+            type="button"
+            class="settings-workspace-nav__item settings-workspace-nav__item--nested"
+            :class="{ 'is-active': activeCategory === 'system' && activeSystemSection === section.id }"
+            @click="selectSystemSection(section.id)"
+          >
+            <component :is="section.icon" :size="16" />
+            <span>{{ section.label }}</span>
+          </button>
+        </section>
+
+        <section class="settings-workspace-nav__group">
+          <div class="settings-workspace-nav__group-title">
+            <ShieldCheck :size="15" />
+            <span>{{ t('settingsDiagnostics.tabs.security') }}</span>
+          </div>
+          <button
+            v-for="section in accessSections"
+            :key="section.id"
+            type="button"
+            class="settings-workspace-nav__item settings-workspace-nav__item--nested"
+            :class="{ 'is-active': activeCategory === 'security' && activeAccessSection === section.id }"
+            @click="selectAccessSection(section.id)"
+          >
+            <component :is="section.icon" :size="16" />
+            <span>{{ section.label }}</span>
+          </button>
+        </section>
+      </nav>
+    </aside>
+
+    <div class="settings-workspace__content">
+      <PageHeader class="settings-mobile-header" :title="t('settingsDiagnostics.title')">
+        <template v-if="showDiagnosticsRefresh" #actions>
+          <div class="settings-refresh-control">
+            <span v-if="diagnostics?.generated_at" class="settings-refresh-control__time">
+              {{ formatSystemDateTime(diagnostics.generated_at) }}
+            </span>
+            <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
+              <RefreshCw :size="16" />
+              {{ t('common.refresh') }}
+            </Button>
+          </div>
+        </template>
+      </PageHeader>
+
+      <div class="settings-mobile-navigation">
+        <TabList
+          class="settings-diagnostics__tabs"
+          :model-value="activeCategory"
+          :tabs="categoryTabs"
+          :label="t('settingsDiagnostics.title')"
+          @update:model-value="selectCategory"
+        />
+        <nav v-if="activeCategory === 'system'" class="settings-mobile-subnav" :aria-label="t('settingsDiagnostics.tabs.system')">
+          <button
+            v-for="section in sections"
+            :key="section.id"
+            type="button"
+            :class="{ 'is-active': activeSystemSection === section.id }"
+            @click="selectSystemSection(section.id)"
+          >
+            <component :is="section.icon" :size="16" />
+            <span>{{ section.label }}</span>
+          </button>
+        </nav>
+        <nav v-else-if="activeCategory === 'security'" class="settings-mobile-subnav" :aria-label="t('settingsDiagnostics.tabs.security')">
+          <button
+            v-for="section in accessSections"
+            :key="section.id"
+            type="button"
+            :class="{ 'is-active': activeAccessSection === section.id }"
+            @click="selectAccessSection(section.id)"
+          >
+            <component :is="section.icon" :size="16" />
+            <span>{{ section.label }}</span>
+          </button>
+        </nav>
+      </div>
+
+      <div v-if="showDiagnosticsRefresh" class="settings-desktop-refresh">
         <div class="settings-refresh-control">
           <span v-if="diagnostics?.generated_at" class="settings-refresh-control__time">
             {{ formatSystemDateTime(diagnostics.generated_at) }}
@@ -11,18 +119,10 @@
             {{ t('common.refresh') }}
           </Button>
         </div>
-      </template>
-    </PageHeader>
+      </div>
 
-    <InlineError :message="errorMessage" />
-
-    <TabList
-      class="settings-diagnostics__tabs"
-      :model-value="activeCategory"
-      :tabs="categoryTabs"
-      :label="t('settingsDiagnostics.title')"
-      @update:model-value="selectCategory"
-    />
+      <section class="page-stack settings-page">
+        <InlineError :message="errorMessage" />
 
     <section v-if="activeCategory === 'preferences'" class="settings-panel settings-preferences-panel">
       <header class="settings-panel__heading">
@@ -85,20 +185,7 @@
       </section>
     </section>
 
-    <section v-else-if="activeCategory === 'system'" class="settings-diagnostic-layout">
-      <nav class="settings-section-nav" :aria-label="t('settingsDiagnostics.tabs.system')">
-        <button
-          v-for="section in sections"
-          :key="section.id"
-          type="button"
-          :class="{ 'is-active': activeSystemSection === section.id }"
-          @click="selectSystemSection(section.id)"
-        >
-          <component :is="section.icon" :size="16" />
-          <span>{{ section.label }}</span>
-        </button>
-      </nav>
-
+        <section v-else-if="activeCategory === 'system'" class="settings-category-panel">
       <section class="settings-panel settings-diagnostic-content">
         <template v-if="activeSystemSection === 'about'">
           <header class="settings-panel__heading">
@@ -183,21 +270,7 @@
       </section>
     </section>
 
-    <section v-else class="settings-diagnostic-layout">
-      <nav class="settings-section-nav" :aria-label="t('settingsDiagnostics.tabs.security')">
-        <button
-          v-for="section in accessSections"
-          :key="section.id"
-          type="button"
-          :class="{ 'is-active': activeAccessSection === section.id }"
-          @click="selectAccessSection(section.id)"
-        >
-          <component :is="section.icon" :size="16" />
-          <span>{{ section.label }}</span>
-        </button>
-      </nav>
-
-      <section class="settings-category-panel">
+        <section v-else class="settings-category-panel">
         <template v-if="activeAccessSection === 'session'">
           <section class="settings-panel">
             <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.security') }}</h2></header>
@@ -251,9 +324,10 @@
           </section>
         </template>
 
-        <SettingsAccountsPanel v-else />
+          <SettingsAccountsPanel v-else />
+        </section>
       </section>
-    </section>
+    </div>
   </section>
 </template>
 
@@ -354,6 +428,11 @@ const accessSections = computed(() => [
   { id: 'session', label: t('settingsDiagnostics.sections.security'), icon: ShieldCheck },
   { id: 'accounts', label: t('settingsDiagnostics.sections.accounts'), icon: UsersRound },
 ])
+const showDiagnosticsRefresh = computed(() =>
+  activeCategory.value === 'services'
+  || activeCategory.value === 'system'
+  || (activeCategory.value === 'security' && activeAccessSection.value === 'session'),
+)
 
 const about = computed(() => diagnostics.value?.about ?? {})
 const system = computed(() => diagnostics.value?.system ?? {})
@@ -432,12 +511,14 @@ watch(
 )
 
 function selectSystemSection(sectionId: SystemSectionId): void {
+  activeCategory.value = 'system'
   activeSystemSection.value = sectionId
   void replaceSettingsLocation()
 }
 
 function selectAccessSection(sectionId: string): void {
   if (sectionId !== 'session' && sectionId !== 'accounts') return
+  activeCategory.value = 'security'
   activeAccessSection.value = sectionId
   void replaceSettingsLocation()
 }
