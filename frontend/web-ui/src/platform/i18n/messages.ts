@@ -1597,9 +1597,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTokens: '当前用户暂无长期 token。',
       tabs: {
         preferences: '偏好',
-        services: '服务',
-        system: '系统',
-        security: '安全',
+        services: '运行状态',
+        system: '系统诊断',
+        security: '访问控制',
         accounts: '账号',
       },
       sections: {
@@ -3445,9 +3445,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTokens: 'No long-lived tokens for the selected user.',
       tabs: {
         preferences: 'Preferences',
-        services: 'Services',
-        system: 'System',
-        security: 'Security',
+        services: 'Runtime Status',
+        system: 'System Diagnostics',
+        security: 'Access Control',
         accounts: 'Accounts',
       },
       sections: {
@@ -5148,9 +5148,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTokens: '選択中ユーザーに long-lived token はありません。',
       tabs: {
         preferences: '設定',
-        services: 'サービス',
-        system: 'システム',
-        security: 'セキュリティ',
+        services: '稼働状態',
+        system: 'システム診断',
+        security: 'アクセス制御',
         accounts: 'アカウント',
       },
       sections: {
@@ -6851,9 +6851,9 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       emptyTokens: '선택한 사용자에 long-lived token 이 없습니다.',
       tabs: {
         preferences: '기본 설정',
-        services: '서비스',
-        system: '시스템',
-        security: '보안',
+        services: '실행 상태',
+        system: '시스템 진단',
+        security: '접근 제어',
         accounts: '계정',
       },
       sections: {

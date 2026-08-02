@@ -1,149 +1,67 @@
 <template>
-  <section class="settings-category-panel">
-    <section class="resource-section diagnostic-section">
-      <div class="section-heading">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.accounts') }}</h2>
-        </div>
-        <Button variant="secondary" :disabled="usersLoading" @click="loadUsers">
+  <section class="settings-panel settings-accounts-panel">
+    <header class="settings-panel__heading">
+      <div>
+        <h2>{{ t('settingsDiagnostics.sections.accounts') }}</h2>
+      </div>
+      <div class="settings-panel__actions">
+        <Button variant="secondary" :disabled="usersLoading" :loading="usersLoading" @click="loadUsers">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
+        <Button variant="primary" :disabled="!canWrite" @click="showCreateUser = true">
+          <UserPlus :size="16" />
+          {{ t('settingsDiagnostics.actions.createUser') }}
+        </Button>
       </div>
-      <InlineError :message="errorMessage" />
-      <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
+    </header>
 
-      <div class="form-grid settings-account-form">
-        <label class="field">
-          <span>{{ t('settingsDiagnostics.fields.username') }}</span>
-          <input v-model.trim="createUserForm.username" autocomplete="off" />
-        </label>
-        <label class="field">
-          <span>{{ t('settingsDiagnostics.fields.displayName') }}</span>
-          <input v-model.trim="createUserForm.displayName" autocomplete="off" />
-        </label>
-        <label class="field">
-          <span>{{ t('settingsDiagnostics.fields.password') }}</span>
-          <input v-model="createUserForm.password" type="password" autocomplete="new-password" />
-        </label>
-        <label class="field">
-          <span>{{ t('settingsDiagnostics.fields.defaultTokenName') }}</span>
-          <input v-model.trim="createUserForm.tokenName" autocomplete="off" />
-        </label>
-        <label class="field field--wide">
-          <span>{{ t('settingsDiagnostics.fields.scopes') }}</span>
-          <MultiSelect
-            :model-value="createUserForm.scopes"
-            :options="scopeOptions"
-            :placeholder="t('settingsDiagnostics.placeholders.scopeList')"
-            @update:model-value="updateCreateUserScopes"
-          />
-        </label>
-        <label class="field field--wide">
-          <span>{{ t('settingsDiagnostics.fields.projectVisibility') }}</span>
-          <input v-model.trim="createUserForm.projectIds" autocomplete="off" :placeholder="t('settingsDiagnostics.placeholders.projectList')" />
-        </label>
-        <label class="checkbox-field">
-          <input v-model="createUserForm.issueToken" type="checkbox" />
-          <span>{{ t('settingsDiagnostics.fields.issueDefaultToken') }}</span>
-        </label>
-        <div class="field settings-account-form__actions">
-          <span>{{ t('settingsDiagnostics.columns.actions') }}</span>
-          <Button variant="primary" :disabled="!canWrite || usersLoading" @click="createUser">
-            <UserPlus :size="16" />
-            {{ t('settingsDiagnostics.actions.createUser') }}
-          </Button>
-        </div>
-      </div>
-    </section>
+    <InlineError :message="errorMessage" />
+    <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
 
-    <section class="resource-section diagnostic-section">
-      <div class="resource-table diagnostic-section__table">
-        <table>
-          <thead>
-            <tr>
-              <th>{{ t('settingsDiagnostics.columns.user') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.status') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.scopes') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.projectVisibility') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.lastLogin') }}</th>
-              <th>{{ t('settingsDiagnostics.columns.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in users" :key="user.user_id" :class="{ 'is-selected': user.user_id === selectedUserId }">
-              <td>
-                <strong>{{ user.display_name || user.username }}</strong>
-                <span>{{ user.username }} / {{ user.user_id }}</span>
-              </td>
-              <td class="status-cell">
-                <StatusBadge :status="user.is_active ? 'enabled' : 'disabled'" :label="user.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
-              </td>
-              <td>{{ formatScopeSummary(user.scopes) }}</td>
-              <td>{{ formatProjectVisibility(user.project_ids) }}</td>
-              <td>{{ formatDate(user.last_login_at) }}</td>
-              <td>
-                <div class="table-actions">
-                  <Button variant="secondary" @click="selectUser(user.user_id)">
-                    <KeyRound :size="15" />
-                    {{ t('settingsDiagnostics.actions.manageTokens') }}
-                  </Button>
-                  <Button variant="secondary" :disabled="!canWrite" @click="toggleUser(user.user_id, !user.is_active)">
-                    <Power :size="15" />
-                    {{ user.is_active ? t('settingsDiagnostics.actions.disable') : t('settingsDiagnostics.actions.enable') }}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    :disabled="!canWrite || user.user_id === currentUserId || accountDangerActionKey !== null"
-                    :loading="accountDangerActionKey === `user:${user.user_id}`"
-                    @click="requestRemoveUser(user)"
-                  >
-                    <Trash2 :size="15" />
-                    {{ t('settingsDiagnostics.actions.delete') }}
-                  </Button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="users.length === 0">
-              <td colspan="6">{{ t('settingsDiagnostics.emptyUsers') }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div class="settings-account-workspace">
+      <aside class="settings-user-directory" :aria-label="t('settingsDiagnostics.sections.accounts')">
+        <button
+          v-for="user in users"
+          :key="user.user_id"
+          type="button"
+          class="settings-user-item"
+          :class="{ 'is-selected': user.user_id === selectedUserId }"
+          @click="selectUser(user.user_id)"
+        >
+          <span class="settings-user-item__identity">
+            <strong>{{ user.display_name || user.username }}</strong>
+            <small>{{ user.username }}</small>
+          </span>
+          <StatusBadge :status="user.is_active ? 'enabled' : 'disabled'" :label="user.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
+        </button>
+        <p v-if="users.length === 0" class="settings-empty-copy">{{ t('settingsDiagnostics.emptyUsers') }}</p>
+      </aside>
 
-    <section v-if="selectedUser" class="resource-section diagnostic-section settings-account-detail">
-      <div class="section-heading">
-        <div>
-          <h2>{{ selectedUser.display_name || selectedUser.username }}</h2>
-        </div>
-        <StatusBadge :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" />
-      </div>
-
-      <section class="settings-account-subsection">
-        <div class="settings-account-subsection__heading">
+      <section v-if="selectedUser" class="settings-account-detail">
+        <header class="settings-account-detail__header">
           <div>
-            <h3>{{ t('settingsDiagnostics.sections.tokenManagement') }}</h3>
+            <h3>{{ selectedUser.display_name || selectedUser.username }}</h3>
+            <span class="settings-mono-value">{{ selectedUser.user_id }}</span>
           </div>
-        </div>
-
-        <div class="form-grid settings-account-form settings-token-form">
-          <label class="field">
-            <span>{{ t('settingsDiagnostics.fields.tokenName') }}</span>
-            <input v-model.trim="tokenForm.tokenName" autocomplete="off" />
-          </label>
-          <label class="field">
-            <span>{{ t('settingsDiagnostics.fields.ttlHours') }}</span>
-            <input v-model.number="tokenForm.ttlHours" type="number" min="1" :placeholder="t('settingsDiagnostics.placeholders.permanentToken')" />
-          </label>
-          <div class="field settings-account-form__actions">
-            <span>{{ t('settingsDiagnostics.columns.actions') }}</span>
-            <Button variant="primary" :disabled="!canWrite || tokensLoading" @click="createToken">
-              <KeyRound :size="16" />
-              {{ t('settingsDiagnostics.actions.createToken') }}
+          <div class="settings-panel__actions">
+            <Button variant="secondary" size="sm" :disabled="!canWrite" @click="toggleUser(selectedUser.user_id, !selectedUser.is_active)">
+              <Power :size="15" />
+              {{ selectedUser.is_active ? t('settingsDiagnostics.actions.disable') : t('settingsDiagnostics.actions.enable') }}
+            </Button>
+            <Button variant="danger" size="sm" :disabled="!canWrite || selectedUser.user_id === currentUserId || accountDangerActionKey !== null" @click="requestRemoveUser(selectedUser)">
+              <Trash2 :size="15" />
+              {{ t('settingsDiagnostics.actions.delete') }}
             </Button>
           </div>
-        </div>
+        </header>
+
+        <dl class="settings-metadata-grid settings-account-summary">
+          <div><dt>{{ t('settingsDiagnostics.columns.status') }}</dt><dd><StatusBadge :status="selectedUser.is_active ? 'enabled' : 'disabled'" :label="selectedUser.is_active ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" /></dd></div>
+          <div><dt>{{ t('settingsDiagnostics.columns.scopes') }}</dt><dd>{{ formatScopeSummary(selectedUser.scopes) }}</dd></div>
+          <div><dt>{{ t('settingsDiagnostics.columns.projectVisibility') }}</dt><dd>{{ formatProjectVisibility(selectedUser.project_ids) }}</dd></div>
+          <div><dt>{{ t('settingsDiagnostics.columns.lastLogin') }}</dt><dd>{{ formatDate(selectedUser.last_login_at) }}</dd></div>
+        </dl>
 
         <div v-if="issuedToken" class="issued-token-panel">
           <div class="issued-token-panel__meta">
@@ -151,90 +69,69 @@
             <strong>{{ issuedToken.token_name }}</strong>
           </div>
           <input :value="issuedToken.token" readonly />
-          <Button variant="secondary" @click="copyIssuedToken">
-            <Copy :size="16" />
-            {{ t('settingsDiagnostics.actions.copyToken') }}
-          </Button>
+          <Button variant="secondary" @click="copyIssuedToken"><Copy :size="16" />{{ t('settingsDiagnostics.actions.copyToken') }}</Button>
         </div>
 
-        <div class="resource-table diagnostic-section__table">
-          <table>
-            <thead>
-              <tr>
-                <th>{{ t('settingsDiagnostics.columns.token') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.status') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.createdAt') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.expiresAt') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.lastUsedAt') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.actions') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="token in tokens" :key="token.token_id">
-                <td>
-                  <strong>{{ token.token_name }}</strong>
-                </td>
-                <td class="status-cell">
-                  <StatusBadge :status="token.revoked_at ? 'revoked' : 'enabled'" :label="token.revoked_at ? t('settingsDiagnostics.status.revoked') : t('settingsDiagnostics.status.enabled')" />
-                </td>
-                <td>{{ formatDate(token.created_at) }}</td>
-                <td>{{ formatDate(token.expires_at) }}</td>
-                <td>{{ formatDate(token.last_used_at) }}</td>
-                <td>
-                  <Button
-                    variant="danger"
-                    :disabled="!canWrite || Boolean(token.revoked_at) || accountDangerActionKey !== null"
-                    :loading="accountDangerActionKey === `token:${token.token_id}`"
-                    @click="requestRevokeToken(token)"
-                  >
-                    <Trash2 :size="15" />
-                    {{ t('settingsDiagnostics.actions.revoke') }}
-                  </Button>
-                </td>
-              </tr>
-              <tr v-if="tokens.length === 0">
-                <td colspan="6">{{ t('settingsDiagnostics.emptyTokens') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="settings-account-subsection">
-        <div class="settings-account-subsection__heading">
-          <div>
-            <h3>{{ t('settingsDiagnostics.sections.passwordReset') }}</h3>
-          </div>
-        </div>
-
-        <div class="form-grid settings-account-form">
-          <label class="field">
-            <span>{{ t('settingsDiagnostics.fields.newPassword') }}</span>
-            <input v-model="passwordForm.newPassword" type="password" autocomplete="new-password" />
-          </label>
-          <div class="field settings-password-options-field">
-            <span>{{ t('settingsDiagnostics.fields.resetOptions') }}</span>
-            <div class="settings-checkbox-row">
-              <label class="checkbox-field checkbox-field--nowrap">
-                <input v-model="passwordForm.revokeSessions" type="checkbox" />
-                <span>{{ t('settingsDiagnostics.fields.revokeSessions') }}</span>
-              </label>
-              <label class="checkbox-field checkbox-field--nowrap">
-                <input v-model="passwordForm.revokeUserTokens" type="checkbox" />
-                <span>{{ t('settingsDiagnostics.fields.revokeUserTokens') }}</span>
-              </label>
-            </div>
-          </div>
-          <div class="field settings-account-form__actions">
-            <span>{{ t('settingsDiagnostics.columns.actions') }}</span>
-            <Button variant="secondary" :disabled="!canWrite || !passwordForm.newPassword" @click="resetPassword">
-              <RotateCcw :size="16" />
-              {{ t('settingsDiagnostics.actions.resetPassword') }}
+        <section class="settings-account-section">
+          <header class="settings-account-section__heading">
+            <h3>{{ t('settingsDiagnostics.sections.tokenManagement') }}</h3>
+            <Button variant="secondary" size="sm" :disabled="!canWrite" @click="showTokenForm = !showTokenForm">
+              <KeyRound :size="15" />
+              {{ t('settingsDiagnostics.actions.createToken') }}
             </Button>
+          </header>
+          <div v-if="showTokenForm" class="settings-inline-form">
+            <label class="field"><span>{{ t('settingsDiagnostics.fields.tokenName') }}</span><input v-model.trim="tokenForm.tokenName" autocomplete="off" /></label>
+            <label class="field"><span>{{ t('settingsDiagnostics.fields.ttlHours') }}</span><input v-model.number="tokenForm.ttlHours" type="number" min="1" :placeholder="t('settingsDiagnostics.placeholders.permanentToken')" /></label>
+            <Button variant="primary" :disabled="!canWrite || tokensLoading" :loading="tokensLoading" @click="createToken">{{ t('settingsDiagnostics.actions.createToken') }}</Button>
           </div>
-        </div>
+          <div class="resource-table settings-account-token-table">
+            <table>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.token') }}</th><th>{{ t('settingsDiagnostics.columns.status') }}</th><th>{{ t('settingsDiagnostics.columns.expiresAt') }}</th><th>{{ t('settingsDiagnostics.columns.lastUsedAt') }}</th><th>{{ t('settingsDiagnostics.columns.actions') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="token in tokens" :key="token.token_id"><td><strong>{{ token.token_name }}</strong></td><td><StatusBadge :status="token.revoked_at ? 'revoked' : 'enabled'" :label="token.revoked_at ? t('settingsDiagnostics.status.revoked') : t('settingsDiagnostics.status.enabled')" /></td><td>{{ formatDate(token.expires_at) }}</td><td>{{ formatDate(token.last_used_at) }}</td><td><Button variant="danger" size="sm" :disabled="!canWrite || Boolean(token.revoked_at) || accountDangerActionKey !== null" :loading="accountDangerActionKey === `token:${token.token_id}`" @click="requestRevokeToken(token)">{{ t('settingsDiagnostics.actions.revoke') }}</Button></td></tr>
+                <tr v-if="tokens.length === 0"><td colspan="5">{{ t('settingsDiagnostics.emptyTokens') }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <details class="settings-advanced settings-account-password">
+          <summary>{{ t('settingsDiagnostics.sections.passwordReset') }}</summary>
+          <div class="settings-password-form">
+            <label class="field"><span>{{ t('settingsDiagnostics.fields.newPassword') }}</span><input v-model="passwordForm.newPassword" type="password" autocomplete="new-password" /></label>
+            <div class="settings-checkbox-row">
+              <label class="checkbox-field checkbox-field--nowrap"><input v-model="passwordForm.revokeSessions" type="checkbox" /><span>{{ t('settingsDiagnostics.fields.revokeSessions') }}</span></label>
+              <label class="checkbox-field checkbox-field--nowrap"><input v-model="passwordForm.revokeUserTokens" type="checkbox" /><span>{{ t('settingsDiagnostics.fields.revokeUserTokens') }}</span></label>
+            </div>
+            <Button variant="secondary" :disabled="!canWrite || !passwordForm.newPassword" @click="resetPassword"><RotateCcw :size="16" />{{ t('settingsDiagnostics.actions.resetPassword') }}</Button>
+          </div>
+        </details>
       </section>
-    </section>
+      <div v-else class="settings-account-empty">{{ t('settingsDiagnostics.emptyUsers') }}</div>
+    </div>
+
+    <div v-if="showCreateUser" class="settings-modal-backdrop" @click="showCreateUser = false">
+      <section class="settings-modal" role="dialog" aria-modal="true" :aria-label="t('settingsDiagnostics.actions.createUser')" @click.stop @keydown.esc="showCreateUser = false">
+        <header class="settings-panel__heading">
+          <h2>{{ t('settingsDiagnostics.actions.createUser') }}</h2>
+          <button type="button" class="settings-modal__close" :aria-label="t('common.cancel')" @click="showCreateUser = false"><X :size="16" /></button>
+        </header>
+        <div class="form-grid settings-account-form">
+          <label class="field"><span>{{ t('settingsDiagnostics.fields.username') }}</span><input v-model.trim="createUserForm.username" autocomplete="off" /></label>
+          <label class="field"><span>{{ t('settingsDiagnostics.fields.displayName') }}</span><input v-model.trim="createUserForm.displayName" autocomplete="off" /></label>
+          <label class="field"><span>{{ t('settingsDiagnostics.fields.password') }}</span><input v-model="createUserForm.password" type="password" autocomplete="new-password" /></label>
+          <label class="field"><span>{{ t('settingsDiagnostics.fields.defaultTokenName') }}</span><input v-model.trim="createUserForm.tokenName" autocomplete="off" /></label>
+          <label class="field field--wide"><span>{{ t('settingsDiagnostics.fields.scopes') }}</span><MultiSelect :model-value="createUserForm.scopes" :options="scopeOptions" :placeholder="t('settingsDiagnostics.placeholders.scopeList')" @update:model-value="updateCreateUserScopes" /></label>
+          <label class="field field--wide"><span>{{ t('settingsDiagnostics.fields.projectVisibility') }}</span><input v-model.trim="createUserForm.projectIds" autocomplete="off" :placeholder="t('settingsDiagnostics.placeholders.projectList')" /></label>
+          <label class="checkbox-field"><input v-model="createUserForm.issueToken" type="checkbox" /><span>{{ t('settingsDiagnostics.fields.issueDefaultToken') }}</span></label>
+        </div>
+        <footer class="settings-modal__actions">
+          <Button variant="secondary" @click="showCreateUser = false">{{ t('common.cancel') }}</Button>
+          <Button variant="primary" :disabled="!canWrite || usersLoading" :loading="usersLoading" @click="createUser"><UserPlus :size="16" />{{ t('settingsDiagnostics.actions.createUser') }}</Button>
+        </footer>
+      </section>
+    </div>
 
     <ConfirmDialog
       v-if="pendingDeleteUser"
@@ -262,7 +159,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Copy, KeyRound, Power, RefreshCw, RotateCcw, Trash2, UserPlus } from '@lucide/vue'
+import { Copy, KeyRound, Power, RefreshCw, RotateCcw, Trash2, UserPlus, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSessionStore } from '@/app/stores/session.store'
@@ -300,6 +197,8 @@ const statusMessage = ref<string | null>(null)
 const accountDangerActionKey = ref<string | null>(null)
 const pendingDeleteUser = ref<LocalAuthUser | null>(null)
 const pendingRevokeToken = ref<LocalAuthUserToken | null>(null)
+const showCreateUser = ref(false)
+const showTokenForm = ref(false)
 
 const createUserForm = reactive({
   username: '',
@@ -399,6 +298,7 @@ async function createUser(): Promise<void> {
     selectedUserId.value = result.user.user_id
     issuedToken.value = result.initial_user_token ?? null
     await loadTokens(result.user.user_id)
+    showCreateUser.value = false
     statusMessage.value = t('settingsDiagnostics.messages.userCreated')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.userCreateFailed')
@@ -457,6 +357,7 @@ async function createToken(): Promise<void> {
       ttl_hours: normalizeTtlHours(tokenForm.ttlHours),
     })
     await loadTokens(selectedUser.value.user_id)
+    showTokenForm.value = false
     statusMessage.value = t('settingsDiagnostics.messages.tokenCreated')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('settingsDiagnostics.messages.tokenCreateFailed')

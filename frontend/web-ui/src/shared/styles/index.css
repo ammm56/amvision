@@ -1356,8 +1356,7 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
-.catalog-workbench,
-.settings-workbench {
+.catalog-workbench {
   display: grid;
   align-items: start;
   gap: 16px;
@@ -1367,163 +1366,13 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.settings-workbench {
-  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
-}
-
-.settings-category-panel {
-  display: grid;
-  gap: 16px;
-}
-
-.settings-control-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.settings-segmented-control {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-soft);
-}
-
-.settings-segmented-control button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--am-text-muted);
-  background: transparent;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.settings-segmented-control button:hover,
-.settings-segmented-control button.is-active {
-  color: var(--am-text);
-  border-color: var(--am-border);
-  background: var(--am-surface);
-}
-
-.settings-account-form {
-  align-items: end;
-}
-
-.settings-account-form__actions {
-  align-self: end;
-}
-
-.settings-password-options-field {
-  align-self: end;
-}
-
-.settings-token-form {
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(180px, 220px);
-}
-
-.settings-token-form .settings-account-form__actions .ui-button {
-  width: 100%;
-}
-
-.settings-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  min-height: 34px;
-}
-
-.checkbox-field--nowrap span {
-  white-space: nowrap;
-}
-
-.settings-account-detail {
-  gap: 18px;
-}
-
-.settings-account-subsection {
-  display: grid;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid var(--am-border);
-}
-
-.settings-account-subsection__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-account-subsection__heading h3 {
-  margin: 2px 0 0;
-  font-size: 16px;
-}
-
-.settings-account-help {
-  margin: 0;
-  color: var(--am-text-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
 .table-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.issued-token-panel {
-  display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-soft);
-}
-
-.issued-token-panel div {
-  display: grid;
-  gap: 4px;
-}
-
-.issued-token-panel__meta small {
-  color: var(--am-text-muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.issued-token-panel span {
-  color: var(--am-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.issued-token-panel input {
-  min-width: 0;
-  min-height: 34px;
-  border: 1px solid var(--am-border-strong);
-  border-radius: 8px;
-  background: var(--am-input);
-  color: var(--am-text);
-  padding: 7px 10px;
-}
-
-.catalog-workbench__sidebar,
-.settings-workbench__sidebar {
+.catalog-workbench__sidebar {
   display: grid;
   gap: 8px;
   max-height: calc(100vh - 160px);
@@ -1538,8 +1387,7 @@ textarea:focus-visible {
 }
 
 .catalog-group-button,
-.catalog-list-button,
-.settings-section-link {
+.catalog-list-button {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -1552,20 +1400,14 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.catalog-group-button,
-.settings-section-link {
+.catalog-group-button {
   min-height: 36px;
   padding: 0 10px;
   font-weight: 700;
 }
 
-.settings-section-link:hover {
-  text-decoration: none;
-}
-
 .catalog-group-button span,
-.catalog-list-button span,
-.settings-section-link span {
+.catalog-list-button span {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1934,8 +1776,7 @@ textarea:focus-visible {
   margin-top: 10px;
 }
 
-.detail-list,
-.settings-info-list {
+.detail-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 24px;
@@ -1945,8 +1786,7 @@ textarea:focus-visible {
   background: var(--am-surface-soft);
 }
 
-.detail-list div,
-.settings-info-list div {
+.detail-list div {
   display: grid;
   grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
   gap: 12px;
@@ -1956,15 +1796,13 @@ textarea:focus-visible {
   border: 0;
 }
 
-.detail-list dt,
-.settings-info-list dt {
+.detail-list dt {
   color: var(--am-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.detail-list dd,
-.settings-info-list dd {
+.detail-list dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
@@ -1995,23 +1833,8 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.custom-node-catalog__json,
-.diagnostic-section__json {
+.custom-node-catalog__json {
   max-height: 360px;
-}
-
-.settings-workbench__content {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.diagnostic-section {
-  scroll-margin-top: 16px;
-}
-
-.diagnostic-section__table table {
-  min-width: 640px;
 }
 
 .panel-section {
@@ -5162,8 +4985,6 @@ textarea:focus-visible {
   .detail-layout,
   .workflow-editor-layout,
   .catalog-workbench,
-  .settings-workbench,
-  .settings-control-grid,
   .node-pack-workbench,
   .node-pack-log-list article,
   .dependency-list article {
@@ -5171,7 +4992,6 @@ textarea:focus-visible {
   }
 
   .catalog-workbench__sidebar,
-  .settings-workbench__sidebar,
   .node-pack-workbench__detail {
     position: static;
     max-height: none;
@@ -5179,14 +4999,11 @@ textarea:focus-visible {
 
   .catalog-toolbar,
   .detail-list,
-  .settings-info-list,
-  .settings-account-subsection__heading,
   .issued-token-panel {
     grid-template-columns: 1fr;
   }
 
-  .detail-list div,
-  .settings-info-list div {
+  .detail-list div {
     grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
   }
 
@@ -5200,8 +5017,7 @@ textarea:focus-visible {
   }
 
   .operation-grid,
-  .form-grid,
-  .settings-token-form {
+  .form-grid {
     grid-template-columns: 1fr;
   }
 

@@ -8,5 +8,6 @@ import './shared/styles/base.css'
 import './shared/styles/index.css'
 import './shared/styles/content.css'
 import './shared/styles/workbench.css'
+import './modules/settings/settings.css'
 
 void bootstrapApplication()

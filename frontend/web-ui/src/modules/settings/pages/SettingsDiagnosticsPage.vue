@@ -1,11 +1,16 @@
 <template>
-  <section class="page-stack">
+  <section class="page-stack settings-page">
     <PageHeader :title="t('settingsDiagnostics.title')">
       <template #actions>
-        <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
-        </Button>
+        <div class="settings-refresh-control">
+          <span v-if="diagnostics?.generated_at" class="settings-refresh-control__time">
+            {{ formatSystemDateTime(diagnostics.generated_at) }}
+          </span>
+          <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadDiagnostics">
+            <RefreshCw :size="16" />
+            {{ t('common.refresh') }}
+          </Button>
+        </div>
       </template>
     </PageHeader>
 
@@ -19,207 +24,88 @@
       @update:model-value="selectCategory"
     />
 
-    <div class="summary-grid settings-diagnostics__summary">
-      <div>
-        <span>{{ t('settingsDiagnostics.fields.backendStatus') }}</span>
-        <strong>{{ serviceStatus }}</strong>
-      </div>
-      <div>
-        <span>{{ t('settingsDiagnostics.fields.currentUser') }}</span>
-        <strong>{{ sessionStore.displayName || sessionStore.currentUser?.principal_id || '-' }}</strong>
-      </div>
-      <div>
-        <span>{{ t('settingsDiagnostics.fields.selectedProject') }}</span>
-        <strong>{{ projectStore.selectedProjectId || '-' }}</strong>
-      </div>
-      <div>
-        <span>{{ t('settingsDiagnostics.fields.generatedAt') }}</span>
-        <strong>{{ diagnostics?.generated_at ? formatSystemDateTime(diagnostics.generated_at) : '-' }}</strong>
-      </div>
-    </div>
-
-    <section v-if="activeCategory === 'preferences'" class="settings-category-panel">
-      <section class="resource-section diagnostic-section">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.preferences') }}</h2>
+    <section v-if="activeCategory === 'preferences'" class="settings-panel settings-preferences-panel">
+      <header class="settings-panel__heading">
+        <h2>{{ t('settingsDiagnostics.sections.preferences') }}</h2>
+      </header>
+      <div class="settings-preference-list">
+        <div class="settings-preference-row">
+          <div>
+            <strong>{{ t('preferences.language') }}</strong>
+          </div>
+          <SelectField :model-value="preferencesStore.locale" :options="localeOptions" @update:model-value="setLocale" />
         </div>
-        <div class="settings-control-grid">
-          <label class="field">
-            <span>{{ t('preferences.language') }}</span>
-            <SelectField :model-value="preferencesStore.locale" :options="localeOptions" @update:model-value="setLocale" />
-          </label>
-          <div class="field">
-            <span>{{ t('preferences.theme') }}</span>
-            <div class="settings-segmented-control" :aria-label="t('preferences.theme')">
-              <button type="button" :class="{ 'is-active': preferencesStore.theme === 'light' }" @click="setTheme('light')">
-                <Sun :size="15" />
-                {{ t('preferences.light') }}
-              </button>
-              <button type="button" :class="{ 'is-active': preferencesStore.theme === 'dark' }" @click="setTheme('dark')">
-                <Moon :size="15" />
-                {{ t('preferences.dark') }}
-              </button>
-            </div>
+        <div class="settings-preference-row">
+          <div>
+            <strong>{{ t('preferences.theme') }}</strong>
+          </div>
+          <div class="settings-segmented-control" :aria-label="t('preferences.theme')">
+            <button type="button" :class="{ 'is-active': preferencesStore.theme === 'light' }" @click="setTheme('light')">
+              <Sun :size="15" />
+              {{ t('preferences.light') }}
+            </button>
+            <button type="button" :class="{ 'is-active': preferencesStore.theme === 'dark' }" @click="setTheme('dark')">
+              <Moon :size="15" />
+              {{ t('preferences.dark') }}
+            </button>
           </div>
         </div>
-        <dl class="settings-info-list">
-          <InfoRow :label="t('settingsDiagnostics.fields.currentLocale')" :value="preferencesStore.locale" />
-          <InfoRow :label="t('settingsDiagnostics.fields.currentTheme')" :value="preferencesStore.theme" />
-          <InfoRow :label="t('settingsDiagnostics.fields.preferenceStorage')" value="localStorage" />
-          <InfoRow :label="t('settingsDiagnostics.fields.defaultProjectId')" :value="runtimeConfig.defaultProjectId" />
-        </dl>
-      </section>
+      </div>
     </section>
 
     <section v-else-if="activeCategory === 'services'" class="settings-category-panel">
-      <section class="resource-section diagnostic-section">
-        <div>
+      <section class="settings-panel">
+        <header class="settings-panel__heading">
           <h2>{{ t('settingsDiagnostics.sections.services') }}</h2>
-        </div>
-        <div class="summary-grid">
-          <div v-for="service in serviceRows" :key="service.name">
-            <span>{{ service.label }}</span>
+        </header>
+        <div class="settings-service-grid">
+          <article v-for="service in serviceRows" :key="service.name" class="settings-service-item">
+            <strong>{{ service.label }}</strong>
             <StatusBadge :status="service.status" :label="service.statusLabel" with-dot />
-          </div>
+          </article>
         </div>
-        <dl class="settings-info-list">
+        <dl class="settings-metadata-grid settings-metadata-grid--runtime">
           <InfoRow :label="t('settingsDiagnostics.fields.apiBaseUrl')" :value="runtimeConfig.apiBaseUrl" />
           <InfoRow :label="t('settingsDiagnostics.fields.wsBaseUrl')" :value="runtimeConfig.wsBaseUrl" />
           <InfoRow :label="t('settingsDiagnostics.fields.runMode')" :value="stringValue(about.run_mode)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.generatedAt')" :value="diagnostics?.generated_at ? formatSystemDateTime(diagnostics.generated_at) : '-'" />
+          <InfoRow :label="t('settingsDiagnostics.fields.backendStatus')" :value="serviceStatus" />
         </dl>
-      </section>
-
-      <section class="resource-section diagnostic-section">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.capabilities') }}</h2>
-        </div>
-        <dl class="settings-info-list">
-          <InfoRow :label="t('settingsDiagnostics.fields.bearerAuth')" :value="booleanText(sessionStore.bearerAuthEnabled)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.websocketQueryToken')" :value="booleanText(sessionStore.websocketQueryTokenEnabled)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.projectBootstrapEnabled')" :value="booleanText(platformCapabilities.project_bootstrap_enabled)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.datasetExportDefaultFormat')" :value="stringValue(platformCapabilities.dataset_export?.default_format)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.datasetExportFormats')" :value="implementedDatasetFormatsText" />
-          <InfoRow :label="t('settingsDiagnostics.fields.projectSummaryTopics')" :value="projectSummaryTopicsText" />
-          <InfoRow :label="t('settingsDiagnostics.fields.featureFlags')" :value="enabledFeatureFlagsText" />
-        </dl>
+        <details class="settings-advanced">
+          <summary>{{ t('settingsDiagnostics.sections.capabilities') }}</summary>
+          <dl class="settings-metadata-grid">
+            <InfoRow :label="t('settingsDiagnostics.fields.bearerAuth')" :value="booleanText(sessionStore.bearerAuthEnabled)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.websocketQueryToken')" :value="booleanText(sessionStore.websocketQueryTokenEnabled)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.projectBootstrapEnabled')" :value="booleanText(platformCapabilities.project_bootstrap_enabled)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.datasetExportDefaultFormat')" :value="stringValue(platformCapabilities.dataset_export?.default_format)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.datasetExportFormats')" :value="implementedDatasetFormatsText" />
+            <InfoRow :label="t('settingsDiagnostics.fields.projectSummaryTopics')" :value="projectSummaryTopicsText" />
+            <InfoRow :label="t('settingsDiagnostics.fields.featureFlags')" :value="enabledFeatureFlagsText" />
+          </dl>
+        </details>
       </section>
     </section>
 
-    <section v-else-if="activeCategory === 'security'" class="settings-category-panel">
-      <section class="resource-section diagnostic-section">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.security') }}</h2>
-        </div>
-        <dl class="settings-info-list">
-          <InfoRow :label="t('settingsDiagnostics.fields.loginState')" :value="sessionStore.loginState" />
-          <InfoRow :label="t('settingsDiagnostics.fields.currentUser')" :value="sessionStore.displayName || sessionStore.currentUser?.principal_id || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authMode')" :value="sessionStore.authMode || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.credentialKind')" :value="sessionStore.credentialKind || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authProviderId')" :value="sessionStore.currentUser?.auth_provider_id || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authProviderKind')" :value="sessionStore.currentUser?.auth_provider_kind || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authCredentialId')" :value="sessionStore.currentUser?.auth_credential_id || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authSessionId')" :value="sessionStore.currentUser?.auth_session_id || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authTokenId')" :value="sessionStore.currentUser?.auth_token_id || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.authTokenName')" :value="sessionStore.currentUser?.auth_token_name || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
-          <InfoRow :label="t('settingsDiagnostics.fields.projectVisibility')" :value="formatProjectVisibility(sessionStore.currentUser?.project_ids)" />
-          <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
-          <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
-        </dl>
-      </section>
-
-      <section class="resource-section diagnostic-section">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.projects') }}</h2>
-        </div>
-        <div class="resource-table diagnostic-section__table">
-          <table>
-            <thead>
-              <tr>
-                <th>{{ t('settingsDiagnostics.columns.project') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.projectId') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.projectSource') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.selected') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="project in visibleProjects" :key="project.project_id">
-                <td>{{ project.display_name || project.project_id }}</td>
-                <td>{{ project.project_id }}</td>
-                <td>{{ formatProjectSource(project.project_source) }}</td>
-                <td>
-                  <StatusBadge
-                    :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'"
-                    :label="booleanText(project.project_id === projectStore.selectedProjectId)"
-                    :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'"
-                  />
-                </td>
-              </tr>
-              <tr v-if="visibleProjects.length === 0">
-                <td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="resource-section diagnostic-section">
-        <div>
-          <h2>{{ t('settingsDiagnostics.sections.providers') }}</h2>
-        </div>
-        <div class="resource-table diagnostic-section__table">
-          <table>
-            <thead>
-              <tr>
-                <th>{{ t('settingsDiagnostics.columns.provider') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.type') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.mode') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.capabilities') }}</th>
-                <th>{{ t('settingsDiagnostics.columns.enabled') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="provider in bootstrapProviders" :key="provider.provider_id">
-                <td>{{ provider.display_name }}</td>
-                <td>{{ provider.provider_kind }}</td>
-                <td>{{ provider.login_mode }}</td>
-                <td>{{ formatProviderCapabilities(provider) }}</td>
-                <td>
-                  <StatusBadge
-                    :status="provider.enabled ? 'enabled' : 'disabled'"
-                    :label="provider.enabled ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')"
-                  />
-                </td>
-              </tr>
-              <tr v-if="bootstrapProviders.length === 0">
-                <td colspan="5">{{ t('settingsDiagnostics.emptyProviders') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </section>
-
-    <SettingsAccountsPanel v-else-if="activeCategory === 'accounts'" />
-
-    <section v-else class="settings-workbench">
-      <aside class="settings-workbench__sidebar" aria-label="Settings diagnostic sections">
-        <a v-for="section in sections" :key="section.id" :href="`#${section.id}`" class="settings-section-link">
+    <section v-else-if="activeCategory === 'system'" class="settings-diagnostic-layout">
+      <nav class="settings-section-nav" :aria-label="t('settingsDiagnostics.tabs.system')">
+        <button
+          v-for="section in sections"
+          :key="section.id"
+          type="button"
+          :class="{ 'is-active': activeSystemSection === section.id }"
+          @click="selectSystemSection(section.id)"
+        >
           <component :is="section.icon" :size="16" />
           <span>{{ section.label }}</span>
-        </a>
-      </aside>
+        </button>
+      </nav>
 
-      <div class="settings-workbench__content">
-        <section id="settings-about" class="resource-section diagnostic-section">
-          <div class="section-heading">
-            <div>
-              <h2>{{ t('settingsDiagnostics.sections.about') }}</h2>
-            </div>
-            <span class="section-heading__meta">{{ stringValue(about.app_version) }}</span>
-          </div>
-          <dl class="settings-info-list">
+      <section class="settings-panel settings-diagnostic-content">
+        <template v-if="activeSystemSection === 'about'">
+          <header class="settings-panel__heading">
+            <h2>{{ t('settingsDiagnostics.sections.about') }}</h2>
+            <span class="settings-panel__meta">{{ stringValue(about.app_version) }}</span>
+          </header>
+          <dl class="settings-metadata-grid">
             <InfoRow :label="t('settingsDiagnostics.fields.appName')" :value="stringValue(about.app_name)" />
             <InfoRow :label="t('settingsDiagnostics.fields.frontendVersion')" :value="frontendVersion" />
             <InfoRow :label="t('settingsDiagnostics.fields.backendVersion')" :value="stringValue(about.backend_version)" />
@@ -229,52 +115,18 @@
             <InfoRow :label="t('settingsDiagnostics.fields.runMode')" :value="stringValue(about.run_mode)" />
             <div>
               <dt>{{ t('settingsDiagnostics.fields.githubRepository') }}</dt>
-              <dd><a href="https://github.com/ammm56/amvision" target="_blank" rel="noreferrer">https://github.com/ammm56/amvision</a></dd>
+              <dd><a href="https://github.com/ammm56/amvision" target="_blank" rel="noreferrer">github.com/ammm56/amvision</a></dd>
             </div>
             <div>
               <dt>{{ t('settingsDiagnostics.fields.amvarWebsite') }}</dt>
-              <dd><a href="https://www.amvar.io" target="_blank" rel="noreferrer">https://www.amvar.io</a></dd>
+              <dd><a href="https://www.amvar.io" target="_blank" rel="noreferrer">amvar.io</a></dd>
             </div>
           </dl>
-        </section>
+        </template>
 
-        <section id="settings-runtime" class="resource-section diagnostic-section">
-          <div>
-            <h2>{{ t('settingsDiagnostics.sections.runtime') }}</h2>
-          </div>
-          <div class="summary-grid">
-            <div>
-              <span>{{ t('settingsDiagnostics.fields.apiBaseUrl') }}</span>
-              <strong>{{ runtimeConfig.apiBaseUrl }}</strong>
-            </div>
-            <div>
-              <span>{{ t('settingsDiagnostics.fields.wsBaseUrl') }}</span>
-              <strong>{{ runtimeConfig.wsBaseUrl }}</strong>
-            </div>
-            <div>
-              <span>{{ t('settingsDiagnostics.fields.authMode') }}</span>
-              <strong>{{ sessionStore.authMode || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ t('settingsDiagnostics.fields.credentialKind') }}</span>
-              <strong>{{ sessionStore.credentialKind || '-' }}</strong>
-            </div>
-          </div>
-          <dl class="settings-info-list">
-            <InfoRow :label="t('settingsDiagnostics.fields.loginState')" :value="sessionStore.loginState" />
-            <InfoRow :label="t('settingsDiagnostics.fields.defaultProjectId')" :value="runtimeConfig.defaultProjectId" />
-            <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
-            <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
-            <InfoRow :label="t('settingsDiagnostics.fields.featureFlags')" :value="enabledFeatureFlagsText" />
-            <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
-          </dl>
-        </section>
-
-        <section id="settings-system" class="resource-section diagnostic-section">
-          <div>
-            <h2>{{ t('settingsDiagnostics.sections.system') }}</h2>
-          </div>
-          <dl class="settings-info-list">
+        <template v-else-if="activeSystemSection === 'host'">
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.system') }}</h2></header>
+          <dl class="settings-metadata-grid">
             <InfoRow :label="t('settingsDiagnostics.fields.os')" :value="stringValue(system.os)" />
             <InfoRow :label="t('settingsDiagnostics.fields.cpu')" :value="formatCpu" />
             <InfoRow :label="t('settingsDiagnostics.fields.memory')" :value="formatMemory(system.memory)" />
@@ -284,33 +136,17 @@
             <InfoRow :label="t('settingsDiagnostics.fields.queueRoot')" :value="stringValue(system.queue_root_dir)" />
             <InfoRow :label="t('settingsDiagnostics.fields.customNodesRoot')" :value="stringValue(system.custom_nodes_root_dir)" />
           </dl>
-          <div class="resource-table diagnostic-section__table">
+          <div class="resource-table settings-diagnostic-table">
             <table>
-              <thead>
-                <tr>
-                  <th>{{ t('settingsDiagnostics.columns.disk') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.path') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.free') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.total') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="disk in diskRows" :key="disk.name">
-                  <td>{{ disk.label }}</td>
-                  <td>{{ disk.path }}</td>
-                  <td>{{ disk.free }}</td>
-                  <td>{{ disk.total }}</td>
-                </tr>
-              </tbody>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.disk') }}</th><th>{{ t('settingsDiagnostics.columns.path') }}</th><th>{{ t('settingsDiagnostics.columns.free') }}</th><th>{{ t('settingsDiagnostics.columns.total') }}</th></tr></thead>
+              <tbody><tr v-for="disk in diskRows" :key="disk.name"><td>{{ disk.label }}</td><td class="settings-mono-value">{{ disk.path }}</td><td>{{ disk.free }}</td><td>{{ disk.total }}</td></tr></tbody>
             </table>
           </div>
-        </section>
+        </template>
 
-        <section id="settings-python" class="resource-section diagnostic-section">
-          <div>
-            <h2>{{ t('settingsDiagnostics.sections.python') }}</h2>
-          </div>
-          <dl class="settings-info-list">
+        <template v-else-if="activeSystemSection === 'python'">
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.python') }}</h2></header>
+          <dl class="settings-metadata-grid">
             <InfoRow :label="t('settingsDiagnostics.fields.pythonVersion')" :value="stringValue(pythonRuntime.python_version)" />
             <InfoRow :label="t('settingsDiagnostics.fields.pythonExecutable')" :value="stringValue(pythonRuntime.executable)" />
             <InfoRow :label="t('settingsDiagnostics.fields.condaEnv')" :value="stringValue(pythonRuntime.conda_env)" />
@@ -318,81 +154,107 @@
             <InfoRow :label="t('settingsDiagnostics.fields.virtualEnv')" :value="stringValue(pythonRuntime.virtual_env)" />
             <InfoRow :label="t('settingsDiagnostics.fields.bundledPython')" :value="booleanText(pythonRuntime.bundled_python)" />
           </dl>
-          <div class="resource-table diagnostic-section__table">
+          <div class="resource-table settings-diagnostic-table">
             <table>
-              <thead>
-                <tr>
-                  <th>{{ t('settingsDiagnostics.columns.dependency') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.status') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.version') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.importName') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="dependency in dependencyRows" :key="dependency.package_name">
-                  <td>{{ dependency.package_name }}</td>
-                  <td><StatusBadge :tone="dependency.installed ? 'success' : 'warning'">{{ dependency.installed ? t('settingsDiagnostics.status.installed') : t('settingsDiagnostics.status.missing') }}</StatusBadge></td>
-                  <td>{{ dependency.version || '-' }}</td>
-                  <td>{{ dependency.import_name }}</td>
-                </tr>
-              </tbody>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.dependency') }}</th><th>{{ t('settingsDiagnostics.columns.status') }}</th><th>{{ t('settingsDiagnostics.columns.version') }}</th><th>{{ t('settingsDiagnostics.columns.importName') }}</th></tr></thead>
+              <tbody><tr v-for="dependency in dependencyRows" :key="dependency.package_name"><td>{{ dependency.package_name }}</td><td><StatusBadge :tone="dependency.installed ? 'success' : 'warning'">{{ dependency.installed ? t('settingsDiagnostics.status.installed') : t('settingsDiagnostics.status.missing') }}</StatusBadge></td><td>{{ dependency.version || '-' }}</td><td class="settings-mono-value">{{ dependency.import_name }}</td></tr></tbody>
             </table>
           </div>
-        </section>
+        </template>
 
-        <section id="settings-devices" class="resource-section diagnostic-section">
-          <div>
-            <h2>{{ t('settingsDiagnostics.sections.devices') }}</h2>
-          </div>
-          <div class="summary-grid">
-            <div v-for="runtime in deviceRuntimeRows" :key="runtime.name">
-              <span>{{ runtime.label }}</span>
+        <template v-else>
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.devices') }}</h2></header>
+          <div class="settings-service-grid">
+            <article v-for="runtime in deviceRuntimeRows" :key="runtime.name" class="settings-service-item">
+              <strong>{{ runtime.label }}</strong>
               <StatusBadge :status="runtime.status" :label="runtime.statusLabel" with-dot />
-            </div>
+            </article>
           </div>
-          <div class="resource-table diagnostic-section__table">
+          <div class="resource-table settings-diagnostic-table">
             <table>
-              <thead>
-                <tr>
-                  <th>{{ t('settingsDiagnostics.columns.device') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.driver') }}</th>
-                  <th>{{ t('settingsDiagnostics.columns.memory') }}</th>
-                </tr>
-              </thead>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.device') }}</th><th>{{ t('settingsDiagnostics.columns.driver') }}</th><th>{{ t('settingsDiagnostics.columns.memory') }}</th></tr></thead>
               <tbody>
-                <tr v-for="device in gpuRows" :key="device.name">
-                  <td>{{ device.name }}</td>
-                  <td>{{ device.driver_version || '-' }}</td>
-                  <td>{{ formatMiB(device.memory_total_mib) }}</td>
-                </tr>
-                <tr v-if="gpuRows.length === 0">
-                  <td colspan="3">{{ t('settingsDiagnostics.emptyGpu') }}</td>
-                </tr>
+                <tr v-for="device in gpuRows" :key="device.name"><td>{{ device.name }}</td><td>{{ device.driver_version || '-' }}</td><td>{{ formatMiB(device.memory_total_mib) }}</td></tr>
+                <tr v-if="gpuRows.length === 0"><td colspan="3">{{ t('settingsDiagnostics.emptyGpu') }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </section>
+    </section>
+
+    <section v-else class="settings-category-panel">
+      <TabList
+        class="settings-access-tabs"
+        :model-value="activeAccessSection"
+        :tabs="accessTabs"
+        :label="t('settingsDiagnostics.tabs.security')"
+        @update:model-value="selectAccessSection"
+      />
+
+      <template v-if="activeAccessSection === 'session'">
+        <section class="settings-panel">
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.security') }}</h2></header>
+          <dl class="settings-metadata-grid">
+            <InfoRow :label="t('settingsDiagnostics.fields.currentUser')" :value="sessionStore.displayName || sessionStore.currentUser?.principal_id || '-'" />
+            <InfoRow :label="t('settingsDiagnostics.fields.loginState')" :value="sessionStore.loginState" />
+            <InfoRow :label="t('settingsDiagnostics.fields.authMode')" :value="sessionStore.authMode || '-'" />
+            <InfoRow :label="t('settingsDiagnostics.fields.scopes')" :value="sessionStore.currentUser?.scopes?.join(', ') || '-'" />
+            <InfoRow :label="t('settingsDiagnostics.fields.projectVisibility')" :value="formatProjectVisibility(sessionStore.currentUser?.project_ids)" />
+          </dl>
+          <details class="settings-advanced">
+            <summary>{{ t('settingsDiagnostics.fields.credentialKind') }}</summary>
+            <dl class="settings-metadata-grid">
+              <InfoRow :label="t('settingsDiagnostics.fields.credentialKind')" :value="sessionStore.credentialKind || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authProviderId')" :value="sessionStore.currentUser?.auth_provider_id || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authProviderKind')" :value="sessionStore.currentUser?.auth_provider_kind || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authCredentialId')" :value="sessionStore.currentUser?.auth_credential_id || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authSessionId')" :value="sessionStore.currentUser?.auth_session_id || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authTokenId')" :value="sessionStore.currentUser?.auth_token_id || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.authTokenName')" :value="sessionStore.currentUser?.auth_token_name || '-'" />
+              <InfoRow :label="t('settingsDiagnostics.fields.sessionStorage')" :value="runtimeConfig.storage.sessionTokenStorage" />
+              <InfoRow :label="t('settingsDiagnostics.fields.manualLoginStorage')" :value="runtimeConfig.storage.manualLoginStorage" />
+            </dl>
+          </details>
+        </section>
+
+        <section class="settings-panel settings-table-panel">
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.projects') }}</h2></header>
+          <div class="resource-table settings-diagnostic-table">
+            <table>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.project') }}</th><th>{{ t('settingsDiagnostics.columns.projectId') }}</th><th>{{ t('settingsDiagnostics.columns.projectSource') }}</th><th>{{ t('settingsDiagnostics.columns.selected') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="project in visibleProjects" :key="project.project_id"><td>{{ project.display_name || project.project_id }}</td><td class="settings-mono-value">{{ project.project_id }}</td><td>{{ formatProjectSource(project.project_source) }}</td><td><StatusBadge :status="project.project_id === projectStore.selectedProjectId ? 'active' : 'available'" :label="booleanText(project.project_id === projectStore.selectedProjectId)" :tone="project.project_id === projectStore.selectedProjectId ? 'success' : 'neutral'" /></td></tr>
+                <tr v-if="visibleProjects.length === 0"><td colspan="4">{{ t('settingsDiagnostics.emptyVisibleProjects') }}</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section id="settings-services" class="resource-section diagnostic-section">
-          <div>
-            <h2>{{ t('settingsDiagnostics.sections.services') }}</h2>
-          </div>
-          <div class="summary-grid">
-            <div v-for="service in serviceRows" :key="service.name">
-              <span>{{ service.label }}</span>
-              <StatusBadge :status="service.status" :label="service.statusLabel" with-dot />
-            </div>
+        <section class="settings-panel settings-table-panel">
+          <header class="settings-panel__heading"><h2>{{ t('settingsDiagnostics.sections.providers') }}</h2></header>
+          <div class="resource-table settings-diagnostic-table">
+            <table>
+              <thead><tr><th>{{ t('settingsDiagnostics.columns.provider') }}</th><th>{{ t('settingsDiagnostics.columns.type') }}</th><th>{{ t('settingsDiagnostics.columns.mode') }}</th><th>{{ t('settingsDiagnostics.columns.capabilities') }}</th><th>{{ t('settingsDiagnostics.columns.enabled') }}</th></tr></thead>
+              <tbody>
+                <tr v-for="provider in bootstrapProviders" :key="provider.provider_id"><td>{{ provider.display_name }}</td><td>{{ provider.provider_kind }}</td><td>{{ provider.login_mode }}</td><td>{{ formatProviderCapabilities(provider) }}</td><td><StatusBadge :status="provider.enabled ? 'enabled' : 'disabled'" :label="provider.enabled ? t('settingsDiagnostics.status.enabled') : t('settingsDiagnostics.status.disabled')" /></td></tr>
+                <tr v-if="bootstrapProviders.length === 0"><td colspan="5">{{ t('settingsDiagnostics.emptyProviders') }}</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
-      </div>
+      </template>
+
+      <SettingsAccountsPanel v-else />
     </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
 import { Cpu, HardDrive, Info, Moon, RefreshCw, ServerCog, Settings2, ShieldCheck, Sun, UsersRound, Wrench } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 
 import { usePreferencesStore, type ThemeMode } from '@/app/stores/preferences.store'
 import { useProjectStore } from '@/app/stores/project.store'
@@ -423,14 +285,17 @@ interface GpuRow {
   memory_total_mib?: number | null
 }
 
+type SystemSectionId = 'about' | 'host' | 'python' | 'devices'
+type AccessSectionId = 'session' | 'accounts'
+
 interface SectionItem {
-  id: string
+  id: SystemSectionId
   label: string
   icon: object
 }
 
 type SelectValue = string | number | boolean | null
-type SettingsCategoryId = 'preferences' | 'services' | 'system' | 'security' | 'accounts'
+type SettingsCategoryId = 'preferences' | 'services' | 'system' | 'security'
 
 interface SettingsCategoryTab {
   id: SettingsCategoryId
@@ -449,6 +314,8 @@ const InfoRow = defineComponent({
 })
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const preferencesStore = usePreferencesStore()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
@@ -459,6 +326,8 @@ const diagnostics = ref<SystemDiagnosticsResponse | null>(null)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const activeCategory = ref<SettingsCategoryId>('system')
+const activeSystemSection = ref<SystemSectionId>('about')
+const activeAccessSection = ref<AccessSectionId>('session')
 
 const localeOptions = supportedLocaleOptions.map((item) => ({ label: item.label, value: item.locale }))
 const categoryTabs = computed<SettingsCategoryTab[]>(() => [
@@ -466,16 +335,17 @@ const categoryTabs = computed<SettingsCategoryTab[]>(() => [
   { id: 'services', label: t('settingsDiagnostics.tabs.services'), icon: ServerCog },
   { id: 'system', label: t('settingsDiagnostics.tabs.system'), icon: HardDrive },
   { id: 'security', label: t('settingsDiagnostics.tabs.security'), icon: ShieldCheck },
-  { id: 'accounts', label: t('settingsDiagnostics.tabs.accounts'), icon: UsersRound },
 ])
 
 const sections = computed<SectionItem[]>(() => [
-  { id: 'settings-about', label: t('settingsDiagnostics.sections.about'), icon: Info },
-  { id: 'settings-runtime', label: t('settingsDiagnostics.sections.runtime'), icon: Settings2 },
-  { id: 'settings-system', label: t('settingsDiagnostics.sections.system'), icon: HardDrive },
-  { id: 'settings-python', label: t('settingsDiagnostics.sections.python'), icon: Wrench },
-  { id: 'settings-devices', label: t('settingsDiagnostics.sections.devices'), icon: Cpu },
-  { id: 'settings-services', label: t('settingsDiagnostics.sections.services'), icon: ServerCog },
+  { id: 'about', label: t('settingsDiagnostics.sections.about'), icon: Info },
+  { id: 'host', label: t('settingsDiagnostics.sections.system'), icon: HardDrive },
+  { id: 'python', label: t('settingsDiagnostics.sections.python'), icon: Wrench },
+  { id: 'devices', label: t('settingsDiagnostics.sections.devices'), icon: Cpu },
+])
+const accessTabs = computed(() => [
+  { id: 'session', label: t('settingsDiagnostics.sections.security'), icon: ShieldCheck },
+  { id: 'accounts', label: t('settingsDiagnostics.sections.accounts'), icon: UsersRound },
 ])
 
 const about = computed(() => diagnostics.value?.about ?? {})
@@ -538,14 +408,63 @@ const serviceRows = computed(() => [
 ])
 
 function selectCategory(categoryId: string): void {
-  if (categoryId === 'preferences' || categoryId === 'services' || categoryId === 'system' || categoryId === 'security' || categoryId === 'accounts') {
+  if (categoryId === 'preferences' || categoryId === 'services' || categoryId === 'system' || categoryId === 'security') {
     activeCategory.value = categoryId
+    void replaceSettingsLocation()
   }
 }
 
 onMounted(() => {
+  restoreSettingsLocation()
   void loadDiagnostics()
 })
+
+watch(
+  () => [route.query.category, route.query.section, route.hash],
+  () => restoreSettingsLocation(),
+)
+
+function selectSystemSection(sectionId: SystemSectionId): void {
+  activeSystemSection.value = sectionId
+  void replaceSettingsLocation()
+}
+
+function selectAccessSection(sectionId: string): void {
+  if (sectionId !== 'session' && sectionId !== 'accounts') return
+  activeAccessSection.value = sectionId
+  void replaceSettingsLocation()
+}
+
+function restoreSettingsLocation(): void {
+  const category = typeof route.query.category === 'string' ? route.query.category : ''
+  if (category === 'preferences' || category === 'services' || category === 'system' || category === 'security') {
+    activeCategory.value = category
+  }
+
+  const legacySystemSection = route.hash.replace('#settings-', '')
+  const section = typeof route.query.section === 'string' ? route.query.section : legacySystemSection
+  if (section === 'about' || section === 'python' || section === 'devices') {
+    activeSystemSection.value = section
+    if (legacySystemSection) activeCategory.value = 'system'
+  } else if (section === 'host' || section === 'system') {
+    activeSystemSection.value = 'host'
+    if (legacySystemSection) activeCategory.value = 'system'
+  } else if (section === 'session' || section === 'accounts') {
+    activeAccessSection.value = section
+  }
+}
+
+async function replaceSettingsLocation(): Promise<void> {
+  const section = activeCategory.value === 'system'
+    ? activeSystemSection.value
+    : activeCategory.value === 'security'
+      ? activeAccessSection.value
+      : undefined
+  await router.replace({
+    query: { ...route.query, category: activeCategory.value, section },
+    hash: '',
+  })
+}
 
 function setLocale(value: SelectValue): void {
   if (typeof value !== 'string') return

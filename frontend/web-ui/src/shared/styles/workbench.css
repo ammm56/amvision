@@ -47,8 +47,7 @@
 .local-tabs__tab:focus-visible,
 .settings-segmented-control button:focus-visible,
 .catalog-group-button:focus-visible,
-.catalog-list-button:focus-visible,
-.settings-section-link:focus-visible {
+.catalog-list-button:focus-visible {
   outline: 2px solid var(--am-focus-ring);
   outline-offset: 2px;
 }
@@ -74,13 +73,11 @@
   background: color-mix(in srgb, var(--am-action-primary) 12%, var(--am-surface));
 }
 
-.catalog-workbench,
-.settings-workbench {
+.catalog-workbench {
   gap: var(--am-space-xl);
 }
 
-.catalog-workbench__sidebar,
-.settings-workbench__sidebar {
+.catalog-workbench__sidebar {
   gap: var(--am-space-xs);
   padding: var(--am-space-md);
   border-color: var(--am-border);
@@ -89,8 +86,7 @@
 }
 
 .catalog-group-button,
-.catalog-list-button,
-.settings-section-link {
+.catalog-list-button {
   border-radius: var(--am-radius-sm);
   transition:
     color var(--am-motion-fast) var(--am-ease-standard),
@@ -100,7 +96,6 @@
 
 .catalog-group-button:hover,
 .catalog-list-button:hover,
-.settings-section-link:hover,
 .catalog-group-button.is-active,
 .catalog-list-button.is-active {
   border-color: var(--am-border);
@@ -113,44 +108,12 @@
   color: var(--am-text-strong);
 }
 
-.catalog-workbench__main,
-.settings-workbench__content {
+.catalog-workbench__main {
   min-width: 0;
 }
 
 .catalog-toolbar {
   margin-bottom: var(--am-space-md);
-}
-
-.settings-segmented-control {
-  gap: var(--am-space-sm);
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.settings-segmented-control button {
-  min-height: 38px;
-  padding: 0 var(--am-space-lg);
-  border: 0;
-  border-radius: var(--am-radius-sm);
-  transition:
-    color var(--am-motion-fast) var(--am-ease-standard),
-    border-color var(--am-motion-fast) var(--am-ease-standard),
-    background-color var(--am-motion-fast) var(--am-ease-standard);
-}
-
-.settings-segmented-control button:hover {
-  border-color: transparent;
-  color: var(--am-text);
-  background: var(--am-surface-soft);
-}
-
-.settings-segmented-control button.is-active {
-  border-color: transparent;
-  color: var(--am-action-primary-strong);
-  background: var(--am-action-soft);
 }
 
 .trigger-mapping-row {
