@@ -41,7 +41,7 @@ class BackendServiceAppSettings(BaseModel):
     """
 
     app_name: str = "amvision backend-service"
-    app_version: str = "0.1.3"
+    app_version: str = "0.1.4"
 
 
 class BackendServiceCorsConfig(BaseModel):
