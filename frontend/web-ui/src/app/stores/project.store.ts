@@ -32,7 +32,10 @@ export const useProjectStore = defineStore('project', {
         const response = await listProjects({ includeSummary })
         this.projects = response.items
         if (!this.projects.some((project) => project.project_id === this.selectedProjectId)) {
-          this.selectedProjectId = this.projects[0]?.project_id ?? getRuntimeConfig().defaultProjectId
+          const defaultProjectId = getRuntimeConfig().defaultProjectId
+          this.selectedProjectId = this.projects.find((project) => project.project_id === defaultProjectId)?.project_id
+            ?? this.projects[0]?.project_id
+            ?? ''
         }
         if (includeSummary) {
           this.selectedSummary = this.projects.find((project) => project.project_id === this.selectedProjectId)?.summary ?? null
@@ -44,6 +47,14 @@ export const useProjectStore = defineStore('project', {
       } finally {
         this.loading = false
       }
+    },
+    async refreshAfterDeletion(projectId: string): Promise<void> {
+      if (this.selectedProjectId === projectId) {
+        this.selectedProjectId = ''
+        this.selectedSummary = null
+      }
+      await this.loadProjects({ includeSummary: true })
+      await useSessionStore().loadBootstrap({ includeDevices: false }).catch(() => undefined)
     },
     async loadSummary(projectId: string): Promise<void> {
       this.selectedSummary = await getProjectSummary(projectId)

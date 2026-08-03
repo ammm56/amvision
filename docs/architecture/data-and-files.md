@@ -167,6 +167,9 @@ LocalBufferBroker 不替代 ObjectStore。需要下载、审计、复现、回�
 
 - 是数据、任务、模型、部署、流程和集成端点的统一归属容器
 - 应作为权限、配额、审计和版本浏览的基本边界
+- 删除 Project 时必须以 Project 为聚合边界清理数据库记录、长期对象、workflow 控制面文档和运行时记录，不能只删除 `projects/{project_id}` 主目录
+- 默认 Project 和 settings 中显式配置的 Project 属于受保护工作区；只有本地目录发现的非默认 Project 可以删除
+- 删除前必须阻止仍有活动任务、部署、workflow runtime/run/preview 或 TriggerSource 的 Project；执行时使用 Project 锁、存储暂存和数据库事务保证失败可恢复
 
 ### Dataset 与 DatasetVersion
 

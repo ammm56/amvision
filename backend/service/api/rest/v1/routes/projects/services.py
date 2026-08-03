@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
+from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import (
     PermissionDeniedError,
@@ -19,6 +20,7 @@ from backend.service.application.project_bootstrap import (
     ProjectManifest,
 )
 from backend.service.application.project_summary import ProjectSummaryService
+from backend.service.application.project_deletion import ProjectDeletionService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -39,10 +41,32 @@ def build_project_summary_service(request: Request) -> ProjectSummaryService:
     )
 
 
+def require_queue_backend(request: Request) -> LocalFileQueueBackend:
+    """从 application.state 中读取本地任务队列后端。"""
+
+    queue_backend = getattr(request.app.state, "queue_backend", None)
+    if not isinstance(queue_backend, LocalFileQueueBackend):
+        raise ServiceConfigurationError("当前服务尚未完成 queue_backend 装配")
+    return queue_backend
+
+
 def build_project_bootstrap_service(request: Request) -> LocalProjectBootstrapService:
     """基于 application.state 构建 Project bootstrap 服务。"""
 
     return LocalProjectBootstrapService(dataset_storage=require_dataset_storage(request))
+
+
+def build_project_deletion_service(request: Request) -> ProjectDeletionService:
+    """基于 application.state 构建 Project 聚合删除服务。"""
+
+    settings = require_backend_service_settings(request)
+    return ProjectDeletionService(
+        session_factory=require_session_factory(request),
+        dataset_storage=require_dataset_storage(request),
+        queue_backend=require_queue_backend(request),
+        default_project_id=settings.projects.default_project_id,
+        configured_project_ids=tuple(item.project_id for item in settings.projects.items),
+    )
 
 
 def require_backend_service_settings(request: Request) -> BackendServiceSettings:
@@ -102,8 +126,6 @@ def ensure_project_known_and_visible(
     """校验指定 Project 同时满足可见性和最小可发现性要求。"""
 
     ensure_project_visible(principal=principal, project_id=project_id)
-    if principal.project_ids and project_id in principal.project_ids:
-        return
     if project_id in set(list_visible_project_ids(request=request, principal=principal)):
         return
     raise ResourceNotFoundError(
@@ -120,16 +142,21 @@ def list_visible_project_ids(
     """列出当前主体可见的 Project id 列表。"""
 
     settings = require_backend_service_settings(request)
-    if principal.project_ids:
-        return tuple(dict.fromkeys(principal.project_ids))
-
     configured_project_ids = [
         item.project_id.strip()
         for item in settings.projects.items
         if item.project_id.strip()
     ]
     discovered_project_ids = discover_storage_project_ids(require_dataset_storage(request))
-    visible_ids = sorted(set(configured_project_ids).union(discovered_project_ids))
+    known_ids = set(configured_project_ids).union(discovered_project_ids)
+    if principal.project_ids:
+        visible_ids = [
+            project_id
+            for project_id in dict.fromkeys(principal.project_ids)
+            if project_id in known_ids
+        ]
+        return tuple(visible_ids)
+    visible_ids = sorted(known_ids)
     return tuple(visible_ids)
 
 

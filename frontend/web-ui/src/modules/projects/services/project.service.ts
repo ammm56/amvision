@@ -41,6 +41,28 @@ export interface SdkConfigPackageDownload {
   fileName?: string
 }
 
+export interface ProjectDeletionBlocker {
+  resource_kind: string
+  resource_id: string
+  state: string
+}
+
+export interface ProjectDeletionPreview {
+  project_id: string
+  project_source: 'configured' | 'local_disk'
+  protected: boolean
+  can_delete: boolean
+  blockers: ProjectDeletionBlocker[]
+  resource_counts: Record<string, number>
+}
+
+export interface ProjectDeletionResult {
+  project_id: string
+  operation_id: string
+  state: 'cleanup_pending' | 'deleted'
+  resource_counts: Record<string, number>
+}
+
 export async function listProjects(options: { includeSummary?: boolean } = {}): Promise<PaginatedResult<ProjectCatalogItem>> {
   const { payload, headers } = await apiRequestWithHeaders<ProjectCatalogItem[]>('/projects', {
     query: { include_summary: options.includeSummary ?? false, offset: 0, limit: 100 },
@@ -54,6 +76,22 @@ export async function getProjectSummary(projectId: string): Promise<ProjectSumma
 
 export async function bootstrapProject(input: ProjectBootstrapInput): Promise<ProjectCatalogItem> {
   return apiRequest<ProjectCatalogItem>('/projects/bootstrap', { method: 'POST', body: input })
+}
+
+export async function previewProjectDeletion(projectId: string): Promise<ProjectDeletionPreview> {
+  return apiRequest<ProjectDeletionPreview>(
+    `/projects/${encodeURIComponent(projectId)}/deletion-preview`,
+  )
+}
+
+export async function deleteProject(
+  projectId: string,
+  confirmation: string,
+): Promise<ProjectDeletionResult> {
+  return apiRequest<ProjectDeletionResult>(`/projects/${encodeURIComponent(projectId)}`, {
+    method: 'DELETE',
+    body: { confirmation },
+  })
 }
 
 export async function previewSdkConfigPackage(

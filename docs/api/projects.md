@@ -13,6 +13,8 @@
 - GET /api/v1/projects
 - GET /api/v1/projects/{project_id}
 - GET /api/v1/projects/{project_id}/summary
+- GET /api/v1/projects/{project_id}/deletion-preview
+- DELETE /api/v1/projects/{project_id}
 - POST /api/v1/projects/{project_id}/sdk-config-packages/preview
 - POST /api/v1/projects/{project_id}/sdk-config-packages/download
 - GET /api/v1/projects/{project_id}/files
@@ -40,6 +42,7 @@
 - GET /api/v1/projects、GET /api/v1/projects/{project_id}、GET /api/v1/projects/{project_id}/summary：需要 `workflows:read` 和 `models:read`
 - POST /api/v1/projects/{project_id}/sdk-config-packages/preview、POST /api/v1/projects/{project_id}/sdk-config-packages/download：需要 `workflows:read` 和 `models:read`
 - GET /api/v1/projects/{project_id}/files、GET /api/v1/projects/{project_id}/files/metadata、GET /api/v1/projects/{project_id}/files/content：需要 `workflows:read` 和 `models:read`
+- GET /api/v1/projects/{project_id}/deletion-preview、DELETE /api/v1/projects/{project_id}：需要 `projects:delete`
 
 当 Bearer token 自带 `project_ids` 可见性裁剪时，Project 相关接口还会额外校验 `project_id` 是否在可访问范围内。
 
@@ -192,6 +195,21 @@
 - `deployments.deployment_instance_total`
 - `deployments.deployment_status_counts`
 
+## Project 删除
+
+Project 删除仅适用于来源为 `local_disk` 的非默认 Project。`default_project_id` 指定的默认 Project，以及 `settings.projects.items` 中显式配置的 Project 均受保护，不允许通过 API 删除。
+
+删除必须分为预检和执行两步：
+
+1. `GET /api/v1/projects/{project_id}/deletion-preview` 返回 `protected`、`can_delete`、活动资源 `blockers` 和资源计数。
+2. `DELETE /api/v1/projects/{project_id}` 的请求体必须提交 `{"confirmation":"<project_id>"}`，确认值与路径中的 Project id 完全一致。
+
+处于 queued、running 或 paused 的任务、仍在 queued/leased 的项目队列消息、活动 deployment、运行中的 workflow preview/run/runtime 和已启用 TriggerSource 会阻止删除。后端执行删除时会在 Project 锁内再次预检，避免仅依赖前端旧快照。
+
+删除执行采用本地存储暂存和数据库事务：先把 Project 关联目录移入隔离暂存区，再删除数据库关联记录并提交；数据库提交失败时恢复已移动目录。提交成功后清理暂存区和终态队列消息。删除范围覆盖数据集、导入导出、任务与事件、模型及其文件记录、部署、workflow 文档、preview/run/runtime/TriggerSource、执行策略、validation session、本地用户授权引用和项目队列消息。平台级预训练模型不属于任何 Project，不进入删除范围。
+
+成功响应状态码为 `202 Accepted`，响应包含 `operation_id`、资源计数和 `cleanup_pending` 状态。逻辑删除完成后 Project 已不可见；暂存文件清理由后台任务完成。
+
 ## POST /api/v1/projects/{project_id}/sdk-config-packages/preview
 
 - 返回当前 Project 可导出的 SDK `Config/config_*.json` 配置包摘要，不返回 zip 内容。
@@ -292,6 +310,6 @@
 
 ## 当前限制
 
-- 当前不公开 Project rename、delete、archive 等独立主数据生命周期接口。
+- 当前不公开 Project rename、archive 接口；Project delete 只支持本地磁盘 Project。
 - 当前 `project_id` 一旦作为目录名进入后续数据链路，应视为稳定命名空间，不建议在外层随意重写。
 - 当前 files 读取接口只开放公开命名空间，不作为任意 ObjectStore 浏览器使用。

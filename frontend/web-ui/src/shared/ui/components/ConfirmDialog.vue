@@ -24,10 +24,13 @@
 
       <p :id="messageId" class="confirm-dialog__message">{{ message }}</p>
       <p v-if="details" :id="detailsId" class="confirm-dialog__details">{{ details }}</p>
+      <div v-if="$slots.default" class="confirm-dialog__content">
+        <slot />
+      </div>
 
       <footer class="confirm-dialog__actions">
         <Button data-confirm-cancel variant="secondary" :disabled="busy" @click="cancelDialog">{{ cancelLabel }}</Button>
-        <Button :variant="confirmVariant" :disabled="busy" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
+        <Button :variant="confirmVariant" :disabled="busy || confirmDisabled" :loading="busy" @click="emit('confirm')">{{ confirmLabel }}</Button>
       </footer>
     </section>
   </div>
@@ -47,11 +50,13 @@ const props = withDefaults(
     cancelLabel: string
     details?: string
     busy?: boolean
+    confirmDisabled?: boolean
     confirmVariant?: 'primary' | 'danger'
   }>(),
   {
     details: '',
     busy: false,
+    confirmDisabled: false,
     confirmVariant: 'danger',
   },
 )
@@ -158,6 +163,11 @@ onBeforeUnmount(() => {
   color: var(--am-text-subtle);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.confirm-dialog__content {
+  display: grid;
+  gap: 12px;
 }
 
 .confirm-dialog__close {

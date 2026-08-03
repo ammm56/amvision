@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import logging
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from starlette.datastructures import UploadFile
 
@@ -36,12 +37,16 @@ from backend.service.api.rest.v1.routes.projects.schemas import (
     ProjectCatalogItemResponse,
     ProjectObjectMetadataResponse,
     ProjectSummaryResponse,
+    ProjectDeletionRequestBody,
+    ProjectDeletionPreviewResponse,
+    ProjectDeletionResponse,
 )
 from backend.service.api.rest.v1.routes.projects.sdk_config_packages import (
     sdk_config_packages_router,
 )
 from backend.service.api.rest.v1.routes.projects.services import (
     build_project_bootstrap_service,
+    build_project_deletion_service,
     build_project_summary_service,
     ensure_project_known_and_visible,
     ensure_project_visible,
@@ -49,11 +54,18 @@ from backend.service.api.rest.v1.routes.projects.services import (
     require_project_bootstrap_principal,
     require_dataset_storage,
 )
+from backend.service.application.workflows.model_sessions import (
+    build_workflow_preview_model_session_scope_id,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 
 
 projects_router = APIRouter(prefix="/projects", tags=["projects"])
 projects_router.include_router(sdk_config_packages_router)
 _WORKFLOW_STORAGE_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+_LOGGER = logging.getLogger(__name__)
 
 
 def _decode_workflow_prompt_mask(content: bytes) -> np.ndarray:
@@ -206,6 +218,135 @@ def bootstrap_project(
         project_id=body.project_id,
         include_summary=True,
     )
+
+
+@projects_router.get(
+    "/{project_id}/deletion-preview",
+    response_model=ProjectDeletionPreviewResponse,
+)
+def preview_project_deletion(
+    project_id: str,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal,
+        Depends(require_scopes("projects:delete")),
+    ],
+) -> ProjectDeletionPreviewResponse:
+    """预检 Project 是否可删除及删除影响范围。"""
+
+    ensure_project_known_and_visible(
+        request=request, principal=principal, project_id=project_id
+    )
+    catalog_item = build_project_catalog_item_response(
+        request=request, project_id=project_id, include_summary=False
+    )
+    preview = build_project_deletion_service(request).preview(
+        project_id=project_id,
+        project_source=catalog_item.project_source,
+    )
+    return ProjectDeletionPreviewResponse(
+        project_id=preview.project_id,
+        project_source=preview.project_source,
+        protected=preview.protected,
+        can_delete=preview.can_delete,
+        blockers=[blocker.__dict__ for blocker in preview.blockers],
+        resource_counts=preview.resource_counts,
+    )
+
+
+@projects_router.delete(
+    "/{project_id}",
+    response_model=ProjectDeletionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def delete_project(
+    project_id: str,
+    body: ProjectDeletionRequestBody,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    principal: Annotated[
+        AuthenticatedPrincipal,
+        Depends(require_scopes("projects:delete")),
+    ],
+) -> ProjectDeletionResponse:
+    """删除本地 Project 的关联记录、Workflow 文档和存储数据。"""
+
+    ensure_project_known_and_visible(
+        request=request, principal=principal, project_id=project_id
+    )
+    catalog_item = build_project_catalog_item_response(
+        request=request, project_id=project_id, include_summary=False
+    )
+    application_ids = _list_project_workflow_application_ids(request, project_id)
+    service = build_project_deletion_service(request)
+    result = service.delete(
+        project_id=project_id,
+        project_source=catalog_item.project_source,
+        confirmation=body.confirmation,
+    )
+    _release_project_preview_resources(
+        request=request,
+        project_id=project_id,
+        application_ids=application_ids,
+    )
+    if result.cleanup_object_key:
+        background_tasks.add_task(
+            service.cleanup,
+            result.cleanup_object_key,
+            result.project_id,
+            result.task_ids,
+        )
+    return ProjectDeletionResponse(
+        project_id=result.project_id,
+        operation_id=result.operation_id,
+        state="cleanup_pending" if result.cleanup_object_key else "deleted",
+        resource_counts=result.resource_counts,
+    )
+
+
+def _list_project_workflow_application_ids(request: Request, project_id: str) -> tuple[str, ...]:
+    """列出项目文档中的 Workflow Application id，用于释放 Preview 缓存。"""
+
+    applications_root = require_dataset_storage(request).resolve(
+        f"workflows/projects/{project_id}/applications"
+    )
+    if not applications_root.is_dir():
+        return ()
+    return tuple(sorted(child.name for child in applications_root.iterdir() if child.is_dir()))
+
+
+def _release_project_preview_resources(
+    *, request: Request, project_id: str, application_ids: tuple[str, ...]
+) -> None:
+    """释放已删除 Project 的 Workflow Preview 模型和图片缓存。"""
+
+    runtime_context = getattr(
+        request.app.state, "workflow_service_node_runtime_context", None
+    )
+    if not isinstance(runtime_context, WorkflowServiceNodeRuntimeContext):
+        return
+    for application_id in application_ids:
+        scope_id = build_workflow_preview_model_session_scope_id(
+            project_id=project_id, application_id=application_id
+        )
+        if runtime_context.workflow_model_session_manager is not None:
+            try:
+                runtime_context.workflow_model_session_manager.close_scope(
+                    scope_id, wait=False
+                )
+            except Exception:  # noqa: BLE001 - 删除已提交后缓存释放只能降级记录
+                _LOGGER.exception(
+                    "释放已删除 Project 的 Workflow 模型会话失败",
+                    extra={"project_id": project_id, "application_id": application_id},
+                )
+        if runtime_context.workflow_storage_image_cache is not None:
+            try:
+                runtime_context.workflow_storage_image_cache.clear_shared_scope(scope_id)
+            except Exception:  # noqa: BLE001 - 删除已提交后缓存释放只能降级记录
+                _LOGGER.exception(
+                    "释放已删除 Project 的 Workflow 图片缓存失败",
+                    extra={"project_id": project_id, "application_id": application_id},
+                )
 
 
 @projects_router.get("/{project_id}", response_model=ProjectCatalogItemResponse)

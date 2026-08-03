@@ -238,9 +238,14 @@ class BackendServiceProjectsConfig(BaseModel):
     """描述 backend-service 当前公开的 Project 目录配置。
 
     字段：
+    - default_project_id：受保护的默认 Project id。
     - items：Project 目录项列表。
     """
 
+    default_project_id: str = Field(
+        default="project-1",
+        description="受保护的默认 Project id",
+    )
     items: list[BackendServiceProjectCatalogItemConfig] = Field(
         default_factory=list,
         description="Project 目录项列表",

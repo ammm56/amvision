@@ -125,6 +125,23 @@ class QueueBackend(Protocol):
 
         ...
 
+    def list_tasks_by_references(
+        self, *, references: tuple[tuple[str, object], ...]
+    ) -> tuple[QueueMessage, ...]:
+        """列出 metadata 或 payload 中匹配任一引用的队列消息。"""
+
+        ...
+
+    def delete_tasks_by_references(
+        self,
+        *,
+        references: tuple[tuple[str, object], ...],
+        statuses: tuple[str, ...],
+    ) -> int:
+        """删除匹配任一引用和指定状态的队列消息。"""
+
+        ...
+
 
 @dataclass(frozen=True)
 class LocalFileQueueSettings:
@@ -429,6 +446,95 @@ class LocalFileQueueBackend:
             ) from error
         return True
 
+    def list_tasks_by_references(
+        self, *, references: tuple[tuple[str, object], ...]
+    ) -> tuple[QueueMessage, ...]:
+        """列出 metadata 或 payload 中匹配任一引用的队列消息。"""
+
+        normalized_references = self._normalize_references(references)
+        if not normalized_references:
+            return ()
+        matched: list[QueueMessage] = []
+        with self._claim_lock:
+            for task_path in self._iter_task_paths():
+                try:
+                    queue_task = self._read_task(task_path)
+                except PersistenceOperationError:
+                    # 损坏文件交给队列自身的诊断和维护流程处理，不能让一个无关文件
+                    # 阻止 Project 删除预检。
+                    continue
+                if self._matches_references(queue_task, normalized_references):
+                    matched.append(queue_task)
+        return tuple(matched)
+
+    def delete_tasks_by_references(
+        self,
+        *,
+        references: tuple[tuple[str, object], ...],
+        statuses: tuple[str, ...],
+    ) -> int:
+        """删除匹配任一引用和指定状态的队列消息。"""
+
+        normalized_references = self._normalize_references(references)
+        allowed_statuses = frozenset(status.strip() for status in statuses if status.strip())
+        if not normalized_references or not allowed_statuses:
+            return 0
+        deleted_count = 0
+        with self._claim_lock:
+            for task_path in self._iter_task_paths():
+                try:
+                    queue_task = self._read_task(task_path)
+                except PersistenceOperationError:
+                    continue
+                if (
+                    queue_task.status not in allowed_statuses
+                    or not self._matches_references(queue_task, normalized_references)
+                ):
+                    continue
+                try:
+                    task_path.unlink(missing_ok=True)
+                    deleted_count += 1
+                except OSError as error:
+                    raise PersistenceOperationError(
+                        "删除 Project 关联队列消息失败",
+                        details={
+                            "queue_name": queue_task.queue_name,
+                            "task_id": queue_task.task_id,
+                            "error_type": error.__class__.__name__,
+                        },
+                    ) from error
+        return deleted_count
+
+    @staticmethod
+    def _normalize_references(
+        references: tuple[tuple[str, object], ...],
+    ) -> dict[str, frozenset[object]]:
+        """规范化引用集合，供一次队列扫描完成多条件匹配。"""
+
+        grouped: dict[str, set[object]] = {}
+        for raw_key, value in references:
+            key = raw_key.strip()
+            if not key:
+                continue
+            try:
+                grouped.setdefault(key, set()).add(value)
+            except TypeError:
+                continue
+        return {key: frozenset(values) for key, values in grouped.items()}
+
+    @staticmethod
+    def _matches_references(
+        queue_task: QueueMessage,
+        references: dict[str, frozenset[object]],
+    ) -> bool:
+        """判断消息的 metadata 或顶层 payload 是否命中引用集合。"""
+
+        return any(
+            queue_task.metadata.get(key) in values
+            or queue_task.payload.get(key) in values
+            for key, values in references.items()
+        )
+
     def complete(
         self,
         queue_message: QueueMessage,
@@ -518,6 +624,21 @@ class LocalFileQueueBackend:
                 return self._read_task(task_path)
 
         return None
+
+    def _iter_task_paths(self) -> tuple[Path, ...]:
+        """返回所有标准状态目录中的队列消息文件。"""
+
+        if not self.root_dir.is_dir():
+            return ()
+        paths: list[Path] = []
+        for queue_dir in self.root_dir.iterdir():
+            if not queue_dir.is_dir():
+                continue
+            for state_name in ("pending", "leased", "completed", "failed"):
+                state_dir = queue_dir / state_name
+                if state_dir.is_dir():
+                    paths.extend(state_dir.glob("*.json"))
+        return tuple(sorted(paths))
 
     def _move_task(
         self,

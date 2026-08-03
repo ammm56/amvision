@@ -234,6 +234,7 @@ const scopeOptions = computed(() => [
   { label: t('settingsDiagnostics.fields.allScopes'), value: '*', description: '*' },
   { label: 'workflows:read', value: 'workflows:read' },
   { label: 'workflows:write', value: 'workflows:write' },
+  { label: 'projects:delete', value: 'projects:delete' },
   { label: 'models:read', value: 'models:read' },
   { label: 'models:write', value: 'models:write' },
   { label: 'datasets:read', value: 'datasets:read' },

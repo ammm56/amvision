@@ -61,4 +61,24 @@ describe('ConfirmDialog', () => {
     expect(wrapper.get('.ui-button--danger').classes()).toContain('is-loading')
     wrapper.unmount()
   })
+
+  it('支持危险操作的补充输入并可禁用确认按钮', () => {
+    const wrapper = mount(ConfirmDialog, {
+      attachTo: document.body,
+      props: {
+        title: '删除 Project',
+        message: '确认删除？',
+        confirmLabel: '删除',
+        cancelLabel: '取消',
+        confirmDisabled: true,
+      },
+      slots: {
+        default: '<label><input value="project-2" /></label>',
+      },
+    })
+
+    expect(wrapper.get('.confirm-dialog__content input').attributes('value')).toBe('project-2')
+    expect(wrapper.get('.ui-button--danger').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
 })

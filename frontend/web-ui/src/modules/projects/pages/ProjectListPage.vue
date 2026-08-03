@@ -75,7 +75,7 @@
       <div class="form-grid">
         <label class="field">
           <span>{{ t('projects.fields.projectId') }}</span>
-          <input v-model.trim="projectForm.projectId" autocomplete="off" placeholder="inspection-line-1" />
+          <input v-model.trim="projectForm.projectId" autocomplete="off" placeholder="project-x" />
         </label>
         <label class="field">
           <span>{{ t('projects.fields.displayName') }}</span>
@@ -122,6 +122,7 @@
             <th>{{ t('projects.columns.training') }}</th>
             <th>{{ t('projects.columns.deployments') }}</th>
             <th>{{ t('projects.columns.workflows') }}</th>
+            <th v-if="canDeleteProject" class="project-table__actions-column">{{ t('projects.columns.actions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -140,16 +141,67 @@
             <td>{{ formatCount(project.summary?.training?.total) }}</td>
             <td>{{ formatCount(project.summary?.deployments?.deployment_instance_total) }}</td>
             <td>{{ formatCount(project.summary?.workflows?.template_total) }}</td>
+            <td v-if="canDeleteProject" class="project-table__actions-column">
+              <Button
+                v-if="!isProjectProtected(project)"
+                variant="danger"
+                size="sm"
+                :disabled="deletionPreviewLoading"
+                :loading="deletionPreviewLoading && pendingDeletionProjectId === project.project_id"
+                :title="t('projects.deletion.action')"
+                @click.stop="requestProjectDeletion(project)"
+              >
+                <Trash2 :size="15" />
+                {{ t('projects.deletion.action') }}
+              </Button>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <ConfirmDialog
+      v-if="deletionPreview"
+      :title="t('projects.deletion.title')"
+      :message="t('projects.deletion.message', { projectId: deletionPreview.project_id })"
+      :details="t('projects.deletion.details')"
+      :confirm-label="t('projects.deletion.confirm')"
+      :cancel-label="t('common.cancel')"
+      :busy="deletingProject"
+      :confirm-disabled="!deletionPreview.can_delete || deletionConfirmation !== deletionPreview.project_id"
+      @cancel="closeDeletionDialog"
+      @confirm="confirmProjectDeletion"
+    >
+      <div v-if="deletionPreview.blockers.length > 0" class="project-deletion-blockers">
+        <strong>{{ t('projects.deletion.blockers') }}</strong>
+        <ul>
+          <li v-for="blocker in deletionPreview.blockers" :key="`${blocker.resource_kind}:${blocker.resource_id}`">
+            {{ formatDeletionBlockerKind(blocker.resource_kind) }} · {{ blocker.resource_id }} · {{ blocker.state }}
+          </li>
+        </ul>
+      </div>
+      <dl v-if="deletionResourceEntries.length > 0" class="project-deletion-counts">
+        <div v-for="[name, count] in deletionResourceEntries" :key="name">
+          <dt>{{ formatDeletionResourceName(name) }}</dt>
+          <dd>{{ count }}</dd>
+        </div>
+      </dl>
+      <label class="field">
+        <span>{{ t('projects.deletion.confirmationLabel') }}</span>
+        <input
+          v-model="deletionConfirmation"
+          autocomplete="off"
+          :disabled="deletingProject || !deletionPreview.can_delete"
+          :placeholder="deletionPreview.project_id"
+        />
+      </label>
+    </ConfirmDialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RefreshCw, Plus, PackageCheck } from '@lucide/vue'
+import { RefreshCw, Plus, PackageCheck, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
@@ -157,12 +209,16 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { ProjectCatalogItem } from '@/shared/contracts'
 import {
+  deleteProject as deleteProjectRequest,
   downloadSdkConfigPackage,
+  previewProjectDeletion,
   previewSdkConfigPackage,
+  type ProjectDeletionPreview,
   type SdkConfigPackageGenerateInput,
   type SdkConfigPackagePreview,
 } from '@/modules/projects/services/project.service'
 import Button from '@/shared/ui/components/Button.vue'
+import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
@@ -179,15 +235,51 @@ const generatingSdkConfigPackage = ref(false)
 const sdkConfigPackagePreview = ref<SdkConfigPackagePreview | null>(null)
 const formError = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
+const deletionPreview = ref<ProjectDeletionPreview | null>(null)
+const pendingDeletionProjectId = ref<string | null>(null)
+const deletionConfirmation = ref('')
+const deletionPreviewLoading = ref(false)
+const deletingProject = ref(false)
 const projectForm = reactive({ projectId: '', displayName: '', description: '' })
 const defaultProjectId = getRuntimeConfig().defaultProjectId
 
 const canBootstrapProject = computed(() =>
   sessionStore.hasScopes(['datasets:write']) || sessionStore.hasScopes(['workflows:write']),
 )
+const canDeleteProject = computed(() => sessionStore.hasScopes(['projects:delete']))
 const defaultProjectExists = computed(() =>
   projectStore.projects.some((project) => project.project_id === defaultProjectId),
 )
+const deletionResourceEntries = computed(() => Object.entries(deletionPreview.value?.resource_counts ?? {})
+  .filter(([, count]) => count > 0)
+  .sort(([left], [right]) => left.localeCompare(right)))
+const deletionResourceLabelKeys: Record<string, string> = {
+  authorization_assignments: 'projects.deletion.resources.authorizationAssignments',
+  dataset_exports: 'projects.deletion.resources.datasetExports',
+  dataset_imports: 'projects.deletion.resources.datasetImports',
+  dataset_versions: 'projects.deletion.resources.datasetVersions',
+  deployments: 'projects.deletion.resources.deployments',
+  model_files: 'projects.deletion.resources.modelFiles',
+  models: 'projects.deletion.resources.models',
+  queue_messages: 'projects.deletion.resources.queueMessages',
+  tasks: 'projects.deletion.resources.tasks',
+  validation_sessions: 'projects.deletion.resources.validationSessions',
+  workflow_app_runtimes: 'projects.deletion.resources.workflowAppRuntimes',
+  workflow_documents: 'projects.deletion.resources.workflowDocuments',
+  workflow_execution_policies: 'projects.deletion.resources.workflowExecutionPolicies',
+  workflow_preview_runs: 'projects.deletion.resources.workflowPreviewRuns',
+  workflow_runs: 'projects.deletion.resources.workflowRuns',
+  workflow_trigger_sources: 'projects.deletion.resources.workflowTriggerSources',
+}
+const deletionBlockerResourceNames: Record<string, string> = {
+  deployment: 'deployments',
+  queue_message: 'queue_messages',
+  task: 'tasks',
+  trigger_source: 'workflow_trigger_sources',
+  workflow_preview: 'workflow_preview_runs',
+  workflow_run: 'workflow_runs',
+  workflow_runtime: 'workflow_app_runtimes',
+}
 
 function readProjectDisplayName(project: ProjectCatalogItem): string {
   const displayName = project.display_name || project.project_id
@@ -212,6 +304,60 @@ async function loadProjectsWithSummary(): Promise<void> {
 
 function formatCount(value: unknown): string {
   return typeof value === 'number' ? String(value) : '0'
+}
+
+function formatDeletionResourceName(resourceName: string): string {
+  const translationKey = deletionResourceLabelKeys[resourceName]
+  return translationKey ? t(translationKey) : resourceName
+}
+
+function formatDeletionBlockerKind(resourceKind: string): string {
+  return formatDeletionResourceName(deletionBlockerResourceNames[resourceKind] ?? resourceKind)
+}
+
+function isProjectProtected(project: ProjectCatalogItem): boolean {
+  return project.project_source !== 'local_disk' || project.project_id === defaultProjectId
+}
+
+async function requestProjectDeletion(project: ProjectCatalogItem): Promise<void> {
+  if (isProjectProtected(project) || deletionPreviewLoading.value) return
+  formError.value = null
+  statusMessage.value = null
+  pendingDeletionProjectId.value = project.project_id
+  deletionPreviewLoading.value = true
+  try {
+    deletionPreview.value = await previewProjectDeletion(project.project_id)
+    deletionConfirmation.value = ''
+  } catch (error) {
+    formError.value = error instanceof Error ? error.message : t('projects.deletion.previewFailed')
+  } finally {
+    deletionPreviewLoading.value = false
+    pendingDeletionProjectId.value = null
+  }
+}
+
+function closeDeletionDialog(): void {
+  if (deletingProject.value) return
+  deletionPreview.value = null
+  deletionConfirmation.value = ''
+}
+
+async function confirmProjectDeletion(): Promise<void> {
+  const preview = deletionPreview.value
+  if (!preview || !preview.can_delete || deletionConfirmation.value !== preview.project_id) return
+  deletingProject.value = true
+  formError.value = null
+  try {
+    await deleteProjectRequest(preview.project_id, deletionConfirmation.value)
+    await projectStore.refreshAfterDeletion(preview.project_id)
+    statusMessage.value = t('projects.deletion.deleted', { projectId: preview.project_id })
+    deletionPreview.value = null
+    deletionConfirmation.value = ''
+  } catch (error) {
+    formError.value = error instanceof Error ? error.message : t('projects.deletion.deleteFailed')
+  } finally {
+    deletingProject.value = false
+  }
 }
 
 async function createProject(): Promise<void> {
@@ -312,5 +458,34 @@ function resetProjectForm(): void {
   margin: 0;
   padding-left: 18px;
   color: var(--am-warning-text);
+}
+
+.project-table__actions-column {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.project-deletion-blockers ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--am-danger-text);
+}
+
+.project-deletion-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.project-deletion-counts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.project-deletion-counts dt,
+.project-deletion-counts dd {
+  margin: 0;
 }
 </style>

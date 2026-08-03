@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 from fastapi.testclient import TestClient
 import numpy as np
+from sqlalchemy import select
 
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers.broker_settings import (
@@ -20,6 +21,8 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.object_key_layout import (
     build_public_project_file_id,
 )
+from backend.service.infrastructure.persistence.local_auth_orm import LocalAuthUserRecord
+from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
 from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
@@ -407,6 +410,318 @@ def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(tmp_path
 
     assert list_response.status_code == 200
     assert [item["project_id"] for item in list_response.json()] == ["project-bootstrap"]
+
+
+def test_local_project_deletion_requires_exact_confirmation_and_removes_workspace(
+    tmp_path: Path,
+) -> None:
+    """验证本地 Project 需要精确确认，删除后不再被目录发现。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete.db",
+        include_storage=True,
+        project_items=[],
+    )
+    headers = build_test_headers(
+        scopes="projects:delete,workflows:read,models:read,datasets:write"
+    )
+    try:
+        with client:
+            bootstrap_response = client.post(
+                "/api/v1/projects/bootstrap",
+                headers=headers,
+                json={"project_id": "project-delete", "display_name": "Delete Me"},
+            )
+            dataset_storage.write_bytes(
+                "projects/project-delete/results/result.txt", b"result"
+            )
+            preview_response = client.get(
+                "/api/v1/projects/project-delete/deletion-preview",
+                headers=headers,
+            )
+            mismatch_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-delete",
+                headers=headers,
+                json={"confirmation": "project-other"},
+            )
+            delete_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-delete",
+                headers=headers,
+                json={"confirmation": "project-delete"},
+            )
+            list_response = client.get("/api/v1/projects", headers=headers)
+    finally:
+        session_factory.engine.dispose()
+
+    assert bootstrap_response.status_code == 201
+    assert preview_response.status_code == 200
+    assert preview_response.json()["can_delete"] is True
+    assert mismatch_response.status_code == 400
+    assert delete_response.status_code == 202
+    assert delete_response.json()["project_id"] == "project-delete"
+    assert list_response.json() == []
+    assert not dataset_storage.resolve("projects/project-delete").exists()
+
+
+def test_configured_and_default_projects_are_protected_from_deletion(tmp_path: Path) -> None:
+    """验证配置 Project 和默认 Project 不可删除。"""
+
+    client, session_factory = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete-protected.db",
+    )
+    headers = build_test_headers(scopes="projects:delete,workflows:read,models:read")
+    try:
+        with client:
+            preview_response = client.get(
+                "/api/v1/projects/project-1/deletion-preview", headers=headers
+            )
+            delete_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-1",
+                headers=headers,
+                json={"confirmation": "project-1"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert preview_response.status_code == 200
+    assert preview_response.json()["protected"] is True
+    assert preview_response.json()["can_delete"] is False
+    assert delete_response.status_code == 400
+
+
+def test_project_deletion_is_blocked_by_active_task(tmp_path: Path) -> None:
+    """验证活动任务会阻止 Project 删除且不破坏项目数据。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete-blocked.db",
+        include_storage=True,
+        project_items=[],
+    )
+    headers = build_test_headers(
+        scopes="projects:delete,workflows:read,models:read,datasets:write"
+    )
+    try:
+        with client:
+            client.post(
+                "/api/v1/projects/bootstrap",
+                headers=headers,
+                json={"project_id": "project-busy"},
+            )
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                unit_of_work.tasks.save_task(
+                    TaskRecord(
+                        task_id="task-project-delete-active",
+                        task_kind="yolo11-training",
+                        project_id="project-busy",
+                        display_name="active training",
+                        created_at=_now_isoformat(),
+                        state="running",
+                    )
+                )
+                unit_of_work.commit()
+            finally:
+                unit_of_work.close()
+            preview_response = client.get(
+                "/api/v1/projects/project-busy/deletion-preview", headers=headers
+            )
+            delete_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-busy",
+                headers=headers,
+                json={"confirmation": "project-busy"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert preview_response.status_code == 200
+    assert preview_response.json()["can_delete"] is False
+    assert preview_response.json()["blockers"] == [
+        {
+            "resource_kind": "task",
+            "resource_id": "task-project-delete-active",
+            "state": "running",
+        }
+    ]
+    assert delete_response.status_code == 409
+    assert dataset_storage.resolve("projects/project-busy").is_dir()
+
+
+def test_project_deletion_removes_terminal_resources_and_authorization_references(
+    tmp_path: Path,
+) -> None:
+    """验证删除只清理目标 Project，并撤销本地用户中的旧授权引用。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete-isolation.db",
+        include_storage=True,
+        project_items=[],
+    )
+    headers = build_test_headers(
+        scopes="projects:delete,workflows:read,models:read,datasets:write"
+    )
+    now = _now_isoformat()
+    queue_backend = client.app.state.queue_backend
+    queue_task_ids: dict[str, str] = {}
+    try:
+        with client:
+            for project_id in ("project-target", "project-keep"):
+                response = client.post(
+                    "/api/v1/projects/bootstrap",
+                    headers=headers,
+                    json={"project_id": project_id},
+                )
+                assert response.status_code == 201
+
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                for project_id in ("project-target", "project-keep"):
+                    unit_of_work.tasks.save_task(
+                        TaskRecord(
+                            task_id=f"task-{project_id}",
+                            task_kind="yolo11-training",
+                            project_id=project_id,
+                            display_name=project_id,
+                            created_at=now,
+                            state="succeeded",
+                        )
+                    )
+                unit_of_work.session.add(
+                    LocalAuthUserRecord(
+                        user_id="user-project-delete",
+                        provider_kind="local",
+                        provider_subject="user-project-delete",
+                        username="project-delete-user",
+                        display_name="Project Delete User",
+                        password_hash="unused-test-hash",
+                        project_ids_json=["project-target", "project-keep"],
+                        scopes_json=["projects:delete"],
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                unit_of_work.commit()
+            finally:
+                unit_of_work.close()
+
+            dataset_storage.write_bytes(
+                "task-runs/task-project-target/output.txt", b"target"
+            )
+            dataset_storage.write_bytes(
+                "task-runs/task-project-keep/output.txt", b"keep"
+            )
+            for project_id in ("project-target", "project-keep"):
+                queue_name = f"project-delete-{project_id}"
+                queue_backend.enqueue(
+                    queue_name=queue_name,
+                    payload={"task_id": f"task-{project_id}"},
+                    metadata=(
+                        {"project_id": project_id}
+                        if project_id == "project-keep"
+                        else None
+                    ),
+                )
+                leased = queue_backend.claim_next(
+                    queue_name=queue_name, worker_id="test-worker"
+                )
+                assert leased is not None
+                completed = queue_backend.complete(leased)
+                queue_task_ids[project_id] = completed.task_id
+            preview_response = client.get(
+                "/api/v1/projects/project-target/deletion-preview", headers=headers
+            )
+            delete_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-target",
+                headers=headers,
+                json={"confirmation": "project-target"},
+            )
+
+        session = session_factory.create_session()
+        try:
+            remaining_task_ids = set(
+                session.execute(select(TaskRecordEntity.task_id)).scalars().all()
+            )
+            auth_user = session.get(LocalAuthUserRecord, "user-project-delete")
+            assert auth_user is not None
+            remaining_project_ids = auth_user.project_ids_json
+        finally:
+            session.close()
+    finally:
+        session_factory.engine.dispose()
+
+    assert preview_response.status_code == 200
+    assert preview_response.json()["resource_counts"]["authorization_assignments"] == 1
+    assert preview_response.json()["resource_counts"]["queue_messages"] == 1
+    assert delete_response.status_code == 202
+    assert remaining_task_ids == {"task-project-keep"}
+    assert remaining_project_ids == ["project-keep"]
+    assert not dataset_storage.resolve("task-runs/task-project-target").exists()
+    assert dataset_storage.resolve("task-runs/task-project-keep/output.txt").is_file()
+    assert queue_backend.get_task(
+        queue_name="project-delete-project-target",
+        task_id=queue_task_ids["project-target"],
+    ) is None
+    assert queue_backend.get_task(
+        queue_name="project-delete-project-keep",
+        task_id=queue_task_ids["project-keep"],
+    ) is not None
+
+
+def test_project_deletion_is_blocked_by_active_queue_message(tmp_path: Path) -> None:
+    """验证活动队列消息会阻止删除，避免 worker 在删除后继续消费旧任务。"""
+
+    client, session_factory = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete-queued.db",
+        project_items=[],
+    )
+    headers = build_test_headers(
+        scopes="projects:delete,workflows:read,models:read,datasets:write"
+    )
+    queue_backend = client.app.state.queue_backend
+    try:
+        with client:
+            client.post(
+                "/api/v1/projects/bootstrap",
+                headers=headers,
+                json={"project_id": "project-queued"},
+            )
+            queued = queue_backend.enqueue(
+                queue_name="project-delete-active-queue",
+                payload={
+                    "task_id": "task-orphaned-queue",
+                    "project_id": "project-queued",
+                },
+            )
+            preview_response = client.get(
+                "/api/v1/projects/project-queued/deletion-preview", headers=headers
+            )
+            delete_response = client.request(
+                "DELETE",
+                "/api/v1/projects/project-queued",
+                headers=headers,
+                json={"confirmation": "project-queued"},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert preview_response.status_code == 200
+    assert preview_response.json()["blockers"] == [
+        {
+            "resource_kind": "queue_message",
+            "resource_id": queued.task_id,
+            "state": "queued",
+        }
+    ]
+    assert delete_response.status_code == 409
 
 
 def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(tmp_path: Path) -> None:

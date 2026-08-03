@@ -136,3 +136,36 @@ class ProjectBootstrapRequestBody(BaseModel):
     description: str | None = Field(default=None, description="可选项目说明")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
 
+
+class ProjectDeletionRequestBody(BaseModel):
+    """描述 Project 删除确认请求。"""
+
+    confirmation: str = Field(description="必须与 Project id 完全一致")
+
+
+class ProjectDeletionBlockerResponse(BaseModel):
+    """描述一个阻止 Project 删除的活动资源。"""
+
+    resource_kind: str = Field(description="资源类型")
+    resource_id: str = Field(description="资源 id")
+    state: str = Field(description="当前状态")
+
+
+class ProjectDeletionPreviewResponse(BaseModel):
+    """描述 Project 删除预检结果。"""
+
+    project_id: str
+    project_source: ProjectSource
+    protected: bool
+    can_delete: bool
+    blockers: list[ProjectDeletionBlockerResponse] = Field(default_factory=list)
+    resource_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class ProjectDeletionResponse(BaseModel):
+    """描述 Project 逻辑删除结果。"""
+
+    project_id: str
+    operation_id: str
+    state: Literal["cleanup_pending", "deleted"]
+    resource_counts: dict[str, int] = Field(default_factory=dict)
