@@ -2,6 +2,7 @@
   <component :is="shellComponent">
     <RouterView />
   </component>
+  <ToastHost />
 </template>
 
 <script setup lang="ts">
@@ -11,6 +12,7 @@ import { RouterView, useRoute } from 'vue-router'
 import AuthShell from '@/shells/auth/AuthShell.vue'
 import BlankShell from '@/shells/blank/BlankShell.vue'
 import WorkbenchShell from '@/shells/workbench/WorkbenchShell.vue'
+import ToastHost from '@/shared/ui/feedback/ToastHost.vue'
 
 const route = useRoute()
 

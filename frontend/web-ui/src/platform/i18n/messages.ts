@@ -127,6 +127,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         protectedHint: '默认项目和配置目录中的项目不允许删除',
         previewFailed: '项目删除预检失败',
         deleteFailed: '项目删除失败',
+        deletedTitle: '项目已删除',
         deleted: '项目“{projectId}”已删除',
         resources: {
           authorizationAssignments: '用户授权引用',
@@ -2022,6 +2023,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         protectedHint: 'The default Project and configured Projects cannot be deleted',
         previewFailed: 'Failed to inspect Project deletion',
         deleteFailed: 'Failed to delete Project',
+        deletedTitle: 'Project deleted',
         deleted: 'Project "{projectId}" deleted',
         resources: {
           authorizationAssignments: 'Authorization references',
@@ -3913,6 +3915,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         protectedHint: '既定 Project と設定済み Project は削除できません',
         previewFailed: 'Project 削除の事前確認に失敗しました',
         deleteFailed: 'Project の削除に失敗しました',
+        deletedTitle: 'Project を削除しました',
         deleted: 'Project「{projectId}」を削除しました',
         resources: {
           authorizationAssignments: 'ユーザー権限参照',
@@ -5664,6 +5667,7 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
         protectedHint: '기본 Project와 설정된 Project는 삭제할 수 없습니다',
         previewFailed: 'Project 삭제 사전 확인 실패',
         deleteFailed: 'Project 삭제 실패',
+        deletedTitle: 'Project가 삭제되었습니다',
         deleted: 'Project "{projectId}"가 삭제되었습니다',
         resources: {
           authorizationAssignments: '사용자 권한 참조',

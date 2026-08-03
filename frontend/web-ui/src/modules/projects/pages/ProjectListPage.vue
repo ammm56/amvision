@@ -40,7 +40,6 @@
 
     <InlineError :message="projectStore.error" />
     <InlineError :message="formError" />
-    <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
     <section v-if="sdkConfigPackagePreview" class="resource-section sdk-config-preview-panel">
       <div>
         <h2>{{ t('projects.sdkConfigPackage.title') }}</h2>
@@ -206,6 +205,7 @@ import { useI18n } from 'vue-i18n'
 
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
+import { useFeedbackStore } from '@/app/stores/feedback.store'
 import { getRuntimeConfig } from '@/platform/runtime/runtime-config'
 import type { ProjectCatalogItem } from '@/shared/contracts'
 import {
@@ -226,6 +226,7 @@ import ProjectSwitcher from '@/modules/projects/components/ProjectSwitcher.vue'
 
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
+const feedbackStore = useFeedbackStore()
 const { t } = useI18n()
 
 const showCreateProject = ref(false)
@@ -234,7 +235,6 @@ const bootstrappingDefaultProject = ref(false)
 const generatingSdkConfigPackage = ref(false)
 const sdkConfigPackagePreview = ref<SdkConfigPackagePreview | null>(null)
 const formError = ref<string | null>(null)
-const statusMessage = ref<string | null>(null)
 const deletionPreview = ref<ProjectDeletionPreview | null>(null)
 const pendingDeletionProjectId = ref<string | null>(null)
 const deletionConfirmation = ref('')
@@ -322,7 +322,6 @@ function isProjectProtected(project: ProjectCatalogItem): boolean {
 async function requestProjectDeletion(project: ProjectCatalogItem): Promise<void> {
   if (isProjectProtected(project) || deletionPreviewLoading.value) return
   formError.value = null
-  statusMessage.value = null
   pendingDeletionProjectId.value = project.project_id
   deletionPreviewLoading.value = true
   try {
@@ -350,7 +349,7 @@ async function confirmProjectDeletion(): Promise<void> {
   try {
     await deleteProjectRequest(preview.project_id, deletionConfirmation.value)
     await projectStore.refreshAfterDeletion(preview.project_id)
-    statusMessage.value = t('projects.deletion.deleted', { projectId: preview.project_id })
+    feedbackStore.success(t('projects.deletion.deletedTitle'), { message: preview.project_id })
     deletionPreview.value = null
     deletionConfirmation.value = ''
   } catch (error) {
@@ -362,11 +361,11 @@ async function confirmProjectDeletion(): Promise<void> {
 
 async function createProject(): Promise<void> {
   formError.value = null
-  statusMessage.value = null
   if (!projectForm.projectId) {
     formError.value = t('projects.messages.projectIdRequired')
     return
   }
+  const projectId = projectForm.projectId
   creatingProject.value = true
   try {
     await projectStore.createProject({
@@ -374,7 +373,7 @@ async function createProject(): Promise<void> {
       display_name: projectForm.displayName || undefined,
       description: projectForm.description || undefined,
     })
-    statusMessage.value = t('projects.messages.created')
+    feedbackStore.success(t('projects.messages.created'), { message: projectId })
     resetProjectForm()
   } catch (error) {
     formError.value = error instanceof Error ? error.message : t('projects.messages.createFailed')
@@ -385,11 +384,10 @@ async function createProject(): Promise<void> {
 
 async function bootstrapDefaultProject(): Promise<void> {
   formError.value = null
-  statusMessage.value = null
   bootstrappingDefaultProject.value = true
   try {
     await projectStore.bootstrapDefaultProject()
-    statusMessage.value = t('projects.messages.created')
+    feedbackStore.success(t('projects.messages.created'), { message: defaultProjectId })
   } catch (error) {
     formError.value = error instanceof Error ? error.message : t('projects.messages.createFailed')
   } finally {
@@ -399,7 +397,6 @@ async function bootstrapDefaultProject(): Promise<void> {
 
 async function generateSdkConfigPackage(): Promise<void> {
   formError.value = null
-  statusMessage.value = null
   sdkConfigPackagePreview.value = null
   const projectId = projectStore.selectedProjectId
   if (!projectId) {
@@ -426,7 +423,7 @@ async function generateSdkConfigPackage(): Promise<void> {
     anchor.download = download.fileName ?? preview.package_name
     anchor.click()
     window.URL.revokeObjectURL(objectUrl)
-    statusMessage.value = t('projects.messages.sdkConfigPackageDownloaded')
+    feedbackStore.success(t('projects.messages.sdkConfigPackageDownloaded'), { message: projectId })
   } catch (error) {
     formError.value = error instanceof Error ? error.message : t('projects.messages.sdkConfigPackageFailed')
   } finally {
