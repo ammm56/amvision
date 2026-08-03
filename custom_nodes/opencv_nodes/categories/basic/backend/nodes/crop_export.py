@@ -10,8 +10,9 @@ from backend.nodes.core_nodes.support.roi import iter_roi_payloads
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
-    build_output_image_matrix_payload,
     build_crop_object_key,
+    build_image_crop_batch_timestamp,
+    build_output_image_matrix_payload,
     clip_bbox,
     load_image_matrix,
     normalize_optional_output_dir,
@@ -42,12 +43,15 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         max_crops_raw = None
     max_crops = require_positive_int(max_crops_raw, field_name="max_crops") if max_crops_raw is not None else None
     output_dir = normalize_optional_output_dir(request.parameters.get("output_dir"))
+    output_batch_timestamp = (
+        build_image_crop_batch_timestamp() if output_dir is not None else None
+    )
     polygon_background_fill = _read_polygon_background_fill(
         request.parameters.get("polygon_background_fill")
     )
     crop_specs = _resolve_crop_specs(request)
     exported_crops: list[dict[str, object]] = []
-    for source_index, crop_spec in enumerate(crop_specs, start=1):
+    for crop_spec in crop_specs:
         if max_crops is not None and len(exported_crops) >= max_crops:
             break
         x1, y1, x2, y2 = crop_spec["bbox_xyxy"]
@@ -77,12 +81,14 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 crop_y1=crop_y1,
                 background_fill=polygon_background_fill,
             )
+        crop_output_index = len(exported_crops) + 1
         crop_object_key = (
             build_crop_object_key(
                 request,
                 source_object_key=image_object_key,
                 output_dir=output_dir,
-                detection_index=source_index,
+                detection_index=crop_output_index,
+                batch_timestamp=output_batch_timestamp,
             )
             if output_dir is not None
             else None
@@ -92,13 +98,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             source_payload=image_payload,
             image_matrix=crop_image,
             object_key=crop_object_key,
-            variant_name=f"crop-{source_index:03d}",
+            variant_name=f"crop-{crop_output_index:03d}",
             output_extension=".png",
             media_type="image/png",
             error_message="OpenCV crop export 后无法编码输出图片",
         )
         crop_payload["bbox_xyxy"] = [crop_x1, crop_y1, crop_x2, crop_y2]
-        crop_payload["crop_index"] = len(exported_crops) + 1
+        crop_payload["crop_index"] = crop_output_index
         crop_payload["crop_source"] = crop_spec["source_kind"]
         if crop_spec["source_kind"] == "roi":
             crop_payload["roi_id"] = crop_spec.get("roi_id")

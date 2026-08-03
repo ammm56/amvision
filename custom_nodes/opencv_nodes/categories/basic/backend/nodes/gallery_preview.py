@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from backend.nodes.runtime_support import build_preview_response_image_payload
+from backend.nodes.runtime_support import (
+    build_preview_response_image_payload,
+    load_image_matrix_from_payload,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
+    build_image_crop_batch_timestamp,
+    build_image_crop_output_name,
+    build_output_image_matrix_payload,
+    normalize_optional_output_dir,
+)
+from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
 from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import require_image_refs_payload
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import require_positive_int
 
@@ -20,6 +30,7 @@ def _build_gallery_item(
     response_transport_mode: str,
     output_dir: str | None,
     item_index: int,
+    batch_timestamp: str | None,
 ) -> dict[str, object]:
     """把单个 image-ref 条目转换为 gallery preview 项。
 
@@ -29,24 +40,39 @@ def _build_gallery_item(
     - response_transport_mode：响应传输方式。
     - output_dir：可选输出目录。
     - item_index：当前图片序号。
+    - batch_timestamp：当前批次共用的输出时间戳。
 
     返回：
     - dict[str, object]：gallery preview 使用的图片项。
     """
 
-    output_object_key = None
-    display_object_key = None
-    if isinstance(output_dir, str) and output_dir.strip():
-        base_name = _build_gallery_output_name(image_item=image_item, item_index=item_index)
-        normalized_output_dir = output_dir.strip().rstrip("/")
-        output_object_key = f"{normalized_output_dir}/{base_name}"
-        display_object_key = f"{normalized_output_dir}/{PurePosixPath(base_name).stem}-display.jpg"
+    response_source = image_item
+    if output_dir is not None and batch_timestamp is not None:
+        cv2_module, np_module = require_opencv_imports()
+        normalized_payload, image_matrix = load_image_matrix_from_payload(
+            request,
+            image_payload=image_item,
+            cv2_module=cv2_module,
+            np_module=np_module,
+        )
+        output_name = build_image_crop_output_name(
+            batch_timestamp=batch_timestamp,
+            item_index=item_index,
+        )
+        response_source = build_output_image_matrix_payload(
+            request,
+            source_payload=normalized_payload,
+            image_matrix=image_matrix,
+            object_key=f"{output_dir}/{output_name}",
+            variant_name=f"gallery-output-{item_index:03d}",
+            output_extension=".png",
+            media_type="image/png",
+            error_message="Gallery Preview 无法编码输出图片",
+        )
     response_image = build_preview_response_image_payload(
         request,
-        image_payload=image_item,
+        image_payload=response_source,
         response_transport_mode=response_transport_mode,
-        object_key=output_object_key,
-        display_object_key=display_object_key,
         variant_name=f"gallery-preview-{item_index:03d}",
     )
     default_caption = "Image"
@@ -81,8 +107,19 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     image_refs_payload = require_image_refs_payload(request.input_values.get("images"))
     response_transport_mode = str(request.parameters.get("response_transport_mode", "inline-base64"))
-    output_dir = request.parameters.get("output_dir")
-    normalized_output_dir = output_dir.strip() if isinstance(output_dir, str) and output_dir.strip() else None
+    normalized_output_dir = normalize_optional_output_dir(
+        request.parameters.get("output_dir")
+    )
+    output_batch_timestamp = (
+        build_image_crop_batch_timestamp()
+        if normalized_output_dir is not None
+        else None
+    )
+    image_items = image_refs_payload["items"]
+    max_items_raw = request.parameters.get("max_items")
+    if max_items_raw is not None:
+        max_items = require_positive_int(max_items_raw, field_name="max_items")
+        image_items = image_items[:max_items]
     gallery_items = [
         _build_gallery_item(
             request,
@@ -90,13 +127,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             response_transport_mode=response_transport_mode,
             output_dir=normalized_output_dir,
             item_index=index,
+            batch_timestamp=output_batch_timestamp,
         )
-        for index, image_item in enumerate(image_refs_payload["items"], start=1)
+        for index, image_item in enumerate(image_items, start=1)
     ]
-    max_items_raw = request.parameters.get("max_items")
-    if max_items_raw is not None:
-        max_items = require_positive_int(max_items_raw, field_name="max_items")
-        gallery_items = gallery_items[:max_items]
     response_body: dict[str, object] = {
         "type": "gallery-preview",
         "count": len(gallery_items),
@@ -110,15 +144,3 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if isinstance(title, str) and title.strip():
         response_body["title"] = title.strip()
     return {"body": response_body}
-
-
-def _build_gallery_output_name(*, image_item: dict[str, object], item_index: int) -> str:
-    """为 gallery item 生成稳定输出文件名。"""
-
-    raw_object_key = image_item.get("object_key")
-    if isinstance(raw_object_key, str) and raw_object_key.strip():
-        return PurePosixPath(raw_object_key.strip()).name
-    crop_index = image_item.get("crop_index")
-    if isinstance(crop_index, int):
-        return f"crop-{crop_index:03d}.png"
-    return f"image-{item_index:03d}.png"

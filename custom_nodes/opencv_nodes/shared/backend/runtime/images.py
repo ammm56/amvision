@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+from datetime import datetime
 from typing import Any
 
 from backend.nodes.runtime_support import (
@@ -226,6 +226,22 @@ def normalize_optional_output_dir(value: object) -> str | None:
         raise InvalidRequestError("output_dir 不能包含父目录引用")
     return normalized_value
 
+
+def build_image_crop_batch_timestamp() -> str:
+    """生成一次图片批量输出共用的本地时间戳。"""
+
+    return datetime.now().strftime("%Y%m%d%H%M%S")
+
+
+def build_image_crop_output_name(*, batch_timestamp: str, item_index: int) -> str:
+    """生成统一的批量图片文件名。"""
+
+    if len(batch_timestamp) != 14 or not batch_timestamp.isdigit():
+        raise InvalidRequestError("图片批量输出时间戳格式无效")
+    if item_index < 1:
+        raise InvalidRequestError("图片批量输出序号必须大于 0")
+    return f"image-crop-{batch_timestamp}-{item_index:03d}.png"
+
 def clip_bbox(
     *,
     x1: int,
@@ -265,6 +281,7 @@ def build_crop_object_key(
     source_object_key: str | None,
     output_dir: str | None,
     detection_index: int,
+    batch_timestamp: str | None = None,
 ) -> str:
     """为单个裁剪图生成输出 object key。
 
@@ -273,15 +290,19 @@ def build_crop_object_key(
     - source_object_key：源图片 object key。
     - output_dir：可选输出目录。
     - detection_index：当前 detection 序号。
+    - batch_timestamp：当前批次共用的时间戳。
 
     返回：
     - str：裁剪图 object key。
     """
 
-    normalized_source_object_key = source_object_key.strip() if isinstance(source_object_key, str) else ""
     if output_dir is not None:
-        source_stem = PurePosixPath(normalized_source_object_key).stem or "image"
-        return f"{output_dir}/{source_stem}-crop-{detection_index:03d}.png"
+        output_name = build_image_crop_output_name(
+            batch_timestamp=batch_timestamp or build_image_crop_batch_timestamp(),
+            item_index=detection_index,
+        )
+        return f"{output_dir}/{output_name}"
+    normalized_source_object_key = source_object_key.strip() if isinstance(source_object_key, str) else ""
     return build_runtime_image_object_key(
         request,
         source_object_key=normalized_source_object_key or "image.png",

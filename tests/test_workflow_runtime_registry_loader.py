@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -3092,12 +3093,20 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
     assert crops_payload["count"] == 2
     assert crops_payload["source_object_key"] == "inputs/source.jpg"
     assert len(crops_payload["items"]) == 2
-    for crop_item in crops_payload["items"]:
-        assert crop_item["object_key"].startswith("workflow/crops/")
-        assert crop_item["object_key"].endswith(".png")
-        assert dataset_storage.resolve(crop_item["object_key"]).is_file()
+    output_timestamps: set[str] = set()
+    for expected_index, crop_item in enumerate(crops_payload["items"], start=1):
+        output_match = re.fullmatch(
+            rf"workflow/crops/image-crop-(\d{{14}})-{expected_index:03d}\.png",
+            str(crop_item["object_key"]),
+        )
+        assert output_match is not None
+        output_timestamps.add(output_match.group(1))
+        output_path = dataset_storage.resolve(crop_item["object_key"])
+        assert output_path.is_file()
+        assert output_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
         assert isinstance(crop_item["bbox_xyxy"], list)
         assert crop_item["crop_index"] >= 1
+    assert len(output_timestamps) == 1
 
 
 def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory_input(
@@ -3699,7 +3708,12 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
             WorkflowGraphNode(
                 node_id="gallery",
                 node_type_id="custom.opencv.gallery-preview",
-                parameters={"title": "Crop Gallery", "max_items": 2},
+                parameters={
+                    "title": "Crop Gallery",
+                    "max_items": 2,
+                    "response_transport_mode": "inline-base64",
+                    "output_dir": "workflow/gallery-preview",
+                },
             ),
             WorkflowGraphNode(
                 node_id="response", node_type_id="core.output.http-response"
@@ -3797,6 +3811,25 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     )
     assert response_payload["body"]["items"][0]["image"]["media_type"] == "image/png"
     assert response_payload["body"]["items"][0]["image"]["image_base64"]
+    gallery_output_files = sorted(
+        path.name
+        for path in dataset_storage.resolve("workflow/gallery-preview").iterdir()
+    )
+    assert len(gallery_output_files) == 2
+    gallery_timestamps: set[str] = set()
+    for expected_index, output_name in enumerate(gallery_output_files, start=1):
+        output_match = re.fullmatch(
+            rf"image-crop-(\d{{14}})-{expected_index:03d}\.png",
+            output_name,
+        )
+        assert output_match is not None
+        gallery_timestamps.add(output_match.group(1))
+        assert (
+            dataset_storage.resolve(f"workflow/gallery-preview/{output_name}")
+            .read_bytes()
+            .startswith(b"\x89PNG\r\n\x1a\n")
+        )
+    assert len(gallery_timestamps) == 1
 
 
 def _create_executable_node_pack_fixture(tmp_path: Path) -> Path:
