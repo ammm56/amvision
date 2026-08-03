@@ -49,7 +49,12 @@
       <Save :size="15" />
       {{ saveLabel }}
     </button>
-    <button type="button" :disabled="previewDisabled" @click="emit('preview')">
+    <button
+      v-if="!contextMenu.nodeId"
+      type="button"
+      :disabled="previewDisabled"
+      @click="emit('preview')"
+    >
       <Play :size="15" />
       {{ previewLabel }}
     </button>

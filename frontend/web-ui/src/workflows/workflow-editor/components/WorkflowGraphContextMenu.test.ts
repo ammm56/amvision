@@ -35,6 +35,10 @@ describe('WorkflowGraphContextMenu', () => {
     await addNodeButton.trigger('mouseenter')
     expect(wrapper.emitted('open-node-picker')).toBeUndefined()
 
+    const menuButtonLabels = wrapper.findAll('button').map((button) => button.text().trim())
+    expect(menuButtonLabels).toContain('Preview Run')
+    expect(menuButtonLabels).not.toContain('Preview Node Run')
+
     await addNodeButton.trigger('click')
     expect(wrapper.emitted('open-node-picker')).toHaveLength(1)
   })
@@ -69,7 +73,8 @@ describe('WorkflowGraphContextMenu', () => {
       .find((button) => button.text().includes('Preview Node Run'))
     expect(previewNodeButton).toBeDefined()
     const menuButtonLabels = wrapper.findAll('button').map((button) => button.text().trim())
-    expect(menuButtonLabels.slice(-2)).toEqual(['Preview Run', 'Preview Node Run'])
+    expect(menuButtonLabels).not.toContain('Preview Run')
+    expect(menuButtonLabels.at(-1)).toBe('Preview Node Run')
     await previewNodeButton?.trigger('click')
     expect(wrapper.emitted('preview-node')).toHaveLength(1)
   })
