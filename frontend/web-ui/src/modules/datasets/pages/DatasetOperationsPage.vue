@@ -66,7 +66,6 @@
       :search="datasetVersionSearch"
       :filtered-dataset-versions="filteredDatasetVersions"
       :resolved-dataset-version-id="resolvedDatasetVersionId"
-      :status-tone="statusTone"
       @update:search="datasetVersionSearch = $event"
       @select="selectDatasetVersion"
       @close="closeDatasetVersionPicker"
@@ -74,14 +73,12 @@
 
     <DatasetImportRecords
       :imports="imports"
-      :status-tone="statusTone"
     />
 
     <DatasetExportRecords
       :exports="exports"
       :can-write-datasets="canWriteDatasets"
       :packaging-export-id="packagingExportId"
-      :status-tone="statusTone"
       @package="packageExport"
       @download="downloadExport"
     />
@@ -226,15 +223,6 @@ onMounted(async () => {
   }
   await loadInitialData()
 })
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('received')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process') || normalized.includes('valid')) return 'info'
-  return 'neutral'
-}
 
 function createDefaultDatasetId(): string {
   const now = new Date()

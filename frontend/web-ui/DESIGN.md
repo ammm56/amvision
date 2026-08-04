@@ -1,5 +1,5 @@
 ---
-version: 0.1.3
+version: 0.1.4
 name: AMVision-frontend-design-system
 description: AMVision 前端设计规则，面向本地优先的工业视觉平台、工作站界面和流程编排场景，统一定义默认 Light 与可切换 Dark 主题下的色彩、排版、间距、组件层级和交互状态。界面强调信息密度、操作稳定性、低延迟反馈和长时间使用的可读性，不采用营销站式视觉表达。
 
@@ -20,7 +20,7 @@ colors:
   light:
     page: "#f6f7f9"
     surface: "#ffffff"
-    surface-soft: "#f4f5f7"
+    surface-soft: "#ffffff"
     surface-muted: "#eceff2"
     surface-raised: "#ffffff"
     text: "#344054"
@@ -30,9 +30,10 @@ colors:
     border: "#e4e7ec"
     border-strong: "#d0d5dd"
     input: "#ffffff"
-    sidebar: "#f3f5f7"
+    sidebar: "#ffffff"
     sidebar-active: "#eaf6f1"
-    table-header: "#f7f8fa"
+    table-header: "#ffffff"
+    row-hover: "#f5faf8"
     row-selected: "#eaf6f1"
     overlay: "rgba(17, 24, 39, 0.44)"
     code-surface: "#f2f4f7"
@@ -59,6 +60,7 @@ colors:
     sidebar: "#101010"
     sidebar-active: "#1c2c26"
     table-header: "#1a1a1a"
+    row-hover: "#202622"
     row-selected: "#17352b"
     overlay: "rgba(0, 0, 0, 0.72)"
     code-surface: "#111312"
@@ -89,7 +91,7 @@ colors:
       neutral:
         text: "#475467"
         icon: "#667085"
-        surface: "#f2f4f7"
+        surface: "#ffffff"
         border: "#d9dee5"
     dark:
       success:
@@ -118,16 +120,26 @@ colors:
         surface: "#2a2e2c"
         border: "#494f4c"
 
+  progress:
+    light:
+      fill: "#087a56"
+      text: "#087a56"
+      track: "#e7eeeb"
+    dark:
+      fill: "#00d992"
+      text: "#62d5a9"
+      track: "#27312d"
+
   graph:
     light:
-      canvas: "#f4f7f6"
+      canvas: "#ffffff"
       shell: "#edf2f0"
       toolbar: "#ffffff"
       panel: "#ffffff"
-      panel-strong: "#f4f7f6"
-      panel-soft: "#eef3f1"
+      panel-strong: "#ffffff"
+      panel-soft: "#ffffff"
       node: "#ffffff"
-      node-header: "#eef3f1"
+      node-header: "#fdfefd"
       node-border: "#c8d4d0"
       text: "#1b2923"
       text-strong: "#0d1712"
@@ -454,17 +466,17 @@ Light 是 AMVision 默认外观，适用于常规工作站、数据管理、配�
 
 - `{colors.light.page}`：页面大面积背景。
 - `{colors.light.surface}`：Card、表格、侧面内容区和普通面板。
-- `{colors.light.surface-soft}`：表头、输入辅助区域、摘要区和次级内容。
-- `{colors.light.surface-muted}`：hover、只读区和需要比 soft 更明确但仍不应形成 Card 的弱表面。
+- `{colors.light.surface-soft}`：与主表面保持一致的白色次级区域；通过留白和必要的 hairline 表达结构，不通过连续灰色块堆叠层级。
+- `{colors.light.surface-muted}`：只读区和需要比 soft 更明确但仍不应形成 Card 的弱表面；可操作表格行的悬停状态使用独立的 `row-hover`。
 - `{colors.light.surface-raised}`：Modal、Popover、Dropdown 和其他浮动层。
 - `{colors.light.text}`、`text-strong`、`text-muted`、`text-disabled`：四级文字层级。
 - `{colors.light.border}` 与 `border-strong`：普通分隔和交互控件边界。
-- `{colors.light.sidebar}` 与 `sidebar-active`：左侧 App Sidebar 的默认和当前路由状态。
-- `{colors.light.table-header}` 与 `row-selected`：高密度表格的结构和选中状态。
+- `{colors.light.sidebar}` 与 `sidebar-active`：左侧 App Sidebar 使用白色默认表面，当前路由使用低强度品牌色背景。
+- `{colors.light.table-header}`、`row-hover` 与 `row-selected`：表头使用白色，通过字重和底部 hairline 建立列结构；悬停行使用接近白色的低强度反馈，选中行使用低强度品牌色背景。
 - `{colors.light.action-primary}`、`action-primary-hover`、`action-primary-active` 与 `on-action`：Light 主题主要操作的完整状态。它们与品牌亮绿色分离，以保证白色页面上的稳定对比度。
 - `{colors.light.action-soft}`：当前 Tab、当前选项和低强度品牌强调，不用于成功状态。
 
-Light 页面使用偏中性的冷灰背景和白色主表面。长期显示的一级 Card 可以使用极淡边框，内部摘要和选项组优先使用无边框 soft surface；同一区域不得连续嵌套多个带边框 Card。普通信息分组依靠标题、留白、圆角和表面差，不使用连续横线模拟表格。
+Light 页面使用偏中性的冷灰页面背景和白色内容表面。Sidebar、表头、摘要区和普通面板默认保持白色，层级主要依靠留白、文字权重和必要的 1 px hairline；只有 hover、只读或明确需要弱强调的区域才使用 muted surface。长期显示的一级 Card 可以使用极淡边框，同一区域不得连续嵌套多个带边框 Card。普通信息分组依靠标题、留白和圆角，不使用连续灰色块或横线模拟结构。
 
 ### Dark 主题
 
@@ -475,7 +487,7 @@ Dark 是完整外观，适用于低照度环境、长时间监控和偏好深色
 - `{colors.dark.text}`、`text-strong`、`text-muted`、`text-disabled`：四级文字层级。
 - `{colors.dark.border}` 与 `border-strong`：Dark 下的 hairline 和交互边界。
 - `{colors.dark.sidebar}` 与 `sidebar-active`：Dark App Sidebar 的默认和当前路由状态。
-- `{colors.dark.table-header}` 与 `row-selected`：Dark 数据表格的结构和选中状态。
+- `{colors.dark.table-header}`、`row-hover` 与 `row-selected`：Dark 数据表格的结构、悬停和选中状态。
 - `{colors.dark.code-surface}` 与 `code-text`：日志、代码和机器可读值。
 
 ### Semantic color 是什么
@@ -489,6 +501,10 @@ Semantic color 不是一个独立外观，也不是 Workflow 专用颜色，而�
 - `neutral`：未开始、已停止、无状态或普通元数据。
 
 训练失败、部署异常、连接断开和表单校验错误必须使用 danger；等待资源、未完成配置和即将超时使用 warning；不要用 brand primary 代替全部业务状态。
+
+### Progress color 是什么
+
+Progress color 表示可量化任务的完成比例，不等同于 Semantic info。Light 使用较深的 action green，Dark 使用品牌绿色；轨道使用低对比度中性绿色。训练、转换、导入、导出和部署进度统一引用 `colors.progress`，不得复用蓝色 info token。任务的 running Badge 仍使用 Semantic info，以保持“当前阶段”和“完成比例”两种信息边界清楚。
 
 ### Graph color 是什么
 
@@ -686,6 +702,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 - Light 和 Dark 分别使用对应主题的 input、text 和 border-strong token。
 - 必须定义 default、hover、focus、disabled、read-only、invalid 和 loading 状态。
+- 带图标的复合输入框只由外层容器绘制 focus ring；内部原生 input 不得重复绘制 border 或 box-shadow。
 - Label、帮助文本和错误文本不能只依赖 placeholder；单位和取值范围应靠近字段显示。
 
 表单按照业务分组排列。首次保存、模型转换和部署等高风险操作，在提交前应明确显示缺失字段、输出位置和可能影响。
@@ -743,7 +760,7 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 
 - 表头使用 `{typography.caption}` 或 `{typography.body-sm-strong}`，表体使用 `{typography.body-sm}`。
 - 名称列优先展示可读名称，下一行可显示 ID；状态、数量和时间列保持稳定宽度。
-- 行选中状态只使用 `row-selected` 背景表达；hover 只表示可操作性，不等同于选中。键盘焦点使用独立的 `focus-visible` 样式。
+- 可操作行使用 `row-hover` 提供低强度指针反馈；行选中状态只使用 `row-selected` 背景表达，hover 不等同于选中。键盘焦点使用独立的 `focus-visible` 样式。
 - 行级操作在需要时显示，破坏性操作必须与常规操作分组，并提供确认或撤销路径。
 - 空数据、加载中、请求失败和无筛选结果是四种不同状态，不能共用一段模糊提示。
 
@@ -758,8 +775,10 @@ Mobile 是受支持的查看和轻量操作形态，不要求在窄屏完整复�
 - **Toast**：用于短时确认，不承载需要持续阅读或必须处理的信息。
 - **Inline message**：用于表单错误、任务失败原因和与当前内容强相关的提示。
 - **Badge**：用于任务状态、部署状态、运行时状态和版本标签。
-- **Progress**：训练、转换、部署和文件导入应显示可追踪进度；无法提供百分比时使用明确的阶段文本。
+- **Progress**：训练、转换、部署和文件导入应显示可追踪进度；统一使用 Progress token，不使用 Semantic info 蓝色。无法提供百分比时使用明确的阶段文本。
 - **Connection state**：只在连接状态影响当前操作时显示，不设置无实际操作价值的固定底栏。
+
+任务状态 Badge 默认只显示状态文字，不显示装饰圆点。圆点只保留给后端在线、设备连接、健康检查等需要表达持续信号的状态，且必须同时提供文字说明。
 
 ## 交互与状态
 

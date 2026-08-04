@@ -62,7 +62,7 @@
             </div>
           </div>
           <div class="dataset-version-picker__item-side">
-            <StatusBadge v-if="item.source_status" :tone="statusTone(item.source_status)">{{ item.source_status }}</StatusBadge>
+            <TaskStateBadge v-if="item.source_status" :state="item.source_status" />
             <Check v-if="item.dataset_version_id === resolvedDatasetVersionId" :size="18" />
           </div>
         </button>
@@ -79,13 +79,12 @@ import { useI18n } from 'vue-i18n'
 import type { DatasetVersionSelectionItem } from '../composables/useDatasetVersionSelection'
 import { resolveImportFormatDisplayName } from '../composables/useDatasetFormatCapabilities'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 
 defineProps<{
   search: string
   filteredDatasetVersions: DatasetVersionSelectionItem[]
   resolvedDatasetVersionId: string
-  statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 
 defineEmits<{

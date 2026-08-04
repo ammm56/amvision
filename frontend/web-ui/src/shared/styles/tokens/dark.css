@@ -15,6 +15,7 @@
   --am-sidebar: #101010;
   --am-sidebar-active: #1c2c26;
   --am-table-header: #1a1a1a;
+  --am-row-hover: #202622;
   --am-row-selected: #17352b;
   --am-overlay: rgb(0 0 0 / 0.72);
   --am-code-surface: #111312;
@@ -27,6 +28,9 @@
   --am-on-action: var(--am-brand-on-primary);
   --am-focus-ring: var(--am-brand-primary-soft);
   --am-sidebar-link: #c9d3cd;
+  --am-progress-fill: var(--am-brand-primary);
+  --am-progress-text: #62d5a9;
+  --am-progress-track: #27312d;
   --am-auth-shell-bg: linear-gradient(90deg, #0b0c0b 0%, #0b0c0b 34%, var(--am-page) 34%, var(--am-page) 100%);
   --am-shadow-floating: 0 12px 28px rgb(0 0 0 / 0.32);
   --am-shadow-modal: 0 20px 60px rgb(0 0 0 / 0.46);

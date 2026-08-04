@@ -109,22 +109,24 @@
           {{ t('inferenceOps.actions.submitAsyncTask') }}
         </Button>
       </div>
-      <div v-if="asyncInferenceSubmission" class="result-note result-note--actions">
-        <span>
+      <InlineMessage v-if="asyncInferenceSubmission" tone="success">
+        <span class="task-reference">
           {{ t('inferenceOps.messages.submitted') }}
           <RouterLink :to="`/tasks/${asyncInferenceSubmission.task_id}`">{{ asyncInferenceSubmission.task_id }}</RouterLink>
         </span>
-        <Button
-          size="sm"
-          variant="secondary"
-          :disabled="inferenceResultLoading === asyncInferenceSubmission.task_id"
-          :loading="inferenceResultLoading === asyncInferenceSubmission.task_id"
-          @click="toggleInferenceTaskResult(asyncInferenceSubmission.task_id)"
-        >
-          <Eye :size="14" />
-          {{ expandedInferenceTaskId === asyncInferenceSubmission.task_id ? t('inferenceOps.actions.collapseResult') : t('inferenceOps.actions.fetchResult') }}
-        </Button>
-      </div>
+        <template #actions>
+          <Button
+            size="sm"
+            variant="secondary"
+            :disabled="inferenceResultLoading === asyncInferenceSubmission.task_id"
+            :loading="inferenceResultLoading === asyncInferenceSubmission.task_id"
+            @click="toggleInferenceTaskResult(asyncInferenceSubmission.task_id)"
+          >
+            <Eye :size="14" />
+            {{ expandedInferenceTaskId === asyncInferenceSubmission.task_id ? t('inferenceOps.actions.collapseResult') : t('inferenceOps.actions.fetchResult') }}
+          </Button>
+        </template>
+      </InlineMessage>
     </form>
 
     <section v-if="directInferenceResult" class="resource-section">
@@ -184,7 +186,7 @@
                 <strong>{{ task.display_name || task.task_id }}</strong>
                 <span>{{ task.task_id }}</span>
               </td>
-              <td><StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge></td>
+              <td><TaskStateBadge :state="task.state" /></td>
               <td>{{ formatSystemDateTime(task.created_at) }}</td>
               <td>{{ task.detection_count ?? '-' }}</td>
               <td>{{ task.latency_ms ?? '-' }}</td>
@@ -267,7 +269,8 @@ import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
 const projectStore = useProjectStore()
@@ -333,15 +336,6 @@ onMounted(async () => {
   }
   await refreshPage()
 })
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('running') || normalized.includes('complete') || normalized.includes('success') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error') || normalized.includes('crash')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending') || normalized.includes('created')) return 'warning'
-  if (normalized.includes('process') || normalized.includes('start')) return 'info'
-  return 'neutral'
-}
 
 function hasInferenceInput(): boolean {
   return Boolean(inputFileId.value.trim() || inputUri.value.trim() || imageBase64.value.trim() || imageFile.value)

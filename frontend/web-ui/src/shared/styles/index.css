@@ -779,17 +779,11 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
-.result-note {
+.muted-note {
   margin: 0;
   color: var(--am-text-muted);
-}
-
-.result-note--actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .page-header {
@@ -1147,17 +1141,6 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
-.inline-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--am-danger-text);
-  background: var(--am-danger-surface);
-  border: 1px solid var(--am-danger-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
 .empty-state,
 .placeholder-panel,
 .resource-table,
@@ -1261,6 +1244,7 @@ textarea:focus-visible {
 .status-badge--neutral {
   background: var(--am-neutral-surface);
   color: var(--am-neutral-text);
+  box-shadow: inset 0 0 0 1px var(--am-neutral-border);
 }
 
 .status-badge--success {
@@ -1481,6 +1465,11 @@ textarea:focus-visible {
   padding: 0;
 }
 
+.input-with-icon input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+}
+
 .input-with-icon:focus-within {
   border-color: var(--am-action-primary);
   box-shadow: inset 0 0 0 1px var(--am-action-primary);
@@ -1565,7 +1554,16 @@ textarea:focus-visible {
 }
 
 .custom-node-catalog__table tbody tr {
+  transition: background-color var(--am-motion-fast) var(--am-ease-standard);
   cursor: pointer;
+}
+
+.custom-node-catalog__table tbody tr:hover:not(.is-selected) {
+  background: var(--am-row-hover);
+}
+
+.custom-node-catalog__table tbody tr.is-selected {
+  background: var(--am-row-selected);
 }
 
 .custom-node-catalog__table tbody tr:focus-visible:not(.is-selected) {
@@ -1839,36 +1837,6 @@ textarea:focus-visible {
 
 .panel-section {
   margin-top: 18px;
-}
-
-.event-timeline {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.event-timeline li {
-  display: grid;
-  grid-template-columns: minmax(160px, 180px) minmax(88px, 112px) minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--am-border);
-}
-
-.event-timeline time,
-.event-timeline strong,
-.event-timeline span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  line-height: 1.45;
-}
-
-.event-timeline time,
-.event-timeline span {
-  color: var(--am-text-muted);
 }
 
 .result-detail {
@@ -5101,9 +5069,6 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
 
-  .event-timeline li {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 700px) {

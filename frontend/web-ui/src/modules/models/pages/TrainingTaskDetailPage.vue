@@ -37,7 +37,7 @@
         <div>
           <h2>{{ t('trainingDetail.summaryTitle') }}</h2>
         </div>
-        <StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge>
+        <TaskStateBadge :state="task.state" />
       </div>
       <div class="summary-grid">
         <div>
@@ -90,15 +90,17 @@
         <div>
           <h2>{{ t('trainingDetail.progressTitle') }}</h2>
         </div>
-        <strong class="training-progress-percent">{{ progressPercentText }}</strong>
       </div>
-      <div class="training-progress-track" role="progressbar" :aria-valuenow="progressPercent ?? undefined" aria-valuemin="0" aria-valuemax="100">
-        <span :style="{ width: progressBarWidth }" />
-      </div>
+      <TaskProgress
+        :percent="progressPercent"
+        :label="t('trainingDetail.progressTitle')"
+        :aria-label="t('trainingDetail.progressTitle')"
+      />
       <div class="summary-grid training-progress-grid">
         <div>
           <span>{{ t('trainingDetail.fields.stage') }}</span>
-          <strong>{{ progressStage }}</strong>
+          <TaskStateBadge v-if="progressStage !== '-'" :state="progressStage" />
+          <strong v-else>-</strong>
         </div>
         <div>
           <span>{{ t('trainingDetail.fields.epoch') }}</span>
@@ -232,6 +234,8 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -258,8 +262,6 @@ const canDeleteTask = computed(() => task.value?.available_actions.includes('del
 const canRegisterCheckpoint = computed(() => Boolean(task.value?.latest_checkpoint_object_key || task.value?.control_status.resume_checkpoint_object_key))
 const progressSnapshot = computed(() => task.value?.progress ?? {})
 const progressPercent = computed(() => readNumber(progressSnapshot.value.percent))
-const progressPercentText = computed(() => progressPercent.value === null ? '-' : `${progressPercent.value.toFixed(1)}%`)
-const progressBarWidth = computed(() => `${Math.min(100, Math.max(0, progressPercent.value ?? 0))}%`)
 const progressStage = computed(() => formatPlainValue(progressSnapshot.value.stage))
 const progressEpochText = computed(() => {
   const epoch = readNumber(progressSnapshot.value.epoch)
@@ -480,28 +482,6 @@ function formatPlainValue(value: unknown): string {
 <style scoped>
 .training-progress-section {
   gap: 14px;
-}
-
-.training-progress-percent {
-  color: var(--am-action-primary-strong);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-.training-progress-track {
-  height: 8px;
-  overflow: hidden;
-  background: var(--am-surface-muted);
-  border: 1px solid var(--am-border);
-  border-radius: 999px;
-}
-
-.training-progress-track span {
-  display: block;
-  height: 100%;
-  background: var(--am-action-primary);
-  border-radius: inherit;
-  transition: width 160ms ease;
 }
 
 .training-progress-grid {

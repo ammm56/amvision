@@ -24,7 +24,7 @@
               <RouterLink :to="`/datasets/exports/${item.dataset_export_id}`"><strong>{{ item.dataset_export_id }}</strong></RouterLink>
               <span>{{ item.dataset_version_id }}</span>
             </td>
-            <td><StatusBadge :tone="statusTone(item.status)">{{ item.status }}</StatusBadge></td>
+            <td><TaskStateBadge :state="item.status" /></td>
             <td>{{ item.format_id }}</td>
             <td>{{ item.sample_count }}</td>
             <td>{{ item.package_file_name || item.package_object_key || '-' }}</td>
@@ -60,14 +60,13 @@ import { useI18n } from 'vue-i18n'
 
 import type { DatasetExportSummary } from '../services/dataset.service'
 import Button from '@/shared/ui/components/Button.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   exports: DatasetExportSummary[]
   canWriteDatasets: boolean
   packagingExportId: string | null
-  statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 
 defineEmits<{

@@ -28,8 +28,14 @@
               </RouterLink>
               <span>{{ task.dataset_export_id || task.dataset_export_manifest_key }}</span>
             </td>
-            <td><StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge></td>
-            <td>{{ progressText(task.progress) }}</td>
+            <td><TaskStateBadge :state="task.state" /></td>
+            <td>
+              <TaskProgress
+                compact
+                :percent="progressPercent(task.progress)"
+                :aria-label="t('modelOps.columns.progress')"
+              />
+            </td>
             <td>{{ task.output_model_name || '-' }}</td>
             <td>{{ task.model_version_id || task.latest_checkpoint_model_version_id || '-' }}</td>
             <td>{{ formatSystemDateTime(task.created_at) }}</td>
@@ -47,7 +53,8 @@ import { useI18n } from 'vue-i18n'
 import type { ModelTaskType, ModelTrainingTaskSummary } from '../services/model.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 
 defineProps<{
   selectedTaskType: ModelTaskType
@@ -56,17 +63,8 @@ defineProps<{
 
 const { t } = useI18n()
 
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('succeed')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process')) return 'info'
-  return 'neutral'
-}
-
-function progressText(progress: Record<string, unknown>): string {
+function progressPercent(progress: Record<string, unknown>): number | null {
   const value = progress.percent ?? progress.progress_percent ?? progress.progress
-  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}%` : '-'
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 </script>

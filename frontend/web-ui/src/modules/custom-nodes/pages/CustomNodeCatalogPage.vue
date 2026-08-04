@@ -295,7 +295,7 @@
                 </StatusBadge>
               </article>
             </div>
-            <p v-else class="result-note">{{ t('customNodes.messages.noDependencies') }}</p>
+            <p v-else class="muted-note">{{ t('customNodes.messages.noDependencies') }}</p>
           </section>
 
           <section v-if="visibleLogsPackId === selectedNodePackRow.id" class="node-detail-panel__section">
@@ -312,7 +312,7 @@
                 </div>
               </article>
             </div>
-            <p v-else class="result-note">{{ t('customNodes.messages.noLogs') }}</p>
+            <p v-else class="muted-note">{{ t('customNodes.messages.noLogs') }}</p>
           </section>
 
           <details class="node-catalog-inspector__runtime">
@@ -468,7 +468,7 @@ const PortList = defineComponent({
     const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
     return () =>
       props.ports.length === 0
-        ? h('p', { class: 'result-note' }, '-')
+        ? h('p', { class: 'muted-note' }, '-')
         : h(
             'div',
             { class: 'port-list' },

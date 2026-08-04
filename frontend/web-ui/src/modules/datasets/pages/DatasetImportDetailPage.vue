@@ -37,7 +37,7 @@
         <div>
           <h2>{{ t('datasetImportDetail.summaryTitle') }}</h2>
         </div>
-        <StatusBadge :tone="statusTone(detail.processing_state || detail.status)">{{ detail.processing_state || detail.status }}</StatusBadge>
+        <TaskStateBadge :state="detail.processing_state || detail.status" />
       </div>
       <div class="summary-grid">
         <div>
@@ -156,8 +156,8 @@ import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 
 const route = useRoute()
@@ -191,15 +191,6 @@ const metadataJson = computed(() => JSON.stringify(detail.value?.metadata ?? {},
 onMounted(() => {
   void loadDetail()
 })
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('ready')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('received') || normalized.includes('pending')) return 'warning'
-  if (normalized.includes('valid') || normalized.includes('process')) return 'info'
-  return 'neutral'
-}
 
 async function loadDetail(): Promise<void> {
   loading.value = true

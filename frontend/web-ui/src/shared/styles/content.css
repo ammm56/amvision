@@ -333,17 +333,6 @@ pre.code-block {
   display: none;
 }
 
-.inline-error,
-.result-note {
-  border-radius: var(--am-radius-sm);
-}
-
-.result-note {
-  border-color: var(--am-info-border);
-  color: var(--am-info-text);
-  background: var(--am-info-surface);
-}
-
 @media (max-width: 1023px) {
   .workbench-shell__content:not(.workbench-shell__content--full-bleed) {
     padding: var(--am-space-xl);

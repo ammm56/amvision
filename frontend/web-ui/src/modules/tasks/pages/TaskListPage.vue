@@ -35,7 +35,13 @@
             </td>
             <td>{{ task.task_kind || task.kind || '-' }}</td>
             <td><TaskStatusBadge :task="task" /></td>
-            <td>{{ getTaskProgressPercent(task) }}%</td>
+            <td>
+              <TaskProgress
+                compact
+                :percent="getTaskProgressPercent(task)"
+                :aria-label="t('tasks.columns.progress')"
+              />
+            </td>
             <td>{{ formatSystemDateTime(task.updated_at || task.created_at) }}</td>
           </tr>
         </tbody>
@@ -65,6 +71,7 @@ import { RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import TaskStatusBadge from '../components/TaskStatusBadge.vue'
+import TaskProgress from '../components/TaskProgress.vue'
 import { DEFAULT_TASK_PAGE_SIZE, getTaskProgressPercent, useTaskStore } from '../stores/task.store'
 import type { TaskRecord } from '@/shared/contracts'
 import { useProjectStore } from '@/app/stores/project.store'

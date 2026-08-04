@@ -14,6 +14,12 @@
     </PageHeader>
 
     <InlineError :message="taskStore.error" />
+    <InlineMessage
+      v-if="showStreamWarning"
+      tone="warning"
+      :title="t('tasks.streamInterruptedTitle')"
+      :message="t('tasks.streamInterruptedDescription')"
+    />
 
     <LoadingPanel
       v-if="isTaskDetailLoading && !taskStore.selectedTask"
@@ -21,7 +27,11 @@
       :description="t('tasks.loadingDetailDescription')"
     />
 
-    <div v-else-if="taskStore.selectedTask" class="detail-layout task-detail-layout">
+    <div
+      v-else-if="taskStore.selectedTask"
+      class="detail-layout task-detail-layout"
+      :class="{ 'task-detail-layout--with-error': hasTaskError }"
+    >
       <section class="detail-main">
         <div class="summary-grid">
           <div>
@@ -34,7 +44,11 @@
           </div>
           <div>
             <span>{{ t('tasks.columns.progress') }}</span>
-            <strong>{{ getTaskProgressPercent(taskStore.selectedTask) }}%</strong>
+            <TaskProgress
+              compact
+              :percent="getTaskProgressPercent(taskStore.selectedTask)"
+              :aria-label="t('tasks.columns.progress')"
+            />
           </div>
           <div>
             <span>{{ t('common.project') }}</span>
@@ -55,34 +69,17 @@
         </section>
       </section>
 
-      <aside class="detail-side task-status-panel">
-        <div class="task-status-panel__header">
-          <h2>{{ t('tasks.statusInfo') }}</h2>
+      <aside v-if="hasTaskError" class="detail-side task-error-panel">
+        <h2>{{ t('tasks.error') }}</h2>
+        <InlineMessage
+          v-if="taskStore.selectedTask.error_message"
+          tone="danger"
+          :message="taskStore.selectedTask.error_message"
+        />
+        <div v-if="taskStatusErrorText" class="task-error-panel__details">
+          <h3>{{ t('tasks.errorDetails') }}</h3>
+          <pre class="task-status-panel__error-json">{{ taskStatusErrorText }}</pre>
         </div>
-        <dl class="task-status-panel__list">
-          <div>
-            <dt>{{ t('common.websocket') }}</dt>
-            <dd>
-              <StatusBadge :tone="taskEvents.streamState.value?.connected ? 'success' : 'neutral'">
-                {{ taskEvents.streamState.value?.connected ? t('tasks.connected') : t('tasks.notConnected') }}
-              </StatusBadge>
-            </dd>
-          </div>
-          <div>
-            <dt>{{ t('tasks.lastDisconnect') }}</dt>
-            <dd>{{ taskEvents.streamState.value?.lastDisconnectReason || '-' }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('tasks.error') }}</dt>
-            <dd>{{ taskStore.selectedTask.error_message || '-' }}</dd>
-          </div>
-          <div v-if="taskStatusErrorText">
-            <dt>{{ t('tasks.errorDetails') }}</dt>
-            <dd>
-              <pre class="task-status-panel__error-json">{{ taskStatusErrorText }}</pre>
-            </dd>
-          </div>
-        </dl>
       </aside>
     </div>
   </section>
@@ -95,12 +92,13 @@ import { Ban, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import TaskEventTimeline from '../components/TaskEventTimeline.vue'
+import TaskProgress from '../components/TaskProgress.vue'
 import TaskStatusBadge from '../components/TaskStatusBadge.vue'
 import { getTaskProgressPercent, normalizeTaskState, useTaskStore } from '../stores/task.store'
 import { useTaskEvents } from '../composables/useTaskEvents'
 import Button from '@/shared/ui/components/Button.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import LoadingPanel from '@/shared/ui/feedback/LoadingPanel.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import type { TaskEvent } from '@/shared/contracts'
@@ -127,10 +125,21 @@ const canCancel = computed(() => {
   return state === 'queued' || state === 'running'
 })
 
+const showStreamWarning = computed(() => {
+  const streamState = taskEvents.streamState.value
+  if (!streamState || streamState.connected) return false
+  if (!streamState.stale && !streamState.lastDisconnectReason && !streamState.lastError) return false
+  const task = taskStore.selectedTask
+  if (!task) return false
+  const state = normalizeTaskState(task)
+  return state === 'queued' || state === 'running'
+})
+
 const taskStatusErrorText = computed(() => {
   const errorPayload = resolveTaskStatusError()
   return errorPayload === null ? '' : stringifyStatusValue(errorPayload)
 })
+const hasTaskError = computed(() => Boolean(taskStore.selectedTask?.error_message || taskStatusErrorText.value))
 
 function asRecord(value: unknown): JsonRecord | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -269,6 +278,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .task-detail-layout {
   align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.task-detail-layout--with-error {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
 }
 
@@ -276,40 +289,26 @@ onBeforeUnmount(() => {
   margin: 12px 0 16px;
 }
 
-.task-status-panel {
+.task-error-panel {
+  display: grid;
+  gap: var(--am-space-lg);
   align-self: start;
   padding: 16px;
 }
 
-.task-status-panel__header h2 {
-  margin: 0;
-  margin-bottom: 14px;
-}
-
-.task-status-panel__list {
-  display: grid;
-  gap: 10px;
+.task-error-panel h2,
+.task-error-panel h3 {
   margin: 0;
 }
 
-.task-status-panel__list > div {
-  padding: 10px 12px;
-  border: 1px solid var(--am-border);
-  border-radius: 8px;
-  background: var(--am-surface-soft);
-}
-
-.task-status-panel__list dt {
-  display: block;
-  margin-bottom: 4px;
+.task-error-panel h3 {
   color: var(--am-text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
-.task-status-panel__list dd {
-  margin: 0;
-  font-weight: 700;
-  overflow-wrap: anywhere;
+.task-error-panel__details {
+  display: grid;
+  gap: var(--am-space-sm);
 }
 
 .task-status-panel__error-json {
@@ -328,7 +327,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
-  .task-detail-layout {
+  .task-detail-layout--with-error {
     grid-template-columns: 1fr;
   }
 }

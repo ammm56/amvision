@@ -49,20 +49,20 @@
         {{ submittingImport ? t('datasetOps.actions.submitting') : t('datasetOps.actions.submitImport') }}
       </Button>
     </div>
-    <p v-if="lastImportSubmission" class="result-note">
-      {{ t('datasetOps.messages.importSubmitted') }}
-      <RouterLink v-if="lastImportSubmission.task_id" :to="`/tasks/${lastImportSubmission.task_id}`">
-        {{ lastImportSubmission.task_id }}
-      </RouterLink>
-      <span v-else>{{ lastImportSubmission.dataset_import_id }}</span>
-    </p>
+    <TaskSubmissionNotice
+      v-if="lastImportSubmission"
+      :title="t('datasetOps.messages.importSubmitted')"
+      :identifier="lastImportSubmission.task_id || lastImportSubmission.dataset_import_id"
+      :detail-to="lastImportSubmission.task_id
+        ? `/tasks/${lastImportSubmission.task_id}`
+        : `/datasets/imports/${lastImportSubmission.dataset_import_id}`"
+    />
   </form>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { UploadCloud } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetImportSubmissionResponse } from '../services/dataset.service'
@@ -70,6 +70,7 @@ import type { DatasetSelectOption, DatasetSelectValue } from '../composables/use
 import Button from '@/shared/ui/components/Button.vue'
 import FilePicker from '@/shared/ui/components/FilePicker.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 
 const props = defineProps<{
   selectedProjectId: string

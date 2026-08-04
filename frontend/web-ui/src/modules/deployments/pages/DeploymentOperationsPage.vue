@@ -249,9 +249,9 @@
             {{ creating ? t('deploymentOps.actions.creating') : t('deploymentOps.actions.create') }}
           </Button>
         </div>
-        <p v-if="lastCreatedDeployment" class="result-note">
+        <InlineMessage v-if="lastCreatedDeployment" tone="success">
           {{ t('deploymentOps.messages.created') }} {{ lastCreatedDeployment.deployment_instance_id }}
-        </p>
+        </InlineMessage>
       </form>
 
       <section class="resource-section deployment-instances-panel">
@@ -366,10 +366,10 @@
             </div>
           </article>
         </div>
-        <p v-if="runtimeCapabilitiesLoading" class="result-note">{{ t('deploymentOps.messages.capabilitiesLoading') }}</p>
-        <p v-else-if="runtimeCapabilityWarnings.length" class="result-note">
+        <InlineMessage v-if="runtimeCapabilitiesLoading" :message="t('deploymentOps.messages.capabilitiesLoading')" />
+        <InlineMessage v-else-if="runtimeCapabilityWarnings.length" tone="warning">
           {{ runtimeCapabilityWarnings.join('；') }}
-        </p>
+        </InlineMessage>
       </section>
     </div>
 
@@ -477,11 +477,16 @@
           </div>
         </div>
         <EmptyState v-if="deploymentEvents.length === 0" :title="t('deploymentOps.emptyEventsTitle')" :description="t('deploymentOps.emptyEventsDescription')" />
-        <ol v-else class="event-timeline event-timeline--compact">
+        <ol v-else class="deployment-event-timeline">
           <li v-for="event in sortedDeploymentEvents" :key="`${event.runtime_mode}-${event.sequence}`">
-            <time>{{ formatSystemDateTime(event.created_at) }}</time>
-            <strong>{{ event.event_type }}</strong>
-            <span>{{ event.message }}</span>
+            <span class="deployment-event-timeline__marker" aria-hidden="true" />
+            <div class="deployment-event-timeline__content">
+              <div>
+                <strong>{{ event.event_type }}</strong>
+                <time>{{ formatSystemDateTime(event.created_at) }}</time>
+              </div>
+              <p>{{ event.message }}</p>
+            </div>
           </li>
         </ol>
       </section>
@@ -537,6 +542,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 
@@ -1994,23 +2000,70 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   overflow-wrap: anywhere;
 }
 
-.deployment-events-panel .event-timeline li {
-  grid-template-columns: 148px minmax(180px, max-content) minmax(0, 1fr);
-  gap: 14px;
-  padding: 8px 0;
+.deployment-event-timeline {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.deployment-events-panel .event-timeline time,
-.deployment-events-panel .event-timeline strong,
-.deployment-events-panel .event-timeline span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow-wrap: normal;
+.deployment-event-timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--am-space-sm);
+  padding-bottom: var(--am-space-lg);
 }
 
-.deployment-events-panel .event-timeline strong {
-  max-width: 260px;
+.deployment-event-timeline li:not(:last-child)::before {
+  position: absolute;
+  top: 12px;
+  bottom: 0;
+  left: 5px;
+  width: 1px;
+  content: '';
+  background: var(--am-border);
+}
+
+.deployment-event-timeline__marker {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border: 2px solid var(--am-info-text);
+  border-radius: 50%;
+  background: var(--am-surface);
+}
+
+.deployment-event-timeline__content,
+.deployment-event-timeline__content div {
+  min-width: 0;
+}
+
+.deployment-event-timeline__content div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--am-space-md);
+}
+
+.deployment-event-timeline__content strong,
+.deployment-event-timeline__content time,
+.deployment-event-timeline__content p {
+  overflow-wrap: anywhere;
+}
+
+.deployment-event-timeline__content time,
+.deployment-event-timeline__content p {
+  color: var(--am-text-muted);
+  font-size: 12px;
+}
+
+.deployment-event-timeline__content p {
+  margin: 3px 0 0;
+  line-height: 1.5;
 }
 
 @media (max-width: 900px) {
@@ -2034,15 +2087,13 @@ async function loadDeploymentRuntimeHealthBeforeWarmup(
   }
 
   .deployment-source-summary__grid,
-  .deployment-runtime-summary,
-  .deployment-events-panel .event-timeline li {
+  .deployment-runtime-summary {
     grid-template-columns: 1fr;
   }
 
-  .deployment-events-panel .event-timeline time,
-  .deployment-events-panel .event-timeline strong,
-  .deployment-events-panel .event-timeline span {
-    white-space: normal;
+  .deployment-event-timeline__content div {
+    display: grid;
+    gap: 2px;
   }
 }
 </style>

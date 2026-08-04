@@ -93,16 +93,17 @@
         {{ submittingExport ? t('datasetOps.actions.submitting') : t('datasetOps.actions.submitExport') }}
       </Button>
     </div>
-    <p v-if="lastExportSubmission" class="result-note">
-      {{ t('datasetOps.messages.exportSubmitted') }}
-      <RouterLink :to="`/tasks/${lastExportSubmission.task_id}`">{{ lastExportSubmission.task_id }}</RouterLink>
-    </p>
+    <TaskSubmissionNotice
+      v-if="lastExportSubmission"
+      :title="t('datasetOps.messages.exportSubmitted')"
+      :identifier="lastExportSubmission.task_id"
+      :detail-to="`/tasks/${lastExportSubmission.task_id}`"
+    />
   </form>
 </template>
 
 <script setup lang="ts">
 import { PackageCheck } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetVersionSelectionItem } from '../composables/useDatasetVersionSelection'
@@ -111,6 +112,7 @@ import type { DatasetSelectOption, DatasetSelectValue } from '../composables/use
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 
 defineProps<{
   resolvedDatasetVersionId: string

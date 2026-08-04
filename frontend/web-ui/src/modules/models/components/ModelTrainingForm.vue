@@ -275,16 +275,17 @@
         {{ trainingSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitTraining') }}
       </Button>
     </div>
-    <p v-if="lastTrainingSubmission" class="result-note">
-      {{ t('modelOps.messages.trainingSubmitted') }}
-      <RouterLink :to="`/tasks/${lastTrainingSubmission.task_id}`">{{ lastTrainingSubmission.task_id }}</RouterLink>
-    </p>
+    <TaskSubmissionNotice
+      v-if="lastTrainingSubmission"
+      :title="t('modelOps.messages.trainingSubmitted')"
+      :identifier="lastTrainingSubmission.task_id"
+      :detail-to="`/tasks/${lastTrainingSubmission.task_id}`"
+    />
   </form>
 </template>
 
 <script setup lang="ts">
 import { Play } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import type { DatasetExportSummary } from '@/modules/datasets/services/dataset.service'
@@ -306,6 +307,7 @@ import {
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 
 type SelectValue = string | number | boolean | null
 type UpdateNumberEvent =

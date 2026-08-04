@@ -23,7 +23,7 @@
               <RouterLink :to="`/datasets/imports/${item.dataset_import_id}`"><strong>{{ item.dataset_import_id }}</strong></RouterLink>
               <span>{{ item.package_path }}</span>
             </td>
-            <td><StatusBadge :tone="statusTone(item.processing_state || item.status)">{{ item.processing_state || item.status }}</StatusBadge></td>
+            <td><TaskStateBadge :state="item.processing_state || item.status" /></td>
             <td>{{ item.dataset_version_id || '-' }}</td>
             <td>{{ item.format_type || '-' }}</td>
             <td>{{ formatSystemDateTime(item.created_at) }}</td>
@@ -40,12 +40,11 @@ import { useI18n } from 'vue-i18n'
 
 import type { DatasetImportSummary } from '../services/dataset.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 
 defineProps<{
   imports: DatasetImportSummary[]
-  statusTone: (status: string | null | undefined) => 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>()
 
 const { t } = useI18n()

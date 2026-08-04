@@ -14,7 +14,7 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
-    <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
+    <InlineMessage v-if="statusMessage" tone="success" :message="statusMessage" />
 
     <form class="form-panel" @submit.prevent="submitTriggerSource">
       <div class="section-heading">
@@ -307,6 +307,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { getWorkflowApp, type WorkflowAppDocument } from '@/workflows/workflow-editor/services/workflow-app.service'
 import {

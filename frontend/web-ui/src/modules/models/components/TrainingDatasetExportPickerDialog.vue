@@ -278,6 +278,7 @@ function handleSearchInput(event: Event): void {
 
 .dataset-export-picker__search:focus-within {
   border-color: var(--am-action-primary);
+  box-shadow: inset 0 0 0 1px var(--am-action-primary);
 }
 
 .dataset-export-picker__search input {
@@ -287,6 +288,12 @@ function handleSearchInput(event: Event): void {
   outline: 0;
   color: var(--am-text);
   background: transparent;
+}
+
+.dataset-export-picker__search
+  input:not([type='hidden']):not([type='checkbox']):not([type='radio']):focus-visible {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .dataset-export-picker__body {

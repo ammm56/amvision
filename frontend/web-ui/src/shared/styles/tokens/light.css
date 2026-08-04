@@ -3,7 +3,7 @@
   color-scheme: light;
   --am-page: #f6f7f9;
   --am-surface: #ffffff;
-  --am-surface-soft: #f4f5f7;
+  --am-surface-soft: #ffffff;
   --am-surface-muted: #eceff2;
   --am-surface-raised: #ffffff;
   --am-text: #344054;
@@ -13,9 +13,10 @@
   --am-border: #e4e7ec;
   --am-border-strong: #d0d5dd;
   --am-input: #ffffff;
-  --am-sidebar: #f3f5f7;
+  --am-sidebar: #ffffff;
   --am-sidebar-active: #eaf6f1;
-  --am-table-header: #f7f8fa;
+  --am-table-header: #ffffff;
+  --am-row-hover: #f5faf8;
   --am-row-selected: #eaf6f1;
   --am-overlay: rgb(17 24 39 / 0.44);
   --am-code-surface: #f2f4f7;
@@ -28,6 +29,9 @@
   --am-on-action: #ffffff;
   --am-focus-ring: var(--am-action-primary);
   --am-sidebar-link: #475467;
+  --am-progress-fill: #087a56;
+  --am-progress-text: #087a56;
+  --am-progress-track: #e7eeeb;
   --am-auth-shell-bg: linear-gradient(90deg, #101210 0%, #101210 34%, var(--am-page) 34%, var(--am-page) 100%);
   --am-shadow-floating: 0 8px 24px rgb(16 24 40 / 0.1);
   --am-shadow-modal: 0 24px 64px rgb(16 24 40 / 0.18);

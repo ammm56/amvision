@@ -28,7 +28,7 @@
               </RouterLink>
               <span>{{ task.task_id }}</span>
             </td>
-            <td><StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge></td>
+            <td><TaskStateBadge :state="task.state" /></td>
             <td>{{ task.source_model_version_id }}</td>
             <td>{{ (task.produced_formats.length ? task.produced_formats : task.target_formats).join(', ') || '-' }}</td>
             <td>{{ task.builds.map((build) => build.model_build_id).join(', ') || '-' }}</td>
@@ -47,7 +47,7 @@ import { useI18n } from 'vue-i18n'
 import type { ModelConversionTaskSummary, ModelTaskType } from '../services/model.service'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 
 defineProps<{
   selectedTaskType: ModelTaskType
@@ -56,12 +56,4 @@ defineProps<{
 
 const { t } = useI18n()
 
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('succeed')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process')) return 'info'
-  return 'neutral'
-}
 </script>

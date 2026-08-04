@@ -21,7 +21,7 @@
     </PageHeader>
 
     <InlineError :message="errorMessage" />
-    <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
+    <InlineMessage v-if="statusMessage" tone="success" :message="statusMessage" />
 
     <EmptyState
       v-if="!loading && !workflowApp"
@@ -327,7 +327,7 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           :status-code="lastRunResponseStatusCode"
           :body="lastRunResponseBody"
         />
-        <p v-else-if="lastRun" class="result-note">{{ t('workflowEditor.appDetail.noRenderableBody') }}</p>
+        <p v-else-if="lastRun" class="muted-note">{{ t('workflowEditor.appDetail.noRenderableBody') }}</p>
         <details v-if="lastRun" class="result-details">
           <summary>{{ t('workflowEditor.appDetail.viewReceiptJson') }}</summary>
           <pre class="json-view">{{ lastRunReceiptText }}</pre>
@@ -427,6 +427,7 @@ import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import {
   listWorkflowTriggerSources,

@@ -37,7 +37,7 @@
         <div>
           <h2>{{ t('conversionDetail.summaryTitle') }}</h2>
         </div>
-        <StatusBadge :tone="statusTone(task.state)">{{ task.state }}</StatusBadge>
+        <TaskStateBadge :state="task.state" />
       </div>
       <div class="summary-grid">
         <div>
@@ -160,9 +160,9 @@ import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
-import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
+import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -195,15 +195,6 @@ const deleteDialogDetails = computed(() => {
 onMounted(() => {
   void loadDetail()
 })
-
-function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const normalized = String(status ?? '').toLowerCase()
-  if (normalized.includes('complete') || normalized.includes('success') || normalized.includes('succeed')) return 'success'
-  if (normalized.includes('fail') || normalized.includes('error')) return 'danger'
-  if (normalized.includes('queue') || normalized.includes('pending')) return 'warning'
-  if (normalized.includes('run') || normalized.includes('process')) return 'info'
-  return 'neutral'
-}
 
 function isTerminalTask(state: string): boolean {
   return ['succeeded', 'failed', 'cancelled', 'canceled', 'completed'].includes(state.toLowerCase())

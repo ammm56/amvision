@@ -17,7 +17,7 @@
     </header>
 
     <InlineError :message="errorMessage" />
-    <p v-if="statusMessage" class="result-note">{{ statusMessage }}</p>
+    <InlineMessage v-if="statusMessage" tone="success" :message="statusMessage" />
 
     <div class="settings-account-workspace">
       <aside class="settings-user-directory" :aria-label="t('settingsDiagnostics.sections.accounts')">
@@ -182,6 +182,7 @@ import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import InlineError from '@/shared/ui/feedback/InlineError.vue'
+import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import { isProtectedSoleAmvarUser } from '../account-protection'
 import {
   createLocalAuthUser,

@@ -93,18 +93,17 @@
         {{ conversionSubmitting ? t('modelOps.actions.submitting') : t('modelOps.actions.submitConversion') }}
       </Button>
     </div>
-    <p v-if="lastConversionSubmission" class="result-note">
-      {{ t('modelOps.messages.conversionSubmitted') }}
-      <RouterLink :to="`/models/${selectedTaskType}/conversion-tasks/${lastConversionSubmission.task_id}`">
-        {{ lastConversionSubmission.task_id }}
-      </RouterLink>
-    </p>
+    <TaskSubmissionNotice
+      v-if="lastConversionSubmission"
+      :title="t('modelOps.messages.conversionSubmitted')"
+      :identifier="lastConversionSubmission.task_id"
+      :detail-to="`/models/${selectedTaskType}/conversion-tasks/${lastConversionSubmission.task_id}`"
+    />
   </form>
 </template>
 
 <script setup lang="ts">
 import { Wand2 } from '@lucide/vue'
-import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 import type {
@@ -115,6 +114,7 @@ import type {
 } from '../services/model.service'
 import Button from '@/shared/ui/components/Button.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
+import TaskSubmissionNotice from '@/modules/tasks/components/TaskSubmissionNotice.vue'
 
 type SelectValue = string | number | boolean | null
 type UpdateStringEvent =

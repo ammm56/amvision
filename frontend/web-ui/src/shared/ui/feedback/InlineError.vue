@@ -1,12 +1,9 @@
 <template>
-  <div v-if="message" class="inline-error" role="alert">
-    <AlertTriangle :size="16" />
-    <span>{{ message }}</span>
-  </div>
+  <InlineMessage v-if="message" tone="danger" :message="message" />
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle } from '@lucide/vue'
+import InlineMessage from './InlineMessage.vue'
 
 defineProps<{ message: string | null }>()
 </script>
