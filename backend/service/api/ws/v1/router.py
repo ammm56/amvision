@@ -25,9 +25,11 @@ from backend.service.application.project_summary import (
     get_supported_project_summary_topics,
     normalize_project_summary_topic,
 )
-from backend.service.application.runtime.deployment.deployment_event_source import DetectionDeploymentEventSource
+from backend.service.application.runtime.deployment.deployment_event_source import (
+    DeploymentEventSource,
+)
 from backend.service.application.runtime.deployment.deployment_events import (
-    DetectionDeploymentProcessEvent,
+    DeploymentProcessEvent,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskEventQueryFilters
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
@@ -902,7 +904,7 @@ def _build_workflow_app_runtime_event_message(event: WorkflowAppRuntimeEvent) ->
     }
 
 
-def _build_deployment_process_event_message(event: DetectionDeploymentProcessEvent) -> dict[str, object]:
+def _build_deployment_process_event_message(event: DeploymentProcessEvent) -> dict[str, object]:
     """把 deployment 事件构造成 WebSocket v1 消息。"""
 
     return {
@@ -1429,13 +1431,13 @@ def _build_socket_deployment_service(socket: WebSocket) -> SqlAlchemyDeploymentI
     )
 
 
-def _build_socket_deployment_event_source(socket: WebSocket) -> DetectionDeploymentEventSource | None:
+def _build_socket_deployment_event_source(socket: WebSocket) -> DeploymentEventSource | None:
     """基于 WebSocket application.state 构建 deployment 历史事件读取 helper。"""
 
     dataset_storage = _get_socket_dataset_storage(socket)
     if dataset_storage is None:
         return None
-    return DetectionDeploymentEventSource(
+    return DeploymentEventSource(
         dataset_storage_root_dir=str(dataset_storage.root_dir),
     )
 

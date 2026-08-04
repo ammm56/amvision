@@ -277,7 +277,7 @@ class ProjectDeletionService:
                 )
             )
         for deployment_id, _state in inventory.deployments:
-            candidates.append(f"models/detection/deployment-instances/{deployment_id}")
+            candidates.append(f"deployments/instances/{deployment_id}")
         candidates.extend(
             build_workflow_preview_run_storage_dir(resource_id)
             for resource_id, _state in inventory.preview_runs

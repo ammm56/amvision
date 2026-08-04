@@ -35,11 +35,10 @@ from backend.service.application.runtime.deployment.cpu_device_resource_manager 
     get_global_cpu_device_resource_manager,
 )
 from backend.service.application.runtime.deployment.deployment_events import (
-    DetectionDeploymentProcessEvent,
+    DeploymentProcessEvent,
+    append_deployment_process_event,
     build_deployment_process_service_event,
     read_deployment_process_events,
-    resolve_deployment_event_lock,
-    write_deployment_process_events,
 )
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
@@ -661,7 +660,7 @@ class DeploymentProcessSupervisor:
         *,
         after_sequence: int | None = None,
         runtime_mode: str | None = None,
-    ) -> tuple[DetectionDeploymentProcessEvent, ...]:
+    ) -> tuple[DeploymentProcessEvent, ...]:
         """读取一个 deployment 的事件列表。"""
 
         return read_deployment_process_events(
@@ -1211,7 +1210,7 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> DetectionDeploymentProcessEvent:
+    ) -> DeploymentProcessEvent:
         """把 deployment status 变化写入事件回放并同步发布。"""
 
         return self._append_deployment_event(
@@ -1231,7 +1230,7 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> DetectionDeploymentProcessEvent:
+    ) -> DeploymentProcessEvent:
         """把 deployment health 快照写入事件回放并同步发布。"""
 
         return self._append_deployment_event(
@@ -1251,32 +1250,18 @@ class DeploymentProcessSupervisor:
         event_type: str,
         message: str,
         payload: dict[str, object] | None = None,
-    ) -> DetectionDeploymentProcessEvent:
+    ) -> DeploymentProcessEvent:
         """向 deployment 事件文件追加一条事件并发布到事件总线。"""
 
-        event_lock = resolve_deployment_event_lock(deployment_instance_id)
-        with event_lock:
-            existing_events = list(
-                read_deployment_process_events(
-                    dataset_storage_root_dir=self.dataset_storage_root_dir,
-                    deployment_instance_id=deployment_instance_id,
-                )
-            )
-            event = DetectionDeploymentProcessEvent(
-                deployment_instance_id=deployment_instance_id,
-                runtime_mode=self.runtime_mode,
-                sequence=len(existing_events) + 1,
-                event_type=event_type.strip() or "deployment.updated",
-                created_at=_now_isoformat(),
-                message=message.strip() or "deployment 事件",
-                payload=dict(payload or {}),
-            )
-            existing_events.append(event)
-            write_deployment_process_events(
-                dataset_storage_root_dir=self.dataset_storage_root_dir,
-                deployment_instance_id=deployment_instance_id,
-                events=tuple(existing_events),
-            )
+        event = append_deployment_process_event(
+            dataset_storage_root_dir=self.dataset_storage_root_dir,
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=self.runtime_mode,
+            event_type=event_type.strip() or "deployment.updated",
+            created_at=_now_isoformat(),
+            message=message.strip() or "deployment 事件",
+            payload=dict(payload or {}),
+        )
         if self.service_event_bus is not None:
             self.service_event_bus.publish(
                 build_deployment_process_service_event(event)
@@ -1285,7 +1270,7 @@ class DeploymentProcessSupervisor:
         return event
 
     def _publish_project_summary_event(
-        self, event: DetectionDeploymentProcessEvent
+        self, event: DeploymentProcessEvent
     ) -> None:
         """按需为 deployment 生命周期事件发布项目级聚合更新。"""
 

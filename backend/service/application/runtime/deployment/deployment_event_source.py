@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.service.application.runtime.deployment.deployment_events import (
-    DetectionDeploymentProcessEvent,
+    DeploymentProcessEvent,
     read_deployment_process_events,
 )
 
 
 @dataclass(frozen=True)
-class DetectionDeploymentEventSource:
+class DeploymentEventSource:
     """描述 deployment 历史事件读取 helper。
 
     字段：
@@ -27,7 +27,7 @@ class DetectionDeploymentEventSource:
         after_sequence: int | None = None,
         runtime_mode: str | None = None,
         limit: int | None = None,
-    ) -> tuple[DetectionDeploymentProcessEvent, ...]:
+    ) -> tuple[DeploymentProcessEvent, ...]:
         """按 deployment id 读取历史事件列表。
 
         参数：
@@ -37,7 +37,7 @@ class DetectionDeploymentEventSource:
         - limit：可选返回条数上限；为空时返回全部命中的事件。
 
         返回：
-        - tuple[DetectionDeploymentProcessEvent, ...]：按序读取到的 deployment 历史事件。
+        - tuple[DeploymentProcessEvent, ...]：按序读取到的 deployment 历史事件。
         """
 
         return read_deployment_process_events(

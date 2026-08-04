@@ -8,7 +8,7 @@ from backend.service.application.deployments.detection_deployment_service import
     DetectionDeploymentInstanceView,
 )
 from backend.service.application.runtime.deployment.deployment_events import (
-    DetectionDeploymentProcessEvent,
+    DeploymentProcessEvent,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
@@ -295,7 +295,7 @@ def build_detection_keep_warm_response(
 
 
 def build_detection_deployment_process_event_response(
-    item: DetectionDeploymentProcessEvent,
+    item: DeploymentProcessEvent,
 ) -> DetectionDeploymentProcessEventResponse:
     """把 deployment 事件转换为 detection REST 响应。"""
 

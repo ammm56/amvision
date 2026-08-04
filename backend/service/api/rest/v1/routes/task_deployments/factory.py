@@ -22,7 +22,7 @@ from backend.service.application.errors import (
     PermissionDeniedError,
 )
 from backend.service.application.runtime.deployment.deployment_event_source import (
-    DetectionDeploymentEventSource,
+    DeploymentEventSource,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
@@ -242,7 +242,7 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
                 "runtime_mode 仅支持 sync 或 async",
                 details={"runtime_mode": runtime_mode},
             )
-        event_source = DetectionDeploymentEventSource(
+        event_source = DeploymentEventSource(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
         )
         events = event_source.list_events(

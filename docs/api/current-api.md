@@ -2239,7 +2239,7 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 
 连接成功后会先收到一条 deployments.connected 事件，随后按当前筛选条件持续推送 deployment 事件。
 
-当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` 对应的 `events.json` 提供历史回放。
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` 对应的 `deployments/instances/{deployment_instance_id}/events.jsonl` 提供历史回放。事件文件采用 JSON Lines 追加写入，不属于模型权重目录。
 
 ### /ws/v1/projects/events
 

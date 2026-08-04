@@ -16,7 +16,7 @@ from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
 )
 from backend.service.application.runtime.deployment.deployment_events import (
-    DetectionDeploymentProcessEvent,
+    DeploymentProcessEvent,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessHealth,
@@ -413,7 +413,7 @@ def build_deployment_runtime_health_response(
 
 
 def build_deployment_process_event_response(
-    item: DetectionDeploymentProcessEvent,
+    item: DeploymentProcessEvent,
 ) -> DeploymentProcessEventResponse:
     """把 deployment 事件转换为 REST 响应。"""
 

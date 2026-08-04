@@ -925,7 +925,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 每个 instance 对应一个独立推理线程和模型会话；同一 instance 一次只处理一个请求
 - 同步 `/infer` 和异步 `inference-tasks` 已经拆成两个独立 deployment 子进程，不再共用实例会话
 - 当前已经公开 sync/async 两组 `start`、`status`、`stop`、`warmup`、`health` 和 `reset` 接口，用于显式启动、停止、预热、查看状态和清空实例池
-- 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放继续走 deployment snapshot 目录下的 `events.json`
+- 当前已经公开 deployment 历史事件接口与 `/ws/v1/deployments/events` 实时资源流；实时分发走 `service_event_bus`，历史回放使用 `deployments/instances/{deployment_instance_id}/events.jsonl` 追加式事件文件，不写入模型权重目录
 - `start` 只启动并确认目标子进程，不加载模型、不执行 dummy infer，也不激活 keep-warm
 - `warmup` 会自动拉起目标子进程，在模型会话加载后按默认配置或 `runtime_configuration.lifecycle` 覆盖值执行 N 次真实 dummy infer，再激活 keep-warm
 - `reset` 只对已经启动的子进程生效；reset 后 keep-warm 会回到未激活状态，直到下一次显式 warmup

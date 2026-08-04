@@ -16,6 +16,7 @@ from backend.service.application.local_buffers.broker_settings import (
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_import import DatasetImport
+from backend.service.domain.deployments.deployment_instance import DeploymentInstance
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.object_key_layout import (
@@ -593,6 +594,17 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
                             state="succeeded",
                         )
                     )
+                    unit_of_work.deployments.save_deployment_instance(
+                        DeploymentInstance(
+                            deployment_instance_id=f"deployment-{project_id}",
+                            project_id=project_id,
+                            model_id=f"model-{project_id}",
+                            model_version_id=f"model-version-{project_id}",
+                            status="stopped",
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
                 unit_of_work.session.add(
                     LocalAuthUserRecord(
                         user_id="user-project-delete",
@@ -617,6 +629,12 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
             dataset_storage.write_bytes(
                 "task-runs/task-project-keep/output.txt", b"keep"
             )
+            for project_id in ("project-target", "project-keep"):
+                dataset_storage.write_bytes(
+                    "deployments/instances/"
+                    f"deployment-{project_id}/events.jsonl",
+                    b'{"sequence":1}\n',
+                )
             for project_id in ("project-target", "project-keep"):
                 queue_name = f"project-delete-{project_id}"
                 queue_backend.enqueue(
@@ -665,6 +683,12 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
     assert remaining_project_ids == ["project-keep"]
     assert not dataset_storage.resolve("task-runs/task-project-target").exists()
     assert dataset_storage.resolve("task-runs/task-project-keep/output.txt").is_file()
+    assert not dataset_storage.resolve(
+        "deployments/instances/deployment-project-target"
+    ).exists()
+    assert dataset_storage.resolve(
+        "deployments/instances/deployment-project-keep/events.jsonl"
+    ).is_file()
     assert queue_backend.get_task(
         queue_name="project-delete-project-target",
         task_id=queue_task_ids["project-target"],

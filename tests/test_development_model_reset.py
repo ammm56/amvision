@@ -124,6 +124,13 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     _write_marker(storage_root / "datasets" / "dataset-1" / "manifest.json")
     _write_marker(storage_root / "models" / "pretrained" / "keep.txt")
     _write_marker(storage_root / "task-runs" / "training-1" / "result.json")
+    _write_marker(
+        storage_root
+        / "deployments"
+        / "instances"
+        / "deployment-1"
+        / "events.jsonl"
+    )
     _write_marker(storage_root / "workflows" / "runtime" / "run-1" / "state.json")
     _write_marker(queue_root / "dataset-imports" / "dataset-import-1.json")
     _write_marker(queue_root / "yolo11-trainings" / "training-1.json")
@@ -154,6 +161,13 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     assert (queue_root / "dataset-imports" / "dataset-import-1.json").is_file()
     assert (queue_root / "_worker_health" / "worker.json").is_file()
     assert not (storage_root / "task-runs" / "training-1").exists()
+    assert not (
+        storage_root
+        / "deployments"
+        / "instances"
+        / "deployment-1"
+        / "events.jsonl"
+    ).exists()
     assert not (queue_root / "yolo11-trainings").exists()
 
     verification_factory = SessionFactory(settings.to_database_settings())

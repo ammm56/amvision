@@ -17,7 +17,7 @@ from backend.service.api.rest.v1.routes.detection_deployments.services import (
     get_visible_detection_deployment_view,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.deployment.deployment_event_source import DetectionDeploymentEventSource
+from backend.service.application.runtime.deployment.deployment_event_source import DeploymentEventSource
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -51,7 +51,7 @@ def get_detection_deployment_events(
             "runtime_mode 仅支持 sync 或 async",
             details={"runtime_mode": runtime_mode},
         )
-    event_source = DetectionDeploymentEventSource(
+    event_source = DeploymentEventSource(
         dataset_storage_root_dir=str(dataset_storage.root_dir),
     )
     events = event_source.list_events(

@@ -52,7 +52,7 @@ _PRESERVED_QUEUE_NAMES = frozenset(
 )
 _DERIVED_STORAGE_PATHS = (
     "task-runs",
-    "models/detection/deployment-instances",
+    "deployments/instances",
     "workflows/runtime",
 )
 

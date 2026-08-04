@@ -197,7 +197,7 @@
 | `workflows.preview-runs.events` | `GET /api/v1/workflows/preview-runs/{preview_run_id}`、`GET /api/v1/workflows/preview-runs/{preview_run_id}/events` | `service_event_bus` + `events.json` + `WorkflowPreviewRunManager` | 已接入统一 WebSocket；实时分发走 service_event_bus，历史回放继续走 events.json |
 | `workflows.runs.events` | `GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run`、`GET /api/v1/workflows/runs/{workflow_run_id}/events` | `service_event_bus` + `events.json` + `WorkflowRuntimeService` | 已接入统一 WebSocket；run 生命周期事件由 WorkflowRuntimeService 统一追加和分发；不带 response_mode 的 run 查询默认返回公开 App Result |
 | `workflows.app-runtimes.events` | `GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}`、`GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events` | `service_event_bus` + `events.json` + `WorkflowRuntimeService` + `WorkflowRuntimeWorkerManager` | 已接入统一 WebSocket；worker 主动 heartbeat 走统一事件总线，heartbeat 历史按窗口裁剪 |
-| `deployments.events` | `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}`、`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` | `service_event_bus` + `events.json` + deployment supervisor | 已接入统一 WebSocket；适合部署健康、重启和回滚通知 |
+| `deployments.events` | `GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}`、`GET /api/v1/models/detection/deployment-instances/{deployment_instance_id}/events` | `service_event_bus` + `deployments/instances/{id}/events.jsonl` + deployment supervisor | 已接入统一 WebSocket；事件按行追加，适合部署健康、重启和回滚通知 |
 | `projects.events` | `GET /api/v1/projects/{project_id}/summary` | `service_event_bus` + `ProjectSummaryService` | 已接入统一 WebSocket；连接时先返回 summary 快照，后续推送项目级聚合更新 |
 | `system.events` | `GET /api/v1/system/...` | service_event_bus + backend-service 低频系统通知源 | 只承担全局低频状态，不做大而全聚合 |
 
@@ -238,7 +238,7 @@
 
 1. `/ws/v1/system/events` 和 `/ws/v1/tasks/events` 已经落地；其中 tasks 实时流已经收口到 service_event_bus，`task_events` 表继续负责回放。
 2. `workflows.preview-runs.events` 已经按同一骨架落地：实时事件由 preview manager 写入 `service_event_bus`，`events.json` 继续负责回放。
-3. `deployments.events` 已经按同一骨架落地：deployment supervisor 写入 `service_event_bus`，`events.json` 继续负责回放。
+3. `deployments.events` 已经按同一骨架落地：deployment supervisor 写入 `service_event_bus`，`deployments/instances/{id}/events.jsonl` 以追加方式持久化并负责回放。
 4. `workflows.app-runtimes.events` 已补 worker 主动 heartbeat、heartbeat 超时和恢复事件，继续保持“统一事件总线 + 各自回放面”的结构不变。
 5. 如果后续需要跨进程或跨实例事件分发，再替换 service_event_bus 的底层实现，而不是改变公开协议。
 

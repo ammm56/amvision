@@ -276,6 +276,8 @@ QueueBackend 的基础抽象和本地实现放在 `backend/queue`。service 只�
 - contracts/datasets：放通用数据格式、导入格式规则和数据集导出格式规则
 - service/infrastructure/object_store：放本地文件系统 ObjectStore 适配；数据集原始包、统一版本、训练导出、模型文件和任务暂存内容都通过 ObjectStore 规则访问，不让业务层直接拼磁盘路径
 
+本地 ObjectStore 的一级目录按资源职责隔离：`models/` 只保存预训练权重、训练 checkpoint 和模型构建产物；部署实例的生命周期事件写入 `deployments/instances/{deployment_instance_id}/events.jsonl`，采用逐行追加存储，不进入任何模型类型目录。删除 DeploymentInstance、删除 Project 和开发状态重置必须同步清理对应 deployment 目录。
+
 ### backend/service/application/models
 
 `application/models` 当前承担模型平台的应用服务和模型 core 两类职责，后续必须用子目录隔离，不能继续把几十个 `.py` 平铺在同一层。
