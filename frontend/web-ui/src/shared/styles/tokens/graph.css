@@ -27,10 +27,10 @@
   --am-graph-minimap-node: color-mix(in srgb, var(--am-graph-node) 72%, var(--am-graph-selected));
   --am-graph-minimap-node-border: color-mix(in srgb, var(--am-graph-selected) 40%, var(--am-graph-node-border));
   --am-graph-minimap-node-selected: var(--am-graph-selected);
-  --am-graph-minimap-viewport-fill: rgb(255 255 255 / 0.48);
-  --am-graph-minimap-viewport-border: rgb(71 85 78 / 0.42);
-  --am-graph-minimap-viewport-border-hover: rgb(45 55 50 / 0.62);
-  --am-graph-minimap-viewport-shadow: 0 1px 5px rgb(15 23 19 / 0.16), inset 0 0 0 1px rgb(255 255 255 / 0.5);
+  --am-graph-minimap-viewport-fill: rgb(255 255 255 / 0.26);
+  --am-graph-minimap-viewport-border: rgb(71 85 78 / 0.2);
+  --am-graph-minimap-viewport-border-hover: rgb(45 55 50 / 0.3);
+  --am-graph-minimap-viewport-shadow: 0 1px 3px rgb(15 23 19 / 0.07), inset 0 0 0 1px rgb(255 255 255 / 0.2);
 }
 
 [data-theme='dark'] {
@@ -61,10 +61,10 @@
   --am-graph-minimap-node: color-mix(in srgb, var(--am-graph-node) 72%, var(--am-graph-selected));
   --am-graph-minimap-node-border: color-mix(in srgb, var(--am-graph-selected) 40%, var(--am-graph-node-border));
   --am-graph-minimap-node-selected: var(--am-graph-selected);
-  --am-graph-minimap-viewport-fill: rgb(255 255 255 / 0.12);
-  --am-graph-minimap-viewport-border: rgb(255 255 255 / 0.68);
-  --am-graph-minimap-viewport-border-hover: rgb(255 255 255 / 0.86);
-  --am-graph-minimap-viewport-shadow: 0 1px 6px rgb(0 0 0 / 0.34), inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  --am-graph-minimap-viewport-fill: rgb(255 255 255 / 0.06);
+  --am-graph-minimap-viewport-border: rgb(255 255 255 / 0.22);
+  --am-graph-minimap-viewport-border-hover: rgb(255 255 255 / 0.34);
+  --am-graph-minimap-viewport-shadow: 0 1px 4px rgb(0 0 0 / 0.18), inset 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 :root {

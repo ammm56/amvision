@@ -3883,7 +3883,7 @@ textarea:focus-visible {
 
 .workflow-graph-minimap__viewport {
   z-index: 1;
-  border: 1.5px solid var(--graph-minimap-viewport-border);
+  border: 1px solid var(--graph-minimap-viewport-border);
   background: var(--graph-minimap-viewport-fill);
   box-shadow: var(--graph-minimap-viewport-shadow);
   backdrop-filter: blur(2px) saturate(0.8);
