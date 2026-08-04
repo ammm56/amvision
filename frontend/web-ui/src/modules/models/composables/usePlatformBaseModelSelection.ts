@@ -2,9 +2,9 @@ import { computed, ref, type Ref } from 'vue'
 
 import {
   getPlatformBaseModelDetail,
+  type DeploymentSourceModelSummary,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
-  type ModelTrainingTaskSummary,
 } from '../services/model.service'
 
 export interface PlatformBaseModelVersionListItem {
@@ -20,7 +20,7 @@ interface ResetPlatformBaseModelSelectionOptions {
 
 export function usePlatformBaseModelSelection(options: {
   baseModels: Ref<PlatformBaseModelSummary[]>
-  trainingTasks: Ref<ModelTrainingTaskSummary[]>
+  sourceModels: Ref<DeploymentSourceModelSummary[]>
   onError: (message: string) => void
   detailFailedMessage: () => string
 }) {
@@ -50,6 +50,7 @@ export function usePlatformBaseModelSelection(options: {
     }
 
     const selectedModelType = selectedModel.model_type.trim().toLowerCase()
+    const selectedModelTaskType = selectedModel.task_type.trim().toLowerCase()
     const selectedModelScale = selectedModel.model_scale.trim().toLowerCase()
     const baseVersionIds = new Set(
       (selectedModel.versions ?? selectedModel.available_versions ?? []).map((version) => version.model_version_id),
@@ -57,36 +58,41 @@ export function usePlatformBaseModelSelection(options: {
     const matchedVersions: PlatformBaseModelVersionListItem[] = []
     const seenVersionIds = new Set<string>()
 
-    for (const task of options.trainingTasks.value) {
-      const modelVersionId = (task.model_version_id || task.latest_checkpoint_model_version_id || '').trim()
-      if (!modelVersionId || seenVersionIds.has(modelVersionId) || baseVersionIds.has(modelVersionId)) {
+    for (const sourceModel of options.sourceModels.value) {
+      if (sourceModel.scope_kind !== 'project') {
         continue
       }
 
-      const taskModelType = (task.model_type || '').trim().toLowerCase()
-      const taskModelScale = (task.model_scale || '').trim().toLowerCase()
-      if (taskModelType !== selectedModelType || taskModelScale !== selectedModelScale) {
+      const sourceModelType = sourceModel.model_type.trim().toLowerCase()
+      const sourceTaskType = sourceModel.task_type.trim().toLowerCase()
+      const sourceModelScale = sourceModel.model_scale.trim().toLowerCase()
+      if (
+        sourceModelType !== selectedModelType
+        || sourceTaskType !== selectedModelTaskType
+        || sourceModelScale !== selectedModelScale
+      ) {
         continue
       }
 
-      const warmStartPayload = task.training_summary?.warm_start
-      const warmStartSummary = warmStartPayload && typeof warmStartPayload === 'object'
-        ? warmStartPayload as Record<string, unknown>
-        : null
-      const sourceModelVersionId = typeof warmStartSummary?.source_model_version_id === 'string'
-        ? warmStartSummary.source_model_version_id.trim()
-        : ''
-      if (sourceModelVersionId && baseVersionIds.size > 0 && !baseVersionIds.has(sourceModelVersionId)) {
-        continue
-      }
+      for (const version of sourceModel.available_versions ?? []) {
+        const modelVersionId = version.model_version_id.trim()
+        if (!modelVersionId || seenVersionIds.has(modelVersionId) || baseVersionIds.has(modelVersionId)) {
+          continue
+        }
 
-      seenVersionIds.add(modelVersionId)
-      matchedVersions.push({
-        model_version_id: modelVersionId,
-        source_kind: 'project-training-output',
-        title: task.output_model_name?.trim() || task.display_name?.trim() || modelVersionId,
-        subtitle: modelVersionId,
-      })
+        // 训练和转换都必须从已登记 checkpoint 的版本开始，避免把仅有元数据的残缺版本暴露给用户。
+        if (!version.checkpoint_file_id?.trim() || !version.checkpoint_storage_uri?.trim()) {
+          continue
+        }
+
+        seenVersionIds.add(modelVersionId)
+        matchedVersions.push({
+          model_version_id: modelVersionId,
+          source_kind: version.source_kind || 'project-training-output',
+          title: sourceModel.model_name.trim() || modelVersionId,
+          subtitle: modelVersionId,
+        })
+      }
     }
 
     return matchedVersions

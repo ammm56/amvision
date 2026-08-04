@@ -1407,13 +1407,32 @@ class SqlAlchemyModelService:
         self,
         model_files: tuple[ModelFile, ...],
     ) -> ModelFile | None:
-        """在文件列表中查找 checkpoint 文件。"""
+        """在文件列表中查找 checkpoint 文件。
+
+        部署来源查询由通用 ``SqlAlchemyModelService`` 提供，列表中可能同时包含
+        YOLOX、YOLOv8、YOLO11、YOLO26 和 RF-DETR 等模型。这里不能只按当前
+        service 实例的默认文件类型判断，否则非默认模型已登记的 checkpoint 会被
+        错误视为缺失。
+        """
 
         for model_file in model_files:
             if model_file.file_type == self.file_types.checkpoint_file_type:
                 return model_file
 
+        for model_file in model_files:
+            if self._is_checkpoint_file_type(model_file.file_type):
+                return model_file
+
         return None
+
+    @staticmethod
+    def _is_checkpoint_file_type(file_type: str) -> bool:
+        """判断通用模型文件类型是否表示训练 checkpoint。"""
+
+        normalized_file_type = file_type.strip().lower()
+        return normalized_file_type == "pytorch-checkpoint" or (
+            normalized_file_type.endswith("-checkpoint")
+        )
 
     def _deployment_source_sort_key(
         self, model: PlatformBaseModelSummaryView

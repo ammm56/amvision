@@ -12,6 +12,10 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
+from backend.service.application.models.registry.yolo11_model_service import (
+    SqlAlchemyYolo11ModelService,
+    Yolo11TrainingOutputRegistration,
+)
 from backend.service.application.models.catalog.yolo_model_pretrained_catalog import (
     _load_yolo_model_catalog_entry,
 )
@@ -215,6 +219,67 @@ def test_deployment_source_models_include_project_training_builds(
             )
 
             assert hidden_response.status_code == 404
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_deployment_source_models_preserve_multi_generation_training_versions(
+    tmp_path: Path,
+) -> None:
+    """验证通用部署来源接口保留 YOLO11 多代训练版本及 checkpoint。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    _seed_platform_and_project_models(session_factory)
+    service = SqlAlchemyYolo11ModelService(session_factory=session_factory)
+    first_version_id = service.register_training_output(
+        Yolo11TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-task-generation-1",
+            model_name="yolo11-lineage-generation-1",
+            model_scale="s",
+            task_type="classification",
+            dataset_version_id="dataset-version-generation-1",
+            parent_version_id="mv-pretrained-yolo11-classification-s",
+            checkpoint_file_id="model-file-generation-1-checkpoint",
+            checkpoint_file_uri="task-runs/training-task-generation-1/best.pth",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        )
+    )
+    second_version_id = service.register_training_output(
+        Yolo11TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-task-generation-2",
+            model_name="yolo11-lineage-generation-2",
+            model_scale="s",
+            task_type="classification",
+            dataset_version_id="dataset-version-generation-2",
+            parent_version_id=first_version_id,
+            checkpoint_file_id="model-file-generation-2-checkpoint",
+            checkpoint_file_uri="task-runs/training-task-generation-2/best.pth",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        )
+    )
+
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/models/deployment-sources?project_id=project-1&task_type=classification",
+                headers=_build_model_headers(),
+            )
+
+        assert response.status_code == 200
+        models_by_name = {item["model_name"]: item for item in response.json()}
+        second_model = models_by_name["yolo11-lineage-generation-2"]
+        assert len(second_model["available_versions"]) == 1
+        second_version = second_model["available_versions"][0]
+        assert second_version["model_version_id"] == second_version_id
+        assert second_version["parent_version_id"] == first_version_id
+        assert second_version["checkpoint_file_id"] == (
+            "model-file-generation-2-checkpoint"
+        )
+        assert second_version["checkpoint_storage_uri"] == (
+            "task-runs/training-task-generation-2/best.pth"
+        )
     finally:
         session_factory.engine.dispose()
 

@@ -178,8 +178,10 @@ import {
   type DatasetExportSummary,
 } from '@/modules/datasets/services/dataset.service'
 import {
+  listDeploymentSourceModels,
   listPlatformBaseModels,
   type ConversionTargetKey,
+  type DeploymentSourceModelSummary,
   type ModelTaskType,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
@@ -233,6 +235,7 @@ const baseConversionTargetOptions: Array<{ label: string; value: ConversionTarge
 ]
 
 const baseModels = ref<PlatformBaseModelSummary[]>([])
+const projectSourceModels = ref<DeploymentSourceModelSummary[]>([])
 const trainingDatasetExports = ref<DatasetExportSummary[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -334,7 +337,7 @@ const {
   ensureSelectedModelStillVisible,
 } = usePlatformBaseModelSelection({
   baseModels,
-  trainingTasks,
+  sourceModels: projectSourceModels,
   onError: setErrorMessage,
   detailFailedMessage: () => t('modelOps.messages.detailFailed'),
 })
@@ -490,8 +493,11 @@ async function refreshPage(): Promise<boolean> {
   loading.value = true
   errorMessage.value = null
   try {
-    const [models, datasetExports] = await Promise.all([
+    const [models, sourceModels, datasetExports] = await Promise.all([
       listPlatformBaseModels(taskType),
+      projectId
+        ? listDeploymentSourceModels(projectId, taskType)
+        : Promise.resolve<DeploymentSourceModelSummary[]>([]),
       projectId
         ? listProjectDatasetExports(projectId, taskType, 'completed')
         : Promise.resolve<DatasetExportSummary[]>([]),
@@ -505,6 +511,7 @@ async function refreshPage(): Promise<boolean> {
       return false
     }
     baseModels.value = models
+    projectSourceModels.value = sourceModels
     trainingDatasetExports.value = datasetExports
     ensureSelectedModelStillVisible()
     ensureTrainingDatasetExportSelectionVisible()

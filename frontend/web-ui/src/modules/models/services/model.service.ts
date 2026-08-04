@@ -321,7 +321,7 @@ export async function listDeploymentSourceModels(
     query: {
       project_id: projectId,
       task_type: taskType || undefined,
-      limit: 100,
+      limit: 200,
     },
   })
 }
