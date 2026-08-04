@@ -3482,6 +3482,13 @@ textarea:focus-visible {
   --graph-output-port: var(--am-graph-output-port);
   --graph-grid-minor: var(--am-graph-grid-minor);
   --graph-grid-major: var(--am-graph-grid-major);
+  --graph-minimap-node: var(--am-graph-minimap-node);
+  --graph-minimap-node-border: var(--am-graph-minimap-node-border);
+  --graph-minimap-node-selected: var(--am-graph-minimap-node-selected);
+  --graph-minimap-viewport-fill: var(--am-graph-minimap-viewport-fill);
+  --graph-minimap-viewport-border: var(--am-graph-minimap-viewport-border);
+  --graph-minimap-viewport-border-hover: var(--am-graph-minimap-viewport-border-hover);
+  --graph-minimap-viewport-shadow: var(--am-graph-minimap-viewport-shadow);
   color: var(--graph-text);
   background: var(--graph-shell);
 }
@@ -3775,7 +3782,11 @@ textarea:focus-visible {
   border-radius: 8px;
   background: color-mix(in srgb, var(--graph-panel) 92%, transparent);
   box-shadow: 0 14px 28px rgb(0 0 0 / 0.24);
-  cursor: crosshair;
+  cursor: grab;
+}
+
+.workflow-graph-minimap:active {
+  cursor: grabbing;
 }
 
 @media (max-width: 720px) {
@@ -3862,17 +3873,30 @@ textarea:focus-visible {
 }
 
 .workflow-graph-minimap__node {
-  border: 1px solid color-mix(in srgb, var(--graph-accent) 40%, var(--graph-node-line));
-  background: color-mix(in srgb, var(--graph-node-bg) 72%, var(--graph-accent));
+  border: 1px solid var(--graph-minimap-node-border);
+  background: var(--graph-minimap-node);
 }
 
 .workflow-graph-minimap__node.is-selected {
-  background: var(--graph-accent);
+  background: var(--graph-minimap-node-selected);
 }
 
 .workflow-graph-minimap__viewport {
-  border: 1px solid var(--graph-accent);
-  background: color-mix(in srgb, var(--graph-accent) 14%, transparent);
+  z-index: 1;
+  border: 1.5px solid var(--graph-minimap-viewport-border);
+  background: var(--graph-minimap-viewport-fill);
+  box-shadow: var(--graph-minimap-viewport-shadow);
+  backdrop-filter: blur(2px) saturate(0.8);
+  -webkit-backdrop-filter: blur(2px) saturate(0.8);
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.workflow-graph-minimap:hover .workflow-graph-minimap__viewport,
+.workflow-graph-minimap:active .workflow-graph-minimap__viewport {
+  border-color: var(--graph-minimap-viewport-border-hover);
 }
 
 .workflow-graph-context-menu {
