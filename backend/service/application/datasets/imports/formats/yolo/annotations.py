@@ -18,6 +18,9 @@ from backend.service.application.datasets.imports.formats.yolo.segmentation impo
     YoloSegmentationAnnotationMixin,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.datasets.imports.formats.common import (
+    _validate_bbox_within_image,
+)
 from backend.service.domain.datasets.dataset_version import (
     DatasetAnnotation,
     DetectionAnnotation,
@@ -174,12 +177,18 @@ class YoloAnnotationParserMixin(
             )
         bbox_width = box_width * image_width
         bbox_height = box_height * image_height
-        return (
+        bbox_xywh = (
             (center_x - box_width / 2.0) * image_width,
             (center_y - box_height / 2.0) * image_height,
             bbox_width,
             bbox_height,
         )
+        _validate_bbox_within_image(
+            bbox_xywh,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        return bbox_xywh
 
     def _build_pixel_polygon_from_yolo_values(
         self,

@@ -98,6 +98,8 @@ RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开�
 
 ## 数据集导入导出当前事实
 
+模型和任务类型的完整数据集导入、导出、默认训练格式和标签字段规范见 [model-dataset-format-contract.md](model-dataset-format-contract.md)。本节只保留实现事实摘要。
+
 ### 已正式实现的导入入口
 
 - `COCO`：服务 detection / segmentation / pose

@@ -276,17 +276,16 @@ def _build_pose_split_records(
                 if isinstance(raw_keypoints, list) and raw_keypoints
                 else []
             )
-        if boxes:
-            records.append(
-                Yolo26PoseTrainingAnnotation(
-                    image_path=str(
-                        dataset_storage.resolve(f"{image_root}/{file_name}")
-                    ),
-                    boxes_xywh=boxes,
-                    class_ids=class_ids,
-                    keypoints=keypoints,
-                )
+        records.append(
+            Yolo26PoseTrainingAnnotation(
+                image_path=str(
+                    dataset_storage.resolve(f"{image_root}/{file_name}")
+                ),
+                boxes_xywh=boxes,
+                class_ids=class_ids,
+                keypoints=keypoints,
             )
+        )
     return records
 
 

@@ -677,16 +677,15 @@ def _load_obb_manifest(
                 if xywhr is not None:
                     boxes_xywhr.append(xywhr)
                     class_ids.append(int(ann.get("category_id", -1)))
-            if boxes_xywhr:
-                records.append(
-                    _ObbAnnotation(
-                        image_path=str(
-                            dataset_storage.resolve(f"{image_root}/{file_name}")
-                        ),
-                        boxes_xywhr=boxes_xywhr,
-                        class_ids=class_ids,
-                    )
+            records.append(
+                _ObbAnnotation(
+                    image_path=str(
+                        dataset_storage.resolve(f"{image_root}/{file_name}")
+                    ),
+                    boxes_xywhr=boxes_xywhr,
+                    class_ids=class_ids,
                 )
+            )
 
         if split_name == "train":
             train_anns = records

@@ -43,18 +43,23 @@ class ImageNetDatasetImportParserMixin:
             split_dirs = {forced_split or "train": dataset_root}
 
         source_class_names: list[str] = []
+        source_classes_by_split: dict[str, set[str]] = {}
         raw_rows: list[dict[str, object]] = []
         image_refs: list[str] = []
         for split_name, split_dir in split_dirs.items():
+            current_source_classes: set[str] = set()
             for class_dir in sorted(
                 (candidate for candidate in split_dir.iterdir() if candidate.is_dir()),
                 key=lambda item: item.name.lower(),
             ):
                 source_class_name = class_dir.name
+                self._validate_class_directory_name(source_class_name)
+                current_source_classes.add(source_class_name)
                 mapped_class_name = requested_class_map.get(
                     source_class_name,
                     source_class_name,
                 )
+                self._validate_class_directory_name(mapped_class_name)
                 if mapped_class_name not in source_class_names:
                     source_class_names.append(mapped_class_name)
                 for image_path in sorted(
@@ -74,6 +79,20 @@ class ImageNetDatasetImportParserMixin:
                             "source_image_path": image_path,
                             "source_image_ref": self._relative_path(dataset_root, image_path),
                         }
+                    )
+            source_classes_by_split[str(forced_split or split_name)] = current_source_classes
+
+        if source_classes_by_split:
+            expected_classes = next(iter(source_classes_by_split.values()))
+            for split_name, current_classes in source_classes_by_split.items():
+                if current_classes != expected_classes:
+                    raise InvalidRequestError(
+                        "ImageNet classification 各 split 的类别目录必须一致",
+                        details={
+                            "split": split_name,
+                            "missing_classes": sorted(expected_classes - current_classes),
+                            "extra_classes": sorted(current_classes - expected_classes),
+                        },
                     )
 
         if not raw_rows:
@@ -208,3 +227,18 @@ class ImageNetDatasetImportParserMixin:
             if any(self._is_image_file(candidate) for candidate in class_dir.iterdir()):
                 return True
         return False
+
+    def _validate_class_directory_name(self, class_name: str) -> None:
+        """要求 classification 类别名可安全作为单层目录。"""
+
+        if (
+            not class_name
+            or class_name != class_name.strip()
+            or class_name in {".", ".."}
+            or "/" in class_name
+            or "\\" in class_name
+        ):
+            raise InvalidRequestError(
+                "ImageNet classification 类别名称不是安全的单层目录名",
+                details={"class_name": class_name},
+            )

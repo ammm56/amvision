@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
-import torch
 import cv2
+import pytest
+import torch
 
 from backend.service.application.models.yolo_core_common import (
     Conv,
@@ -68,6 +69,10 @@ from backend.service.application.models.yolo_core_common.targets import (
     select_object_segmentation_polygons,
     xywhr_to_corners,
     xywhr_to_xyxy,
+)
+from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    YoloTaskDataLoaderPlan,
+    build_yolo_task_evaluation_dataloader,
 )
 from backend.service.application.models.yolo26_core.tasks import OBB26, Pose26, Segment26
 
@@ -742,6 +747,66 @@ def test_common_segmentation_mask_target_and_loss_helpers_work_independently() -
     assert int(mask.sum()) > 0
     assert torch.isfinite(mask_loss).item() is True
     assert float(mask_loss.item()) < 0.5
+
+
+def test_common_segmentation_target_decodes_compressed_coco_rle() -> None:
+    """验证 YOLO segmentation 不会静默丢弃 compressed COCO RLE。"""
+
+    pycocotools_mask = pytest.importorskip("pycocotools.mask")
+    from backend.service.application.models.yolo_core_common.targets.segmentation import (
+        decode_coco_rle_mask,
+        downsample_yolo_segmentation_masks,
+    )
+
+    source_mask = np.zeros((7, 9), dtype=np.uint8)
+    source_mask[1:5, 2:7] = 1
+    encoded = pycocotools_mask.encode(np.asfortranarray(source_mask))
+    decoded = decode_coco_rle_mask(
+        segmentation={
+            "size": [7, 9],
+            "counts": encoded["counts"].decode("ascii"),
+        },
+        np_module=np,
+    )
+
+    assert np.array_equal(decoded, source_mask)
+    full_masks = np.zeros((100, 640, 640), dtype=np.uint8)
+    reduced_masks = downsample_yolo_segmentation_masks(full_masks)
+    assert reduced_masks.shape == (100, 160, 160)
+    assert reduced_masks.nbytes == full_masks.nbytes // 16
+
+
+def test_task_evaluation_dataloader_uses_full_validation_split_by_default() -> None:
+    """验证训练期验证默认不再只抽取前 8 个样本。"""
+
+    plan = YoloTaskDataLoaderPlan(
+        num_workers=0,
+        pin_memory=False,
+        prefetch_factor=2,
+        persistent_workers=False,
+        seed=0,
+    )
+    samples = tuple(range(12))
+    full_loader = build_yolo_task_evaluation_dataloader(
+        torch_module=torch,
+        samples=samples,
+        input_size=(64, 64),
+        plan=plan,
+        build_batch=lambda **kwargs: kwargs["samples"],
+        load_imports=lambda: None,
+    )
+    quick_loader = build_yolo_task_evaluation_dataloader(
+        torch_module=torch,
+        samples=samples,
+        input_size=(64, 64),
+        plan=plan,
+        build_batch=lambda **kwargs: kwargs["samples"],
+        load_imports=lambda: None,
+        max_samples=8,
+    )
+
+    assert len(full_loader.dataset) == 12
+    assert len(quick_loader.dataset) == 8
 
 
 def test_common_rotated_bbox_decode_preserves_axis_aligned_width_height() -> None:

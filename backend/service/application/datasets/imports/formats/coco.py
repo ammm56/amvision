@@ -11,7 +11,11 @@ from backend.service.application.datasets.imports.contracts import (
     ParsedDatasetContent,
     ParsedDatasetSample,
 )
-from backend.service.application.datasets.imports.formats.common import _build_annotation_for_task
+from backend.service.application.datasets.imports.formats.common import (
+    _build_annotation_for_task,
+    _validate_bbox_within_image,
+    _validate_simple_polygon,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.datasets.dataset_import import DatasetImportTaskType
 from backend.service.domain.datasets.dataset_version import (
@@ -57,6 +61,10 @@ class CocoDatasetImportParserMixin:
         forced_split = self._resolve_requested_split(split_strategy)
         manifest_payloads: list[tuple[Path, dict[str, object], DatasetSplitName]] = []
         source_categories: dict[str, str] = {}
+        pose_schema_by_category: dict[
+            str,
+            tuple[tuple[str, ...], tuple[tuple[int, int], ...]],
+        ] = {}
         for manifest_path in manifest_paths:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
@@ -96,11 +104,54 @@ class CocoDatasetImportParserMixin:
                         details={"category_id": category_key},
                     )
                 source_categories[category_key] = mapped_name
+                if task_type == "pose":
+                    keypoint_names = category_payload.get("keypoints", [])
+                    skeleton = category_payload.get("skeleton", [])
+                    if not isinstance(keypoint_names, list) or not all(
+                        isinstance(value, str) and value.strip()
+                        for value in keypoint_names
+                    ):
+                        raise InvalidRequestError(
+                            "COCO pose categories.keypoints 必须是名称数组"
+                        )
+                    if not isinstance(skeleton, list):
+                        raise InvalidRequestError(
+                            "COCO pose categories.skeleton 必须是数组"
+                        )
+                    normalized_skeleton: list[tuple[int, int]] = []
+                    for edge in skeleton:
+                        if (
+                            not isinstance(edge, list)
+                            or len(edge) != 2
+                            or not all(isinstance(value, int) for value in edge)
+                            or not all(
+                                1 <= value <= len(keypoint_names) for value in edge
+                            )
+                        ):
+                            raise InvalidRequestError(
+                                "COCO pose skeleton 引用了不存在的关键点"
+                            )
+                        normalized_skeleton.append((int(edge[0]), int(edge[1])))
+                    current_schema = (
+                        tuple(value.strip() for value in keypoint_names),
+                        tuple(normalized_skeleton),
+                    )
+                    previous_schema = pose_schema_by_category.get(category_key)
+                    if previous_schema is not None and previous_schema != current_schema:
+                        raise InvalidRequestError(
+                            "COCO pose 各 split 的关键点定义不一致"
+                        )
+                    pose_schema_by_category[category_key] = current_schema
 
         if not manifest_payloads:
             raise InvalidRequestError("annotations 目录中没有可用的 COCO detection manifest")
         if not source_categories:
             raise InvalidRequestError("COCO 数据集缺少 categories 定义")
+        if len(set(source_categories.values())) != len(source_categories):
+            raise InvalidRequestError(
+                "COCO 类别映射后名称必须唯一",
+                details={"category_names": list(source_categories.values())},
+            )
 
         ordered_source_category_ids = sorted(source_categories, key=self._category_sort_key)
         category_id_map = {
@@ -116,6 +167,7 @@ class CocoDatasetImportParserMixin:
         )
 
         parsed_samples: list[ParsedDatasetSample] = []
+        split_by_resolved_image: dict[Path, DatasetSplitName] = {}
         image_id_counter = 1
         manifest_files: list[str] = []
         image_refs: list[str] = []
@@ -143,6 +195,7 @@ class CocoDatasetImportParserMixin:
                 image_payload_by_id[image_key] = image_payload
 
             annotations_by_image_id: dict[str, list[dict[str, object]]] = defaultdict(list)
+            annotation_ids: set[str] = set()
             for annotation_payload in annotations_payload:
                 if not isinstance(annotation_payload, dict):
                     raise InvalidRequestError("COCO annotation 项必须是对象")
@@ -152,6 +205,15 @@ class CocoDatasetImportParserMixin:
                         "COCO annotation 引用了未定义的 image_id",
                         details={"image_id": image_key},
                     )
+                raw_annotation_id = annotation_payload.get("id")
+                if raw_annotation_id is not None:
+                    annotation_id = str(raw_annotation_id).strip()
+                    if not annotation_id or annotation_id in annotation_ids:
+                        raise InvalidRequestError(
+                            "COCO annotations 存在空或重复 id",
+                            details={"annotation_id": annotation_id},
+                        )
+                    annotation_ids.add(annotation_id)
                 annotations_by_image_id[image_key].append(annotation_payload)
 
             for source_image_key, image_payload in image_payload_by_id.items():
@@ -164,11 +226,33 @@ class CocoDatasetImportParserMixin:
                     normalized_file_name=normalized_file_name,
                     split_name=current_split,
                 )
+                if not self._is_image_file(source_image_path):
+                    raise InvalidRequestError(
+                        "COCO 图片格式不受支持",
+                        details={"file_name": normalized_file_name},
+                    )
+                resolved_image_path = source_image_path.resolve()
+                previous_split = split_by_resolved_image.get(resolved_image_path)
+                if previous_split is not None:
+                    raise InvalidRequestError(
+                        "同一 COCO 图片不能出现在多个 manifest 或 split 中",
+                        details={
+                            "file_name": normalized_file_name,
+                            "first_split": previous_split,
+                            "current_split": current_split,
+                        },
+                    )
+                split_by_resolved_image[resolved_image_path] = current_split
                 image_refs.append(self._relative_path(dataset_root, source_image_path))
                 width = self._read_int(image_payload, "width", "COCO image.width 不能为空")
                 height = self._read_int(image_payload, "height", "COCO image.height 不能为空")
                 if width <= 0 or height <= 0:
                     raise InvalidRequestError("COCO image.width 和 height 必须大于 0")
+                self._require_declared_image_size(
+                    image_path=source_image_path,
+                    declared_width=width,
+                    declared_height=height,
+                )
                 annotations: list[DatasetAnnotation] = []
                 for annotation_index, annotation_payload in enumerate(
                     annotations_by_image_id.get(source_image_key, ()),
@@ -178,6 +262,11 @@ class CocoDatasetImportParserMixin:
                     if source_category_id not in category_id_map:
                         raise InvalidRequestError("COCO annotation 引用了未定义的 category_id", details={"category_id": source_category_id})
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
+                    _validate_bbox_within_image(
+                        bbox_xywh,
+                        image_width=width,
+                        image_height=height,
+                    )
                     raw_area = annotation_payload.get("area")
                     area = (
                         float(raw_area)
@@ -210,6 +299,39 @@ class CocoDatasetImportParserMixin:
                             "COCO segmentation RLE size 与图片尺寸不一致",
                             details={"annotation_id": built_annotation.annotation_id},
                         )
+                    if task_type == "segmentation" and isinstance(
+                        getattr(built_annotation, "segmentation", None),
+                        list,
+                    ):
+                        for polygon in built_annotation.segmentation:
+                            _validate_simple_polygon(
+                                tuple(float(value) for value in polygon),
+                                image_width=width,
+                                image_height=height,
+                                allow_edge_coordinates=True,
+                            )
+                    if task_type == "pose":
+                        keypoints = getattr(built_annotation, "keypoints", None) or []
+                        expected_count = len(pose_schema_by_category[source_category_id][0])
+                        if len(keypoints) != expected_count * 3:
+                            raise InvalidRequestError(
+                                "COCO pose keypoints 数量与 category 定义不一致",
+                                details={"annotation_id": built_annotation.annotation_id},
+                            )
+                        for point_index in range(expected_count):
+                            x = float(keypoints[point_index * 3])
+                            y = float(keypoints[point_index * 3 + 1])
+                            visibility = float(keypoints[point_index * 3 + 2])
+                            if visibility > 0 and not (
+                                0 <= x <= width and 0 <= y <= height
+                            ):
+                                raise InvalidRequestError(
+                                    "COCO pose 可见关键点坐标超出图片范围",
+                                    details={
+                                        "annotation_id": built_annotation.annotation_id,
+                                        "keypoint_index": point_index,
+                                    },
+                                )
                 parsed_samples.append(
                     ParsedDatasetSample(
                         sample=DatasetSample(
@@ -253,6 +375,13 @@ class CocoDatasetImportParserMixin:
                 "annotation_root": self._common_path_prefix(annotation_refs),
                 "split_names": list(self._collect_split_names(parsed_samples)),
                 "split_counts": split_counts,
+                "pose_category_schemas": {
+                    str(category_id_map[source_category_id]): {
+                        "keypoints": list(schema[0]),
+                        "skeleton": [list(edge) for edge in schema[1]],
+                    }
+                    for source_category_id, schema in pose_schema_by_category.items()
+                },
             },
             validation_report={
                 "status": "ok",

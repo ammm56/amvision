@@ -250,6 +250,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
             ),
             session_factory=self.session_factory,
             dataset_storage=dataset_storage,
+            expected_task_type="detection",
+            expected_model_scale=str(payload.get("model_scale") or "nano"),
         )
 
         output_prefix = f"task-runs/{task_id}"

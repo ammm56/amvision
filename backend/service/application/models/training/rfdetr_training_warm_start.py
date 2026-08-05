@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import (
+    InvalidRequestError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
@@ -17,8 +18,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
-
 @dataclass(frozen=True)
 class RfdetrWarmStartReference:
     """描述 RF-DETR warm start 使用的源 ModelVersion。"""
@@ -27,6 +26,7 @@ class RfdetrWarmStartReference:
     source_kind: str
     source_model_name: str
     source_model_scale: str
+    source_task_type: str
     checkpoint_storage_uri: str
     checkpoint_path: Path
 
@@ -36,6 +36,8 @@ def resolve_rfdetr_warm_start_reference(
     model_version_id: str | None,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
+    expected_task_type: str | None = None,
+    expected_model_scale: str | None = None,
 ) -> RfdetrWarmStartReference | None:
     """解析 RF-DETR warm start 所需的本地 checkpoint。"""
 
@@ -53,6 +55,21 @@ def resolve_rfdetr_warm_start_reference(
         raise ResourceNotFoundError(
             "指定的 RF-DETR warm start ModelVersion 缺少 Model 主记录",
             details={"model_version_id": model_version_id},
+        )
+    if model.model_type != "rfdetr":
+        raise InvalidRequestError(
+            "warm start ModelVersion 不是 RF-DETR 模型",
+            details={"model_version_id": model_version_id, "model_type": model.model_type},
+        )
+    if expected_task_type is not None and model.task_type != expected_task_type:
+        raise InvalidRequestError(
+            "RF-DETR warm start 任务类型与训练请求不一致",
+            details={"expected": expected_task_type, "actual": model.task_type},
+        )
+    if expected_model_scale is not None and model.model_scale != expected_model_scale:
+        raise InvalidRequestError(
+            "RF-DETR warm start model_scale 与训练请求不一致",
+            details={"expected": expected_model_scale, "actual": model.model_scale},
         )
     checkpoint_file = next(
         (
@@ -89,6 +106,7 @@ def resolve_rfdetr_warm_start_reference(
         source_kind=model_version.source_kind,
         source_model_name=model.model_name,
         source_model_scale=model.model_scale,
+        source_task_type=model.task_type,
         checkpoint_storage_uri=checkpoint_storage_uri,
         checkpoint_path=checkpoint_path,
     )
@@ -104,4 +122,5 @@ def build_rfdetr_warm_start_source_summary(
         "source_kind": warm_start_reference.source_kind,
         "source_model_name": warm_start_reference.source_model_name,
         "source_model_scale": warm_start_reference.source_model_scale,
+        "source_task_type": warm_start_reference.source_task_type,
     }

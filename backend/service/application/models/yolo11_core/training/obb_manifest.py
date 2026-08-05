@@ -126,16 +126,15 @@ def _build_obb_split_records(
                 continue
             boxes_xywhr.append(box_xywhr)
             class_ids.append(int(annotation.get("category_id", -1)))
-        if boxes_xywhr:
-            records.append(
-                Yolo11ObbTrainingAnnotation(
-                    image_path=str(
-                        dataset_storage.resolve(f"{image_root}/{file_name}")
-                    ),
-                    boxes_xywhr=boxes_xywhr,
-                    class_ids=class_ids,
-                )
+        records.append(
+            Yolo11ObbTrainingAnnotation(
+                image_path=str(
+                    dataset_storage.resolve(f"{image_root}/{file_name}")
+                ),
+                boxes_xywhr=boxes_xywhr,
+                class_ids=class_ids,
             )
+        )
     return records
 
 

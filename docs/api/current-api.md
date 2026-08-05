@@ -104,7 +104,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/datasets/{dataset_id}/imports | datasets:read | 查询某个 Dataset 下的导入记录列表。 |
 | GET | /api/v1/datasets/versions?project_id={project_id} | datasets:read | 查询 Project 下持久化的 DatasetVersion；版本生命周期独立于导入运行记录。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id} | datasets:read | 查询一个 DatasetVersion 的摘要，包括 task_type、样本数、类别数和 split 列表。 |
-| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 implemented、default_format 和按 task_type 分组的 format_types_by_task_type。 |
+| GET | /api/v1/datasets/export-formats | datasets:read | 返回当前公开的数据集导出格式规则，包括 implemented、default_format 和按 task_type 分组的 format_types_by_task_type；模型维度训练格式矩阵见 system/bootstrap。 |
 | POST | /api/v1/datasets/exports | datasets:write | 为指定 DatasetVersion 创建 DatasetExport 资源和关联 TaskRecord，并提交到本地队列。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id} | datasets:read | 查询单条导出记录详情，包括 manifest_object_key、export_path 和样本摘要。 |
 | GET | /api/v1/datasets/{dataset_id}/versions/{dataset_version_id}/exports | datasets:read | 查询某个 DatasetVersion 下的导出记录列表。 |
@@ -402,8 +402,13 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - capabilities
 - 当前 capabilities 重点字段包括：
   - project_bootstrap_enabled
+  - dataset_import.implemented_task_types
+  - dataset_import.format_types_by_task_type
   - dataset_export.implemented_formats
   - dataset_export.default_format
+  - dataset_export.format_types_by_task_type
+  - platform_model_types_by_task_type
+  - training_export_formats_by_task_and_model_type
   - project_summary_topics
 
 ### GET /api/v1/system/config
@@ -634,8 +639,10 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 返回字段：
   - implemented_formats
   - default_format
+  - format_types_by_task_type
   - items[].format_id
 - 当前推荐顺序是先读取该接口，再调用 POST /api/v1/datasets/exports 创建具体导出任务
+- 模型维度训练格式矩阵由 `GET /api/v1/system/bootstrap` 的 `capabilities.training_export_formats_by_task_and_model_type` 返回
 
 ### POST /api/v1/datasets/exports
 
@@ -663,7 +670,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 - 导入阶段可以兼容多种外部目录结构，但导出阶段始终按 format_id 收口为单一标准格式，不沿用原始导入包目录布局
 - 当前若 format_id=coco-detection-v1，则固定导出为 images/{split}/ 和 annotations/instances_{split}.json
 - 当前若 format_id=imagenet-classification-v1，则固定导出为 `{split}/{class_name}/`、`annotations/{split}.json` 和 `manifest.json`
-- 当前若 format_id=dota-obb-v1，则固定导出为 `images/{split}/`、`annotations/{split}.json` 和 `manifest.json`
+- 当前若 format_id=yolo-detection-v1、yolo-instance-seg-v1 或 yolo-pose-v1，则固定导出为 `manifest.json`、`images/{split}/` 和 `labels/{split}/`
+- 当前若 format_id=dota-obb-v1，则固定导出为 `manifest.json`、`images/{split}/`、`annotations/{split}.json` 和 `labels/{split}/`
 - 成功响应会同时返回：
   - dataset_export_id
   - task_id

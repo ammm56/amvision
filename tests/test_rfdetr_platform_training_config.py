@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core._namespace import (
     _namespace_from_configs,
 )
@@ -20,6 +21,9 @@ from backend.service.application.models.rfdetr_core.export.execution import (
 )
 from backend.service.application.models.rfdetr_core.training.platform_artifacts import (
     prepare_resume_checkpoint,
+)
+from backend.service.application.models.rfdetr_core.training.platform_dataset import (
+    _build_rfdetr_roboflow_file_name,
 )
 from backend.service.application.models.rfdetr_core.training.callbacks.best_model import (
     BestModelCallback,
@@ -46,7 +50,19 @@ from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
-from backend.service.application.errors import InvalidRequestError
+
+
+def test_rfdetr_platform_dataset_preserves_nested_image_paths() -> None:
+    """验证同名图片不会因压平路径而在 RF-DETR 临时数据集中互相覆盖。"""
+
+    assert _build_rfdetr_roboflow_file_name(
+        split_name="train",
+        file_name="train/camera-a/shared.jpg",
+    ) == "camera-a/shared.jpg"
+    assert _build_rfdetr_roboflow_file_name(
+        split_name="train",
+        file_name="camera-b/shared.jpg",
+    ) == "camera-b/shared.jpg"
 
 
 def test_rfdetr_export_rejects_implicit_input_alignment() -> None:

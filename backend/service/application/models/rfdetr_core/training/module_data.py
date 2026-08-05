@@ -2,8 +2,10 @@
 
 # ruff: noqa: E402
 
+import random
 from typing import Any, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.utils.data
 
@@ -27,6 +29,15 @@ from backend.service.application.models.rfdetr_core.utilities.tensors import mak
 logger = get_logger()
 
 _MIN_TRAIN_BATCHES = 5
+
+
+def _seed_rfdetr_dataloader_worker(worker_id: int) -> None:
+    """按 PyTorch worker seed 同步 Python 与 NumPy 随机状态。"""
+
+    del worker_id
+    worker_seed = int(torch.initial_seed()) % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
 
 def _has_cuda_device() -> bool:
@@ -232,6 +243,9 @@ class RFDETRDataModule(LightningDataModule):
                 pin_memory=self._pin_memory,
                 persistent_workers=self._persistent_workers,
                 prefetch_factor=self._prefetch_factor,
+                worker_init_fn=(
+                    _seed_rfdetr_dataloader_worker if num_workers > 0 else None
+                ),
             )
 
         world_size: int = getattr(self.trainer, "world_size", 1) if self.trainer else 1
@@ -247,6 +261,9 @@ class RFDETRDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
             persistent_workers=self._persistent_workers,
             prefetch_factor=self._prefetch_factor,
+            worker_init_fn=(
+                _seed_rfdetr_dataloader_worker if num_workers > 0 else None
+            ),
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -265,6 +282,9 @@ class RFDETRDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
             persistent_workers=self._persistent_workers,
             prefetch_factor=self._prefetch_factor,
+            worker_init_fn=(
+                _seed_rfdetr_dataloader_worker if self._num_workers > 0 else None
+            ),
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -283,6 +303,9 @@ class RFDETRDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
             persistent_workers=self._persistent_workers,
             prefetch_factor=self._prefetch_factor,
+            worker_init_fn=(
+                _seed_rfdetr_dataloader_worker if self._num_workers > 0 else None
+            ),
         )
 
     def predict_dataloader(self) -> DataLoader:
@@ -301,6 +324,9 @@ class RFDETRDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
             persistent_workers=self._persistent_workers,
             prefetch_factor=self._prefetch_factor,
+            worker_init_fn=(
+                _seed_rfdetr_dataloader_worker if self._num_workers > 0 else None
+            ),
         )
 
     def _setup_kornia_pipeline(self) -> None:

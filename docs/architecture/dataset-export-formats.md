@@ -12,6 +12,7 @@
 - 数据集导出按 format id 管理，不按某个模型内部脚本命名
 - 同一个 DatasetVersion 可以导出成多种格式，但每个导出结果都必须追到同一个固定版本
 - 导出格式要先把目录、annotation 文件、类别顺序和最小字段定清楚，再接具体训练代码
+- 模型和任务类型的完整导入、导出和默认格式矩阵以 [model-dataset-format-contract.md](model-dataset-format-contract.md) 为准
 
 ## 格式命名规则
 
@@ -24,23 +25,23 @@
 ### yolo-detection-v1
 
 - task type：detection
-- 目录布局：images/{split}/、labels/{split}/、data.yaml
+- 目录布局：manifest.json、images/{split}/、labels/{split}/
 - 主要内容：YOLO detection 标签文件
-- 适用模型：YOLOv8/11 detection
+- 适用模型：YOLOv8/11/26 detection
 
 ### yolo-instance-seg-v1
 
 - task type：segmentation
-- 目录布局：images/{split}/、labels/{split}/、data.yaml
+- 目录布局：manifest.json、images/{split}/、labels/{split}/
 - 主要内容：YOLO segmentation 标签文件
-- 适用模型：YOLOv8/11 segmentation
+- 适用模型：YOLOv8/11/26 segmentation
 
 ### yolo-pose-v1
 
 - task type：pose
-- 目录布局：images/{split}/、labels/{split}/、data.yaml
+- 目录布局：manifest.json、images/{split}/、labels/{split}/
 - 主要内容：YOLO pose 标签文件
-- 适用模型：YOLOv8/11 pose
+- 适用模型：YOLOv8/11/26 pose
 
 ### coco-detection-v1
 
@@ -73,7 +74,7 @@
 ### dota-obb-v1
 
 - task type：obb
-- 目录布局：images/{split}/、annotations/{split}.json、manifest.json
+- 目录布局：manifest.json、images/{split}/、annotations/{split}.json、labels/{split}/
 - 主要内容：DOTA 四角点 polygon 风格 OBB annotation json
 - 适用模型：YOLOv8/11/26 obb
 
@@ -96,9 +97,9 @@
 | 模型 | 主要任务 | 默认数据集导出格式 | 备选格式 | 说明 |
 | --- | --- | --- | --- | --- |
 | YOLOX | detection | coco-detection-v1 | voc-detection-v1 | 默认优先 COCO detection；VOC detection 也已接入训练与评估 |
-| YOLOv8/11 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
-| YOLOv8/11 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
-| YOLOv8/11 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
+| YOLOv8/11/26 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
+| YOLOv8/11/26 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
+| YOLOv8/11/26 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
 | YOLOv8/11/26 | classification | imagenet-classification-v1 | backend-specific classification manifest | 当前导出为 ImageNet 风格目录，同时保留 split annotation json |
 | YOLOv8/11/26 | obb | dota-obb-v1 | coco + angle / polygon manifest | 当前导出为 DOTA 四角点 polygon 风格 annotation json |
 | RT-DETR | detection | coco-detection-v1 | backend-specific detection manifest | 默认优先 COCO detection |
@@ -128,6 +129,8 @@
 - `RF-DETR` detection 当前仍只接 `coco-detection-v1`。上游参考仓库虽然还存在更多数据集变体入口，但本项目没有把这些变体全部接成正式训练输入。
 - `imagenet-classification-v1` 当前导出为 ImageNet 风格目录，同时保留 `annotations/{split}.json` 和 `manifest.json`，便于项目内训练与评估链直接消费。
 - `dota-obb-v1` 当前导出为 split 级图片目录和 DOTA polygon 风格 annotation json，不再把 OBB 数据继续塞进 detection 语义。
+- `yolo-detection-v1 / yolo-instance-seg-v1 / yolo-pose-v1` 当前写出 `manifest.json`、`images/{split}/` 和 `labels/{split}/`，不写 `data.yaml`。如后续需要面向外部工具直接下载的 YAML，应新增明确字段或独立生成规则，不能在文档中假设当前已存在。
+- `dota-obb-v1` 当前同时写出 `annotations/{split}.json` 和 `labels/{split}/{image_stem}.txt`，训练侧可按 manifest 或 DOTA txt 标签消费。
 - semantic segmentation 相关 `semantic-mask-dir-v1 / sam-promptable-seg-v1` 仍停留在规划和格式预留阶段，还没有正式实现。
 - 后续新增格式时，继续沿用“DatasetVersion -> format id -> 导出目录和 annotation payload”这条主线扩展，不回退到模型私有脚本入口。
 

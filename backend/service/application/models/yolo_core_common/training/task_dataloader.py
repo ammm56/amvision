@@ -133,11 +133,19 @@ def build_yolo_task_evaluation_dataloader(
     plan: YoloTaskDataLoaderPlan,
     build_batch: Callable[..., Any],
     load_imports: Callable[[], Any],
-    max_samples: int = 8,
+    max_samples: int | None = None,
 ) -> Any:
-    """创建普通 YOLO task 训练期 validator DataLoader。"""
+    """创建普通 YOLO task 训练期 validator DataLoader。
 
-    selected_samples = tuple(samples[: max(0, int(max_samples))])
+    默认消费完整 validation split。只有显式传入 ``max_samples`` 时才用于
+    调试性快速评估，避免最佳 checkpoint 被验证集前几张图片误导。
+    """
+
+    selected_samples = (
+        tuple(samples)
+        if max_samples is None
+        else tuple(samples[: max(0, int(max_samples))])
+    )
     return build_yolo_task_training_dataloader(
         torch_module=torch_module,
         samples=selected_samples,

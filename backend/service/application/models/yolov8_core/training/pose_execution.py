@@ -729,17 +729,16 @@ def _load_pose_manifest(
                     keypoints.append([float(v) for v in kp])
                 else:
                     keypoints.append([])
-            if boxes:
-                records.append(
-                    _PoseAnnotation(
-                        image_path=str(
-                            dataset_storage.resolve(f"{image_root}/{file_name}")
-                        ),
-                        boxes_xywh=boxes,
-                        class_ids=class_ids,
-                        keypoints=keypoints,
-                    )
+            records.append(
+                _PoseAnnotation(
+                    image_path=str(
+                        dataset_storage.resolve(f"{image_root}/{file_name}")
+                    ),
+                    boxes_xywh=boxes,
+                    class_ids=class_ids,
+                    keypoints=keypoints,
                 )
+            )
 
         if split_name == "train":
             train_anns = records

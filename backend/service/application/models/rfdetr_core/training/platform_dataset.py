@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -143,7 +144,7 @@ def _copy_coco_split(
         )
         destination_path = target_split_dir / rfdetr_file_name
         destination_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, destination_path)
+        _link_or_copy_image(source_path=source_path, destination_path=destination_path)
         image_payload["file_name"] = rfdetr_file_name
 
     for annotation in annotation_payload.get("annotations", []):
@@ -209,7 +210,7 @@ def _resolve_coco_source_image_path(
 
 
 def _build_rfdetr_roboflow_file_name(*, split_name: str, file_name: str) -> str:
-    """生成 RF-DETR Roboflow COCO 读取约定使用的 split 相对图片路径。"""
+    """生成 RF-DETR split 目录内不压平的图片相对路径。"""
 
     normalized_file_name = PurePosixPath(file_name)
     parts = [
@@ -218,5 +219,16 @@ def _build_rfdetr_roboflow_file_name(*, split_name: str, file_name: str) -> str:
         if part not in {"", "/", "."}
     ]
     if parts and parts[0] == split_name:
-        return str(PurePosixPath(*parts))
-    return str(PurePosixPath(split_name) / normalized_file_name.name)
+        parts = parts[1:]
+    if not parts:
+        raise InvalidRequestError("COCO annotation 中存在空 file_name")
+    return str(PurePosixPath(*parts))
+
+
+def _link_or_copy_image(*, source_path: Path, destination_path: Path) -> None:
+    """优先用 hard link 准备临时训练目录，跨卷或不支持时再复制。"""
+
+    try:
+        os.link(source_path, destination_path)
+    except OSError:
+        shutil.copy2(source_path, destination_path)

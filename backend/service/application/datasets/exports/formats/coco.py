@@ -233,8 +233,27 @@ class CocoExportMixin:
     ) -> dict[str, CocoDetectionAnnotationPayload]:
         """构建每个 split 的 COCO annotation payload。"""
 
+        pose_category_schemas = dataset_version.metadata.get("pose_category_schemas", {})
+        if not isinstance(pose_category_schemas, dict):
+            pose_category_schemas = {}
+        pose_keypoint_counts: dict[int, int] = {}
+        for _, samples in split_samples:
+            for sample in samples:
+                for annotation in sample.annotations:
+                    if not isinstance(annotation, PoseAnnotation) or not annotation.keypoints:
+                        continue
+                    current_count = len(annotation.keypoints) // 3
+                    previous_count = pose_keypoint_counts.get(annotation.category_id)
+                    if previous_count is not None and previous_count != current_count:
+                        raise ValueError("COCO pose 同一类别的关键点数量不一致")
+                    pose_keypoint_counts[annotation.category_id] = current_count
         categories = tuple(
-            CocoCategory(category_id=category.category_id, name=category.name)
+            self._build_coco_category(
+                category_id=category.category_id,
+                name=category.name,
+                pose_category_schemas=pose_category_schemas,
+                fallback_keypoint_count=pose_keypoint_counts.get(category.category_id, 0),
+            )
             for category in sorted(
                 dataset_version.categories,
                 key=lambda item: item.category_id,
@@ -296,6 +315,47 @@ class CocoExportMixin:
             )
 
         return payloads
+
+    def _build_coco_category(
+        self,
+        *,
+        category_id: int,
+        name: str,
+        pose_category_schemas: dict[object, object],
+        fallback_keypoint_count: int,
+    ) -> CocoCategory:
+        """构建类别，并在 pose 导出时恢复 keypoints 与 skeleton。"""
+
+        raw_schema = pose_category_schemas.get(str(category_id), {})
+        if not isinstance(raw_schema, dict):
+            raw_schema = {}
+        raw_keypoints = raw_schema.get("keypoints", [])
+        raw_skeleton = raw_schema.get("skeleton", [])
+        keypoints = tuple(
+            str(value)
+            for value in raw_keypoints
+            if isinstance(value, str) and value
+        ) if isinstance(raw_keypoints, list) else ()
+        if not keypoints and fallback_keypoint_count > 0:
+            keypoints = tuple(
+                f"keypoint_{index}"
+                for index in range(fallback_keypoint_count)
+            )
+        if keypoints and fallback_keypoint_count not in {0, len(keypoints)}:
+            raise ValueError("COCO pose category keypoints 与 annotation 数量不一致")
+        skeleton = tuple(
+            (int(edge[0]), int(edge[1]))
+            for edge in raw_skeleton
+            if isinstance(edge, list)
+            and len(edge) == 2
+            and all(isinstance(value, int) for value in edge)
+        ) if isinstance(raw_skeleton, list) else ()
+        return CocoCategory(
+            category_id=category_id,
+            name=name,
+            keypoints=keypoints,
+            skeleton=skeleton,
+        )
 
     def _write_coco_export_files(
         self,
@@ -363,6 +423,14 @@ class CocoExportMixin:
                     "id": category.category_id,
                     "name": category.name,
                     "supercategory": category.supercategory,
+                    **(
+                        {
+                            "keypoints": list(category.keypoints),
+                            "skeleton": [list(edge) for edge in category.skeleton],
+                        }
+                        if category.keypoints
+                        else {}
+                    ),
                 }
                 for category in payload.categories
             ],

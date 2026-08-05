@@ -12,6 +12,7 @@ from backend.service.application.datasets.imports.contracts import (
 from backend.service.application.datasets.imports.formats.common import (
     _build_bbox_from_polygon,
     _compute_polygon_area,
+    _validate_simple_polygon,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.domain.datasets.dataset_import import DatasetImportTaskType
@@ -108,11 +109,12 @@ class DotaDatasetImportParserMixin:
                                 "DOTA polygon 坐标必须是有限数字",
                                 details={"line_index": line_index},
                             )
-                        if _compute_polygon_area(polygon_xy) <= 0:
-                            raise InvalidRequestError(
-                                "DOTA polygon 面积必须大于 0",
-                                details={"line_index": line_index},
-                            )
+                        _validate_simple_polygon(
+                            polygon_xy,
+                            image_width=width,
+                            image_height=height,
+                            allow_edge_coordinates=False,
+                        )
                         source_class_name = parts[8]
                         difficult = 0
                         if len(parts) >= 10:
@@ -243,7 +245,10 @@ class DotaDatasetImportParserMixin:
     ) -> bool:
         """判断当前目录是否像 DOTA 风格 OBB 数据集。"""
 
-        return bool(self._collect_dota_split_names(dataset_root))
+        return any(
+            split_name in {"train", "val"}
+            for split_name in self._collect_dota_split_names(dataset_root)
+        )
 
     def _collect_dota_split_names(
         self,
@@ -253,7 +258,7 @@ class DotaDatasetImportParserMixin:
 
         image_root = dataset_root / "images"
         labels_root = dataset_root / "labels"
-        if not image_root.is_dir() or not labels_root.is_dir():
+        if not image_root.is_dir():
             return ()
 
         split_names: list[DatasetSplitName] = []
@@ -265,7 +270,10 @@ class DotaDatasetImportParserMixin:
                 labels_root=labels_root,
                 split_name=candidate_name,
             )
-            if not self._looks_like_dota_label_dir(current_label_dir):
+            if (
+                candidate_name != "test"
+                and not self._looks_like_dota_label_dir(current_label_dir)
+            ):
                 continue
             if any(self._is_image_file(candidate) for candidate in current_image_dir.iterdir()):
                 split_names.append(candidate_name)

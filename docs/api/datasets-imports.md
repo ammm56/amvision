@@ -458,14 +458,28 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 ## 当前实现边界
 
 - 当前导入接口只支持 zip 压缩包。
-- 当前任务类型只支持 detection。
-- 当前自动识别只覆盖 COCO detection 和 Pascal VOC detection。
+- 当前任务类型支持 detection、classification、segmentation、pose、obb。
+- 当前自动识别和解析覆盖：
+  - COCO：detection、segmentation、pose
+  - Pascal VOC：detection
+  - YOLO：detection、segmentation、pose、obb
+  - ImageNet 风格目录：classification
+  - DOTA 风格目录：obb
 - 当前上传流程会先把 zip 流式写入 package.zip，再提交一条 received 状态的 DatasetImport、创建关联 TaskRecord 并入队；解析、校验和版本生成由独立 worker 从本地持久化队列异步执行。
 - task_id 是正式任务主记录 id，queue_task_id 只是队列里的调度消息 id；两者用途不同。
 - 当前导入成功后会清空 staging/extracted 中的临时解压内容；如需重做解析或人工复查，应以 package.zip 为准重新执行处理。
 - package_path、staging_path、version_path 都是 data/files 根目录下的相对路径，不是可直接下载的 HTTP URL。
 - detected_profile 和 validation_report 已经收敛为显式响应模型；metadata 仍保留为通用 object，并以本文档字段说明为准。
 - 当前单次 multipart 上传接口不提供“请求未完成时的服务端上传百分比查询”。如果需要真正的大文件分片上传和可恢复进度，应新增 upload session 或对象存储 multipart 直传接口。
+- 各模型和任务类型的输入格式选择见 [docs/architecture/model-dataset-format-contract.md](../architecture/model-dataset-format-contract.md)。
+- COCO detection 的标准导入目录、JSON 字段、类别映射和图片格式限制见 [docs/architecture/coco-detection-dataset-import-format.md](../architecture/coco-detection-dataset-import-format.md)。
+- COCO segmentation 的标准导入目录、polygon/RLE segmentation、类别映射和图片格式限制见 [docs/architecture/coco-segmentation-dataset-import-format.md](../architecture/coco-segmentation-dataset-import-format.md)。
+- COCO pose 的标准导入目录、keypoints 字段、num_keypoints、类别和骨架定义、图片格式限制见 [docs/architecture/coco-pose-dataset-import-format.md](../architecture/coco-pose-dataset-import-format.md)。
+- VOC detection 的标准导入目录、XML 字段、split 文件和图片格式限制见 [docs/architecture/voc-detection-dataset-import-format.md](../architecture/voc-detection-dataset-import-format.md)。
+- YOLO detection 的标准导入目录、标签行、类别配置和图片格式限制见 [docs/architecture/yolo-detection-dataset-import-format.md](../architecture/yolo-detection-dataset-import-format.md)。
+- YOLO segmentation 的标准导入目录、polygon 标注行、类别配置和图片格式限制见 [docs/architecture/yolo-segmentation-dataset-import-format.md](../architecture/yolo-segmentation-dataset-import-format.md)。
+- YOLO pose 的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制见 [docs/architecture/yolo-pose-dataset-import-format.md](../architecture/yolo-pose-dataset-import-format.md)。
+- DOTA OBB 的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制见 [docs/architecture/dota-obb-dataset-import-format.md](../architecture/dota-obb-dataset-import-format.md)。
 
 ## 调试建议
 

@@ -185,3 +185,96 @@ def _compute_polygon_area(
         x2, y2 = points[(index + 1) % len(points)]
         area += x1 * y2 - x2 * y1
     return abs(area) / 2.0
+
+
+def _validate_bbox_within_image(
+    bbox_xywh: tuple[float, float, float, float],
+    *,
+    image_width: int,
+    image_height: int,
+) -> None:
+    """要求像素 xywh 框完整落在图片边界内。"""
+
+    x, y, width, height = bbox_xywh
+    epsilon = 1e-6
+    if (
+        x < -epsilon
+        or y < -epsilon
+        or x + width > float(image_width) + epsilon
+        or y + height > float(image_height) + epsilon
+    ):
+        raise InvalidRequestError("标注 bbox 超出图片范围")
+
+
+def _validate_simple_polygon(
+    polygon_xy: tuple[float, ...],
+    *,
+    image_width: int,
+    image_height: int,
+    allow_edge_coordinates: bool,
+) -> None:
+    """校验 polygon 边界、退化边和自相交。"""
+
+    if len(polygon_xy) < 6 or len(polygon_xy) % 2 != 0:
+        raise InvalidRequestError("polygon 至少需要三个点且坐标必须成对")
+    points = [
+        (float(polygon_xy[index]), float(polygon_xy[index + 1]))
+        for index in range(0, len(polygon_xy), 2)
+    ]
+    # 常见标注工具会显式重复首点闭合 polygon；闭合边本来已隐含，校验时去掉冗余点。
+    if len(points) >= 4 and points[0] == points[-1]:
+        points = points[:-1]
+        polygon_xy = tuple(value for point in points for value in point)
+    max_x = float(image_width) if allow_edge_coordinates else float(image_width) - 1e-9
+    max_y = float(image_height) if allow_edge_coordinates else float(image_height) - 1e-9
+    if any(x < 0 or y < 0 or x > max_x or y > max_y for x, y in points):
+        raise InvalidRequestError("polygon 顶点超出图片范围")
+    if any(points[index] == points[(index + 1) % len(points)] for index in range(len(points))):
+        raise InvalidRequestError("polygon 相邻顶点不能重合")
+    if _compute_polygon_area(polygon_xy) <= 0:
+        raise InvalidRequestError("polygon 面积必须大于 0")
+    edge_count = len(points)
+    for first_index in range(edge_count):
+        first_next = (first_index + 1) % edge_count
+        for second_index in range(first_index + 1, edge_count):
+            second_next = (second_index + 1) % edge_count
+            if (
+                first_index == second_index
+                or first_next == second_index
+                or second_next == first_index
+            ):
+                continue
+            if _segments_intersect(
+                points[first_index],
+                points[first_next],
+                points[second_index],
+                points[second_next],
+            ):
+                raise InvalidRequestError("polygon 边界不得自相交")
+
+
+def _segments_intersect(
+    point_a: tuple[float, float],
+    point_b: tuple[float, float],
+    point_c: tuple[float, float],
+    point_d: tuple[float, float],
+) -> bool:
+    """判断两条闭线段是否相交。"""
+
+    def orientation(
+        left: tuple[float, float],
+        middle: tuple[float, float],
+        right: tuple[float, float],
+    ) -> float:
+        return (middle[1] - left[1]) * (right[0] - middle[0]) - (
+            middle[0] - left[0]
+        ) * (right[1] - middle[1])
+
+    values = (
+        orientation(point_a, point_b, point_c),
+        orientation(point_a, point_b, point_d),
+        orientation(point_c, point_d, point_a),
+        orientation(point_c, point_d, point_b),
+    )
+    epsilon = 1e-9
+    return values[0] * values[1] < -epsilon and values[2] * values[3] < -epsilon

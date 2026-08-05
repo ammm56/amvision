@@ -39,6 +39,8 @@ class CocoCategory:
     category_id: int
     name: str
     supercategory: str = "object"
+    keypoints: tuple[str, ...] = ()
+    skeleton: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)

@@ -78,6 +78,7 @@ from backend.service.domain.files.detection_model_file_types import (
     YOLOV8_DETECTION_FILE_TYPES,
 )
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.service.domain.models.rfdetr_model_spec import RFDETR_SEGMENTATION_SCALES
 from backend.service.domain.models.model_input_spec import (
     deserialize_spatial_size_hw,
     serialize_spatial_size_hw,
@@ -146,6 +147,10 @@ class SqlAlchemySegmentationTrainingService:
 
         queue_backend = self._require_queue_backend()
         model_type = self._normalize_model_type(request.model_type)
+        self._validate_model_scale(
+            model_type=model_type,
+            model_scale=request.model_scale,
+        )
         dataset_export = self._resolve_dataset_export(
             project_id=request.project_id,
             dataset_export_id=request.dataset_export_id,
@@ -229,6 +234,10 @@ class SqlAlchemySegmentationTrainingService:
         resolved_model_type = self._normalize_model_type(
             payload.get("model_type", model_type)
         )
+        self._validate_model_scale(
+            model_type=resolved_model_type,
+            model_scale=str(payload.get("model_scale") or ""),
+        )
         dataset_export = self._resolve_dataset_export(
             project_id=task_record.project_id,
             dataset_export_id=self._read_optional_str(payload.get("dataset_export_id")),
@@ -277,6 +286,8 @@ class SqlAlchemySegmentationTrainingService:
                 model_version_id=requested_warm_start_model_version_id,
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
+                expected_task_type=SEGMENTATION_TASK_TYPE,
+                expected_model_scale=str(payload.get("model_scale") or "nano"),
             )
             warm_start_source_summary = (
                 build_rfdetr_warm_start_source_summary(warm_start_reference)
@@ -654,6 +665,22 @@ class SqlAlchemySegmentationTrainingService:
                 },
             )
         return normalized
+
+    @staticmethod
+    def _validate_model_scale(*, model_type: str, model_scale: str) -> None:
+        """在任务入队和执行前校验 RF-DETR segmentation scale。"""
+
+        if model_type != "rfdetr":
+            return
+        normalized_scale = str(model_scale).strip().lower()
+        if normalized_scale not in RFDETR_SEGMENTATION_SCALES:
+            raise InvalidRequestError(
+                "RF-DETR segmentation 不支持指定 model_scale",
+                details={
+                    "model_scale": normalized_scale,
+                    "supported_scales": list(RFDETR_SEGMENTATION_SCALES),
+                },
+            )
 
     def _build_task_spec(
         self,

@@ -104,6 +104,16 @@ class VocDatasetImportParserMixin:
             height = self._read_xml_int(size_node, "height", "VOC height 不能为空")
             if width <= 0 or height <= 0:
                 raise InvalidRequestError("VOC width 和 height 必须大于 0")
+            if not self._is_image_file(source_image_path):
+                raise InvalidRequestError(
+                    "VOC 图片格式不受支持",
+                    details={"image_file": normalized_file_name},
+                )
+            self._require_declared_image_size(
+                image_path=source_image_path,
+                declared_width=width,
+                declared_height=height,
+            )
             stem_name = xml_path.stem
             sample_split = forced_split or split_membership.get(stem_name)
             if sample_split is None:
@@ -248,6 +258,14 @@ class VocDatasetImportParserMixin:
         """
 
         image_sets_dir = dataset_root / "ImageSets" / "Main"
+        required_split_files = (
+            image_sets_dir / "train.txt",
+            image_sets_dir / "val.txt",
+        )
+        if not all(split_file.is_file() for split_file in required_split_files):
+            raise InvalidRequestError(
+                "VOC 标准导入必须包含 ImageSets/Main/train.txt 和 val.txt"
+            )
         membership: dict[str, DatasetSplitName] = {}
         for split_name, file_name in (("train", "train.txt"), ("val", "val.txt"), ("test", "test.txt")):
             split_file = image_sets_dir / file_name
@@ -263,6 +281,23 @@ class VocDatasetImportParserMixin:
                             details={"sample_name": sample_name},
                         )
                     membership[sample_name] = split_name
+
+        trainval_file = image_sets_dir / "trainval.txt"
+        if trainval_file.is_file():
+            trainval_members = {
+                line.strip()
+                for line in trainval_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            }
+            expected_trainval_members = {
+                sample_name
+                for sample_name, split_name in membership.items()
+                if split_name in {"train", "val"}
+            }
+            if trainval_members != expected_trainval_members:
+                raise InvalidRequestError(
+                    "VOC trainval.txt 必须等于 train.txt 与 val.txt 的合集"
+                )
 
         return membership
 

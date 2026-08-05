@@ -8,7 +8,7 @@ import stat
 import uuid
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO
 
 from backend.service.application.errors import InvalidRequestError
@@ -420,9 +420,19 @@ class LocalDatasetStorage:
             destination_dir.mkdir(parents=True, exist_ok=True)
             try:
                 for member in members:
-                    member_path = PurePosixPath(member.filename)
+                    # ZIP 规范使用 `/`，但 Windows 解压路径也会把反斜杠解释为
+                    # 分隔符。先统一分隔符，避免 `..\file` 绕过 PurePosixPath
+                    # 的路径穿越检查。
+                    member_path = PurePosixPath(member.filename.replace("\\", "/"))
                     self._validate_zip_member(member_path=member_path, member=member)
                     target_path = destination_dir.joinpath(*member_path.parts)
+                    if not target_path.resolve(strict=False).is_relative_to(
+                        destination_dir.resolve(strict=False)
+                    ):
+                        raise InvalidRequestError(
+                            "zip 包中存在非法路径",
+                            details={"member": member.filename},
+                        )
                     if member.is_dir():
                         target_path.mkdir(parents=True, exist_ok=True)
                         continue
@@ -512,11 +522,26 @@ class LocalDatasetStorage:
         - InvalidRequestError：当路径为空、为绝对路径或包含 `..` 时抛出。
         """
 
-        normalized_text = relative_path.strip()
-        if not normalized_text:
+        raw_path = relative_path.strip()
+        if not raw_path:
             raise InvalidRequestError("本地对象路径不能为空")
+        windows_path = PureWindowsPath(raw_path)
+        if windows_path.is_absolute() or bool(windows_path.drive):
+            resolved_path = Path(raw_path).resolve(strict=False)
+            resolved_root = self.root_dir.resolve(strict=False)
+            if not resolved_path.is_relative_to(resolved_root):
+                raise InvalidRequestError(
+                    "本地对象路径不合法",
+                    details={"relative_path": relative_path},
+                )
+            normalized_text = resolved_path.relative_to(resolved_root).as_posix()
+        else:
+            normalized_text = raw_path.replace("\\", "/")
         normalized_path = PurePosixPath(normalized_text)
-        if normalized_path.is_absolute() or ".." in normalized_path.parts:
+        if (
+            normalized_path.is_absolute()
+            or ".." in normalized_path.parts
+        ):
             raise InvalidRequestError(
                 "本地对象路径不合法",
                 details={"relative_path": relative_path},

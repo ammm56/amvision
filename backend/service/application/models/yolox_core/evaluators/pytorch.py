@@ -266,6 +266,10 @@ def resolve_yolox_evaluation_split(
             details={"split_name": requested_split_name},
         )
 
+    for split in resolved_splits:
+        if split.name in {"val", "valid", "validation"}:
+            return split
+
     train_split = resolve_train_split(resolved_splits)
     validation_split = resolve_validation_split(
         resolved_splits,

@@ -331,6 +331,10 @@ class SqlAlchemyDatasetImportService(
                     "manifest_file": parsed_content.manifest_file,
                     "split_strategy": parsed_content.split_strategy,
                     "split_counts": self._collect_split_counts(parsed_content.samples),
+                    "pose_category_schemas": parsed_content.detected_profile.get(
+                        "pose_category_schemas",
+                        {},
+                    ),
                 },
             )
             self._write_version_files(

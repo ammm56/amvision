@@ -462,6 +462,10 @@ def run_yolox_detection_training_execution(
             hsv_prob=0.0,
             max_labels=max_labels,
         )
+        if validation_dataset.category_names != train_base_dataset.category_names:
+            raise InvalidRequestError(
+                "YOLOX detection 训练集与验证集类别定义不一致"
+            )
         validation_loader = imports.torch.utils.data.DataLoader(
             validation_dataset,
             batch_size=batch_size,
@@ -482,6 +486,10 @@ def run_yolox_detection_training_execution(
             hsv_prob=0.0,
             max_labels=max_labels,
         )
+        if test_dataset.category_names != train_base_dataset.category_names:
+            raise InvalidRequestError(
+                "YOLOX detection 训练集与测试集类别定义不一致"
+            )
         test_loader = imports.torch.utils.data.DataLoader(
             test_dataset,
             batch_size=batch_size,

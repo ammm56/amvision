@@ -44,6 +44,7 @@
 
 - 当前已经支持 detection、segmentation、pose、classification、obb 五类 DatasetVersion 导出
 - 当前已经公开独立的格式规则接口 `GET /api/v1/datasets/export-formats`，用于先读取 implemented_formats 和 default_format，再决定是否创建导出任务
+- 当前模型维度的训练导出格式矩阵由 `GET /api/v1/system/bootstrap` 的 `capabilities.training_export_formats_by_task_and_model_type` 返回；训练页面和脚本不应自己维护第二份静态模型格式表
 - 当前已经正式实现并对外开放的 format_id：
   - coco-detection-v1
   - voc-detection-v1
@@ -116,7 +117,8 @@
 - 当前若请求 coco-detection-v1，服务会统一生成 COCO 标准导出目录：images/{split}/、annotations/instances_{split}.json、manifest.json
 - 当前若请求 voc-detection-v1，服务会统一生成 Pascal VOC 标准导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json
 - 当前若请求 imagenet-classification-v1，服务会统一生成 `{split}/{class_name}/` 图片目录、`annotations/{split}.json` 和 `manifest.json`
-- 当前若请求 dota-obb-v1，服务会统一生成 `images/{split}/`、`annotations/{split}.json` 和 `manifest.json`，annotation 使用 DOTA polygon 风格字段
+- 当前若请求 yolo-detection-v1、yolo-instance-seg-v1 或 yolo-pose-v1，服务会统一生成 `manifest.json`、`images/{split}/` 和 `labels/{split}/`；当前不会额外写 `data.yaml`
+- 当前若请求 dota-obb-v1，服务会统一生成 `manifest.json`、`images/{split}/`、`annotations/{split}.json` 和 `labels/{split}/`，annotation 使用 DOTA polygon 风格字段
 - 当前接口没有再提供“导出成哪一种 COCO 原始目录变体”的额外参数；如果后续需要新的导出布局，应新增独立 format_id，而不是复用已有 format_id
 
 #### curl 示例
@@ -303,6 +305,9 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/exports" \
 - manifest.json：统一导出 manifest，training 应消费它的 object key
 - COCO detection：annotations/instances_{split}.json、images/{split}/...
 - VOC detection：Annotations/*.xml、JPEGImages/*、ImageSets/Main/{split}.txt
+- YOLO detection / segmentation / pose：labels/{split}/*.txt、images/{split}/...
+- ImageNet classification：annotations/{split}.json、{split}/{class_name}/...
+- DOTA OBB：annotations/{split}.json、labels/{split}/*.txt、images/{split}/...
 
 这里的“统一导出”含义是：无论原始导入包是传统 annotations 目录、年份后缀 COCO，还是 Roboflow 风格 split-local manifest，只要导出目标 format_id 相同，最后写出的目录结构就相同。
 

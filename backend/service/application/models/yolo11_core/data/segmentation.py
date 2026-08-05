@@ -21,6 +21,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     pin_yolo_task_value,
 )
+from backend.service.application.models.yolo_core_common.targets.segmentation import (
+    downsample_yolo_segmentation_masks,
+)
 from backend.service.application.models.yolo11_core.data.augmentation import (
     Yolo11TaskAugmentationOptions,
     apply_yolo11_random_affine,
@@ -634,6 +637,7 @@ def _finalize_yolo11_segmentation_target(
     masks = finalized.pop("masks_array", None)
     mask_valid = finalized.pop("mask_valid_array", None)
     if masks is not None:
+        masks = downsample_yolo_segmentation_masks(masks)
         finalized["masks"] = move_yolo_tensor_to_training_device(
             imports.torch.from_numpy(masks),
             device=device,

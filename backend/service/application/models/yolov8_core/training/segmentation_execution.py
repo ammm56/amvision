@@ -176,7 +176,7 @@ class _SegTrainingAnnotation:
     image_path: str
     boxes_xywh: list[list[float]]
     class_ids: list[int]
-    segmentations: list[list[list[float]] | None] | None = None
+    segmentations: list[list[list[float]] | dict[str, object] | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -822,7 +822,16 @@ def _seg_load_manifest(
         for im in payload.get("images") or []:
             if isinstance(im, dict):
                 img_map[int(im.get("id", -1))] = str(im.get("file_name", ""))
-        annotations_by_image: dict[int, _SegTrainingAnnotation] = {}
+        annotations_by_image: dict[int, _SegTrainingAnnotation] = {
+            image_id: _SegTrainingAnnotation(
+                image_path=str(dataset_storage.resolve(f"{im_root}/{file_name}")),
+                boxes_xywh=[],
+                class_ids=[],
+                segmentations=[],
+            )
+            for image_id, file_name in img_map.items()
+            if file_name
+        }
         for ann in payload.get("annotations") or []:
             if not isinstance(ann, dict):
                 continue
@@ -833,15 +842,7 @@ def _seg_load_manifest(
             bbox = ann.get("bbox")
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
-            current = annotations_by_image.get(img_id)
-            if current is None:
-                current = _SegTrainingAnnotation(
-                    image_path=str(dataset_storage.resolve(f"{im_root}/{fn}")),
-                    boxes_xywh=[],
-                    class_ids=[],
-                    segmentations=[],
-                )
-                annotations_by_image[img_id] = current
+            current = annotations_by_image[img_id]
             current.boxes_xywh.append([float(value) for value in bbox])
             current.class_ids.append(int(ann.get("category_id", -1)))
             polygons = _extract_segmentation_polygons(ann)
@@ -903,13 +904,13 @@ def _seg_load_manifest(
 
 def _extract_segmentation_polygons(
     annotation: dict[str, object],
-) -> list[list[float]] | None:
-    """从 COCO 标注提取 segmentation 多边形数据。"""
+) -> list[list[float]] | dict[str, object] | None:
+    """从 COCO 标注提取 polygon 或 RLE，保留到 batch 阶段惰性解码。"""
 
     seg = annotation.get("segmentation")
-    if not isinstance(seg, list) or len(seg) == 0:
-        return None
-    if isinstance(seg[0], list):
+    if isinstance(seg, dict):
+        return seg
+    if isinstance(seg, list) and seg and isinstance(seg[0], list):
         return seg
     return None
 

@@ -58,6 +58,7 @@
 - 不同模型共享的是 task type 和通用数据格式，不是完全相同的原始标注文件结构
 - 当前阶段默认通过 FastAPI 接收 zip 数据集压缩包，服务端负责解压、校验、转成通用数据格式并保存到本地磁盘
 - 训练、验证和推理默认读取平台内部统一结构；只有在导出时才回到目标模型需要的目录和文件格式
+- 模型和任务类型的完整导入、导出和默认训练格式矩阵以 [model-dataset-format-contract.md](model-dataset-format-contract.md) 为准
 
 ## 当前实现范围
 
@@ -71,6 +72,7 @@
 - `semantic-segmentation` 当前仍是数据对象和格式规划预留，还没有接通正式的 zip 导入解析链，因此不应在当前导入 UI 中作为已实现选项暴露
 - 输入统一为 zip 压缩包；zip 内允许存在一层额外包裹目录，导入器应先消除单层包裹目录后再识别结构
 - zip 中所有图片和标注都必须位于压缩包内部；不接受 xml 或 json 指向 zip 外绝对路径的情况
+- 导入阶段不要求选择模型；同一个 DatasetVersion 后续按 `DatasetExport.format_id` 转成 YOLOX、YOLOv8、YOLO11、YOLO26 或 RF-DETR 需要的训练输入
 
 ## 对象链与生命周期
 
@@ -238,6 +240,8 @@ dataset-root/
 
 ### COCO detection zip
 
+COCO detection 标准导入目录、JSON 字段、类别映射、图片格式限制和不符合规范的结构见 [coco-detection-dataset-import-format.md](coco-detection-dataset-import-format.md)。本节只保留当前导入器支持的 COCO zip 摘要。
+
 #### 推荐目录结构
 
 ```text
@@ -305,6 +309,8 @@ dataset-root/
 
 ### Pascal VOC detection zip
 
+VOC detection 标准导入目录、XML 字段、split 文件、图片格式限制和不符合规范的结构见 [voc-detection-dataset-import-format.md](voc-detection-dataset-import-format.md)。本节只保留当前导入器支持的 Pascal VOC zip 摘要。
+
 #### 推荐目录结构
 
 ```text
@@ -323,18 +329,22 @@ dataset-root/
          └─ test.txt
 ```
 
+`train.txt` 和 `val.txt` 是标准导入必需文件。`trainval.txt` 与 `test.txt` 可选。
+
 #### 图片与标注位置
 
 - 图片默认位于 JPEGImages 目录
 - XML 标注默认位于 Annotations 目录，通常与图片同名但扩展名为 xml
-- split 文件默认位于 ImageSets/Main；若存在 train.txt、val.txt、test.txt，则按文件中的样本 stem 归入对应 split
-- 若不存在 ImageSets/Main，导入流程应依赖显式 split strategy；未显式提供时默认全部归入 train
+- split 文件默认位于 ImageSets/Main；标准导入必须提供 train.txt 和 val.txt，若存在 test.txt，则按文件中的样本 stem 归入 test split
+- trainval.txt 是 train 与 val 的合集，不作为独立互斥 split
+- 若不存在 ImageSets/Main，属于非标准兼容场景，导入流程只能依赖显式 split strategy；标准 VOC detection 导入不推荐这种结构
 
 #### XML 结构与字段
 
 - 根节点应为 annotation
-- 第一阶段必需字段：filename、size/width、size/height、至少一个 object
-- 每个 object 第一阶段必需字段：name、bndbox/xmin、bndbox/ymin、bndbox/xmax、bndbox/ymax
+- 第一阶段必需字段：filename、size/width、size/height
+- 有目标图像的每个 object 第一阶段必需字段：name、bndbox/xmin、bndbox/ymin、bndbox/xmax、bndbox/ymax
+- 无目标图像可以不包含 object
 - size/depth、folder、path、segmented、object/pose、object/truncated、object/difficult 为可选字段
 - bbox 在 Pascal VOC 中语义为左上和右下角坐标，导入时应转换为 detection 通用格式使用的 bbox_xywh_abs
 - difficult、truncated、pose 等字段若存在，应保留到 annotation metadata 中，而不是丢失
@@ -1105,6 +1115,12 @@ versions/{dataset_version_id}/
 
 ### detection
 
+COCO detection 标准导入目录、JSON 字段、类别映射、图片格式限制和不符合规范的结构见 [coco-detection-dataset-import-format.md](coco-detection-dataset-import-format.md)。
+
+VOC detection 标准导入目录、XML 字段、split 文件、图片格式限制和不符合规范的结构见 [voc-detection-dataset-import-format.md](voc-detection-dataset-import-format.md)。
+
+YOLO detection 标准导入目录、标签行、类别配置、图片格式限制和不符合规范的结构见 [yolo-detection-dataset-import-format.md](yolo-detection-dataset-import-format.md)。
+
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | detection |
@@ -1116,6 +1132,10 @@ versions/{dataset_version_id}/
 | 说明 | RT-DETR 与 YOLO 可以共用 detection 通用格式，但导出格式通常不同 |
 
 ### segmentation
+
+COCO segmentation 标准导入目录、polygon/RLE segmentation、类别映射、图片格式限制和不符合规范的结构见 [coco-segmentation-dataset-import-format.md](coco-segmentation-dataset-import-format.md)。
+
+YOLO segmentation 标准导入目录、polygon 标注行、类别配置、图片格式限制和不符合规范的结构见 [yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -1141,6 +1161,10 @@ versions/{dataset_version_id}/
 
 ### pose
 
+COCO pose 标准导入目录、keypoints 字段、num_keypoints、类别和骨架定义、图片格式限制和不符合规范的结构见 [coco-pose-dataset-import-format.md](coco-pose-dataset-import-format.md)。
+
+YOLO pose 标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置、图片格式限制和不符合规范的结构见 [yolo-pose-dataset-import-format.md](yolo-pose-dataset-import-format.md)。
+
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | pose |
@@ -1163,7 +1187,11 @@ versions/{dataset_version_id}/
 | 常见模型/后端 | YOLOv8/11/26 classification |
 | 说明 | 当前导出会同时保留 ImageNet 风格目录和 split annotation json，便于项目内训练/评估直接消费 |
 
+classification 标准导入目录、类别命名、图片要求和不符合规范的结构见 [classification-dataset-import-format.md](classification-dataset-import-format.md)。
+
 ### obb
+
+DOTA OBB 标准导入目录、四点 polygon 标注行、类别规则、图片格式限制和不符合规范的结构见 [dota-obb-dataset-import-format.md](dota-obb-dataset-import-format.md)。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -1195,6 +1223,16 @@ versions/{dataset_version_id}/
 
 ## 推荐后续文档
 
+- [docs/architecture/classification-dataset-import-format.md](classification-dataset-import-format.md)
+- [docs/architecture/coco-detection-dataset-import-format.md](coco-detection-dataset-import-format.md)
+- [docs/architecture/coco-segmentation-dataset-import-format.md](coco-segmentation-dataset-import-format.md)
+- [docs/architecture/coco-pose-dataset-import-format.md](coco-pose-dataset-import-format.md)
+- [docs/architecture/voc-detection-dataset-import-format.md](voc-detection-dataset-import-format.md)
+- [docs/architecture/yolo-detection-dataset-import-format.md](yolo-detection-dataset-import-format.md)
+- [docs/architecture/yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)
+- [docs/architecture/yolo-pose-dataset-import-format.md](yolo-pose-dataset-import-format.md)
+- [docs/architecture/dota-obb-dataset-import-format.md](dota-obb-dataset-import-format.md)
+- [docs/architecture/model-dataset-format-contract.md](model-dataset-format-contract.md)
 - [docs/architecture/data-and-files.md](data-and-files.md)
 - [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
 - [docs/architecture/project-structure.md](project-structure.md)

@@ -1671,7 +1671,10 @@ def _build_coco_zip_bytes() -> bytes:
             "dataset-root/annotations/instances_train.json",
             json.dumps(coco_payload),
         )
-        zip_file.writestr("dataset-root/train/train-1.jpg", b"fake-image")
+        zip_file.writestr(
+            "dataset-root/train/train-1.jpg",
+            _build_test_image_bytes(image_format="JPEG", size=(100, 80)),
+        )
 
     return buffer.getvalue()
 
@@ -1750,7 +1753,14 @@ def _build_roboflow_coco_zip_bytes() -> bytes:
                 json.dumps(payload),
             )
             image_file_name = str(payload["images"][0]["file_name"])
-            zip_file.writestr(f"dataset-root/{split_name}/{image_file_name}", b"fake-image")
+            image_payload = payload["images"][0]
+            zip_file.writestr(
+                f"dataset-root/{split_name}/{image_file_name}",
+                _build_test_image_bytes(
+                    image_format="JPEG",
+                    size=(int(image_payload["width"]), int(image_payload["height"])),
+                ),
+            )
 
     return buffer.getvalue()
 
@@ -1787,9 +1797,19 @@ def _build_voc_zip_bytes(
         )
         with zipfile.ZipFile(buffer, mode="w") as zip_file:
                 prefix = "dataset-root/VOC2007/" if with_nested_wrappers else ""
-                zip_file.writestr(f"{prefix}JPEGImages/voc-1.jpg", b"fake-image")
+                image_bytes = _build_test_image_bytes(
+                    image_format="JPEG",
+                    size=(120, 90),
+                )
+                zip_file.writestr(f"{prefix}JPEGImages/voc-1.jpg", image_bytes)
+                zip_file.writestr(f"{prefix}JPEGImages/voc-2.jpg", image_bytes)
                 zip_file.writestr(f"{prefix}Annotations/voc-1.xml", xml_payload)
+                zip_file.writestr(
+                    f"{prefix}Annotations/voc-2.xml",
+                    xml_payload.replace("voc-1.jpg", "voc-2.jpg"),
+                )
                 zip_file.writestr(f"{prefix}ImageSets/Main/train.txt", "voc-1\n")
+                zip_file.writestr(f"{prefix}ImageSets/Main/val.txt", "voc-2\n")
 
         return buffer.getvalue()
 
@@ -1801,6 +1821,8 @@ def _build_imagenet_zip_bytes() -> bytes:
     image_bytes = _build_test_image_bytes(image_format="JPEG", size=(32, 24))
     with zipfile.ZipFile(buffer, mode="w") as zip_file:
         zip_file.writestr("dataset-root/train/ok/ok-1.jpg", image_bytes)
+        zip_file.writestr("dataset-root/train/ng/", b"")
+        zip_file.writestr("dataset-root/val/ok/", b"")
         zip_file.writestr("dataset-root/val/ng/ng-1.jpg", image_bytes)
     return buffer.getvalue()
 

@@ -15,6 +15,16 @@
 - [docs/architecture/next-stage-roadmap.md](architecture/next-stage-roadmap.md) 汇总当前阶段判断、本轮已收口事项、固定开发环境与下一阶段五条主线
 - [docs/architecture/model-platform-plan.md](architecture/model-platform-plan.md) 汇总多模型平台化路线、任务分类拆分和各模型分类接入顺序
 - [docs/architecture/model-support-matrix.md](architecture/model-support-matrix.md) 汇总当前主干代码里 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 的真实支持矩阵
+- [docs/architecture/model-dataset-format-contract.md](architecture/model-dataset-format-contract.md) 固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 按 classification / detection / segmentation / pose / obb 顺序的数据集导入、导出和训练格式规则
+- [docs/architecture/classification-dataset-import-format.md](architecture/classification-dataset-import-format.md) 固定单标签图像分类数据集的标准导入目录、类别规则、图像要求和不符合规范的结构
+- [docs/architecture/coco-detection-dataset-import-format.md](architecture/coco-detection-dataset-import-format.md) 固定 COCO 矩形边界框目标检测数据集的标准导入目录、JSON 字段、类别映射和图片格式限制
+- [docs/architecture/voc-detection-dataset-import-format.md](architecture/voc-detection-dataset-import-format.md) 固定 VOC 矩形边界框目标检测数据集的标准导入目录、XML 字段、split 文件和图片格式限制
+- [docs/architecture/yolo-detection-dataset-import-format.md](architecture/yolo-detection-dataset-import-format.md) 固定 YOLO 矩形边界框目标检测数据集的标准导入目录、标签行、类别配置和图片格式限制
+- [docs/architecture/coco-segmentation-dataset-import-format.md](architecture/coco-segmentation-dataset-import-format.md) 固定 COCO 实例分割数据集的标准导入目录、polygon/RLE 标注、类别映射和图片格式限制
+- [docs/architecture/yolo-segmentation-dataset-import-format.md](architecture/yolo-segmentation-dataset-import-format.md) 固定 YOLO 实例分割数据集的标准导入目录、polygon 标注行、类别配置和图片格式限制
+- [docs/architecture/coco-pose-dataset-import-format.md](architecture/coco-pose-dataset-import-format.md) 固定 COCO Keypoints 姿态估计数据集的标准导入目录、JSON 字段、关键点可见性和图片格式限制
+- [docs/architecture/yolo-pose-dataset-import-format.md](architecture/yolo-pose-dataset-import-format.md) 固定 YOLO 姿态估计数据集的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制
+- [docs/architecture/dota-obb-dataset-import-format.md](architecture/dota-obb-dataset-import-format.md) 固定 DOTA OBB 旋转框数据集的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制
 - [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md) 汇总训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
 - [docs/architecture/model-training-input-size-rules.md](architecture/model-training-input-size-rules.md) 汇总 YOLOX / RF-DETR / YOLOv8 / YOLO11 / YOLO26 的训练输入尺寸规则、常用尺寸和前端训练页面展示约束
 - [docs/architecture/model-training-evaluation-contract.md](architecture/model-training-evaluation-contract.md) 固定所有模型训练任务的 warm start、resume、best/latest checkpoint、validation/test 隔离和评估输出契约
@@ -89,38 +99,48 @@
 6. [docs/architecture/next-stage-roadmap.md](architecture/next-stage-roadmap.md)
 7. [docs/architecture/model-platform-plan.md](architecture/model-platform-plan.md)
 8. [docs/architecture/model-support-matrix.md](architecture/model-support-matrix.md)
-9. [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md)
-10. [docs/architecture/model-training-input-size-rules.md](architecture/model-training-input-size-rules.md)
-11. [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md)
-12. [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md)
-13. [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md)
-14. [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md)
-15. [docs/architecture/model-deployment-runtime-policy.md](architecture/model-deployment-runtime-policy.md)
-16. [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md)
-17. [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md)
-18. [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md)
-19. [docs/architecture/plc-modbus-field-debug-checklist.md](architecture/plc-modbus-field-debug-checklist.md)
-20. [docs/architecture/yoloe-sam3-workflow-app-operations.md](architecture/yoloe-sam3-workflow-app-operations.md)
-21. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
-22. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
-23. [docs/architecture/project-structure.md](architecture/project-structure.md)
-24. [docs/architecture/backend-service.md](architecture/backend-service.md)
-25. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
-26. [docs/architecture/task-system.md](architecture/task-system.md)
-27. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-28. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-29. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
-30. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
-31. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
-32. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
-33. [docs/architecture/node-system.md](architecture/node-system.md)
-34. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-35. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-36. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
-37. [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md)
-38. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-39. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-40. 根据任务继续进入 API、部署、节点扩展或决策文档
+9. [docs/architecture/model-dataset-format-contract.md](architecture/model-dataset-format-contract.md)
+10. [docs/architecture/classification-dataset-import-format.md](architecture/classification-dataset-import-format.md)
+11. [docs/architecture/coco-detection-dataset-import-format.md](architecture/coco-detection-dataset-import-format.md)
+12. [docs/architecture/voc-detection-dataset-import-format.md](architecture/voc-detection-dataset-import-format.md)
+13. [docs/architecture/yolo-detection-dataset-import-format.md](architecture/yolo-detection-dataset-import-format.md)
+14. [docs/architecture/coco-segmentation-dataset-import-format.md](architecture/coco-segmentation-dataset-import-format.md)
+15. [docs/architecture/yolo-segmentation-dataset-import-format.md](architecture/yolo-segmentation-dataset-import-format.md)
+16. [docs/architecture/coco-pose-dataset-import-format.md](architecture/coco-pose-dataset-import-format.md)
+17. [docs/architecture/yolo-pose-dataset-import-format.md](architecture/yolo-pose-dataset-import-format.md)
+18. [docs/architecture/dota-obb-dataset-import-format.md](architecture/dota-obb-dataset-import-format.md)
+19. [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md)
+20. [docs/architecture/model-training-input-size-rules.md](architecture/model-training-input-size-rules.md)
+21. [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md)
+22. [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md)
+23. [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md)
+24. [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md)
+25. [docs/architecture/model-deployment-runtime-policy.md](architecture/model-deployment-runtime-policy.md)
+26. [docs/architecture/yoloe-sam3-node-assets.md](architecture/yoloe-sam3-node-assets.md)
+27. [docs/architecture/industrial-rule-node-plan.md](architecture/industrial-rule-node-plan.md)
+28. [docs/architecture/industrial-extension-node-plan.md](architecture/industrial-extension-node-plan.md)
+29. [docs/architecture/plc-modbus-field-debug-checklist.md](architecture/plc-modbus-field-debug-checklist.md)
+30. [docs/architecture/yoloe-sam3-workflow-app-operations.md](architecture/yoloe-sam3-workflow-app-operations.md)
+31. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
+32. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
+33. [docs/architecture/project-structure.md](architecture/project-structure.md)
+34. [docs/architecture/backend-service.md](architecture/backend-service.md)
+35. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
+36. [docs/architecture/task-system.md](architecture/task-system.md)
+37. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+38. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+39. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
+40. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
+41. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
+42. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
+43. [docs/architecture/node-system.md](architecture/node-system.md)
+44. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+45. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+46. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
+47. [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md)
+48. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+49. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+50. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 

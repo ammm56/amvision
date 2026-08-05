@@ -7,6 +7,7 @@ from pathlib import Path
 from backend.service.application.datasets.imports.formats.common import (
     _build_bbox_from_polygon,
     _compute_polygon_area,
+    _validate_simple_polygon,
 )
 from backend.service.application.errors import InvalidRequestError
 
@@ -52,6 +53,12 @@ class YoloObbAnnotationMixin:
             label_file=label_file,
             dataset_root=dataset_root,
             line_index=line_index,
+        )
+        _validate_simple_polygon(
+            polygon_xy,
+            image_width=image_width,
+            image_height=image_height,
+            allow_edge_coordinates=True,
         )
         return {
             "class_id": class_id,

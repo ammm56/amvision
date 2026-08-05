@@ -417,7 +417,8 @@ def _build_train_config(
         "eval_max_dets": max(100, int(extra_options.get("evaluation_max_detections", 500))),
         "accelerator": device_selection.lightning_accelerator,
         "devices": device_selection.lightning_devices,
-        "num_workers": max(0, int(extra_options.get("num_workers", 0))),
+        # 与 RF-DETR core 默认值一致；仍可显式设为 0 以兼容受限现场环境。
+        "num_workers": max(0, int(extra_options.get("num_workers", 2))),
         "progress_bar": None,
         "tensorboard": False,
         "use_ema": _read_bool_option(

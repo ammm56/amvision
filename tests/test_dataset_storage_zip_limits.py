@@ -67,3 +67,34 @@ def test_extract_zip_rejects_member_count_before_writing_files(tmp_path: Path) -
         storage.extract_zip("imports/package.zip", "imports/extracted")
 
     assert not storage.resolve("imports/extracted").exists()
+
+
+def test_storage_rejects_windows_parent_path_and_external_absolute_path(
+    tmp_path: Path,
+) -> None:
+    """验证 Windows 分隔符和盘符不能绕过对象存储根目录。"""
+
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "root")))
+
+    with pytest.raises(InvalidRequestError, match="路径不合法"):
+        storage.resolve("..\\escape.txt")
+    with pytest.raises(InvalidRequestError, match="路径不合法"):
+        storage.resolve(str(tmp_path / "outside.txt"))
+
+    inside_path = storage.resolve("safe/inside.txt")
+    assert storage.resolve(str(inside_path)) == inside_path
+
+
+def test_extract_zip_rejects_windows_style_parent_member(tmp_path: Path) -> None:
+    """验证 ZIP 中的反斜杠父目录路径不会写出目标目录。"""
+
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "root")))
+    archive_path = storage.resolve("imports/package.zip")
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with ZipFile(archive_path, "w") as archive:
+        archive.writestr("..\\escape.txt", b"escape")
+
+    with pytest.raises(InvalidRequestError, match="非法路径"):
+        storage.extract_zip("imports/package.zip", "imports/extracted")
+
+    assert not storage.resolve("imports/escape.txt").exists()

@@ -47,6 +47,7 @@ class YoloManifestMixin:
                     configured_root,
                 )
                 dataset_base_root = self._resolve_yolo_dataset_base_root(
+                    dataset_root=dataset_root,
                     yaml_path=yaml_path,
                     configured_root=configured_root,
                     resolved_configured_root=resolved_configured_root,
@@ -82,12 +83,19 @@ class YoloManifestMixin:
     def _resolve_yolo_dataset_base_root(
         self,
         *,
+        dataset_root: Path,
         yaml_path: Path,
         configured_root: str,
         resolved_configured_root: Path,
     ) -> Path:
         """解析 YOLO data.yaml 中的 dataset root。"""
 
+        archive_root = dataset_root.resolve()
+        if not resolved_configured_root.resolve(strict=False).is_relative_to(archive_root):
+            raise InvalidRequestError(
+                "YOLO data.yaml 的 path 不得指向 zip 外部",
+                details={"path": configured_root},
+            )
         if resolved_configured_root.exists():
             return resolved_configured_root
 
@@ -144,7 +152,10 @@ class YoloManifestMixin:
 
         normalized_path = Path(raw_path.strip().replace("\\", "/")).expanduser()
         if normalized_path.is_absolute():
-            return normalized_path.resolve(strict=False)
+            raise InvalidRequestError(
+                "YOLO data.yaml 不允许使用绝对路径",
+                details={"path": raw_path},
+            )
         return (base_root / normalized_path).resolve(strict=False)
 
     def _resolve_yolo_category_name_map(

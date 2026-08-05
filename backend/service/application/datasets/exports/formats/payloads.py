@@ -63,7 +63,16 @@ class DatasetExportPayloadBuilderMixin(
         """确定导出时使用的类别名列表。"""
 
         if category_names:
-            return category_names
+            normalized_names = tuple(name.strip() for name in category_names)
+            stored_names = tuple(
+                category.name
+                for category in sorted(categories, key=lambda item: item.category_id)
+            )
+            if normalized_names != stored_names:
+                raise ValueError(
+                    "category_names 不能在导出时重命名类别；请先创建具有目标类别映射的数据集版本"
+                )
+            return normalized_names
         return tuple(
             category.name
             for category in sorted(categories, key=lambda item: item.category_id)

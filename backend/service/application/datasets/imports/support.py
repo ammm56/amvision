@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
 import math
+from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
 from PIL import Image
@@ -135,24 +135,65 @@ class DatasetImportSupportMixin:
         )
 
     def _is_image_file(self, file_path: Path) -> bool:
-        """判断文件是否是常见图片格式。"""
+        """判断文件是否属于当前标准数据集图片格式。"""
 
         return file_path.is_file() and file_path.suffix.lower() in {
             ".jpg",
             ".jpeg",
             ".png",
             ".bmp",
-            ".webp",
-            ".tif",
-            ".tiff",
         }
 
     def _read_image_size(self, image_path: Path) -> tuple[int, int]:
-        """读取图片宽高。"""
+        """验证图片可解码、内容格式与扩展名一致，并读取宽高。"""
 
-        with Image.open(image_path) as image:
-            width, height = image.size
+        try:
+            with Image.open(image_path) as image:
+                width, height = image.size
+                detected_format = str(image.format or "").upper()
+                expected_formats = {
+                    ".jpg": {"JPEG"},
+                    ".jpeg": {"JPEG"},
+                    ".png": {"PNG"},
+                    ".bmp": {"BMP", "DIB"},
+                }.get(image_path.suffix.lower(), set())
+                if detected_format not in expected_formats:
+                    raise InvalidRequestError(
+                        "图片内容格式与文件扩展名不一致",
+                        details={
+                            "image_file": image_path.name,
+                            "detected_format": detected_format,
+                        },
+                    )
+                image.verify()
+        except InvalidRequestError:
+            raise
+        except (OSError, ValueError) as error:
+            raise InvalidRequestError(
+                "图片文件无法正常解码",
+                details={"image_file": image_path.name},
+            ) from error
         return int(width), int(height)
+
+    def _require_declared_image_size(
+        self,
+        *,
+        image_path: Path,
+        declared_width: int,
+        declared_height: int,
+    ) -> None:
+        """要求 manifest/XML 尺寸与实际图片头信息一致。"""
+
+        actual_width, actual_height = self._read_image_size(image_path)
+        if (actual_width, actual_height) != (declared_width, declared_height):
+            raise InvalidRequestError(
+                "标注中的图片尺寸与实际图片不一致",
+                details={
+                    "image_file": image_path.name,
+                    "declared_size": [declared_width, declared_height],
+                    "actual_size": [actual_width, actual_height],
+                },
+            )
 
     def _common_path_prefix(self, relative_paths: list[str]) -> str:
         """计算一组相对路径的公共目录前缀。"""

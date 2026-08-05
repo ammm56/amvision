@@ -150,6 +150,13 @@ class YoloScannerMixin:
         """展开一个 YOLO split 图片源。"""
 
         resolved_source = self._resolve_yolo_path(dataset_base_root, raw_source)
+        if not resolved_source.resolve(strict=False).is_relative_to(
+            dataset_base_root.resolve(strict=False)
+        ):
+            raise InvalidRequestError(
+                "YOLO split 路径不得指向数据集目录外部",
+                details={"split_name": split_name, "source": raw_source},
+            )
         if resolved_source.is_dir():
             return [
                 (resolved_source, image_path)
@@ -214,6 +221,13 @@ class YoloScannerMixin:
                 (candidate for candidate in candidates if candidate.is_file()),
                 candidates[0],
             )
+            if not resolved_path.resolve(strict=False).is_relative_to(
+                dataset_base_root.resolve(strict=False)
+            ):
+                raise InvalidRequestError(
+                    "YOLO 图片列表不得引用数据集目录外部文件",
+                    details={"list_file": str(list_file_path), "path": stripped},
+                )
             if not self._is_image_file(resolved_path):
                 raise InvalidRequestError(
                     "YOLO 图片列表引用了不存在的图片文件",

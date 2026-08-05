@@ -25,7 +25,7 @@ class Yolo26SegmentationTrainingAnnotation:
     image_path: str
     boxes_xywh: list[list[float]]
     class_ids: list[int]
-    segmentations: list[list[list[float]] | None] | None = None
+    segmentations: list[list[list[float]] | dict[str, object] | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -194,7 +194,16 @@ def _build_yolo26_segmentation_split_annotations(
                 image_payload.get("file_name", "")
             )
 
-    annotations_by_image: dict[int, Yolo26SegmentationTrainingAnnotation] = {}
+    annotations_by_image: dict[int, Yolo26SegmentationTrainingAnnotation] = {
+        image_id: Yolo26SegmentationTrainingAnnotation(
+            image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
+            boxes_xywh=[],
+            class_ids=[],
+            segmentations=[],
+        )
+        for image_id, file_name in image_map.items()
+        if file_name
+    }
     for annotation_payload in payload.get("annotations") or []:
         if not isinstance(annotation_payload, dict):
             continue
@@ -205,15 +214,7 @@ def _build_yolo26_segmentation_split_annotations(
         bbox = annotation_payload.get("bbox")
         if not isinstance(bbox, list) or len(bbox) != 4:
             continue
-        current = annotations_by_image.get(image_id)
-        if current is None:
-            current = Yolo26SegmentationTrainingAnnotation(
-                image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
-                boxes_xywh=[],
-                class_ids=[],
-                segmentations=[],
-            )
-            annotations_by_image[image_id] = current
+        current = annotations_by_image[image_id]
         current.boxes_xywh.append([float(value) for value in bbox])
         current.class_ids.append(int(annotation_payload.get("category_id", -1)))
         polygons = _extract_yolo26_segmentation_polygons(annotation_payload)
@@ -224,13 +225,17 @@ def _build_yolo26_segmentation_split_annotations(
 
 def _extract_yolo26_segmentation_polygons(
     annotation_payload: dict[str, object],
-) -> list[list[float]] | None:
-    """从 COCO annotation 提取 segmentation 多边形。"""
+) -> list[list[float]] | dict[str, object] | None:
+    """从 COCO annotation 提取 polygon 或 RLE。"""
 
     segmentation = annotation_payload.get("segmentation")
-    if not isinstance(segmentation, list) or len(segmentation) == 0:
-        return None
-    if isinstance(segmentation[0], list):
+    if isinstance(segmentation, dict):
+        return segmentation
+    if (
+        isinstance(segmentation, list)
+        and segmentation
+        and isinstance(segmentation[0], list)
+    ):
         return segmentation
     return None
 
