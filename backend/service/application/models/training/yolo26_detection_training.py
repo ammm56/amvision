@@ -109,8 +109,8 @@ Yolo26DetectionTrainingExecutionRequest = YoloDetectionTrainingExecutionRequest
 Yolo26DetectionTrainingExecutionResult = YoloDetectionTrainingExecutionResult
 Yolo26TrainingBatchProgress = YoloDetectionTrainingBatchProgress
 Yolo26TrainingEpochProgress = YoloDetectionTrainingEpochProgress
-YOLO26_DETECTION_DEFAULT_NUM_WORKERS = 0
-YOLO26_DETECTION_DEFAULT_PREFETCH_FACTOR = 4
+YOLO26_DETECTION_DEFAULT_NUM_WORKERS = 2
+YOLO26_DETECTION_DEFAULT_PREFETCH_FACTOR = 2
 
 
 @dataclass(frozen=True)

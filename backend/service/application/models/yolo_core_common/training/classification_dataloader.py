@@ -138,7 +138,7 @@ def resolve_yolo_classification_dataloader_plan(
 
     num_workers = max(
         0,
-        _read_int_option(extra_options, "num_workers", default=0),
+        _read_int_option(extra_options, "num_workers", default=2),
     )
     return YoloClassificationDataLoaderPlan(
         num_workers=num_workers,
@@ -149,7 +149,7 @@ def resolve_yolo_classification_dataloader_plan(
         ),
         prefetch_factor=max(
             1,
-            _read_int_option(extra_options, "prefetch_factor", default=4),
+            _read_int_option(extra_options, "prefetch_factor", default=2),
         ),
         persistent_workers=_read_bool_option(
             extra_options,

@@ -109,8 +109,8 @@ Yolo11DetectionTrainingExecutionRequest = YoloDetectionTrainingExecutionRequest
 Yolo11DetectionTrainingExecutionResult = YoloDetectionTrainingExecutionResult
 Yolo11TrainingBatchProgress = YoloDetectionTrainingBatchProgress
 Yolo11TrainingEpochProgress = YoloDetectionTrainingEpochProgress
-YOLO11_DETECTION_DEFAULT_NUM_WORKERS = 0
-YOLO11_DETECTION_DEFAULT_PREFETCH_FACTOR = 4
+YOLO11_DETECTION_DEFAULT_NUM_WORKERS = 2
+YOLO11_DETECTION_DEFAULT_PREFETCH_FACTOR = 2
 
 
 @dataclass(frozen=True)

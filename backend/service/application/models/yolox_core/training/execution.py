@@ -347,7 +347,27 @@ def run_yolox_detection_training_execution(
         "enable_mixup",
         default=YOLOX_DEFAULT_TRAIN_ENABLE_MIXUP,
     )
-    num_workers = _read_int_option(extra_options, "num_workers", default=0)
+    # Windows 上 training queue worker 内再次 spawn DataLoader worker，可能因
+    # dataset/import 上下文不可 pickle 而失败。默认单进程仍是逐样本惰性解码；
+    # 独立训练环境可通过 extra_options 显式启用有界多进程预取。
+    num_workers = max(0, _read_int_option(extra_options, "num_workers", default=0))
+    prefetch_factor = max(
+        1,
+        _read_int_option(extra_options, "prefetch_factor", default=2),
+    )
+    persistent_workers = _read_bool_option(
+        extra_options,
+        "persistent_workers",
+        default=num_workers > 0,
+    )
+    loader_worker_options: dict[str, object] = {"num_workers": num_workers}
+    if num_workers > 0:
+        loader_worker_options.update(
+            {
+                "prefetch_factor": prefetch_factor,
+                "persistent_workers": persistent_workers,
+            }
+        )
     random_seed = _read_int_option(extra_options, "seed", default=0)
     multiscale_range = max(
         0,
@@ -423,19 +443,19 @@ def run_yolox_detection_training_execution(
         train_loader = imports.torch.utils.data.DataLoader(
             train_dataset,
             batch_sampler=train_batch_sampler,
-            num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
             worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+            **loader_worker_options,
         )
     else:
         train_loader = imports.torch.utils.data.DataLoader(
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
             worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+            **loader_worker_options,
         )
     if len(train_loader) == 0:
         raise InvalidRequestError("训练输入中没有可消费的 batch")
@@ -470,9 +490,9 @@ def run_yolox_detection_training_execution(
             validation_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
+            **loader_worker_options,
         )
     validation_split_name = validation_split.name if validation_split is not None else None
     test_dataset: _YoloXDetectionDataset | None = None
@@ -494,9 +514,9 @@ def run_yolox_detection_training_execution(
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=num_workers,
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
+            **loader_worker_options,
         )
     train_category_names = train_base_dataset.category_names
 

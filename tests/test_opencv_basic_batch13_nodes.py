@@ -275,9 +275,6 @@ def test_opencv_basic_batch13_remap_with_value_mapping_execute(tmp_path: Path) -
     remap_summary = execution_result.outputs["remap_summary"]
     remap_debug_preview = execution_result.outputs["remap_debug_preview"]
 
-    import cv2
-    import numpy as np
-
     remapped_entry = image_registry.get_entry(str(remapped_image["image_handle"]))
     remapped_matrix = remapped_entry.matrix
     assert remapped_matrix is not None

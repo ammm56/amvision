@@ -12,7 +12,6 @@ import backend.service.application.models.validation.detection_session_service a
 from backend.service.application.errors import ResourceNotFoundError
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
-    DatasetStorageSettings,
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.object_store.object_key_layout import build_public_project_file_id

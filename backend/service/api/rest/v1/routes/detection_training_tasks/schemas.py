@@ -72,7 +72,10 @@ class DetectionTrainingExtraOptionsRequest(BaseModel):
     )
 
     seed: int | None = Field(default=None, description="训练随机种子；YOLOX 当前默认 0")
-    num_workers: int | None = Field(default=None, description="DataLoader worker 数量；YOLOX 当前默认 0")
+    num_workers: int | None = Field(
+        default=None,
+        description="DataLoader worker 数量；YOLOX Windows 队列默认 0，其他 YOLO detection 默认 2",
+    )
     device: str | None = Field(
         default=None,
         description="单卡训练 device；支持 auto、cpu、cuda、cuda:<index>，空值按 CUDA 可用性自动选择",

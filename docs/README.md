@@ -30,6 +30,7 @@
 - [docs/architecture/model-training-evaluation-contract.md](architecture/model-training-evaluation-contract.md) 固定所有模型训练任务的 warm start、resume、best/latest checkpoint、validation/test 隔离和评估输出契约
 - [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md) 固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
 - [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md) 固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 在本项目中的完整 core 实现边界，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
+- [docs/architecture/model-implementation-audit.md](architecture/model-implementation-audit.md) 记录模型×任务公开矩阵、参考源码版本、证据等级和万级数据集惰性加载结论
 - [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md) 固定模型 core / runtime 之外的代码结构收口顺序和目标目录
 - [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md) 汇总模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/model-deployment-runtime-policy.md](architecture/model-deployment-runtime-policy.md) 固定模型发布的平台部署策略、OpenVINO CPU / GPU / NPU 和 TensorRT 参数边界、硬件迁移与实施顺序
