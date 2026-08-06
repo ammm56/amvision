@@ -70,6 +70,14 @@ class WorkflowRuntimeRepository(Protocol):
 
         ...
 
+    def list_workflow_app_runtimes_by_desired_state(
+        self,
+        desired_state: str,
+    ) -> tuple[WorkflowAppRuntime, ...]:
+        """跨 Project 列出指定期望状态的 WorkflowAppRuntime。"""
+
+        ...
+
     def delete_workflow_app_runtime(self, workflow_runtime_id: str) -> None:
         """按 id 删除一个 WorkflowAppRuntime。"""
 

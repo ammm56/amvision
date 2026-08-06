@@ -309,6 +309,29 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return tuple(self._runtime_to_domain(record) for record in records)
 
+    def list_workflow_app_runtimes_by_desired_state(
+        self,
+        desired_state: str,
+    ) -> tuple[WorkflowAppRuntime, ...]:
+        """跨 Project 列出指定期望状态的 WorkflowAppRuntime。"""
+
+        statement = (
+            select(WorkflowAppRuntimeRecord)
+            .where(WorkflowAppRuntimeRecord.desired_state == desired_state)
+            .order_by(
+                WorkflowAppRuntimeRecord.updated_at.asc(),
+                WorkflowAppRuntimeRecord.workflow_runtime_id.asc(),
+            )
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按期望状态列出 WorkflowAppRuntime 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._runtime_to_domain(record) for record in records)
+
     def delete_workflow_app_runtime(self, workflow_runtime_id: str) -> None:
         """按 id 删除一个 WorkflowAppRuntime。"""
 

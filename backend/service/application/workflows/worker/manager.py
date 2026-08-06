@@ -142,6 +142,9 @@ class WorkflowRuntimeWorkerManager:
         self._stopping = Event()
         self._monitor_stop_event = Event()
         self._monitor_thread: Thread | None = None
+        self._recovery_threads: dict[str, Thread] = {}
+        self._recovery_failures: dict[str, int] = {}
+        self._recovery_next_attempt_at: dict[str, float] = {}
         self._cleanup_client_lock = Lock()
         self._cleanup_local_buffer_client: LocalBufferBrokerClient | None = None
 
@@ -174,6 +177,10 @@ class WorkflowRuntimeWorkerManager:
             monitor_thread.join(timeout=1.0)
             if not monitor_thread.is_alive():
                 self._monitor_thread = None
+        with self._lock:
+            recovery_threads = tuple(self._recovery_threads.values())
+        for recovery_thread in recovery_threads:
+            recovery_thread.join(timeout=1.0)
         for async_handle in async_handles:
             async_handle.cancel_event.set()
         for workflow_runtime_id in runtime_ids:
@@ -1047,7 +1054,121 @@ class WorkflowRuntimeWorkerManager:
                         if stored_handle is handle:
                             self._handles.pop(workflow_runtime_id, None)
                     self._cleanup_handle(handle)
+            try:
+                self._schedule_desired_runtime_recoveries()
+            except Exception:  # noqa: BLE001 - 数据库暂时不可用不能终止监控线程
+                LOGGER.exception("扫描 WorkflowAppRuntime 自动恢复状态失败")
             self._monitor_stop_event.wait(0.5)
+
+    def _schedule_desired_runtime_recoveries(self) -> None:
+        """扫描 desired=running 记录并并行调度缺失 worker 的恢复。"""
+
+        if self._stopping.is_set():
+            return
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            runtimes = (
+                unit_of_work.workflow_runtime.list_workflow_app_runtimes_by_desired_state(
+                    "running"
+                )
+            )
+        finally:
+            unit_of_work.close()
+        now = monotonic()
+        max_parallel = max(1, self.settings.workflow_runtime.model_startup_parallelism)
+        for workflow_app_runtime in runtimes:
+            runtime_id = workflow_app_runtime.workflow_runtime_id
+            if self.is_runtime_available(runtime_id):
+                continue
+            with self._lock:
+                recovery_thread = self._recovery_threads.get(runtime_id)
+                if recovery_thread is not None and recovery_thread.is_alive():
+                    continue
+                active_count = sum(
+                    1 for item in self._recovery_threads.values() if item.is_alive()
+                )
+                if active_count >= max_parallel:
+                    break
+                if self._recovery_next_attempt_at.get(runtime_id, 0.0) > now:
+                    continue
+                recovery_thread = Thread(
+                    target=self._recover_desired_runtime,
+                    args=(workflow_app_runtime,),
+                    name=f"workflow-runtime-recovery-{runtime_id}",
+                    daemon=True,
+                )
+                self._recovery_threads[runtime_id] = recovery_thread
+                recovery_thread.start()
+
+    def _recover_desired_runtime(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+    ) -> None:
+        """恢复一个缺失的 desired=running runtime，并记录结果和退避。"""
+
+        runtime_id = workflow_app_runtime.workflow_runtime_id
+        try:
+            if self._stopping.is_set():
+                return
+            latest = self._get_workflow_app_runtime(runtime_id)
+            if latest is None or latest.desired_state != "running":
+                return
+            runtime_state = self.start_runtime(latest)
+            if self._stopping.is_set():
+                self.stop_runtime(runtime_id)
+                return
+            latest = self._get_workflow_app_runtime(runtime_id)
+            if latest is None or latest.desired_state != "running":
+                self.stop_runtime(runtime_id)
+                return
+            self._persist_runtime_state_event(
+                workflow_runtime_id=runtime_id,
+                runtime_state=runtime_state,
+                event_type="runtime.recovered",
+                message="workflow app runtime 已按持久化期望状态恢复",
+            )
+            with self._lock:
+                self._recovery_failures.pop(runtime_id, None)
+                self._recovery_next_attempt_at.pop(runtime_id, None)
+        except Exception as error:  # noqa: BLE001 - 单个 runtime 失败不能终止恢复线程
+            with self._lock:
+                failure_count = self._recovery_failures.get(runtime_id, 0) + 1
+                self._recovery_failures[runtime_id] = failure_count
+                self._recovery_next_attempt_at[runtime_id] = monotonic() + min(
+                    60.0,
+                    float(2 ** min(failure_count - 1, 6)),
+                )
+            runtime_state = build_synthetic_runtime_state(
+                previous_state=None,
+                observed_state="failed",
+                last_error=f"workflow runtime 自动恢复失败: {error}",
+            )
+            try:
+                self._persist_runtime_state_event(
+                    workflow_runtime_id=runtime_id,
+                    runtime_state=runtime_state,
+                    event_type="runtime.recovery_failed",
+                    message="workflow app runtime 自动恢复失败，将按退避策略重试",
+                )
+            except Exception:  # noqa: BLE001 - 数据库暂时不可用时保持恢复循环存活
+                pass
+        finally:
+            with self._lock:
+                self._recovery_threads.pop(runtime_id, None)
+
+    def _get_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+    ) -> WorkflowAppRuntime | None:
+        """使用短事务读取最新 WorkflowAppRuntime。"""
+
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            return unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                workflow_runtime_id
+            )
+        finally:
+            unit_of_work.close()
 
     def _persist_runtime_state_event(
         self,

@@ -2072,6 +2072,107 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
     assert stop_response.json()["worker_process_id"] is None
 
 
+def test_workflow_app_runtime_recovers_after_worker_process_crash(
+    tmp_path: Path,
+) -> None:
+    """验证 desired=running worker 异常退出后会自动创建新进程并恢复调用。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-runtime-crash-recovery.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(tmp_path)
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_echo_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_echo_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
+            task_manager=BackendServiceTaskManagerConfig(enabled=False),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                    "display_name": "Crash Recovery Runtime",
+                },
+            )
+            workflow_runtime_id = create_response.json()["workflow_runtime_id"]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            original_process_id = start_response.json()["worker_process_id"]
+            original_handle = _get_runtime_worker_handle(
+                application,
+                workflow_runtime_id,
+            )
+            original_handle.process.terminate()
+            original_handle.process.join(timeout=5.0)
+
+            _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id=workflow_runtime_id,
+                expected_event_types={"runtime.failed", "runtime.recovered"},
+                timeout_seconds=15.0,
+            )
+            recovered_process_id = _wait_for_recovered_runtime_process(
+                application,
+                workflow_runtime_id=workflow_runtime_id,
+                previous_process_id=original_process_id,
+                timeout_seconds=10.0,
+            )
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={"input_bindings": {"request_text": {"value": "recovered"}}},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert start_response.status_code == 200
+    assert recovered_process_id != original_process_id
+    assert invoke_response.status_code == 200
+    assert invoke_response.json()["outputs"]["http_response"]["body"]["message"] == "recovered"
+    assert invoke_response.json()["assigned_process_id"] == recovered_process_id
+    assert stop_response.status_code == 200
+
+
 def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeout(
     tmp_path: Path,
 ) -> None:
@@ -3882,6 +3983,32 @@ def _force_runtime_worker_heartbeat_timeout(application, workflow_runtime_id: st
             time.monotonic() - float(handle.heartbeat_timeout_seconds) - 1.0
         )
         return runtime_state
+
+
+def _wait_for_recovered_runtime_process(
+    application,
+    *,
+    workflow_runtime_id: str,
+    previous_process_id: int,
+    timeout_seconds: float,
+) -> int:
+    """等待 manager 注册一个与崩溃进程不同且存活的新 worker。"""
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        handle = application.state.workflow_runtime_worker_manager._handles.get(  # noqa: SLF001
+            workflow_runtime_id
+        )
+        if (
+            handle is not None
+            and handle.process.is_alive()
+            and handle.process.pid != previous_process_id
+        ):
+            return int(handle.process.pid)
+        time.sleep(0.05)
+    raise AssertionError(
+        f"WorkflowAppRuntime {workflow_runtime_id} 未在 {timeout_seconds} 秒内创建恢复进程"
+    )
 
 
 def _inject_runtime_worker_heartbeat(application, workflow_runtime_id: str, runtime_state) -> None:

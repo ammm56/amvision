@@ -912,18 +912,46 @@ class WorkflowRuntimeService:
         """启动一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
-        runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
+        workflow_app_runtime = replace(
+            workflow_app_runtime,
+            desired_state="running",
+            observed_state="starting",
+            updated_at=_now_isoformat(),
+            last_error=None,
+            metadata=with_runtime_resource_updated_by(
+                dict(workflow_app_runtime.metadata),
+                updated_by,
+            ),
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                workflow_app_runtime
+            )
+            unit_of_work.commit()
+        try:
+            runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
+        except Exception as error:
+            failed_runtime = replace(
+                workflow_app_runtime,
+                observed_state="failed",
+                updated_at=_now_isoformat(),
+                last_error=str(error),
+            )
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(failed_runtime)
+                unit_of_work.commit()
+            self._append_workflow_app_runtime_event(
+                failed_runtime,
+                event_type="runtime.failed",
+                message="workflow app runtime 启动失败，将按期望状态自动重试",
+            )
+            raise
         updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
-                desired_state="running",
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
-                metadata=with_runtime_resource_updated_by(
-                    dict(workflow_app_runtime.metadata),
-                    updated_by,
-                ),
             ),
             runtime_state,
         )
@@ -950,18 +978,28 @@ class WorkflowRuntimeService:
         """停止一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        workflow_app_runtime = replace(
+            workflow_app_runtime,
+            desired_state="stopped",
+            observed_state="stopping",
+            updated_at=_now_isoformat(),
+            metadata=with_runtime_resource_updated_by(
+                dict(workflow_app_runtime.metadata),
+                updated_by,
+            ),
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                workflow_app_runtime
+            )
+            unit_of_work.commit()
         runtime_state = self.worker_manager.stop_runtime(workflow_runtime_id)
         updated_runtime = apply_worker_state(
             replace(
                 workflow_app_runtime,
-                desired_state="stopped",
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_stopped_at=_now_isoformat(),
-                metadata=with_runtime_resource_updated_by(
-                    dict(workflow_app_runtime.metadata),
-                    updated_by,
-                ),
             ),
             runtime_state,
         )
@@ -1041,20 +1079,50 @@ class WorkflowRuntimeService:
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
         stopped_at = _now_isoformat()
+        restarting_runtime = replace(
+            workflow_app_runtime,
+            desired_state="running",
+            observed_state="starting",
+            updated_at=stopped_at,
+            last_error=None,
+            metadata=with_runtime_resource_updated_by(
+                dict(workflow_app_runtime.metadata),
+                updated_by,
+            ),
+        )
+        # 先持久化期望状态。即使 service 在 stop/start 之间退出，monitor 也会恢复它。
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                restarting_runtime
+            )
+            unit_of_work.commit()
         self.worker_manager.stop_runtime(workflow_runtime_id)
-        runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
+        try:
+            runtime_state = self.worker_manager.start_runtime(restarting_runtime)
+        except Exception as error:
+            failed_runtime = replace(
+                restarting_runtime,
+                observed_state="failed",
+                updated_at=_now_isoformat(),
+                last_stopped_at=stopped_at,
+                last_error=str(error),
+            )
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(failed_runtime)
+                unit_of_work.commit()
+            self._append_workflow_app_runtime_event(
+                failed_runtime,
+                event_type="runtime.recovery_failed",
+                message="workflow app runtime 重启失败，将按期望状态自动重试",
+            )
+            raise
         updated_runtime = apply_worker_state(
             replace(
-                workflow_app_runtime,
-                desired_state="running",
+                restarting_runtime,
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
                 last_stopped_at=stopped_at,
-                metadata=with_runtime_resource_updated_by(
-                    dict(workflow_app_runtime.metadata),
-                    updated_by,
-                ),
             ),
             runtime_state,
         )
