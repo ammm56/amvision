@@ -27,6 +27,8 @@ HTTP JSON、base64、PNG、JPEG 和 Bitmap 转换可以继续作为低频调试�
 
 当前实现已经把 SDK、adapter、LocalBufferBroker、workflow 节点、模型 runtime 和前端默认图收口到 raw image-ref 优先。后续新增节点、示例和 SDK 入口不得再把高频路径退回到 base64、PNG、JPEG 或 Bitmap 转换链。
 
+独立 inference daemon 的旧控制客户端曾把每个 BufferRef/FrameRef 读回 backend-service，把 raw BGR24 编码为 PNG、写入 ObjectStore，再通过持久化文件队列通知 daemon。该实现会让插槽数量增加时出现近线性的 PNG 编码、磁盘 I/O、目录扫描和轮询开销，已经从推理热路径移除。
+
 ## 数据模式
 
 | 模式 | 适用场景 | 规则 |
@@ -77,11 +79,35 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
   -> LocalBufferBroker BufferRef / FrameRef
   -> workflow app request_image_ref
   -> raw-aware image matrix loader
-  -> Detection / OpenCV / Barcode / Preview / Export 节点
+  -> OpenCV / Barcode / Preview / Export 节点
+  -> Detection 节点
+  -> 跨平台 mmap inference mailbox（只传 BufferRef / FrameRef 元数据）
+  -> deployment worker 直接只读 mmap / raw NumPy view
   -> 小 JSON result_binding
 ```
 
 这条链路中，图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
+
+## 独立 inference daemon 传输规则
+
+功能隔离不能改变图片数据面的性能边界。正式 daemon 模式固定采用以下拆分：
+
+| 通道 | 数据 | 持久化 | 用途 |
+| --- | --- | --- | --- |
+| deployment 控制队列 | start、stop、warmup、reset、status、health | 是 | 恢复、审计、低频控制 |
+| inference mmap mailbox | process config、BufferRef/FrameRef、阈值、小型结果 | 否 | 同机低延迟推理 |
+| LocalBufferBroker pool | raw BGR24 / encoded image bytes | 短期 lease | 图片主体 |
+| ObjectStore | 上传图片、保存结果、审计输入 | 是 | 低频和可追溯边界 |
+
+约束如下：
+
+- 每次 `infer` 不执行额外 daemon `ping`；本次 mailbox 请求本身就是可用性判断。
+- `infer` 不创建一次性文件响应队列，不扫描 queue 目录。
+- BufferRef/FrameRef 在同步调用返回前由 Workflow owner 保持 lease；deployment worker 复制完成或推理完成后，节点再释放临时 lease。
+- raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
+- mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
+- mailbox 请求和响应包含 generation、deadline 和 CRC32；客户端超时、进程崩溃和 daemon 重启后可回收槽位。
+- 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
 
 ## Workflow 图默认拓扑
 

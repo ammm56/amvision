@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter, sleep
 
 import pytest
 
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.contracts.buffers import BufferRef
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
@@ -24,7 +28,16 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlDispatcher,
     QueueBackedInferenceControlClient,
 )
-from backend.service.application.errors import OperationTimeoutError
+from backend.service.application.runtime.deployment.inference_local_mmap import (
+    InferenceLocalMmapClient,
+    InferenceLocalMmapServer,
+)
+from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
+from backend.service.application.local_buffers import (
+    DirectMmapLocalBufferReader,
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerSettings,
+)
 from backend.service.application.models.inference.inference_gateway import (
     _serialize_process_config,
 )
@@ -97,6 +110,48 @@ class _FakeRegistry:
             self.started.remove(deployment_instance_id)
 
 
+class _FakeRefSupervisor(_FakeSupervisor):
+    """验证 mmap 热路径保持 BufferRef，不读取或物化图片。"""
+
+    def run_inference(self, *, config, request):
+        """记录 infer 并校验 task-native request 仍携带 BufferRef。"""
+
+        self.actions.append("infer")
+        assert request.input_image_bytes is None
+        assert request.input_uri is None
+        assert request.input_image_payload is not None
+        assert request.input_image_payload["transport_kind"] == "buffer"
+        assert request.input_image_payload["buffer_ref"]["size"] == 12
+        return DeploymentProcessExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-mmap",
+            execution_result=build_test_execution_result(
+                runtime_target=config.runtime_target
+            ),
+        )
+
+
+def _run_mmap_echo_server(
+    *, path: str, ready_queue, stop_event
+) -> None:
+    """在独立 spawn 进程中运行最小 mmap echo server。"""
+
+    server = InferenceLocalMmapServer(
+        path=path,
+        request_handler=lambda payload: {"value": payload.get("value")},
+        slot_count=96,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=16,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    ready_queue.put({"ready": True})
+    try:
+        stop_event.wait(timeout=60.0)
+    finally:
+        server.stop()
+
+
 def test_queue_backed_inference_control_round_trip_and_stages_image(
     tmp_path: Path,
 ) -> None:
@@ -166,6 +221,270 @@ def test_queue_backed_inference_control_round_trip_and_stages_image(
     assert fake_supervisor.actions == ["start", "health", "infer", "stop"]
     staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
     assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
+
+
+def test_local_mmap_hot_path_keeps_buffer_ref_and_handles_eighty_calls(
+    tmp_path: Path,
+) -> None:
+    """验证 80 路调用不编码图片、不落 ObjectStore 且共用跨平台 mmap mailbox。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-mmap",
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    fake_supervisor = _FakeRefSupervisor(dataset_storage=dataset_storage)
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        service_id="test-daemon",
+        bindings_by_task_type={
+            "detection": InferenceControlBinding(
+                sync_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_gateway_registry=_FakeRegistry(),
+            )
+        },
+    )
+    mmap_path = tmp_path / "buffers" / "inference-control.mmap"
+    mmap_server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=dispatcher.handle_local_mmap_request,
+        slot_count=96,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=16,
+        poll_interval_seconds=0.0005,
+    )
+    mmap_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+        poll_interval_seconds=0.0005,
+    )
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+        startup_timeout_seconds=5.0,
+        local_mmap_client=mmap_client,
+    )
+    buffer_ref = BufferRef(
+        buffer_id="buffer-1",
+        lease_id="lease-1",
+        path=str(tmp_path / "buffers" / "image.dat"),
+        offset=0,
+        size=12,
+        shape=(2, 2, 3),
+        dtype="uint8",
+        layout="HWC",
+        pixel_format="BGR",
+        media_type="image/raw",
+        broker_epoch="epoch-1",
+        generation=1,
+    )
+    request = DetectionPredictionRequest(
+        input_image_payload={
+            "transport_kind": "buffer",
+            "media_type": "image/raw",
+            "buffer_ref": buffer_ref.model_dump(mode="json"),
+        },
+        score_threshold=0.25,
+        save_result_image=False,
+    )
+
+    mmap_server.start()
+    started_at = perf_counter()
+    try:
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            executions = tuple(
+                executor.map(
+                    lambda _: client.run_inference(config=config, request=request),
+                    range(80),
+                )
+            )
+    finally:
+        mmap_client.close()
+        mmap_server.stop()
+
+    elapsed_seconds = perf_counter() - started_at
+    assert len(executions) == 80
+    assert all(item.instance_id == "instance-mmap" for item in executions)
+    assert fake_supervisor.actions == ["infer"] * 80
+    assert elapsed_seconds < 2.0
+    assert not (Path(queue_backend.root_dir) / "inference-control-test-daemon").exists()
+    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
+    assert not staged_root.exists()
+
+
+def test_direct_mmap_reader_reads_only_configured_pool_range(tmp_path: Path) -> None:
+    """验证 daemon worker 可直接读取 broker mmap，且不能借 ref 读取任意路径。"""
+
+    root_dir = tmp_path / "buffers"
+    pool_dir = root_dir / "image-test"
+    pool_dir.mkdir(parents=True)
+    pool_path = pool_dir / "image-test.dat"
+    pool_path.write_bytes(b"abcdefghijkl" + bytes(116))
+    settings = LocalBufferBrokerSettings(
+        root_dir=str(root_dir),
+        default_pool_name="image-test",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-test",
+                slot_size_bytes=64,
+                slot_count=2,
+                file_name=pool_path.name,
+            ),
+        ),
+    )
+    reader = DirectMmapLocalBufferReader(settings)
+    valid_ref = BufferRef(
+        buffer_id="buffer-1",
+        lease_id="lease-1",
+        path=str(pool_path),
+        offset=0,
+        size=12,
+        media_type="image/raw",
+        broker_epoch="epoch-1",
+        generation=1,
+    )
+
+    try:
+        assert bytes(reader.read_buffer_ref(valid_ref)) == b"abcdefghijkl"
+        with pytest.raises(InvalidRequestError, match="不属于已配置 mmap pool"):
+            reader.read_buffer_ref(
+                valid_ref.model_copy(update={"path": str(tmp_path / "outside.dat")})
+            )
+    finally:
+        reader.close()
+
+
+def test_local_mmap_hot_path_crosses_independent_spawn_process(tmp_path: Path) -> None:
+    """验证 Windows、Linux 和 macOS 共用的 spawn+mmap 独立进程链路。"""
+
+    context = multiprocessing.get_context("spawn")
+    ready_queue = context.Queue()
+    stop_event = context.Event()
+    mmap_path = tmp_path / "cross-process" / "inference.mmap"
+    process = context.Process(
+        target=_run_mmap_echo_server,
+        kwargs={
+            "path": str(mmap_path),
+            "ready_queue": ready_queue,
+            "stop_event": stop_event,
+        },
+        name="test-inference-local-mmap-server",
+    )
+    process.start()
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+        poll_interval_seconds=0.0005,
+    )
+    try:
+        assert ready_queue.get(timeout=30.0) == {"ready": True}
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            responses = tuple(
+                executor.map(lambda value: client.request({"value": value}), range(80))
+            )
+        assert [response["result"]["value"] for response in responses] == list(
+            range(80)
+        )
+    finally:
+        client.close()
+        stop_event.set()
+        process.join(timeout=10.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+
+    assert process.exitcode == 0
+
+
+def test_local_mmap_client_mapping_survives_daemon_server_restart(
+    tmp_path: Path,
+) -> None:
+    """验证 daemon 重启后 backend-service 已映射的 mailbox 可继续使用。"""
+
+    mmap_path = tmp_path / "restart" / "inference.mmap"
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+
+    def build_server() -> InferenceLocalMmapServer:
+        return InferenceLocalMmapServer(
+            path=mmap_path,
+            request_handler=lambda payload: {"value": payload.get("value")},
+            slot_count=8,
+            slot_payload_capacity_bytes=64 * 1024,
+            max_concurrent_requests=2,
+            poll_interval_seconds=0.0005,
+        )
+
+    first_server = build_server()
+    first_server.start()
+    try:
+        assert client.request({"value": "before"})["result"] == {"value": "before"}
+    finally:
+        first_server.stop()
+
+    second_server = build_server()
+    second_server.start()
+    try:
+        assert client.request({"value": "after"})["result"] == {"value": "after"}
+    finally:
+        client.close()
+        second_server.stop()
+
+
+def test_local_mmap_timeout_slot_is_reclaimed_for_next_request(tmp_path: Path) -> None:
+    """验证超时中的 handler 完成后回收 slot，不污染后续推理。"""
+
+    mmap_path = tmp_path / "timeout" / "inference.mmap"
+
+    def handle_request(payload: dict[str, object]) -> dict[str, object]:
+        if payload.get("slow") is True:
+            sleep(0.2)
+        return {"value": payload.get("value")}
+
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=handle_request,
+        slot_count=8,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=2,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=0.1,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        with pytest.raises(OperationTimeoutError, match="mmap 响应超时"):
+            client.request({"slow": True, "value": "discarded"})
+        sleep(0.25)
+        response = client.request({"value": "next"})
+        assert response["result"] == {"value": "next"}
+    finally:
+        client.close()
+        server.stop()
 
 
 def test_inference_control_dispatcher_cleans_abandoned_response_queues(

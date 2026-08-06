@@ -22,6 +22,7 @@ from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
+    ServiceConfigurationError,
 )
 from backend.service.application.images.image_matrix import decode_image_bytes_to_matrix
 from backend.service.application.models.inference.inference_gateway import (
@@ -40,6 +41,9 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessKeepWarmStatus,
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
+)
+from backend.service.application.runtime.deployment.inference_local_mmap import (
+    InferenceLocalMmapClient,
 )
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionRequest,
@@ -116,6 +120,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         control_read_timeout_seconds: float = 2.0,
         availability_probe_timeout_seconds: float = 1.0,
         local_buffer_reader: Any | None = None,
+        local_mmap_client: InferenceLocalMmapClient | None = None,
     ) -> None:
         """绑定控制队列、共享对象存储和 runtime mode。"""
 
@@ -137,6 +142,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             min(self.control_read_timeout_seconds, availability_probe_timeout_seconds),
         )
         self.local_buffer_reader = local_buffer_reader
+        self.local_mmap_client = local_mmap_client
 
     @property
     def is_running(self) -> bool:
@@ -217,27 +223,45 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         config: DeploymentProcessConfig,
         request: PredictionRequest,
     ) -> DeploymentProcessExecution:
-        """通过 daemon 执行同步推理；大输入先落共享对象存储。"""
+        """通过 daemon 执行同步推理；LocalBufferRef 走 mmap 热路径。"""
 
-        self._require_daemon_available()
         request_id = uuid4().hex
         staged_root = f"runtime/inputs/inference-control/{request_id}"
         prepared_request = self._stage_prediction_input(
             request=request,
             object_key=f"{staged_root}/input.png",
+            preserve_local_refs=self.local_mmap_client is not None,
         )
         cleanup_staged_input = True
         try:
-            payload = self._request(
-                "infer",
-                config,
-                extra_payload={
-                    "prediction_request": serialize_prediction_request(
-                        task_type=config.runtime_target.task_type,
-                        request=prepared_request,
-                    )
-                },
+            serialized_request = serialize_prediction_request(
+                task_type=config.runtime_target.task_type,
+                request=prepared_request,
             )
+            if self.local_mmap_client is not None:
+                response = self.local_mmap_client.request(
+                    {
+                        "action": "infer",
+                        "runtime_mode": self.runtime_mode,
+                        "process_config": _serialize_process_config(config),
+                        "prediction_request": serialized_request,
+                    }
+                )
+                if response.get("ok") is not True:
+                    raise _deserialize_error(
+                        response.get("error"),
+                        fallback_message="inference daemon mmap 执行失败",
+                    )
+                payload = response.get("result")
+                if not isinstance(payload, dict):
+                    raise InvalidRequestError("inference daemon mmap 响应缺少 result")
+            else:
+                self._require_daemon_available()
+                payload = self._request(
+                    "infer",
+                    config,
+                    extra_payload={"prediction_request": serialized_request},
+                )
         except OperationTimeoutError:
             # daemon 可能仍在读取输入；保留文件，由运行时存储清理任务回收。
             cleanup_staged_input = False
@@ -271,13 +295,25 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         )
 
     def ping(self, *, timeout_seconds: float | None = None) -> dict[str, object]:
-        """探测 daemon 控制线程和共享队列是否均可用。"""
+        """探测持久化控制线程和可选 mmap 热路径是否均可用。"""
 
-        return self._request(
+        response = self._request(
             "ping",
             None,
             timeout=timeout_seconds or self.control_read_timeout_seconds,
         )
+        if self.local_mmap_client is not None:
+            mmap_response = self.local_mmap_client.request({"action": "ping"})
+            mmap_result = mmap_response.get("result")
+            if (
+                mmap_response.get("ok") is not True
+                or not isinstance(mmap_result, dict)
+                or mmap_result.get("ready") is not True
+            ):
+                raise ServiceConfigurationError(
+                    "inference daemon mmap 热路径探测失败"
+                )
+        return response
 
     def _require_daemon_available(self) -> None:
         """在长操作或变更操作前执行短探测，避免等待完整业务超时。"""
@@ -410,6 +446,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         *,
         request: PredictionRequest,
         object_key: str,
+        preserve_local_refs: bool = False,
     ) -> PredictionRequest:
         """把 bytes 或 broker ref 转为共享对象存储图片，避免控制队列承载大数据。"""
 
@@ -419,12 +456,16 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             normalized = require_image_payload(image_payload)
             transport_kind = normalized.get("transport_kind")
             if transport_kind == IMAGE_TRANSPORT_BUFFER:
+                if preserve_local_refs:
+                    return request
                 if self.local_buffer_reader is None:
                     raise InvalidRequestError("inference control client 缺少 buffer reader")
                 image_bytes = self.local_buffer_reader.read_buffer_ref(
                     BufferRef.model_validate(normalized.get("buffer_ref"))
                 )
             elif transport_kind == IMAGE_TRANSPORT_FRAME:
+                if preserve_local_refs:
+                    return request
                 if self.local_buffer_reader is None:
                     raise InvalidRequestError("inference control client 缺少 frame reader")
                 image_bytes = self.local_buffer_reader.read_frame_ref(
@@ -682,6 +723,44 @@ class InferenceControlDispatcher:
             )
             return
         self._send_response(message, response_queue_name, request_id, response)
+
+    def handle_local_mmap_request(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """执行本机 mmap 热路径请求。
+
+        该入口只允许无副作用的 ping 和 infer。启停、重置和预热仍通过持久化
+        控制队列执行，避免 daemon 重启时丢失控制意图。
+        """
+
+        action = str(payload.get("action") or "")
+        if action == "ping":
+            return {"ready": True, "service_id": self.service_id}
+        if action != "infer":
+            raise InvalidRequestError(
+                "inference mmap 热路径只允许 infer",
+                details={"action": action},
+            )
+        config = _deserialize_process_config(
+            payload.get("process_config"),
+            dataset_storage=self.dataset_storage,
+        )
+        binding = self.bindings_by_task_type.get(config.runtime_target.task_type)
+        if binding is None:
+            raise InvalidRequestError(
+                "inference daemon 未注册 task type",
+                details={"task_type": config.runtime_target.task_type},
+            )
+        runtime_mode = str(payload.get("runtime_mode") or "")
+        supervisor = binding.get_supervisor(runtime_mode)
+        return self._execute_action(
+            action=action,
+            runtime_mode=runtime_mode,
+            binding=binding,
+            supervisor=supervisor,
+            config=config,
+            payload=payload,
+        )
 
     def _is_request_expired(
         self,

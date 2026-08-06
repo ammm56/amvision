@@ -101,6 +101,10 @@ from backend.service.application.runtime.deployment.inference_control import (
     NoOpAsyncInferenceGatewayRegistry,
     QueueBackedInferenceControlClient,
 )
+from backend.service.application.runtime.deployment.inference_local_mmap import (
+    InferenceLocalMmapClient,
+    build_inference_local_mmap_path,
+)
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -199,6 +203,7 @@ class BackendServiceRuntime:
     obb_async_inference_gateway_registry: (
         ObbAsyncInferenceGatewayDispatcherRegistry | None
     ) = None
+    inference_local_mmap_client: InferenceLocalMmapClient | None = None
 
     def iter_all_deployment_supervisors(self):
         """按 (task_type, mode) 遍历所有 deployment supervisor 和 gateway registry。"""
@@ -416,7 +421,22 @@ class BackendServiceBootstrap(
                 dataset_storage=dataset_storage,
             ),
         }
+        inference_local_mmap_client: InferenceLocalMmapClient | None = None
         if settings.inference_daemon.runtime_owner == "daemon":
+            if settings.inference_daemon.mmap_mailbox.enabled:
+                inference_local_mmap_client = InferenceLocalMmapClient(
+                    path=build_inference_local_mmap_path(
+                        root_dir=settings.local_buffer_broker.root_dir,
+                        service_id=settings.inference_daemon.service_id,
+                    ),
+                    request_timeout_seconds=(
+                        settings.deployment_process_supervisor.request_timeout_seconds
+                    ),
+                    poll_interval_seconds=(
+                        settings.inference_daemon.mmap_mailbox.poll_interval_seconds
+                    ),
+                )
+
             def build_control_client(runtime_mode: str) -> QueueBackedInferenceControlClient:
                 """构建不持有模型子进程的 daemon 控制客户端。"""
 
@@ -438,6 +458,7 @@ class BackendServiceBootstrap(
                         settings.inference_daemon.availability_probe_timeout_seconds
                     ),
                     local_buffer_reader=local_buffer_broker_supervisor,
+                    local_mmap_client=inference_local_mmap_client,
                 )
 
             detection_sync_deployment_process_supervisor = build_control_client("sync")
@@ -672,6 +693,7 @@ class BackendServiceBootstrap(
             obb_sync_deployment_supervisor=obb_sync_deployment_supervisor,
             obb_async_deployment_supervisor=obb_async_deployment_supervisor,
             obb_async_inference_gateway_registry=obb_async_inference_gateway_registry,
+            inference_local_mmap_client=inference_local_mmap_client,
         )
 
     def bind_application_state(
@@ -834,6 +856,8 @@ class BackendServiceBootstrap(
         # 反序停止所有 deployment supervisor 和 gateway registry
         for component in reversed(list(runtime.iter_all_deployment_supervisors())):
             component.stop()
+        if runtime.inference_local_mmap_client is not None:
+            runtime.inference_local_mmap_client.close()
         runtime.local_buffer_broker_supervisor.stop()
         runtime.session_factory.engine.dispose()
 

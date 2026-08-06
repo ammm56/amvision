@@ -21,6 +21,7 @@ from backend.service.application.errors import (
     ServiceConfigurationError,
 )
 from backend.service.application.local_buffers import (
+    DirectMmapLocalBufferReader,
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
 )
@@ -138,6 +139,7 @@ def run_deployment_process_worker(
     operator_thread_count: int,
     supervisor_settings: dict[str, object] | None = None,
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
+    local_buffer_direct_reader_settings: dict[str, object] | None = None,
 ) -> None:
     """运行单个 deployment 的子进程工作循环。
 
@@ -149,10 +151,14 @@ def run_deployment_process_worker(
     - operator_thread_count：子进程内部推理库允许使用的算子线程数。
     - supervisor_settings：deployment supervisor 默认行为配置。
     - local_buffer_broker_event_channel：可选的 LocalBufferBroker 事件通道。
+    - local_buffer_direct_reader_settings：跨独立 daemon 时使用的只读 mmap 配置。
     """
 
     _configure_process_threads(operator_thread_count)
-    local_buffer_reader = _build_local_buffer_reader(local_buffer_broker_event_channel)
+    local_buffer_reader = _build_local_buffer_reader(
+        local_buffer_broker_event_channel,
+        direct_reader_settings=local_buffer_direct_reader_settings,
+    )
     local_buffer_health = _build_local_buffer_health(local_buffer_reader)
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=dataset_storage_root_dir)
@@ -379,7 +385,7 @@ def _run_inference_request(
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
     payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
@@ -420,7 +426,7 @@ def _run_inference_request(
 def _build_prediction_request(
     *,
     payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> PredictionRequest:
     """把 deployment worker 控制 payload 转换为预测请求。"""
@@ -449,7 +455,7 @@ def _build_prediction_request(
 def _resolve_input_image_payload(
     *,
     image_payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> tuple[str | None, bytes | None, dict[str, object] | None]:
     """把 image-ref payload 解析为 deployment runtime pool 可读的输入。"""
@@ -495,24 +501,29 @@ def _resolve_input_image_payload(
 
 def _build_local_buffer_reader(
     channel: LocalBufferBrokerEventChannel | None,
-) -> LocalBufferBrokerClient | None:
-    """按事件通道创建 LocalBufferBroker client。"""
+    *,
+    direct_reader_settings: dict[str, object] | None = None,
+) -> LocalBufferBrokerClient | DirectMmapLocalBufferReader | None:
+    """优先创建 broker client，否则创建跨 daemon 只读 mmap reader。"""
 
-    if channel is None:
-        return None
-    return LocalBufferBrokerClient(channel)
+    if channel is not None:
+        return LocalBufferBrokerClient(channel)
+    if direct_reader_settings is not None:
+        return DirectMmapLocalBufferReader(direct_reader_settings)
+    return None
 
 
 def _build_local_buffer_health(
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
 ) -> _LocalBufferBrokerRuntimeHealth:
     """构造 deployment worker 内 broker 健康计数容器。"""
 
     if local_buffer_reader is None:
         return _LocalBufferBrokerRuntimeHealth(connected=False, channel_id=None)
+    channel = getattr(local_buffer_reader, "channel", None)
     return _LocalBufferBrokerRuntimeHealth(
         connected=True,
-        channel_id=local_buffer_reader.channel.channel_id,
+        channel_id=str(getattr(channel, "channel_id", "direct-readonly-mmap")),
     )
 
 
@@ -935,7 +946,7 @@ def _serialize_health_with_keep_warm(
     health: object,
     behavior: _DeploymentWarmupBehavior,
     keep_warm_state: _KeepWarmState | None,
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> dict[str, object]:
     """把 runtime health 与 keep-warm 状态一起转换为跨进程字典。"""
@@ -954,7 +965,7 @@ def _serialize_health_with_keep_warm(
 
 def _snapshot_local_buffer_health(
     *,
-    local_buffer_reader: LocalBufferBrokerClient | None,
+    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> dict[str, object]:
     """生成 deployment worker 的 broker health 快照。"""

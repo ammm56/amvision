@@ -53,6 +53,7 @@ def build_task_type_deployment_runtimes(
     queue_backend: LocalFileQueueBackend,
     async_inference_service_id: str,
     settings: BackendServiceSettings,
+    enable_direct_mmap_reader: bool = False,
 ) -> tuple[DeploymentProcessSupervisor, DeploymentProcessSupervisor, object]:
     """为一个 task type 构建 sync/async supervisor 和 async gateway。"""
 
@@ -66,6 +67,7 @@ def build_task_type_deployment_runtimes(
         session_factory=session_factory,
         local_buffer_broker_supervisor=local_buffer_broker_supervisor,
         settings=settings,
+        enable_direct_mmap_reader=enable_direct_mmap_reader,
     )
     async_supervisor = _build_deployment_supervisor(
         runtime_mode="async",
@@ -74,6 +76,7 @@ def build_task_type_deployment_runtimes(
         session_factory=session_factory,
         local_buffer_broker_supervisor=local_buffer_broker_supervisor,
         settings=settings,
+        enable_direct_mmap_reader=enable_direct_mmap_reader,
     )
     registry = registry_class(
         queue_backend=queue_backend,
@@ -101,6 +104,7 @@ def _build_deployment_supervisor(
     session_factory: SessionFactory,
     local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor,
     settings: BackendServiceSettings,
+    enable_direct_mmap_reader: bool,
 ) -> DeploymentProcessSupervisor:
     """构建一个进程监督器。"""
 
@@ -113,6 +117,11 @@ def _build_deployment_supervisor(
         dataset_storage=dataset_storage,
         local_buffer_broker_event_channel_provider=(
             local_buffer_broker_supervisor.get_event_channel
+        ),
+        local_buffer_direct_reader_settings=(
+            settings.local_buffer_broker.model_dump(mode="python")
+            if enable_direct_mmap_reader
+            else None
         ),
     )
 

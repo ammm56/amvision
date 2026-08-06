@@ -345,6 +345,7 @@ class DeploymentProcessSupervisor:
             [], LocalBufferBrokerEventChannel | None
         ]
         | None = None,
+        local_buffer_direct_reader_settings: dict[str, object] | None = None,
         cpu_device_resource_manager: CpuDeviceResourceManager | None = None,
         worker_target: Callable[..., None] = run_deployment_process_worker,
     ) -> None:
@@ -359,6 +360,7 @@ class DeploymentProcessSupervisor:
         - dataset_storage：可选本地文件存储；提供后可发布项目级聚合事件。
         - local_buffer_broker_event_channel：固定的 broker 事件通道。
         - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
+        - local_buffer_direct_reader_settings：独立 daemon worker 的只读 mmap 配置。
         - cpu_device_resource_manager：全部 supervisor 共享的 CPU 预算管理器。
         - worker_target：子进程入口函数；测试时可替换为 fake worker。
         """
@@ -372,6 +374,11 @@ class DeploymentProcessSupervisor:
         self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
         self.local_buffer_broker_event_channel_provider = (
             local_buffer_broker_event_channel_provider
+        )
+        self.local_buffer_direct_reader_settings = (
+            dict(local_buffer_direct_reader_settings)
+            if local_buffer_direct_reader_settings is not None
+            else None
         )
         self.worker_target = worker_target
         self.cpu_device_resource_manager = (
@@ -836,6 +843,10 @@ class DeploymentProcessSupervisor:
         if local_buffer_broker_event_channel is not None:
             worker_kwargs["local_buffer_broker_event_channel"] = (
                 local_buffer_broker_event_channel
+            )
+        elif self.local_buffer_direct_reader_settings is not None:
+            worker_kwargs["local_buffer_direct_reader_settings"] = dict(
+                self.local_buffer_direct_reader_settings
             )
         process = self._context.Process(
             target=self.worker_target,

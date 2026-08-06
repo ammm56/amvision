@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import signal
+import sys
 from threading import Event
 
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.runtime.deployment.inference_control import (
     QueueBackedInferenceControlClient,
+)
+from backend.service.application.runtime.deployment.inference_local_mmap import (
+    InferenceLocalMmapClient,
+    build_inference_local_mmap_path,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -29,7 +34,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--probe",
         action="store_true",
-        help="通过持久化控制队列探测已运行 daemon，不启动新 daemon",
+        help="探测持久化控制队列和 mmap 推理热路径，不启动新 daemon",
     )
     return parser
 
@@ -62,8 +67,39 @@ def main(argv: list[str] | None = None) -> int:
         )
         # CLI probe 需要包含冷启动导入后的短暂磁盘争用余量；API 常态读取仍使用
         # inference_daemon.control_read_timeout_seconds 的快速失败窗口。
-        response = client.ping(timeout_seconds=5.0)
-        return 0 if response.get("ready") is True else 1
+        try:
+            response = client.ping(timeout_seconds=5.0)
+        except Exception as error:  # noqa: BLE001 - CLI probe 必须稳定返回非零退出码
+            print(f"inference-daemon control probe failed: {error}", file=sys.stderr)
+            return 1
+        if response.get("ready") is not True:
+            return 1
+        if not settings.inference_daemon.mmap_mailbox.enabled:
+            return 0
+        mmap_client = InferenceLocalMmapClient(
+            path=build_inference_local_mmap_path(
+                root_dir=settings.local_buffer_broker.root_dir,
+                service_id=settings.inference_daemon.service_id,
+            ),
+            request_timeout_seconds=5.0,
+            poll_interval_seconds=(
+                settings.inference_daemon.mmap_mailbox.poll_interval_seconds
+            ),
+        )
+        try:
+            mmap_response = mmap_client.request({"action": "ping"})
+        except Exception as error:  # noqa: BLE001 - CLI probe 必须稳定返回非零退出码
+            print(f"inference-daemon mmap probe failed: {error}", file=sys.stderr)
+            return 1
+        finally:
+            mmap_client.close()
+        return (
+            0
+            if mmap_response.get("ok") is True
+            and isinstance(mmap_response.get("result"), dict)
+            and mmap_response["result"].get("ready") is True
+            else 1
+        )
 
     runtime = build_inference_daemon_runtime(settings)
     if args.check:
@@ -84,6 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while not stop_event.wait(1.0):
             if not runtime.control_dispatcher.is_running:
+                return 1
+            if (
+                runtime.local_mmap_server is not None
+                and not runtime.local_mmap_server.is_running
+            ):
                 return 1
     finally:
         runtime.stop()

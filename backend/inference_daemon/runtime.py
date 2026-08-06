@@ -40,6 +40,10 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlBinding,
     InferenceControlDispatcher,
 )
+from backend.service.application.runtime.deployment.inference_local_mmap import (
+    InferenceLocalMmapServer,
+    build_inference_local_mmap_path,
+)
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -74,12 +78,14 @@ class InferenceDaemonRuntime:
     task_runtimes: tuple[InferenceDaemonTaskRuntime, ...]
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
     control_dispatcher: InferenceControlDispatcher
+    local_mmap_server: InferenceLocalMmapServer | None
 
     def start(self) -> None:
         """按依赖顺序启动 supervisor、gateway、恢复协调器和控制面。
 
-        LocalBufferBroker 仍由 backend-service 负责。跨 daemon 控制客户端会先把
-        BufferRef/FrameRef 物化为共享对象存储图片，避免两个父进程争用同一 broker。
+        LocalBufferBroker 仍由 backend-service 负责。跨 daemon 推理只通过 mmap
+        mailbox 传递 BufferRef/FrameRef 元数据，deployment worker 直接只读映射
+        图片区间；启停和恢复命令继续使用持久化控制队列。
         """
 
         started_components: list[object] = []
@@ -96,6 +102,9 @@ class InferenceDaemonRuntime:
             started_components.append(self.deployment_runtime_reconciler)
             self.control_dispatcher.start()
             started_components.append(self.control_dispatcher)
+            if self.local_mmap_server is not None:
+                self.local_mmap_server.start()
+                started_components.append(self.local_mmap_server)
         except Exception:
             for component in reversed(started_components):
                 with contextlib.suppress(Exception):
@@ -106,6 +115,8 @@ class InferenceDaemonRuntime:
         """反序停止控制面和全部模型运行组件。"""
 
         try:
+            if self.local_mmap_server is not None:
+                self.local_mmap_server.stop()
             self.control_dispatcher.stop()
             self.deployment_runtime_reconciler.stop()
             for task_runtime in reversed(self.task_runtimes):
@@ -151,6 +162,7 @@ def build_inference_daemon_runtime(
         sync_supervisor, async_supervisor, async_gateway_registry = (
             build_task_type_deployment_runtimes(
                 task_type=task_type,
+                enable_direct_mmap_reader=True,
                 **build_kwargs,
             )
         )
@@ -216,6 +228,27 @@ def build_inference_daemon_runtime(
             settings.inference_daemon.control_request_max_age_seconds
         ),
     )
+    local_mmap_server = (
+        InferenceLocalMmapServer(
+            path=build_inference_local_mmap_path(
+                root_dir=settings.local_buffer_broker.root_dir,
+                service_id=settings.inference_daemon.service_id,
+            ),
+            request_handler=control_dispatcher.handle_local_mmap_request,
+            slot_count=settings.inference_daemon.mmap_mailbox.slot_count,
+            slot_payload_capacity_bytes=(
+                settings.inference_daemon.mmap_mailbox.message_capacity_bytes
+            ),
+            max_concurrent_requests=(
+                settings.inference_daemon.control_max_concurrent_requests
+            ),
+            poll_interval_seconds=(
+                settings.inference_daemon.mmap_mailbox.poll_interval_seconds
+            ),
+        )
+        if settings.inference_daemon.mmap_mailbox.enabled
+        else None
+    )
     return InferenceDaemonRuntime(
         settings=settings,
         session_factory=session_factory,
@@ -225,4 +258,5 @@ def build_inference_daemon_runtime(
         task_runtimes=tuple(task_runtimes),
         deployment_runtime_reconciler=deployment_runtime_reconciler,
         control_dispatcher=control_dispatcher,
+        local_mmap_server=local_mmap_server,
     )

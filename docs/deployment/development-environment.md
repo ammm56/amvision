@@ -62,13 +62,13 @@ inference-daemon ready
 
 ### 4. 探测 inference daemon
 
-在终端二激活同一个 conda 环境，然后执行一次真实控制队列探测：
+在终端二激活同一个 conda 环境，然后执行真实控制队列和 mmap 推理热路径双探测：
 
 ```powershell
 python -m backend.inference_daemon.main --probe
 ```
 
-命令退出码为 `0` 后才能继续启动 backend-service。探测失败时先检查终端一的 daemon 日志、`config/backend-service.json` 和 `data/queue/`，不要绕过探测继续启动。
+命令退出码为 `0` 后才能继续启动 backend-service。探测失败时先检查终端一的 daemon 日志、`config/backend-service.json`、`data/queue/` 和 `data/buffers/inference-control/`，不要绕过探测继续启动。
 
 数据库迁移、daemon 启动和 daemon probe 的开发命令只在本文档维护，其他文档只引用本页。
 
@@ -138,6 +138,7 @@ npm run dev
 - Vue 页面修改：Vite HMR 自动更新；出现状态不一致时刷新页面。
 - backend-service 修改：`--reload` 负责重载 service；涉及启动依赖或全局资源时完整重启全部进程。
 - inference daemon、deployment runtime 或模型推理修改：重启 inference daemon，并重新 probe。
+- inference daemon 与 backend-service 的本机调用协议、LocalBufferBroker 或 mmap 热路径修改：先停止 backend-service，再重启 inference daemon 并确认 probe 成功，最后重新启动 backend-service；不能只依赖 Uvicorn reload。
 - backend-worker、训练、转换、数据集任务修改：重启全量 backend-worker。
 - 配置、数据库 schema、进程监督或公共调用链修改：停止全部进程，执行数据库迁移，再按本文顺序完整启动。
 
@@ -152,7 +153,7 @@ npm run dev
 该入口自动按以下顺序执行：
 
 1. 数据库迁移。
-2. inference daemon 启动、ready 日志检查和真实控制队列 probe。
+2. inference daemon 启动、ready 日志检查、真实控制队列和 mmap 推理热路径双 probe。
 3. backend-service 启动和 health 检查。
 4. release manifest 中声明的全部 backend-worker 依次启动和 ready 检查。
 5. backend-service 提供随包构建的 Vue 静态资源。

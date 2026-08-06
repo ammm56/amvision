@@ -465,6 +465,25 @@ class BackendServiceDeploymentRuntimeReconcilerConfig(BaseModel):
     restart_backoff_jitter_ratio: float = Field(default=0.2, ge=0, le=1)
 
 
+class BackendServiceInferenceMmapMailboxConfig(BaseModel):
+    """描述跨平台 inference mmap 控制 mailbox。
+
+    字段：
+    - enabled：是否启用 mmap inference 热路径。
+    - slot_count：可同时占用的请求/响应消息槽位数，不是图片槽位数。
+    - message_capacity_bytes：每个槽位的请求区和响应区各自容量。
+    - poll_interval_seconds：客户端和 daemon 扫描槽位状态的间隔。
+    """
+
+    enabled: bool = True
+    slot_count: int = Field(default=128, ge=8)
+    message_capacity_bytes: int = Field(
+        default=512 * 1024,
+        ge=64 * 1024,
+    )
+    poll_interval_seconds: float = Field(default=0.001, gt=0)
+
+
 class BackendServiceInferenceDaemonConfig(BaseModel):
     """描述独立 inference daemon 所有权和本地控制通道。
 
@@ -477,6 +496,7 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
     - control_read_timeout_seconds：status、health 等只读控制请求最长等待时间。
     - availability_probe_timeout_seconds：执行长操作前探测 daemon 的最长等待时间。
     - control_request_max_age_seconds：daemon 可执行控制消息的最长年龄，超过后直接丢弃。
+    - mmap_mailbox：跨平台低延迟 inference 控制消息 mailbox 配置。
     """
 
     runtime_owner: Literal["embedded", "daemon"] = "embedded"
@@ -487,6 +507,9 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
     control_read_timeout_seconds: float = Field(default=2.0, gt=0)
     availability_probe_timeout_seconds: float = Field(default=1.0, gt=0)
     control_request_max_age_seconds: float = Field(default=300.0, gt=0)
+    mmap_mailbox: BackendServiceInferenceMmapMailboxConfig = Field(
+        default_factory=BackendServiceInferenceMmapMailboxConfig
+    )
 
 
 class BackendServiceSettings(BaseSettings):
