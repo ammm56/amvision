@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from backend.version import BACKEND_VERSION
+
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
 from backend.service.infrastructure.db.session import DatabaseSettings
@@ -109,7 +111,7 @@ class BackendWorkerAppSettings(BaseModel):
     """
 
     app_name: str = "amvision worker"
-    app_version: str = "0.1.4"
+    app_version: str = BACKEND_VERSION
 
 
 class BackendWorkerWorkspaceConfig(BaseModel):

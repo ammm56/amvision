@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from backend.bootstrap.settings import build_json_config_sources
+from backend.version import BACKEND_VERSION
 
 
 CONFIG_DIR = Path("config")
@@ -25,7 +26,7 @@ class BackendMaintenanceAppSettings(BaseModel):
     """
 
     app_name: str = "amvision maintenance"
-    app_version: str = "0.1.4"
+    app_version: str = BACKEND_VERSION
 
 
 class BackendMaintenanceWorkspaceConfig(BaseModel):

@@ -17,6 +17,7 @@ from backend.nodes.core_nodes.support.deployment_model import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
+from backend.version import BACKEND_VERSION
 
 
 def _deployment_segmentation_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -126,6 +127,7 @@ def _select_primary_polygon(polygons: list[list[object]]) -> list[list[float]] |
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
+        version=BACKEND_VERSION,
         node_type_id="core.model.segmentation",
         display_name="Segmentation",
         category="core.model.inference",

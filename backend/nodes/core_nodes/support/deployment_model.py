@@ -17,7 +17,7 @@ from backend.nodes.core_nodes.support.service import (
 from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
     IMAGE_TRANSPORT_MEMORY,
-    load_image_bytes,
+    load_image_content,
     require_image_payload,
     resolve_image_reference,
 )
@@ -153,7 +153,7 @@ def _build_gateway_image_payload(
 
     if resolved_image.transport_kind != IMAGE_TRANSPORT_MEMORY:
         return dict(resolved_image.payload), None, None
-    normalized_payload, image_bytes = load_image_bytes(request)
+    normalized_payload, image_bytes = load_image_content(request)
     temporary_input = _try_write_memory_image_to_local_buffer(
         request=request,
         normalized_payload=normalized_payload,
@@ -161,14 +161,18 @@ def _build_gateway_image_payload(
     )
     if temporary_input is not None:
         return temporary_input.payload, None, temporary_input
-    return dict(normalized_payload), image_bytes, None
+    return (
+        dict(normalized_payload),
+        image_bytes if isinstance(image_bytes, bytes) else image_bytes.tobytes(),
+        None,
+    )
 
 
 def _try_write_memory_image_to_local_buffer(
     *,
     request: WorkflowNodeExecutionRequest,
     normalized_payload: dict[str, object],
-    image_bytes: bytes,
+    image_bytes: bytes | memoryview,
 ) -> _TemporaryLocalBufferInput | None:
     """把 execution memory 图片写入 LocalBufferBroker 并返回 BufferRef payload。"""
 

@@ -6,6 +6,7 @@
   "description": "从已打开的 USB / UVC 相机会话读取最新单帧，适合单次 workflow invoke 内重复采图。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
+  "version": "0.1.4",
   "input_ports": [
     {
       "name": "session",
@@ -54,8 +55,9 @@
       "output_format": {
         "type": "string",
         "title": "Output Format",
-        "default": "png",
+        "default": "raw",
         "enum": [
+          "raw",
           "png",
           "jpeg"
         ]
@@ -90,7 +92,7 @@
     ]
   },
   "node_pack_id": "camera.nodes",
-  "node_pack_version": "0.1.0",
+  "node_pack_version": "0.1.4",
   "metadata": {
     "phase": "implemented"
   }

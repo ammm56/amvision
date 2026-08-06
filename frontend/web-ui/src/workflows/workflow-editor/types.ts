@@ -70,6 +70,7 @@ export interface NodeDefinition {
   description: string
   implementation_kind: 'core-node' | 'custom-node'
   runtime_kind: 'python-callable' | 'worker-task' | 'service-call'
+  version?: string | null
   input_ports: NodePortDefinition[]
   output_ports: NodePortDefinition[]
   parameter_schema: WorkflowJsonObject

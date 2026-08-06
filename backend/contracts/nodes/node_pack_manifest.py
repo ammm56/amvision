@@ -9,6 +9,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.contracts.workflows.workflow_graph import NodeDefinition, WorkflowPayloadContract
+from backend.version import BACKEND_VERSION
 
 
 NODE_PACK_MANIFEST_FORMAT = "amvision.node-pack-manifest.v1"
@@ -146,9 +147,13 @@ class NodePackManifest(BaseModel):
         _require_stripped_text(self.node_pack_id, "node_pack_id")
         normalized_version = _require_stripped_text(self.version, "version")
         try:
-            Version(normalized_version)
+            resolved_version = Version(normalized_version)
         except InvalidVersion as exc:
             raise ValueError("version 不是有效的版本字符串") from exc
+        if resolved_version > Version(BACKEND_VERSION):
+            raise ValueError(
+                f"node pack version {normalized_version} 不能高于后端版本 {BACKEND_VERSION}"
+            )
         _require_stripped_text(self.display_name, "display_name")
         _require_stripped_text(self.category, "category")
         if self.category_root is not None:

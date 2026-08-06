@@ -49,6 +49,7 @@
       "description": "Load, warm up and validate one AppRuntime-owned SAM3 model session.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [],
       "output_ports": [
@@ -107,7 +108,7 @@
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3",
@@ -123,6 +124,7 @@
       "description": "Segment image objects from Point, Box, Polygon or Mask Prompts.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -217,7 +219,7 @@
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3"
@@ -231,6 +233,7 @@
       "description": "Segment all matching image regions from grouped positive and negative Text Prompts.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -318,7 +321,7 @@
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3"
@@ -332,6 +335,7 @@
       "description": "Initialize objects from visual Prompts on the first frame, then propagate masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -428,7 +432,7 @@
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3",
@@ -446,6 +450,7 @@
       "description": "Detect text concepts on the first frame, then propagate their masks and identities with the SAM3.1 Multiplex video branch.",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -535,7 +540,7 @@
         ]
       },
       "node_pack_id": "sam3.segment-nodes",
-      "node_pack_version": "0.1.3",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "model_runtime": "pytorch",
         "model_family": "sam3",
@@ -549,7 +554,7 @@
   ],
   "metadata": {
     "node_pack_id": "sam3.segment-nodes",
-    "node_pack_version": "0.1.3",
+    "node_pack_version": "0.1.4",
     "source_name": "SAM3"
   }
 }

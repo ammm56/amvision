@@ -7,7 +7,7 @@ from threading import Event, Thread
 from time import monotonic
 from typing import Any
 
-from backend.nodes.runtime_support import register_image_bytes
+from backend.nodes.runtime_support import register_image_bytes, register_image_matrix
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.camera_nodes.providers.usb_uvc.backend.runtime.capture import (
@@ -182,19 +182,25 @@ def read_camera_session_window(
 
     frame_items: list[dict[str, object]] = []
     for buffered_frame in selected_frames:
-        encoded_frame, media_type = encode_frame_bytes(
-            frame=buffered_frame.frame,
-            output_format=config.output_format,
-            jpeg_quality=config.jpeg_quality,
-            cv2_module=cv2_module,
-        )
-        image_payload = register_image_bytes(
-            request,
-            content=encoded_frame,
-            media_type=media_type,
-            width=buffered_frame.width,
-            height=buffered_frame.height,
-        )
+        if config.output_format == "raw":
+            image_payload = register_image_matrix(
+                request,
+                image_matrix=buffered_frame.frame,
+            )
+        else:
+            encoded_frame, media_type = encode_frame_bytes(
+                frame=buffered_frame.frame,
+                output_format=config.output_format,
+                jpeg_quality=config.jpeg_quality,
+                cv2_module=cv2_module,
+            )
+            image_payload = register_image_bytes(
+                request,
+                content=encoded_frame,
+                media_type=media_type,
+                width=buffered_frame.width,
+                height=buffered_frame.height,
+            )
         frame_items.append(
             {
                 "frame_index": buffered_frame.frame_index,

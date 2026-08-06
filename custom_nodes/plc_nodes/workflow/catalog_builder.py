@@ -14,7 +14,7 @@ from custom_nodes.plc_nodes.protocols.modbus_tcp.workflow.catalog_builder import
 
 
 NODE_PACK_ID = "plc.nodes"
-NODE_PACK_VERSION = "0.2.0"
+NODE_PACK_VERSION = "0.1.3"
 
 
 def get_workflow_dir() -> Path:

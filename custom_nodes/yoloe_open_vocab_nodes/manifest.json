@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "yoloe.open-vocab-nodes",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "displayName": "YOLOE Open Vocabulary Nodes",
   "description": "提供 YOLOE 文本提示、视觉提示和 prompt-free 开放词汇检测与分割节点。",
   "category": "custom-node-pack",

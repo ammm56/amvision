@@ -6,7 +6,10 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from backend.nodes.runtime_support import load_image_bytes, load_image_bytes_from_payload
+from backend.nodes.runtime_support import (
+    load_image_content,
+    load_image_content_from_payload,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.images import decode_image_bytes_to_matrix
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -17,7 +20,11 @@ from custom_nodes.yoloe_open_vocab_nodes.backend.payloads.types import (
 )
 
 
-def decode_image_bytes(image_bytes: bytes, *, image_payload: object = None) -> Image.Image:
+def decode_image_bytes(
+    image_bytes: bytes | memoryview,
+    *,
+    image_payload: object = None,
+) -> Image.Image:
     """把图片字节解码为 RGB PIL Image。"""
 
     try:
@@ -217,10 +224,14 @@ def read_visual_prompt_items(
     return _merge_visual_prompt_records(raw_prompt_records, prompt_image_size=prompt_image_size)
 
 
-def read_image_bytes(request: WorkflowNodeExecutionRequest, *, input_name: str = "image") -> tuple[dict[str, object], bytes]:
+def read_image_bytes(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    input_name: str = "image",
+) -> tuple[dict[str, object], bytes | memoryview]:
     """读取节点图片输入。"""
 
-    return load_image_bytes(request, input_name=input_name)
+    return load_image_content(request, input_name=input_name)
 
 
 def _resolve_visual_prompt_image_size(
@@ -407,7 +418,10 @@ def _load_visual_prompt_mask(
 ) -> np.ndarray:
     """读取 mask prompt 并规整到参考图尺寸。"""
 
-    normalized_payload, mask_image_bytes = load_image_bytes_from_payload(request, image_payload=mask_image_payload)
+    normalized_payload, mask_image_bytes = load_image_content_from_payload(
+        request,
+        image_payload=mask_image_payload,
+    )
     mask_array = decode_image_bytes_to_matrix(
         cv2_module=cv2,
         np_module=np,

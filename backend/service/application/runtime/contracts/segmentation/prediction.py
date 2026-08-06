@@ -34,7 +34,7 @@ class SegmentationPredictionRequest:
     mask_threshold: float
     save_result_image: bool
     input_uri: str | None = None
-    input_image_bytes: bytes | None = None
+    input_image_bytes: bytes | bytearray | memoryview | None = None
     input_image_payload: dict[str, object] | None = None
     extra_options: dict[str, object] = field(default_factory=dict)
 

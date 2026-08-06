@@ -155,6 +155,70 @@ def test_sahi_inference_node_supports_parallel_slice_execution() -> None:
     assert len(output["detections"]["items"]) == 2
 
 
+def test_sahi_inference_node_uses_local_buffer_for_raw_slices() -> None:
+    """验证 SAHI 切片不再经 gateway memory bytes 和 ObjectStore 中转。"""
+
+    source_bytes = _build_test_jpeg_bytes(width=96, height=64)
+    image_registry = ExecutionImageRegistry()
+    registered_image = image_registry.register_image_bytes(
+        content=source_bytes,
+        media_type="image/jpeg",
+        width=96,
+        height=64,
+        created_by_node_id="fixture",
+    )
+    fake_gateway = _FakePublishedInferenceGateway(mode="full-window")
+    fake_local_buffer_writer = _FakeLocalBufferWriter()
+
+    output = _sahi_inference_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="sahi",
+            node_definition=SimpleNamespace(
+                node_type_id="core.model.sahi-inference"
+            ),
+            parameters={
+                "deployment_instance_id": "deployment-1",
+                "slice_wh": [48, 64],
+                "overlap_wh": [0, 0],
+                "merge_mode": "none",
+                "thread_workers": 2,
+            },
+            input_values={
+                "image": build_memory_image_payload(
+                    image_handle=registered_image.image_handle,
+                    media_type="image/jpeg",
+                    width=96,
+                    height=64,
+                )
+            },
+            execution_metadata={
+                "execution_image_registry": image_registry,
+                "local_buffer_reader": fake_local_buffer_writer,
+                "workflow_run_id": "run-sahi-buffer",
+            },
+            runtime_context=WorkflowServiceNodeRuntimeContext(
+                session_factory=object(),
+                dataset_storage=object(),
+                published_inference_gateway=fake_gateway,
+            ),
+        )
+    )
+
+    assert len(output["detections"]["items"]) == 2
+    assert len(fake_local_buffer_writer.writes) == 2
+    assert sorted(fake_local_buffer_writer.released_lease_ids) == [
+        "lease-1",
+        "lease-2",
+    ]
+    assert all(
+        request.image_payload["transport_kind"] == "buffer"
+        for request in fake_gateway.requests
+    )
+    assert all(
+        request.input_image_bytes is None for request in fake_gateway.requests
+    )
+
+
 class _FakePublishedInferenceGateway:
     """记录 SAHI 节点发出的切片推理请求。"""
 
@@ -202,6 +266,57 @@ class _FakePublishedInferenceGateway:
                 },
             )
         return SimpleNamespace(detections=detections)
+
+
+class _FakeLocalBufferWriter:
+    """模拟支持 bytes-like 直写和显式释放的 LocalBufferBroker client。"""
+
+    def __init__(self) -> None:
+        """初始化并发安全的写入与释放记录。"""
+
+        self.writes: list[dict[str, object]] = []
+        self.released_lease_ids: list[str] = []
+        self._lock = Lock()
+
+    def write_bytes(self, **kwargs):
+        """记录一张 raw 切片并返回最小 BufferRef/lease 结果。"""
+
+        content = kwargs["content"]
+        assert isinstance(content, memoryview)
+        with self._lock:
+            index = len(self.writes) + 1
+            self.writes.append(dict(kwargs))
+        lease_id = f"lease-{index}"
+        buffer_ref = SimpleNamespace(
+            model_dump=lambda **_kwargs: {
+                "format_id": "amvision.buffer-ref.v1",
+                "buffer_id": f"buffer-{index}",
+                "lease_id": lease_id,
+                "path": f"buffers/{index}.mmap",
+                "offset": 0,
+                "size": len(content),
+                "shape": list(kwargs["shape"]),
+                "dtype": kwargs["dtype"],
+                "layout": kwargs["layout"],
+                "pixel_format": kwargs["pixel_format"],
+                "media_type": kwargs["media_type"],
+                "readonly": True,
+                "broker_epoch": "epoch-1",
+                "generation": 1,
+                "metadata": {},
+            }
+        )
+        return SimpleNamespace(
+            buffer_ref=buffer_ref,
+            lease=SimpleNamespace(lease_id=lease_id, pool_name="workflow-images"),
+        )
+
+    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+        """记录同步推理结束后的 lease 释放。"""
+
+        assert pool_name == "workflow-images"
+        with self._lock:
+            self.released_lease_ids.append(lease_id)
 
 
 def _build_test_jpeg_bytes(*, width: int, height: int) -> bytes:

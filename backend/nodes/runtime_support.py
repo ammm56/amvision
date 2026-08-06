@@ -287,16 +287,28 @@ class ExecutionImageRegistry:
         - bytes：图片编码后字节。
         """
 
+        content = self.read_content(image_handle)
+        return content if isinstance(content, bytes) else content.tobytes()
+
+    def read_content(self, image_handle: str) -> bytes | memoryview:
+        """读取图片内容；raw matrix 返回只读 buffer view，避免整帧复制。"""
+
         entry = self.get_entry(image_handle)
         if entry.content is not None:
             return entry.content
         matrix = entry.matrix
-        if matrix is None or not hasattr(matrix, "tobytes"):
+        if matrix is None:
             raise InvalidRequestError(
-                "execution image registry 中的图片没有可读取的 bytes",
+                "execution image registry 中的图片没有可读取内容",
                 details={"image_handle": entry.image_handle},
             )
-        return matrix.tobytes()
+        try:
+            return memoryview(matrix).cast("B").toreadonly()
+        except TypeError as error:
+            raise InvalidRequestError(
+                "execution image registry 中的 raw 图片不是连续 buffer",
+                details={"image_handle": entry.image_handle},
+            ) from error
 
     def read_matrix(self, image_handle: str) -> Any | None:
         """按句柄读取已注册图片矩阵；非 raw 图片返回 None。"""
@@ -881,13 +893,58 @@ def load_image_bytes_from_payload(
     local_buffer_reader = require_local_buffer_reader(request)
     if resolved_image.transport_kind == IMAGE_TRANSPORT_BUFFER:
         assert resolved_image.buffer_ref is not None
-        return dict(resolved_image.payload), local_buffer_reader.read_buffer_ref(resolved_image.buffer_ref)
+        content = local_buffer_reader.read_buffer_ref(resolved_image.buffer_ref)
+        return (
+            dict(resolved_image.payload),
+            content if isinstance(content, bytes) else content.tobytes(),
+        )
     if resolved_image.transport_kind == IMAGE_TRANSPORT_FRAME:
         assert resolved_image.frame_ref is not None
-        return dict(resolved_image.payload), local_buffer_reader.read_frame_ref(resolved_image.frame_ref)
+        content = local_buffer_reader.read_frame_ref(resolved_image.frame_ref)
+        return (
+            dict(resolved_image.payload),
+            content if isinstance(content, bytes) else content.tobytes(),
+        )
     raise InvalidRequestError(
         "image-ref payload 使用了不支持的 transport_kind",
         details={"transport_kind": resolved_image.transport_kind},
+    )
+
+
+def load_image_content(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    input_name: str = "image",
+) -> tuple[dict[str, object], bytes | memoryview]:
+    """读取图片内容；raw LocalBufferRef 优先返回只读 mmap view。"""
+
+    return load_image_content_from_payload(
+        request,
+        image_payload=request.input_values.get(input_name),
+    )
+
+
+def load_image_content_from_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: object,
+) -> tuple[dict[str, object], bytes | memoryview]:
+    """读取任意图片 payload，并对 raw buffer/frame 避免整帧复制。"""
+
+    normalized_payload = require_image_payload(image_payload)
+    if normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_MEMORY:
+        image_registry = require_execution_image_registry(request)
+        image_handle = str(normalized_payload.get("image_handle") or "")
+        return normalized_payload, image_registry.read_content(image_handle)
+    borrowed_view = _try_load_borrowed_image_view(
+        request,
+        image_payload=normalized_payload,
+    )
+    if borrowed_view is not None:
+        return normalized_payload, borrowed_view
+    return load_image_bytes_from_payload(
+        request,
+        image_payload=normalized_payload,
     )
 
 
@@ -1303,6 +1360,19 @@ def _try_load_borrowed_raw_image_view(
 
     if str(image_payload.get("media_type") or "").strip().lower() != IMAGE_MEDIA_TYPE_RAW:
         return None
+    return _try_load_borrowed_image_view(
+        request,
+        image_payload=image_payload,
+    )
+
+
+def _try_load_borrowed_image_view(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    image_payload: dict[str, object],
+) -> memoryview | None:
+    """借用 buffer/frame 对应的只读 mmap 区域，编码图片也不复制。"""
+
     transport_kind = str(image_payload.get("transport_kind") or "")
     if transport_kind not in {IMAGE_TRANSPORT_BUFFER, IMAGE_TRANSPORT_FRAME}:
         return None

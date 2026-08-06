@@ -22,17 +22,42 @@ from backend.service.application.runtime.support.safe_counter import (
 from backend.service.infrastructure.local_buffers import MmapBufferWriteResult
 
 
+LocalBufferContent = bytes | bytearray | memoryview
+
+
+def _normalize_write_content(content: LocalBufferContent) -> bytes | memoryview:
+    """把 bytes-like 内容规范化为一维连续字节视图。"""
+
+    if isinstance(content, bytes):
+        normalized: bytes | memoryview = content
+    elif isinstance(content, (bytearray, memoryview)):
+        view = memoryview(content)
+        try:
+            normalized = view.cast("B")
+        except TypeError as error:
+            raise InvalidRequestError(
+                "LocalBufferBroker direct mmap 写入内容必须是连续 buffer"
+            ) from error
+    else:
+        raise InvalidRequestError(
+            "LocalBufferBroker direct mmap 写入内容必须支持 buffer protocol"
+        )
+    if len(normalized) <= 0:
+        raise InvalidRequestError("LocalBufferBroker direct mmap 写入内容不能为空")
+    return normalized
+
+
 class LocalBufferReader(Protocol):
     """定义 workflow 节点读取 LocalBufferBroker 引用所需的最小接口。"""
 
-    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
+    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes | memoryview:
         """读取普通 BufferRef 对应的字节。
 
         参数：
         - buffer_ref：普通 mmap buffer 引用。
 
         返回：
-        - bytes：引用范围内的字节内容。
+        - bytes | memoryview：引用范围内的复制内容或只读共享视图。
         """
 
         ...
@@ -139,7 +164,7 @@ class LocalBufferBrokerClient:
     def write_bytes(
         self,
         *,
-        content: bytes,
+        content: LocalBufferContent,
         owner_kind: str,
         owner_id: str,
         media_type: str,
@@ -170,8 +195,9 @@ class LocalBufferBrokerClient:
         - MmapBufferWriteResult：写入后的 active lease 和 BufferRef。
         """
 
+        normalized_content = _normalize_write_content(content)
         lease = self.allocate_buffer(
-            size=len(content),
+            size=len(normalized_content),
             owner_kind=owner_kind,
             owner_id=owner_id,
             pool_name=pool_name,
@@ -179,7 +205,7 @@ class LocalBufferBrokerClient:
             trace_id=trace_id,
         )
         try:
-            self.write_lease_bytes(lease=lease, content=content)
+            self.write_lease_bytes(lease=lease, content=normalized_content)
             return self.commit_buffer(
                 lease=lease,
                 media_type=media_type,
@@ -220,7 +246,7 @@ class LocalBufferBrokerClient:
         self,
         *,
         stream_id: str,
-        content: bytes,
+        content: LocalBufferContent,
         media_type: str,
         pool_name: str | None = None,
         shape: tuple[int, ...] = (),
@@ -246,18 +272,17 @@ class LocalBufferBrokerClient:
         - FrameRef：当前帧引用。
         """
 
-        if not isinstance(content, bytes) or not content:
-            raise InvalidRequestError("LocalBufferBroker frame 写入内容必须是非空 bytes")
+        normalized_content = _normalize_write_content(content)
         reservation = self.allocate_frame(
             stream_id=stream_id,
-            size=len(content),
+            size=len(normalized_content),
             pool_name=pool_name,
         )
         try:
             self._mmap_cache.write(
                 path=str(reservation["file_path"]),
                 offset=int(reservation["offset"]),
-                content=content,
+                content=normalized_content,
                 size=int(reservation["size"]),
             )
             return self.commit_frame(
@@ -404,7 +429,12 @@ class LocalBufferBrokerClient:
         lease_payload = _require_payload_dict(payload, "lease")
         return BufferLease.model_validate(lease_payload)
 
-    def write_lease_bytes(self, *, lease: BufferLease, content: bytes) -> None:
+    def write_lease_bytes(
+        self,
+        *,
+        lease: BufferLease,
+        content: LocalBufferContent,
+    ) -> None:
         """向 writing lease 对应的 mmap 区域直接写入 bytes。
 
         参数：
@@ -412,14 +442,18 @@ class LocalBufferBrokerClient:
         - content：要写入的内容。
         """
 
-        if not isinstance(content, bytes) or not content:
-            raise InvalidRequestError("LocalBufferBroker direct mmap 写入内容必须是非空 bytes")
-        if len(content) > lease.size:
+        normalized_content = _normalize_write_content(content)
+        if len(normalized_content) > lease.size:
             raise InvalidRequestError(
                 "LocalBufferBroker direct mmap 写入内容超过 lease 大小",
-                details={"lease_id": lease.lease_id, "content_size": len(content), "lease_size": lease.size},
+                details={"lease_id": lease.lease_id, "content_size": len(normalized_content), "lease_size": lease.size},
             )
-        self._mmap_cache.write(path=lease.file_path, offset=lease.offset, content=content, size=lease.size)
+        self._mmap_cache.write(
+            path=lease.file_path,
+            offset=lease.offset,
+            content=normalized_content,
+            size=lease.size,
+        )
 
     def commit_buffer(
         self,
@@ -492,14 +526,14 @@ class LocalBufferBrokerClient:
             size=buffer_ref.size,
         )
 
-    def read_frame_ref(self, frame_ref: FrameRef) -> bytes:
+    def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview:
         """读取 FrameRef 对应的帧字节。
 
         参数：
         - frame_ref：ring buffer 帧引用。
 
         返回：
-        - bytes：引用范围内的帧字节内容。
+        - bytes | memoryview：帧复制内容或只读共享视图。
         """
 
         self._send_request(
@@ -737,7 +771,15 @@ class _MmapFileCache:
         self._mapped_files: dict[Path, _MappedFile] = {}
         self._lock = RLock()
 
-    def write(self, *, path: str, offset: int, content: bytes, size: int, flush: bool = False) -> None:
+    def write(
+        self,
+        *,
+        path: str,
+        offset: int,
+        content: LocalBufferContent,
+        size: int,
+        flush: bool = False,
+    ) -> None:
         """直接写入 mmap 文件指定区域。
 
         参数：
@@ -749,11 +791,12 @@ class _MmapFileCache:
         """
 
         with self._lock:
+            normalized_content = _normalize_write_content(content)
             mapped_file = self._require_mapped_file(path)
             mapped_file.mmap_view.seek(offset)
-            mapped_file.mmap_view.write(content)
-            if len(content) < size:
-                mapped_file.mmap_view.write(b"\x00" * (size - len(content)))
+            mapped_file.mmap_view.write(normalized_content)
+            if len(normalized_content) < size:
+                mapped_file.mmap_view.write(b"\x00" * (size - len(normalized_content)))
             if flush:
                 mapped_file.mmap_view.flush()
 

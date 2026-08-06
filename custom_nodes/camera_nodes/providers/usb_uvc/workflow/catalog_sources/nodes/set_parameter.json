@@ -6,6 +6,7 @@
   "description": "写入当前 USB / UVC 相机会话的常用参数，适合现场分辨率、帧率和曝光类调参。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
+  "version": "0.1.3",
   "input_ports": [
     {
       "name": "session",
@@ -67,7 +68,7 @@
     ]
   },
   "node_pack_id": "camera.nodes",
-  "node_pack_version": "0.1.0",
+  "node_pack_version": "0.1.4",
   "metadata": {
     "phase": "implemented"
   }

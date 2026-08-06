@@ -16,6 +16,7 @@ from backend.nodes.core_nodes.support.deployment_model import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.version import BACKEND_VERSION
 
 
 def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -35,6 +36,7 @@ def _deployment_detection_handler(request: WorkflowNodeExecutionRequest) -> dict
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
+        version=BACKEND_VERSION,
         node_type_id="core.model.detection",
         display_name="Detection",
         category="core.model.inference",

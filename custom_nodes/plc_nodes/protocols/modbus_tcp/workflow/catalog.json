@@ -10,6 +10,7 @@
       "description": "按 PLC 常见逻辑地址直接读取单个 Modbus 值，适合用 00001 / 10001 / 30001 / 400001 这类地址语义统一接现场点位。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -150,6 +151,7 @@
       "description": "轮询 Modbus TCP 点位直到满足条件，直接按 00001 / 10001 / 30001 / 400001 这类地址语义等待现场点位放行。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -331,6 +333,7 @@
       "description": "把 result-record/alarm-record 中的 OK/NG、报警位和结果码映射到 Modbus TCP coils 或 holding registers，适合现场结果回写。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -564,6 +567,7 @@
       "description": "按 PLC 常见逻辑地址直接写入单个 Modbus 值，统一覆盖 coil 与 holding register 的现场写值入口。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

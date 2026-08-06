@@ -49,12 +49,15 @@ NodeDefinition 定义“节点能接什么、吐什么、怎么运行”。
   例如 `core.model.inference`、`opencv.image.color`、`opencv.output.render`
 - implementation_kind：core-node 或 custom-node
 - runtime_kind：python-callable、worker-task、service-call
+- version：单个节点实现版本；本次实际修改的节点使用当前后端版本，未修改节点保持原版本
 - input_ports / output_ports：端口定义，端口直接引用 payload_type_id
 - parameter_schema：参数 schema
 - runtime_requirements：运行依赖，例如 opencv-python、numpy、特定 worker pool
 - node_pack_id / node_pack_version：仅 custom-node 需要
 
 这层是节点目录，不是流程实例。
+
+`version` 与 `node_pack_version` 不能混用：前者描述单节点实现，后者描述整个自定义节点包。一个 `0.1.4` 节点包可以同时包含 `0.1.4` 的已修改节点和 `0.1.3` 的未修改节点。两种版本都不得高于当前后端版本，避免前端展示尚不受当前运行时支持的节点能力。
 
 ### 3. WorkflowGraphTemplate
 

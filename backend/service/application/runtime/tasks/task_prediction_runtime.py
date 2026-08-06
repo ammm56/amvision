@@ -285,7 +285,7 @@ def replace_prediction_request_inputs(
     *,
     request: PredictionRequest,
     input_uri: str | None,
-    input_image_bytes: bytes | None,
+    input_image_bytes: bytes | bytearray | memoryview | None,
     input_image_payload: dict[str, object] | None = None,
 ) -> PredictionRequest:
     """替换 prediction request 中的输入承载字段。"""
@@ -589,9 +589,9 @@ def _read_dict(payload: dict[str, object], key: str) -> dict[str, object]:
 
 
 def _encode_optional_bytes(value: object) -> str | None:
-    """把可选 bytes 转换为 base64 字符串。"""
+    """把可选 bytes-like 内容转换为 base64 字符串。"""
 
-    if not isinstance(value, bytes) or not value:
+    if not isinstance(value, (bytes, bytearray, memoryview)) or not value:
         return None
     import base64  # noqa: PLC0415
 

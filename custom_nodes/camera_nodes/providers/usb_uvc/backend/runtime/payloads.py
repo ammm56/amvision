@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from backend.nodes.runtime_support import copy_image_payload, register_image_bytes
+from backend.nodes.runtime_support import (
+    copy_image_payload,
+    register_image_bytes,
+    register_image_matrix,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.camera_nodes.providers.usb_uvc.backend.runtime.types import UsbCameraSessionEntry
@@ -40,6 +44,16 @@ def build_captured_image_payload(
         overwrite=overwrite,
         variant_name="usb-capture-frame",
     )
+
+
+def build_captured_raw_image_payload(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    frame: object,
+) -> dict[str, object]:
+    """把 OpenCV 相机帧直接注册为 raw BGR24 image-ref。"""
+
+    return register_image_matrix(request, image_matrix=frame)
 
 
 def build_value_payload(value: object) -> dict[str, object]:

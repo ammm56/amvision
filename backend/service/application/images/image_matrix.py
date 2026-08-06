@@ -174,11 +174,6 @@ def decode_image_bytes_to_matrix(
             copy_raw=copy_raw,
         )
 
-    if not isinstance(image_bytes, bytes):
-        raise InvalidRequestError(
-            error_message,
-            details={"reason": "encoded_image_requires_bytes", "media_type": metadata.media_type},
-        )
     image_buffer = np_module.frombuffer(image_bytes, dtype=np_module.uint8)
     image_matrix = cv2_module.imdecode(
         image_buffer,

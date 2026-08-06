@@ -15,6 +15,7 @@ from pydantic_settings import (
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.queue import LocalFileQueueSettings
+from backend.version import BACKEND_VERSION
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.workflows.trigger_sources.zeromq_transport import (
     ZeroMqTriggerRuntimeConfig,
@@ -42,7 +43,7 @@ class BackendServiceAppSettings(BaseModel):
     """
 
     app_name: str = "amvision backend-service"
-    app_version: str = "0.1.4"
+    app_version: str = BACKEND_VERSION
 
 
 class BackendServiceCorsConfig(BaseModel):

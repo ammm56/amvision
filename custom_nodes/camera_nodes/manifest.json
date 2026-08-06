@@ -1,7 +1,7 @@
 {
   "format_id": "amvision.node-pack-manifest.v1",
   "id": "camera.nodes",
-  "version": "0.2.0",
+  "version": "0.1.4",
   "displayName": "Camera Nodes",
   "description": "提供统一的相机发现、会话、采图、参数和流式读取节点；设备差异在 providers 目录内隔离。",
   "category": "integration",

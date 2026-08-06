@@ -14,7 +14,7 @@ BACKEND_PREFERENCE_VALUES: tuple[str, ...] = (
     "v4l2",
     "gstreamer",
 )
-OUTPUT_FORMAT_VALUES: tuple[str, ...] = ("png", "jpeg")
+OUTPUT_FORMAT_VALUES: tuple[str, ...] = ("raw", "png", "jpeg")
 STREAM_SAMPLE_MODE_VALUES: tuple[str, ...] = ("tail", "head", "uniform")
 CAMERA_SESSION_REGISTRY_METADATA_KEY = "usb_camera_session_registry"
 

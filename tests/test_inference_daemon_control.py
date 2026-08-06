@@ -363,7 +363,15 @@ def test_direct_mmap_reader_reads_only_configured_pool_range(tmp_path: Path) -> 
     )
 
     try:
-        assert bytes(reader.read_buffer_ref(valid_ref)) == b"abcdefghijkl"
+        raw_view = reader.read_buffer_ref(valid_ref)
+        assert isinstance(raw_view, memoryview)
+        assert raw_view.readonly is True
+        assert bytes(raw_view) == b"abcdefghijkl"
+        encoded_view = reader.read_buffer_ref(
+            valid_ref.model_copy(update={"media_type": "image/png"})
+        )
+        assert isinstance(encoded_view, memoryview)
+        assert bytes(encoded_view) == b"abcdefghijkl"
         with pytest.raises(InvalidRequestError, match="不属于已配置 mmap pool"):
             reader.read_buffer_ref(
                 valid_ref.model_copy(update={"path": str(tmp_path / "outside.dat")})

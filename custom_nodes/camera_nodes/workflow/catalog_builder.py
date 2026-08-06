@@ -14,7 +14,7 @@ from custom_nodes.camera_nodes.providers.usb_uvc.workflow.catalog_builder import
 
 
 NODE_PACK_ID = "camera.nodes"
-NODE_PACK_VERSION = "0.2.0"
+NODE_PACK_VERSION = "0.1.4"
 
 
 def get_workflow_dir() -> Path:

@@ -108,7 +108,7 @@
                   <td>{{ node.category || '-' }}</td>
                   <td>{{ readNodeSource(node) }}</td>
                   <td>{{ node.input_ports.length }} / {{ node.output_ports.length }}</td>
-                  <td>{{ node.node_pack_version || '-' }}</td>
+                  <td>{{ node.version || node.node_pack_version || '-' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -142,7 +142,7 @@
           </div>
           <div>
             <dt>{{ t('customNodes.fields.version') }}</dt>
-            <dd>{{ selectedNode.node_pack_version || '-' }}</dd>
+            <dd>{{ selectedNode.version || selectedNode.node_pack_version || '-' }}</dd>
           </div>
           <div>
             <dt>{{ t('customNodes.fields.capabilityTags') }}</dt>

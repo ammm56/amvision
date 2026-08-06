@@ -41,21 +41,36 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             },
         )
         frame_width, frame_height, channels = capture.get_frame_dimensions(frame)
-        encoded_frame, media_type = capture.encode_frame_bytes(
-            frame=frame,
-            output_format=capture_config.output_format,
-            jpeg_quality=capture_config.jpeg_quality,
-            cv2_module=cv2_module,
-        )
-        image_payload = payloads.build_captured_image_payload(
-            request,
-            content=encoded_frame,
-            media_type=media_type,
-            width=frame_width,
-            height=frame_height,
-            output_object_key=capture_config.output_object_key,
-            overwrite=capture_config.overwrite,
-        )
+        if (
+            capture_config.output_format == "raw"
+            and capture_config.output_object_key is None
+        ):
+            media_type = "image/raw"
+            image_payload = payloads.build_captured_raw_image_payload(
+                request,
+                frame=frame,
+            )
+        else:
+            effective_output_format = (
+                "png"
+                if capture_config.output_format == "raw"
+                else capture_config.output_format
+            )
+            encoded_frame, media_type = capture.encode_frame_bytes(
+                frame=frame,
+                output_format=effective_output_format,
+                jpeg_quality=capture_config.jpeg_quality,
+                cv2_module=cv2_module,
+            )
+            image_payload = payloads.build_captured_image_payload(
+                request,
+                content=encoded_frame,
+                media_type=media_type,
+                width=frame_width,
+                height=frame_height,
+                output_object_key=capture_config.output_object_key,
+                overwrite=capture_config.overwrite,
+            )
         backend_name = capture.get_capture_backend_name(video_capture)
         observed_width = capture.read_capture_property(
             video_capture,

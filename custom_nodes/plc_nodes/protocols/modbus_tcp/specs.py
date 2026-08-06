@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 NODE_PACK_ID = "plc.nodes"
-NODE_PACK_VERSION = "0.2.0"
+NODE_PACK_VERSION = "0.1.3"
 
 READ_VALUE_NODE_TYPE_ID = "custom.plc.modbus.read-value"
 WRITE_VALUE_NODE_TYPE_ID = "custom.plc.modbus.write-value"

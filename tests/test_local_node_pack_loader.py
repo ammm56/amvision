@@ -122,7 +122,7 @@ def test_local_node_pack_loader_requires_dependency_version_to_match_before_enab
 ) -> None:
     """验证依赖版本不满足时依赖方会进入失败状态。"""
 
-    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, version="0.2.0")
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, version="0.1.4")
     _create_dependent_node_pack_fixture(
         tmp_path,
         dependency_node_pack_id="opencv.nodes",
@@ -138,7 +138,7 @@ def test_local_node_pack_loader_requires_dependency_version_to_match_before_enab
     assert {node.node_type_id for node in catalog_snapshot.node_definitions} == {"custom.opencv.draw-detections"}
     assert status_item.state == "failed"
     assert status_item.dependencies[0].installed is True
-    assert status_item.dependencies[0].version == "0.2.0"
+    assert status_item.dependencies[0].version == "0.1.4"
     assert status_item.dependencies[0].satisfied is False
 
 

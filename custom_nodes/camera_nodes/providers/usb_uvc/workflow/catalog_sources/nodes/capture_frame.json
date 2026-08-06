@@ -6,6 +6,7 @@
   "description": "从指定 USB / UVC 相机读取单帧图片，输出标准 image-ref.v1 与结构化采集摘要，可直接接入检测、分割和工业规则链。",
   "implementation_kind": "custom-node",
   "runtime_kind": "python-callable",
+  "version": "0.1.4",
   "input_ports": [
     {
       "name": "request",
@@ -81,8 +82,9 @@
       "output_format": {
         "type": "string",
         "title": "Output Format",
-        "default": "png",
+        "default": "raw",
         "enum": [
+          "raw",
           "png",
           "jpeg"
         ]
@@ -117,7 +119,7 @@
     ]
   },
   "node_pack_id": "camera.nodes",
-  "node_pack_version": "0.1.0",
+  "node_pack_version": "0.1.4",
   "metadata": {
     "phase": "implemented"
   }

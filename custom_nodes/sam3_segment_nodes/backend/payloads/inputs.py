@@ -9,8 +9,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from backend.nodes.runtime_support import (
-    load_image_bytes,
-    load_image_bytes_from_payload,
+    load_image_content,
+    load_image_content_from_payload,
     load_image_matrix_from_payload,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -381,7 +381,7 @@ def read_frame_window_items(
                 "SAM3 视频分割节点要求每个 frames.items.timestamp_ms 都必须是非负数",
                 details={"item_index": item_index, "timestamp_ms": timestamp_ms},
             )
-        image_payload, image_bytes = load_image_bytes_from_payload(
+        image_payload, image_bytes = load_image_content_from_payload(
             request,
             image_payload=raw_item.get("image"),
         )
@@ -421,10 +421,10 @@ def read_image_bytes(
     request: WorkflowNodeExecutionRequest,
     *,
     input_name: str = "image",
-) -> tuple[dict[str, object], bytes]:
+) -> tuple[dict[str, object], bytes | memoryview]:
     """读取节点图片输入。"""
 
-    return load_image_bytes(request, input_name=input_name)
+    return load_image_content(request, input_name=input_name)
 
 
 def _resolve_source_image_size(

@@ -140,6 +140,8 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 - timeout：默认超时策略
 - enabledByDefault：静态启用开关。当前阶段不再叠加独立启停状态；loader 读取 manifest 后如果该值为 false，就直接跳过 custom node catalog 加载和后续 handler 注册。
 
+`version` 是整包版本，不是包内每个节点的实现版本。节点实现版本使用 NodeDefinition 的 `version` 字段。node pack 与节点实现版本均不得高于当前 backend-service 版本；只有本次实际修改的节点才更新到当前后端版本，未修改节点保持原版本。
+
 ## 推荐字段
 
 - displayName
@@ -235,6 +237,7 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ## backend-service 的校验职责
 
 - 校验 id 与 version 的唯一性
+- 校验 node pack version 和 NodeDefinition version 均不高于当前后端版本
 - 校验 category、capabilities、permissionScopes 是否有效
 - 校验 triggerPoints、hookPoints 与平台支持的事件范围是否兼容
 - 校验 compatibility 与当前平台版本、runtime profile 是否匹配

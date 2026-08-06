@@ -30,6 +30,7 @@ from backend.service.application.images import build_raw_bgr24_payload_fields, p
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.version import BACKEND_VERSION
 
 
 _DEFAULT_INFERENCE_SCORE_THRESHOLD = 0.3
@@ -67,6 +68,16 @@ class _SliceWindow:
         """返回切片高度。"""
 
         return self.y2 - self.y1
+
+
+@dataclass(frozen=True)
+class _PreparedSliceImageInput:
+    """保存一张 SAHI 切片的推理输入和可选临时 lease。"""
+
+    image_payload: dict[str, object]
+    input_image_bytes: bytes | None
+    lease_id: str | None = None
+    pool_name: str | None = None
 
 
 def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -115,7 +126,8 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
 
     def run_slice(window: _SliceWindow) -> list[dict[str, object]]:
         crop_image = source_image[window.y1 : window.y2, window.x1 : window.x2]
-        crop_image_payload, crop_image_bytes = _build_raw_slice_image_input(
+        prepared_input = _prepare_slice_image_input(
+            request=request,
             crop_image=crop_image,
             cv2_module=cv2_module,
             np_module=np_module,
@@ -125,27 +137,30 @@ def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, 
         slice_extra_options.setdefault("sahi_slice_index", window.index)
         slice_extra_options.setdefault("sahi_slice_bbox_xyxy", [window.x1, window.y1, window.x2, window.y2])
         slice_extra_options.setdefault("sahi_source_image_size", [image_width, image_height])
-        inference_result = gateway.infer(
-            PublishedInferenceRequest(
-                task_type=DETECTION_TASK_TYPE,
-                deployment_instance_id=deployment_instance_id,
-                image_payload={
-                    "transport_kind": "memory",
-                    "image_handle": _build_slice_image_handle(window),
-                    **crop_image_payload,
-                },
-                input_image_bytes=crop_image_bytes,
-                auto_start_process=True if auto_start_process is None else auto_start_process,
-                runtime_mode="sync",
-                score_threshold=score_threshold,
-                save_result_image=False if save_result_image is None else save_result_image,
-                return_preview_image_base64=False
-                if return_preview_image_base64 is None
-                else return_preview_image_base64,
-                extra_options=slice_extra_options,
-                trace_id=trace_id,
+        try:
+            inference_result = gateway.infer(
+                PublishedInferenceRequest(
+                    task_type=DETECTION_TASK_TYPE,
+                    deployment_instance_id=deployment_instance_id,
+                    image_payload=prepared_input.image_payload,
+                    input_image_bytes=prepared_input.input_image_bytes,
+                    auto_start_process=True
+                    if auto_start_process is None
+                    else auto_start_process,
+                    runtime_mode="sync",
+                    score_threshold=score_threshold,
+                    save_result_image=False
+                    if save_result_image is None
+                    else save_result_image,
+                    return_preview_image_base64=False
+                    if return_preview_image_base64 is None
+                    else return_preview_image_base64,
+                    extra_options=slice_extra_options,
+                    trace_id=trace_id,
+                )
             )
-        )
+        finally:
+            _release_slice_image_input(request=request, prepared_input=prepared_input)
         return _translate_slice_detections(
             inference_result.detections,
             offset_x=window.x1,
@@ -333,8 +348,15 @@ def _build_axis_starts(*, total_size: int, window_size: int, overlap_size: int) 
     return tuple(starts)
 
 
-def _build_raw_slice_image_input(*, crop_image, cv2_module, np_module, window: _SliceWindow) -> tuple[dict[str, object], bytes]:
-    """把切片图像转换为 raw BGR24 输入，避免切片推理前反复 PNG/JPEG 编码。"""
+def _prepare_slice_image_input(
+    *,
+    request: WorkflowNodeExecutionRequest,
+    crop_image,
+    cv2_module,
+    np_module,
+    window: _SliceWindow,
+) -> _PreparedSliceImageInput:
+    """优先把 raw 切片写入 LocalBufferBroker，禁用时回退 memory bytes。"""
 
     normalized_crop = prepare_matrix_for_raw_bgr24(
         cv2_module=cv2_module,
@@ -343,7 +365,103 @@ def _build_raw_slice_image_input(*, crop_image, cv2_module, np_module, window: _
         copy_matrix=True,
     )
     payload = build_raw_bgr24_payload_fields(width=window.width, height=window.height)
-    return payload, bytes(normalized_crop.tobytes())
+    raw_view = memoryview(normalized_crop).cast("B").toreadonly()
+    local_buffer_writer = request.execution_metadata.get("local_buffer_reader")
+    write_bytes = getattr(local_buffer_writer, "write_bytes", None)
+    if not callable(write_bytes):
+        return _PreparedSliceImageInput(
+            image_payload={
+                "transport_kind": "memory",
+                "image_handle": _build_slice_image_handle(window),
+                **payload,
+            },
+            input_image_bytes=raw_view.tobytes(),
+        )
+    write_result = write_bytes(
+        content=raw_view,
+        owner_kind="workflow-runtime",
+        owner_id=_build_slice_buffer_owner_id(request, window=window),
+        media_type="image/raw",
+        shape=(window.height, window.width, 3),
+        dtype="uint8",
+        layout="HWC",
+        pixel_format="bgr24",
+        trace_id=_read_optional_trace_id(request),
+        ttl_seconds=_resolve_slice_buffer_ttl_seconds(request),
+    )
+    lease = getattr(write_result, "lease", None)
+    return _PreparedSliceImageInput(
+        image_payload={
+            "transport_kind": "buffer",
+            "buffer_ref": write_result.buffer_ref.model_dump(mode="json"),
+            **payload,
+        },
+        input_image_bytes=None,
+        lease_id=str(getattr(lease, "lease_id", "") or "").strip() or None,
+        pool_name=str(getattr(lease, "pool_name", "") or "").strip() or None,
+    )
+
+
+def _release_slice_image_input(
+    *,
+    request: WorkflowNodeExecutionRequest,
+    prepared_input: _PreparedSliceImageInput,
+) -> None:
+    """释放单次切片推理使用的临时 LocalBufferBroker lease。"""
+
+    if prepared_input.lease_id is None:
+        return
+    local_buffer_writer = request.execution_metadata.get("local_buffer_reader")
+    release = getattr(local_buffer_writer, "release", None)
+    if callable(release):
+        try:
+            release(prepared_input.lease_id, pool_name=prepared_input.pool_name)
+            return
+        except Exception:
+            pass
+    from backend.service.application.workflows.execution_cleanup import (
+        register_local_buffer_lease_cleanup,
+    )
+
+    register_local_buffer_lease_cleanup(
+        request.execution_metadata,
+        lease_id=prepared_input.lease_id,
+        pool_name=prepared_input.pool_name,
+    )
+
+
+def _build_slice_buffer_owner_id(
+    request: WorkflowNodeExecutionRequest,
+    *,
+    window: _SliceWindow,
+) -> str:
+    """构造可按 Workflow Run 清理的 SAHI 切片 owner id。"""
+
+    workflow_run_id = request.execution_metadata.get("workflow_run_id")
+    scope_id = (
+        workflow_run_id.strip()
+        if isinstance(workflow_run_id, str) and workflow_run_id.strip()
+        else request.node_id
+    )
+    return f"{scope_id}:{request.node_id}:sahi:{window.index}"
+
+
+def _resolve_slice_buffer_ttl_seconds(
+    request: WorkflowNodeExecutionRequest,
+) -> float:
+    """使临时切片 lease 的 TTL 覆盖完整 Workflow Run 超时。"""
+
+    from backend.service.application.workflows.execution_cleanup import (
+        WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
+    )
+
+    raw_timeout = request.execution_metadata.get(
+        WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY
+    )
+    if isinstance(raw_timeout, (int, float)) and not isinstance(raw_timeout, bool):
+        if float(raw_timeout) > 0:
+            return float(raw_timeout) + 30.0
+    return 330.0
 
 
 def _build_slice_image_handle(window: _SliceWindow) -> str:
@@ -553,6 +671,7 @@ def _read_optional_trace_id(request: WorkflowNodeExecutionRequest) -> str | None
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
+        version=BACKEND_VERSION,
         node_type_id="core.model.sahi-inference",
         display_name="SAHI Inference",
         category="core.model.inference",

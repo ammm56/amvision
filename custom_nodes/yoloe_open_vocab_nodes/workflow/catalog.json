@@ -10,6 +10,7 @@
       "description": "通过 YOLOE 和文本提示执行开放词汇检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "input_ports": [
         {
           "name": "image",
@@ -120,7 +121,7 @@
         "python_packages": []
       },
       "node_pack_id": "yoloe.open-vocab-nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -133,6 +134,7 @@
       "description": "通过 YOLOE、参考图和区域提示执行开放词汇检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "input_ports": [
         {
           "name": "image",
@@ -252,7 +254,7 @@
         "python_packages": []
       },
       "node_pack_id": "yoloe.open-vocab-nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented",
         "supported_prompt_kinds": [
@@ -271,6 +273,7 @@
       "description": "通过 prompt-free YOLOE 权重执行开放词汇检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "input_ports": [
         {
           "name": "image",
@@ -372,7 +375,7 @@
         "python_packages": []
       },
       "node_pack_id": "yoloe.open-vocab-nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }

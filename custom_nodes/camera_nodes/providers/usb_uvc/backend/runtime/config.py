@@ -80,7 +80,7 @@ def resolve_capture_config(request: WorkflowNodeExecutionRequest, *, cv2_module:
     device_index_raw = request_override.get("device_index", request.parameters.get("device_index", 0))
     device_index = None if device_path is not None else require_non_negative_int(device_index_raw, field_name="device_index")
     output_format = resolve_output_format(
-        request_override.get("output_format", request.parameters.get("output_format", "png"))
+        request_override.get("output_format", request.parameters.get("output_format", "raw"))
     )
     return UsbCameraCaptureConfig(
         source_kind="device-path" if device_path is not None else "device-index",
@@ -185,7 +185,7 @@ def resolve_session_read_config(request: WorkflowNodeExecutionRequest) -> UsbCam
             field_name="retry_read_count",
         ),
         output_format=resolve_output_format(
-            request_override.get("output_format", request.parameters.get("output_format", "png"))
+            request_override.get("output_format", request.parameters.get("output_format", "raw"))
         ),
         jpeg_quality=require_uint8_range(
             request_override.get("jpeg_quality", request.parameters.get("jpeg_quality", 95)),
@@ -281,7 +281,7 @@ def resolve_read_window_config(request: WorkflowNodeExecutionRequest) -> UsbCame
             )
         ),
         output_format=resolve_output_format(
-            request_override.get("output_format", request.parameters.get("output_format", "png"))
+            request_override.get("output_format", request.parameters.get("output_format", "raw"))
         ),
         jpeg_quality=require_uint8_range(
             request_override.get("jpeg_quality", request.parameters.get("jpeg_quality", 95)),
@@ -340,7 +340,7 @@ def resolve_output_format(raw_value: object) -> str:
     normalized_value = require_string(raw_value, field_name="output_format").lower()
     if normalized_value not in OUTPUT_FORMAT_VALUES:
         raise InvalidRequestError(
-            "output_format 仅支持 png 或 jpeg",
+            "output_format 仅支持 raw、png 或 jpeg",
             details={"allowed_values": list(OUTPUT_FORMAT_VALUES)},
         )
     return normalized_value

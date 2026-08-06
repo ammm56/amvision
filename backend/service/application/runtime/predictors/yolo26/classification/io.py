@@ -10,6 +10,9 @@ from backend.service.application.models.yolo_core_common.data import (
     normalize_yolo_classification_image,
     prepare_yolo_classification_image,
 )
+from backend.service.application.runtime.predictors.common.yolo_runtime_io import (
+    has_readable_image_buffer,
+)
 from backend.service.application.runtime.targets.runtime_target import resolve_local_file_path
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -28,9 +31,7 @@ def load_yolo26_classification_prediction_image(
     has_input_uri = isinstance(request.input_uri, str) and bool(
         request.input_uri.strip()
     )
-    has_input_image_bytes = isinstance(request.input_image_bytes, bytes) and bool(
-        request.input_image_bytes
-    )
+    has_input_image_bytes = has_readable_image_buffer(request.input_image_bytes)
     if has_input_uri == has_input_image_bytes:
         raise InvalidRequestError(
             "推理请求必须且只能提供 input_uri 或 input_image_bytes 其中一个",

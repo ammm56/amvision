@@ -503,7 +503,10 @@ def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(
             pool_name="image-test",
         )
 
-        client.write_lease_bytes(lease=lease, content=b"abcdef")
+        client.write_lease_bytes(
+            lease=lease,
+            content=memoryview(bytearray(b"abcdef")),
+        )
         with Path(lease.file_path).open("rb") as pool_file:
             pool_file.seek(lease.offset)
             assert pool_file.read(lease.size) == b"abcdef"
@@ -552,7 +555,7 @@ def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(
 
         first_frame = client.write_frame(
             stream_id="line-a-camera-1",
-            content=b"frame-1",
+            content=memoryview(bytearray(b"frame-1")),
             media_type="image/raw",
             shape=(1, 7, 1),
             dtype="uint8",

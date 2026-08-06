@@ -134,9 +134,8 @@ class DirectMmapLocalBufferReader:
             expected_size=expected_size,
             required_end=offset + size,
         )
-        if media_type.strip().lower() == "image/raw":
-            return memoryview(view)[offset : offset + size]
-        return bytes(view[offset : offset + size])
+        del media_type
+        return memoryview(view)[offset : offset + size].toreadonly()
 
     def _get_or_open_view(
         self,

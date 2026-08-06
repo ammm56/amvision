@@ -121,6 +121,7 @@
       "description": "从指定 USB / UVC 相机读取单帧图片，输出标准 image-ref.v1 与结构化采集摘要，可直接接入检测、分割和工业规则链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -208,8 +209,9 @@
           "output_format": {
             "type": "string",
             "title": "Output Format",
-            "default": "png",
+            "default": "raw",
             "enum": [
+              "raw",
               "png",
               "jpeg"
             ]
@@ -245,7 +247,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -258,6 +260,7 @@
       "description": "关闭一个已打开的 USB / UVC 相机会话，释放采集句柄。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -298,7 +301,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -311,6 +314,7 @@
       "description": "按设备索引范围探测当前机器上可打开的 USB / UVC 相机，并输出适合 workflow 继续处理的设备摘要。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -387,7 +391,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -400,6 +404,7 @@
       "description": "读取当前 USB / UVC 相机会话的常用参数与观测信息，适合现场调参和排障。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -516,7 +521,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -529,6 +534,7 @@
       "description": "打开一个可跨节点复用的 USB / UVC 相机会话，适合现场单帧重复采图和参数调整链路。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -633,7 +639,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -646,6 +652,7 @@
       "description": "从已打开的 USB / UVC 相机会话读取最新单帧，适合单次 workflow invoke 内重复采图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -714,8 +721,9 @@
           "output_format": {
             "type": "string",
             "title": "Output Format",
-            "default": "png",
+            "default": "raw",
             "enum": [
+              "raw",
               "png",
               "jpeg"
             ]
@@ -751,7 +759,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -764,6 +772,7 @@
       "description": "从已启动采流的 USB / UVC 相机会话缓冲中读取一段 frame-window.v1，供视频预览、时序分割和后续视频链复用。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -848,8 +857,9 @@
           "output_format": {
             "type": "string",
             "title": "Output Format",
-            "default": "png",
+            "default": "raw",
             "enum": [
+              "raw",
               "png",
               "jpeg"
             ]
@@ -876,7 +886,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -889,6 +899,7 @@
       "description": "写入当前 USB / UVC 相机会话的常用参数，适合现场分辨率、帧率和曝光类调参。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -967,7 +978,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }
@@ -980,6 +991,7 @@
       "description": "为已打开的 USB / UVC 相机会话启动后台采流线程，并把帧缓冲为后续视频窗口读取做准备。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.3",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1061,7 +1073,7 @@
         ]
       },
       "node_pack_id": "camera.nodes",
-      "node_pack_version": "0.1.0",
+      "node_pack_version": "0.1.4",
       "metadata": {
         "phase": "implemented"
       }

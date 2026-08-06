@@ -553,7 +553,7 @@ class LocalBufferBrokerProcessSupervisor:
     def write_bytes(
         self,
         *,
-        content: bytes,
+        content: bytes | bytearray | memoryview,
         owner_kind: str,
         owner_id: str,
         media_type: str,
@@ -637,7 +637,7 @@ class LocalBufferBrokerProcessSupervisor:
         self,
         *,
         stream_id: str,
-        content: bytes,
+        content: bytes | bytearray | memoryview,
         media_type: str,
         pool_name: str | None = None,
         shape: tuple[int, ...] = (),

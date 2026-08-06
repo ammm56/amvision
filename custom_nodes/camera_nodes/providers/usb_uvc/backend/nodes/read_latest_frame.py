@@ -29,21 +29,31 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             frame=frame,
             successful_reads=successful_reads,
         )
-    encoded_frame, media_type = capture.encode_frame_bytes(
-        frame=frame,
-        output_format=read_config.output_format,
-        jpeg_quality=read_config.jpeg_quality,
-        cv2_module=cv2_module,
-    )
-    image_payload = payloads.build_captured_image_payload(
-        request,
-        content=encoded_frame,
-        media_type=media_type,
-        width=frame_width,
-        height=frame_height,
-        output_object_key=read_config.output_object_key,
-        overwrite=read_config.overwrite,
-    )
+    if read_config.output_format == "raw" and read_config.output_object_key is None:
+        media_type = "image/raw"
+        image_payload = payloads.build_captured_raw_image_payload(
+            request,
+            frame=frame,
+        )
+    else:
+        effective_output_format = (
+            "png" if read_config.output_format == "raw" else read_config.output_format
+        )
+        encoded_frame, media_type = capture.encode_frame_bytes(
+            frame=frame,
+            output_format=effective_output_format,
+            jpeg_quality=read_config.jpeg_quality,
+            cv2_module=cv2_module,
+        )
+        image_payload = payloads.build_captured_image_payload(
+            request,
+            content=encoded_frame,
+            media_type=media_type,
+            width=frame_width,
+            height=frame_height,
+            output_object_key=read_config.output_object_key,
+            overwrite=read_config.overwrite,
+        )
     summary = payloads.build_camera_session_summary(
         session_entry,
         operation="read_latest_frame",

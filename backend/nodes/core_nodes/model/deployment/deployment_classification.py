@@ -16,6 +16,7 @@ from backend.nodes.core_nodes.support.deployment_model import (
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.version import BACKEND_VERSION
 
 
 def _deployment_classification_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -42,6 +43,7 @@ def _deployment_classification_handler(request: WorkflowNodeExecutionRequest) ->
 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
+        version=BACKEND_VERSION,
         node_type_id="core.model.classification",
         display_name="Classification",
         category="core.model.inference",

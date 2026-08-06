@@ -105,6 +105,7 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 - `infer` 不创建一次性文件响应队列，不扫描 queue 目录。
 - BufferRef/FrameRef 在同步调用返回前由 Workflow owner 保持 lease；deployment worker 复制完成或推理完成后，节点再释放临时 lease。
 - raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
+- encoded JPEG/PNG/BMP 在 direct mmap reader 中同样保持为只读 `memoryview`，只在 `cv2.imdecode` 内部生成目标矩阵，不先复制一份 encoded bytes。
 - mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
 - mailbox 请求和响应包含 generation、deadline 和 CRC32；客户端超时、进程崩溃和 daemon 重启后可回收槽位。
 - 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
@@ -172,6 +173,21 @@ ZeroMQ TriggerSource adapter 接收第二帧图片 bytes 后写入 LocalBufferBr
 YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 的 detection、classification、segmentation、pose、obb 节点和 DeploymentInstance runtime 都应接入 raw-aware loader。当前主要 YOLO runtime IO、YOLOE 自定义节点图片入口、SAM3 单图/视频节点、SAHI 切片节点、deployment worker 输入 payload 透传、regions/ROI mask helper 和 video overlay helper 已切到 raw-aware loader；后续新增或调整的独立图片入口必须继续按同一 helper 接入，并补专项回归。
 
 BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded 输入的 `decode_ms` 与 raw 输入的 `raw_view_ms` 或等价指标分开记录。
+
+模型 predictor 的 `input_image_bytes` 是历史字段名，内部实际契约为非空 buffer protocol 内容，允许 `bytes`、`bytearray` 和 `memoryview`。不能再用 `isinstance(value, bytes)` 判断图片是否存在，否则 daemon direct mmap 返回的合法 `memoryview` 会被错误判定为缺少输入。
+
+### 核心节点与自定义节点同步矩阵
+
+| 节点范围 | 当前高速实现 | 禁止回退 |
+| --- | --- | --- |
+| Detection、Classification、Segmentation、Pose、OBB | 原样传递 BufferRef/FrameRef 到 inference mmap mailbox | 在 workflow worker 读取、编码或写 ObjectStore |
+| SAHI Inference | 每个 raw 切片临时写入 LocalBufferBroker，推理返回后立即释放 lease | 每个切片通过 memory bytes 和持久化文件队列中转 |
+| OpenCV、Barcode/QR、ROI、regions、video overlay | 共用 raw-aware matrix loader 和单次执行 decode cache | 各节点自行读取 object path 或重复 decode |
+| YOLOE、SAM3 | 共用 `load_image_content`，buffer/frame 输入借用只读 mmap view | 先复制整帧 bytes 再进入预处理 |
+| Camera/ZeroMQ/视频帧入口 | Camera/OpenCV 帧默认输出 raw memory image-ref，跨进程入口输出 BufferRef/FrameRef，并保留 shape、dtype、layout、pixel_format | 默认生成 base64 或临时 PNG |
+| model-inference-submit 等异步任务提交节点 | 使用 storage ref 作为可恢复任务输入 | 把短生命周期 BufferRef 持久化进异步队列 |
+
+最后一类 storage 输入属于持久化任务边界，不是旧实现。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用。
 
 ### OpenCV 和显示节点
 

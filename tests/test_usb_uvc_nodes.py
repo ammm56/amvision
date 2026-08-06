@@ -245,6 +245,52 @@ def test_capture_frame_node_returns_memory_image(monkeypatch) -> None:
     assert capture.released is True
 
 
+def test_capture_frame_node_defaults_to_raw_memory_image(monkeypatch) -> None:
+    """验证相机单帧默认保持 raw BGR24，不执行 PNG/JPEG 编码。"""
+
+    frame = np.arange(72, dtype=np.uint8).reshape((4, 6, 3))
+    capture = _FakeCapture(frames=[(True, frame)])
+    image_registry = ExecutionImageRegistry()
+
+    monkeypatch.setattr(
+        camera_capture,
+        "require_opencv_imports",
+        lambda: (_FakeCv2Module, np),
+    )
+    monkeypatch.setattr(
+        camera_capture,
+        "create_video_capture",
+        lambda *, source, api_preference: capture,
+    )
+
+    output = capture_frame.handle_node(
+        WorkflowNodeExecutionRequest(
+            node_id="capture-camera-raw-node",
+            node_definition=SimpleNamespace(
+                node_type_id=capture_frame.NODE_TYPE_ID
+            ),
+            parameters={
+                "device_index": 0,
+                "warmup_frame_count": 0,
+                "retry_read_count": 1,
+            },
+            input_values={},
+            execution_metadata={"execution_image_registry": image_registry},
+        )
+    )
+
+    image_payload = output["image"]
+    image_entry = image_registry.get_entry(str(image_payload["image_handle"]))
+    assert image_payload["transport_kind"] == "memory"
+    assert image_payload["media_type"] == "image/raw"
+    assert image_payload["shape"] == [4, 6, 3]
+    assert image_payload["pixel_format"] == "bgr24"
+    assert image_entry.content is None
+    assert np.array_equal(image_entry.matrix, frame)
+    assert output["summary"]["value"]["output_format"] == "raw"
+    assert capture.released is True
+
+
 def test_capture_frame_node_supports_request_override_and_storage_output(
     tmp_path: Path,
     monkeypatch,
@@ -481,6 +527,8 @@ def test_usb_camera_session_nodes_support_execution_scoped_registry(monkeypatch)
     )
 
     assert read_output["summary"]["value"]["successful_reads_total"] == 1
+    assert read_output["image"]["media_type"] == "image/raw"
+    assert read_output["summary"]["value"]["output_format"] == "raw"
     assert close_output["result"]["value"]["closed"] is True
     assert capture.released is True
 

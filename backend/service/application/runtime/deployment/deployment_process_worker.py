@@ -457,7 +457,11 @@ def _resolve_input_image_payload(
     image_payload: dict[str, object],
     local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
-) -> tuple[str | None, bytes | None, dict[str, object] | None]:
+) -> tuple[
+    str | None,
+    bytes | bytearray | memoryview | None,
+    dict[str, object] | None,
+]:
     """把 image-ref payload 解析为 deployment runtime pool 可读的输入。"""
 
     normalized_payload = require_image_payload(image_payload)
