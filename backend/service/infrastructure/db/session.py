@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -42,6 +42,7 @@ class SessionFactory:
             future=True,
             **self._build_engine_options(settings.url),
         )
+        self._configure_sqlite_connection(settings.url)
         self.service_event_bus: object | None = None
         self._session_maker = sessionmaker(
             bind=self.engine,
@@ -90,3 +91,28 @@ class SessionFactory:
             return options
 
         return {}
+
+    def _configure_sqlite_connection(self, database_url: str) -> None:
+        """为本地多进程访问启用 SQLite 外键、WAL 和 busy timeout。
+
+        WAL 只应用于文件数据库；内存数据库不支持跨连接 WAL。busy timeout
+        用于避免 service、worker 和 inference daemon 的短事务直接因锁竞争失败。
+        """
+
+        parsed_url = make_url(database_url)
+        if parsed_url.drivername != "sqlite":
+            return
+
+        is_file_database = parsed_url.database not in (None, ":memory:")
+
+        @event.listens_for(self.engine, "connect")
+        def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.execute("PRAGMA busy_timeout=30000")
+                if is_file_database:
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+            finally:
+                cursor.close()

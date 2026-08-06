@@ -13,6 +13,10 @@ from backend.maintenance.extension_pretrained_manifests import (
     sync_extension_pretrained_manifests,
 )
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.maintenance.database_migrations import (
+    DATABASE_MIGRATION_COMMAND,
+    migrate_database,
+)
 from backend.maintenance.pycache_maintenance import (
     REBUILD_PYCACHE_COMMAND,
     build_pycache_request,
@@ -87,6 +91,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "show-config",
             "validate-layout",
             "assemble-release",
+            DATABASE_MIGRATION_COMMAND,
             REBUILD_PYCACHE_COMMAND,
             "sync-extension-pretrained-manifests",
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
@@ -119,7 +124,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bundled-python-source-dir",
         default=None,
-        help="仅在需要重建 release/python 时显式指定 bundled Python 来源目录",
+        help="兼容参数；自动复制已禁用，Python 目录必须手工移动或复制",
     )
     parser.add_argument(
         "--now-iso",
@@ -190,7 +195,7 @@ def run_command(
     - profile_id：assemble-release 使用的 profile id。
     - release_root：assemble-release 输出根目录。
     - force：assemble-release 时是否允许覆盖已存在目录。
-    - bundled_python_source_dir：可选的 bundled Python 来源目录，仅在需要重建时使用。
+    - bundled_python_source_dir：已禁用的兼容参数；传入时明确失败，避免复制大体量 Python。
     - pycache_roots：rebuild-pycache 要处理的源码目录。
     - python_packages：rebuild-pycache 要处理的当前解释器依赖包名。
     - clean_only：rebuild-pycache 是否只删除缓存。
@@ -370,6 +375,8 @@ def run_command(
             "copied_root_documents": [str(path) for path in result.copied_root_documents],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
+    if command == DATABASE_MIGRATION_COMMAND:
+        return migrate_database(backend_service_settings=backend_service_settings)
     if command == REBUILD_PYCACHE_COMMAND:
         return rebuild_pycache(
             build_pycache_request(

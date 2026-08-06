@@ -256,13 +256,16 @@ Get-Content .\logs\full-stack\worker-dataset-export.log -Tail 80
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --bundled-python-source-dir $env:CONDA_PREFIX --output text
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
+# 停止全部发布进程后，把已验证的 Python 环境目录手工移动/重命名为：
+# .\release\full-windows-x64-nvidia\python
 ```
 
 判断方式：
 
-- 如果重建后 `release/full/python/python.exe -c "import torch"` 正常，说明是旧 bundle 漂移，不是当前仓库源码主链坏了
-- 如果重建后仍然异常，再继续查 Python 来源目录本身和系统级 DLL 干扰
+- `assemble-release` 会保留已有 `python/`，不会替换环境；需要排除旧 bundle 漂移时，必须先把旧目录移走，再把已验证环境整体移动或手工复制到目标位置
+- 如果更换后 `python/python.exe -c "import torch"` 正常，说明是旧 bundle 漂移，不是当前仓库源码主链坏了
+- 如果更换后仍然异常，再继续查 Python 来源目录本身和系统级 DLL 干扰
 
 ### 8. stop 脚本执行后还有进程残留
 

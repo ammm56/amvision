@@ -249,6 +249,10 @@ def _build_service_diagnostics(
             "poll_interval_seconds": settings.task_manager.poll_interval_seconds,
         },
         "backend_worker": _build_backend_worker_diagnostics(settings),
+        "inference_daemon": _build_inference_daemon_summary(
+            request=request,
+            settings=settings,
+        ),
         "websocket": {
             "status": "configured",
             "query_token_enabled": settings.auth.websocket_query_token_enabled,
@@ -299,6 +303,46 @@ def _build_backend_worker_diagnostics(settings: BackendServiceSettings) -> dict[
     """
 
     return read_backend_worker_health_summary(queue_root_dir=_resolve_path(settings.queue.root_dir))
+
+
+def _build_inference_daemon_summary(
+    *,
+    request: Request,
+    settings: BackendServiceSettings,
+) -> dict[str, object]:
+    """通过短超时 ping 报告独立 inference daemon 的真实可达性。"""
+
+    runtime_owner = settings.inference_daemon.runtime_owner
+    summary: dict[str, object] = {
+        "runtime_owner": runtime_owner,
+        "service_id": settings.inference_daemon.service_id,
+        "independent_process": runtime_owner == "daemon",
+    }
+    if runtime_owner != "daemon":
+        return {**summary, "status": "embedded", "reachable": True}
+    client = getattr(
+        request.app.state,
+        "detection_sync_deployment_process_supervisor",
+        None,
+    )
+    ping = getattr(client, "ping", None)
+    if not callable(ping):
+        return {**summary, "status": "unavailable", "reachable": False}
+    try:
+        result = ping(timeout_seconds=1.0)
+    except Exception as error:  # noqa: BLE001 - 诊断端点必须返回降级摘要
+        return {
+            **summary,
+            "status": "unavailable",
+            "reachable": False,
+            "error_type": error.__class__.__name__,
+        }
+    reachable = bool(result.get("ready")) if isinstance(result, dict) else False
+    return {
+        **summary,
+        "status": "ok" if reachable else "unavailable",
+        "reachable": reachable,
+    }
 
 
 def _build_zeromq_service_summary(trigger_source_supervisor: object) -> dict[str, object]:

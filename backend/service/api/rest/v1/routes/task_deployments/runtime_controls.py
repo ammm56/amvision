@@ -11,6 +11,7 @@ from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
+    ServiceError,
 )
 from backend.service.application.model_type_support import (
     ensure_requested_platform_model_type_matches,
@@ -24,6 +25,9 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessKeepWarmStatus,
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
+)
+from backend.service.application.runtime.deployment.deployment_runtime_state_service import (
+    DeploymentRuntimeStateService,
 )
 
 
@@ -81,8 +85,15 @@ class DeploymentProcessStatusResponse(BaseModel):
     deployment_instance_id: str = Field(description="DeploymentInstance id")
     display_name: str = Field(description="展示名称")
     runtime_mode: str = Field(description="运行时通道；sync 或 async")
-    desired_state: str = Field(description="监督器期望状态；running 或 stopped")
-    process_state: str = Field(description="当前进程状态；running、stopped 或 crashed")
+    desired_state: str = Field(description="持久化期望状态；running 或 stopped")
+    observed_state: str = Field(
+        default="stopped",
+        description="controller 持久化观测状态；starting、running、degraded、failed 或 stopped",
+    )
+    generation: int = Field(default=0, description="期望状态变更代次")
+    process_state: str = Field(
+        description="当前进程状态；running、stopped、crashed 或 unavailable"
+    )
     process_id: int | None = Field(default=None, description="当前子进程 pid")
     auto_restart: bool = Field(description="是否启用崩溃自动拉起")
     restart_count: int = Field(description="已经发生的自动拉起次数当前安全整数窗口值")
@@ -222,6 +233,16 @@ def delete_stopped_deployment_instance(
         "sync": sync_supervisor.get_status(process_config),
         "async": async_supervisor.get_status(process_config),
     }
+    persistent_state_service = DeploymentRuntimeStateService(
+        session_factory=deployment_service.session_factory
+    )
+    persistent_runtime_states = {
+        runtime_mode: persistent_state_service.get_runtime_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+        )
+        for runtime_mode in ("sync", "async")
+    }
     running_states = {
         runtime_mode: {
             "desired_state": status.desired_state,
@@ -229,7 +250,11 @@ def delete_stopped_deployment_instance(
             "process_id": status.process_id,
         }
         for runtime_mode, status in runtime_states.items()
-        if status.desired_state != "stopped" or status.process_state != "stopped"
+        if (
+            persistent_runtime_states[runtime_mode].desired_state != "stopped"
+            or status.desired_state != "stopped"
+            or status.process_state != "stopped"
+        )
     }
     if running_states:
         raise InvalidRequestError(
@@ -287,25 +312,102 @@ def run_deployment_process_status_action(
         deployment_instance_id=deployment_instance_id,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
+    state_service = DeploymentRuntimeStateService(
+        session_factory=deployment_service.session_factory
+    )
+    runtime_state = state_service.get_runtime_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode=runtime_mode,
+    )
     if action == "start":
-        process_status = supervisor.start_deployment(process_config)
+        runtime_state = state_service.set_desired_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+            desired_state="running",
+        )
+        try:
+            process_status = supervisor.start_deployment(process_config)
+        except Exception as error:
+            state_service.record_observed_state(
+                deployment_instance_id=deployment_instance_id,
+                runtime_mode=runtime_mode,
+                generation=runtime_state.generation,
+                observed_state="failed",
+                process_id=None,
+                restart_count=runtime_state.restart_count,
+                last_error_code="deployment_start_failed",
+                last_error_message=str(error),
+                consecutive_failure_count=(
+                    runtime_state.consecutive_failure_count + 1
+                ),
+            )
+            raise
         if runtime_mode == "async":
             _ensure_async_dispatcher(
                 gateway_dispatcher_registry, deployment_instance_id
             )
     elif action == "stop":
-        process_status = supervisor.stop_deployment(process_config)
+        runtime_state = state_service.set_desired_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+            desired_state="stopped",
+        )
+        try:
+            process_status = supervisor.stop_deployment(process_config)
+        except ServiceError as error:
+            process_status = build_unavailable_deployment_process_status(
+                process_config=process_config,
+                runtime_mode=runtime_mode,
+                runtime_state=runtime_state,
+                error=error,
+            )
         if runtime_mode == "async":
             _stop_async_dispatcher(gateway_dispatcher_registry, deployment_instance_id)
     elif action == "status":
-        process_status = supervisor.get_status(process_config)
+        if is_persisted_stopped_state(runtime_state):
+            return build_deployment_process_status_response(
+                view=view,
+                process_status=build_persisted_stopped_process_status(
+                    process_config=process_config,
+                    runtime_mode=runtime_mode,
+                    runtime_state=runtime_state,
+                ),
+                runtime_mode=runtime_mode,
+                runtime_state=runtime_state,
+            )
+        try:
+            process_status = supervisor.get_status(process_config)
+        except ServiceError as error:
+            return build_deployment_process_status_response(
+                view=view,
+                process_status=build_unavailable_deployment_process_status(
+                    process_config=process_config,
+                    runtime_mode=runtime_mode,
+                    runtime_state=runtime_state,
+                    error=error,
+                ),
+                runtime_mode=runtime_mode,
+                runtime_state=runtime_state,
+            )
     else:
         raise InvalidRequestError(
             "未知的 deployment 状态动作",
             details={"action": action},
         )
+    state_service.record_process_status(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode=runtime_mode,
+        generation=runtime_state.generation,
+        process_status=process_status,
+    )
     return build_deployment_process_status_response(
-        view=view, process_status=process_status, runtime_mode=runtime_mode
+        view=view,
+        process_status=process_status,
+        runtime_mode=runtime_mode,
+        runtime_state=state_service.get_runtime_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+        ),
     )
 
 
@@ -328,8 +430,36 @@ def run_deployment_process_health_action(
         deployment_instance_id=deployment_instance_id,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
+    state_service = DeploymentRuntimeStateService(
+        session_factory=deployment_service.session_factory
+    )
+    runtime_state = state_service.get_runtime_state(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode=runtime_mode,
+    )
     if action == "warmup":
-        process_health = supervisor.warmup_deployment(process_config)
+        runtime_state = state_service.set_desired_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+            desired_state="running",
+        )
+        try:
+            process_health = supervisor.warmup_deployment(process_config)
+        except Exception as error:
+            state_service.record_observed_state(
+                deployment_instance_id=deployment_instance_id,
+                runtime_mode=runtime_mode,
+                generation=runtime_state.generation,
+                observed_state="failed",
+                process_id=None,
+                restart_count=runtime_state.restart_count,
+                last_error_code="deployment_warmup_failed",
+                last_error_message=str(error),
+                consecutive_failure_count=(
+                    runtime_state.consecutive_failure_count + 1
+                ),
+            )
+            raise
         if runtime_mode == "async":
             _ensure_async_dispatcher(
                 gateway_dispatcher_registry, deployment_instance_id
@@ -337,15 +467,127 @@ def run_deployment_process_health_action(
     elif action == "reset":
         process_health = supervisor.reset_deployment(process_config)
     elif action == "health":
-        process_health = supervisor.get_health(process_config)
+        if is_persisted_stopped_state(runtime_state):
+            return build_deployment_runtime_health_response(
+                view=view,
+                process_health=DeploymentProcessHealth(
+                    **build_persisted_stopped_process_status(
+                        process_config=process_config,
+                        runtime_mode=runtime_mode,
+                        runtime_state=runtime_state,
+                    ).__dict__
+                ),
+                runtime_mode=runtime_mode,
+                runtime_state=runtime_state,
+            )
+        try:
+            process_health = supervisor.get_health(process_config)
+        except ServiceError as error:
+            return build_deployment_runtime_health_response(
+                view=view,
+                process_health=build_unavailable_deployment_process_health(
+                    process_config=process_config,
+                    runtime_mode=runtime_mode,
+                    runtime_state=runtime_state,
+                    error=error,
+                ),
+                runtime_mode=runtime_mode,
+                runtime_state=runtime_state,
+            )
     else:
         raise InvalidRequestError(
             "未知的 deployment 健康动作",
             details={"action": action},
         )
-    return build_deployment_runtime_health_response(
-        view=view, process_health=process_health, runtime_mode=runtime_mode
+    state_service.record_process_status(
+        deployment_instance_id=deployment_instance_id,
+        runtime_mode=runtime_mode,
+        generation=runtime_state.generation,
+        process_status=process_health,
     )
+    return build_deployment_runtime_health_response(
+        view=view,
+        process_health=process_health,
+        runtime_mode=runtime_mode,
+        runtime_state=state_service.get_runtime_state(
+            deployment_instance_id=deployment_instance_id,
+            runtime_mode=runtime_mode,
+        ),
+    )
+
+
+def build_unavailable_deployment_process_status(
+    *,
+    process_config: object,
+    runtime_mode: str,
+    runtime_state: object,
+    error: Exception,
+) -> DeploymentProcessStatus:
+    """在 daemon 不可达时构建不伪造存活 PID 的状态视图。"""
+
+    process_state = (
+        "stopped" if is_persisted_stopped_state(runtime_state) else "unavailable"
+    )
+    return DeploymentProcessStatus(
+        deployment_instance_id=getattr(process_config, "deployment_instance_id"),
+        runtime_mode=runtime_mode,
+        instance_count=int(getattr(process_config, "instance_count", 1)),
+        desired_state=str(getattr(runtime_state, "desired_state", "stopped")),
+        process_state=process_state,
+        process_id=None,
+        auto_restart=True,
+        restart_count=int(getattr(runtime_state, "restart_count", 0)),
+        last_error=f"inference daemon 不可达: {error}",
+    )
+
+
+def build_persisted_stopped_process_status(
+    *,
+    process_config: object,
+    runtime_mode: str,
+    runtime_state: object,
+) -> DeploymentProcessStatus:
+    """不访问 daemon，直接把已确认 stopped 的持久化状态转换为进程视图。"""
+
+    return DeploymentProcessStatus(
+        deployment_instance_id=getattr(process_config, "deployment_instance_id"),
+        runtime_mode=runtime_mode,
+        instance_count=int(getattr(process_config, "instance_count", 1)),
+        desired_state="stopped",
+        process_state="stopped",
+        process_id=None,
+        auto_restart=True,
+        restart_count=int(getattr(runtime_state, "restart_count", 0)),
+        last_error=getattr(runtime_state, "last_error_message", None),
+    )
+
+
+def is_persisted_stopped_state(runtime_state: object) -> bool:
+    """判断数据库是否已经确认该通道停止且无需实时进程探测。"""
+
+    return (
+        getattr(runtime_state, "desired_state", None) == "stopped"
+        and getattr(runtime_state, "observed_state", None) == "stopped"
+        and getattr(runtime_state, "process_id", None) is None
+    )
+
+
+def build_unavailable_deployment_process_health(
+    *,
+    process_config: object,
+    runtime_mode: str,
+    runtime_state: object,
+    error: Exception,
+) -> DeploymentProcessHealth:
+    """在 daemon 不可达时构建零实例降级 health。"""
+
+    status = build_unavailable_deployment_process_status(
+        process_config=process_config,
+        runtime_mode=runtime_mode,
+        runtime_state=runtime_state,
+        error=error,
+    )
+    return DeploymentProcessHealth(**status.__dict__)
 
 
 def build_deployment_process_status_response(
@@ -353,6 +595,7 @@ def build_deployment_process_status_response(
     view: object,
     process_status: DeploymentProcessStatus,
     runtime_mode: str,
+    runtime_state: object | None = None,
 ) -> DeploymentProcessStatusResponse:
     """把 deployment 视图与进程状态组合为状态响应。"""
 
@@ -360,7 +603,9 @@ def build_deployment_process_status_response(
         deployment_instance_id=getattr(view, "deployment_instance_id"),
         display_name=getattr(view, "display_name"),
         runtime_mode=runtime_mode,
-        desired_state=process_status.desired_state,
+        desired_state=getattr(runtime_state, "desired_state", process_status.desired_state),
+        observed_state=getattr(runtime_state, "observed_state", process_status.process_state),
+        generation=int(getattr(runtime_state, "generation", 0)),
         process_state=process_status.process_state,
         process_id=process_status.process_id,
         auto_restart=process_status.auto_restart,
@@ -377,6 +622,7 @@ def build_deployment_runtime_health_response(
     view: object,
     process_health: DeploymentProcessHealth,
     runtime_mode: str,
+    runtime_state: object | None = None,
 ) -> DeploymentRuntimeHealthResponse:
     """把 deployment 视图与进程健康状态组合为详细响应。"""
 
@@ -384,7 +630,9 @@ def build_deployment_runtime_health_response(
         deployment_instance_id=getattr(view, "deployment_instance_id"),
         display_name=getattr(view, "display_name"),
         runtime_mode=runtime_mode,
-        desired_state=process_health.desired_state,
+        desired_state=getattr(runtime_state, "desired_state", process_health.desired_state),
+        observed_state=getattr(runtime_state, "observed_state", process_health.process_state),
+        generation=int(getattr(runtime_state, "generation", 0)),
         process_state=process_health.process_state,
         process_id=process_health.process_id,
         auto_restart=process_health.auto_restart,

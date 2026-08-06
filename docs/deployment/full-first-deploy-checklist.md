@@ -27,6 +27,7 @@
 - `config/backend-service.json`
 - `config/backend-worker.json`
 - `launchers/maintenance/invoke-backend-maintenance.bat`
+- `launchers/inference/start-inference-daemon.bat`
 - `start-amvision-full.bat`
 - `start_amvision_full.py`
 - `stop-amvision-full.bat`
@@ -78,10 +79,10 @@
 通过标准：
 
 - 根启动脚本保持常驻，不立即退出
-- 控制台先输出 backend-service 和多个 worker 的 pid 与日志路径
-- `logs/full-stack/` 下出现 `service.log` 和各 worker log
+- 控制台依次输出数据库迁移、inference daemon、backend-service 和多个 worker 的就绪结果
+- `logs/full-stack/` 下出现 `database-migration.log`、`inference-daemon.log`、`service.log` 和各 worker log
 
-当前 service 只承担控制面，不消费任务队列；一键启动脚本会把当前 release profile 里的 worker 一起拉起。
+当前 service 只承担控制面，不消费任务队列；deployment 子进程由独立 inference daemon 托管；一键启动脚本会把当前 release profile 里的 worker 一起拉起。
 
 ## 3. 检查 health
 
@@ -221,7 +222,11 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 
 - stop 命令执行后，`start-amvision-full.bat` 所在终端退出
 - `logs/full-stack/runtime-state.json` 被清理
+- backend-service、inference daemon、各 worker 及其实际业务子进程均已退出
+- `http://127.0.0.1:5600/api/v1/system/health` 不再响应，服务端口已释放
 - backend-service 和各 worker 不再继续写入对应日志文件
+
+如果 stop 返回非零退出码，状态文件会保留。此时不能直接删除状态文件或重复启动，应先根据输出中的 pid 排查仍存活的进程树。
 
 ## 后续文档入口
 

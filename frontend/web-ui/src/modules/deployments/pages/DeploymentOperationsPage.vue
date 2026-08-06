@@ -424,6 +424,18 @@
             <strong>{{ selectedRuntimeStatus?.process_state || t('deploymentOps.states.notInspected') }}</strong>
           </div>
           <div>
+            <span>{{ t('deploymentOps.fields.desiredState') }}</span>
+            <strong>{{ selectedRuntimeStatus?.desired_state || '-' }}</strong>
+          </div>
+          <div>
+            <span>{{ t('deploymentOps.fields.observedState') }}</span>
+            <strong>{{ selectedRuntimeStatus?.observed_state || '-' }}</strong>
+          </div>
+          <div>
+            <span>{{ t('deploymentOps.fields.generation') }}</span>
+            <strong>{{ selectedRuntimeStatus?.generation ?? '-' }}</strong>
+          </div>
+          <div>
             <span>{{ t('deploymentOps.fields.processId') }}</span>
             <strong>{{ selectedRuntimeStatus?.process_id ?? '-' }}</strong>
           </div>
@@ -567,7 +579,7 @@ const runtimeModeOptions = computed(() => [
   { label: t('deploymentOps.runtimeModes.sync'), value: 'sync' },
   { label: t('deploymentOps.runtimeModes.async'), value: 'async' },
 ])
-const RUNTIME_REFRESH_CONCURRENCY = 8
+const RUNTIME_REFRESH_CONCURRENCY = 4
 const DEFAULT_KEEP_WARM_INTERVAL_SECONDS = 0.1
 
 const taskTypeOptions = TASK_TYPES.map((taskType) => ({ label: taskType, value: taskType }))
@@ -1385,13 +1397,17 @@ function taskTypeForDeployment(item: TaskDeploymentInstance): ModelTaskType {
 }
 
 function runtimeProcessTone(item: TaskDeploymentInstance): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
-  const processState = deploymentRuntimeStatus(item.deployment_instance_id)?.process_state
-  if (!processState) return 'neutral'
-  return statusTone(processState)
+  const status = deploymentRuntimeStatus(item.deployment_instance_id)
+  if (!status) return 'neutral'
+  if (status.observed_state === 'failed' || status.process_state === 'crashed') return 'danger'
+  if (status.process_state === 'unavailable' || status.observed_state === 'starting' || status.observed_state === 'degraded') return 'warning'
+  return statusTone(status.process_state)
 }
 
 function runtimeProcessLabel(item: TaskDeploymentInstance): string {
-  return deploymentRuntimeStatus(item.deployment_instance_id)?.process_state || t('deploymentOps.states.notInspected')
+  const status = deploymentRuntimeStatus(item.deployment_instance_id)
+  if (!status) return t('deploymentOps.states.notInspected')
+  return `${status.desired_state} / ${status.observed_state} / ${status.process_state}`
 }
 
 function deploymentKeepWarmLabel(item: TaskDeploymentInstance): string {
@@ -1435,7 +1451,9 @@ function canStartDeployment(item: TaskDeploymentInstance): boolean {
 
 function canStopDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
-  const processState = String(deploymentRuntimeStatus(item.deployment_instance_id)?.process_state ?? item.status ?? '').toLowerCase()
+  const status = deploymentRuntimeStatus(item.deployment_instance_id)
+  if (status?.desired_state === 'running') return true
+  const processState = String(status?.process_state ?? item.status ?? '').toLowerCase()
   return processState.includes('running') || processState.includes('starting') || processState.includes('ready')
 }
 
@@ -1443,14 +1461,20 @@ function canDeleteDeployment(item: TaskDeploymentInstance): boolean {
   if (!canWriteModels.value || isRuntimeActionBusy(item)) return false
   const status = deploymentRuntimeStatus(item.deployment_instance_id)
   if (!status) return true
-  return status.desired_state === 'stopped' && status.process_state === 'stopped'
+  return status.desired_state === 'stopped'
+    && status.observed_state === 'stopped'
+    && status.process_state === 'stopped'
 }
 
 function deleteButtonTitle(item: TaskDeploymentInstance): string {
   if (!canWriteModels.value) return t('deploymentOps.messages.writePermissionRequired')
   if (deploymentRunningAction(item.deployment_instance_id) !== null) return t('deploymentOps.messages.actionInProgress')
   const status = deploymentRuntimeStatus(item.deployment_instance_id)
-  if (status && (status.desired_state !== 'stopped' || status.process_state !== 'stopped')) {
+  if (status && (
+    status.desired_state !== 'stopped'
+    || status.observed_state !== 'stopped'
+    || status.process_state !== 'stopped'
+  )) {
     return t('deploymentOps.messages.deleteRequiresStopped')
   }
   return t('deploymentOps.actions.delete')
@@ -1583,10 +1607,8 @@ async function loadDeploymentEvents(): Promise<void> {
 }
 
 async function refreshRuntimeSnapshotsAndEvents(): Promise<void> {
-  await Promise.all([
-    refreshRuntimeSnapshotsForDeployments(deployments.value),
-    loadDeploymentEvents(),
-  ])
+  await loadDeploymentEvents()
+  void refreshRuntimeSnapshotsForDeployments(deployments.value)
 }
 
 async function refreshRuntimeSnapshotsForDeployments(items: TaskDeploymentInstance[]): Promise<void> {
@@ -1619,10 +1641,12 @@ async function refreshDeploymentRuntimeSnapshot(
   try {
     const status = await runTaskDeploymentStatusAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'status')
     let health: TaskDeploymentRuntimeHealth | null = null
-    try {
-      health = await runTaskDeploymentHealthAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'health')
-    } catch {
-      health = null
+    if (status.process_state === 'running' || status.observed_state === 'running' || status.observed_state === 'degraded') {
+      try {
+        health = await runTaskDeploymentHealthAction(taskTypeForDeployment(deployment), deploymentId, runtimeMode.value, 'health')
+      } catch {
+        health = null
+      }
     }
     if (!isCurrentDeploymentRuntimeRefresh(deploymentId, refreshToken)) return null
     commitDeploymentRuntimeResult(deploymentId, status, health)

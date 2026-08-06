@@ -127,22 +127,17 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 
 如果使用 `--logs-subdir` 或 `--state-file`，这些默认路径会被覆盖。现场多套实例并存时，建议显式改 `logs-subdir`，避免日志和状态文件互相覆盖。
 
-## 现场推荐用法
+## 现场完整启动
 
-### 启整套
+### 启动完整项目
 
 ```powershell
 .\start-amvision-full.bat
 ```
 
-### 只起部分 worker
+启动器默认加载 release manifest 中声明的全部 worker。生产实际使用不裁剪 worker profile。
 
-```powershell
-.\start-amvision-full.bat --worker-profile-id inference
-.\start-amvision-full.bat --worker-profile-id dataset-import --worker-profile-id inference
-```
-
-### 停整套
+### 停止完整项目
 
 ```powershell
 .\stop-amvision-full.bat
@@ -153,7 +148,7 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 1. 先执行 maintenance `validate-layout`
 2. 在对应发行目录根目录执行 `start-amvision-full.bat`
 3. 检查 health、OpenAPI 文档和目标业务 smoke test
-4. 如需排障，再拆回独立 service / worker launcher
+4. 如需单进程排障，先停止完整实例；排障结束后重新使用根目录入口完整启动
 
 ## 运维重点
 

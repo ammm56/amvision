@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,8 +37,13 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert (release_dir / "launchers" / "service" / "start_backend_service.py").is_file()
     assert (release_dir / "launchers" / "service" / "start-backend-service.bat").is_file()
     assert (release_dir / "launchers" / "maintenance" / "invoke_backend_maintenance.py").is_file()
+    assert (release_dir / "launchers" / "inference" / "start_inference_daemon.py").is_file()
+    assert (release_dir / "launchers" / "inference" / "start-inference-daemon.bat").is_file()
     assert (release_dir / "start_amvision_full.py").is_file()
     assert (release_dir / "start-amvision-full.bat").is_file()
+    assert 'set "PYTHONUTF8=1"' in (
+        release_dir / "start-amvision-full.bat"
+    ).read_text(encoding="utf-8")
     assert not (release_dir / "start-amvision-full.sh").exists()
     assert (release_dir / "stop_amvision_full.py").is_file()
     assert (release_dir / "stop-amvision-full.bat").is_file()
@@ -122,6 +128,12 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert release_manifest["layout"]["custom_nodes_dir"] == "custom_nodes"
     assert release_manifest["layout"]["python_dir"] == "python"
     assert release_manifest["service"]["windows_launcher"] == "launchers/service/start-backend-service.bat"
+    assert release_manifest["inference_daemon"]["python_launcher"] == (
+        "launchers/inference/start_inference_daemon.py"
+    )
+    assert release_manifest["inference_daemon"]["windows_launcher"] == (
+        "launchers/inference/start-inference-daemon.bat"
+    )
     assert release_manifest["stack"]["windows_launcher"] == "start-amvision-full.bat"
     assert release_manifest["stack"]["stop_windows_launcher"] == "stop-amvision-full.bat"
     assert release_manifest["stack"]["state_file"] == "logs/full-stack/runtime-state.json"
@@ -129,6 +141,14 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         expected_worker_profile_ids
     )
     assert release_manifest["workers"][0]["python_launcher"] == "launchers/worker/start_backend_worker.py"
+    start_batch_text = (release_dir / "start-amvision-full.bat").read_text(encoding="utf-8")
+    assert 'set "PYTHON_EXE=python"' not in start_batch_text
+    assert "bundled Python not found" in start_batch_text
+    start_python_text = (release_dir / "start_amvision_full.py").read_text(encoding="utf-8")
+    main_offset = start_python_text.index("def main(")
+    migration_offset = start_python_text.index("_run_database_migration(", main_offset)
+    daemon_start_offset = start_python_text.index("_start_component(", migration_offset)
+    assert migration_offset < daemon_start_offset
 
 
 def test_assemble_release_rejects_reserved_ubuntu_target(
@@ -267,11 +287,11 @@ def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
     )
 
 
-def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
+def test_assemble_release_rejects_automatic_bundled_python_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证显式提供 bundled Python 来源目录时会直接复制运行时。"""
+    """验证组装命令不会自动复制大体量 bundled Python。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     bundled_python_source_dir = tmp_path / "source-python"
@@ -280,35 +300,14 @@ def test_assemble_release_copies_bundled_python_from_explicit_source_dir(
     (bundled_python_source_dir / "__pycache__").mkdir(parents=True, exist_ok=True)
     (bundled_python_source_dir / "__pycache__" / "ignored.pyc").write_bytes(b"cache")
 
-    result = assemble_release(
-        ReleaseAssemblyRequest(
-            profile_id="full-windows-x64-nvidia",
-            output_root=tmp_path,
-            bundled_python_source_dir=bundled_python_source_dir,
+    with pytest.raises(ValueError, match="不复制 bundled Python"):
+        assemble_release(
+            ReleaseAssemblyRequest(
+                profile_id="full-windows-x64-nvidia",
+                output_root=tmp_path,
+                bundled_python_source_dir=bundled_python_source_dir,
+            )
         )
-    )
-
-    release_dir = tmp_path / "full-windows-x64-nvidia"
-    assert result.bundled_python_mode == "copied-from-source"
-    assert (release_dir / "python" / "python.exe").is_file()
-    assert not (release_dir / "python" / "__pycache__").exists()
-
-    release_manifest = json.loads(
-        (
-            release_dir
-            / "manifests"
-            / "release-profiles"
-            / "full-windows-x64-nvidia.json"
-        ).read_text(
-            encoding="utf-8"
-        )
-    )
-    assert release_manifest["bundled_python"] == {
-        "python_dir": "python",
-        "mode": "copied-from-source",
-        "included": True,
-        "managed_manually": False,
-    }
 
 
 def test_assemble_release_requires_force_to_overwrite_existing_directory(tmp_path: Path) -> None:
@@ -378,6 +377,43 @@ def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
     monkeypatch.setattr(release_assembly, "SOURCE_FRONTEND_DIST_DIR", tmp_path / "missing-frontend-dist")
 
     with pytest.raises(FileNotFoundError):
+        assemble_release(
+            ReleaseAssemblyRequest(
+                profile_id="full-windows-x64-nvidia",
+                output_root=tmp_path,
+                overwrite=True,
+            )
+        )
+
+    assert marker_file.read_text(encoding="utf-8") == "keep"
+
+
+def test_assemble_release_recovers_python_when_old_release_removal_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证删除旧发布目录失败时也会立刻恢复已移动的 bundled Python。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    release_dir = tmp_path / "full-windows-x64-nvidia"
+    existing_python_dir = release_dir / "python"
+    existing_python_dir.mkdir(parents=True, exist_ok=True)
+    marker_file = existing_python_dir / "marker.txt"
+    marker_file.write_text("keep", encoding="utf-8")
+    locked_file = release_dir / "data" / "locked.db"
+    locked_file.parent.mkdir(parents=True, exist_ok=True)
+    locked_file.write_text("locked", encoding="utf-8")
+
+    original_rmtree = release_assembly.shutil.rmtree
+
+    def _fail_old_release_removal(path: object, *args: object, **kwargs: object) -> None:
+        if Path(path).resolve() == release_dir.resolve():
+            raise PermissionError("simulated locked release file")
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(release_assembly.shutil, "rmtree", _fail_old_release_removal)
+
+    with pytest.raises(PermissionError, match="simulated locked release file"):
         assemble_release(
             ReleaseAssemblyRequest(
                 profile_id="full-windows-x64-nvidia",
@@ -493,6 +529,129 @@ def test_release_full_start_resolves_the_only_generated_manifest(
     manifest_path = start_module._resolve_release_manifest_path(result.release_dir, None)
 
     assert manifest_path == result.release_manifest_path
+
+
+def test_release_full_ready_log_reader_ignores_previous_launch_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证旧日志里的 ready 不会让新 daemon/worker 启动被误判为就绪。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    start_module = _load_module_from_file(
+        "release_full_start_log_reader",
+        result.release_dir / "start_amvision_full.py",
+    )
+    log_file = tmp_path / "component.log"
+    log_file.write_text("inference-daemon ready\n", encoding="utf-8")
+    current_size = log_file.stat().st_size
+    with log_file.open("a", encoding="utf-8") as stream:
+        stream.write("starting new process\n")
+
+    current_launch_tail = start_module._read_log_tail(
+        log_file,
+        start_offset=current_size,
+    )
+
+    assert "inference-daemon ready" not in current_launch_tail
+    assert "starting new process" in current_launch_tail
+
+
+def test_release_full_start_cleans_started_daemon_when_readiness_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 daemon 初始化或 probe 失败时记录 pid 并回收已经启动的进程。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    bundled_python = result.release_dir / "python" / "python.exe"
+    bundled_python.write_bytes(b"test-python")
+    start_module = _load_module_from_file(
+        "release_full_start_cleanup",
+        result.release_dir / "start_amvision_full.py",
+    )
+    fake_process = SimpleNamespace(pid=321, poll=lambda: None)
+    stopped_processes: list[object] = []
+    monkeypatch.setattr(start_module, "_run_database_migration", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        start_module,
+        "_start_component",
+        lambda *_args, **_kwargs: (fake_process, io.BytesIO()),
+    )
+    monkeypatch.setattr(
+        start_module,
+        "_stop_component",
+        lambda process: stopped_processes.append(process),
+    )
+
+    def fail_daemon_ready(**_kwargs) -> None:
+        state_path = result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
+        state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+        assert state_payload["components"][0]["name"] == "inference-daemon"
+        assert state_payload["components"][0]["pid"] == 321
+        raise RuntimeError("daemon probe failed")
+
+    monkeypatch.setattr(start_module, "_wait_for_inference_daemon_ready", fail_daemon_ready)
+
+    with pytest.raises(RuntimeError, match="daemon probe failed"):
+        start_module.main(
+            [
+                "--app-root",
+                str(result.release_dir),
+                "--logs-subdir",
+                "startup-failure",
+            ]
+        )
+
+    assert stopped_processes == [fake_process]
+    assert not (
+        result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
+    ).exists()
+
+
+def test_release_full_database_migration_failure_prevents_component_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 migration 非零退出时 full launcher 不会启动任何常驻组件。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    (result.release_dir / "python" / "python.exe").write_bytes(b"test-python")
+    start_module = _load_module_from_file(
+        "release_full_migration_failure",
+        result.release_dir / "start_amvision_full.py",
+    )
+    monkeypatch.setattr(
+        start_module,
+        "_run_database_migration",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("migration failed")),
+    )
+    monkeypatch.setattr(
+        start_module,
+        "_start_component",
+        lambda *_args, **_kwargs: pytest.fail("migration 失败后不应启动组件"),
+    )
+
+    with pytest.raises(RuntimeError, match="migration failed"):
+        start_module.main(["--app-root", str(result.release_dir)])
 
 
 def _patch_release_runtime_asset_sources(

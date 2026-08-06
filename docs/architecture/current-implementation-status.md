@@ -12,6 +12,8 @@
 
 模型发布时 `instance_count`、OpenVINO CPU / GPU / NPU 和 TensorRT 运行参数的当前缺口、目标边界与实施顺序，现单独整理在 [model-deployment-runtime-policy.md](model-deployment-runtime-policy.md)。
 
+模型×任务公开矩阵、参考源码版本、证据等级和大数据集惰性加载审计基线见 [model-implementation-audit.md](model-implementation-audit.md)。
+
 ## 适用范围
 
 - backend-service、workflow runtime、TriggerSourceSupervisor、deployment process supervisor 的当前装配方式
@@ -25,7 +27,7 @@
 - 以 YOLOX detection 为第一套参考实现的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通；YOLOv8/YOLO11/YOLO26 与 RF-DETR 也已经并入统一模型平台主链。
 - 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
 - 数据集导入导出支持当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
-- backend-service 当前承担 REST / WebSocket 控制面和 deployment process supervisor，全部队列消费者已经收敛到独立 worker profile。
+- 正式发布配置中 backend-service 只承担 REST / WebSocket 控制面；独立 inference daemon 持有 deployment process supervisor、async inference gateway 和数据库期望状态恢复协调器。全部任务队列消费者继续由独立 worker profile 持有。
 - 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
@@ -105,7 +107,7 @@
 
 - FastAPI 应用入口位于 `backend/service/api/app.py`，负责装配 settings、数据库会话、本地对象存储、本地队列、中间件、异常处理、REST 路由和 WebSocket 路由。
 - backend-service settings 位于 `backend/service/settings.py`，当前已经统一管理 CORS、auth mode、本地 auth TTL、auth provider 目录、静态 token 和 Project 目录配置。
-- 启动编排位于 `backend/service/api/bootstrap.py`，负责在应用生命周期内初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 deployment process supervisor。
+- backend-service 启动编排位于 `backend/service/api/bootstrap.py`，负责初始化 SessionFactory、LocalDatasetStorage、LocalFileQueueBackend 和 daemon 控制客户端；`backend/inference_daemon/runtime.py` 独立装配 deployment process supervisor、async gateway 和恢复协调器。
 - REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、五类 conversion 控制面、统一 deployment 与 inference 控制面、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
 - conversion 公开接口当前已经补齐 detection 与 non-detection 的 create/list/detail/result：detection 仍保留按目标格式拆分的创建入口，classification / segmentation / pose / obb 则统一使用 `source_model_version_id + target_formats` 创建，并在 list/detail/result 中按显式 `task_type` 过滤，避免 YOLOv8 / YOLO11 / YOLO26 共享 task_kind 时串单。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。

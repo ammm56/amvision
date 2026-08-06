@@ -11,6 +11,9 @@ from backend.service.domain.datasets.dataset_import_repository import DatasetImp
 from backend.service.domain.datasets.dataset_version_repository import DatasetVersionRepository
 from backend.service.domain.files.model_file_repository import ModelFileRepository
 from backend.service.domain.deployments.deployment_repository import DeploymentInstanceRepository
+from backend.service.domain.deployments.deployment_runtime_state_repository import (
+    DeploymentRuntimeStateRepository,
+)
 from backend.service.domain.models.model_repository import ModelRepository
 from backend.service.domain.tasks.resource_profile_repository import ResourceProfileRepository
 from backend.service.domain.tasks.task_repository import TaskRepository
@@ -36,6 +39,7 @@ class UnitOfWork(Protocol):
     dataset_imports: DatasetImportRepository
     datasets: DatasetVersionRepository
     deployments: DeploymentInstanceRepository
+    deployment_runtime_states: DeploymentRuntimeStateRepository
     models: ModelRepository
     model_files: ModelFileRepository
     tasks: TaskRepository

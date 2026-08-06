@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -444,6 +445,50 @@ class BackendServiceCustomNodesConfig(BaseModel):
 BackendServiceDeploymentProcessSupervisorConfig = DeploymentProcessSupervisorConfig
 
 
+class BackendServiceDeploymentRuntimeReconcilerConfig(BaseModel):
+    """描述 deployment 持久化期望状态协调器配置。
+
+    字段：
+    - enabled：是否启用数据库期望状态恢复。
+    - reconcile_interval_seconds：正常协调间隔。
+    - controller_lease_seconds：单个 controller 的租约时长。
+    - restart_backoff_initial_seconds：连续启动失败后的初始退避。
+    - restart_backoff_max_seconds：连续启动失败后的最大退避。
+    - restart_backoff_jitter_ratio：退避时间的确定性抖动比例。
+    """
+
+    enabled: bool = True
+    reconcile_interval_seconds: float = Field(default=2.0, gt=0)
+    controller_lease_seconds: float = Field(default=15.0, gt=0)
+    restart_backoff_initial_seconds: float = Field(default=1.0, gt=0)
+    restart_backoff_max_seconds: float = Field(default=60.0, gt=0)
+    restart_backoff_jitter_ratio: float = Field(default=0.2, ge=0, le=1)
+
+
+class BackendServiceInferenceDaemonConfig(BaseModel):
+    """描述独立 inference daemon 所有权和本地控制通道。
+
+    字段：
+    - runtime_owner：embedded 表示兼容开发模式；daemon 表示服务只使用控制客户端。
+    - service_id：控制队列和 async inference 队列使用的稳定 daemon id。
+    - control_max_concurrent_requests：daemon 控制请求执行池上限。
+    - control_poll_interval_seconds：控制队列空闲轮询间隔。
+    - control_lease_timeout_seconds：异常退出后控制请求 lease 恢复时间。
+    - control_read_timeout_seconds：status、health 等只读控制请求最长等待时间。
+    - availability_probe_timeout_seconds：执行长操作前探测 daemon 的最长等待时间。
+    - control_request_max_age_seconds：daemon 可执行控制消息的最长年龄，超过后直接丢弃。
+    """
+
+    runtime_owner: Literal["embedded", "daemon"] = "embedded"
+    service_id: str = "inference-daemon-main"
+    control_max_concurrent_requests: int = Field(default=8, gt=0)
+    control_poll_interval_seconds: float = Field(default=0.05, gt=0)
+    control_lease_timeout_seconds: float = Field(default=900.0, gt=0)
+    control_read_timeout_seconds: float = Field(default=2.0, gt=0)
+    availability_probe_timeout_seconds: float = Field(default=1.0, gt=0)
+    control_request_max_age_seconds: float = Field(default=300.0, gt=0)
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -501,6 +546,12 @@ class BackendServiceSettings(BaseSettings):
     )
     deployment_process_supervisor: DeploymentProcessSupervisorConfig = Field(
         default_factory=DeploymentProcessSupervisorConfig
+    )
+    deployment_runtime_reconciler: BackendServiceDeploymentRuntimeReconcilerConfig = (
+        Field(default_factory=BackendServiceDeploymentRuntimeReconcilerConfig)
+    )
+    inference_daemon: BackendServiceInferenceDaemonConfig = Field(
+        default_factory=BackendServiceInferenceDaemonConfig
     )
 
     @classmethod

@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import Request
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.inference.classification_async_inference_gateway import (
-    ClassificationAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.inference.async_gateway_registry import (
+    AsyncInferenceGatewayRegistry,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
@@ -43,7 +43,7 @@ def get_classification_sync_deployment_process_supervisor(
 
 def get_classification_async_inference_gateway_dispatcher_registry(
     request: Request,
-) -> ClassificationAsyncInferenceGatewayDispatcherRegistry:
+) -> AsyncInferenceGatewayRegistry:
     """从 FastAPI 应用状态中读取 classification async inference gateway dispatcher registry。"""
 
     registry = getattr(
@@ -51,7 +51,7 @@ def get_classification_async_inference_gateway_dispatcher_registry(
         "classification_async_inference_gateway_dispatcher_registry",
         None,
     )
-    if not isinstance(registry, ClassificationAsyncInferenceGatewayDispatcherRegistry):
+    if not isinstance(registry, AsyncInferenceGatewayRegistry):
         raise ServiceConfigurationError(
             "当前服务尚未完成 classification async inference gateway dispatcher registry 装配",
             details={"state_field": "classification_async_inference_gateway_dispatcher_registry"},

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import subprocess
@@ -88,40 +87,44 @@ def _is_pid_alive_with_signal_check(pid: int) -> bool:
 
 
 def _is_windows_pid_alive(pid: int) -> bool:
-    """在 Windows 下用 `tasklist` 判断进程是否仍然存在。"""
+    """在 Windows 下直接查询进程句柄，避免依赖受权限和本地化影响的 tasklist。"""
 
-    try:
-        completed = subprocess.run(
-            [
-                "tasklist",
-                "/FI",
-                f"PID eq {pid}",
-                "/FO",
-                "CSV",
-                "/NH",
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except OSError:
+    import ctypes
+    from ctypes import wintypes
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    error_access_denied = 5
+    error_invalid_parameter = 87
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, wintypes.LPDWORD]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    process_handle = kernel32.OpenProcess(
+        process_query_limited_information,
+        False,
+        pid,
+    )
+    if not process_handle:
+        error_code = ctypes.get_last_error()
+        if error_code == error_access_denied:
+            return True
+        if error_code == error_invalid_parameter:
+            return False
         return _is_pid_alive_with_signal_check(pid)
 
-    output_lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-    if not output_lines:
-        return False
-    first_line = output_lines[0]
-    if not first_line.startswith('"'):
-        return False
     try:
-        first_row = next(csv.reader([first_line]))
-    except (StopIteration, csv.Error):
-        return False
-    if len(first_row) < 2:
-        return False
-    return first_row[1].strip() == str(pid)
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(process_handle, ctypes.byref(exit_code)):
+            return True
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(process_handle)
 
 
 def run_python_module(
@@ -134,6 +137,38 @@ def run_python_module(
 ) -> int:
     """用指定 Python 解释器在目标应用根目录启动模块。"""
 
+    runtime_env = build_python_module_environment(app_root, extra_env=extra_env)
+
+    resolved_python_executable = python_executable
+    if resolved_python_executable is None:
+        bundled_python_executable = app_root / "python" / "python.exe"
+        is_release_layout = (app_root / "manifests" / "release-profiles").is_dir()
+        if is_release_layout:
+            if not bundled_python_executable.is_file():
+                raise FileNotFoundError(
+                    "发行目录缺少 python/python.exe，禁止回退到系统 Python"
+                )
+            resolved_python_executable = str(bundled_python_executable)
+        else:
+            resolved_python_executable = sys.executable
+
+    command = [resolved_python_executable, "-m", module_name, *module_args]
+    completed = subprocess.run(
+        command,
+        cwd=str(app_root),
+        env=runtime_env,
+        check=False,
+    )
+    return completed.returncode
+
+
+def build_python_module_environment(
+    app_root: Path,
+    *,
+    extra_env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """构造 launcher 启动 backend 模块所需的完整环境。"""
+
     runtime_env = os.environ.copy()
     code_root = resolve_code_root(app_root)
     _prepare_local_runtime_paths(app_root, runtime_env)
@@ -145,15 +180,7 @@ def run_python_module(
     )
     if extra_env is not None:
         runtime_env.update(extra_env)
-
-    command = [python_executable or sys.executable, "-m", module_name, *module_args]
-    completed = subprocess.run(
-        command,
-        cwd=str(app_root),
-        env=runtime_env,
-        check=False,
-    )
-    return completed.returncode
+    return runtime_env
 
 
 def _prepare_local_runtime_paths(app_root: Path, runtime_env: dict[str, str]) -> None:

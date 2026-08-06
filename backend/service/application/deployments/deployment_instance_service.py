@@ -32,6 +32,10 @@ from backend.service.application.runtime.targets.runtime_target import (
     serialize_runtime_target_snapshot,
 )
 from backend.service.domain.deployments.deployment_instance import DeploymentInstance
+from backend.service.domain.deployments.deployment_runtime_state import (
+    DEPLOYMENT_RUNTIME_MODES,
+    DeploymentRuntimeState,
+)
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DefaultRuntimeOptions,
     DeploymentRuntimeConfiguration,
@@ -206,6 +210,15 @@ class SqlAlchemyDeploymentInstanceService:
         )
         with self._open_unit_of_work() as unit_of_work:
             unit_of_work.deployments.save_deployment_instance(deployment_instance)
+            for runtime_mode in DEPLOYMENT_RUNTIME_MODES:
+                unit_of_work.deployment_runtime_states.save_deployment_runtime_state(
+                    DeploymentRuntimeState(
+                        deployment_instance_id=deployment_instance.deployment_instance_id,
+                        runtime_mode=runtime_mode,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
             unit_of_work.commit()
 
         return self._build_view(deployment_instance, runtime_target)
@@ -278,6 +291,9 @@ class SqlAlchemyDeploymentInstanceService:
         if not normalized_deployment_instance_id:
             raise InvalidRequestError("deployment_instance_id 不能为空")
         with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.deployment_runtime_states.delete_deployment_runtime_states(
+                normalized_deployment_instance_id
+            )
             deleted = unit_of_work.deployments.delete_deployment_instance(
                 normalized_deployment_instance_id
             )

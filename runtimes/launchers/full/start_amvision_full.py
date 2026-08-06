@@ -23,6 +23,21 @@ if str(LAUNCHERS_ROOT) not in sys.path:
 from common import is_pid_alive, resolve_app_root, resolve_path  # noqa: E402
 
 
+def _build_child_process_environment() -> dict[str, str]:
+    """构造统一的 UTF-8 子进程环境，保证发布日志可稳定读取。"""
+
+    runtime_env = os.environ.copy()
+    runtime_env.setdefault("PYTHONUTF8", "1")
+    runtime_env.setdefault("PYTHONIOENCODING", "utf-8")
+    return runtime_env
+
+
+def _request_stack_shutdown(_signum: int, _frame: object) -> None:
+    """把操作系统终止信号统一转换为 launcher 清理流程。"""
+
+    raise KeyboardInterrupt
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """构造 full 发布目录一键启动参数解析器。
 
@@ -299,7 +314,17 @@ def _validate_required_files(
         app_root / "config" / "backend-worker.json",
         app_root / "app" / "backend",
         resolve_path(app_root, str(service_entry["python_launcher"])),
+        app_root / "app" / "backend" / "inference_daemon" / "main.py",
+        app_root / "app" / "backend" / "alembic.ini",
+        app_root / "app" / "backend" / "alembic" / "env.py",
+        app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py",
     ]
+    daemon_entry = release_manifest.get("inference_daemon")
+    if not isinstance(daemon_entry, dict):
+        raise ValueError("release manifest 必须包含 inference_daemon")
+    required_paths.append(
+        resolve_path(app_root, str(daemon_entry["python_launcher"]))
+    )
     for worker_entry in worker_entries:
         required_paths.append(
             resolve_path(app_root, str(worker_entry["python_launcher"]))
@@ -350,6 +375,45 @@ def _build_service_command(
         str(port),
         "--log-level",
         service_log_level,
+    ]
+
+
+def _build_inference_daemon_command(
+    app_root: Path,
+    release_manifest: dict[str, object],
+    *,
+    python_executable: str,
+) -> list[str]:
+    """构造独立 inference daemon 子进程命令。"""
+
+    daemon_entry = release_manifest.get("inference_daemon")
+    if not isinstance(daemon_entry, dict):
+        raise ValueError("release manifest 必须包含 inference_daemon")
+    launcher_path = resolve_path(app_root, str(daemon_entry.get("python_launcher") or ""))
+    return [
+        python_executable,
+        str(launcher_path),
+        "--python-executable",
+        python_executable,
+    ]
+
+
+def _build_database_migration_command(
+    app_root: Path,
+    *,
+    python_executable: str,
+) -> list[str]:
+    """构造发布启动前的数据库迁移命令。"""
+
+    maintenance_launcher = app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py"
+    return [
+        python_executable,
+        str(maintenance_launcher),
+        "--python-executable",
+        python_executable,
+        "migrate-database",
+        "--output",
+        "text",
     ]
 
 
@@ -404,6 +468,7 @@ def _start_component(
     process = subprocess.Popen(
         command,
         cwd=str(app_root),
+        env=_build_child_process_environment(),
         stdout=log_handle,
         stderr=subprocess.STDOUT,
         creationflags=creationflags,
@@ -463,15 +528,20 @@ def _wait_for_backend_service_ready(
     )
 
 
-def _read_log_tail(log_file_path: Path, *, max_bytes: int = 4096) -> str:
-    """读取日志尾部，供启动失败时输出关键线索。"""
+def _read_log_tail(
+    log_file_path: Path,
+    *,
+    max_bytes: int = 4096,
+    start_offset: int = 0,
+) -> str:
+    """读取本次启动之后的日志尾部，避免旧 ready 标记造成假就绪。"""
 
     if not log_file_path.is_file():
         return ""
     with log_file_path.open("rb") as log_file:
         log_file.seek(0, os.SEEK_END)
         file_size = log_file.tell()
-        log_file.seek(max(0, file_size - max_bytes))
+        log_file.seek(max(max(0, start_offset), file_size - max_bytes))
         return log_file.read().decode("utf-8", errors="replace")
 
 
@@ -482,6 +552,7 @@ def _wait_for_worker_ready(
     process: subprocess.Popen[bytes],
     log_file_path: Path,
     timeout_seconds: float,
+    log_start_offset: int = 0,
 ) -> None:
     """等待 backend-worker 完成初始化。
 
@@ -494,7 +565,10 @@ def _wait_for_worker_ready(
     ready_marker = "backend-worker ready"
     while time.monotonic() < deadline:
         return_code = process.poll()
-        log_tail = _read_log_tail(log_file_path)
+        log_tail = _read_log_tail(
+            log_file_path,
+            start_offset=log_start_offset,
+        )
         if ready_marker in log_tail:
             print(f"{component_name} 已就绪。", flush=True)
             return
@@ -509,8 +583,91 @@ def _wait_for_worker_ready(
     raise TimeoutError(
         f"{component_name} 未在 {timeout_seconds:.0f}s 内完成初始化，"
         f"日志={_format_runtime_path(app_root, log_file_path)}\n"
-        f"{_read_log_tail(log_file_path)}"
+        f"{_read_log_tail(log_file_path, start_offset=log_start_offset)}"
     )
+
+
+def _wait_for_inference_daemon_ready(
+    *,
+    app_root: Path,
+    process: subprocess.Popen[bytes],
+    log_file_path: Path,
+    timeout_seconds: float,
+    log_start_offset: int = 0,
+    probe_command: list[str] | None = None,
+) -> None:
+    """等待 daemon 初始化，并用真实控制队列往返确认可用。"""
+
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    ready_marker = "inference-daemon ready"
+    last_probe_error = ""
+    while time.monotonic() < deadline:
+        return_code = process.poll()
+        log_tail = _read_log_tail(
+            log_file_path,
+            start_offset=log_start_offset,
+        )
+        if ready_marker in log_tail:
+            if probe_command is None:
+                print("inference-daemon 已就绪。", flush=True)
+                return
+            try:
+                probe_result = subprocess.run(
+                    [*probe_command, "--probe"],
+                    cwd=str(app_root),
+                    env=_build_child_process_environment(),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=min(30.0, max(1.0, deadline - time.monotonic())),
+                )
+            except subprocess.TimeoutExpired:
+                last_probe_error = "probe 子进程超时"
+                time.sleep(0.2)
+                continue
+            if probe_result.returncode == 0:
+                print("inference-daemon 控制队列探测成功。", flush=True)
+                return
+            last_probe_error = f"probe returncode={probe_result.returncode}"
+        if return_code is not None:
+            raise RuntimeError(
+                f"inference-daemon 初始化失败，returncode={return_code}，"
+                f"日志={_format_runtime_path(app_root, log_file_path)}\n{log_tail}"
+            )
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"inference-daemon 未在 {timeout_seconds:.0f}s 内完成初始化，"
+        f"日志={_format_runtime_path(app_root, log_file_path)}\n"
+        f"最近探测错误={last_probe_error}\n"
+        f"{_read_log_tail(log_file_path, start_offset=log_start_offset)}"
+    )
+
+
+def _run_database_migration(
+    *,
+    app_root: Path,
+    command: list[str],
+    log_file_path: Path,
+) -> None:
+    """在任何常驻组件启动前完成数据库升级，失败时阻止整套服务启动。"""
+
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_file_path.open("ab") as log_handle:
+        result = subprocess.run(
+            command,
+            cwd=str(app_root),
+            env=_build_child_process_environment(),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "数据库迁移失败，禁止继续启动；"
+            f"returncode={result.returncode}，"
+            f"日志={_format_runtime_path(app_root, log_file_path)}"
+        )
+    print("数据库 schema 已升级到当前版本。", flush=True)
 
 
 def _write_stack_state(
@@ -614,11 +771,82 @@ def main(argv: list[str] | None = None) -> int:
     worker_entries = _select_worker_entries(release_manifest, args.worker_profile_id)
     _validate_required_files(app_root, release_manifest, worker_entries)
 
-    python_executable = args.python_executable or sys.executable
+    bundled_python_executable = app_root / "python" / "python.exe"
+    python_executable_path = (
+        Path(args.python_executable).resolve()
+        if args.python_executable
+        else bundled_python_executable.resolve()
+    )
+    if not python_executable_path.is_file():
+        raise FileNotFoundError(
+            "full 发行目录缺少可用的 python/python.exe，禁止回退到系统 Python"
+        )
+    python_executable = str(python_executable_path)
     logs_dir = app_root / "logs" / args.logs_subdir
     components: list[tuple[str, subprocess.Popen[bytes], BinaryIO, Path]] = []
+    signal.signal(signal.SIGTERM, _request_stack_shutdown)
+    if os.name == "nt" and hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _request_stack_shutdown)
+
+    def persist_stack_state() -> None:
+        """在每个组件启动后立即持久化 pid，保证启动中也能可靠停止。"""
+
+        _write_stack_state(
+            app_root,
+            state_file_path=state_file_path,
+            release_manifest_file=_format_runtime_path(app_root, release_manifest_path),
+            python_executable=python_executable,
+            logs_dir=logs_dir,
+            components=components,
+        )
 
     try:
+        _run_database_migration(
+            app_root=app_root,
+            command=_build_database_migration_command(
+                app_root,
+                python_executable=python_executable,
+            ),
+            log_file_path=logs_dir / "database-migration.log",
+        )
+        daemon_log_file_path = logs_dir / "inference-daemon.log"
+        daemon_log_start_offset = (
+            daemon_log_file_path.stat().st_size
+            if daemon_log_file_path.is_file()
+            else 0
+        )
+        daemon_process, daemon_log_handle = _start_component(
+            "inference-daemon",
+            _build_inference_daemon_command(
+                app_root,
+                release_manifest,
+                python_executable=python_executable,
+            ),
+            app_root=app_root,
+            log_file_path=daemon_log_file_path,
+        )
+        components.append(
+            (
+                "inference-daemon",
+                daemon_process,
+                daemon_log_handle,
+                daemon_log_file_path,
+            )
+        )
+        persist_stack_state()
+        _wait_for_inference_daemon_ready(
+            app_root=app_root,
+            process=daemon_process,
+            log_file_path=daemon_log_file_path,
+            timeout_seconds=args.service_ready_timeout_seconds,
+            log_start_offset=daemon_log_start_offset,
+            probe_command=_build_inference_daemon_command(
+                app_root,
+                release_manifest,
+                python_executable=python_executable,
+            ),
+        )
+
         service_log_file_path = logs_dir / "service.log"
         service_command = _build_service_command(
             app_root,
@@ -642,6 +870,7 @@ def main(argv: list[str] | None = None) -> int:
                 service_log_file_path,
             )
         )
+        persist_stack_state()
 
         if args.startup_delay_seconds > 0:
             time.sleep(args.startup_delay_seconds)
@@ -655,6 +884,11 @@ def main(argv: list[str] | None = None) -> int:
         for worker_entry in worker_entries:
             profile_id = str(worker_entry["profile_id"])
             worker_log_file_path = logs_dir / f"worker-{profile_id}.log"
+            worker_log_start_offset = (
+                worker_log_file_path.stat().st_size
+                if worker_log_file_path.is_file()
+                else 0
+            )
             worker_command = _build_worker_command(
                 app_root,
                 worker_entry,
@@ -674,22 +908,17 @@ def main(argv: list[str] | None = None) -> int:
                     worker_log_file_path,
                 )
             )
+            persist_stack_state()
             _wait_for_worker_ready(
                 app_root=app_root,
                 component_name=f"backend-worker:{profile_id}",
                 process=worker_process,
                 log_file_path=worker_log_file_path,
                 timeout_seconds=args.worker_ready_timeout_seconds,
+                log_start_offset=worker_log_start_offset,
             )
 
-        _write_stack_state(
-            app_root,
-            state_file_path=state_file_path,
-            release_manifest_file=_format_runtime_path(app_root, release_manifest_path),
-            python_executable=python_executable,
-            logs_dir=logs_dir,
-            components=components,
-        )
+        persist_stack_state()
         print(
             f"运行状态文件已写入 {_format_runtime_path(app_root, state_file_path)}。",
             flush=True,

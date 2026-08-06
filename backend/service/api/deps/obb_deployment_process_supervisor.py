@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import Request
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.inference.obb_async_inference_gateway import (
-    ObbAsyncInferenceGatewayDispatcherRegistry,
+from backend.service.application.models.inference.async_gateway_registry import (
+    AsyncInferenceGatewayRegistry,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
@@ -43,7 +43,7 @@ def get_obb_sync_deployment_process_supervisor(
 
 def get_obb_async_inference_gateway_dispatcher_registry(
     request: Request,
-) -> ObbAsyncInferenceGatewayDispatcherRegistry:
+) -> AsyncInferenceGatewayRegistry:
     """从 FastAPI 应用状态中读取 obb async inference gateway dispatcher registry。"""
 
     registry = getattr(
@@ -51,7 +51,7 @@ def get_obb_async_inference_gateway_dispatcher_registry(
         "obb_async_inference_gateway_dispatcher_registry",
         None,
     )
-    if not isinstance(registry, ObbAsyncInferenceGatewayDispatcherRegistry):
+    if not isinstance(registry, AsyncInferenceGatewayRegistry):
         raise ServiceConfigurationError(
             "当前服务尚未完成 obb async inference gateway dispatcher registry 装配",
             details={"state_field": "obb_async_inference_gateway_dispatcher_registry"},

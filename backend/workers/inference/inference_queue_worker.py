@@ -99,6 +99,7 @@ class InferenceQueueWorker:
             queue_backend=queue_backend,
             request_timeout_seconds=async_inference_request_timeout_seconds,
             client_id=worker_id,
+            dataset_storage=dataset_storage,
         )
         self.worker_id = worker_id
 

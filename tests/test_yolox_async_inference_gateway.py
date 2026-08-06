@@ -45,6 +45,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
     )
     process_config = _build_process_config(dataset_storage=dataset_storage)
     captured_deployment_ids: list[str] = []
+    captured_input_uris: list[str] = []
 
     def _execute(**kwargs: object) -> dict[str, object]:
         """记录被 dispatcher 转发的请求并返回最小成功载荷。"""
@@ -52,6 +53,11 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
         captured_process_config = kwargs["process_config"]
         assert isinstance(captured_process_config, DeploymentProcessConfig)
         captured_deployment_ids.append(captured_process_config.deployment_instance_id)
+        captured_request = kwargs["request"]
+        assert captured_request.input_image_bytes is None
+        assert isinstance(captured_request.input_uri, str)
+        assert dataset_storage.resolve(captured_request.input_uri).read_bytes() == b"fake-image"
+        captured_input_uris.append(captured_request.input_uri)
         return {
             "instance_id": "deployment-instance-1:instance-0",
             "detections": [],
@@ -78,6 +84,7 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
             request_timeout_seconds=2.0,
             response_poll_interval_seconds=0.01,
             client_id="worker-1",
+            dataset_storage=dataset_storage,
         )
         result = client.execute_inference(
             process_config=process_config,
@@ -92,6 +99,8 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
         dispatcher.stop()
 
     assert captured_deployment_ids == ["deployment-instance-1"]
+    assert len(captured_input_uris) == 1
+    assert not dataset_storage.resolve(captured_input_uris[0]).exists()
     assert result["instance_id"] == "deployment-instance-1:instance-0"
     assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))

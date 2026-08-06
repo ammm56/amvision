@@ -120,5 +120,23 @@
     "keep_warm_yield_timeout_seconds": 1.0,
     "tensorrt_pinned_output_buffer_enabled": true,
     "tensorrt_pinned_output_buffer_max_bytes": 8388608
+  },
+  "deployment_runtime_reconciler": {
+    "enabled": true,
+    "reconcile_interval_seconds": 2.0,
+    "controller_lease_seconds": 15.0,
+    "restart_backoff_initial_seconds": 1.0,
+    "restart_backoff_max_seconds": 60.0,
+    "restart_backoff_jitter_ratio": 0.2
+  },
+  "inference_daemon": {
+    "runtime_owner": "daemon",
+    "service_id": "inference-daemon-main",
+    "control_max_concurrent_requests": 8,
+    "control_poll_interval_seconds": 0.05,
+    "control_lease_timeout_seconds": 900.0,
+    "control_read_timeout_seconds": 2.0,
+    "availability_probe_timeout_seconds": 1.0,
+    "control_request_max_age_seconds": 300.0
   }
 }

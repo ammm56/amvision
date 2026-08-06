@@ -8,6 +8,9 @@ from sqlalchemy.sql import Executable
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.infrastructure.persistence.deployment_repository import SqlAlchemyDeploymentInstanceRepository
+from backend.service.infrastructure.persistence.deployment_runtime_state_repository import (
+    SqlAlchemyDeploymentRuntimeStateRepository,
+)
 from backend.service.infrastructure.persistence.dataset_export_repository import SqlAlchemyDatasetExportRepository
 from backend.service.infrastructure.persistence.dataset_import_repository import SqlAlchemyDatasetImportRepository
 from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
@@ -57,6 +60,7 @@ class SqlAlchemyUnitOfWork:
         self.dataset_imports = SqlAlchemyDatasetImportRepository(session)
         self.datasets = SqlAlchemyDatasetVersionRepository(session)
         self.deployments = SqlAlchemyDeploymentInstanceRepository(session)
+        self.deployment_runtime_states = SqlAlchemyDeploymentRuntimeStateRepository(session)
         self.models = SqlAlchemyModelRepository(session)
         self.model_files = SqlAlchemyModelFileRepository(session)
         self.tasks = SqlAlchemyTaskRepository(session)

@@ -7,6 +7,7 @@ from threading import Event, Lock, Thread
 from time import monotonic, sleep
 from typing import Callable, Protocol
 from uuid import uuid4
+import logging
 
 from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.error_serialization import serialize_error
@@ -32,6 +33,7 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
     serialize_prediction_execution_result,
     serialize_prediction_request,
     build_prediction_request_from_payload,
+    replace_prediction_request_inputs,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -40,6 +42,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX = "inference-gateway"
 ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX = "inference-gateway-response"
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class AsyncInferenceExecutor(Protocol):
@@ -63,6 +68,7 @@ class QueueBackedAsyncInferenceClient:
     request_timeout_seconds: float = 30.0
     response_poll_interval_seconds: float = 0.05
     client_id: str = "async-inference-client"
+    dataset_storage: LocalDatasetStorage | None = None
 
     def execute_inference(
         self,
@@ -85,31 +91,52 @@ class QueueBackedAsyncInferenceClient:
             owner_id=owner_id,
             deployment_instance_id=process_config.deployment_instance_id,
         )
-        self.queue_backend.enqueue(
-            queue_name=request_queue_name,
-            payload={
-                "request_id": request_id,
-                "owner_id": normalized_owner_id,
-                "deployment_instance_id": normalized_deployment_instance_id,
-                "response_queue_name": response_queue_name,
-                "process_config": _serialize_process_config(process_config),
-                "prediction_request": serialize_prediction_request(
-                    task_type=process_config.runtime_target.task_type,
-                    request=request,
-                ),
-            },
-            metadata={
-                "client_id": self.client_id,
-                "request_queue_name": request_queue_name,
-                "owner_id": normalized_owner_id,
-                "deployment_instance_id": normalized_deployment_instance_id,
-                "response_queue_name": response_queue_name,
-            },
-        )
-        return self._wait_for_response(
-            request_id=request_id,
-            response_queue_name=response_queue_name,
-        )
+        staged_root: str | None = None
+        prepared_request = request
+        if self.dataset_storage is not None and request.input_image_bytes is not None:
+            staged_root = f"runtime/inputs/async-inference/{request_id}"
+            object_key = f"{staged_root}/input.bin"
+            self.dataset_storage.write_bytes(object_key, request.input_image_bytes)
+            prepared_request = replace_prediction_request_inputs(
+                request=request,
+                input_uri=object_key,
+                input_image_bytes=None,
+                input_image_payload=None,
+            )
+        cleanup_staged_input = True
+        try:
+            self.queue_backend.enqueue(
+                queue_name=request_queue_name,
+                payload={
+                    "request_id": request_id,
+                    "owner_id": normalized_owner_id,
+                    "deployment_instance_id": normalized_deployment_instance_id,
+                    "response_queue_name": response_queue_name,
+                    "process_config": _serialize_process_config(process_config),
+                    "prediction_request": serialize_prediction_request(
+                        task_type=process_config.runtime_target.task_type,
+                        request=prepared_request,
+                    ),
+                },
+                metadata={
+                    "client_id": self.client_id,
+                    "request_queue_name": request_queue_name,
+                    "owner_id": normalized_owner_id,
+                    "deployment_instance_id": normalized_deployment_instance_id,
+                    "response_queue_name": response_queue_name,
+                },
+            )
+            return self._wait_for_response(
+                request_id=request_id,
+                response_queue_name=response_queue_name,
+            )
+        except OperationTimeoutError:
+            # daemon 可能仍在读取共享输入；超时文件交由 retention cleanup 回收。
+            cleanup_staged_input = False
+            raise
+        finally:
+            if staged_root is not None and cleanup_staged_input:
+                self.dataset_storage.delete_tree(staged_root)
 
     def _wait_for_response(
         self,
@@ -244,16 +271,23 @@ class AsyncInferenceGatewayDispatcher:
         """持续消费 gateway 请求队列并把结果回写到专属响应队列。"""
 
         while not self._stop_event.is_set():
-            self._recover_expired_gateway_leases()
-            self._cleanup_response_queues_if_needed()
-            queue_message = self.queue_backend.claim_next(
-                queue_name=self.request_queue_name,
-                worker_id=self.worker_id,
-            )
-            if queue_message is None:
+            try:
+                self._recover_expired_gateway_leases()
+                self._cleanup_response_queues_if_needed()
+                queue_message = self.queue_backend.claim_next(
+                    queue_name=self.request_queue_name,
+                    worker_id=self.worker_id,
+                )
+                if queue_message is None:
+                    self._stop_event.wait(max(0.01, self.poll_interval_seconds))
+                    continue
+                self._process_queue_message(queue_message)
+            except Exception:  # noqa: BLE001 - 队列临时故障不能终止 dispatcher
+                LOGGER.exception(
+                    "async inference gateway 消费循环异常，将继续重试: queue=%s",
+                    self.request_queue_name,
+                )
                 self._stop_event.wait(max(0.01, self.poll_interval_seconds))
-                continue
-            self._process_queue_message(queue_message)
 
     def _process_queue_message(self, queue_message: QueueMessage) -> None:
         """处理一条 gateway 请求队列消息。"""

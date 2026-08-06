@@ -116,6 +116,8 @@ const status: TaskDeploymentProcessStatus = {
   display_name: 'Barcode sync deployment',
   runtime_mode: 'sync',
   desired_state: 'running',
+  observed_state: 'running',
+  generation: 1,
   process_state: 'running',
   process_id: 8123,
   auto_restart: true,
@@ -650,6 +652,7 @@ describe('DeploymentOperationsPage', () => {
       display_name: 'deployment-1',
       runtime_mode: 'sync',
       desired_state: 'stopped',
+      observed_state: 'stopped',
       process_state: 'stopped',
     })
     await flushPromises()

@@ -114,7 +114,9 @@ export interface TaskDeploymentProcessStatus {
   deployment_instance_id: string
   display_name: string
   runtime_mode: string
-  desired_state: string
+  desired_state: 'running' | 'stopped'
+  observed_state: 'stopped' | 'starting' | 'running' | 'degraded' | 'failed'
+  generation: number
   process_state: string
   process_id?: number | null
   auto_restart: boolean

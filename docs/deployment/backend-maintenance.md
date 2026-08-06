@@ -4,7 +4,7 @@
 
 本文档用于说明当前最小 maintenance CLI 的入口、可执行命令和与发布 launchers 的对应关系。
 
-当前 maintenance 还不是完整运维平台，但已经提供统一入口来查看版本、输出配置、校验运行时布局和组装 release 目录。
+当前 maintenance 还不是完整运维平台，但已经提供统一入口来查看版本、输出配置、迁移数据库、校验运行时布局和组装 release 目录。
 
 ## 当前入口
 
@@ -47,12 +47,20 @@
 - 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`，并按 profile 过滤不适用依赖
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
 - 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
-- 只有在显式提供 bundled Python 来源目录时，才会重建发行目录里的 `python/`
-- 如果当前发布目录原本没有 `python/`，且这次也没有显式提供 bundled Python 来源目录，才会创建空的 `python/` 目录，供后续手工补齐
-- 如需一次性重建 bundled Python，可在命令行传 `--bundled-python-source-dir <目录>`
+- 不自动复制或重建 Python 环境；兼容参数 `--bundled-python-source-dir` 已禁用，传入会明确失败
+- 如果当前发布目录原本没有 `python/`，会创建空目录供发布人员后续手工移动、重命名或复制已经准备好的环境
+- full 启动器只接受显式 `--python-executable` 或发布目录中的 `python/python.exe`，不会回退到系统 Python
 - 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`
 - 如果前端构建结果里没有 `runtime-config.json`，当前会优先使用 `runtime-config.local.json`，否则回退到 `runtime-config.template.json` 自动生成
 - 自动生成发行目录内可直接使用的 `manifests/release-profiles/<profile_id>.json`
+
+### migrate-database
+
+- 按 `config/backend-service.json` 中的数据库 URL 执行 Alembic `upgrade head`
+- 兼容历史上由 `create_all()` 建立但没有 `alembic_version` 的数据库
+- SQLite 在实际迁移前使用 backup API 生成包含 WAL 最新内容的一致性备份
+- schema 已经位于当前 head 时不会重复备份或写库
+- full 根启动器会在 daemon、service、worker 启动前自动执行，失败时禁止继续启动
 
 ### rebuild-pycache
 
@@ -74,6 +82,7 @@ conda activate amvision
 python -m backend.maintenance.main version --output text
 python -m backend.maintenance.main show-config --output json
 python -m backend.maintenance.main validate-layout --output json
+python -m backend.maintenance.main migrate-database --output text
 python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root ./release --force --output text
 python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root ./release --force --output text
 python -m backend.maintenance.main rebuild-pycache --output text
@@ -85,6 +94,7 @@ python -m backend.maintenance.main rebuild-pycache --clean-only --output text
 
 ```powershell
 .\launchers\maintenance\invoke-backend-maintenance.bat -- validate-layout --output text
+.\launchers\maintenance\invoke-backend-maintenance.bat -- migrate-database --output text
 .\launchers\maintenance\invoke-backend-maintenance.bat -- rebuild-pycache --output text
 .\launchers\maintenance\invoke-backend-maintenance.bat -- rebuild-pycache --python-package sqlalchemy --output text
 ```
@@ -97,6 +107,6 @@ python -m backend.maintenance.main rebuild-pycache --clean-only --output text
 
 ## 当前用途边界
 
-- 当前 maintenance 覆盖版本查看、配置输出、布局校验、release 目录组装、Workflow runtime 临时存储清理和 Python pycache 清理重建
-- 当前还没有正式接入数据库修复、文件修复或自定义节点修复命令
+- 当前 maintenance 覆盖版本查看、配置输出、数据库迁移、布局校验、release 目录组装、Workflow runtime 临时存储清理和 Python pycache 清理重建
+- 当前还没有正式接入通用数据库数据修复、文件修复或自定义节点修复命令
 - 后续如果增加修复类命令，应继续挂在 `backend.maintenance.main` 入口下，而不是再分散到多个临时脚本

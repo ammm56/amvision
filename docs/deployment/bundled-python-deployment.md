@@ -59,9 +59,10 @@
 - 首次组装只创建空 `python/`，复制完成后应至少存在 `python/python.exe`。
 - 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来。
 - 如果 release 组装失败，暂存的 `python/` 目录会恢复回发布目录，避免失败时丢失原有运行时。
-- 只有在显式提供 bundled Python 来源目录时，才会重建发布目录里的 `python/`。
-- 如需一次性重建 bundled Python，可通过 `python -m backend.maintenance.main assemble-release --bundled-python-source-dir <目录>` 显式指定来源。
-- 如果当前发布目录原本没有 `python/`，且这次也没有显式提供 bundled Python 来源目录，组装阶段才会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`。
+- `assemble-release` 不接受 Python 来源目录，也不会复制或重建 Python 环境；兼容参数 `--bundled-python-source-dir` 一旦传入会立即报错，避免误触发大体量复制。
+- 如需更换 bundled Python，应先停止发布目录中的全部进程，再由发布人员在同一磁盘上直接重命名/移动已经准备好的环境目录；必须跨磁盘时才手工复制。
+- 如果当前发布目录原本没有 `python/`，组装阶段会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`。
+- full 启动器强制要求 `python/python.exe`；缺失时直接失败，不回退到系统 Python 或当前 conda 环境。
 
 ### 4. 启动 backend-service
 

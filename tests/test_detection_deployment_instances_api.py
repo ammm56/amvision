@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
 
+from backend.service.application.errors import OperationTimeoutError
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
@@ -25,6 +26,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.infrastructure.persistence.deployment_repository import (
     SqlAlchemyDeploymentInstanceRepository,
+)
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessSupervisor,
 )
 from tests.api_test_support import build_test_headers
 from tests.yolox_test_support import (
@@ -311,7 +315,7 @@ def test_detection_deployment_event_replay_does_not_depend_on_supervisor_instanc
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
                 headers=_build_headers(),
             )
-            assert async_start_response.status_code == 200
+            assert async_start_response.status_code == 200, async_start_response.text
 
             client.app.state.detection_sync_deployment_process_supervisor = object()
             client.app.state.detection_async_deployment_process_supervisor = object()
@@ -469,6 +473,120 @@ def test_create_openvino_deployment_instance_allows_fp16_on_gpu_or_npu(
         assert snapshot["runtime_artifact_file_type"] == YOLOX_OPENVINO_IR_FILE
     finally:
         session_factory.engine.dispose()
+
+
+def test_stopped_detection_runtime_status_does_not_contact_daemon(
+    tmp_path: Path,
+) -> None:
+    """验证已确认 stopped 的实例只读持久化状态，不探测 daemon。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "model_version_id": model_version_id,
+                    "display_name": "stopped persistent status",
+                },
+            )
+            deployment_instance_id = create_response.json()["deployment_instance_id"]
+            client.app.state.detection_sync_deployment_process_supervisor = (
+                _UnavailableDeploymentSupervisor()
+            )
+            status_response = client.get(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status",
+                headers=_build_headers(),
+            )
+            health_response = client.get(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health",
+                headers=_build_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    for response in (status_response, health_response):
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["desired_state"] == "stopped"
+        assert payload["observed_state"] == "stopped"
+        assert payload["process_state"] == "stopped"
+        assert payload["process_id"] is None
+        assert payload["last_error"] is None
+
+
+def test_detection_runtime_status_remains_readable_when_daemon_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """验证 daemon 故障时状态和 health 仍返回持久化期望状态。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    model_version_id = _seed_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    try:
+        with client:
+            create_response = client.post(
+                "/api/v1/models/detection/deployment-instances",
+                headers=_build_headers(),
+                json={
+                    "project_id": "project-1",
+                    "model_type": "yolox",
+                    "model_version_id": model_version_id,
+                    "display_name": "daemon unavailable status",
+                },
+            )
+            deployment_instance_id = create_response.json()["deployment_instance_id"]
+            start_response = client.post(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/start",
+                headers=_build_headers(),
+            )
+            client.app.state.detection_sync_deployment_process_supervisor = (
+                _UnavailableDeploymentSupervisor()
+            )
+            status_response = client.get(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/status",
+                headers=_build_headers(),
+            )
+            health_response = client.get(
+                f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/sync/health",
+                headers=_build_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_response.status_code == 201
+    assert start_response.status_code == 200
+    assert status_response.status_code == 200
+    assert health_response.status_code == 200
+    for response in (status_response, health_response):
+        payload = response.json()
+        assert payload["desired_state"] == "running"
+        assert payload["observed_state"] == "running"
+        assert payload["process_state"] == "unavailable"
+        assert payload["process_id"] is None
+        assert "daemon 不可达" in payload["last_error"]
+
+
+class _UnavailableDeploymentSupervisor(DeploymentProcessSupervisor):
+    """模拟控制队列无法连接到 inference daemon。"""
+
+    def __init__(self) -> None:
+        """不创建真实 supervisor 资源。"""
+
+    def get_status(self, config):
+        raise OperationTimeoutError("control queue timeout")
+
+    def get_health(self, config):
+        raise OperationTimeoutError("control queue timeout")
 
 
 def test_create_openvino_gpu_deployment_keeps_fp32_artifact_with_fp16_execution_hint(

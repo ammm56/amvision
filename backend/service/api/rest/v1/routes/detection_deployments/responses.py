@@ -108,8 +108,15 @@ class DetectionDeploymentProcessStatusResponse(BaseModel):
     deployment_instance_id: str = Field(description="DeploymentInstance id")
     display_name: str = Field(description="展示名称")
     runtime_mode: str = Field(description="运行时通道；sync 或 async")
-    desired_state: str = Field(description="监督器期望状态；running 或 stopped")
-    process_state: str = Field(description="当前进程状态；running、stopped 或 crashed")
+    desired_state: str = Field(description="持久化期望状态；running 或 stopped")
+    observed_state: str = Field(
+        default="stopped",
+        description="controller 持久化观测状态；starting、running、degraded、failed 或 stopped",
+    )
+    generation: int = Field(default=0, description="期望状态变更代次")
+    process_state: str = Field(
+        description="当前进程状态；running、stopped、crashed 或 unavailable"
+    )
     process_id: int | None = Field(default=None, description="当前子进程 pid")
     auto_restart: bool = Field(description="是否启用崩溃自动拉起")
     restart_count: int = Field(description="已经发生的自动拉起次数当前安全整数窗口值")
@@ -200,6 +207,7 @@ def build_detection_process_status_response(
     view: DetectionDeploymentInstanceView,
     process_status: DeploymentProcessStatus,
     runtime_mode: str,
+    runtime_state: object | None = None,
 ) -> DetectionDeploymentProcessStatusResponse:
     """把 deployment 视图与进程状态组合为状态响应。"""
 
@@ -207,7 +215,9 @@ def build_detection_process_status_response(
         deployment_instance_id=view.deployment_instance_id,
         display_name=view.display_name,
         runtime_mode=runtime_mode,
-        desired_state=process_status.desired_state,
+        desired_state=getattr(runtime_state, "desired_state", process_status.desired_state),
+        observed_state=getattr(runtime_state, "observed_state", process_status.process_state),
+        generation=int(getattr(runtime_state, "generation", 0)),
         process_state=process_status.process_state,
         process_id=process_status.process_id,
         auto_restart=process_status.auto_restart,
@@ -223,6 +233,7 @@ def build_detection_runtime_health_response(
     view: DetectionDeploymentInstanceView,
     process_health: DeploymentProcessHealth,
     runtime_mode: str,
+    runtime_state: object | None = None,
 ) -> DetectionDeploymentRuntimeHealthResponse:
     """把 deployment 视图与进程健康状态组合为详细响应。"""
 
@@ -230,7 +241,9 @@ def build_detection_runtime_health_response(
         deployment_instance_id=view.deployment_instance_id,
         display_name=view.display_name,
         runtime_mode=runtime_mode,
-        desired_state=process_health.desired_state,
+        desired_state=getattr(runtime_state, "desired_state", process_health.desired_state),
+        observed_state=getattr(runtime_state, "observed_state", process_health.process_state),
+        generation=int(getattr(runtime_state, "generation", 0)),
         process_state=process_health.process_state,
         process_id=process_health.process_id,
         auto_restart=process_health.auto_restart,

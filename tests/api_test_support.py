@@ -25,7 +25,11 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.settings import (
+    BackendServiceInferenceDaemonConfig,
+    BackendServiceSettings,
+    BackendServiceTaskManagerConfig,
+)
 
 
 _VALID_TEST_IMAGE_BASE64 = (
@@ -103,6 +107,11 @@ def create_api_test_context(
         database_name=database_name,
     )
     settings = BackendServiceSettings(
+        # API 单元测试在同一进程内替换 supervisor/registry；正式发布配置
+        # 使用 daemon，但测试必须显式选择 embedded，不能隐式读取现场 JSON。
+        inference_daemon=BackendServiceInferenceDaemonConfig(
+            runtime_owner="embedded"
+        ),
         local_buffer_broker=LocalBufferBrokerSettings(
             enabled=enable_local_buffer_broker,
             root_dir=str(tmp_path / "local-buffer-broker"),

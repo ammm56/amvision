@@ -11,7 +11,7 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parents[1]
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import resolve_app_root, run_python_module
+from common import resolve_app_root, run_python_module  # noqa: E402
 
 
 def build_argument_parser() -> argparse.ArgumentParser:

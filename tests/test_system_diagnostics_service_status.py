@@ -40,3 +40,70 @@ def test_zeromq_service_status_requires_dependency_and_adapter(
         dependency_installed and adapter_configured
     )
     assert summary["adapter_configured"] is adapter_configured
+
+
+def test_inference_daemon_diagnostics_reports_real_ping_result() -> None:
+    """验证 daemon 模式不会把控制客户端存在误报为 daemon 可用。"""
+
+    class _Client:
+        def ping(self, *, timeout_seconds: float):
+            assert timeout_seconds == 1.0
+            return {"ready": True}
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                detection_sync_deployment_process_supervisor=_Client()
+            )
+        )
+    )
+    settings = SimpleNamespace(
+        inference_daemon=SimpleNamespace(
+            runtime_owner="daemon",
+            service_id="inference-daemon-main",
+        )
+    )
+
+    summary = diagnostics._build_inference_daemon_summary(
+        request=request,
+        settings=settings,
+    )
+
+    assert summary == {
+        "runtime_owner": "daemon",
+        "service_id": "inference-daemon-main",
+        "independent_process": True,
+        "status": "ok",
+        "reachable": True,
+    }
+
+
+def test_inference_daemon_diagnostics_degrades_when_ping_fails() -> None:
+    """验证 daemon 不可达时诊断仍返回结构化降级状态。"""
+
+    class _Client:
+        def ping(self, *, timeout_seconds: float):
+            raise TimeoutError(str(timeout_seconds))
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                detection_sync_deployment_process_supervisor=_Client()
+            )
+        )
+    )
+    settings = SimpleNamespace(
+        inference_daemon=SimpleNamespace(
+            runtime_owner="daemon",
+            service_id="inference-daemon-main",
+        )
+    )
+
+    summary = diagnostics._build_inference_daemon_summary(
+        request=request,
+        settings=settings,
+    )
+
+    assert summary["status"] == "unavailable"
+    assert summary["reachable"] is False
+    assert summary["error_type"] == "TimeoutError"

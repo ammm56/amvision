@@ -57,7 +57,7 @@ class ReleaseAssemblyRequest:
     - profile_id：要组装的 release profile id。
     - output_root：release 输出根目录。
     - overwrite：目标目录已存在时是否允许覆盖。
-    - bundled_python_source_dir：可选的 bundled Python 来源目录。
+    - bundled_python_source_dir：兼容字段；自动复制大体量 Python 已禁用。
     - frontend_dist_dir：可选的前端构建产物目录。
     - frontend_runtime_config_source_file：优先复制为 runtime-config.json 的配置文件。
     - frontend_runtime_config_template_file：找不到 source_file 时使用的模板文件。
@@ -87,7 +87,7 @@ class ReleaseAssemblyResult:
     - release_manifest_path：发行目录里的 release manifest 路径。
     - requirements_path：发行目录里的 requirements.txt 路径。
     - bundled_python_dir：发行目录里的 bundled Python 目录。
-    - bundled_python_mode：bundled Python 的来源模式，支持 copied-from-source、preserved-existing 或 placeholder-empty。
+    - bundled_python_mode：bundled Python 的来源模式，仅支持 preserved-existing 或 placeholder-empty。
     - generated_root_launchers：发行目录根目录的一键启动脚本列表。
     - worker_profile_ids：本次打入发行目录的 worker profile id 列表。
     - generated_worker_launchers：自动生成的 worker wrapper 列表。
@@ -215,6 +215,14 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
         SOURCE_LAUNCHERS_DIR / "maintenance" / "invoke-backend-maintenance.bat",
         release_dir / "launchers" / "maintenance" / "invoke-backend-maintenance.bat",
     )
+    _copy_file(
+        SOURCE_LAUNCHERS_DIR / "inference" / "start_inference_daemon.py",
+        release_dir / "launchers" / "inference" / "start_inference_daemon.py",
+    )
+    _copy_file(
+        SOURCE_LAUNCHERS_DIR / "inference" / "start-inference-daemon.bat",
+        release_dir / "launchers" / "inference" / "start-inference-daemon.bat",
+    )
 
 
 def _copy_full_root_launchers(release_dir: Path, *, target_os: str) -> tuple[Path, ...]:
@@ -274,15 +282,18 @@ def _build_worker_windows_wrapper(profile_id: str) -> str:
     return (
         "@echo off\r\n"
         "setlocal\r\n"
+        "set \"PYTHONUTF8=1\"\r\n"
+        "set \"PYTHONIOENCODING=utf-8\"\r\n"
         "set \"SCRIPT_DIR=%~dp0\"\r\n"
         "set \"PYTHON_EXE=%AMVISION_PYTHON_EXECUTABLE%\"\r\n"
-        "if defined PYTHON_EXE goto run\r\n"
-        "if exist \"%SCRIPT_DIR%..\\..\\python\\python.exe\" set \"PYTHON_EXE=%SCRIPT_DIR%..\\..\\python\\python.exe\"\r\n"
-        "if defined PYTHON_EXE goto run\r\n"
-        "set \"PYTHON_EXE=python\"\r\n"
-        ":run\r\n"
+        "if not defined PYTHON_EXE set \"PYTHON_EXE=%SCRIPT_DIR%..\\..\\python\\python.exe\"\r\n"
+        "if not exist \"%PYTHON_EXE%\" (\r\n"
+        "  echo [ERROR] bundled Python not found: \"%PYTHON_EXE%\" 1>&2\r\n"
+        "  exit /b 2\r\n"
+        ")\r\n"
         f"\"%PYTHON_EXE%\" \"%SCRIPT_DIR%start_backend_worker.py\" --worker-profile-file \"manifests/worker-profiles/{profile_id}.json\" %*\r\n"
-        "endlocal\r\n"
+        "set \"EXIT_CODE=%ERRORLEVEL%\"\r\n"
+        "endlocal & exit /b %EXIT_CODE%\r\n"
     )
 
 
@@ -670,25 +681,6 @@ def _recover_preserved_python_dir(
     shutil.rmtree(preserved_python_temp_dir, ignore_errors=True)
 
 
-def _copy_bundled_python_dir(
-    release_dir: Path,
-    *,
-    source_dir: Path,
-) -> Path:
-    """把指定 Python 运行时目录复制到发行目录。"""
-
-    if not source_dir.is_dir():
-        raise FileNotFoundError(f"bundled Python 来源目录不存在: {source_dir}")
-
-    release_python_dir = release_dir / "python"
-    _copy_directory_tree(
-        source_dir,
-        release_python_dir,
-        ignore=_ignore_bundled_python_copy,
-    )
-    return release_python_dir
-
-
 def _prepare_bundled_python_dir(release_dir: Path) -> Path:
     """创建发行目录中的空 python 目录。
 
@@ -707,8 +699,6 @@ def _prepare_bundled_python_dir(release_dir: Path) -> Path:
 def _materialize_bundled_python_dir(
     release_dir: Path,
     preserved_python_temp_dir: Path | None,
-    *,
-    bundled_python_source_dir: Path | None,
 ) -> tuple[Path, str]:
     """为发行目录准备 bundled Python，并返回来源模式。
 
@@ -720,12 +710,6 @@ def _materialize_bundled_python_dir(
     - tuple[Path, str]：发行目录中的 python 路径和来源模式。
     """
 
-    if bundled_python_source_dir is not None:
-        copied_python_dir = _copy_bundled_python_dir(
-            release_dir,
-            source_dir=bundled_python_source_dir,
-        )
-        return copied_python_dir, "copied-from-source"
     if preserved_python_temp_dir is not None:
         restored_python_dir = _restore_preserved_python_dir(release_dir, preserved_python_temp_dir)
         return restored_python_dir, "preserved-existing"
@@ -798,6 +782,11 @@ def _resolve_release_target(
 def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     """按指定 release profile 组装发行目录。"""
 
+    if request.bundled_python_source_dir is not None:
+        raise ValueError(
+            "assemble-release 不复制 bundled Python；请保留现有 release/python，"
+            "或在首次组装后手工移动/复制完整 Python 目录"
+        )
     requested_profile_id = request.profile_id.strip()
     if not requested_profile_id:
         raise ValueError("release profile id 不能为空")
@@ -813,7 +802,11 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         if not request.overwrite:
             raise FileExistsError(f"release 目录已存在: {release_dir}")
         preserved_python_temp_dir = _stash_existing_python_dir(release_dir)
-        shutil.rmtree(release_dir)
+        try:
+            shutil.rmtree(release_dir)
+        except Exception:
+            _recover_preserved_python_dir(release_dir, preserved_python_temp_dir)
+            raise
     release_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -880,15 +873,9 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         if bool(artifacts_section.get("include_frontend", False)):
             _copy_frontend_assets(release_dir, request=request)
 
-        bundled_python_source_dir = (
-            request.bundled_python_source_dir.resolve()
-            if request.bundled_python_source_dir is not None
-            else None
-        )
         bundled_python_dir, bundled_python_mode = _materialize_bundled_python_dir(
             release_dir,
             preserved_python_temp_dir,
-            bundled_python_source_dir=bundled_python_source_dir,
         )
         placeholder_dirs = _materialize_placeholder_dirs(
             release_dir,
@@ -910,7 +897,7 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                 "python_dir": "python",
                 "mode": bundled_python_mode,
                 "included": bundled_python_mode != "placeholder-empty",
-                "managed_manually": bundled_python_mode != "copied-from-source",
+                "managed_manually": True,
             },
             "service": {
                 "python_launcher": "launchers/service/start_backend_service.py",
@@ -918,6 +905,12 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                 "hosted_task_manager_enabled": source_release_profile["service"][
                     "hosted_task_manager_enabled"
                 ],
+            },
+            "inference_daemon": {
+                "module": "backend.inference_daemon.main",
+                "python_launcher": "launchers/inference/start_inference_daemon.py",
+                "windows_launcher": "launchers/inference/start-inference-daemon.bat",
+                "logs_file": "logs/full-stack/inference-daemon.log",
             },
             "workers": worker_entries,
             "maintenance": {
