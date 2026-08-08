@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -201,6 +203,21 @@ class DeploymentSourceModelDetailResponse(PlatformBaseModelDetailResponse):
 
     字段与平台基础模型详情保持一致，用于部署页选择 ModelVersion 或 ModelBuild。
     """
+
+
+class TrainingNumericParameterSpecResponse(BaseModel):
+    """描述训练数值参数的公开输入精度。"""
+
+    key: str = Field(description="前端表单稳定字段名")
+    schema_path: str = Field(description="参数在严格训练 schema 中的路径")
+    value_kind: Literal["int", "float"] = Field(description="数值类型")
+    minimum: int | float = Field(description="最小可输入值")
+    maximum: int | float = Field(description="最大可输入值")
+    step: int | float = Field(gt=0, description="输入步长和 API multipleOf")
+    decimals: int = Field(ge=0, le=12, description="前端显示的小数位数")
+    default_value: int | float = Field(description="表单默认值")
+
+
 class TrainingParameterSchemaItemResponse(BaseModel):
     """描述一组 task/model 训练参数协议。"""
 
@@ -209,6 +226,9 @@ class TrainingParameterSchemaItemResponse(BaseModel):
     schema_name: str
     parameter_schema: dict[str, object]
     default_parameters: dict[str, object]
+    numeric_fields: list[TrainingNumericParameterSpecResponse] = Field(
+        description="表单使用的数值范围、步长和默认值"
+    )
 
 
 class TrainingParameterSchemaCatalogResponse(BaseModel):

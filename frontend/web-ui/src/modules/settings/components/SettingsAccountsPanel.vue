@@ -94,7 +94,7 @@
           </header>
           <div v-if="showTokenForm" class="settings-inline-form">
             <label class="field"><span>{{ t('settingsDiagnostics.fields.tokenName') }}</span><input v-model.trim="tokenForm.tokenName" autocomplete="off" /></label>
-            <label class="field"><span>{{ t('settingsDiagnostics.fields.ttlHours') }}</span><input v-model.number="tokenForm.ttlHours" type="number" min="1" :placeholder="t('settingsDiagnostics.placeholders.permanentToken')" /></label>
+            <label class="field"><span>{{ t('settingsDiagnostics.fields.ttlHours') }}</span><input v-model.number="tokenForm.ttlHours" type="number" min="1" step="1" :placeholder="t('settingsDiagnostics.placeholders.permanentToken')" /></label>
             <Button variant="primary" :disabled="!canWrite || tokensLoading" :loading="tokensLoading" @click="createToken">{{ t('settingsDiagnostics.actions.createToken') }}</Button>
           </div>
           <div class="resource-table settings-account-token-table">

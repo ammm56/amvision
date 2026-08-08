@@ -11,7 +11,10 @@ import {
   normalizeTrainingParameterNumber,
   validateTrainingModelLayerValues,
 } from './training-parameter-support'
-import type { ModelTaskType } from './services/model.service'
+import type {
+  ModelTaskType,
+  TrainingParameterSchemaItem,
+} from './services/model.service'
 
 function fieldKeys(taskType: ModelTaskType, modelType: string): string[] {
   return getModelLayerTrainingFields(taskType, modelType).map((field) => field.key)
@@ -27,7 +30,123 @@ function defaultValues(taskType: ModelTaskType, modelType: string): Record<strin
   return getDefaultTrainingModelParameterValues(taskType, modelType)
 }
 
+const supportedTrainingPairs: ReadonlyArray<readonly [ModelTaskType, string]> = [
+  ['detection', 'yolox'],
+  ['detection', 'yolov8'],
+  ['detection', 'yolo11'],
+  ['detection', 'yolo26'],
+  ['detection', 'rfdetr'],
+  ['classification', 'yolov8'],
+  ['classification', 'yolo11'],
+  ['classification', 'yolo26'],
+  ['segmentation', 'yolov8'],
+  ['segmentation', 'yolo11'],
+  ['segmentation', 'yolo26'],
+  ['segmentation', 'rfdetr'],
+  ['pose', 'yolov8'],
+  ['pose', 'yolo11'],
+  ['pose', 'yolo26'],
+  ['obb', 'yolov8'],
+  ['obb', 'yolo11'],
+  ['obb', 'yolo26'],
+]
+
+function buildSchemaItem(
+  taskType: ModelTaskType,
+  modelType: string,
+  overrides: Record<string, Partial<TrainingParameterSchemaItem['numeric_fields'][number]>> = {},
+): TrainingParameterSchemaItem {
+  const fields = getModelLayerTrainingFields(taskType, modelType)
+  return {
+    task_type: taskType,
+    model_type: modelType,
+    schema_name: `${taskType}-${modelType}`,
+    parameter_schema: {},
+    default_parameters: {},
+    numeric_fields: fields
+      .filter((field) => field.inputKind === 'number')
+      .map((field) => ({
+        key: field.key,
+        schema_path: field.key,
+        value_kind: field.valueKind as 'int' | 'float',
+        minimum: field.min!,
+        maximum: field.max!,
+        step: field.step!,
+        decimals: 0,
+        default_value: Number(field.defaultValue),
+        ...overrides[field.key],
+      })),
+  }
+}
+
 describe('training parameter augmentation support', () => {
+  it('keeps every numeric default valid under native HTML constraints', () => {
+    const invalidDefaults: string[] = []
+    for (const [taskType, modelType] of supportedTrainingPairs) {
+      for (const field of getModelLayerTrainingFields(taskType, modelType)) {
+        if (field.inputKind !== 'number' || !field.defaultValue) continue
+        const input = document.createElement('input')
+        input.type = 'number'
+        if (field.min !== undefined) input.min = String(field.min)
+        if (field.max !== undefined) input.max = String(field.max)
+        if (field.step !== undefined) input.step = String(field.step)
+        input.value = field.defaultValue
+        if (!input.checkValidity()) {
+          invalidDefaults.push(
+            `${taskType}/${modelType}/${field.key}: ${input.validationMessage}`,
+          )
+        }
+      }
+    }
+
+    expect(invalidDefaults).toEqual([])
+  })
+
+  it('uses explicit hundredth steps for positive YOLO scale ranges', () => {
+    const scaleKeys = new Set([
+      'mosaic_scale_min',
+      'mosaic_scale_max',
+      'mixup_scale_min',
+      'mixup_scale_max',
+    ])
+    for (const [taskType, modelType] of supportedTrainingPairs) {
+      for (const field of getModelLayerTrainingFields(taskType, modelType)) {
+        if (!scaleKeys.has(field.key)) continue
+        expect(field.min, `${taskType}/${modelType}/${field.key}`).toBe(0.01)
+        expect(field.step, `${taskType}/${modelType}/${field.key}`).toBe(0.01)
+      }
+    }
+  })
+
+  it('uses backend numeric specs as the rendered constraint source', () => {
+    const schema = buildSchemaItem('detection', 'yolo26', {
+      mosaic_scale_min: {
+        minimum: 0.02,
+        maximum: 8,
+        step: 0.02,
+        decimals: 2,
+        default_value: 0.6,
+      },
+    })
+    const field = getModelLayerTrainingFields('detection', 'yolo26', schema)
+      .find((item) => item.key === 'mosaic_scale_min')!
+
+    expect(field).toMatchObject({
+      min: 0.02,
+      max: 8,
+      step: 0.02,
+      defaultValue: '0.6',
+    })
+  })
+
+  it('rejects a backend numeric catalog that does not cover the rendered form', () => {
+    const schema = buildSchemaItem('detection', 'yolo26')
+    schema.numeric_fields = schema.numeric_fields.filter((field) => field.key !== 'mosaic_scale_min')
+
+    expect(() => getModelLayerTrainingFields('detection', 'yolo26', schema))
+      .toThrow('训练参数目录缺少数值字段')
+  })
+
   it('builds training device options from backend device diagnostics', () => {
     expect(buildTrainingDeviceOptions(null)).toEqual([
       { label: '自动选择（默认）', value: '' },
@@ -291,6 +410,17 @@ describe('training parameter augmentation support', () => {
 
     expect(validateTrainingModelLayerValues('segmentation', 'yolo26', values))
       .toContain('mosaic_scale')
+  })
+
+  it('rejects values outside the declared decimal step grid', () => {
+    const values = defaultValues('detection', 'yolo26')
+    values.mosaic_scale_min = '0.505'
+
+    expect(validateTrainingModelLayerValues('detection', 'yolo26', values))
+      .toContain('0.01')
+
+    values.mosaic_scale_min = '0.5'
+    expect(validateTrainingModelLayerValues('detection', 'yolo26', values)).toBeNull()
   })
 
   it('normalizes classification numeric inputs to their safe bounds on blur', () => {

@@ -49,7 +49,9 @@
       <input
         v-else-if="isNumber(field)"
         type="number"
-        step="any"
+        :min="readWorkflowNumericParameterInputAttributes(field).min"
+        :max="readWorkflowNumericParameterInputAttributes(field).max"
+        :step="readWorkflowNumericParameterInputAttributes(field).step"
         :value="readTextValue(node, field)"
         :disabled="field.readonly"
         @change="emit('update-number', node, field, $event)"
@@ -80,6 +82,7 @@ import { useI18n } from 'vue-i18n'
 import SelectField from '@/shared/ui/components/Select.vue'
 import WorkflowGraphCheckbox from './WorkflowGraphCheckbox.vue'
 import { isModelInferenceDeploymentField } from '../parameters/useWorkflowDeploymentInstancePicker'
+import { readWorkflowNumericParameterInputAttributes } from '../parameters/numeric-parameter-input'
 import type { NodeDefinition, NodeParameterUiField, NodePortDefinition, WorkflowGraphNode } from '../types'
 
 type SelectValue = string | number | boolean | null

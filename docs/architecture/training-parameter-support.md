@@ -65,7 +65,39 @@
 | pose | YOLOv8 / YOLO11 / YOLO26 | `YoloPoseTrainingParameters` |
 | OBB | YOLOv8 / YOLO11 / YOLO26 | `YoloObbTrainingParameters` |
 
-完整机器可读目录由 `GET /api/v1/models/training-parameter-schemas` 返回。目录包含 18 个 `task_type / model_type` 组合、JSON Schema 和默认参数，供前端、SDK 和外部集成读取。
+完整机器可读目录由 `GET /api/v1/models/training-parameter-schemas` 返回。目录包含 18 个 `task_type / model_type` 组合、JSON Schema、默认参数和 `numeric_fields` 数值输入规格，供前端、SDK 和外部集成读取。前端运行时以该目录为数值范围、步长和默认值的唯一来源；页面内只保留标签、分组、选项和依赖关系等展示规则。
+
+## 数值输入精度
+
+每个公开数值字段都必须声明确定的输入网格。JSON Schema 使用 `multipleOf` 表达 API 精度，`numeric_fields[].step` 使用相同值表达浏览器输入步长。禁止用 `step=any` 绕过精度校验，也禁止用任意 epsilon 伪造 `gt=0` 的输入下限。
+
+`numeric_fields` 中每个字段包含：
+
+| 字段 | 含义 |
+| --- | --- |
+| `key` | 前端表单使用的稳定扁平字段名 |
+| `schema_path` | 字段在严格分组参数中的完整路径 |
+| `value_kind` | `int` 或 `float` |
+| `minimum` / `maximum` | 页面和 API 共用的闭区间 |
+| `step` | 页面步进值，与 JSON Schema `multipleOf` 一致 |
+| `decimals` | 展示该步长所需的小数位数 |
+| `default_value` | 当前模型和任务的表单默认值 |
+
+当执行 schema 允许 `null`，但页面仍需要稳定初值时，初值通过字段的 `x-ui-default` JSON Schema 扩展声明；目录构建器统一读取该元数据，不按字段名写特殊分支。当前 `optimizer=auto` 下的 YOLO 学习率使用这一规则，提交时仍按优化器条件决定是否进入执行参数。
+
+当前精度规则按参数语义确定，不按区间宽度简单推算：
+
+| 参数类别 | 步长 |
+| --- | ---: |
+| epoch、worker、标签数、top-k、检测数 | `1` |
+| loss、matching、角度、gradient clip | `0.1` |
+| 概率、普通比例、Mosaic/MixUp scale | `0.01` |
+| detection 高精度置信度 | `0.001` |
+| perspective、weight decay、最小学习率比例 | `0.0001` |
+| YOLO 学习率 | `0.00001` |
+| RF-DETR 学习率 | `0.000001` |
+
+严格正缩放区间的最小可输入值为 `0.01`，步长同为 `0.01`。因此 `0.5`、`0.51` 和 `1.5` 都是有效值，`0`、`0.505` 和超出范围的值会在浏览器和任务入队前得到一致拒绝。新增数值字段时，目录构建和测试会拒绝缺少闭区间、步长、默认值或前端字段映射的实现。
 
 ## 通用运行参数
 
@@ -142,13 +174,13 @@ RF-DETR 不接收 YOLO 增强字段，使用：
 ## 数值和资源边界
 
 - 所有 float 禁止 NaN 和正负 Infinity。
-- 学习率必须大于 0 且不大于 1。
+- YOLO 学习率范围为 `0.00001..1`，RF-DETR 学习率范围为 `0.000001..1`。
 - weight decay 和最小学习率比例限制在 `0..1`。
 - 概率和置信度限制在 `0..1`。
 - DataLoader worker 最大 64，预取因子最大 32。
 - gradient accumulation 最大 1024。
 - 匹配 top-k 最大 1000。
-- RF-DETR 验证最大检测数限制在 `100..100000`。
+- RF-DETR 验证最大检测数限制在 `100..10000`。
 - loss/cost 权重限制在 `0..1000`。
 
 这些边界用于阻止长期运行中的整数无界增长、异常显存/内存放大和非有限值污染指标。模型输入尺寸的几何与对齐规则见 [模型训练输入尺寸规则](model-training-input-size-rules.md)。

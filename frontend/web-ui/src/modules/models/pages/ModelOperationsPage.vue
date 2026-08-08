@@ -177,11 +177,13 @@ import {
 import {
   listDeploymentSourceModels,
   listPlatformBaseModels,
+  listTrainingParameterSchemas,
   type ConversionTargetKey,
   type DeploymentSourceModelSummary,
   type ModelTaskType,
   type PlatformBaseModelDetail,
   type PlatformBaseModelSummary,
+  type TrainingParameterSchemaItem,
 } from '../services/model.service'
 import { useProjectStore } from '@/app/stores/project.store'
 import { useSessionStore } from '@/app/stores/session.store'
@@ -234,6 +236,7 @@ const baseConversionTargetOptions: Array<{ label: string; value: ConversionTarge
 const baseModels = ref<PlatformBaseModelSummary[]>([])
 const projectSourceModels = ref<DeploymentSourceModelSummary[]>([])
 const trainingDatasetExports = ref<DatasetExportSummary[]>([])
+const trainingParameterSchemas = ref<TrainingParameterSchemaItem[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const selectedTaskType = ref<ModelTaskType>('detection')
@@ -348,6 +351,14 @@ const resolvedTrainingModelType = computed(
 const resolvedTrainingModelScale = computed(
   () => trainingSelectedModelSummary.value?.model_scale?.trim() ?? '',
 )
+const currentTrainingParameterSchema = computed<TrainingParameterSchemaItem | null>(() => {
+  const modelType = resolvedTrainingModelType.value.toLowerCase()
+  if (!modelType) return null
+  return trainingParameterSchemas.value.find((item) => (
+    item.task_type === selectedTaskType.value
+    && item.model_type.toLowerCase() === modelType
+  )) ?? null
+})
 
 const {
   outputModelName,
@@ -376,6 +387,7 @@ const {
   selectedTaskType,
   resolvedTrainingModelType,
   resolvedTrainingModelScale,
+  trainingParameterSchema: currentTrainingParameterSchema,
   translate: (key, params) => t(key, params ?? {}),
 })
 
@@ -411,6 +423,7 @@ const {
   trainingDisplayName,
   trainingModelParameterValues,
   trainingAugmentationEnabled,
+  trainingParameterSchema: currentTrainingParameterSchema,
   trainingExportFormatsByTaskAndModelType,
   alignTrainingInputSizeForSubmit,
   refreshTrainingTasks,
@@ -486,7 +499,7 @@ async function refreshPage(): Promise<boolean> {
   loading.value = true
   errorMessage.value = null
   try {
-    const [models, sourceModels, datasetExports] = await Promise.all([
+    const [models, sourceModels, datasetExports, parameterCatalog] = await Promise.all([
       listPlatformBaseModels(taskType),
       projectId
         ? listDeploymentSourceModels(projectId, taskType)
@@ -494,6 +507,7 @@ async function refreshPage(): Promise<boolean> {
       projectId
         ? listProjectDatasetExports(projectId, taskType, 'completed')
         : Promise.resolve<DatasetExportSummary[]>([]),
+      listTrainingParameterSchemas(taskType),
       refreshTaskLists(),
     ])
     if (
@@ -503,9 +517,24 @@ async function refreshPage(): Promise<boolean> {
     ) {
       return false
     }
+    if (parameterCatalog.protocol_version !== 1) {
+      throw new Error(`不支持的训练参数协议版本: ${parameterCatalog.protocol_version}`)
+    }
+    const catalogModelTypes = new Set(
+      parameterCatalog.items.map((item) => item.model_type.toLowerCase()),
+    )
+    const missingModelTypes = [...new Set(
+      models
+        .map((model) => model.model_type.toLowerCase())
+        .filter((modelType) => !catalogModelTypes.has(modelType)),
+    )]
+    if (missingModelTypes.length > 0) {
+      throw new Error(`训练参数目录缺少模型: ${missingModelTypes.join(', ')}`)
+    }
     baseModels.value = models
     projectSourceModels.value = sourceModels
     trainingDatasetExports.value = datasetExports
+    trainingParameterSchemas.value = parameterCatalog.items
     ensureSelectedModelStillVisible()
     ensureTrainingDatasetExportSelectionVisible()
     return true

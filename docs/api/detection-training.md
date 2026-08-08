@@ -104,7 +104,7 @@ YOLOX 参数分为 runtime、data、optimization、evaluation 和 augmentation�
 }
 ```
 
-YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值和数值范围由 `GET /api/v1/models/training-parameter-schemas`、Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供。未知分组、未知字段、其他模型族的字段和旧扁平参数会在入队前返回 422。
+YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数值范围和输入步长由 `GET /api/v1/models/training-parameter-schemas` 的 `default_parameters`、`parameter_schema` 和 `numeric_fields` 提供；其中 `numeric_fields[].step` 与 JSON Schema `multipleOf` 一致。Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供同一规则的说明。未知分组、未知字段、其他模型族的字段、超出步长精度的数值和旧扁平参数会在入队前返回 422。
 
 当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 

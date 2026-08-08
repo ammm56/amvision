@@ -30,6 +30,9 @@ from backend.service.application.runtime.deployment.runtime_capabilities import 
 from backend.service.api.rest.v1.routes.training_parameter_schemas import (
     TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL,
 )
+from backend.service.api.rest.v1.routes.training_parameter_catalog import (
+    build_training_numeric_parameter_specs,
+)
 
 
 models_router = APIRouter(prefix="/models", tags=["models"])
@@ -66,6 +69,11 @@ def list_training_parameter_schemas(
                 schema_name=schema.__name__,
                 parameter_schema=schema.model_json_schema(),
                 default_parameters=schema().model_dump(mode="json"),
+                numeric_fields=build_training_numeric_parameter_specs(
+                    task_type=registered_task,
+                    model_type=registered_model,
+                    schema=schema,
+                ),
             )
         )
     return TrainingParameterSchemaCatalogResponse(items=items)

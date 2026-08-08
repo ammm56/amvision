@@ -1,5 +1,8 @@
 import { translate } from '@/platform/i18n'
-import type { ModelTaskType } from './services/model.service'
+import type {
+  ModelTaskType,
+  TrainingParameterSchemaItem,
+} from './services/model.service'
 
 export type TrainingParameterInputKind = 'text' | 'number' | 'select'
 export type TrainingParameterValueKind = 'string' | 'int' | 'float' | 'bool'
@@ -166,10 +169,10 @@ const ordinaryYoloAugmentationFields: TrainingParameterField[] = withTrainingPar
   numberField('scale', '仿射缩放比例', { min: 0, max: 10, step: 0.01, defaultValue: '0.5' }),
   numberField('shear', '仿射错切角度', { min: 0, max: 180, step: 0.1, defaultValue: '0.0' }),
   numberField('perspective', '透视变换比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.0' }),
-  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '0.5' }),
-  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '1.5' }),
-  numberField('mixup_scale_min', 'MixUp 缩放最小值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '0.5' }),
-  numberField('mixup_scale_max', 'MixUp 缩放最大值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '1.5' }),
+  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.5' }),
+  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '1.5' }),
+  numberField('mixup_scale_min', 'MixUp 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.5' }),
+  numberField('mixup_scale_max', 'MixUp 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '1.5' }),
   numberField('close_mosaic', '最后关闭 Mosaic 轮数', { integer: true, min: 0, max: 10000, step: 1, defaultValue: '10' }),
   numberField('multi_scale', '多尺度范围比例', { min: 0, max: 0.9, step: 0.01, defaultValue: '0.0' }),
   numberField('multi_scale_stride', '多尺度步长', { integer: true, min: 1, max: 1024, step: 1, defaultValue: '32' }),
@@ -309,10 +312,10 @@ const detectionYoloXAugmentationFields: TrainingParameterField[] = withTrainingP
   numberField('degrees', '仿射旋转角度', { min: 0, max: 180, step: 0.1, defaultValue: '10.0' }),
   numberField('translate', '仿射平移比例', { min: 0, max: 1, step: 0.01, defaultValue: '0.1' }),
   numberField('shear', '仿射错切角度', { min: 0, max: 180, step: 0.1, defaultValue: '2.0' }),
-  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '0.1' }),
-  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '2.0' }),
-  numberField('mixup_scale_min', 'MixUp 缩放最小值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '0.5' }),
-  numberField('mixup_scale_max', 'MixUp 缩放最大值', { min: 0.000001, max: 10, step: 0.1, defaultValue: '1.5' }),
+  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.1' }),
+  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '2.0' }),
+  numberField('mixup_scale_min', 'MixUp 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.5' }),
+  numberField('mixup_scale_max', 'MixUp 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '1.5' }),
   numberField('multiscale_range', '多尺度训练范围', { integer: true, min: 0, max: 64, step: 1, defaultValue: '5' }),
   numberField('no_aug_epochs', '最后 no-aug 轮数', { integer: true, min: 0, max: 10000, step: 1, defaultValue: '15' }),
 ], 'augmentation')
@@ -383,7 +386,7 @@ const detectionYoloXFields: TrainingParameterField[] = [
 const detectionYoloPrimaryFields: TrainingParameterField[] = [
   ...yoloRuntimeFields,
   selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
-  numberField('learning_rate', '基础学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: yoloDetectionDefaultLearningRate }),
+  numberField('learning_rate', '基础学习率', { min: 0.00001, max: 1, step: 0.00001, defaultValue: yoloDetectionDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloDetectionDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '0.5' }),
@@ -394,13 +397,13 @@ const detectionYoloPrimaryFields: TrainingParameterField[] = [
   numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, max: 1000, step: 1, defaultValue: '10' }),
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, max: 100, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, max: 100, step: 0.1, defaultValue: '6.0' }),
-  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.000000000001, max: 10000, step: 0.1, defaultValue: '10.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.1, max: 10000, step: 0.1, defaultValue: '10.0' }),
   ...ordinaryYoloAugmentationFields,
 ]
 
 const detectionRfdetrFields: TrainingParameterField[] = [
   ...rfdetrRuntimeFields,
-  numberField('learning_rate', '学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0.000001, max: 1, step: 0.000001, defaultValue: '0.0001' }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: '0.0001' }),
   selectField('lr_scheduler', '学习率调度器', rfdetrSchedulerOptions, { defaultValue: 'step' }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
@@ -421,17 +424,17 @@ const detectionRfdetrFields: TrainingParameterField[] = [
 const classificationFields: TrainingParameterField[] = [
   ...yoloRuntimeFields,
   selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
-  numberField('learning_rate', '基础学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('learning_rate', '基础学习率', { min: 0.00001, max: 1, step: 0.00001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
-  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.000000000001, max: 10000, step: 0.1, defaultValue: '10.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.1, max: 10000, step: 0.1, defaultValue: '10.0' }),
   ...classificationYoloAugmentationFields,
 ]
 
 const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   ...yoloRuntimeFields,
   selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
-  numberField('learning_rate', '基础学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('learning_rate', '基础学习率', { min: 0.00001, max: 1, step: 0.00001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
@@ -442,13 +445,13 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, max: 1000, step: 1, defaultValue: '10' }),
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, max: 100, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, max: 100, step: 0.1, defaultValue: '6.0' }),
-  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.000000000001, max: 10000, step: 0.1, defaultValue: '10.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.1, max: 10000, step: 0.1, defaultValue: '10.0' }),
   ...ordinaryYoloAugmentationFields,
 ]
 
 const segmentationRfdetrFields: TrainingParameterField[] = [
   ...rfdetrRuntimeFields,
-  numberField('learning_rate', '学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: '0.0001' }),
+  numberField('learning_rate', '学习率', { min: 0.000001, max: 1, step: 0.000001, defaultValue: '0.0001' }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: '0.0001' }),
   selectField('lr_scheduler', '学习率调度器', rfdetrSchedulerOptions, { defaultValue: 'step' }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
@@ -471,7 +474,7 @@ const segmentationRfdetrFields: TrainingParameterField[] = [
 const poseFields: TrainingParameterField[] = [
   ...yoloRuntimeFields,
   selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
-  numberField('learning_rate', '基础学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('learning_rate', '基础学习率', { min: 0.00001, max: 1, step: 0.00001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
@@ -483,18 +486,18 @@ const poseFields: TrainingParameterField[] = [
   numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, max: 1000, step: 1, defaultValue: '10' }),
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, max: 100, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, max: 100, step: 0.1, defaultValue: '6.0' }),
-  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.000000000001, max: 10000, step: 0.1, defaultValue: '10.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.1, max: 10000, step: 0.1, defaultValue: '10.0' }),
   ...ordinaryYoloAugmentationFields,
 ]
 
 const obbFields: TrainingParameterField[] = [
   ...yoloRuntimeFields,
   selectField('optimizer', '优化器', yoloOptimizerOptions, { defaultValue: 'auto' }),
-  numberField('learning_rate', '基础学习率', { min: 0.000000000001, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultLearningRate }),
+  numberField('learning_rate', '基础学习率', { min: 0.00001, max: 1, step: 0.00001, defaultValue: yoloTaskDefaultLearningRate }),
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   ...obbYoloEvaluationThresholdFields,
-  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.000000000001, max: 10000, step: 0.1, defaultValue: '10.0' }),
+  numberField('grad_clip_norm', '梯度裁剪上限', { min: 0.1, max: 10000, step: 0.1, defaultValue: '10.0' }),
   ...ordinaryYoloAugmentationFields,
 ]
 
@@ -523,37 +526,81 @@ export function getDefaultTrainingEvaluationInterval(
 export function getDefaultTrainingModelParameterValues(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
+  parameterSchema?: TrainingParameterSchemaItem | null,
 ): TrainingParameterValues {
-  const fields = getModelLayerTrainingFields(taskType, modelType)
+  const fields = getModelLayerTrainingFields(taskType, modelType, parameterSchema)
   return Object.fromEntries(fields.map((field) => [field.key, field.defaultValue ?? '']))
+}
+
+function applyTrainingNumericParameterSpecs(
+  fields: TrainingParameterField[],
+  parameterSchema: TrainingParameterSchemaItem | null | undefined,
+): TrainingParameterField[] {
+  if (!parameterSchema) return fields
+  const numericSpecs = new Map(parameterSchema.numeric_fields.map((field) => [field.key, field]))
+  const numericFieldKeys = new Set(
+    fields.filter((field) => field.inputKind === 'number').map((field) => field.key),
+  )
+  for (const key of numericSpecs.keys()) {
+    if (!numericFieldKeys.has(key)) {
+      throw new Error(`训练参数目录包含页面未登记的数值字段: ${parameterSchema.task_type}/${parameterSchema.model_type}/${key}`)
+    }
+  }
+  return fields.map((field) => {
+    if (field.inputKind !== 'number') return field
+    const spec = numericSpecs.get(field.key)
+    if (!spec) {
+      throw new Error(`训练参数目录缺少数值字段: ${parameterSchema.task_type}/${parameterSchema.model_type}/${field.key}`)
+    }
+    if (field.valueKind !== spec.value_kind) {
+      throw new Error(`训练参数数值类型不一致: ${parameterSchema.task_type}/${parameterSchema.model_type}/${field.key}`)
+    }
+    return {
+      ...field,
+      min: spec.minimum,
+      max: spec.maximum,
+      step: spec.step,
+      defaultValue: String(spec.default_value),
+    }
+  })
 }
 
 export function getModelLayerTrainingFields(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
+  parameterSchema?: TrainingParameterSchemaItem | null,
 ): TrainingParameterField[] {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) {
     return []
   }
+  let fields: TrainingParameterField[] = []
   if (taskType === 'detection') {
-    if (normalizedModelType === 'yolox') return detectionYoloXFields
-    if (normalizedModelType === 'rfdetr') return detectionRfdetrFields
-    return detectionYoloPrimaryFields
+    fields = normalizedModelType === 'yolox'
+      ? detectionYoloXFields
+      : normalizedModelType === 'rfdetr'
+        ? detectionRfdetrFields
+        : detectionYoloPrimaryFields
+  } else if (taskType === 'classification') {
+    fields = classificationFields
+  } else if (taskType === 'segmentation') {
+    fields = normalizedModelType === 'rfdetr'
+      ? segmentationRfdetrFields
+      : segmentationYoloPrimaryFields
+  } else if (taskType === 'pose') {
+    fields = poseFields
+  } else if (taskType === 'obb') {
+    fields = obbFields
   }
-  if (taskType === 'classification') {
-    return classificationFields
+  if (parameterSchema) {
+    if (
+      parameterSchema.task_type !== taskType
+      || normalizeModelType(parameterSchema.model_type) !== normalizedModelType
+    ) {
+      throw new Error(`训练参数目录与当前模型不匹配: ${taskType}/${normalizedModelType}`)
+    }
   }
-  if (taskType === 'segmentation') {
-    return normalizedModelType === 'rfdetr' ? segmentationRfdetrFields : segmentationYoloPrimaryFields
-  }
-  if (taskType === 'pose') {
-    return poseFields
-  }
-  if (taskType === 'obb') {
-    return obbFields
-  }
-  return []
+  return applyTrainingNumericParameterSpecs(fields, parameterSchema)
 }
 
 function buildFlatTrainingParameterValues(
@@ -1152,14 +1199,21 @@ export function validateTrainingModelLayerValues(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
   values: TrainingParameterValues,
-  options: { augmentationEnabled?: boolean } = {},
+  options: {
+    augmentationEnabled?: boolean
+    parameterSchema?: TrainingParameterSchemaItem | null
+  } = {},
 ): string | null {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) {
     return null
   }
 
-  for (const field of getModelLayerTrainingFields(taskType, normalizedModelType)) {
+  for (const field of getModelLayerTrainingFields(
+    taskType,
+    normalizedModelType,
+    options.parameterSchema,
+  )) {
     if (
       options.augmentationEnabled === false
       && isTrainingAugmentationField(field)
@@ -1179,6 +1233,16 @@ export function validateTrainingModelLayerValues(
         min: String(field.min ?? '-∞'),
         max: String(field.max ?? '+∞'),
       })
+    }
+    if (field.step !== undefined) {
+      const quotient = numericValue / field.step
+      const tolerance = Number.EPSILON * 32 * Math.max(1, Math.abs(quotient))
+      if (Math.abs(quotient - Math.round(quotient)) > tolerance) {
+        return translate('modelOps.trainingParameters.parameterStepMismatch', {
+          label: field.label,
+          step: String(field.step),
+        })
+      }
     }
   }
 

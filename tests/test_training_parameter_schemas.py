@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
 
@@ -24,6 +27,7 @@ from backend.service.api.rest.v1.routes.segmentation_training_tasks.schemas impo
     SegmentationTrainingTaskCreateRequestBody,
 )
 from backend.service.api.rest.v1.routes.training_parameter_schemas import (
+    TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL,
     RfdetrDetectionTrainingParameters,
     RfdetrSegmentationTrainingParameters,
     YoloClassificationTrainingParameters,
@@ -263,3 +267,123 @@ def test_training_parameter_catalog_exposes_all_supported_task_model_pairs() -> 
     assert [(item.task_type, item.model_type) for item in filtered.items] == [
         ("segmentation", "rfdetr")
     ]
+
+
+def test_training_parameter_catalog_exposes_aligned_numeric_input_specs() -> None:
+    """全部公开数值字段必须具有可由浏览器和 API 共同执行的离散精度。"""
+
+    catalog = list_training_parameter_schemas(
+        principal=object(),
+        task_type=None,
+        model_type=None,
+    )
+    for item in catalog.items:
+        assert item.numeric_fields
+        assert len({field.key for field in item.numeric_fields}) == len(
+            item.numeric_fields
+        )
+        for field in item.numeric_fields:
+            step = Decimal(str(field.step))
+            minimum = Decimal(str(field.minimum))
+            maximum = Decimal(str(field.maximum))
+            default_value = Decimal(str(field.default_value))
+            assert step > 0
+            assert minimum <= default_value <= maximum
+            assert minimum % step == 0, (
+                item.task_type,
+                item.model_type,
+                field.key,
+            )
+            assert default_value % step == 0, (
+                item.task_type,
+                item.model_type,
+                field.key,
+            )
+            assert maximum % step == 0, (
+                item.task_type,
+                item.model_type,
+                field.key,
+            )
+            assert field.decimals == max(0, -step.normalize().as_tuple().exponent)
+
+
+def test_every_public_float_parameter_declares_multiple_of() -> None:
+    """严格训练 schema 的全部 float 叶子都必须声明确定精度。"""
+
+    missing_paths: list[str] = []
+    for (task_type, model_type), schema_type in sorted(
+        TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL.items()
+    ):
+        root_schema = schema_type.model_json_schema()
+        definitions = root_schema.get("$defs", {})
+
+        def visit(value: object, path: str) -> None:
+            if not isinstance(value, Mapping):
+                return
+            reference = value.get("$ref")
+            if isinstance(reference, str) and reference.startswith("#/$defs/"):
+                visit(definitions.get(reference.removeprefix("#/$defs/")), path)
+                return
+            if value.get("type") == "number" and "multipleOf" not in value:
+                missing_paths.append(f"{task_type}/{model_type}/{path}")
+            properties = value.get("properties")
+            if isinstance(properties, Mapping):
+                for property_name, property_schema in properties.items():
+                    visit(
+                        property_schema,
+                        f"{path}.{property_name}".strip("."),
+                    )
+            variants = value.get("anyOf")
+            if isinstance(variants, list):
+                for variant in variants:
+                    visit(variant, path)
+
+        visit(root_schema, "")
+
+    assert missing_paths == []
+
+
+def test_training_parameter_catalog_uses_model_specific_decimal_steps() -> None:
+    """学习率和增强比例必须按模型语义公开不同的实际输入精度。"""
+
+    yolo = list_training_parameter_schemas(
+        principal=object(),
+        task_type="detection",
+        model_type="yolo26",
+    ).items[0]
+    yolo_fields = {field.key: field for field in yolo.numeric_fields}
+    assert yolo_fields["learning_rate"].step == pytest.approx(0.00001)
+    assert yolo_fields["learning_rate"].default_value == pytest.approx(0.01)
+    assert yolo_fields["grad_clip_norm"].step == pytest.approx(0.1)
+    assert yolo_fields["mosaic_scale_min"].minimum == pytest.approx(0.01)
+    assert yolo_fields["mosaic_scale_min"].step == pytest.approx(0.01)
+    assert yolo_fields["mosaic_scale_min"].default_value == pytest.approx(0.5)
+
+    rfdetr = list_training_parameter_schemas(
+        principal=object(),
+        task_type="detection",
+        model_type="rfdetr",
+    ).items[0]
+    rfdetr_fields = {field.key: field for field in rfdetr.numeric_fields}
+    assert rfdetr_fields["learning_rate"].step == pytest.approx(0.000001)
+
+
+def test_training_parameter_schema_rejects_values_outside_public_step_grid() -> None:
+    """直接调用 API schema 也必须拒绝页面不允许的超精度数值。"""
+
+    with pytest.raises(ValidationError, match="multiple"):
+        YoloDetectionTrainingParameters.model_validate(
+            {"optimization": {"optimizer": "adamw", "learning_rate": 0.000011}}
+        )
+    with pytest.raises(ValidationError, match="multiple"):
+        YoloDetectionTrainingParameters.model_validate(
+            {"augmentation": {"mosaic_scale": {"minimum": 0.505, "maximum": 1.5}}}
+        )
+
+    accepted = YoloDetectionTrainingParameters.model_validate(
+        {
+            "optimization": {"optimizer": "adamw", "learning_rate": 0.001},
+            "augmentation": {"mosaic_scale": {"minimum": 0.5, "maximum": 1.5}},
+        }
+    )
+    assert accepted.augmentation.mosaic_scale.minimum == pytest.approx(0.5)

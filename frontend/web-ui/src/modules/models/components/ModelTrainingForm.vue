@@ -109,11 +109,11 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.maxEpochs') }}</span>
-            <input :value="maxEpochs" type="number" min="1" @input="emitNumber('update:maxEpochs', $event)" />
+            <input :value="maxEpochs" type="number" min="1" step="1" @input="emitNumber('update:maxEpochs', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.batchSize') }}</span>
-            <input :value="batchSize" type="number" min="1" @input="emitNumber('update:batchSize', $event)" />
+            <input :value="batchSize" type="number" min="1" step="1" @input="emitNumber('update:batchSize', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.precision') }}</span>
@@ -129,7 +129,7 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
-            <input :value="evaluationInterval" type="number" min="1" @input="emitNumber('update:evaluationInterval', $event)" />
+            <input :value="evaluationInterval" type="number" min="1" step="1" @input="emitNumber('update:evaluationInterval', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.trainingParameters.device') }}</span>

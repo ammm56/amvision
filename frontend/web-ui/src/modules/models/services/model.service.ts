@@ -2,6 +2,31 @@ import { apiRequest } from '@/shared/api/http-client'
 
 export type ModelTaskType = 'detection' | 'classification' | 'segmentation' | 'pose' | 'obb'
 
+export interface TrainingNumericParameterSpec {
+  key: string
+  schema_path: string
+  value_kind: 'int' | 'float'
+  minimum: number
+  maximum: number
+  step: number
+  decimals: number
+  default_value: number
+}
+
+export interface TrainingParameterSchemaItem {
+  task_type: ModelTaskType
+  model_type: string
+  schema_name: string
+  parameter_schema: Record<string, unknown>
+  default_parameters: Record<string, unknown>
+  numeric_fields: TrainingNumericParameterSpec[]
+}
+
+export interface TrainingParameterSchemaCatalog {
+  protocol_version: number
+  items: TrainingParameterSchemaItem[]
+}
+
 export interface PlatformBaseModelFile {
   file_id: string
   project_id?: string | null
@@ -373,6 +398,114 @@ export async function listModelTrainingTasks(
 
 export async function getModelTrainingTaskDetail(taskType: ModelTaskType, taskId: string): Promise<ModelTrainingTaskDetail> {
   return apiRequest<ModelTrainingTaskDetail>(buildTrainingTaskPath(taskType, `/${encodeURIComponent(taskId)}`))
+}
+
+export async function listTrainingParameterSchemas(
+  taskType?: ModelTaskType,
+  modelType?: string,
+): Promise<TrainingParameterSchemaCatalog> {
+  const catalog = await apiRequest<unknown>('/models/training-parameter-schemas', {
+    query: {
+      task_type: taskType || undefined,
+      model_type: modelType || undefined,
+    },
+    retryTransientRead: true,
+  })
+  if (
+    !isTrainingParameterSchemaCatalog(catalog)
+  ) {
+    throw new Error('训练参数目录协议不完整，请确认前后端版本一致')
+  }
+  return catalog
+}
+
+function isTrainingParameterSchemaCatalog(value: unknown): value is TrainingParameterSchemaCatalog {
+  if (!isRecord(value) || value.protocol_version !== 1 || !Array.isArray(value.items)) {
+    return false
+  }
+  const pairKeys = new Set<string>()
+  for (const item of value.items) {
+    if (!isTrainingParameterSchemaItem(item)) return false
+    const pairKey = `${item.task_type}/${item.model_type}`
+    if (pairKeys.has(pairKey)) return false
+    pairKeys.add(pairKey)
+  }
+  return true
+}
+
+function isTrainingParameterSchemaItem(value: unknown): value is TrainingParameterSchemaItem {
+  if (
+    !isRecord(value)
+    || !isModelTaskType(value.task_type)
+    || !isNonEmptyString(value.model_type)
+    || !isNonEmptyString(value.schema_name)
+    || !isRecord(value.parameter_schema)
+    || !isRecord(value.default_parameters)
+    || !Array.isArray(value.numeric_fields)
+    || value.numeric_fields.length === 0
+  ) {
+    return false
+  }
+  const fieldKeys = new Set<string>()
+  for (const field of value.numeric_fields) {
+    if (!isTrainingNumericParameterSpec(field) || fieldKeys.has(field.key)) return false
+    fieldKeys.add(field.key)
+  }
+  return true
+}
+
+function isTrainingNumericParameterSpec(value: unknown): value is TrainingNumericParameterSpec {
+  if (
+    !isRecord(value)
+    || !isNonEmptyString(value.key)
+    || !isNonEmptyString(value.schema_path)
+    || !['int', 'float'].includes(String(value.value_kind))
+    || !isFiniteNumber(value.minimum)
+    || !isFiniteNumber(value.maximum)
+    || !isFiniteNumber(value.step)
+    || value.step <= 0
+    || !isValidDecimals(value.decimals)
+    || !isFiniteNumber(value.default_value)
+    || value.minimum > value.default_value
+    || value.default_value > value.maximum
+    || !isStepAligned(value.minimum, value.step)
+    || !isStepAligned(value.maximum, value.step)
+    || !isStepAligned(value.default_value, value.step)
+  ) {
+    return false
+  }
+  return value.value_kind !== 'int' || (
+    Number.isInteger(value.minimum)
+    && Number.isInteger(value.maximum)
+    && Number.isInteger(value.step)
+    && Number.isInteger(value.default_value)
+  )
+}
+
+function isStepAligned(value: number, step: number): boolean {
+  const quotient = value / step
+  const tolerance = Number.EPSILON * 32 * Math.max(1, Math.abs(quotient))
+  return Math.abs(quotient - Math.round(quotient)) <= tolerance
+}
+
+function isModelTaskType(value: unknown): value is ModelTaskType {
+  return ['detection', 'classification', 'segmentation', 'pose', 'obb'].includes(String(value))
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value.trim())
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isValidDecimals(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 12
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
 
 export async function requestModelTrainingTaskAction(

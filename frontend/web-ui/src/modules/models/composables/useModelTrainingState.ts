@@ -6,6 +6,7 @@ import {
   type ModelTaskType,
   type ModelTrainingTaskSubmissionResponse,
   type PlatformBaseModelSummary,
+  type TrainingParameterSchemaItem,
 } from '../services/model.service'
 import {
   buildTrainingParameters,
@@ -49,6 +50,7 @@ export function useModelTrainingState(options: {
   trainingDisplayName: Ref<string>
   trainingModelParameterValues: TrainingParameterValues
   trainingAugmentationEnabled: Ref<boolean>
+  trainingParameterSchema: ComputedRef<TrainingParameterSchemaItem | null>
   trainingExportFormatsByTaskAndModelType: ComputedRef<Record<string, Record<string, string[]>>>
   alignTrainingInputSizeForSubmit: () => { width: number; height: number }
   refreshTrainingTasks: () => Promise<void>
@@ -117,7 +119,10 @@ export function useModelTrainingState(options: {
       options.selectedTaskType.value,
       options.resolvedTrainingModelType.value,
       options.trainingModelParameterValues,
-      { augmentationEnabled: options.trainingAugmentationEnabled.value },
+      {
+        augmentationEnabled: options.trainingAugmentationEnabled.value,
+        parameterSchema: options.trainingParameterSchema.value,
+      },
     )
     if (parameterError) {
       options.setErrorMessage(parameterError)

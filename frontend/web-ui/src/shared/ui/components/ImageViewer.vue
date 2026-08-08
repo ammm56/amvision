@@ -159,18 +159,18 @@
                 <input
                   v-if="control.control === 'slider'"
                   type="range"
-                  :min="control.min ?? 0"
-                  :max="control.max ?? 100"
-                  :step="control.step ?? 1"
+                  :min="readTuningControlAttributes(control).min ?? 0"
+                  :max="readTuningControlAttributes(control).max ?? 100"
+                  :step="readTuningControlAttributes(control).step"
                   :value="readTuningControlInputValue(control)"
                   @input="updateTuningControlFromEvent(control, $event, false)"
                   @change="updateTuningControlFromEvent(control, $event, true)"
                 >
                 <input
                   type="number"
-                  :min="control.min ?? undefined"
-                  :max="control.max ?? undefined"
-                  :step="control.step ?? 'any'"
+                  :min="readTuningControlAttributes(control).min"
+                  :max="readTuningControlAttributes(control).max"
+                  :step="readTuningControlAttributes(control).step"
                   :value="readTuningControlInputValue(control)"
                   @change="updateTuningControlFromEvent(control, $event, true)"
                 >
@@ -449,6 +449,7 @@ import {
   type ViewerImageInteractionTool,
 } from '../image-viewer/normalizeImageInteractionTool'
 import { useImageViewerViewport } from '../image-viewer/useImageViewerViewport'
+import { buildNumericInputAttributes, type NumericInputAttributes } from '../numeric-input-step'
 import type {
   ImageBboxTuple,
   ImagePointTuple,
@@ -487,6 +488,15 @@ interface ViewerImageInteractionControl {
 interface ViewerImageInteractionControlOption {
   value: string
   label: string
+}
+
+function readTuningControlAttributes(control: ViewerImageInteractionControl): NumericInputAttributes {
+  return buildNumericInputAttributes({
+    valueKind: 'number',
+    minimum: control.min ?? undefined,
+    maximum: control.max ?? undefined,
+    explicitStep: control.step ?? undefined,
+  })
 }
 
 interface ViewerImageInteraction {

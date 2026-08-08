@@ -1,6 +1,10 @@
 import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 
-import type { ModelTaskType, PlatformBaseModelDetail } from '../services/model.service'
+import type {
+  ModelTaskType,
+  PlatformBaseModelDetail,
+  TrainingParameterSchemaItem,
+} from '../services/model.service'
 import {
   getDefaultTrainingEvaluationInterval,
   getDefaultTrainingModelParameterValues,
@@ -74,6 +78,7 @@ export function useTrainingParameters(options: {
   selectedTaskType: Ref<ModelTaskType>
   resolvedTrainingModelType: ComputedRef<string>
   resolvedTrainingModelScale: ComputedRef<string>
+  trainingParameterSchema: ComputedRef<TrainingParameterSchemaItem | null>
   translate: (key: string, params?: Record<string, string>) => string
 }) {
   const outputModelName = ref('')
@@ -93,7 +98,16 @@ export function useTrainingParameters(options: {
     () => supportsTrainingWarmStart(options.selectedTaskType.value),
   )
   const allTrainingModelParameterFields = computed(
-    () => getModelLayerTrainingFields(options.selectedTaskType.value, options.resolvedTrainingModelType.value),
+    () => {
+      if (!options.resolvedTrainingModelType.value || !options.trainingParameterSchema.value) {
+        return []
+      }
+      return getModelLayerTrainingFields(
+        options.selectedTaskType.value,
+        options.resolvedTrainingModelType.value,
+        options.trainingParameterSchema.value,
+      )
+    },
   )
   const trainingModelParameterFields = computed(
     () => allTrainingModelParameterFields.value.filter((field) => !isTrainingAugmentationField(field)),
@@ -181,9 +195,15 @@ export function useTrainingParameters(options: {
   }
 
   watch(
-    [options.selectedTaskType, options.resolvedTrainingModelType],
-    ([taskType, modelType]) => {
-      const defaultValues = getDefaultTrainingModelParameterValues(taskType, modelType)
+    [
+      options.selectedTaskType,
+      options.resolvedTrainingModelType,
+      options.trainingParameterSchema,
+    ],
+    ([taskType, modelType, parameterSchema]) => {
+      const defaultValues = modelType && parameterSchema
+        ? getDefaultTrainingModelParameterValues(taskType, modelType, parameterSchema)
+        : {}
       const visibleKeys = new Set(Object.keys(defaultValues))
       for (const key of Object.keys(trainingModelParameterValues)) {
         if (!visibleKeys.has(key)) {

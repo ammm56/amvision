@@ -116,10 +116,16 @@ class YoloOptimizationParameters(TrainingParameterGroup):
     """YOLO 主线优化器与学习率参数。"""
 
     optimizer: YoloOptimizer = "auto"
-    learning_rate: float | None = Field(default=None, gt=0.0, le=1.0)
-    weight_decay: float = Field(default=5e-4, ge=0.0, le=1.0)
-    min_lr_ratio: float = Field(default=0.01, ge=0.0, le=1.0)
-    grad_clip_norm: float = Field(default=10.0, gt=0.0, le=10_000.0)
+    learning_rate: float | None = Field(
+        default=None,
+        ge=0.00001,
+        le=1.0,
+        multiple_of=0.00001,
+        json_schema_extra={"x-ui-default": 0.01},
+    )
+    weight_decay: float = Field(default=5e-4, ge=0.0, le=1.0, multiple_of=0.0001)
+    min_lr_ratio: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.0001)
+    grad_clip_norm: float = Field(default=10.0, ge=0.1, le=10_000.0, multiple_of=0.1)
 
     @model_validator(mode="after")
     def validate_learning_rate(self) -> "YoloOptimizationParameters":
@@ -137,17 +143,19 @@ class YoloXOptimizationParameters(TrainingParameterGroup):
 
     warmup_epochs: int = Field(default=5, ge=0, le=10_000)
     no_aug_epochs: int = Field(default=15, ge=0, le=10_000)
-    min_lr_ratio: float = Field(default=0.05, ge=0.0, le=1.0)
+    min_lr_ratio: float = Field(default=0.05, ge=0.0, le=1.0, multiple_of=0.0001)
     ema: bool = True
 
 
 class RfdetrOptimizationParameters(TrainingParameterGroup):
     """RF-DETR 优化器和梯度累计参数。"""
 
-    learning_rate: float = Field(default=1e-4, gt=0.0, le=1.0)
-    weight_decay: float = Field(default=1e-4, ge=0.0, le=1.0)
+    learning_rate: float = Field(
+        default=1e-4, ge=0.000001, le=1.0, multiple_of=0.000001
+    )
+    weight_decay: float = Field(default=1e-4, ge=0.0, le=1.0, multiple_of=0.0001)
     lr_scheduler: Literal["step", "cosine"] = "step"
-    min_lr_ratio: float = Field(default=0.01, ge=0.0, le=1.0)
+    min_lr_ratio: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.0001)
     grad_accum_steps: int = Field(default=4, ge=1, le=1024)
 
     def to_execution_options(self) -> dict[str, object]:
@@ -162,8 +170,10 @@ class RfdetrOptimizationParameters(TrainingParameterGroup):
 class DetectionEvaluationParameters(TrainingParameterGroup):
     """detection 类验证后处理参数。"""
 
-    confidence_threshold: float = Field(default=0.001, ge=0.0, le=1.0)
-    nms_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    confidence_threshold: float = Field(
+        default=0.001, ge=0.0, le=1.0, multiple_of=0.001
+    )
+    nms_threshold: float = Field(default=0.7, ge=0.0, le=1.0, multiple_of=0.01)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射为 runner 已固定的字段名。"""
@@ -177,20 +187,22 @@ class DetectionEvaluationParameters(TrainingParameterGroup):
 class YoloXDetectionEvaluationParameters(DetectionEvaluationParameters):
     """YOLOX detection 验证参数。"""
 
-    confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0)
-    nms_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
+    confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.01)
+    nms_threshold: float = Field(default=0.65, ge=0.0, le=1.0, multiple_of=0.01)
 
 
 class ObbEvaluationParameters(DetectionEvaluationParameters):
     """OBB 验证参数。"""
 
-    confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0)
+    confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.01)
 
 
 class PoseEvaluationParameters(DetectionEvaluationParameters):
     """Pose 验证参数。"""
 
-    keypoint_confidence_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
+    keypoint_confidence_threshold: float = Field(
+        default=0.25, ge=0.0, le=1.0, multiple_of=0.01
+    )
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测和关键点验证字段。"""
@@ -204,8 +216,8 @@ class YoloMatchingParameters(TrainingParameterGroup):
     """YOLO 主线正样本匹配参数。"""
 
     topk: int = Field(default=10, ge=1, le=1000)
-    alpha: float = Field(default=0.5, ge=0.0, le=100.0)
-    beta: float = Field(default=6.0, ge=0.0, le=100.0)
+    alpha: float = Field(default=0.5, ge=0.0, le=100.0, multiple_of=0.1)
+    beta: float = Field(default=6.0, ge=0.0, le=100.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射为 runner 匹配字段。"""
@@ -220,17 +232,17 @@ class YoloMatchingParameters(TrainingParameterGroup):
 class RfdetrMatchingParameters(TrainingParameterGroup):
     """RF-DETR Hungarian matching 参数。"""
 
-    class_cost: float = Field(default=2.0, ge=0.0, le=1000.0)
-    bbox_cost: float = Field(default=5.0, ge=0.0, le=1000.0)
-    giou_cost: float = Field(default=2.0, ge=0.0, le=1000.0)
+    class_cost: float = Field(default=2.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    bbox_cost: float = Field(default=5.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    giou_cost: float = Field(default=2.0, ge=0.0, le=1000.0, multiple_of=0.1)
 
 
 class YoloDetectionLossParameters(TrainingParameterGroup):
     """YOLO detection 损失权重。"""
 
-    class_weight: float = Field(default=0.5, ge=0.0, le=1000.0)
-    box_weight: float = Field(default=7.5, ge=0.0, le=1000.0)
-    dfl_weight: float = Field(default=1.5, ge=0.0, le=1000.0)
+    class_weight: float = Field(default=0.5, ge=0.0, le=1000.0, multiple_of=0.1)
+    box_weight: float = Field(default=7.5, ge=0.0, le=1000.0, multiple_of=0.1)
+    dfl_weight: float = Field(default=1.5, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射为 runner 损失字段。"""
@@ -245,7 +257,7 @@ class YoloDetectionLossParameters(TrainingParameterGroup):
 class YoloSegmentationLossParameters(YoloDetectionLossParameters):
     """YOLO instance segmentation 损失权重。"""
 
-    mask_weight: float = Field(default=1.0, ge=0.0, le=1000.0)
+    mask_weight: float = Field(default=1.0, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测与 mask 损失字段。"""
@@ -258,7 +270,7 @@ class YoloSegmentationLossParameters(YoloDetectionLossParameters):
 class YoloPoseLossParameters(YoloDetectionLossParameters):
     """YOLO pose 损失权重。"""
 
-    keypoint_weight: float = Field(default=12.0, ge=0.0, le=1000.0)
+    keypoint_weight: float = Field(default=12.0, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测与关键点损失字段。"""
@@ -271,9 +283,9 @@ class YoloPoseLossParameters(YoloDetectionLossParameters):
 class RfdetrDetectionLossParameters(TrainingParameterGroup):
     """RF-DETR detection 损失权重。"""
 
-    class_weight: float = Field(default=1.0, ge=0.0, le=1000.0)
-    bbox_weight: float = Field(default=5.0, ge=0.0, le=1000.0)
-    giou_weight: float = Field(default=2.0, ge=0.0, le=1000.0)
+    class_weight: float = Field(default=1.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    bbox_weight: float = Field(default=5.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    giou_weight: float = Field(default=2.0, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射为 RF-DETR runner 字段。"""
@@ -288,8 +300,8 @@ class RfdetrDetectionLossParameters(TrainingParameterGroup):
 class RfdetrSegmentationLossParameters(RfdetrDetectionLossParameters):
     """RF-DETR segmentation 损失权重。"""
 
-    mask_ce_weight: float = Field(default=5.0, ge=0.0, le=1000.0)
-    mask_dice_weight: float = Field(default=5.0, ge=0.0, le=1000.0)
+    mask_ce_weight: float = Field(default=5.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    mask_dice_weight: float = Field(default=5.0, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射 detection 与 mask 损失字段。"""
@@ -323,14 +335,14 @@ class RfdetrAdvancedParameters(TrainingParameterGroup):
     expanded_scales: bool = True
 
 
-class FloatRangeParameters(TrainingParameterGroup):
-    """正浮点闭区间。"""
+class OrderedFloatRangeParameters(TrainingParameterGroup):
+    """带顺序校验的浮点闭区间基类。"""
 
-    minimum: float = Field(gt=0.0, le=10.0)
-    maximum: float = Field(gt=0.0, le=10.0)
+    minimum: float
+    maximum: float
 
     @model_validator(mode="after")
-    def validate_order(self) -> "FloatRangeParameters":
+    def validate_order(self) -> "OrderedFloatRangeParameters":
         """校验区间顺序。"""
 
         if self.minimum > self.maximum:
@@ -344,29 +356,59 @@ class FloatRangeParameters(TrainingParameterGroup):
         return (self.minimum, self.maximum)
 
 
+class PositiveScaleRangeParameters(OrderedFloatRangeParameters):
+    """Mosaic、MixUp 使用的正缩放区间。"""
+
+    minimum: float = Field(ge=0.01, le=10.0, multiple_of=0.01)
+    maximum: float = Field(ge=0.01, le=10.0, multiple_of=0.01)
+
+
+class CropScaleRangeParameters(OrderedFloatRangeParameters):
+    """classification 随机裁剪面积比例区间。"""
+
+    minimum: float = Field(ge=0.08, le=1.0, multiple_of=0.01)
+    maximum: float = Field(ge=0.08, le=1.0, multiple_of=0.01)
+
+
+class AffineScaleRangeParameters(OrderedFloatRangeParameters):
+    """classification 仿射缩放区间。"""
+
+    minimum: float = Field(ge=0.1, le=2.0, multiple_of=0.01)
+    maximum: float = Field(ge=0.1, le=2.0, multiple_of=0.01)
+
+
+class GammaRangeParameters(OrderedFloatRangeParameters):
+    """classification Gamma 区间。"""
+
+    minimum: float = Field(ge=0.1, le=5.0, multiple_of=0.01)
+    maximum: float = Field(ge=0.1, le=5.0, multiple_of=0.01)
+
+
 class YoloTaskAugmentationParameters(TrainingParameterGroup):
     """YOLO 主线 detection/segmentation/pose/OBB 增强参数。"""
 
     enabled: bool = True
-    horizontal_flip_probability: float = Field(default=0.5, ge=0.0, le=1.0)
-    hsv_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    mosaic_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    mixup_probability: float = Field(default=0.0, ge=0.0, le=1.0)
-    mixup_enabled: bool = True
-    affine_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    rotation_degrees: float = Field(default=0.0, ge=0.0, le=180.0)
-    translation_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
-    scale_ratio: float = Field(default=0.5, ge=0.0, le=10.0)
-    shear_degrees: float = Field(default=0.0, ge=0.0, le=180.0)
-    perspective_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
-    mosaic_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=0.5, maximum=1.5)
+    horizontal_flip_probability: float = Field(
+        default=0.5, ge=0.0, le=1.0, multiple_of=0.01
     )
-    mixup_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=0.5, maximum=1.5)
+    hsv_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mosaic_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mixup_probability: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mixup_enabled: bool = True
+    affine_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    rotation_degrees: float = Field(default=0.0, ge=0.0, le=180.0, multiple_of=0.1)
+    translation_ratio: float = Field(default=0.1, ge=0.0, le=1.0, multiple_of=0.01)
+    scale_ratio: float = Field(default=0.5, ge=0.0, le=10.0, multiple_of=0.01)
+    shear_degrees: float = Field(default=0.0, ge=0.0, le=180.0, multiple_of=0.1)
+    perspective_ratio: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.0001)
+    mosaic_scale: PositiveScaleRangeParameters = Field(
+        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.5, maximum=1.5)
+    )
+    mixup_scale: PositiveScaleRangeParameters = Field(
+        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.5, maximum=1.5)
     )
     close_mosaic_epochs: int = Field(default=10, ge=0, le=10_000)
-    multi_scale_ratio: float = Field(default=0.0, ge=0.0, le=0.9)
+    multi_scale_ratio: float = Field(default=0.0, ge=0.0, le=0.9, multiple_of=0.01)
     multi_scale_stride: int = Field(default=32, ge=1, le=1024)
 
     def to_execution_options(self) -> dict[str, object]:
@@ -415,19 +457,21 @@ class YoloXAugmentationParameters(TrainingParameterGroup):
     """YOLOX detection 增强参数。"""
 
     enabled: bool = True
-    horizontal_flip_probability: float = Field(default=0.5, ge=0.0, le=1.0)
-    hsv_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    mosaic_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    mixup_probability: float = Field(default=1.0, ge=0.0, le=1.0)
-    mixup_enabled: bool = True
-    rotation_degrees: float = Field(default=10.0, ge=0.0, le=180.0)
-    translation_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
-    shear_degrees: float = Field(default=2.0, ge=0.0, le=180.0)
-    mosaic_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=0.1, maximum=2.0)
+    horizontal_flip_probability: float = Field(
+        default=0.5, ge=0.0, le=1.0, multiple_of=0.01
     )
-    mixup_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=0.5, maximum=1.5)
+    hsv_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mosaic_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mixup_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    mixup_enabled: bool = True
+    rotation_degrees: float = Field(default=10.0, ge=0.0, le=180.0, multiple_of=0.1)
+    translation_ratio: float = Field(default=0.1, ge=0.0, le=1.0, multiple_of=0.01)
+    shear_degrees: float = Field(default=2.0, ge=0.0, le=180.0, multiple_of=0.1)
+    mosaic_scale: PositiveScaleRangeParameters = Field(
+        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.1, maximum=2.0)
+    )
+    mixup_scale: PositiveScaleRangeParameters = Field(
+        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.5, maximum=1.5)
     )
     multiscale_range: int = Field(default=5, ge=0, le=64)
 
@@ -465,28 +509,32 @@ class ClassificationAugmentationParameters(TrainingParameterGroup):
     """YOLO classification 图像增强参数。"""
 
     enabled: bool = True
-    horizontal_flip_probability: float = Field(default=0.5, ge=0.0, le=1.0)
+    horizontal_flip_probability: float = Field(
+        default=0.5, ge=0.0, le=1.0, multiple_of=0.01
+    )
     crop_mode: Literal["none", "random_resized_crop"] = "random_resized_crop"
-    crop_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=0.5, maximum=1.0)
+    crop_scale: CropScaleRangeParameters = Field(
+        default_factory=lambda: CropScaleRangeParameters(minimum=0.5, maximum=1.0)
     )
     auto_augment: Literal["none", "randaugment", "autoaugment", "augmix"] = (
         "randaugment"
     )
-    rotation_degrees: float = Field(default=0.0, ge=0.0, le=180.0)
-    translation_ratio: float = Field(default=0.0, ge=0.0, le=0.5)
-    affine_scale: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=1.0, maximum=1.0)
+    rotation_degrees: float = Field(default=0.0, ge=0.0, le=180.0, multiple_of=0.1)
+    translation_ratio: float = Field(default=0.0, ge=0.0, le=0.5, multiple_of=0.01)
+    affine_scale: AffineScaleRangeParameters = Field(
+        default_factory=lambda: AffineScaleRangeParameters(minimum=1.0, maximum=1.0)
     )
-    brightness_gain: float = Field(default=0.0, ge=0.0, le=1.0)
-    contrast_gain: float = Field(default=0.0, ge=0.0, le=1.0)
-    gamma: FloatRangeParameters = Field(
-        default_factory=lambda: FloatRangeParameters(minimum=1.0, maximum=1.0)
+    brightness_gain: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
+    contrast_gain: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
+    gamma: GammaRangeParameters = Field(
+        default_factory=lambda: GammaRangeParameters(minimum=1.0, maximum=1.0)
     )
-    hue_gain: float = Field(default=0.0, ge=0.0, le=0.5)
-    saturation_gain: float = Field(default=0.0, ge=0.0, le=1.0)
-    value_gain: float = Field(default=0.0, ge=0.0, le=1.0)
-    random_erasing_probability: float = Field(default=0.4, ge=0.0, le=1.0)
+    hue_gain: float = Field(default=0.0, ge=0.0, le=0.5, multiple_of=0.001)
+    saturation_gain: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
+    value_gain: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
+    random_erasing_probability: float = Field(
+        default=0.4, ge=0.0, le=1.0, multiple_of=0.01
+    )
 
     @model_validator(mode="after")
     def validate_conditional_fields(self) -> "ClassificationAugmentationParameters":

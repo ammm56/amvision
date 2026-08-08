@@ -27,6 +27,14 @@ node pack 的拆分标准、包内目录、core 分类和兼容迁移统一见
 - 节点注册机制向 ComfyUI custom nodes 的灵活性看齐，但不能牺牲工业场景的稳定性和可追溯性
 - node pack 之间允许存在依赖关系，这一点与 ComfyUI custom nodes 生态一致，但依赖关系必须保持范围清楚、行为可预期、失败点可定位
 
+## 数值参数输入规范
+
+- 节点参数继续使用 JSON Schema 作为唯一约束来源；需要精确小数网格的 `number` 参数必须声明正数 `multipleOf`，并按需声明 `minimum`、`maximum`、`exclusiveMinimum` 或 `exclusiveMaximum`
+- 流程编辑器直接把 `multipleOf` 映射为原生数值输入框的 `step`，把边界对齐到同一数值网格，不使用 `step="any"`
+- `integer` 未声明 `multipleOf` 时使用步长 `1`
+- 第三方 `number` 节点未声明 `multipleOf` 时使用确定性范围规则：跨度不超过 `10` 使用 `0.01`，不超过 `1000` 使用 `0.1`，更大跨度使用 `1`；缺少完整范围时使用 `0.01`
+- 范围规则只作为 UI 回退，新节点应显式声明 `multipleOf`，确保前端交互、API 校验和执行期参数解释使用同一数值网格
+
 ## node pack 依赖约定
 
 - node pack 不要求绝对独立；当某个 pack 复用另一个 pack 中已经稳定、复杂、重复成本高的能力时，可以建立 pack 间依赖
@@ -269,6 +277,7 @@ Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List I
 该能力属于 workflow editor 的通用参数编辑能力，不属于某个业务节点或某个应用的专用实现：
 
 - 节点通过本次 Preview Run 的 `debug_preview.interaction.tools[]` 声明参数辅助工具，例如 `bbox`、`polygon`、`circle`、`line`、`grid`、`template-region`、`match-line`、`point-pair` 和 `homography-overlay`；前端不从节点类型名硬编码工具。
+- `debug_preview.interaction.controls[]` 的数值调参控件应显式声明正数 `step` 以及有限 `min/max`；ImageViewer 使用同一共享网格对齐规则，缺少 `step` 时才按范围回退，避免调参框和 slider 使用不同有效值集合。
 - 节点仍通过稳定的 `parameters` 执行，后端节点不依赖前端交互状态。
 - 前端根据节点输入端口、最近一次 Preview Run 输出或当前公开输入解析可用图像，但不在属性面板内显示缩略图。
 - 节点底部沿用现有 preview display 显示缩略图；节点参数提供 `debug_image_panel_enabled` 调试图片面板开关，默认关闭，编辑调试时手动打开。
