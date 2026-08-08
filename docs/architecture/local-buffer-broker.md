@@ -77,7 +77,7 @@ LocalBufferBroker
 
 LocalBufferBroker 在目标运行形态中是本机独立 companion process，由 backend-service 或本地启动器负责启动、健康检查和停止。它不是对外公开服务，也不是新的远程微服务；它只服务同一台机器上的 backend-service、workflow preview 子进程、WorkflowAppRuntime worker、DeploymentInstance 推理 worker 和受控本地 adapter。
 
-LocalBufferBroker process 必须服从 backend-service 的进程生命周期：backend-service 正常停止或 reload 时，broker 先关闭 mmap 句柄再退出；broker 会定期检查 supervisor 的 parent process sentinel，父进程被强制结束后也会自行退出，避免作为孤立进程长期持有默认 pool 文件。supervisor 启动阶段会持续检查子进程状态，子进程提前退出时立即返回 process id 和 exit code，不再等待完整启动超时；真正的启动超时会同时记录 root directory 和 pool file 路径，便于区分文件占用、磁盘权限与子进程初始化错误。控制台中断在 broker 内只触发清理，不重复输出无意义的 `KeyboardInterrupt` traceback。
+LocalBufferBroker process 必须服从 backend-service 的进程生命周期：backend-service 正常停止或 reload 时，broker 先关闭 mmap 句柄再退出；broker 会定期检查 supervisor 的 parent process sentinel，父进程被强制结束后也会自行退出，避免作为孤立进程长期持有默认 pool 文件。broker 在打开任何 pool 文件前必须持有 `root_dir/.local-buffer-broker.lock` 跨进程独占锁，同一根目录只能存在一个写入仲裁者；重复启动会立即返回占用 broker 与 supervisor 的 process id，不能继续截断或映射活动文件。supervisor 启动阶段会持续检查子进程状态，子进程启动结果在退出前显式刷新到父进程，提前退出时立即返回具体配置错误或 process id 和 exit code，不再等待完整启动超时；真正的启动超时会同时记录 root directory 和 pool file 路径，便于区分文件占用、磁盘权限与子进程初始化错误。控制台中断在 broker 内只触发清理，不重复输出无意义的 `KeyboardInterrupt` traceback。
 
 第 0 阶段已经在项目内实现规则模型、mmap pool 基础设施和本地 reader 接口，并稳定 BufferRef、FrameRef、BufferLease、槽位复用、generation 校验和 image-ref 解析规则。第 1 阶段已经把同一套 mmap pool 和 lease registry 包到 broker companion process 中，并把 workflow preview、WorkflowAppRuntime 和 deployment worker 接到 broker client。
 
@@ -145,6 +145,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 实现约定如下：
 
 - 每个 pool 使用固定大小 mmap 文件，例如 `runtime/buffers/image-4k/image-4k-001.dat`。
+- broker 重启且配置容量不变时直接复用现有 pool 文件，不执行 `wb` 截断；只有新建文件或配置容量发生变化时才调整文件长度。内存中的 lease registry 和 `broker_epoch` 每次启动仍重新建立，旧引用不会因文件复用恢复有效。
 - 每个 pool 按固定槽位分配，单次 lease 不能超过槽位大小。
 - broker 持有 lease registry，记录槽位、owner、state、TTL、ref_count、broker_epoch 和 generation。
 - 写入采用两阶段状态：先分配 `writing` lease，写入并 flush 后才变成 `active`，只有 active lease 才能生成对外传递的 BufferRef。
@@ -160,6 +161,7 @@ LocalBufferBroker 的一致性目标不是数据库级事务，而是保证短�
 必须遵守以下规则：
 
 - 单一写入仲裁：槽位分配、lease 状态变化和 generation 增长只能由 broker 完成。
+- 根目录单实例：broker 必须先持有 `root_dir` 锁再打开 pool；不同 backend-service 实例需要配置不同根目录，或由同一个本地 launcher 保证只启动一个 backend-service。
 - 两阶段发布：写入期间为 `writing`，flush 完成后才切换为 `active` 并返回 BufferRef。
 - 旧引用失效：broker 每次启动生成新的 `broker_epoch`；每个槽位复用时增加 `generation`。
 - 读取校验：reader 必须校验 lease_id、broker_epoch、generation、path、offset、size 和 active 状态。

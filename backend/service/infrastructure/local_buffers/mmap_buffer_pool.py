@@ -5,12 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import mmap
+import os
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
@@ -159,9 +163,14 @@ class MmapBufferPool:
         file_handle = None
         try:
             self.config.root_dir.mkdir(parents=True, exist_ok=True)
-            with self.file_path.open("wb") as pool_file:
-                pool_file.truncate(self.config.file_size_bytes)
-            file_handle = self.file_path.open("r+b")
+            try:
+                file_handle = self.file_path.open("r+b")
+            except FileNotFoundError:
+                file_handle = self.file_path.open("w+b")
+            current_file_size = os.fstat(file_handle.fileno()).st_size
+            if current_file_size != self.config.file_size_bytes:
+                file_handle.truncate(self.config.file_size_bytes)
+                file_handle.flush()
             self._mmap = mmap.mmap(file_handle.fileno(), self.config.file_size_bytes)
         except OSError as exc:
             if file_handle is not None:
@@ -223,7 +232,11 @@ class MmapBufferPool:
         normalized_owner_kind = _require_stripped_text(owner_kind, "owner_kind")
         normalized_owner_id = _require_stripped_text(owner_id, "owner_id")
         created_at = datetime.now(timezone.utc)
-        expires_at = created_at + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
+        expires_at = (
+            created_at + timedelta(seconds=ttl_seconds)
+            if ttl_seconds is not None
+            else None
+        )
         with self._lock:
             try:
                 slot_index = self._find_free_slot_index()
@@ -256,7 +269,9 @@ class MmapBufferPool:
             )
             slot_state.lease = lease
             increment_safe_counter(self._allocation_count)
-            self._max_used_count = max(self._max_used_count, self._count_used_slots_locked())
+            self._max_used_count = max(
+                self._max_used_count, self._count_used_slots_locked()
+            )
             return lease
 
     def write_lease(
@@ -293,18 +308,26 @@ class MmapBufferPool:
         if len(content) > lease.size:
             raise InvalidRequestError(
                 "mmap buffer 写入内容超过 lease 大小",
-                details={"lease_id": lease.lease_id, "content_size": len(content), "lease_size": lease.size},
+                details={
+                    "lease_id": lease.lease_id,
+                    "content_size": len(content),
+                    "lease_size": lease.size,
+                },
             )
         normalized_media_type = _require_stripped_text(media_type, "media_type")
         with self._lock:
-            slot_index = self._require_current_slot_index(lease=lease, expected_states={"writing"})
+            slot_index = self._require_current_slot_index(
+                lease=lease, expected_states={"writing"}
+            )
             self._mmap.seek(lease.offset)
             self._mmap.write(content)
             if len(content) < lease.size:
                 self._mmap.write(b"\x00" * (lease.size - len(content)))
             if self.config.flush_on_write:
                 self._mmap.flush()
-            active_lease = lease.model_copy(update={"state": "active", "size": len(content)})
+            active_lease = lease.model_copy(
+                update={"state": "active", "size": len(content)}
+            )
             self._slots[slot_index].lease = active_lease
             buffer_ref = BufferRef(
                 buffer_id=active_lease.buffer_id,
@@ -352,7 +375,9 @@ class MmapBufferPool:
         self._ensure_open()
         normalized_media_type = _require_stripped_text(media_type, "media_type")
         with self._lock:
-            slot_index = self._require_current_slot_index(lease=lease, expected_states={"writing"})
+            slot_index = self._require_current_slot_index(
+                lease=lease, expected_states={"writing"}
+            )
             if self.config.flush_on_write:
                 self._mmap.flush()
             active_lease = lease.model_copy(update={"state": "active"})
@@ -427,7 +452,9 @@ class MmapBufferPool:
             self.release(lease.lease_id)
             raise
 
-    def create_frame_channel(self, *, stream_id: str, frame_capacity: int) -> dict[str, object]:
+    def create_frame_channel(
+        self, *, stream_id: str, frame_capacity: int
+    ) -> dict[str, object]:
         """创建一个固定容量 ring buffer channel。
 
         参数：
@@ -444,7 +471,10 @@ class MmapBufferPool:
             raise InvalidRequestError("ring buffer frame_capacity 必须大于 0")
         with self._lock:
             if normalized_stream_id in self._ring_channels:
-                raise InvalidRequestError("ring buffer channel 已存在", details={"stream_id": normalized_stream_id})
+                raise InvalidRequestError(
+                    "ring buffer channel 已存在",
+                    details={"stream_id": normalized_stream_id},
+                )
             available_slots = [
                 slot_index
                 for slot_index, slot_state in enumerate(self._slots)
@@ -464,13 +494,19 @@ class MmapBufferPool:
                 self._slots[slot_index].frame = _FrameSlotState(
                     stream_id=normalized_stream_id,
                     sequence_id=-1,
-                    buffer_id=self._build_frame_buffer_id(normalized_stream_id, slot_index),
+                    buffer_id=self._build_frame_buffer_id(
+                        normalized_stream_id, slot_index
+                    ),
                     offset=slot_index * self.config.slot_size_bytes,
                 )
-            channel = _RingChannelState(stream_id=normalized_stream_id, slot_indices=slot_indices)
+            channel = _RingChannelState(
+                stream_id=normalized_stream_id, slot_indices=slot_indices
+            )
             self._ring_channels[normalized_stream_id] = channel
             increment_safe_counter(self._frame_channel_count)
-            self._max_used_count = max(self._max_used_count, self._count_used_slots_locked())
+            self._max_used_count = max(
+                self._max_used_count, self._count_used_slots_locked()
+            )
             return self._build_frame_channel_status_locked(channel)
 
     def allocate_frame(
@@ -498,16 +534,24 @@ class MmapBufferPool:
             slot_state = self._slots[slot_index]
             frame_state = slot_state.frame
             if frame_state is None or frame_state.stream_id != normalized_stream_id:
-                raise InvalidRequestError("ring buffer 槽位不属于当前 stream", details={"stream_id": normalized_stream_id})
+                raise InvalidRequestError(
+                    "ring buffer 槽位不属于当前 stream",
+                    details={"stream_id": normalized_stream_id},
+                )
             if frame_state.state == "writing":
-                raise InvalidRequestError("ring buffer 当前槽位仍处于 writing 状态", details={"stream_id": normalized_stream_id})
+                raise InvalidRequestError(
+                    "ring buffer 当前槽位仍处于 writing 状态",
+                    details={"stream_id": normalized_stream_id},
+                )
             if frame_state.state == "active":
                 increment_safe_counter(channel.overwritten_frame_count)
                 increment_safe_counter(self._frame_overwrite_count)
             slot_state.generation += 1
             sequence_id = channel.next_sequence_id
             channel.next_sequence_id += 1
-            channel.next_slot_position = (channel.next_slot_position + 1) % len(channel.slot_indices)
+            channel.next_slot_position = (channel.next_slot_position + 1) % len(
+                channel.slot_indices
+            )
             frame_state.sequence_id = sequence_id
             frame_state.size = size
             frame_state.generation = slot_state.generation
@@ -559,7 +603,9 @@ class MmapBufferPool:
         self._ensure_open()
         normalized_media_type = _require_stripped_text(media_type, "media_type")
         with self._lock:
-            frame_state = self._require_writing_frame_for_reservation_locked(reservation)
+            frame_state = self._require_writing_frame_for_reservation_locked(
+                reservation
+            )
             if self.config.flush_on_write:
                 self._mmap.flush()
             frame_state.state = "active"
@@ -579,7 +625,9 @@ class MmapBufferPool:
 
         self._ensure_open()
         with self._lock:
-            frame_state = self._require_writing_frame_for_reservation_locked(reservation)
+            frame_state = self._require_writing_frame_for_reservation_locked(
+                reservation
+            )
             frame_state.sequence_id = -1
             frame_state.size = 0
             frame_state.state = "reserved"
@@ -731,7 +779,9 @@ class MmapBufferPool:
                     slot_state.lease = None
                     increment_safe_counter(self._released_count)
                     return
-        raise InvalidRequestError("mmap buffer lease 不存在", details={"lease_id": normalized_lease_id})
+        raise InvalidRequestError(
+            "mmap buffer lease 不存在", details={"lease_id": normalized_lease_id}
+        )
 
     def release_owner(
         self,
@@ -755,19 +805,28 @@ class MmapBufferPool:
         normalized_owner_id = _normalize_optional_text(owner_id)
         normalized_owner_id_prefix = _normalize_optional_text(owner_id_prefix)
         if normalized_owner_id is None and normalized_owner_id_prefix is None:
-            raise InvalidRequestError("release_owner 必须提供 owner_id 或 owner_id_prefix")
+            raise InvalidRequestError(
+                "release_owner 必须提供 owner_id 或 owner_id_prefix"
+            )
         released_count = 0
         with self._lock:
             for slot_state in self._slots:
                 lease = slot_state.lease
                 if lease is None:
                     continue
-                if normalized_owner_kind is not None and lease.owner_kind != normalized_owner_kind:
+                if (
+                    normalized_owner_kind is not None
+                    and lease.owner_kind != normalized_owner_kind
+                ):
                     continue
-                if normalized_owner_id is not None and lease.owner_id != normalized_owner_id:
+                if (
+                    normalized_owner_id is not None
+                    and lease.owner_id != normalized_owner_id
+                ):
                     continue
-                if normalized_owner_id_prefix is not None and not lease.owner_id.startswith(
-                    normalized_owner_id_prefix
+                if (
+                    normalized_owner_id_prefix is not None
+                    and not lease.owner_id.startswith(normalized_owner_id_prefix)
                 ):
                     continue
                 slot_state.lease = None
@@ -796,7 +855,11 @@ class MmapBufferPool:
         expired_count = 0
         for slot_state in self._slots:
             lease = slot_state.lease
-            if lease is not None and lease.expires_at is not None and lease.expires_at <= current_time:
+            if (
+                lease is not None
+                and lease.expires_at is not None
+                and lease.expires_at <= current_time
+            ):
                 slot_state.lease = None
                 expired_count += 1
         for _ in range(expired_count):
@@ -809,15 +872,23 @@ class MmapBufferPool:
         self._ensure_open()
         with self._lock:
             allocation_count_snapshot = snapshot_safe_counter(self._allocation_count)
-            allocation_failure_count_snapshot = snapshot_safe_counter(self._allocation_failure_count)
+            allocation_failure_count_snapshot = snapshot_safe_counter(
+                self._allocation_failure_count
+            )
             pool_full_count_snapshot = snapshot_safe_counter(self._pool_full_count)
             released_count_snapshot = snapshot_safe_counter(self._released_count)
             expired_count_snapshot = snapshot_safe_counter(self._expired_count)
-            frame_channel_count_snapshot = snapshot_safe_counter(self._frame_channel_count)
-            frame_channel_destroy_count_snapshot = snapshot_safe_counter(self._frame_channel_destroy_count)
+            frame_channel_count_snapshot = snapshot_safe_counter(
+                self._frame_channel_count
+            )
+            frame_channel_destroy_count_snapshot = snapshot_safe_counter(
+                self._frame_channel_destroy_count
+            )
             frame_abort_count_snapshot = snapshot_safe_counter(self._frame_abort_count)
             frame_write_count_snapshot = snapshot_safe_counter(self._frame_write_count)
-            frame_overwrite_count_snapshot = snapshot_safe_counter(self._frame_overwrite_count)
+            frame_overwrite_count_snapshot = snapshot_safe_counter(
+                self._frame_overwrite_count
+            )
             active_count = self._count_leases_by_state_locked("active")
             writing_count = self._count_leases_by_state_locked("writing")
             frame_active_count = self._count_frames_by_state_locked("active")
@@ -836,28 +907,50 @@ class MmapBufferPool:
                 "used_count": used_count,
                 "free_count": self.slot_count - used_count,
                 "allocation_count": allocation_count_snapshot["value"],
-                "allocation_count_rollover_count": allocation_count_snapshot["rollover_count"],
+                "allocation_count_rollover_count": allocation_count_snapshot[
+                    "rollover_count"
+                ],
                 "allocation_failure_count": allocation_failure_count_snapshot["value"],
-                "allocation_failure_count_rollover_count": allocation_failure_count_snapshot["rollover_count"],
+                "allocation_failure_count_rollover_count": allocation_failure_count_snapshot[
+                    "rollover_count"
+                ],
                 "pool_full_count": pool_full_count_snapshot["value"],
-                "pool_full_count_rollover_count": pool_full_count_snapshot["rollover_count"],
+                "pool_full_count_rollover_count": pool_full_count_snapshot[
+                    "rollover_count"
+                ],
                 "released_count": released_count_snapshot["value"],
-                "released_count_rollover_count": released_count_snapshot["rollover_count"],
+                "released_count_rollover_count": released_count_snapshot[
+                    "rollover_count"
+                ],
                 "expired_count": expired_count_snapshot["value"],
-                "expired_count_rollover_count": expired_count_snapshot["rollover_count"],
+                "expired_count_rollover_count": expired_count_snapshot[
+                    "rollover_count"
+                ],
                 "max_used_count": self._max_used_count,
                 "frame_channel_count": len(self._ring_channels),
                 "frame_channel_count_rollover_count": 0,
                 "frame_channel_created_count": frame_channel_count_snapshot["value"],
-                "frame_channel_created_count_rollover_count": frame_channel_count_snapshot["rollover_count"],
-                "frame_channel_destroy_count": frame_channel_destroy_count_snapshot["value"],
-                "frame_channel_destroy_count_rollover_count": frame_channel_destroy_count_snapshot["rollover_count"],
+                "frame_channel_created_count_rollover_count": frame_channel_count_snapshot[
+                    "rollover_count"
+                ],
+                "frame_channel_destroy_count": frame_channel_destroy_count_snapshot[
+                    "value"
+                ],
+                "frame_channel_destroy_count_rollover_count": frame_channel_destroy_count_snapshot[
+                    "rollover_count"
+                ],
                 "frame_abort_count": frame_abort_count_snapshot["value"],
-                "frame_abort_count_rollover_count": frame_abort_count_snapshot["rollover_count"],
+                "frame_abort_count_rollover_count": frame_abort_count_snapshot[
+                    "rollover_count"
+                ],
                 "frame_write_count": frame_write_count_snapshot["value"],
-                "frame_write_count_rollover_count": frame_write_count_snapshot["rollover_count"],
+                "frame_write_count_rollover_count": frame_write_count_snapshot[
+                    "rollover_count"
+                ],
                 "frame_overwrite_count": frame_overwrite_count_snapshot["value"],
-                "frame_overwrite_count_rollover_count": frame_overwrite_count_snapshot["rollover_count"],
+                "frame_overwrite_count_rollover_count": frame_overwrite_count_snapshot[
+                    "rollover_count"
+                ],
                 "frame_channels": [
                     self._build_frame_channel_status_locked(channel)
                     for channel in self._ring_channels.values()
@@ -897,17 +990,29 @@ class MmapBufferPool:
     def _count_used_slots_locked(self) -> int:
         """返回当前已占用槽位数量。"""
 
-        return sum(1 for slot_state in self._slots if slot_state.lease is not None or slot_state.frame is not None)
+        return sum(
+            1
+            for slot_state in self._slots
+            if slot_state.lease is not None or slot_state.frame is not None
+        )
 
     def _count_leases_by_state_locked(self, state: str) -> int:
         """按 lease 状态统计槽位数量。"""
 
-        return sum(1 for slot_state in self._slots if slot_state.lease is not None and slot_state.lease.state == state)
+        return sum(
+            1
+            for slot_state in self._slots
+            if slot_state.lease is not None and slot_state.lease.state == state
+        )
 
     def _count_frames_by_state_locked(self, state: str) -> int:
         """按 frame 状态统计槽位数量。"""
 
-        return sum(1 for slot_state in self._slots if slot_state.frame is not None and slot_state.frame.state == state)
+        return sum(
+            1
+            for slot_state in self._slots
+            if slot_state.frame is not None and slot_state.frame.state == state
+        )
 
     def _count_frame_slots_locked(self) -> int:
         """统计已经被 ring channel 预留的槽位数量。"""
@@ -924,11 +1029,17 @@ class MmapBufferPool:
 
         return f"{self.pool_name}:frame:{stream_id}:{slot_index}"
 
-    def _build_frame_channel_status_locked(self, channel: _RingChannelState) -> dict[str, object]:
+    def _build_frame_channel_status_locked(
+        self, channel: _RingChannelState
+    ) -> dict[str, object]:
         """构造 ring channel 状态摘要。"""
 
-        published_frame_count_snapshot = snapshot_safe_counter(channel.published_frame_count)
-        overwritten_frame_count_snapshot = snapshot_safe_counter(channel.overwritten_frame_count)
+        published_frame_count_snapshot = snapshot_safe_counter(
+            channel.published_frame_count
+        )
+        overwritten_frame_count_snapshot = snapshot_safe_counter(
+            channel.overwritten_frame_count
+        )
         return {
             "stream_id": channel.stream_id,
             "frame_capacity": len(channel.slot_indices),
@@ -936,9 +1047,13 @@ class MmapBufferPool:
             "next_sequence_id": channel.next_sequence_id,
             "next_slot_position": channel.next_slot_position,
             "published_frame_count": published_frame_count_snapshot["value"],
-            "published_frame_count_rollover_count": published_frame_count_snapshot["rollover_count"],
+            "published_frame_count_rollover_count": published_frame_count_snapshot[
+                "rollover_count"
+            ],
             "overwritten_frame_count": overwritten_frame_count_snapshot["value"],
-            "overwritten_frame_count_rollover_count": overwritten_frame_count_snapshot["rollover_count"],
+            "overwritten_frame_count_rollover_count": overwritten_frame_count_snapshot[
+                "rollover_count"
+            ],
         }
 
     def _require_frame_channel_locked(self, stream_id: str) -> _RingChannelState:
@@ -946,10 +1061,14 @@ class MmapBufferPool:
 
         channel = self._ring_channels.get(stream_id)
         if channel is None:
-            raise InvalidRequestError("ring buffer channel 不存在", details={"stream_id": stream_id})
+            raise InvalidRequestError(
+                "ring buffer channel 不存在", details={"stream_id": stream_id}
+            )
         return channel
 
-    def _require_writing_frame_for_reservation_locked(self, reservation: dict[str, object]) -> _FrameSlotState:
+    def _require_writing_frame_for_reservation_locked(
+        self, reservation: dict[str, object]
+    ) -> _FrameSlotState:
         """按写入 reservation 定位 writing frame 槽位。"""
 
         stream_id = _require_payload_str(reservation, "stream_id")
@@ -958,18 +1077,31 @@ class MmapBufferPool:
         sequence_id = _require_payload_int(reservation, "sequence_id")
         generation = _require_payload_int(reservation, "generation")
         if broker_epoch != self.broker_epoch:
-            raise InvalidRequestError("ring buffer reservation 属于旧 broker epoch", details={"stream_id": stream_id})
+            raise InvalidRequestError(
+                "ring buffer reservation 属于旧 broker epoch",
+                details={"stream_id": stream_id},
+            )
         channel = self._require_frame_channel_locked(stream_id)
         for slot_index in channel.slot_indices:
             frame_state = self._slots[slot_index].frame
             if frame_state is None or frame_state.buffer_id != buffer_id:
                 continue
             if frame_state.state != "writing":
-                raise InvalidRequestError("ring buffer reservation 当前不可提交", details={"buffer_id": buffer_id})
-            if frame_state.sequence_id != sequence_id or frame_state.generation != generation:
-                raise InvalidRequestError("ring buffer reservation 已被复用", details={"buffer_id": buffer_id})
+                raise InvalidRequestError(
+                    "ring buffer reservation 当前不可提交",
+                    details={"buffer_id": buffer_id},
+                )
+            if (
+                frame_state.sequence_id != sequence_id
+                or frame_state.generation != generation
+            ):
+                raise InvalidRequestError(
+                    "ring buffer reservation 已被复用", details={"buffer_id": buffer_id}
+                )
             return frame_state
-        raise InvalidRequestError("ring buffer reservation 指向未知槽位", details={"buffer_id": buffer_id})
+        raise InvalidRequestError(
+            "ring buffer reservation 指向未知槽位", details={"buffer_id": buffer_id}
+        )
 
     def _build_frame_ref_locked(self, frame_state: _FrameSlotState) -> FrameRef:
         """按 active frame 状态构造 FrameRef。"""
@@ -1002,18 +1134,35 @@ class MmapBufferPool:
         """校验 lease 仍指向当前槽位并返回槽位索引。"""
 
         if lease.broker_epoch != self.broker_epoch:
-            raise InvalidRequestError("mmap buffer lease 属于旧 broker epoch", details={"lease_id": lease.lease_id})
+            raise InvalidRequestError(
+                "mmap buffer lease 属于旧 broker epoch",
+                details={"lease_id": lease.lease_id},
+            )
         if lease.offset % self.config.slot_size_bytes != 0:
-            raise InvalidRequestError("mmap buffer lease offset 未对齐槽位", details={"lease_id": lease.lease_id})
+            raise InvalidRequestError(
+                "mmap buffer lease offset 未对齐槽位",
+                details={"lease_id": lease.lease_id},
+            )
         slot_index = lease.offset // self.config.slot_size_bytes
         if slot_index < 0 or slot_index >= self._slot_count:
-            raise InvalidRequestError("mmap buffer lease offset 超出 pool 范围", details={"lease_id": lease.lease_id})
+            raise InvalidRequestError(
+                "mmap buffer lease offset 超出 pool 范围",
+                details={"lease_id": lease.lease_id},
+            )
         slot_state = self._slots[slot_index]
         current_lease = slot_state.lease
         if current_lease is None:
-            raise InvalidRequestError("mmap buffer lease 已释放", details={"lease_id": lease.lease_id})
-        if current_lease.lease_id != lease.lease_id or current_lease.generation != lease.generation:
-            raise InvalidRequestError("mmap buffer lease 已被其他代次复用", details={"lease_id": lease.lease_id})
+            raise InvalidRequestError(
+                "mmap buffer lease 已释放", details={"lease_id": lease.lease_id}
+            )
+        if (
+            current_lease.lease_id != lease.lease_id
+            or current_lease.generation != lease.generation
+        ):
+            raise InvalidRequestError(
+                "mmap buffer lease 已被其他代次复用",
+                details={"lease_id": lease.lease_id},
+            )
         if current_lease.state not in expected_states:
             raise InvalidRequestError(
                 "mmap buffer lease 状态不允许当前操作",
@@ -1025,52 +1174,100 @@ class MmapBufferPool:
         """按 BufferRef 找到 active lease 并校验一致性。"""
 
         if buffer_ref.broker_epoch != self.broker_epoch:
-            raise InvalidRequestError("BufferRef 属于旧 broker epoch", details={"lease_id": buffer_ref.lease_id})
+            raise InvalidRequestError(
+                "BufferRef 属于旧 broker epoch",
+                details={"lease_id": buffer_ref.lease_id},
+            )
         if Path(buffer_ref.path) != self.file_path:
-            raise InvalidRequestError("BufferRef path 与当前 pool 不匹配", details={"path": buffer_ref.path})
+            raise InvalidRequestError(
+                "BufferRef path 与当前 pool 不匹配", details={"path": buffer_ref.path}
+            )
         slot_index = buffer_ref.offset // self.config.slot_size_bytes
         if slot_index < 0 or slot_index >= self._slot_count:
-            raise InvalidRequestError("BufferRef offset 超出 pool 范围", details={"lease_id": buffer_ref.lease_id})
+            raise InvalidRequestError(
+                "BufferRef offset 超出 pool 范围",
+                details={"lease_id": buffer_ref.lease_id},
+            )
         slot_state = self._slots[slot_index]
         lease = slot_state.lease
         if lease is None or lease.state != "active":
-            raise InvalidRequestError("BufferRef 引用的 lease 当前不可读", details={"lease_id": buffer_ref.lease_id})
+            raise InvalidRequestError(
+                "BufferRef 引用的 lease 当前不可读",
+                details={"lease_id": buffer_ref.lease_id},
+            )
         if lease.buffer_id != buffer_ref.buffer_id or lease.offset != buffer_ref.offset:
-            raise InvalidRequestError("BufferRef 与当前 lease 槽位不一致", details={"lease_id": buffer_ref.lease_id})
-        if lease.lease_id != buffer_ref.lease_id or lease.generation != buffer_ref.generation:
-            raise InvalidRequestError("BufferRef 引用的 lease 已被复用", details={"lease_id": buffer_ref.lease_id})
+            raise InvalidRequestError(
+                "BufferRef 与当前 lease 槽位不一致",
+                details={"lease_id": buffer_ref.lease_id},
+            )
+        if (
+            lease.lease_id != buffer_ref.lease_id
+            or lease.generation != buffer_ref.generation
+        ):
+            raise InvalidRequestError(
+                "BufferRef 引用的 lease 已被复用",
+                details={"lease_id": buffer_ref.lease_id},
+            )
         if buffer_ref.size > lease.size:
-            raise InvalidRequestError("BufferRef size 超过 lease size", details={"lease_id": buffer_ref.lease_id})
+            raise InvalidRequestError(
+                "BufferRef size 超过 lease size",
+                details={"lease_id": buffer_ref.lease_id},
+            )
         return lease
 
     def _require_active_frame_for_ref(self, frame_ref: FrameRef) -> _FrameSlotState:
         """按 FrameRef 找到 active frame 并校验一致性。"""
 
         if frame_ref.broker_epoch != self.broker_epoch:
-            raise InvalidRequestError("FrameRef 属于旧 broker epoch", details={"stream_id": frame_ref.stream_id})
+            raise InvalidRequestError(
+                "FrameRef 属于旧 broker epoch",
+                details={"stream_id": frame_ref.stream_id},
+            )
         if Path(frame_ref.path) != self.file_path:
-            raise InvalidRequestError("FrameRef path 与当前 pool 不匹配", details={"path": frame_ref.path})
+            raise InvalidRequestError(
+                "FrameRef path 与当前 pool 不匹配", details={"path": frame_ref.path}
+            )
         channel = self._require_frame_channel_locked(frame_ref.stream_id)
         for slot_index in channel.slot_indices:
             frame_state = self._slots[slot_index].frame
             if frame_state is None or frame_state.buffer_id != frame_ref.buffer_id:
                 continue
             if frame_state.state != "active":
-                raise InvalidRequestError("FrameRef 引用的帧当前不可读", details={"buffer_id": frame_ref.buffer_id})
-            if frame_state.sequence_id != frame_ref.sequence_id or frame_state.generation != frame_ref.generation:
-                raise InvalidRequestError("FrameRef 引用的帧已被覆盖或复用", details={"buffer_id": frame_ref.buffer_id})
+                raise InvalidRequestError(
+                    "FrameRef 引用的帧当前不可读",
+                    details={"buffer_id": frame_ref.buffer_id},
+                )
+            if (
+                frame_state.sequence_id != frame_ref.sequence_id
+                or frame_state.generation != frame_ref.generation
+            ):
+                raise InvalidRequestError(
+                    "FrameRef 引用的帧已被覆盖或复用",
+                    details={"buffer_id": frame_ref.buffer_id},
+                )
             if frame_state.offset != frame_ref.offset:
-                raise InvalidRequestError("FrameRef 与当前帧槽位不一致", details={"buffer_id": frame_ref.buffer_id})
+                raise InvalidRequestError(
+                    "FrameRef 与当前帧槽位不一致",
+                    details={"buffer_id": frame_ref.buffer_id},
+                )
             if frame_ref.size > frame_state.size:
-                raise InvalidRequestError("FrameRef size 超过当前帧 size", details={"buffer_id": frame_ref.buffer_id})
+                raise InvalidRequestError(
+                    "FrameRef size 超过当前帧 size",
+                    details={"buffer_id": frame_ref.buffer_id},
+                )
             return frame_state
-        raise InvalidRequestError("FrameRef 指向未知 ring buffer 槽位", details={"buffer_id": frame_ref.buffer_id})
+        raise InvalidRequestError(
+            "FrameRef 指向未知 ring buffer 槽位",
+            details={"buffer_id": frame_ref.buffer_id},
+        )
 
     def _ensure_open(self) -> None:
         """确认 pool 尚未关闭。"""
 
         if self._closed:
-            raise InvalidRequestError("mmap buffer pool 已关闭", details={"pool_name": self.pool_name})
+            raise InvalidRequestError(
+                "mmap buffer pool 已关闭", details={"pool_name": self.pool_name}
+            )
 
 
 def _validate_config(config: MmapBufferPoolConfig) -> MmapBufferPoolConfig:
@@ -1083,7 +1280,9 @@ def _validate_config(config: MmapBufferPoolConfig) -> MmapBufferPoolConfig:
     if config.slot_size_bytes <= 0:
         raise InvalidRequestError("mmap buffer pool slot_size_bytes 必须大于 0")
     if config.file_size_bytes % config.slot_size_bytes != 0:
-        raise InvalidRequestError("mmap buffer pool file_size_bytes 必须是 slot_size_bytes 的整数倍")
+        raise InvalidRequestError(
+            "mmap buffer pool file_size_bytes 必须是 slot_size_bytes 的整数倍"
+        )
     return config
 
 
@@ -1123,7 +1322,9 @@ def _require_payload_str(payload: dict[str, object], field_name: str) -> str:
     value = payload.get(field_name)
     normalized_value = value.strip() if isinstance(value, str) else ""
     if not normalized_value:
-        raise InvalidRequestError("ring buffer payload 缺少必需字符串字段", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "ring buffer payload 缺少必需字符串字段", details={"field_name": field_name}
+        )
     return normalized_value
 
 
@@ -1132,8 +1333,12 @@ def _require_payload_int(payload: dict[str, object], field_name: str) -> int:
 
     value = payload.get(field_name)
     if isinstance(value, bool):
-        raise InvalidRequestError("ring buffer payload 字段必须是整数", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "ring buffer payload 字段必须是整数", details={"field_name": field_name}
+        )
     try:
         return int(value)
     except (TypeError, ValueError) as exc:
-        raise InvalidRequestError("ring buffer payload 字段必须是整数", details={"field_name": field_name}) from exc
+        raise InvalidRequestError(
+            "ring buffer payload 字段必须是整数", details={"field_name": field_name}
+        ) from exc

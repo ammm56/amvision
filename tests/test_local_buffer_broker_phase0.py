@@ -270,6 +270,32 @@ def test_mmap_buffer_pool_high_frequency_soak_keeps_capacity_stable(tmp_path: Pa
         assert status["released_count"] == iterations
 
 
+def test_mmap_buffer_pool_reuses_same_size_file_without_truncating(tmp_path: Path) -> None:
+    """验证 broker 重启复用同容量文件，不重复清零整个 mmap。"""
+
+    config = MmapBufferPoolConfig(
+        pool_name="reuse",
+        root_dir=tmp_path / "reuse",
+        file_size_bytes=128,
+        slot_size_bytes=64,
+        broker_epoch="epoch-reuse",
+    )
+    with MmapBufferPool(config) as pool:
+        file_path = pool.file_path
+
+    marker = b"existing-pool-data"
+    with file_path.open("r+b") as pool_file:
+        pool_file.seek(64)
+        pool_file.write(marker)
+
+    with MmapBufferPool(config):
+        pass
+
+    with file_path.open("rb") as pool_file:
+        pool_file.seek(64)
+        assert pool_file.read(len(marker)) == marker
+
+
 def test_resolve_image_reference_and_load_image_bytes_support_buffer_ref(tmp_path: Path) -> None:
     """验证 image-ref helper 可以通过 LocalBufferBroker reader 读取 BufferRef。"""
 

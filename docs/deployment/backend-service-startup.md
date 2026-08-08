@@ -194,6 +194,9 @@
 - 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件
 - `image-8k` 单槽 256MB、默认 16 个槽位，仅作为现场可选大图 pool；需要更高分辨率、更多通道或相机专用大图输入时，手动把 `{"pool_name":"image-8k","slot_size_bytes":268435456,"slot_count":16,"flush_on_write":false}` 加到 `local_buffer_broker.pools`
 - `local_buffer_broker.startup_timeout_seconds` 默认 60 秒；大 pool 首次创建和 mmap 可能超过原 5 秒，尤其是 Windows 和机械硬盘环境
+- `local_buffer_broker.root_dir` 是单 broker 写入边界。broker 启动前会锁定 `.local-buffer-broker.lock`；同一目录已被其他 backend-service 占用时会立即返回占用者 PID，不会等待 60 秒后笼统报超时，也不会截断正在使用的 mmap 文件
+- pool 文件容量与当前配置一致时直接复用；只有首次创建或容量发生变化时才调整文件长度，避免每次开发启动都重建默认约 2.4 GiB 的 pool 文件
+- Windows 上调整现有 pool 容量前必须停止 backend-service、inference daemon 和仍持有该 pool 的本地 worker，修改配置后按 inference daemon、backend-service 的顺序重新启动；不能在活动 mmap reader 存在时在线调整文件长度
 - `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`，仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略
 - ZeroMQ TriggerSource 可以通过 `transport_config.pool_name` 选择目标 pool；不配置时使用 `local_buffer_broker.default_pool_name`
 - 前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项；页面不维护独立默认 pool 列表
@@ -211,6 +214,7 @@
 ### 当前仓库已经具备的能力
 
 - FastAPI 服务可直接通过 uvicorn 启动
+- 同一工作区、端口和 `local_buffer_broker.root_dir` 只能运行一个 backend-service。使用 `--reload` 时，终端中的 reloader 根进程会持续持有监听 socket；再次执行相同启动命令前必须先在原终端按 Ctrl+C，不能只观察上一轮 server 子进程是否退出
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
 - /api/v1/tasks 和 /ws/v1/tasks/events 已经公开

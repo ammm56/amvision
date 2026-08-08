@@ -57,7 +57,10 @@ from backend.service.application.runtime.contracts.detection.prediction import (
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY,
@@ -365,12 +368,7 @@ def test_local_buffer_broker_process_closes_quietly_on_keyboard_interrupt(
     startup_message = startup_queue.messages[0]
     assert isinstance(startup_message, dict)
     assert startup_message["ok"] is True
-    pool_file = (
-        tmp_path
-        / "interrupt-broker"
-        / "image-test"
-        / "image-test-001.dat"
-    )
+    pool_file = tmp_path / "interrupt-broker" / "image-test" / "image-test-001.dat"
     pool_file.unlink()
     assert pool_file.exists() is False
 
@@ -422,12 +420,7 @@ def test_local_buffer_broker_process_stops_when_supervisor_exits(
     )
 
     assert startup_queue.messages
-    pool_file = (
-        tmp_path
-        / "orphan-broker"
-        / "image-test"
-        / "image-test-001.dat"
-    )
+    pool_file = tmp_path / "orphan-broker" / "image-test" / "image-test-001.dat"
     pool_file.unlink()
     assert pool_file.exists() is False
 
@@ -481,6 +474,43 @@ def test_local_buffer_broker_supervisor_reports_early_child_exit(
     assert monotonic() - started_at < 1.0
     assert exc_info.value.details["process_id"] == 43210
     assert exc_info.value.details["process_exitcode"] == 7
+
+
+def test_local_buffer_broker_rejects_duplicate_root_without_waiting_for_timeout(
+    tmp_path: Path,
+) -> None:
+    """验证同一 root_dir 只能由一个 broker 持有且失败信息包含占用者。"""
+
+    settings = _build_broker_settings(tmp_path)
+    first_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+    second_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+
+    first_supervisor.start()
+    try:
+        first_status = first_supervisor.get_status()
+        started_at = monotonic()
+        with pytest.raises(
+            ServiceConfigurationError,
+            match="根目录已被其他进程占用",
+        ) as exc_info:
+            second_supervisor.start()
+
+        assert monotonic() - started_at < settings.startup_timeout_seconds
+        assert exc_info.value.details["reason"] == "root-lock-busy"
+        assert exc_info.value.details["root_dir"] == str(Path(settings.root_dir).resolve())
+        assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
+        assert f"broker PID={first_status['process_id']}" in exc_info.value.message
+        assert first_supervisor.get_status()["state"] == "running"
+    finally:
+        second_supervisor.stop()
+        first_supervisor.stop()
+
+    replacement_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+    replacement_supervisor.start()
+    try:
+        assert replacement_supervisor.get_status()["state"] == "running"
+    finally:
+        replacement_supervisor.stop()
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(

@@ -11,9 +11,21 @@ from typing import Any
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
-from backend.service.application.errors import InvalidRequestError, ServiceError, ServiceConfigurationError
-from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
-from backend.service.infrastructure.local_buffers import MmapBufferPool, MmapBufferPoolConfig
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceError,
+    ServiceConfigurationError,
+)
+from backend.service.application.local_buffers.broker_instance_lock import (
+    LocalBufferBrokerInstanceLock,
+)
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
+from backend.service.infrastructure.local_buffers import (
+    MmapBufferPool,
+    MmapBufferPoolConfig,
+)
 
 
 @dataclass
@@ -38,7 +50,9 @@ class LocalBufferBrokerRegistry:
             if not pool_name:
                 raise InvalidRequestError("LocalBufferBroker pool_name 不能为空")
             if pool_name in self._pools:
-                raise InvalidRequestError("LocalBufferBroker pool_name 重复", details={"pool_name": pool_name})
+                raise InvalidRequestError(
+                    "LocalBufferBroker pool_name 重复", details={"pool_name": pool_name}
+                )
             self._pools[pool_name] = MmapBufferPool(
                 MmapBufferPoolConfig(
                     pool_name=pool_name,
@@ -62,7 +76,9 @@ class LocalBufferBrokerRegistry:
         if not isinstance(message, dict):
             raise InvalidRequestError("LocalBufferBroker 请求必须是对象")
         action = str(message.get("action") or "").strip()
-        payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        payload = (
+            message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        )
         if action == "status":
             return self._build_status()
         if action == "allocate-buffer":
@@ -93,7 +109,9 @@ class LocalBufferBrokerRegistry:
             return self._handle_expire_leases(dict(payload))
         if action == "shutdown":
             return {"state": "stopping", "process_id": os.getpid()}
-        raise InvalidRequestError("LocalBufferBroker 收到未知控制动作", details={"action": action})
+        raise InvalidRequestError(
+            "LocalBufferBroker 收到未知控制动作", details={"action": action}
+        )
 
     def close(self) -> None:
         """关闭全部 mmap pool。"""
@@ -104,7 +122,9 @@ class LocalBufferBrokerRegistry:
     def _handle_allocate_buffer(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 allocate-buffer 控制动作。"""
 
-        pool = self._require_pool(_read_optional_str(payload, "pool_name") or self.settings.default_pool_name)
+        pool = self._require_pool(
+            _read_optional_str(payload, "pool_name") or self.settings.default_pool_name
+        )
         lease = pool.allocate(
             size=_require_positive_int(payload, "size"),
             owner_kind=_require_str(payload, "owner_kind"),
@@ -135,21 +155,29 @@ class LocalBufferBrokerRegistry:
             "buffer_ref": result.buffer_ref.model_dump(mode="json"),
         }
 
-    def _handle_validate_buffer_ref(self, payload: dict[str, object]) -> dict[str, object]:
+    def _handle_validate_buffer_ref(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
         """处理 validate-buffer-ref 控制动作。"""
 
         buffer_ref_payload = payload.get("buffer_ref")
         if not isinstance(buffer_ref_payload, dict):
-            raise InvalidRequestError("LocalBufferBroker validate-buffer-ref 缺少 buffer_ref")
+            raise InvalidRequestError(
+                "LocalBufferBroker validate-buffer-ref 缺少 buffer_ref"
+            )
         buffer_ref = BufferRef.model_validate(buffer_ref_payload)
         pool = self._select_pool_for_buffer_ref(buffer_ref)
         pool.validate_buffer_ref(buffer_ref)
         return {"valid": True}
 
-    def _handle_create_frame_channel(self, payload: dict[str, object]) -> dict[str, object]:
+    def _handle_create_frame_channel(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
         """处理 create-frame-channel 控制动作。"""
 
-        pool = self._require_pool(_read_optional_str(payload, "pool_name") or self.settings.default_pool_name)
+        pool = self._require_pool(
+            _read_optional_str(payload, "pool_name") or self.settings.default_pool_name
+        )
         channel = pool.create_frame_channel(
             stream_id=_require_str(payload, "stream_id"),
             frame_capacity=_require_positive_int(payload, "frame_capacity"),
@@ -159,7 +187,9 @@ class LocalBufferBrokerRegistry:
     def _handle_allocate_frame(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 allocate-frame 控制动作。"""
 
-        pool = self._require_pool(_read_optional_str(payload, "pool_name") or self.settings.default_pool_name)
+        pool = self._require_pool(
+            _read_optional_str(payload, "pool_name") or self.settings.default_pool_name
+        )
         reservation = pool.allocate_frame(
             stream_id=_require_str(payload, "stream_id"),
             size=_require_positive_int(payload, "size"),
@@ -172,7 +202,9 @@ class LocalBufferBrokerRegistry:
         reservation = payload.get("reservation")
         if not isinstance(reservation, dict):
             raise InvalidRequestError("LocalBufferBroker commit-frame 缺少 reservation")
-        pool = self._require_pool(str(reservation.get("pool_name") or self.settings.default_pool_name))
+        pool = self._require_pool(
+            str(reservation.get("pool_name") or self.settings.default_pool_name)
+        )
         frame_ref = pool.commit_frame(
             reservation=dict(reservation),
             media_type=_require_str(payload, "media_type"),
@@ -180,7 +212,11 @@ class LocalBufferBrokerRegistry:
             dtype=_read_optional_str(payload, "dtype"),
             layout=_read_optional_str(payload, "layout"),
             pixel_format=_read_optional_str(payload, "pixel_format"),
-            metadata=dict(payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
+            metadata=dict(
+                payload.get("metadata")
+                if isinstance(payload.get("metadata"), dict)
+                else {}
+            ),
         )
         return {"frame_ref": frame_ref.model_dump(mode="json")}
 
@@ -190,14 +226,20 @@ class LocalBufferBrokerRegistry:
         reservation = payload.get("reservation")
         if not isinstance(reservation, dict):
             raise InvalidRequestError("LocalBufferBroker abort-frame 缺少 reservation")
-        pool = self._require_pool(str(reservation.get("pool_name") or self.settings.default_pool_name))
+        pool = self._require_pool(
+            str(reservation.get("pool_name") or self.settings.default_pool_name)
+        )
         pool.abort_frame(reservation=dict(reservation))
         return {"aborted": True}
 
-    def _handle_destroy_frame_channel(self, payload: dict[str, object]) -> dict[str, object]:
+    def _handle_destroy_frame_channel(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
         """处理 destroy-frame-channel 控制动作。"""
 
-        pool = self._require_pool(_read_optional_str(payload, "pool_name") or self.settings.default_pool_name)
+        pool = self._require_pool(
+            _read_optional_str(payload, "pool_name") or self.settings.default_pool_name
+        )
         stream_id = _require_str(payload, "stream_id")
         released_slot_count = pool.destroy_frame_channel(stream_id=stream_id)
         return {
@@ -206,12 +248,16 @@ class LocalBufferBrokerRegistry:
             "released_slot_count": released_slot_count,
         }
 
-    def _handle_validate_frame_ref(self, payload: dict[str, object]) -> dict[str, object]:
+    def _handle_validate_frame_ref(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
         """处理 validate-frame-ref 控制动作。"""
 
         frame_ref_payload = payload.get("frame_ref")
         if not isinstance(frame_ref_payload, dict):
-            raise InvalidRequestError("LocalBufferBroker validate-frame-ref 缺少 frame_ref")
+            raise InvalidRequestError(
+                "LocalBufferBroker validate-frame-ref 缺少 frame_ref"
+            )
         frame_ref = FrameRef.model_validate(frame_ref_payload)
         pool = self._select_pool_for_buffer_id(frame_ref.buffer_id)
         pool.validate_frame_ref(frame_ref)
@@ -244,7 +290,9 @@ class LocalBufferBrokerRegistry:
                 last_error = exc
         if last_error is not None:
             raise last_error
-        raise InvalidRequestError("mmap buffer lease 不存在", details={"lease_id": lease_id})
+        raise InvalidRequestError(
+            "mmap buffer lease 不存在", details={"lease_id": lease_id}
+        )
 
     def _handle_release_owner(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 release-owner 控制动作。"""
@@ -253,7 +301,9 @@ class LocalBufferBrokerRegistry:
         owner_id = _read_optional_str(payload, "owner_id")
         owner_id_prefix = _read_optional_str(payload, "owner_id_prefix")
         if owner_id is None and owner_id_prefix is None:
-            raise InvalidRequestError("LocalBufferBroker release-owner 缺少 owner_id 或 owner_id_prefix")
+            raise InvalidRequestError(
+                "LocalBufferBroker release-owner 缺少 owner_id 或 owner_id_prefix"
+            )
         pool_name = _read_optional_str(payload, "pool_name")
         if pool_name is not None:
             released_count = self._require_pool(pool_name).release_owner(
@@ -296,9 +346,7 @@ class LocalBufferBrokerRegistry:
             "process_id": os.getpid(),
             "broker_epoch": self.broker_epoch,
             "default_pool_name": self.settings.default_pool_name,
-            "pools": [
-                pool.build_status() for pool in self._pools.values()
-            ],
+            "pools": [pool.build_status() for pool in self._pools.values()],
         }
 
     def _require_pool(self, pool_name: str) -> MmapBufferPool:
@@ -307,7 +355,10 @@ class LocalBufferBrokerRegistry:
         normalized_pool_name = pool_name.strip()
         pool = self._pools.get(normalized_pool_name)
         if pool is None:
-            raise InvalidRequestError("LocalBufferBroker pool 不存在", details={"pool_name": normalized_pool_name})
+            raise InvalidRequestError(
+                "LocalBufferBroker pool 不存在",
+                details={"pool_name": normalized_pool_name},
+            )
         return pool
 
     def _select_pool_for_buffer_ref(self, buffer_ref: BufferRef) -> MmapBufferPool:
@@ -324,7 +375,10 @@ class LocalBufferBrokerRegistry:
         for pool_name, pool in self._pools.items():
             if buffer_id.startswith(f"{pool_name}:"):
                 return pool
-        raise InvalidRequestError("LocalBufferBroker 找不到 buffer 所属 pool", details={"buffer_id": buffer_id})
+        raise InvalidRequestError(
+            "LocalBufferBroker 找不到 buffer 所属 pool",
+            details={"buffer_id": buffer_id},
+        )
 
 
 def run_local_buffer_broker_process(
@@ -344,16 +398,20 @@ def run_local_buffer_broker_process(
     """
 
     registry: LocalBufferBrokerRegistry | None = None
+    instance_lock: LocalBufferBrokerInstanceLock | None = None
     try:
         settings = LocalBufferBrokerSettings.model_validate(settings_payload)
+        instance_lock = LocalBufferBrokerInstanceLock(Path(settings.root_dir))
+        instance_lock.acquire()
         registry = LocalBufferBrokerRegistry(settings=settings)
         supervisor_process = parent_process()
-        startup_queue.put(
+        _publish_startup_message(
+            startup_queue,
             {
                 "ok": True,
                 "broker_epoch": registry.broker_epoch,
                 "process_id": os.getpid(),
-            }
+            },
         )
         stop_requested = False
         while not stop_requested:
@@ -368,11 +426,21 @@ def run_local_buffer_broker_process(
             except (EOFError, OSError):
                 # 父进程退出后控制队列可能先于 parent sentinel 关闭。
                 break
-            request_id = str(message.get("request_id") or "") if isinstance(message, dict) else ""
+            request_id = (
+                str(message.get("request_id") or "")
+                if isinstance(message, dict)
+                else ""
+            )
             try:
-                action = str(message.get("action") or "") if isinstance(message, dict) else ""
+                action = (
+                    str(message.get("action") or "")
+                    if isinstance(message, dict)
+                    else ""
+                )
                 payload = registry.handle(message)
-                response_queue.put({"request_id": request_id, "ok": True, "payload": payload})
+                response_queue.put(
+                    {"request_id": request_id, "ok": True, "payload": payload}
+                )
                 if action == "shutdown":
                     stop_requested = True
             except ServiceError as exc:
@@ -384,7 +452,10 @@ def run_local_buffer_broker_process(
                         **_serialize_error(
                             ServiceConfigurationError(
                                 "LocalBufferBroker 控制请求执行失败",
-                                details={"error_type": type(exc).__name__, "error_message": str(exc)},
+                                details={
+                                    "error_type": type(exc).__name__,
+                                    "error_message": str(exc),
+                                },
                             )
                         ),
                     }
@@ -394,19 +465,38 @@ def run_local_buffer_broker_process(
         # broker 只需执行 finally 中的 mmap 清理，不重复输出子进程 traceback。
         pass
     except Exception as exc:  # pragma: no cover - 启动失败需要跨进程回传
-        startup_queue.put(
+        _publish_startup_message(
+            startup_queue,
             {
                 "ok": False,
                 "error": {
                     "code": getattr(exc, "code", "service_configuration_error"),
                     "message": getattr(exc, "message", str(exc) or type(exc).__name__),
-                    "details": getattr(exc, "details", {"error_type": type(exc).__name__}),
+                    "details": getattr(
+                        exc, "details", {"error_type": type(exc).__name__}
+                    ),
                 },
-            }
+            },
         )
     finally:
-        if registry is not None:
-            registry.close()
+        try:
+            if registry is not None:
+                registry.close()
+        finally:
+            if instance_lock is not None:
+                instance_lock.release()
+
+
+def _publish_startup_message(startup_queue: Any, message: dict[str, object]) -> None:
+    """发布唯一一条启动结果，并确保 Windows Queue feeder 已完成刷新。"""
+
+    startup_queue.put(message)
+    close = getattr(startup_queue, "close", None)
+    if callable(close):
+        close()
+    join_thread = getattr(startup_queue, "join_thread", None)
+    if callable(join_thread):
+        join_thread()
 
 
 def _serialize_error(error: ServiceError) -> dict[str, object]:
@@ -428,7 +518,10 @@ def _require_str(payload: dict[str, object], field_name: str) -> str:
     value = payload.get(field_name)
     normalized_value = value.strip() if isinstance(value, str) else ""
     if not normalized_value:
-        raise InvalidRequestError("LocalBufferBroker payload 缺少必需字符串字段", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 缺少必需字符串字段",
+            details={"field_name": field_name},
+        )
     return normalized_value
 
 
@@ -449,11 +542,17 @@ def _read_optional_float(payload: dict[str, object], field_name: str) -> float |
     if value is None:
         return None
     if isinstance(value, bool):
-        raise InvalidRequestError("LocalBufferBroker payload 字段必须是数字", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是数字",
+            details={"field_name": field_name},
+        )
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
-        raise InvalidRequestError("LocalBufferBroker payload 字段必须是数字", details={"field_name": field_name}) from exc
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是数字",
+            details={"field_name": field_name},
+        ) from exc
 
 
 def _require_positive_int(payload: dict[str, object], field_name: str) -> int:
@@ -461,13 +560,22 @@ def _require_positive_int(payload: dict[str, object], field_name: str) -> int:
 
     value = payload.get(field_name)
     if isinstance(value, bool):
-        raise InvalidRequestError("LocalBufferBroker payload 字段必须是正整数", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是正整数",
+            details={"field_name": field_name},
+        )
     try:
         normalized_value = int(value)
     except (TypeError, ValueError) as exc:
-        raise InvalidRequestError("LocalBufferBroker payload 字段必须是正整数", details={"field_name": field_name}) from exc
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是正整数",
+            details={"field_name": field_name},
+        ) from exc
     if normalized_value <= 0:
-        raise InvalidRequestError("LocalBufferBroker payload 字段必须是正整数", details={"field_name": field_name})
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是正整数",
+            details={"field_name": field_name},
+        )
     return normalized_value
 
 
