@@ -10,6 +10,9 @@ import json
 import os
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.local_buffers.backend_service_process_takeover import (
+    build_backend_service_owner_metadata,
+)
 
 
 _LOCK_FILE_NAME = ".local-buffer-broker.lock"
@@ -67,7 +70,11 @@ class LocalBufferBrokerInstanceLock:
                         "lock_path": str(lock_path),
                         "owner_process_id": owner_process_id,
                         "owner_supervisor_process_id": owner_supervisor_process_id,
+                        "owner_service_root_process_id": owner.get(
+                            "service_root_process_id"
+                        ),
                         "owner_acquired_at": owner.get("acquired_at"),
+                        "owner": owner,
                         "error_type": type(exc).__name__,
                         "error_message": str(exc) or type(exc).__name__,
                     },
@@ -99,10 +106,8 @@ def _write_owner_metadata(lock_file: BinaryIO, *, root_dir: Path) -> None:
     """在锁文件首字节之后写入当前占用者信息。"""
 
     payload = {
-        "process_id": os.getpid(),
-        "supervisor_process_id": os.getppid(),
+        **build_backend_service_owner_metadata(root_dir=root_dir),
         "acquired_at": datetime.now(timezone.utc).isoformat(),
-        "root_dir": str(root_dir),
     }
     encoded_payload = json.dumps(
         payload, ensure_ascii=False, separators=(",", ":")

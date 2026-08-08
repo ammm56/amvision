@@ -290,6 +290,8 @@ def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
 
     assert settings.local_buffer_broker.default_pool_name == "image-4k"
     assert settings.local_buffer_broker.startup_timeout_seconds >= 60.0
+    assert settings.local_buffer_broker.takeover_existing_process is True
+    assert settings.local_buffer_broker.takeover_timeout_seconds == 10.0
     assert pool_names == {"image-4k", "image-1080p", "image-640x640"}
     pools = {item.pool_name: item for item in settings.local_buffer_broker.pools}
     default_pool = pools["image-4k"]
@@ -476,10 +478,10 @@ def test_local_buffer_broker_supervisor_reports_early_child_exit(
     assert exc_info.value.details["process_exitcode"] == 7
 
 
-def test_local_buffer_broker_rejects_duplicate_root_without_waiting_for_timeout(
+def test_local_buffer_broker_rejects_unmanaged_duplicate_root_without_killing_owner(
     tmp_path: Path,
 ) -> None:
-    """验证同一 root_dir 只能由一个 broker 持有且失败信息包含占用者。"""
+    """验证非 backend-service 测试进程不会因自动接管被误杀。"""
 
     settings = _build_broker_settings(tmp_path)
     first_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
@@ -491,15 +493,14 @@ def test_local_buffer_broker_rejects_duplicate_root_without_waiting_for_timeout(
         started_at = monotonic()
         with pytest.raises(
             ServiceConfigurationError,
-            match="根目录已被其他进程占用",
+            match="占用者不是受支持的 AMVision backend-service",
         ) as exc_info:
             second_supervisor.start()
 
         assert monotonic() - started_at < settings.startup_timeout_seconds
-        assert exc_info.value.details["reason"] == "root-lock-busy"
+        assert exc_info.value.details["reason"] == "unsafe-owner-process"
         assert exc_info.value.details["root_dir"] == str(Path(settings.root_dir).resolve())
         assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
-        assert f"broker PID={first_status['process_id']}" in exc_info.value.message
         assert first_supervisor.get_status()["state"] == "running"
     finally:
         second_supervisor.stop()
@@ -511,6 +512,34 @@ def test_local_buffer_broker_rejects_duplicate_root_without_waiting_for_timeout(
         assert replacement_supervisor.get_status()["state"] == "running"
     finally:
         replacement_supervisor.stop()
+
+
+def test_local_buffer_broker_can_disable_existing_process_takeover(
+    tmp_path: Path,
+) -> None:
+    """验证关闭自动接管时直接返回原始根目录占用详情。"""
+
+    settings = _build_broker_settings(tmp_path).model_copy(
+        update={"takeover_existing_process": False}
+    )
+    first_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+    second_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+
+    first_supervisor.start()
+    try:
+        first_status = first_supervisor.get_status()
+        with pytest.raises(
+            ServiceConfigurationError,
+            match="根目录已被其他进程占用",
+        ) as exc_info:
+            second_supervisor.start()
+
+        assert exc_info.value.details["reason"] == "root-lock-busy"
+        assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
+        assert first_supervisor.get_status()["state"] == "running"
+    finally:
+        second_supervisor.stop()
+        first_supervisor.stop()
 
 
 def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(

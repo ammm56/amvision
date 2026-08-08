@@ -66,6 +66,8 @@ class LocalBufferBrokerSettings(BaseModel):
     - enabled：是否随 backend-service 启动 broker 进程。
     - root_dir：broker 管理的 mmap 文件根目录。
     - startup_timeout_seconds：等待 broker 启动完成的最长秒数。
+    - takeover_existing_process：是否允许新 backend-service 安全接管同工作区的旧实例。
+    - takeover_timeout_seconds：结束已验证旧 backend-service 进程树的最长秒数。
     - request_timeout_seconds：单次控制请求等待响应的最长秒数。
     - shutdown_timeout_seconds：等待 broker 优雅退出的最长秒数。
     - expire_interval_seconds：周期性触发过期 lease 回收的间隔秒数；小于等于 0 表示关闭循环。
@@ -76,6 +78,8 @@ class LocalBufferBrokerSettings(BaseModel):
     enabled: bool = True
     root_dir: str = "./data/buffers"
     startup_timeout_seconds: float = 60.0
+    takeover_existing_process: bool = True
+    takeover_timeout_seconds: float = Field(default=10.0, gt=0.0, le=60.0)
     request_timeout_seconds: float = 5.0
     shutdown_timeout_seconds: float = 5.0
     expire_interval_seconds: float = 5.0

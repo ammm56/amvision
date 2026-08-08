@@ -11,10 +11,14 @@ from threading import Event, Lock, Thread
 from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
+import logging
 import multiprocessing
 
 from backend.contracts.buffers import BufferRef, FrameRef
 from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError
+from backend.service.application.local_buffers.backend_service_process_takeover import (
+    take_over_backend_service_owner,
+)
 from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
 from backend.service.application.local_buffers.local_buffer_broker_process import run_local_buffer_broker_process
 from backend.service.application.local_buffers.local_buffer_client import (
@@ -27,6 +31,9 @@ from backend.service.application.runtime.support.safe_counter import (
     snapshot_safe_counter,
 )
 from backend.service.infrastructure.local_buffers import MmapBufferWriteResult
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -431,6 +438,55 @@ class LocalBufferBrokerProcessSupervisor:
 
             self.stop()
             error_payload = message.get("error") if isinstance(message, dict) and isinstance(message.get("error"), dict) else {}
+            if self._should_take_over_existing_process(error_payload):
+                error_details = error_payload.get("details")
+                owner_metadata = (
+                    error_details.get("owner")
+                    if isinstance(error_details, dict)
+                    and isinstance(error_details.get("owner"), dict)
+                    else {}
+                )
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    raise OperationTimeoutError(
+                        "等待接管 LocalBufferBroker 占用进程超时",
+                        details={
+                            "timeout_seconds": self.settings.startup_timeout_seconds,
+                            "root_dir": self.settings.root_dir,
+                        },
+                    )
+                try:
+                    takeover_summary = take_over_backend_service_owner(
+                        owner_metadata=owner_metadata,
+                        root_dir=Path(self.settings.root_dir),
+                        timeout_seconds=min(
+                            self.settings.takeover_timeout_seconds,
+                            remaining_seconds,
+                        ),
+                    )
+                except ServiceConfigurationError as exc:
+                    if (
+                        exc.details.get("reason")
+                        == "owner-exited-during-takeover"
+                        and monotonic() < deadline
+                    ):
+                        sleep(min(0.2, max(0.05, deadline - monotonic())))
+                        continue
+                    raise
+                logger.warning(
+                    "已接管旧 backend-service LocalBufferBroker 占用进程：%s",
+                    takeover_summary,
+                )
+                if monotonic() < deadline:
+                    sleep(min(0.2, max(0.05, deadline - monotonic())))
+                    continue
+                raise OperationTimeoutError(
+                    "接管旧 backend-service 后等待 LocalBufferBroker 启动超时",
+                    details={
+                        "timeout_seconds": self.settings.startup_timeout_seconds,
+                        "root_dir": self.settings.root_dir,
+                    },
+                )
             if self._is_retryable_startup_error(error_payload) and monotonic() < deadline:
                 sleep(min(0.2, max(0.05, deadline - monotonic())))
                 continue
@@ -915,6 +971,21 @@ class LocalBufferBrokerProcessSupervisor:
         file_path = str(error_details.get("file_path") or "")
         detail_message = str(error_details.get("error_message") or "")
         return error_type == "OSError" and file_path.endswith(".dat") and "Invalid argument" in detail_message
+
+    def _should_take_over_existing_process(
+        self,
+        error_payload: dict[str, object],
+    ) -> bool:
+        """判断启动失败是否应触发已验证 backend-service 进程接管。"""
+
+        if not self.settings.takeover_existing_process:
+            return False
+        error_details = (
+            error_payload.get("details")
+            if isinstance(error_payload.get("details"), dict)
+            else {}
+        )
+        return error_details.get("reason") == "root-lock-busy"
 
     def _cleanup_startup_queue_locked(self) -> None:
         """关闭启动队列。"""

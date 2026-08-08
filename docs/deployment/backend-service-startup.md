@@ -97,6 +97,8 @@
     "enabled": true,
     "root_dir": "./data/buffers",
     "startup_timeout_seconds": 60.0,
+    "takeover_existing_process": true,
+    "takeover_timeout_seconds": 10.0,
     "request_timeout_seconds": 5.0,
     "shutdown_timeout_seconds": 5.0,
     "expire_interval_seconds": 5.0,
@@ -162,6 +164,8 @@
 - AMVISION_WORKFLOW_RUNTIME__RAW_RESULT_CACHE_MAX_ITEMS=64
 - AMVISION_WORKFLOW_RUNTIME__MODEL_STARTUP_TIMEOUT_SECONDS=600
 - AMVISION_WORKFLOW_RUNTIME__PREVIEW_MODEL_SESSION_SCOPE_LIMIT=1
+- AMVISION_LOCAL_BUFFER_BROKER__TAKEOVER_EXISTING_PROCESS=true
+- AMVISION_LOCAL_BUFFER_BROKER__TAKEOVER_TIMEOUT_SECONDS=10.0
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
 - AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__STARTUP_TIMEOUT_SECONDS=180.0
@@ -194,7 +198,8 @@
 - 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件
 - `image-8k` 单槽 256MB、默认 16 个槽位，仅作为现场可选大图 pool；需要更高分辨率、更多通道或相机专用大图输入时，手动把 `{"pool_name":"image-8k","slot_size_bytes":268435456,"slot_count":16,"flush_on_write":false}` 加到 `local_buffer_broker.pools`
 - `local_buffer_broker.startup_timeout_seconds` 默认 60 秒；大 pool 首次创建和 mmap 可能超过原 5 秒，尤其是 Windows 和机械硬盘环境
-- `local_buffer_broker.root_dir` 是单 broker 写入边界。broker 启动前会锁定 `.local-buffer-broker.lock`；同一目录已被其他 backend-service 占用时会立即返回占用者 PID，不会等待 60 秒后笼统报超时，也不会截断正在使用的 mmap 文件
+- `local_buffer_broker.root_dir` 是单 broker 写入边界。broker 启动前会锁定 `.local-buffer-broker.lock`，并写入 PID、进程创建时间、解释器、工作目录、命令和父子层级。新实例发现同一目录被占用时，只会接管“同工作目录、同 Python 解释器、标准 AMVision uvicorn 入口且创建时间更早”的完整旧进程树，然后重试启动；如果旧 uvicorn 根进程已异常消失，则在确认 broker 仍实际打开同一锁文件后回收残留 supervisor/broker。锁内容伪造、PID 复用、无关命令、不同工作目录、不同解释器和较新实例都会明确拒绝，不能仅凭 PID 结束进程
+- `local_buffer_broker.takeover_existing_process` 默认开启，控制重复启动时是否接管已验证的旧 backend-service；`takeover_timeout_seconds` 默认 10 秒，限制旧进程树退出等待。关闭自动接管后保持严格单实例行为并直接返回占用详情
 - pool 文件容量与当前配置一致时直接复用；只有首次创建或容量发生变化时才调整文件长度，避免每次开发启动都重建默认约 2.4 GiB 的 pool 文件
 - Windows 上调整现有 pool 容量前必须停止 backend-service、inference daemon 和仍持有该 pool 的本地 worker，修改配置后按 inference daemon、backend-service 的顺序重新启动；不能在活动 mmap reader 存在时在线调整文件长度
 - `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`，仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略
@@ -214,7 +219,8 @@
 ### 当前仓库已经具备的能力
 
 - FastAPI 服务可直接通过 uvicorn 启动
-- 同一工作区、端口和 `local_buffer_broker.root_dir` 只能运行一个 backend-service。使用 `--reload` 时，终端中的 reloader 根进程会持续持有监听 socket；再次执行相同启动命令前必须先在原终端按 Ctrl+C，不能只观察上一轮 server 子进程是否退出
+- 同一工作区、端口和 `local_buffer_broker.root_dir` 最终只保留一个 backend-service。Windows 开发态重复执行相同 `python -m uvicorn ... --reload` 命令时，新实例会通过 broker 锁验证并接管较早实例，无需手工查找 reloader、server 和 broker PID；仍建议正常停止时优先在原终端按 Ctrl+C，使各运行时完成优雅清理
+- 自动接管不是通用进程清理器，也不替代 full release 根 launcher 的启动/停止状态管理。生产完整实例继续使用 `start-amvision-full` / `stop-amvision-full`；单进程诊断应先停止完整实例。不同端口但错误共享同一 broker 根目录时同样会触发接管，因此并行 backend-service 必须配置不同 `local_buffer_broker.root_dir`
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
 - /api/v1/tasks 和 /ws/v1/tasks/events 已经公开
