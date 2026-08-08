@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-COCO_KEYPOINTS_DATASET_FORMAT = "coco-keypoints-v1"
+from backend.contracts.datasets.dataset_formats import COCO_KEYPOINTS_DATASET_FORMAT
 
 
 @dataclass(frozen=True)

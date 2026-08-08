@@ -36,6 +36,24 @@ def test_spatial_size_exposes_explicit_hw_and_wh_orders() -> None:
     assert size.wh == (640, 384)
 
 
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [
+        (True, 640),
+        (640, False),
+        (8193, 640),
+        (640, 8193),
+        (8192, 4096),
+    ],
+)
+def test_spatial_size_rejects_invalid_or_unbounded_dimensions(
+    width: object,
+    height: object,
+) -> None:
+    with pytest.raises(ValueError):
+        SpatialSize(width=width, height=height)  # type: ignore[arg-type]
+
+
 def test_spatial_size_rejects_ambiguous_sequence_payload() -> None:
     with pytest.raises(ValueError, match="width 和 height"):
         SpatialSize.from_payload([640, 384])
@@ -305,8 +323,10 @@ def test_disabled_classification_augmentation_does_not_keep_random_crop() -> Non
 
     yy, xx = np.mgrid[:120, :200]
     image = np.stack((xx % 256, yy % 256, (xx + yy) % 256), axis=-1).astype(np.uint8)
-    options = classification_augmentation.build_yolo_classification_augmentation_options(
-        extra_options={"disable_augmentation": True},
+    options = (
+        classification_augmentation.build_yolo_classification_augmentation_options(
+            extra_options={"disable_augmentation": True},
+        )
     )
     random.seed(11)
     training_a = prepare_yolo_classification_image(

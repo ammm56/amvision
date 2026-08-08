@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import sleep, time_ns
@@ -26,11 +27,16 @@ _FILE_MAGIC = b"AMVINF1\0"
 _FILE_VERSION = 1
 _FILE_HEADER = struct.Struct("<8sIIII40x")
 _SLOT_HEADER = struct.Struct("<IIIIIQ36x")
+_SLOT_STATE = struct.Struct("<I")
 _STATE_FREE = 0
 _STATE_REQUEST = 1
 _STATE_PROCESSING = 2
 _STATE_RESPONSE = 3
 _STATE_CANCELLED = 4
+
+
+class _SlotGuardBusyError(Exception):
+    """表示 mailbox 槽位 guard 当前由另一个进程持有。"""
 
 
 def build_inference_local_mmap_path(*, root_dir: str, service_id: str) -> Path:
@@ -165,35 +171,49 @@ class InferenceLocalMmapClient:
                 slot_index = (start_index + offset) % self._slot_count
                 lock_path = _slot_lock_path(self.path, slot_index)
                 try:
-                    descriptor = os.open(
-                        lock_path,
-                        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                        0o600,
+                    guard_deadline_ns = min(
+                        deadline_ns,
+                        time_ns() + max(5_000_000, int(self.poll_interval_seconds * 2e9)),
                     )
-                except (FileExistsError, PermissionError):
+                    with _acquire_slot_guard(
+                        path=self.path,
+                        slot_index=slot_index,
+                        deadline_ns=guard_deadline_ns,
+                        poll_interval_seconds=self.poll_interval_seconds,
+                    ):
+                        descriptor = os.open(
+                            lock_path,
+                            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                            0o600,
+                        )
+                        try:
+                            os.write(
+                                descriptor,
+                                json.dumps(
+                                    {"pid": os.getpid(), "deadline_ns": deadline_ns},
+                                    separators=(",", ":"),
+                                ).encode("utf-8"),
+                            )
+                        finally:
+                            os.close(descriptor)
+                        view = self._mmap
+                        if view is None:
+                            lock_path.unlink(missing_ok=True)
+                            raise ServiceConfigurationError(
+                                "inference mmap client 尚未打开 mailbox"
+                            )
+                        slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
+                        state = _SLOT_HEADER.unpack_from(view, slot_offset)[0]
+                        if state != _STATE_FREE:
+                            lock_path.unlink(missing_ok=True)
+                            continue
+                        return slot_index, lock_path
+                except (
+                    FileExistsError,
+                    PermissionError,
+                    _SlotGuardBusyError,
+                ):
                     continue
-                try:
-                    os.write(
-                        descriptor,
-                        json.dumps(
-                            {"pid": os.getpid(), "deadline_ns": deadline_ns},
-                            separators=(",", ":"),
-                        ).encode("utf-8"),
-                    )
-                finally:
-                    os.close(descriptor)
-                view = self._mmap
-                if view is None:
-                    lock_path.unlink(missing_ok=True)
-                    raise ServiceConfigurationError(
-                        "inference mmap client 尚未打开 mailbox"
-                    )
-                slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
-                state = _SLOT_HEADER.unpack_from(view, slot_offset)[0]
-                if state != _STATE_FREE:
-                    lock_path.unlink(missing_ok=True)
-                    continue
-                return slot_index, lock_path
             sleep(self.poll_interval_seconds)
         raise OperationTimeoutError(
             "等待 inference mmap 空闲槽位超时",
@@ -217,15 +237,23 @@ class InferenceLocalMmapClient:
         generation = previous_generation % 0xFFFFFFFF + 1
         request_offset = slot_offset + _SLOT_HEADER.size
         view[request_offset : request_offset + len(encoded_request)] = encoded_request
+        # state 位于 header 首字段，直接以 REQUEST 调用 pack_into 会让扫描线程
+        # 先看到已发布状态，再看到 generation/deadline 等后续字段。先以 FREE
+        # 写完完整 header，最后单独发布 state，避免跨进程读取 torn header。
         _SLOT_HEADER.pack_into(
             view,
             slot_offset,
-            _STATE_REQUEST,
+            _STATE_FREE,
             len(encoded_request),
             0,
             zlib.crc32(encoded_request),
             generation,
             deadline_ns,
+        )
+        _publish_slot_state(
+            view,
+            slot_offset=slot_offset,
+            state=_STATE_REQUEST,
         )
         return generation
 
@@ -245,6 +273,8 @@ class InferenceLocalMmapClient:
                 _SLOT_HEADER.unpack_from(view, slot_offset)
             )
             if current_generation != generation:
+                if time_ns() >= deadline_ns:
+                    break
                 raise ServiceConfigurationError(
                     "inference mmap 槽位 generation 被意外复用",
                     details={"slot_index": slot_index},
@@ -266,23 +296,28 @@ class InferenceLocalMmapClient:
                     continue
                 return _decode_payload(encoded_response)
             sleep(self.poll_interval_seconds)
-        state, request_size, response_size, reserved, current_generation, stored_deadline = (
-            _SLOT_HEADER.unpack_from(view, slot_offset)
-        )
-        if current_generation == generation and state in (
-            _STATE_REQUEST,
-            _STATE_PROCESSING,
-        ):
-            _SLOT_HEADER.pack_into(
-                view,
-                slot_offset,
-                _STATE_CANCELLED,
-                request_size,
-                response_size,
-                reserved,
-                current_generation,
-                stored_deadline,
-            )
+        try:
+            with _acquire_slot_guard(
+                path=self.path,
+                slot_index=slot_index,
+                deadline_ns=time_ns() + 1_000_000_000,
+                poll_interval_seconds=self.poll_interval_seconds,
+            ):
+                state, _, _, _, current_generation, _ = _SLOT_HEADER.unpack_from(
+                    view, slot_offset
+                )
+                if current_generation == generation and state in (
+                    _STATE_REQUEST,
+                    _STATE_PROCESSING,
+                ):
+                    _publish_slot_state(
+                        view,
+                        slot_offset=slot_offset,
+                        state=_STATE_CANCELLED,
+                    )
+        except _SlotGuardBusyError:
+            # server 持有 guard 时会重新检查 deadline，并自行发布响应或回收。
+            pass
         raise OperationTimeoutError(
             "等待 inference mmap 响应超时",
             details={"slot_index": slot_index, "path": str(self.path)},
@@ -298,18 +333,25 @@ class InferenceLocalMmapClient:
     ) -> None:
         """完成响应后释放槽位；处理中超时的槽位交给 daemon 回收。"""
 
-        slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
-        state, _, _, _, current_generation, _ = _SLOT_HEADER.unpack_from(
-            view, slot_offset
-        )
-        if current_generation != generation:
+        try:
+            with _acquire_slot_guard(
+                path=self.path,
+                slot_index=slot_index,
+                deadline_ns=time_ns() + 1_000_000_000,
+                poll_interval_seconds=self.poll_interval_seconds,
+            ):
+                slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
+                state, _, _, _, current_generation, _ = _SLOT_HEADER.unpack_from(
+                    view, slot_offset
+                )
+                if current_generation != generation:
+                    return
+                if state in (_STATE_RESPONSE, _STATE_REQUEST):
+                    _clear_slot(view, slot_offset=slot_offset, generation=generation)
+                    lock_path.unlink(missing_ok=True)
+        except _SlotGuardBusyError:
+            # 请求 deadline 到达后 server 会在同一 guard 下回收，不得无锁清理。
             return
-        if state == _STATE_RESPONSE:
-            _clear_slot(view, slot_offset=slot_offset, generation=generation)
-            lock_path.unlink(missing_ok=True)
-        elif state == _STATE_REQUEST:
-            _clear_slot(view, slot_offset=slot_offset, generation=generation)
-            lock_path.unlink(missing_ok=True)
 
 
 class InferenceLocalMmapServer:
@@ -441,11 +483,28 @@ class InferenceLocalMmapServer:
                 state, request_size, _, request_crc, generation, deadline_ns = (
                     _SLOT_HEADER.unpack_from(view, slot_offset)
                 )
-                if state == _STATE_CANCELLED or (
-                    state in (_STATE_REQUEST, _STATE_RESPONSE) and time_ns() >= deadline_ns
+                if state == _STATE_CANCELLED:
+                    with self._active_lock:
+                        slot_is_active = slot_index in self._active_slots
+                    if slot_is_active:
+                        continue
+                    self._reclaim_inactive_slot(
+                        slot_index=slot_index,
+                        generation=generation,
+                        allowed_states=(_STATE_CANCELLED,),
+                        require_expired=False,
+                    )
+                    continue
+                if (
+                    state in (_STATE_REQUEST, _STATE_RESPONSE)
+                    and time_ns() >= deadline_ns
                 ):
-                    _clear_slot(view, slot_offset=slot_offset, generation=generation)
-                    _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+                    self._reclaim_inactive_slot(
+                        slot_index=slot_index,
+                        generation=generation,
+                        allowed_states=(_STATE_REQUEST, _STATE_RESPONSE),
+                        require_expired=True,
+                    )
                     continue
                 if state != _STATE_REQUEST:
                     continue
@@ -454,17 +513,54 @@ class InferenceLocalMmapServer:
                         break
                     if slot_index in self._active_slots:
                         continue
-                    self._active_slots.add(slot_index)
-                _SLOT_HEADER.pack_into(
-                    view,
-                    slot_offset,
-                    _STATE_PROCESSING,
-                    request_size,
-                    0,
-                    request_crc,
-                    generation,
-                    deadline_ns,
-                )
+                try:
+                    with _acquire_slot_guard(
+                        path=self.path,
+                        slot_index=slot_index,
+                        deadline_ns=time_ns() + 5_000_000,
+                        poll_interval_seconds=self.poll_interval_seconds,
+                    ):
+                        (
+                            guarded_state,
+                            guarded_request_size,
+                            _,
+                            guarded_request_crc,
+                            guarded_generation,
+                            guarded_deadline_ns,
+                        ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                        if (
+                            guarded_state != _STATE_REQUEST
+                            or guarded_generation != generation
+                        ):
+                            continue
+                        if time_ns() >= guarded_deadline_ns:
+                            _clear_slot(
+                                view,
+                                slot_offset=slot_offset,
+                                generation=guarded_generation,
+                            )
+                            _slot_lock_path(self.path, slot_index).unlink(
+                                missing_ok=True
+                            )
+                            continue
+                        with self._active_lock:
+                            if (
+                                len(self._active_slots)
+                                >= self.max_concurrent_requests
+                                or slot_index in self._active_slots
+                            ):
+                                continue
+                            self._active_slots.add(slot_index)
+                        _publish_slot_state(
+                            view,
+                            slot_offset=slot_offset,
+                            state=_STATE_PROCESSING,
+                        )
+                        request_size = guarded_request_size
+                        request_crc = guarded_request_crc
+                        deadline_ns = guarded_deadline_ns
+                except _SlotGuardBusyError:
+                    continue
                 executor = self._executor
                 if executor is not None:
                     executor.submit(
@@ -529,42 +625,198 @@ class InferenceLocalMmapServer:
                         )
                     )
                 )
-            state, stored_request_size, _, _, stored_generation, stored_deadline = (
-                _SLOT_HEADER.unpack_from(view, slot_offset)
-            )
-            if (
-                stored_generation != generation
-                or state == _STATE_CANCELLED
-                or time_ns() >= deadline_ns
-            ):
-                _clear_slot(view, slot_offset=slot_offset, generation=generation)
-                _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
-                return
-            response_offset = (
-                slot_offset + _SLOT_HEADER.size + self.slot_payload_capacity_bytes
-            )
-            view[response_offset : response_offset + len(encoded_response)] = (
-                encoded_response
-            )
-            _SLOT_HEADER.pack_into(
-                view,
-                slot_offset,
-                _STATE_RESPONSE,
-                stored_request_size,
-                len(encoded_response),
-                zlib.crc32(encoded_response),
-                stored_generation,
-                stored_deadline,
-            )
+            try:
+                with _acquire_slot_guard(
+                    path=self.path,
+                    slot_index=slot_index,
+                    deadline_ns=time_ns() + 1_000_000_000,
+                    poll_interval_seconds=self.poll_interval_seconds,
+                ):
+                    (
+                        state,
+                        stored_request_size,
+                        _,
+                        _,
+                        stored_generation,
+                        stored_deadline,
+                    ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                    if stored_generation != generation:
+                        return
+                    if state == _STATE_CANCELLED or time_ns() >= stored_deadline:
+                        _clear_slot(
+                            view,
+                            slot_offset=slot_offset,
+                            generation=generation,
+                        )
+                        _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+                        return
+                    response_offset = (
+                        slot_offset
+                        + _SLOT_HEADER.size
+                        + self.slot_payload_capacity_bytes
+                    )
+                    view[response_offset : response_offset + len(encoded_response)] = (
+                        encoded_response
+                    )
+                    # 先保持 PROCESSING 写完响应元数据，再单独发布 RESPONSE。
+                    _SLOT_HEADER.pack_into(
+                        view,
+                        slot_offset,
+                        _STATE_PROCESSING,
+                        stored_request_size,
+                        len(encoded_response),
+                        zlib.crc32(encoded_response),
+                        stored_generation,
+                        stored_deadline,
+                    )
+                    _publish_slot_state(
+                        view,
+                        slot_offset=slot_offset,
+                        state=_STATE_RESPONSE,
+                    )
+            except _SlotGuardBusyError:
+                self._reclaim_finished_slot(
+                    slot_index=slot_index,
+                    generation=generation,
+                )
         finally:
             with self._active_lock:
                 self._active_slots.discard(slot_index)
+
+    def _reclaim_inactive_slot(
+        self,
+        *,
+        slot_index: int,
+        generation: int,
+        allowed_states: tuple[int, ...],
+        require_expired: bool,
+    ) -> bool:
+        """在 guard 下回收未执行槽位，防止与新 client 的 claim 交错。"""
+
+        try:
+            with _acquire_slot_guard(
+                path=self.path,
+                slot_index=slot_index,
+                deadline_ns=time_ns() + 5_000_000,
+                poll_interval_seconds=self.poll_interval_seconds,
+            ):
+                with self._active_lock:
+                    if slot_index in self._active_slots:
+                        return False
+                view = self._mmap
+                if view is None:
+                    return False
+                slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
+                state, _, _, _, stored_generation, deadline_ns = (
+                    _SLOT_HEADER.unpack_from(view, slot_offset)
+                )
+                if stored_generation != generation or state not in allowed_states:
+                    return False
+                if require_expired and time_ns() < deadline_ns:
+                    return False
+                _clear_slot(view, slot_offset=slot_offset, generation=generation)
+                _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+                return True
+        except _SlotGuardBusyError:
+            return False
+
+    def _reclaim_finished_slot(self, *, slot_index: int, generation: int) -> None:
+        """在 handler 结束后按 generation 回收 cancelled/expired 槽位。"""
+
+        try:
+            with _acquire_slot_guard(
+                path=self.path,
+                slot_index=slot_index,
+                deadline_ns=time_ns() + 1_000_000_000,
+                poll_interval_seconds=self.poll_interval_seconds,
+            ):
+                view = self._mmap
+                if view is None:
+                    return
+                slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
+                state, _, _, _, stored_generation, deadline_ns = (
+                    _SLOT_HEADER.unpack_from(view, slot_offset)
+                )
+                if stored_generation != generation:
+                    return
+                if state != _STATE_CANCELLED and time_ns() < deadline_ns:
+                    return
+                _clear_slot(view, slot_offset=slot_offset, generation=generation)
+                _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+        except _SlotGuardBusyError:
+            return
 
 
 def _slot_lock_path(path: Path, slot_index: int) -> Path:
     """返回一个 mailbox 槽位的跨进程独占锁文件。"""
 
     return path.with_name(f"{path.name}.slot-{slot_index}.lock")
+
+
+def _slot_guard_path(path: Path, slot_index: int) -> Path:
+    """返回槽位状态切换使用的跨进程 byte-lock 文件。"""
+
+    return path.with_name(f"{path.name}.slot-{slot_index}.guard")
+
+
+@contextmanager
+def _acquire_slot_guard(
+    *,
+    path: Path,
+    slot_index: int,
+    deadline_ns: int,
+    poll_interval_seconds: float,
+) -> Iterator[None]:
+    """获取 crash-safe 跨进程 byte lock，并在退出时由 OS 释放。"""
+
+    guard_path = _slot_guard_path(path, slot_index)
+    guard_path.parent.mkdir(parents=True, exist_ok=True)
+    guard_file = guard_path.open("a+b", buffering=0)
+    try:
+        if guard_path.stat().st_size == 0:
+            guard_file.write(b"\0")
+        while True:
+            try:
+                _lock_guard_file(guard_file)
+                break
+            except OSError as error:
+                if time_ns() >= deadline_ns:
+                    raise _SlotGuardBusyError from error
+                sleep(poll_interval_seconds)
+        try:
+            yield
+        finally:
+            _unlock_guard_file(guard_file)
+    finally:
+        guard_file.close()
+
+
+def _lock_guard_file(guard_file: BinaryIO) -> None:
+    """非阻塞获取一个字节的跨平台进程锁。"""
+
+    guard_file.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(guard_file.fileno(), msvcrt.LK_NBLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(guard_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_guard_file(guard_file: BinaryIO) -> None:
+    """释放一个字节的跨平台进程锁。"""
+
+    guard_file.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(guard_file.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(guard_file.fileno(), fcntl.LOCK_UN)
 
 
 def _clear_slot(view: mmap.mmap, *, slot_offset: int, generation: int) -> None:
@@ -580,6 +832,17 @@ def _clear_slot(view: mmap.mmap, *, slot_offset: int, generation: int) -> None:
         generation,
         0,
     )
+
+
+def _publish_slot_state(
+    view: mmap.mmap,
+    *,
+    slot_offset: int,
+    state: int,
+) -> None:
+    """在 body 和其余 header 字段稳定后单独发布槽位状态。"""
+
+    _SLOT_STATE.pack_into(view, slot_offset, state)
 
 
 def _encode_payload(payload: dict[str, object]) -> bytes:

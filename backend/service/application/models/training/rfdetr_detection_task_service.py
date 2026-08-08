@@ -9,6 +9,7 @@ from backend.queue import QueueBackend
 from backend.service.application.backends import TrainingBackendRunResult
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
@@ -23,9 +24,31 @@ from backend.service.application.models.training.detection_training_rules import
 )
 from backend.service.application.models.training.rfdetr_detection import (
     RFDETR_IMPL_MODE,
+    RfdetrTrainingBatchProgress,
+    RfdetrTrainingControlCommand,
+    RfdetrTrainingEpochProgress,
     RfdetrTrainingExecutionRequest,
     RfdetrTrainingExecutionResult,
+    RfdetrTrainingPausedError,
+    RfdetrTrainingSavePoint,
+    RfdetrTrainingTerminatedError,
     run_rfdetr_training,
+)
+from backend.service.application.models.training.yolo_detection_task_control import (
+    build_requested_yolo_detection_training_control,
+    build_requested_yolo_detection_training_terminate_control,
+    build_yolo_detection_training_resume_control,
+    clear_yolo_detection_training_control_requests,
+    mark_yolo_detection_training_control_saved,
+    read_yolo_detection_training_control,
+    read_yolo_detection_training_control_flag,
+    resolve_yolo_detection_resume_checkpoint_object_key,
+)
+from backend.service.application.models.training.yolo_detection_task_events import (
+    build_yolo_detection_training_cancelled_event,
+    build_yolo_detection_training_control_event,
+    build_yolo_detection_training_paused_event,
+    build_yolo_detection_training_terminated_result_event,
 )
 from backend.service.application.models.training.rfdetr_training_warm_start import (
     build_rfdetr_warm_start_source_summary,
@@ -43,6 +66,9 @@ from backend.service.domain.models.model_input_spec import (
     deserialize_spatial_size_hw,
     serialize_spatial_size_hw,
 )
+from backend.service.application.models.rfdetr_core.factory import (
+    resolve_rfdetr_full_core_default_input_size,
+)
 from backend.service.domain.models.rfdetr_model_spec import (
     RFDETR_DEFAULT_DATASET_FORMAT,
     RFDETR_DETECTION_SCALES,
@@ -56,6 +82,7 @@ RFDETR_TRAINING_TASK_KIND = "rfdetr-training"
 RFDETR_TRAINING_QUEUE_NAME = "rfdetr-trainings"
 RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY = "manual_model_version_registration"
 RFDETR_MANUAL_LATEST_OUTPUT_FILE_TOKEN = "manual-latest"
+RFDETR_TRAINING_CONTROL_METADATA_KEY = "training_control"
 
 
 @dataclass(frozen=True)
@@ -210,6 +237,202 @@ class SqlAlchemyRfdetrTrainingTaskService:
             format_id=dataset_export.format_id,
         )
 
+    def request_training_save(
+        self,
+        task_id: str,
+        *,
+        requested_by: str | None = None,
+    ) -> TaskDetail:
+        """请求在下一个真实 epoch 边界保存 RF-DETR checkpoint。"""
+
+        task_record = self._require_training_task(task_id)
+        if task_record.state != "running":
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务不在运行中，不能请求保存",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        control = self._read_training_control(task_record)
+        if read_yolo_detection_training_control_flag(control, "save_requested"):
+            return self.task_service.get_task(task_id, include_events=False)
+        updated_control = build_requested_yolo_detection_training_control(
+            control=control,
+            save_requested=True,
+            pause_requested=False,
+            requested_by=requested_by,
+            requested_at=self._now_iso(),
+            save_reason="manual",
+        )
+        self._append_control_event(task_id, "save", updated_control)
+        return self.task_service.get_task(task_id, include_events=False)
+
+    def request_training_pause(
+        self,
+        task_id: str,
+        *,
+        requested_by: str | None = None,
+    ) -> TaskDetail:
+        """请求在下一个真实 epoch 边界保存并暂停 RF-DETR 训练。"""
+
+        task_record = self._require_training_task(task_id)
+        if task_record.state == "paused":
+            return self.task_service.get_task(task_id, include_events=False)
+        if task_record.state != "running":
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务不在运行中，不能暂停",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        control = self._read_training_control(task_record)
+        if read_yolo_detection_training_control_flag(control, "pause_requested"):
+            return self.task_service.get_task(task_id, include_events=False)
+        updated_control = build_requested_yolo_detection_training_control(
+            control=control,
+            save_requested=True,
+            pause_requested=True,
+            requested_by=requested_by,
+            requested_at=self._now_iso(),
+            save_reason="pause",
+        )
+        self._append_control_event(task_id, "pause", updated_control)
+        return self.task_service.get_task(task_id, include_events=False)
+
+    def request_training_terminate(
+        self,
+        task_id: str,
+        *,
+        requested_by: str | None = None,
+    ) -> TaskDetail:
+        """终止 queued/paused 任务，或请求 running 任务在 epoch 边界退出。"""
+
+        task_record = self._require_training_task(task_id)
+        if task_record.state == "cancelled":
+            return self.task_service.get_task(task_id, include_events=False)
+        if task_record.state in {"succeeded", "failed"}:
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务已经结束，不能终止",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        control = self._read_training_control(task_record)
+        if task_record.state == "running":
+            if read_yolo_detection_training_control_flag(
+                control,
+                "terminate_requested",
+            ):
+                return self.task_service.get_task(task_id, include_events=False)
+            updated_control = build_requested_yolo_detection_training_terminate_control(
+                control=control,
+                requested_by=requested_by,
+                requested_at=self._now_iso(),
+            )
+            self._append_control_event(task_id, "terminate", updated_control)
+            return self.task_service.get_task(task_id, include_events=False)
+
+        self.task_service.append_task_event(
+            build_yolo_detection_training_cancelled_event(
+                task_id=task_id,
+                model_type=self.model_type,
+                finished_at=self._now_iso(),
+                progress=dict(task_record.progress),
+                control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+                control=clear_yolo_detection_training_control_requests(control),
+                result=dict(task_record.result),
+            )
+        )
+        return self.task_service.get_task(task_id, include_events=False)
+
+    def resume_training_task(
+        self,
+        task_id: str,
+        *,
+        resumed_by: str | None = None,
+    ) -> RfdetrTrainingTaskSubmission:
+        """使用已保存的 Lightning latest checkpoint 继续 paused 任务。"""
+
+        queue_backend = self._require_queue_backend()
+        dataset_storage = self._require_dataset_storage()
+        task_record = self._require_training_task(task_id)
+        if task_record.state != "paused":
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务不处于 paused 状态，不能继续",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        resume_key = resolve_yolo_detection_resume_checkpoint_object_key(
+            metadata=task_record.metadata,
+            result=task_record.result,
+            control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+        )
+        if resume_key is None or not dataset_storage.resolve(resume_key).is_file():
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务缺少可恢复的 latest checkpoint",
+                details={"task_id": task_id, "latest_checkpoint_object_key": resume_key},
+            )
+        payload = self._read_task_payload(task_record)
+        dataset_export = self._resolve_dataset_export_from_payload(
+            project_id=task_record.project_id,
+            payload=payload,
+        )
+        resumed_at = self._now_iso()
+        control = build_yolo_detection_training_resume_control(
+            control=self._read_training_control(task_record),
+            resume_checkpoint_object_key=resume_key,
+            resumed_by=resumed_by,
+            resumed_at=resumed_at,
+        )
+        queue_task = queue_backend.enqueue(
+            queue_name=self.training_queue_name,
+            payload={
+                "task_id": task_id,
+                "task_kind": self.training_task_kind,
+                **payload,
+            },
+            metadata={
+                "project_id": task_record.project_id,
+                "dataset_export_id": dataset_export.dataset_export_id,
+                "model_type": self.model_type,
+            },
+        )
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="rfdetr training resume queued",
+                payload={
+                    "state": "queued",
+                    "metadata": {
+                        RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
+                        "queue_name": queue_task.queue_name,
+                        "queue_task_id": queue_task.task_id,
+                    },
+                    "result": dict(task_record.result),
+                },
+            )
+        )
+        return RfdetrTrainingTaskSubmission(
+            task_id=task_id,
+            status="queued",
+            queue_name=queue_task.queue_name,
+            queue_task_id=queue_task.task_id,
+            dataset_export_id=dataset_export.dataset_export_id,
+            dataset_export_manifest_key=dataset_export.manifest_object_key or "",
+            dataset_version_id=dataset_export.dataset_version_id,
+            format_id=dataset_export.format_id,
+        )
+
+    def delete_training_task(self, task_id: str) -> None:
+        """删除已停止 RF-DETR 任务及其平台管理的输出目录。"""
+
+        task_record = self._require_training_task(task_id)
+        if task_record.state in {"queued", "running"}:
+            raise InvalidRequestError(
+                "当前 RF-DETR 训练任务仍在排队或运行中，不能删除",
+                details={"task_id": task_id, "state": task_record.state},
+            )
+        output_prefix = self._read_optional_str(
+            dict(task_record.result).get("output_object_prefix")
+        )
+        if self.dataset_storage is not None and output_prefix is not None:
+            self.dataset_storage.delete_tree(output_prefix)
+        self.task_service.delete_task(task_id)
+
     def process_training_task(self, task_id: str) -> TrainingBackendRunResult:
         """执行已入队的 RF-DETR detection 训练任务。"""
 
@@ -271,6 +494,19 @@ class SqlAlchemyRfdetrTrainingTaskService:
             ),
             summary_object_key=f"{output_prefix}/output-files/training-summary.json",
         )
+        initial_control = self._read_training_control(task_record)
+        resume_checkpoint_object_key = (
+            resolve_yolo_detection_resume_checkpoint_object_key(
+                metadata=task_record.metadata,
+                result=task_record.result,
+                control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+            )
+            if read_yolo_detection_training_control_flag(
+                initial_control,
+                "resume_pending",
+            )
+            else None
+        )
         started_at = self._now_iso()
         self.task_service.append_task_event(
             AppendTaskEventRequest(
@@ -281,9 +517,220 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     "state": "running",
                     "started_at": started_at,
                     "progress": {"stage": "running", "percent": 0},
+                    "metadata": {
+                        RFDETR_TRAINING_CONTROL_METADATA_KEY: (
+                            clear_yolo_detection_training_control_requests(
+                                initial_control
+                            )
+                        )
+                    },
                 },
             )
         )
+
+        def on_batch(progress: RfdetrTrainingBatchProgress) -> None:
+            """回写真实 batch 进度，进度值限制在训练阶段范围内。"""
+
+            percent = round(
+                min(
+                    90.0,
+                    5.0
+                    + 85.0
+                    * max(0, progress.global_iteration)
+                    / max(1, progress.total_iterations),
+                ),
+                2,
+            )
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="progress",
+                    message=(
+                        "rfdetr training batch "
+                        f"{progress.iteration}/{progress.max_iterations}"
+                    ),
+                    payload={
+                        "state": "running",
+                        "progress": {
+                            "stage": "training",
+                            "percent": percent,
+                            "epoch": progress.epoch + 1,
+                            "epoch_index": progress.epoch,
+                            "max_epochs": progress.max_epochs,
+                            "iteration": progress.iteration,
+                            "max_iterations": progress.max_iterations,
+                            "global_iteration": progress.global_iteration,
+                            "total_iterations": progress.total_iterations,
+                            "learning_rate": progress.learning_rate,
+                            "train_metrics": dict(progress.train_metrics),
+                        },
+                    },
+                )
+            )
+
+        def on_epoch(
+            progress: RfdetrTrainingEpochProgress,
+        ) -> RfdetrTrainingControlCommand | None:
+            """在真实 epoch 边界回写指标并读取最新控制状态。"""
+
+            percent = round(
+                min(
+                    95.0,
+                    10.0
+                    + 80.0
+                    * max(0, progress.epoch + 1)
+                    / max(1, progress.max_epochs),
+                ),
+                2,
+            )
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="progress",
+                    message=(
+                        "rfdetr training epoch "
+                        f"{progress.epoch + 1}/{progress.max_epochs}"
+                    ),
+                    payload={
+                        "state": "running",
+                        "progress": {
+                            "stage": "training",
+                            "percent": percent,
+                            "epoch": progress.epoch + 1,
+                            "epoch_index": progress.epoch,
+                            "max_epochs": progress.max_epochs,
+                            "learning_rate": progress.learning_rate,
+                            "train_metrics": dict(progress.train_metrics),
+                        },
+                    },
+                )
+            )
+            control = self._read_training_control(
+                self._require_training_task(task_id)
+            )
+            if read_yolo_detection_training_control_flag(
+                control,
+                "terminate_requested",
+            ):
+                return RfdetrTrainingControlCommand(
+                    save_checkpoint=True,
+                    terminate_training=True,
+                )
+            if read_yolo_detection_training_control_flag(
+                control,
+                "pause_requested",
+            ):
+                return RfdetrTrainingControlCommand(
+                    save_checkpoint=True,
+                    pause_training=True,
+                )
+            if read_yolo_detection_training_control_flag(
+                control,
+                "save_requested",
+            ):
+                return RfdetrTrainingControlCommand(save_checkpoint=True)
+            return None
+
+        def on_savepoint(savepoint: RfdetrTrainingSavePoint) -> None:
+            """在临时目录清理前持久化 RF-DETR 保存点及指标。"""
+
+            latest_key = output_files.latest_checkpoint_object_key
+            if latest_key is None:
+                raise ServiceConfigurationError(
+                    "RF-DETR detection latest checkpoint object key 缺失"
+                )
+            dataset_storage.write_bytes(
+                latest_key,
+                savepoint.latest_checkpoint_bytes,
+            )
+            if savepoint.best_checkpoint_bytes is not None:
+                dataset_storage.write_bytes(
+                    output_files.checkpoint_object_key,
+                    savepoint.best_checkpoint_bytes,
+                )
+            if output_files.metrics_object_key is not None:
+                dataset_storage.write_json(
+                    output_files.metrics_object_key,
+                    {
+                        "epoch": savepoint.epoch + 1,
+                        "epoch_index": savepoint.epoch,
+                        "callback_metrics": dict(savepoint.train_metrics),
+                    },
+                )
+            if output_files.validation_metrics_object_key is not None:
+                dataset_storage.write_json(
+                    output_files.validation_metrics_object_key,
+                    dict(savepoint.validation_metrics),
+                )
+            if output_files.labels_object_key is not None:
+                self._write_labels_text(
+                    labels_object_key=output_files.labels_object_key,
+                    labels=tuple(dataset_export.category_names),
+                )
+            current_task = self._require_training_task(task_id)
+            control = mark_yolo_detection_training_control_saved(
+                control=self._read_training_control(current_task),
+                saved_at=self._now_iso(),
+                saved_epoch=savepoint.epoch,
+            )
+            partial_result = self._build_interrupted_task_result(
+                task_record=current_task,
+                dataset_export=dataset_export,
+                output_files=output_files,
+                status="running",
+                savepoint=savepoint,
+            )
+            existing_registration = self._read_manual_model_version_registration(
+                current_task
+            )
+            latest_model_version_id = self._register_task_checkpoint_model_version(
+                task_record=current_task,
+                payload=payload,
+                dataset_export=dataset_export,
+                output_files=output_files,
+                summary=dict(partial_result["summary"]),
+                checkpoint_object_key=latest_key,
+                category_names=tuple(dataset_export.category_names),
+                model_version_id=self._read_optional_str(
+                    existing_registration.get("model_version_id")
+                ),
+                output_file_token=RFDETR_MANUAL_LATEST_OUTPUT_FILE_TOKEN,
+                registration_kind="latest-checkpoint",
+            )
+            partial_summary = dict(partial_result["summary"])
+            partial_summary["model_version_id"] = latest_model_version_id
+            partial_summary["latest_checkpoint_model_version_id"] = (
+                latest_model_version_id
+            )
+            partial_result["summary"] = partial_summary
+            partial_result["model_version_id"] = latest_model_version_id
+            partial_result["latest_checkpoint_model_version_id"] = (
+                latest_model_version_id
+            )
+            self.task_service.append_task_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="status",
+                    message="rfdetr training checkpoint saved",
+                    payload={
+                        "state": "running",
+                        "metadata": {
+                            RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
+                            RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
+                                "model_version_id": latest_model_version_id,
+                                "checkpoint_object_key": latest_key,
+                                "registered_by": control.get("last_save_by"),
+                                "registered_at": self._now_iso(),
+                            },
+                        },
+                        "progress": {
+                            "last_saved_epoch": savepoint.epoch + 1,
+                            "last_saved_at": self._now_iso(),
+                        },
+                        "result": partial_result,
+                    },
+                )
+            )
 
         try:
             execution_result = run_rfdetr_training(
@@ -295,6 +742,11 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     max_epochs=int(payload.get("max_epochs") or 1),
                     input_size=self._read_input_size(payload.get("input_size")),
                     precision=str(payload.get("precision") or "fp32"),
+                    resume_checkpoint_path=(
+                        dataset_storage.resolve(resume_checkpoint_object_key)
+                        if resume_checkpoint_object_key is not None
+                        else None
+                    ),
                     warm_start_checkpoint_path=(
                         warm_start_reference.checkpoint_path
                         if warm_start_reference is not None
@@ -306,7 +758,50 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         else None
                     ),
                     extra_options=dict(payload.get("extra_options") or {}),
+                    batch_callback=on_batch,
+                    epoch_callback=on_epoch,
+                    savepoint_callback=on_savepoint,
                 )
+            )
+        except RfdetrTrainingPausedError as paused_error:
+            current_task = self._require_training_task(task_id)
+            paused_result = self._build_interrupted_task_result(
+                task_record=current_task,
+                dataset_export=dataset_export,
+                output_files=output_files,
+                status="paused",
+                savepoint=paused_error.savepoint,
+            )
+            self.task_service.append_task_event(
+                build_yolo_detection_training_paused_event(
+                    task_id=task_id,
+                    model_type=self.model_type,
+                    finished_at=self._now_iso(),
+                    progress=dict(current_task.progress),
+                    control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+                    control=clear_yolo_detection_training_control_requests(
+                        self._read_training_control(current_task)
+                    ),
+                    result=paused_result,
+                )
+            )
+            return self._build_run_result_from_payload(
+                task_id=task_id,
+                result=paused_result,
+            )
+        except RfdetrTrainingTerminatedError:
+            current_task = self._require_training_task(task_id)
+            self.task_service.append_task_event(
+                build_yolo_detection_training_terminated_result_event(
+                    task_id=task_id,
+                    model_type=self.model_type,
+                    finished_at=self._now_iso(),
+                    progress=dict(current_task.progress),
+                )
+            )
+            raise OperationCancelledError(
+                "当前 RF-DETR detection 训练任务已经终止",
+                details={"task_id": task_id},
             )
         except Exception as exc:
             failed_result = {
@@ -1007,6 +1502,130 @@ class SqlAlchemyRfdetrTrainingTaskService:
             return {str(key): value for key, value in registration.items()}
         return {}
 
+    def _require_training_task(self, task_id: str) -> TaskRecord:
+        """读取并校验 RF-DETR detection 训练任务。"""
+
+        task_record = self.task_service.get_task(task_id).task
+        if task_record.task_kind != self.training_task_kind:
+            raise InvalidRequestError(
+                "当前任务不是 RF-DETR detection 训练任务",
+                details={"task_id": task_id, "task_kind": task_record.task_kind},
+            )
+        return task_record
+
+    def _read_training_control(self, task_record: TaskRecord) -> dict[str, object]:
+        """读取 RF-DETR detection 训练控制状态。"""
+
+        return read_yolo_detection_training_control(
+            metadata=dict(task_record.metadata),
+            control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+        )
+
+    def _append_control_event(
+        self,
+        task_id: str,
+        action: str,
+        control: dict[str, object],
+    ) -> None:
+        """追加 RF-DETR detection 控制请求事件。"""
+
+        self.task_service.append_task_event(
+            build_yolo_detection_training_control_event(
+                task_id=task_id,
+                model_type=self.model_type,
+                action=action,
+                control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
+                control=control,
+            )
+        )
+
+    def _build_interrupted_task_result(
+        self,
+        *,
+        task_record: TaskRecord,
+        dataset_export: DatasetExport,
+        output_files: DetectionTrainingOutputFiles,
+        status: str,
+        savepoint: RfdetrTrainingSavePoint,
+    ) -> dict[str, object]:
+        """构建 manual-save、paused 和 terminated 共用的可恢复结果。"""
+
+        payload = self._read_task_payload(task_record)
+        input_size = self._read_input_size(payload.get("input_size"))
+        if input_size is None:
+            input_size = resolve_rfdetr_full_core_default_input_size(
+                task_type=self.task_type,
+                model_scale=str(payload.get("model_scale") or "nano"),
+            )
+        serialized_input_size = serialize_spatial_size_hw(input_size)
+        checkpoint_object_key = output_files.checkpoint_object_key
+        if not self._require_dataset_storage().resolve(checkpoint_object_key).is_file():
+            checkpoint_object_key = (
+                output_files.latest_checkpoint_object_key or checkpoint_object_key
+            )
+        summary = {
+            "task_id": task_record.task_id,
+            "status": status,
+            "model_type": self.model_type,
+            "task_type": self.task_type,
+            "implementation_mode": RFDETR_IMPL_MODE,
+            "category_names": list(dataset_export.category_names),
+            "input_size": serialized_input_size,
+            "training_config": {
+                "recipe_id": payload.get("recipe_id"),
+                "model_scale": payload.get("model_scale"),
+                "batch_size": payload.get("batch_size"),
+                "max_epochs": payload.get("max_epochs"),
+                "precision": payload.get("precision"),
+                "input_size": serialized_input_size,
+                "extra_options": dict(payload.get("extra_options") or {}),
+            },
+            "saved_epoch": savepoint.epoch + 1,
+            "saved_epoch_index": savepoint.epoch,
+            "best_metric_name": savepoint.best_metric_name,
+            "best_metric_value": savepoint.best_metric_value,
+            "validation": dict(savepoint.validation_metrics),
+            "output_files": {
+                "output_object_prefix": output_files.output_object_prefix,
+                "checkpoint_object_key": checkpoint_object_key,
+                "latest_checkpoint_object_key": (
+                    output_files.latest_checkpoint_object_key
+                ),
+                "labels_object_key": output_files.labels_object_key,
+                "metrics_object_key": output_files.metrics_object_key,
+                "validation_metrics_object_key": (
+                    output_files.validation_metrics_object_key
+                ),
+                "test_metrics_object_key": output_files.test_metrics_object_key,
+                "summary_object_key": output_files.summary_object_key,
+            },
+        }
+        return {
+            "status": status,
+            "task_id": task_record.task_id,
+            "dataset_export_id": dataset_export.dataset_export_id,
+            "dataset_export_manifest_key": dataset_export.manifest_object_key,
+            "dataset_version_id": dataset_export.dataset_version_id,
+            "format_id": dataset_export.format_id,
+            "output_prefix": output_files.output_object_prefix,
+            "output_object_prefix": output_files.output_object_prefix,
+            "checkpoint_object_key": checkpoint_object_key,
+            "latest_checkpoint_object_key": (
+                output_files.latest_checkpoint_object_key
+            ),
+            "labels_object_key": output_files.labels_object_key,
+            "metrics_object_key": output_files.metrics_object_key,
+            "validation_metrics_object_key": (
+                output_files.validation_metrics_object_key
+            ),
+            "test_metrics_object_key": output_files.test_metrics_object_key,
+            "summary_object_key": output_files.summary_object_key,
+            "best_metric_name": savepoint.best_metric_name,
+            "best_metric_value": savepoint.best_metric_value,
+            "labels": list(dataset_export.category_names),
+            "summary": summary,
+        }
+
     def _write_labels_text(self, *, labels_object_key: str, labels: tuple[str, ...]) -> None:
         """写出 RF-DETR detection 标签文本文件。"""
 
@@ -1075,6 +1694,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
     def _read_optional_int_tuple(self, value: object) -> tuple[int, ...] | None:
         """读取可选整数 tuple。"""
 
+        if isinstance(value, dict):
+            return deserialize_spatial_size_hw(value, field_name="input_size")
         if isinstance(value, (list, tuple)):
             return tuple(int(item) for item in value)
         return None

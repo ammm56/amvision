@@ -33,7 +33,6 @@ from backend.service.application.models.yolo26_core.data import (
 from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_segmentation_postprocess_instances,
     normalize_yolo26_segmentation_outputs,
-    postprocess_yolo26_segmentation_prediction_array,
 )
 from backend.service.application.models.yolo26_core.inference import (
     unwrap_yolo26_segmentation_runtime_outputs,
@@ -131,7 +130,7 @@ def run_yolo26_segmentation_evaluation(
         image_path = sample["image_path"]
         gt_annotations = sample.get("annotations", [])
         resolved_image_path = (
-            dataset_storage.resolve(image_path) if image_path else None
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
         )
         if resolved_image_path is None or not resolved_image_path.is_file():
             continue
@@ -310,8 +309,8 @@ def _parse_yolo26_segmentation_manifest(
             category_names=manifest.get("category_names"),
             format_label="YOLO26 segmentation",
         )
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "YOLO26 segmentation 图片目录不存在",
@@ -665,88 +664,52 @@ def _build_yolo26_segmentation_prediction_items(
     bbox_items: list[dict[str, object]] = []
     mask_items: list[dict[str, object]] = []
     normalized_outputs = unwrap_yolo26_segmentation_runtime_outputs(outputs)
-    try:
-        prediction_array, proto_array = normalize_yolo26_segmentation_outputs(
-            outputs=normalized_outputs,
-            np_module=imports.np,
-            num_classes=len(labels),
-        )
-        letterbox_transform = build_yolo_letterbox_transform(
-            source_width=int(input_size[1]),
-            source_height=int(input_size[0]),
-            input_size=input_size,
-        )
-        instances = build_yolo26_segmentation_postprocess_instances(
-            cv2_module=imports.cv2,
-            np_module=imports.np,
-            prediction_array=prediction_array,
-            proto_array=proto_array,
-            labels=labels,
-            score_threshold=score_threshold,
-            nms_threshold=nms_threshold,
-            mask_threshold=mask_threshold,
-            letterbox_transform=letterbox_transform,
-            nms_indices_func=batched_nms_indices,
-        )
-        for instance in instances:
-            bbox_items.append(
-                {
-                    "image_id": image_index,
-                    "category_id": int(instance.class_id),
-                    "bbox_xyxy": list(instance.bbox_xyxy),
-                    "score": float(instance.score),
-                }
-            )
-            mask = _build_yolo26_segmentation_instance_mask(
-                segments=instance.segments,
-                width=int(input_size[1]),
-                height=int(input_size[0]),
-            )
-            if mask is not None:
-                mask_items.append(
-                    {
-                        "image_id": image_index,
-                        "category_id": int(instance.class_id),
-                        "mask": mask,
-                        "score": float(instance.score),
-                    }
-                )
-        return bbox_items, mask_items, len(instances)
-    except Exception:
-        prediction_array = _yolo26_segmentation_tensor_to_np(
-            normalized_outputs[0]
-            if isinstance(normalized_outputs, tuple)
-            else normalized_outputs,
-            imports,
-        )
-    if prediction_array.ndim < 3:
-        return bbox_items, mask_items, 0
-    postprocess_results = postprocess_yolo26_segmentation_prediction_array(
-        prediction_array=prediction_array,
+    prediction_array, proto_array = normalize_yolo26_segmentation_outputs(
+        outputs=normalized_outputs,
         np_module=imports.np,
         num_classes=len(labels),
+    )
+    letterbox_transform = build_yolo_letterbox_transform(
+        source_width=int(input_size[1]),
+        source_height=int(input_size[0]),
+        input_size=input_size,
+    )
+    instances = build_yolo26_segmentation_postprocess_instances(
+        cv2_module=imports.cv2,
+        np_module=imports.np,
+        prediction_array=prediction_array,
+        proto_array=proto_array,
+        labels=labels,
         score_threshold=score_threshold,
         nms_threshold=nms_threshold,
+        mask_threshold=mask_threshold,
+        letterbox_transform=letterbox_transform,
         nms_indices_func=batched_nms_indices,
     )
-    prediction = postprocess_results[0] if postprocess_results else None
-    if prediction is None or int(prediction.scores.shape[0]) == 0:
-        return bbox_items, mask_items, 0
-    for box, score, class_id in zip(
-        prediction.boxes_xyxy,
-        prediction.scores,
-        prediction.class_ids,
-        strict=True,
-    ):
+    for instance in instances:
         bbox_items.append(
             {
                 "image_id": image_index,
-                "category_id": int(class_id),
-                "bbox_xyxy": [float(value) for value in box],
-                "score": float(score),
+                "category_id": int(instance.class_id),
+                "bbox_xyxy": list(instance.bbox_xyxy),
+                "score": float(instance.score),
             }
         )
-    return bbox_items, mask_items, int(prediction.scores.shape[0])
+        mask = _build_yolo26_segmentation_instance_mask(
+            segments=instance.segments,
+            width=int(input_size[1]),
+            height=int(input_size[0]),
+        )
+        if mask is not None:
+            mask_items.append(
+                {
+                    "image_id": image_index,
+                    "category_id": int(instance.class_id),
+                    "mask": mask,
+                    "score": float(instance.score),
+                }
+            )
+    return bbox_items, mask_items, len(instances)
 
 
 def _yolo26_segmentation_autocast(imports: Any, precision: str, device: str):

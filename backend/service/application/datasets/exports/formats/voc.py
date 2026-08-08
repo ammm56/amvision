@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import TYPE_CHECKING
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from backend.contracts.datasets.exports.voc_detection_export import (
+    VOC_DETECTION_COORDINATE_CONVENTION,
     VocDetectionAnnotationPayload,
     VocDetectionDocument,
     VocDetectionExportManifest,
@@ -21,6 +21,10 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetSample,
     DatasetVersion,
     DetectionAnnotation,
+)
+from backend.service.domain.datasets.coordinates import (
+    PixelBox,
+    ZERO_BASED_EXCLUSIVE,
 )
 
 if TYPE_CHECKING:
@@ -61,9 +65,13 @@ class VocExportMixin:
             VocDetectionExportManifest(
                 format_id=request.format_id,
                 dataset_version_id=request.dataset_version_id,
+                coordinate_convention=VOC_DETECTION_COORDINATE_CONVENTION,
                 category_names=category_names,
                 splits=detection_splits,
-                metadata=metadata,
+                metadata={
+                    **metadata,
+                    "coordinate_convention": VOC_DETECTION_COORDINATE_CONVENTION,
+                },
             ),
             self._build_voc_detection_payloads(
                 dataset_version=dataset_version,
@@ -132,6 +140,7 @@ class VocExportMixin:
                         annotation_relative_path=f"Annotations/{sample.sample_id}.xml",
                         width=sample.width,
                         height=sample.height,
+                        coordinate_convention=VOC_DETECTION_COORDINATE_CONVENTION,
                         objects=objects,
                         metadata={
                             "source_file_name": sample.file_name,
@@ -208,6 +217,9 @@ class VocExportMixin:
 
         source_element = SubElement(root, "source")
         SubElement(source_element, "database").text = "amvision"
+        SubElement(source_element, "coordinateConvention").text = (
+            document.coordinate_convention
+        )
 
         size_element = SubElement(root, "size")
         SubElement(size_element, "width").text = str(document.width)
@@ -245,29 +257,23 @@ class VocExportMixin:
         sample: DatasetSample,
         bbox_xywh: tuple[float, float, float, float],
     ) -> tuple[int, int, int, int]:
-        """把 xywh 检测框转换为 VOC 使用的 xyxy 整数坐标。"""
+        """把平台 xywh 转换为默认 0-based、右下 exclusive 的 VOC 坐标。"""
 
-        bbox_x, bbox_y, bbox_w, bbox_h = bbox_xywh
-        if sample.width <= 0 or sample.height <= 0:
-            raise ValueError(f"VOC 图片尺寸无效: sample_id={sample.sample_id}")
-        if not all(
-            math.isfinite(value) for value in (bbox_x, bbox_y, bbox_w, bbox_h)
-        ):
-            raise ValueError("VOC bbox 必须是有限数字")
-        if (
-            bbox_x < 0
-            or bbox_y < 0
-            or bbox_w <= 0
-            or bbox_h <= 0
-            or bbox_x + bbox_w > sample.width
-            or bbox_y + bbox_h > sample.height
-        ):
-            raise ValueError("VOC bbox 超出图片范围或尺寸无效")
-        xmin = max(1, min(sample.width, int(round(bbox_x)) + 1))
-        ymin = max(1, min(sample.height, int(round(bbox_y)) + 1))
-        xmax = max(xmin, min(sample.width, int(round(bbox_x + bbox_w))))
-        ymax = max(ymin, min(sample.height, int(round(bbox_y + bbox_h))))
-        return (xmin, ymin, xmax, ymax)
+        try:
+            box = PixelBox.from_xywh(
+                bbox_xywh,
+                image_width=sample.width,
+                image_height=sample.height,
+            )
+            return box.to_integer_xyxy(
+                convention=ZERO_BASED_EXCLUSIVE,
+                image_width=sample.width,
+                image_height=sample.height,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"VOC bbox 无效: sample_id={sample.sample_id}; {error}"
+            ) from error
 
     def _read_annotation_flag(self, metadata: dict[str, object], key: str) -> int:
         """从标注 metadata 中读取 VOC 使用的整数布尔标记。"""

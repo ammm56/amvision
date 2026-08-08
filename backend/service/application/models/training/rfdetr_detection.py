@@ -10,6 +10,13 @@ from backend.service.application.models.rfdetr_core.training.platform_runner imp
     RfdetrPlatformTrainingRequest,
     run_rfdetr_platform_training,
 )
+from backend.service.application.models.rfdetr_core.training.platform_control import (
+    RfdetrPlatformBatchProgress,
+    RfdetrPlatformEpochProgress,
+    RfdetrPlatformTrainingControlCommand,
+    RfdetrPlatformTrainingControlSignal,
+    RfdetrPlatformTrainingSavePoint,
+)
 from backend.service.application.models.rfdetr_core.factory import (
     resolve_rfdetr_full_core_default_input_size,
 )
@@ -75,9 +82,21 @@ class RfdetrTrainingControlCommand:
 class RfdetrTrainingPausedError(Exception):
     """训练被暂停时抛出。"""
 
+    def __init__(self, savepoint: RfdetrTrainingSavePoint) -> None:
+        """保留暂停前已持久化所需的完整保存点。"""
+
+        super().__init__("RF-DETR detection training paused")
+        self.savepoint = savepoint
+
 
 class RfdetrTrainingTerminatedError(Exception):
     """训练被终止时抛出。"""
+
+    def __init__(self, savepoint: RfdetrTrainingSavePoint) -> None:
+        """保留终止前已生成的完整保存点。"""
+
+        super().__init__("RF-DETR detection training terminated")
+        self.savepoint = savepoint
 
 
 @dataclass(frozen=True)
@@ -95,6 +114,7 @@ class RfdetrTrainingExecutionRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
+    batch_callback: Callable[[RfdetrTrainingBatchProgress], None] | None = None
     epoch_callback: Callable[
         [RfdetrTrainingEpochProgress],
         RfdetrTrainingControlCommand | None,
@@ -123,27 +143,35 @@ def run_rfdetr_training(
 ) -> RfdetrTrainingExecutionResult:
     """执行一轮 RF-DETR detection full-core 训练。"""
 
-    result = run_rfdetr_platform_training(
-        RfdetrPlatformTrainingRequest(
-            dataset_storage=request.dataset_storage,
-            manifest_payload=request.manifest_payload,
-            task_type=DETECTION_TASK_TYPE,
-            model_scale=request.model_scale,
-            batch_size=request.batch_size,
-            max_epochs=request.max_epochs,
-            input_size=request.input_size
-            or resolve_rfdetr_full_core_default_input_size(
+    try:
+        result = run_rfdetr_platform_training(
+            RfdetrPlatformTrainingRequest(
+                dataset_storage=request.dataset_storage,
+                manifest_payload=request.manifest_payload,
                 task_type=DETECTION_TASK_TYPE,
                 model_scale=request.model_scale,
-            ),
-            precision=request.precision,
-            resume_checkpoint_path=request.resume_checkpoint_path,
-            warm_start_checkpoint_path=request.warm_start_checkpoint_path,
-            warm_start_source_summary=request.warm_start_source_summary,
-            extra_options=request.extra_options,
+                batch_size=request.batch_size,
+                max_epochs=request.max_epochs,
+                input_size=request.input_size
+                or resolve_rfdetr_full_core_default_input_size(
+                    task_type=DETECTION_TASK_TYPE,
+                    model_scale=request.model_scale,
+                ),
+                precision=request.precision,
+                resume_checkpoint_path=request.resume_checkpoint_path,
+                warm_start_checkpoint_path=request.warm_start_checkpoint_path,
+                warm_start_source_summary=request.warm_start_source_summary,
+                extra_options=request.extra_options,
+                batch_callback=_build_platform_batch_callback(request),
+                epoch_callback=_build_platform_epoch_callback(request),
+                savepoint_callback=_build_platform_savepoint_callback(request),
+            )
         )
-    )
-    _emit_final_callbacks(request, result)
+    except RfdetrPlatformTrainingControlSignal as signal:
+        savepoint = _to_detection_savepoint(signal.savepoint)
+        if signal.status == "terminated":
+            raise RfdetrTrainingTerminatedError(savepoint) from signal
+        raise RfdetrTrainingPausedError(savepoint) from signal
     return RfdetrTrainingExecutionResult(
         best_metric_value=result.best_metric_value,
         best_metric_name=result.best_metric_name,
@@ -158,49 +186,93 @@ def run_rfdetr_training(
     )
 
 
-def _emit_final_callbacks(
+def _build_platform_batch_callback(
     request: RfdetrTrainingExecutionRequest,
-    result,
-) -> None:
-    """向旧 service 控制面发送最终进度与保存点。"""
+) -> Callable[[RfdetrPlatformBatchProgress], None] | None:
+    """把 core batch progress 转换为 detection 公开进度。"""
 
-    train_metrics = {
-        key: value
-        for key, value in result.metrics_payload.get("callback_metrics", {}).items()
-        if isinstance(value, int | float)
-    }
-    validation_metrics = {
-        key: value
-        for key, value in result.validation_metrics_payload.items()
-        if isinstance(value, int | float)
-    }
-    if request.epoch_callback is not None:
+    if request.batch_callback is None:
+        return None
+
+    def on_batch(progress: RfdetrPlatformBatchProgress) -> None:
+        request.batch_callback(
+            RfdetrTrainingBatchProgress(
+                epoch=progress.epoch,
+                max_epochs=progress.max_epochs,
+                iteration=progress.iteration,
+                max_iterations=progress.max_iterations,
+                global_iteration=progress.global_iteration,
+                total_iterations=progress.total_iterations,
+                learning_rate=progress.learning_rate,
+                train_metrics=dict(progress.train_metrics),
+            )
+        )
+
+    return on_batch
+
+
+def _build_platform_epoch_callback(
+    request: RfdetrTrainingExecutionRequest,
+) -> Callable[
+    [RfdetrPlatformEpochProgress],
+    RfdetrPlatformTrainingControlCommand | None,
+] | None:
+    """把公开 epoch 控制命令转换为 core 控制命令。"""
+
+    if request.epoch_callback is None:
+        return None
+
+    def on_epoch(
+        progress: RfdetrPlatformEpochProgress,
+    ) -> RfdetrPlatformTrainingControlCommand | None:
         command = request.epoch_callback(
             RfdetrTrainingEpochProgress(
-                epoch=max(1, request.max_epochs),
-                max_epochs=max(1, request.max_epochs),
-                learning_rate=float((request.extra_options or {}).get("learning_rate", 1e-4)),
-                train_metrics=train_metrics,
+                epoch=progress.epoch,
+                max_epochs=progress.max_epochs,
+                learning_rate=progress.learning_rate,
+                train_metrics=dict(progress.train_metrics),
             )
         )
-        if command is not None:
-            if command.terminate_training:
-                raise RfdetrTrainingTerminatedError()
-            if command.pause_training:
-                raise RfdetrTrainingPausedError()
-    if request.savepoint_callback is not None:
-        request.savepoint_callback(
-            RfdetrTrainingSavePoint(
-                latest_checkpoint_bytes=result.latest_checkpoint_bytes,
-                best_checkpoint_bytes=result.best_checkpoint_bytes,
-                train_metrics=train_metrics,
-                validation_metrics=validation_metrics,
-                best_metric_value=result.best_metric_value,
-                best_metric_name=result.best_metric_name,
-                epoch=max(1, request.max_epochs),
-                learning_rate=float((request.extra_options or {}).get("learning_rate", 1e-4)),
-            )
+        if command is None:
+            return None
+        return RfdetrPlatformTrainingControlCommand(
+            save_checkpoint=command.save_checkpoint,
+            pause_training=command.pause_training,
+            terminate_training=command.terminate_training,
         )
+
+    return on_epoch
+
+
+def _build_platform_savepoint_callback(
+    request: RfdetrTrainingExecutionRequest,
+) -> Callable[[RfdetrPlatformTrainingSavePoint], None] | None:
+    """把 core 保存点转换为 detection 公开保存点。"""
+
+    if request.savepoint_callback is None:
+        return None
+
+    def on_savepoint(savepoint: RfdetrPlatformTrainingSavePoint) -> None:
+        request.savepoint_callback(_to_detection_savepoint(savepoint))
+
+    return on_savepoint
+
+
+def _to_detection_savepoint(
+    savepoint: RfdetrPlatformTrainingSavePoint,
+) -> RfdetrTrainingSavePoint:
+    """复制 core 保存点，确保公开层不泄漏 Lightning 类型。"""
+
+    return RfdetrTrainingSavePoint(
+        latest_checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+        best_checkpoint_bytes=savepoint.best_checkpoint_bytes,
+        train_metrics=dict(savepoint.train_metrics),
+        validation_metrics=dict(savepoint.validation_metrics),
+        best_metric_value=savepoint.best_metric_value,
+        best_metric_name=savepoint.best_metric_name,
+        epoch=savepoint.epoch,
+        learning_rate=savepoint.learning_rate,
+    )
 
 
 __all__ = [

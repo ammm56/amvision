@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 import multiprocessing
@@ -15,10 +16,19 @@ from sqlalchemy.engine import URL, make_url
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError, ServiceError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+    ServiceError,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.execution.custom_node_policy import (
+    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
+    CUSTOM_NODE_TIMEOUT_EXIT_CODE,
 )
 from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
 from backend.service.application.workflows.runtime_registry_loader import (
@@ -147,16 +157,41 @@ class WorkflowApplicationProcessExecutor:
         process.start()
         try:
             try:
-                message = response_queue.get(timeout=self.request_timeout_seconds)
-            except Empty as exc:
-                raise ServiceConfigurationError(
-                    "等待 workflow application 子进程响应超时",
-                    details={
-                        "project_id": normalized_request.project_id,
-                        "application_id": normalized_request.application_id,
-                        "timeout_seconds": self.request_timeout_seconds,
-                    },
-                ) from exc
+                deadline = monotonic() + self.request_timeout_seconds
+                while True:
+                    remaining_seconds = deadline - monotonic()
+                    if remaining_seconds <= 0:
+                        raise OperationTimeoutError(
+                            "等待 workflow application 子进程响应超时",
+                            details={
+                                "project_id": normalized_request.project_id,
+                                "application_id": normalized_request.application_id,
+                                "timeout_seconds": self.request_timeout_seconds,
+                            },
+                        )
+                    try:
+                        message = response_queue.get(timeout=min(0.2, remaining_seconds))
+                        break
+                    except Empty:
+                        if process.is_alive():
+                            continue
+                        if process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
+                            raise OperationTimeoutError(
+                                "custom node 执行超过 manifest timeout，workflow application 进程已终止",
+                                details={
+                                    "project_id": normalized_request.project_id,
+                                    "application_id": normalized_request.application_id,
+                                    "process_exit_code": process.exitcode,
+                                },
+                            )
+                        raise ServiceConfigurationError(
+                            "workflow application 子进程已退出且未返回结果",
+                            details={
+                                "project_id": normalized_request.project_id,
+                                "application_id": normalized_request.application_id,
+                                "process_exit_code": process.exitcode,
+                            },
+                        )
             finally:
                 process.join(timeout=1.0)
                 if process.is_alive():
@@ -262,6 +297,7 @@ def run_workflow_application_process_worker(
         application_id = _require_payload_str(request_payload, "application_id")
         input_bindings = _require_payload_dict(request_payload, "input_bindings")
         execution_metadata = _require_payload_dict(request_payload, "execution_metadata")
+        execution_metadata[CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY] = True
         runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,

@@ -8,7 +8,7 @@ import {
   type PlatformBaseModelSummary,
 } from '../services/model.service'
 import {
-  buildTrainingExtraOptions,
+  buildTrainingParameters,
   validateTrainingModelLayerValues,
   type TrainingParameterValues,
 } from '../training-parameter-support'
@@ -39,11 +39,9 @@ export function useModelTrainingState(options: {
   outputModelName: Ref<string>
   warmStartModelVersionId: Ref<string>
   trainingTaskSupportsWarmStart: ComputedRef<boolean>
-  trainingSupportsGpuCount: ComputedRef<boolean>
   evaluationInterval: Ref<number>
   maxEpochs: Ref<number>
   batchSize: Ref<number>
-  gpuCount: Ref<number>
   trainingDevice: Ref<string>
   precision: Ref<string>
   inputWidth: Ref<number>
@@ -146,12 +144,11 @@ export function useModelTrainingState(options: {
         evaluationInterval: options.evaluationInterval.value,
         maxEpochs: options.maxEpochs.value,
         batchSize: options.batchSize.value,
-        gpuCount: options.trainingSupportsGpuCount.value ? options.gpuCount.value : undefined,
         precision: options.precision.value,
         inputWidth: alignedInputSize.width,
         inputHeight: alignedInputSize.height,
         displayName: options.trainingDisplayName.value.trim(),
-        extraOptions: buildTrainingExtraOptions(
+        parameters: buildTrainingParameters(
           options.selectedTaskType.value,
           options.resolvedTrainingModelType.value,
           options.trainingModelParameterValues,

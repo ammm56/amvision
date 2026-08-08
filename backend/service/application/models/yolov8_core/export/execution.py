@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import json
-from pathlib import Path, PurePosixPath
-import subprocess
-from typing import Callable
+from pathlib import Path
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.export.onnx_export import (
@@ -14,6 +11,7 @@ from backend.service.application.models.export.onnx_export import (
 )
 from backend.service.application.models.yolo_core_common.export.execution import (
     build_validated_yolo_runtime_input_tensor,
+    validate_yolo_onnx_graph_output_contract,
 )
 from backend.service.application.models.yolov8_core.export.plan import (
     YoloV8ExportTaskPlan,
@@ -22,15 +20,10 @@ from backend.service.application.models.yolov8_core.export.segmentation import (
     normalize_yolov8_segmentation_export_outputs,
 )
 
-YOLOV8_OPENVINO_IR_BUILD_SCRIPT_FILE = "build_openvino_ir.py"
-YOLOV8_TENSORRT_ENGINE_BUILD_SCRIPT_FILE = "build_tensorrt_engine.py"
 YOLOV8_ONNX_MEAN_RATIO_TOLERANCES: dict[str, float] = {
     "predictions": 1e-5,
     "proto": 1e-5,
 }
-
-ConversionScriptRunner = Callable[..., subprocess.CompletedProcess[str]]
-
 
 def export_yolov8_onnx_model(
     *,
@@ -85,6 +78,10 @@ def validate_yolov8_onnx_model(
 
     onnx_model = onnx_module.load(str(onnx_path))
     onnx_module.checker.check_model(onnx_model)
+    validate_yolo_onnx_graph_output_contract(
+        onnx_model=onnx_model,
+        expected_output_names=export_plan.output_names,
+    )
 
     dummy_input = _build_yolov8_dummy_input(session=session)
     with session.imports.torch.no_grad():
@@ -133,103 +130,6 @@ def validate_yolov8_onnx_model(
         )
     summary["input_tensor"] = input_tensor
     return summary
-
-
-def build_yolov8_openvino_ir_model(
-    *,
-    source_path: Path,
-    output_path: Path,
-    source_object_key: str,
-    output_object_key: str,
-    build_precision: str,
-    run_conversion_script: ConversionScriptRunner,
-) -> dict[str, object]:
-    """把 YOLOv8 optimized ONNX 转换为 OpenVINO IR 并返回构建摘要。"""
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    compress_to_fp16 = build_precision == "fp16"
-    completed_process = run_conversion_script(
-        script_file_name=YOLOV8_OPENVINO_IR_BUILD_SCRIPT_FILE,
-        args=[str(source_path), str(output_path), build_precision],
-    )
-    if completed_process.returncode != 0:
-        raise ServiceConfigurationError(
-            "YOLOv8 OpenVINO IR 构建失败",
-            details={
-                "source_object_uri": source_object_key,
-                "output_object_uri": output_object_key,
-                "stdout": completed_process.stdout.strip(),
-                "stderr": completed_process.stderr.strip(),
-            },
-        )
-
-    weights_path = output_path.with_suffix(".bin")
-    if not output_path.is_file() or not weights_path.is_file():
-        raise ServiceConfigurationError(
-            "YOLOv8 OpenVINO IR 构建未生成完整的 xml/bin 产物",
-            details={
-                "output_object_uri": output_object_key,
-                "weights_object_uri": resolve_yolov8_openvino_weights_object_key(
-                    output_object_key
-                ),
-            },
-        )
-    return {
-        "stage": "build-openvino-ir",
-        "object_uri": output_object_key,
-        "source_object_uri": source_object_key,
-        "weights_object_uri": resolve_yolov8_openvino_weights_object_key(
-            output_object_key
-        ),
-        "build_precision": build_precision,
-        "compress_to_fp16": compress_to_fp16,
-        "execution_mode": "subprocess-openvino-convert-model",
-    }
-
-
-def build_yolov8_tensorrt_engine_model(
-    *,
-    source_path: Path,
-    output_path: Path,
-    source_object_key: str,
-    output_object_key: str,
-    build_precision: str,
-    run_conversion_script: ConversionScriptRunner,
-) -> dict[str, object]:
-    """把 YOLOv8 optimized ONNX 转换为 TensorRT engine 并返回构建摘要。"""
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    completed_process = run_conversion_script(
-        script_file_name=YOLOV8_TENSORRT_ENGINE_BUILD_SCRIPT_FILE,
-        args=[str(source_path), str(output_path), build_precision],
-    )
-    if completed_process.returncode != 0:
-        raise ServiceConfigurationError(
-            "YOLOv8 TensorRT engine 构建失败",
-            details={
-                "source_object_uri": source_object_key,
-                "output_object_uri": output_object_key,
-                "stdout": completed_process.stdout.strip(),
-                "stderr": completed_process.stderr.strip(),
-            },
-        )
-    if not output_path.is_file():
-        raise ServiceConfigurationError(
-            "YOLOv8 TensorRT engine 构建未生成 engine 产物",
-            details={"output_object_uri": output_object_key},
-        )
-    build_summary = {
-        "stage": "build-tensorrt-engine",
-        "object_uri": output_object_key,
-        "source_object_uri": source_object_key,
-        "build_precision": build_precision,
-        "execution_mode": "subprocess-tensorrt-build-engine",
-        "engine_file_bytes": output_path.stat().st_size,
-    }
-    stdout_payload = _parse_yolov8_last_json_line(completed_process.stdout)
-    if stdout_payload is not None:
-        build_summary.update(dict(stdout_payload))
-    return build_summary
 
 
 def normalize_yolov8_export_model_outputs(
@@ -347,12 +247,6 @@ def summarize_yolov8_onnx_numeric_validation(
     }
 
 
-def resolve_yolov8_openvino_weights_object_key(output_object_key: str) -> str:
-    """根据 YOLOv8 OpenVINO XML object key 推导同名 bin object key。"""
-
-    return PurePosixPath(output_object_key).with_suffix(".bin").as_posix()
-
-
 @contextmanager
 def use_yolov8_model_export_mode(model: object, *, enabled: bool):
     """临时切换 YOLOv8 模型内部 export 标志，保证导出和校验输出语义一致。"""
@@ -427,28 +321,9 @@ def _validate_yolov8_task_export_outputs(
         normalize_yolov8_segmentation_export_outputs(outputs=outputs)
 
 
-def _parse_yolov8_last_json_line(stdout: str) -> dict[str, object] | None:
-    """从标准输出最后一个非空行解析 JSON 对象。"""
-
-    stdout_lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    if not stdout_lines:
-        return None
-    try:
-        payload = json.loads(stdout_lines[-1])
-    except json.JSONDecodeError:
-        return None
-    if isinstance(payload, dict):
-        return {str(key): value for key, value in payload.items()}
-    return None
-
-
 __all__ = [
-    "ConversionScriptRunner",
-    "build_yolov8_openvino_ir_model",
-    "build_yolov8_tensorrt_engine_model",
     "export_yolov8_onnx_model",
     "normalize_yolov8_export_model_outputs",
-    "resolve_yolov8_openvino_weights_object_key",
     "summarize_yolov8_onnx_numeric_validation",
     "use_yolov8_model_export_mode",
     "validate_yolov8_onnx_model",

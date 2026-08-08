@@ -2,12 +2,29 @@
   <section class="page-stack">
     <PageHeader :title="t('customNodes.title')">
       <template #actions>
+        <Button
+          v-if="activeTab === 'packs'"
+          variant="primary"
+          :disabled="loading || actionKey !== null"
+          @click="chooseInstallArchive"
+        >
+          <Upload :size="16" />
+          {{ t('customNodes.actions.install') }}
+        </Button>
         <Button variant="secondary" :disabled="loading" :loading="loading" @click="loadCatalog">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
       </template>
     </PageHeader>
+
+    <input
+      ref="installArchiveInput"
+      class="visually-hidden"
+      type="file"
+      accept=".zip,application/zip"
+      @change="installSelectedArchive"
+    />
 
     <InlineError :message="errorMessage" />
 
@@ -285,6 +302,33 @@
           </dl>
 
           <section class="node-detail-panel__section">
+            <h3>{{ t('customNodes.detail.versions') }}</h3>
+            <div v-if="selectedNodePackVersions.length" class="node-pack-version-list">
+              <article v-for="version in selectedNodePackVersions" :key="version.version">
+                <div>
+                  <strong>{{ version.version }}</strong>
+                  <StatusBadge :tone="version.active ? 'success' : 'neutral'">
+                    {{ version.active ? t('customNodes.status.active') : t('customNodes.status.available') }}
+                  </StatusBadge>
+                </div>
+                <span>{{ formatTimestamp(version.installed_at) }} / {{ version.installed_by }}</span>
+                <code>{{ shortHash(version.content_sha256) }}</code>
+                <Button
+                  v-if="!version.active"
+                  size="sm"
+                  variant="secondary"
+                  :disabled="loading || actionKey !== null"
+                  @click="rollbackSelectedNodePack(selectedNodePackRow.id, version.version)"
+                >
+                  <RotateCcw :size="14" />
+                  {{ t('customNodes.actions.rollback') }}
+                </Button>
+              </article>
+            </div>
+            <p v-else class="muted-note">{{ t('customNodes.messages.noVersions') }}</p>
+          </section>
+
+          <section class="node-detail-panel__section">
             <h3>{{ t('customNodes.detail.dependencies') }}</h3>
             <div v-if="selectedNodePackDependencies.length" class="dependency-list">
               <article v-for="dependency in selectedNodePackDependencies" :key="dependency.key">
@@ -313,6 +357,23 @@
               </article>
             </div>
             <p v-else class="muted-note">{{ t('customNodes.messages.noLogs') }}</p>
+          </section>
+
+          <section class="node-detail-panel__section">
+            <h3>{{ t('customNodes.detail.audit') }}</h3>
+            <div v-if="selectedNodePackAudit.length" class="node-pack-log-list">
+              <article v-for="event in selectedNodePackAudit" :key="event.event_id">
+                <StatusBadge :tone="event.status === 'failed' ? 'danger' : 'success'">
+                  {{ event.action }}
+                </StatusBadge>
+                <div>
+                  <strong>{{ event.from_version || '-' }} → {{ event.to_version || '-' }}</strong>
+                  <span>{{ formatTimestamp(event.created_at) }} / {{ event.actor_id }}</span>
+                  <small v-if="event.source_file_name">{{ event.source_file_name }}</small>
+                </div>
+              </article>
+            </div>
+            <p v-else class="muted-note">{{ t('customNodes.messages.noAudit') }}</p>
           </section>
 
           <details class="node-catalog-inspector__runtime">
@@ -355,7 +416,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch, type PropType } from 'vue'
-import { CircleCheck, ListFilter, Power, PowerOff, RefreshCw, ScrollText, Search, X } from '@lucide/vue'
+import { CircleCheck, ListFilter, Power, PowerOff, RefreshCw, RotateCcw, ScrollText, Search, Upload, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import type { SupportedLocale } from '@/platform/i18n'
@@ -371,12 +432,19 @@ import {
   disableNodePack,
   enableNodePack,
   getNodePackLogs,
+  getNodePackAudit,
   getNodePackStatus,
+  getNodePackVersions,
+  installNodePack,
   reloadNodePacks,
+  rollbackNodePack,
   validateNodePack,
+  type NodePackAuditRecord,
+  type NodePackLifecycleResponse,
   type NodePackStatusItem,
   type NodePackStatusLog,
   type NodePackStatusResponse,
+  type NodePackVersion,
 } from '../services/node-pack-status.service'
 import type {
   NodeDefinition,
@@ -503,6 +571,9 @@ const selectedNode = ref<NodeDefinition | null>(null)
 const selectedNodePackId = ref<string | null>(null)
 const visibleLogsPackId = ref<string | null>(null)
 const selectedNodePackLogs = ref<NodePackStatusLog[]>([])
+const selectedNodePackVersions = ref<NodePackVersion[]>([])
+const selectedNodePackAudit = ref<NodePackAuditRecord[]>([])
+const installArchiveInput = ref<HTMLInputElement | null>(null)
 
 const allNodes = computed(() => catalog.value?.node_definitions ?? [])
 const runtimeKindOptions = computed(() => {
@@ -662,9 +733,12 @@ watch(nodePackRows, (rows) => {
   }
 })
 
-watch(selectedNodePackId, () => {
+watch(selectedNodePackId, (packId) => {
   visibleLogsPackId.value = null
   selectedNodePackLogs.value = []
+  selectedNodePackVersions.value = []
+  selectedNodePackAudit.value = []
+  if (packId) void loadSelectedNodePackLifecycle(packId)
 })
 
 async function loadCatalog(): Promise<void> {
@@ -729,6 +803,54 @@ async function runNodePackAction(action: string, runner: () => Promise<NodePackS
 
 function selectNode(node: NodeDefinition): void {
   selectedNode.value = node
+}
+
+function chooseInstallArchive(): void {
+  installArchiveInput.value?.click()
+}
+
+async function installSelectedArchive(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const packageFile = input.files?.[0]
+  input.value = ''
+  if (!packageFile) return
+  await runNodePackLifecycleAction('install', async () => installNodePack(packageFile, true))
+}
+
+async function rollbackSelectedNodePack(packId: string, version: string): Promise<void> {
+  if (!window.confirm(t('customNodes.messages.confirmRollback', { version }))) return
+  await runNodePackLifecycleAction(`rollback:${packId}:${version}`, async () => rollbackNodePack(packId, version))
+}
+
+async function loadSelectedNodePackLifecycle(packId: string): Promise<void> {
+  try {
+    const [versions, audit] = await Promise.all([getNodePackVersions(packId), getNodePackAudit(packId)])
+    if (selectedNodePackId.value !== packId) return
+    selectedNodePackVersions.value = versions
+    selectedNodePackAudit.value = audit
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('customNodes.messages.lifecycleLoadFailed')
+  }
+}
+
+async function runNodePackLifecycleAction(
+  action: string,
+  runner: () => Promise<NodePackLifecycleResponse>,
+): Promise<void> {
+  actionKey.value = action
+  errorMessage.value = null
+  try {
+    const result = await runner()
+    nodePackStatus.value = result.status
+    catalog.value = await getWorkflowNodeCatalog({})
+    selectedNode.value = null
+    selectedNodePackId.value = result.node_pack_id
+    await loadSelectedNodePackLifecycle(result.node_pack_id)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('customNodes.messages.actionFailed')
+  } finally {
+    actionKey.value = null
+  }
 }
 
 function closeNodeDetails(): void {
@@ -894,6 +1016,16 @@ function formatIssueDetails(details: Record<string, unknown>): string {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
+}
+
+function formatTimestamp(value: string): string {
+  if (!value) return '-'
+  const timestamp = new Date(value)
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString(currentLocale.value)
+}
+
+function shortHash(value: string): string {
+  return value.length > 16 ? `${value.slice(0, 16)}…` : value || '-'
 }
 
 function readNodeDisplayName(node: NodeDefinition): string {

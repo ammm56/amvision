@@ -130,7 +130,9 @@ def _run_detection_evaluation_with_session(
     for img_idx, img_info in enumerate(images):
         image_path = img_info["image_path"]
         gt_annotations = img_info.get("annotations", [])
-        resolved = dataset_storage.resolve(image_path) if image_path else None
+        resolved = (
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
+        )
         if resolved is None or not resolved.is_file():
             raise InvalidRequestError(
                 "detection 评估样本文件不存在",
@@ -398,8 +400,8 @@ def _parse_yolo_detection_split(
         {"id": category_index + 1, "name": category_name}
         for category_index, category_name in enumerate(normalized_category_names)
     ]
-    resolved_image_root = dataset_storage.resolve(image_root)
-    resolved_label_root = dataset_storage.resolve(label_root)
+    resolved_image_root = dataset_storage.resolve_filesystem_path(image_root)
+    resolved_label_root = dataset_storage.resolve_filesystem_path(label_root)
     if not resolved_image_root.is_dir():
         raise InvalidRequestError(
             "detection 图片目录不存在",

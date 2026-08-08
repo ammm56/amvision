@@ -45,6 +45,8 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 generation、deadline 和 CRC32；超时或调用进程崩溃后的槽位由 daemon 回收。
 
+槽位使用两阶段发布：先写完 body、generation、deadline、长度和 CRC32，最后单独发布 `REQUEST` 或 `RESPONSE` state。`REQUEST -> PROCESSING`、deadline 取消和 `PROCESSING -> RESPONSE` 使用同一跨进程 guard 串行化，避免扫描线程读取半写入 header，也避免取消状态被迟到响应覆盖。generation 不一致属于协议错误，不使用业务重试掩盖。
+
 ### mmap mailbox 配置
 
 `config/backend-service.json` 中的配置如下：

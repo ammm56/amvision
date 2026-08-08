@@ -23,7 +23,6 @@
         :output-model-name="outputModelName"
         :max-epochs="maxEpochs"
         :batch-size="batchSize"
-        :gpu-count="gpuCount"
         :training-device="trainingDevice"
         :evaluation-interval="evaluationInterval"
         :precision="precision"
@@ -31,7 +30,6 @@
         :input-height="inputHeight"
         :training-display-name="trainingDisplayName"
         :warm-start-model-version-id="warmStartModelVersionId"
-        :training-supports-gpu-count="trainingSupportsGpuCount"
         :training-task-supports-warm-start="trainingTaskSupportsWarmStart"
         :training-model-parameter-fields="trainingModelParameterFields"
         :training-augmentation-parameter-fields="trainingAugmentationParameterFields"
@@ -50,7 +48,6 @@
         @update:output-model-name="outputModelName = $event"
         @update:max-epochs="maxEpochs = $event"
         @update:batch-size="batchSize = $event"
-        @update:gpu-count="gpuCount = $event"
         @update:training-device="setTrainingDevice"
         @update:evaluation-interval="evaluationInterval = $event"
         @update:precision="setPrecision"
@@ -356,7 +353,6 @@ const {
   outputModelName,
   maxEpochs,
   batchSize,
-  gpuCount,
   trainingDevice,
   evaluationInterval,
   precision,
@@ -366,7 +362,6 @@ const {
   trainingModelParameterValues,
   trainingAugmentationEnabled,
   trainingTaskSupportsWarmStart,
-  trainingSupportsGpuCount,
   trainingModelParameterFields,
   trainingAugmentationParameterFields,
   trainingSupportsAugmentationToggle,
@@ -406,11 +401,9 @@ const {
   outputModelName,
   warmStartModelVersionId,
   trainingTaskSupportsWarmStart,
-  trainingSupportsGpuCount,
   evaluationInterval,
   maxEpochs,
   batchSize,
-  gpuCount,
   trainingDevice,
   precision,
   inputWidth,

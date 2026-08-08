@@ -17,7 +17,7 @@
 - RF-DETR full core 短时 smoke / benchmark 放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，必须通过环境变量显式打开。
 - RF-DETR 真实本地 checkpoint 覆盖率 smoke 也放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，只在显式指定环境变量时读取 `data/files/models/pretrained/rfdetr`。默认清单覆盖 detection `nano / s / m / l` 和 segmentation `nano / s / m / l / x`，并同时输出 raw coverage 与真实加载路径 coverage。
 - `release/full` 真实启停验收也放在本目录，默认只做短时驻留；需要更长 soak 时通过环境变量显式调大时长。该测试会检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json`。
-- `--start-processes` 会按发布态顺序启动 backend-service，等待 `/api/v1/system/health` 可用后再启动 backend-worker，避免 worker 早于数据库 schema 和 seeder 初始化。
+- `--start-processes` 会按发布态顺序启动 backend-service、使用本轮唯一 service id 的 inference daemon 和 backend-worker；停止时按相反顺序回收。这样既避免 worker 早于数据库 schema 和 seeder 初始化，也不依赖桌面里已有的 daemon 或共享它的 mmap mailbox。
 
 # 手动执行
 
@@ -46,7 +46,28 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
 ```
 
 ```powershell
-python -m tests.integration.yolo_model_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx --start-processes
+python -m tests.integration.model_task_e2e_matrix --start-processes
+```
+
+该入口是模型主链完整验收门禁，默认覆盖 18 个正式 `model_type × task_type`
+组合，并对每个组合执行真实数据集导入、原生格式导出、1 epoch 训练、独立评估、
+ONNX/OpenVINO/TensorRT 转换、ModelBuild 登记、独立进程 sync/async 加载和一次
+推理。结果写入 `.tmp/model-task-e2e-matrix/<run-id>/result.json`；缺少评估样本、
+ModelBuild、任一 runtime 加载或任一推理结果都会判失败。
+隔离进程在项目根目录新生成的编译器诊断文件会移入本轮结果目录下的
+`process-working-directory-artifacts/`；运行前已存在的同名文件保持原位。
+
+开发中可以用 `--models`、`--tasks` 或 `--target-formats` 缩小范围，但这类结果会
+明确标为 `coverage: partial`，不能代替完整 18 项验收。例如：
+
+```powershell
+python -m tests.integration.model_task_e2e_matrix --models yolov8 --tasks detection --start-processes
+```
+
+单模型多任务诊断入口仍保留：
+
+```powershell
+python -m tests.integration.yolo_model_full_chain_smoke --model-type yolov8 --tasks detection classification segmentation pose obb --target-formats onnx openvino-ir tensorrt-engine --start-processes
 ```
 
 ```powershell

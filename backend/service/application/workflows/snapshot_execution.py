@@ -45,6 +45,9 @@ from backend.service.application.workflows.graph_executor import (
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     serialize_node_execution_record_for_response,
 )
+from backend.service.application.workflows.execution.custom_node_policy import (
+    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
+)
 from backend.service.application.workflows.execution.topology import (
     build_node_execution_scope_template,
 )
@@ -920,7 +923,10 @@ def run_workflow_snapshot_process_worker(
                     "template_snapshot_object_key",
                 ),
                 input_bindings=_require_payload_dict(request_payload, "input_bindings"),
-                execution_metadata=_require_payload_dict(request_payload, "execution_metadata"),
+                execution_metadata={
+                    **_require_payload_dict(request_payload, "execution_metadata"),
+                    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY: True,
+                },
                 target_node_id=_read_optional_payload_str(
                     request_payload,
                     "target_node_id",

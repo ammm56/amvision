@@ -1579,6 +1579,7 @@
       "description": "从同尺寸棋盘格图片或结构化标定观测估计针孔相机内参、畸变系数和逐视图重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1667,6 +1668,7 @@
       "description": "检测棋盘格内角点并输出包含 3D-2D 对应关系的标定观测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1737,6 +1739,7 @@
       "description": "检测对称或非对称圆点阵并输出带物理坐标的标定观测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1812,6 +1815,7 @@
       "description": "依据灰度梯度对二维角点执行亚像素细化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1893,6 +1897,7 @@
       "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1974,6 +1979,7 @@
       "description": "由机器人夹具到基座和标定目标到相机的位姿序列估计相机到夹具外参。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2046,6 +2052,7 @@
       "description": "依据针孔或 fisheye 标定参数和位姿将三维点投影到图像平面。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2115,6 +2122,7 @@
       "description": "根据标定观测和相机内参估计物体位姿，并返回重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2186,6 +2194,7 @@
       "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.service.domain.models.model_input_spec import SpatialSize
+from backend.service.domain.models.model_input_spec import (
+    MAX_MODEL_INPUT_DIMENSION,
+    SpatialSize,
+)
 
 
 class SpatialSizeRequest(BaseModel):
@@ -12,8 +15,15 @@ class SpatialSizeRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    width: int = Field(gt=0, description="输入图片宽度")
-    height: int = Field(gt=0, description="输入图片高度")
+    width: int = Field(gt=0, le=MAX_MODEL_INPUT_DIMENSION, description="输入图片宽度")
+    height: int = Field(gt=0, le=MAX_MODEL_INPUT_DIMENSION, description="输入图片高度")
+
+    @model_validator(mode="after")
+    def validate_pixel_count(self) -> "SpatialSizeRequest":
+        """复用领域对象校验总像素上限。"""
+
+        self.to_domain()
+        return self
 
     def to_domain(self) -> SpatialSize:
         """转换为领域层 SpatialSize。"""
@@ -30,8 +40,15 @@ class SpatialSizeRequest(BaseModel):
 class SpatialSizeResponse(BaseModel):
     """使用明确 width/height 字段返回模型空间尺寸。"""
 
-    width: int = Field(gt=0, description="输入图片宽度")
-    height: int = Field(gt=0, description="输入图片高度")
+    width: int = Field(gt=0, le=MAX_MODEL_INPUT_DIMENSION, description="输入图片宽度")
+    height: int = Field(gt=0, le=MAX_MODEL_INPUT_DIMENSION, description="输入图片高度")
+
+    @model_validator(mode="after")
+    def validate_pixel_count(self) -> "SpatialSizeResponse":
+        """防止把无界尺寸写回公开模型契约。"""
+
+        SpatialSize(width=self.width, height=self.height)
+        return self
 
     @classmethod
     def from_hw(cls, value: tuple[int, int]) -> "SpatialSizeResponse":

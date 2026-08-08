@@ -8,6 +8,7 @@ from backend.nodes.core_runtime_handlers import register_core_node_handlers
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodeCatalogSnapshot, NodePackLoader
+from backend.nodes.node_pack_lifecycle import LocalNodePackLifecycleManager
 from backend.nodes.runtime_support import (
     ExecutionImageEntry,
     ExecutionImageRegistry,
@@ -44,6 +45,7 @@ from backend.nodes.runtime_support import (
 
 __all__ = [
     "LocalNodePackLoader",
+    "LocalNodePackLifecycleManager",
     "NodeCatalogRegistry",
     "NodeCatalogSnapshot",
     "NodePackLoader",

@@ -40,14 +40,19 @@
     "max_import_package_bytes": 21474836480,
     "max_import_extracted_bytes": 214748364800,
     "max_import_member_count": 2000000,
-    "max_import_compression_ratio": 1000.0
+    "max_import_compression_ratio": 1000.0,
+    "max_import_metadata_file_bytes": 268435456,
+    "max_import_label_file_bytes": 16777216,
+    "max_import_sample_count": 100000,
+    "max_import_annotation_count": 1000000
   },
   "queue": {
     "root_dir": "./data/queue",
     "lease_timeout_seconds": 86400.0,
     "completed_retention_seconds": 86400.0,
     "failed_retention_seconds": 604800.0,
-    "response_queue_retention_seconds": 3600.0
+    "response_queue_retention_seconds": 3600.0,
+    "file_operation_retry_timeout_seconds": 2.0
   },
   "task_manager": {
     "enabled": false,

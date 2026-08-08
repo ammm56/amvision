@@ -11,6 +11,11 @@ from pathlib import PurePosixPath
 from typing import BinaryIO
 from uuid import uuid4
 
+from backend.contracts.datasets.dataset_formats import (
+    get_dataset_format_specification,
+    resolve_dataset_format_id,
+)
+
 from backend.service.application.datasets.imports.contracts import (
     DatasetImportRequest,
     DatasetImportResult,
@@ -326,11 +331,16 @@ class SqlAlchemyDatasetImportService(
                     "source_import_id": dataset_import_id,
                     "created_at": current_import.created_at,
                     "format_type": parsed_content.format_type,
+                    "format_id": parsed_content.detected_profile.get("format_id"),
                     "image_root": parsed_content.image_root,
                     "annotation_root": parsed_content.annotation_root,
                     "manifest_file": parsed_content.manifest_file,
                     "split_strategy": parsed_content.split_strategy,
                     "split_counts": self._collect_split_counts(parsed_content.samples),
+                    "coordinate_convention": parsed_content.detected_profile.get(
+                        "coordinate_convention"
+                    ),
+                    "source_shards": parsed_content.detected_profile.get("shards", []),
                     "pose_category_schemas": parsed_content.detected_profile.get(
                         "pose_category_schemas",
                         {},
@@ -536,7 +546,9 @@ class SqlAlchemyDatasetImportService(
                 details={"package_size": package_size},
             )
 
-        package_path = self.dataset_storage.resolve(import_layout.package_path)
+        package_path = self.dataset_storage.resolve_filesystem_path(
+            import_layout.package_path
+        )
         if not zipfile.is_zipfile(package_path):
             raise InvalidRequestError(
                 "当前导入接口只接受有效的 zip 压缩包",
@@ -714,7 +726,11 @@ class SqlAlchemyDatasetImportService(
         - 解析后的统一结果。
         """
 
-        extracted_root = self.dataset_storage.resolve(import_layout.extracted_path)
+        # 数据集名称、导入 id 与包内目录/文件名叠加后很容易超过 260 字符。
+        # 扩展长度前缀只在文件系统访问边界使用，避免写入 object key、数据库和 API。
+        extracted_root = self.dataset_storage.resolve_filesystem_path(
+            import_layout.extracted_path
+        )
         dataset_root = self._unwrap_single_directory(extracted_root)
         format_type = self._detect_format(
             dataset_root=dataset_root,
@@ -722,44 +738,87 @@ class SqlAlchemyDatasetImportService(
             task_type=request.task_type,
         )
 
+        parsed_content: ParsedDatasetContent
         if format_type == "coco":
-            return self._parse_coco_detection(
+            parsed_content = self._parse_coco_detection(
                 task_type=request.task_type,
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
-        if format_type == "voc":
-            return self._parse_voc_detection(
+        elif format_type == "voc":
+            parsed_content = self._parse_voc_detection(
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
-        if format_type == "yolo":
-            return self._parse_yolo_dataset(
+        elif format_type == "yolo":
+            parsed_content = self._parse_yolo_dataset(
                 task_type=request.task_type,
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
-        if format_type == "imagenet":
-            return self._parse_imagenet_classification(
+        elif format_type == "imagenet":
+            parsed_content = self._parse_imagenet_classification(
                 task_type=request.task_type,
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
-        if format_type == "dota":
-            return self._parse_dota_obb(
+        elif format_type == "dota":
+            parsed_content = self._parse_dota_obb(
                 task_type=request.task_type,
                 dataset_root=dataset_root,
                 split_strategy=request.split_strategy,
                 requested_class_map=request.class_map,
             )
 
-        raise UnsupportedDatasetFormatError(
-            "当前只支持 COCO、Pascal VOC、YOLO、ImageNet classification 和 DOTA OBB",
-            details={"format_type": format_type},
+        else:
+            raise UnsupportedDatasetFormatError(
+                "当前只支持 COCO、Pascal VOC、YOLO、ImageNet classification 和 DOTA OBB",
+                details={"format_type": format_type},
+            )
+        return self._attach_registered_format_profile(parsed_content)
+
+    def _attach_registered_format_profile(
+        self,
+        parsed_content: ParsedDatasetContent,
+    ) -> ParsedDatasetContent:
+        """把家族级识别结果绑定到唯一、版本化的格式规范。"""
+
+        format_id = resolve_dataset_format_id(
+            family=parsed_content.format_type,
+            task_type=parsed_content.task_type,
+            require_import=True,
+        )
+        if format_id is None:
+            raise UnsupportedDatasetFormatError(
+                "格式家族不支持当前任务类型",
+                details={
+                    "format_type": parsed_content.format_type,
+                    "task_type": parsed_content.task_type,
+                },
+            )
+        specification = get_dataset_format_specification(format_id)
+        if specification is None:
+            raise RuntimeError(f"数据集格式注册表缺少已解析格式: {format_id}")
+        profile = {
+            **parsed_content.detected_profile,
+            "format_id": format_id,
+            "format_family": specification.family,
+            "annotation_kind": specification.annotation_kind,
+            "registered_coordinate_convention": specification.coordinate_convention,
+            "class_index_base": specification.class_index_base,
+            "split_convention": specification.split_convention,
+        }
+        return replace(
+            parsed_content,
+            detected_profile=profile,
+            validation_report={
+                **parsed_content.validation_report,
+                "format_id": format_id,
+            },
         )
 
     def _record_failed_import(

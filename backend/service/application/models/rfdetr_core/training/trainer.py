@@ -3,6 +3,7 @@
 # ruff: noqa: E402
 
 import warnings
+from collections.abc import Sequence
 from typing import Any
 
 import torch
@@ -36,6 +37,7 @@ def build_trainer(
     model_config: ModelConfig,
     *,
     accelerator: str | None = None,
+    extra_callbacks: Sequence[Any] = (),
     **trainer_kwargs: Any,
 ) -> Trainer:
     """执行 `build_trainer`。
@@ -151,6 +153,8 @@ def build_trainer(
                 skip_best_epochs=tc.skip_best_epochs,
             )
         )
+
+    callbacks.extend(extra_callbacks)
 
     loggers: list = [CSVLogger(save_dir=tc.output_dir, name="", version="")]
 

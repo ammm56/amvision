@@ -125,8 +125,12 @@ class DotaExportMixin:
                             "DOTA OBB 标注引用了未定义类别: "
                             f"category_id={annotation.category_id}"
                         )
-                    polygon_xy = self._require_obb_polygon(annotation)
+                    polygon_xy = self._validate_obb_annotation_for_sample(
+                        annotation=annotation,
+                        sample=sample,
+                    )
                     bbox_x, bbox_y, bbox_w, bbox_h = annotation.bbox_xywh
+                    polygon_area = self._polygon_area(polygon_xy)
                     annotations.append(
                         DotaObbAnnotation(
                             annotation_id=next_annotation_id,
@@ -137,7 +141,7 @@ class DotaExportMixin:
                             area=(
                                 annotation.area
                                 if annotation.area is not None
-                                else bbox_w * bbox_h
+                                else polygon_area
                             ),
                             iscrowd=annotation.iscrowd,
                             metadata=dict(annotation.metadata),
@@ -219,8 +223,17 @@ class DotaExportMixin:
                             "DOTA 类别名称不能包含空白字符: "
                             f"category_name={category_name}"
                         )
-                    polygon = self._require_obb_polygon(annotation)
-                    difficult = int(annotation.metadata.get("difficult", 0) or 0)
+                    polygon = self._validate_obb_annotation_for_sample(
+                        annotation=annotation,
+                        sample=sample,
+                    )
+                    raw_difficult = annotation.metadata.get("difficult", 0)
+                    if isinstance(raw_difficult, bool) or raw_difficult not in {0, 1}:
+                        raise ValueError(
+                            "DOTA difficult 必须是 0 或 1: "
+                            f"annotation_id={annotation.annotation_id}"
+                        )
+                    difficult = int(raw_difficult)
                     label_lines.append(
                         " ".join(
                             [*(self._format_dota_coordinate(value) for value in polygon), category_name, str(difficult)]
@@ -289,6 +302,65 @@ class DotaExportMixin:
         if self._polygon_area(polygon) <= 0:
             raise ValueError(
                 f"OBB polygon 面积必须大于 0: annotation_id={annotation.annotation_id}"
+            )
+        return polygon
+
+    def _validate_obb_annotation_for_sample(
+        self,
+        *,
+        annotation: ObbAnnotation,
+        sample: DatasetSample,
+    ) -> tuple[float, ...]:
+        """校验 OBB polygon、bbox、area、iscrowd 与图片边界的一致性。"""
+
+        if sample.width <= 0 or sample.height <= 0:
+            raise ValueError(f"OBB 样本图片尺寸无效: sample_id={sample.sample_id}")
+        polygon = self._require_obb_polygon(annotation)
+        for point_index, value in enumerate(polygon):
+            limit = sample.width if point_index % 2 == 0 else sample.height
+            if value < 0 or value > limit:
+                raise ValueError(
+                    "OBB polygon 坐标超出图片范围: "
+                    f"annotation_id={annotation.annotation_id}"
+                )
+        x_values = polygon[0::2]
+        y_values = polygon[1::2]
+        expected_bbox = (
+            min(x_values),
+            min(y_values),
+            max(x_values) - min(x_values),
+            max(y_values) - min(y_values),
+        )
+        bbox = tuple(float(value) for value in annotation.bbox_xywh)
+        if not all(math.isfinite(value) for value in bbox):
+            raise ValueError(
+                f"OBB bbox 必须是有限数字: annotation_id={annotation.annotation_id}"
+            )
+        if bbox[2] <= 0 or bbox[3] <= 0 or any(
+            not math.isclose(actual, expected, rel_tol=1e-6, abs_tol=1e-6)
+            for actual, expected in zip(bbox, expected_bbox, strict=True)
+        ):
+            raise ValueError(
+                "OBB bbox 必须与 polygon 外接框一致: "
+                f"annotation_id={annotation.annotation_id}"
+            )
+        polygon_area = self._polygon_area(polygon)
+        if annotation.area is not None:
+            area = float(annotation.area)
+            if not math.isfinite(area) or not math.isclose(
+                area,
+                polygon_area,
+                rel_tol=1e-6,
+                abs_tol=1e-6,
+            ):
+                raise ValueError(
+                    "OBB area 必须与 polygon 面积一致: "
+                    f"annotation_id={annotation.annotation_id}"
+                )
+        if isinstance(annotation.iscrowd, bool) or annotation.iscrowd not in {0, 1}:
+            raise ValueError(
+                "OBB iscrowd 必须是 0 或 1: "
+                f"annotation_id={annotation.annotation_id}"
             )
         return polygon
 

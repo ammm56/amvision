@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -24,7 +25,9 @@ class YoloManifestMixin:
         dataset_base_root = dataset_root
         for yaml_path in self._collect_yolo_yaml_paths(dataset_root):
             try:
-                raw_payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                raw_payload = yaml.safe_load(
+                    self._read_import_text(yaml_path, file_kind="metadata")
+                )
             except yaml.YAMLError as error:
                 raise InvalidRequestError(
                     "YOLO data.yaml 解析失败",
@@ -62,10 +65,13 @@ class YoloManifestMixin:
         if manifest_path.is_file():
             try:
                 raw_manifest_payload = json.loads(
-                    manifest_path.read_text(encoding="utf-8")
+                    self._read_import_text(manifest_path, file_kind="metadata")
                 )
-            except json.JSONDecodeError:
-                raw_manifest_payload = None
+            except json.JSONDecodeError as error:
+                raise InvalidRequestError(
+                    "YOLO manifest.json 解析失败",
+                    details={"line": error.lineno, "column": error.colno},
+                ) from error
             if isinstance(raw_manifest_payload, dict):
                 format_id = str(raw_manifest_payload.get("format_id") or "").strip()
                 if format_id.startswith("yolo-"):
@@ -201,6 +207,14 @@ class YoloManifestMixin:
                 requested_class_map.get(source_name, source_name),
             )
             resolved_name_map[source_category_id] = mapped_name
+        normalized_names = tuple(resolved_name_map.values())
+        if any(not name or name != name.strip() for name in normalized_names):
+            raise InvalidRequestError("YOLO 类别名称不能为空或包含首尾空白")
+        if len(set(normalized_names)) != len(normalized_names):
+            raise InvalidRequestError(
+                "YOLO 类别映射后名称必须唯一",
+                details={"category_names": list(normalized_names)},
+            )
         return resolved_name_map
 
     def _read_yolo_source_category_names(
@@ -213,29 +227,85 @@ class YoloManifestMixin:
 
         names_payload = config_payload.get("names")
         if isinstance(names_payload, list):
-            return {
-                category_id: str(category_name)
-                for category_id, category_name in enumerate(names_payload)
-            }
+            source_names = self._validate_yolo_category_names(names_payload)
+            self._validate_yolo_nc(config_payload, len(source_names))
+            return dict(enumerate(source_names))
         if isinstance(names_payload, dict):
             normalized_name_map: dict[int, str] = {}
             for raw_key, raw_value in names_payload.items():
+                if isinstance(raw_key, bool):
+                    raise InvalidRequestError("YOLO names 类别 id 必须是非负整数")
                 try:
                     category_id = int(str(raw_key))
-                except ValueError:
-                    continue
-                normalized_name_map[category_id] = str(raw_value)
+                except ValueError as error:
+                    raise InvalidRequestError(
+                        "YOLO names 类别 id 必须是非负整数",
+                        details={"category_id": raw_key},
+                    ) from error
+                if category_id < 0 or str(category_id) != str(raw_key).strip():
+                    raise InvalidRequestError(
+                        "YOLO names 类别 id 必须是规范的非负整数",
+                        details={"category_id": raw_key},
+                    )
+                if category_id in normalized_name_map:
+                    raise InvalidRequestError("YOLO names 存在重复类别 id")
+                normalized_name_map[category_id] = self._normalize_yolo_category_name(
+                    raw_value
+                )
+            if sorted(normalized_name_map) != list(range(len(normalized_name_map))):
+                raise InvalidRequestError("YOLO names 类别 id 必须从 0 开始连续")
+            self._require_unique_yolo_category_names(normalized_name_map.values())
+            self._validate_yolo_nc(config_payload, len(normalized_name_map))
             return normalized_name_map
 
         if export_manifest_payload is None:
             return {}
         manifest_category_names = export_manifest_payload.get("category_names")
         if isinstance(manifest_category_names, list):
-            return {
-                category_id: str(category_name)
-                for category_id, category_name in enumerate(manifest_category_names)
-            }
+            source_names = self._validate_yolo_category_names(manifest_category_names)
+            return dict(enumerate(source_names))
         return {}
+
+    def _validate_yolo_category_names(self, raw_names: list[object]) -> tuple[str, ...]:
+        """校验 YOLO names 列表。"""
+
+        if not raw_names:
+            raise InvalidRequestError("YOLO names 不能为空")
+        names = tuple(self._normalize_yolo_category_name(value) for value in raw_names)
+        self._require_unique_yolo_category_names(names)
+        return names
+
+    def _normalize_yolo_category_name(self, raw_value: object) -> str:
+        """读取一个非空且无首尾空白的 YOLO 类别名称。"""
+
+        if not isinstance(raw_value, str) or not raw_value or raw_value != raw_value.strip():
+            raise InvalidRequestError(
+                "YOLO 类别名称必须是非空字符串且不能包含首尾空白",
+                details={"category_name": raw_value},
+            )
+        return raw_value
+
+    def _require_unique_yolo_category_names(self, names: Iterable[str]) -> None:
+        """要求 YOLO 类别名称唯一。"""
+
+        normalized_names = tuple(str(name) for name in names)
+        if len(set(normalized_names)) != len(normalized_names):
+            raise InvalidRequestError(
+                "YOLO 类别名称必须唯一",
+                details={"category_names": list(normalized_names)},
+            )
+
+    def _validate_yolo_nc(self, config_payload: dict[str, object], name_count: int) -> None:
+        """当 data.yaml 提供 nc 时要求它与 names 完全一致。"""
+
+        if "nc" not in config_payload:
+            return
+        raw_nc = config_payload.get("nc")
+        if isinstance(raw_nc, bool) or not isinstance(raw_nc, int) or raw_nc != name_count:
+            raise InvalidRequestError(
+                "YOLO data.yaml 的 nc 必须等于 names 类别数",
+                details={"nc": raw_nc, "name_count": name_count},
+            )
 
     def _read_yolo_pose_shape(
         self,
@@ -244,13 +314,20 @@ class YoloManifestMixin:
         """读取 YOLO pose 配置中的 kpt_shape。"""
 
         raw_pose_shape = config_payload.get("kpt_shape")
-        if not isinstance(raw_pose_shape, list) or len(raw_pose_shape) < 2:
+        if raw_pose_shape is None:
             return None
-        try:
-            keypoint_count = int(raw_pose_shape[0])
-            point_dimensions = int(raw_pose_shape[1])
-        except (TypeError, ValueError):
-            return None
+        if not isinstance(raw_pose_shape, list) or len(raw_pose_shape) != 2:
+            raise InvalidRequestError("YOLO pose kpt_shape 必须是两个整数")
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in raw_pose_shape
+        ):
+            raise InvalidRequestError("YOLO pose kpt_shape 必须是两个整数")
+        keypoint_count = raw_pose_shape[0]
+        point_dimensions = raw_pose_shape[1]
         if keypoint_count <= 0 or point_dimensions not in {2, 3}:
-            return None
+            raise InvalidRequestError(
+                "YOLO pose kpt_shape 必须是 [正整数, 2|3]",
+                details={"kpt_shape": raw_pose_shape},
+            )
         return (keypoint_count, point_dimensions)

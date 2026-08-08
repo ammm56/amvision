@@ -24,6 +24,11 @@ class _FakeDatasetStorage:
     def resolve(self, object_key: str):
         return self.root / object_key
 
+    def resolve_filesystem_path(self, object_key: str):
+        """模拟真实存储在文件系统边界返回长路径安全路径。"""
+
+        return self.resolve(object_key)
+
     def write_json(self, object_key: str, payload: object) -> None:
         self.written_json[object_key] = payload
         target = self.resolve(object_key)

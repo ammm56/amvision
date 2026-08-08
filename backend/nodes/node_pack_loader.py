@@ -170,3 +170,12 @@ class NodePackLoader(Protocol):
         """返回导入 node pack entrypoint 时需要加入的模块搜索路径。"""
 
         ...
+
+    def get_node_pack_runtime_module_prefix(
+        self,
+        node_pack_id: str,
+        node_pack_version: str,
+    ) -> str:
+        """返回指定节点包唯一允许导入的 Python module 前缀。"""
+
+        ...

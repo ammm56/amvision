@@ -59,10 +59,34 @@
           <span>{{ t('inferenceOps.fields.inputFileId') }}</span>
           <input v-model="inputFileId" />
         </label>
-        <label class="field">
+        <label v-if="selectedTaskType === 'detection'" class="field">
           <span>{{ t('inferenceOps.fields.scoreThreshold') }}</span>
           <input v-model.number="scoreThreshold" type="number" min="0" max="1" step="0.01" />
         </label>
+        <ClassificationInferenceParameters
+          v-else-if="selectedTaskType === 'classification'"
+          :top-k="topK"
+          @update:top-k="topK = $event"
+        />
+        <SegmentationInferenceParameters
+          v-else-if="selectedTaskType === 'segmentation'"
+          :score-threshold="scoreThreshold"
+          :mask-threshold="maskThreshold"
+          @update:score-threshold="scoreThreshold = $event"
+          @update:mask-threshold="maskThreshold = $event"
+        />
+        <PoseInferenceParameters
+          v-else-if="selectedTaskType === 'pose'"
+          :score-threshold="scoreThreshold"
+          :keypoint-confidence-threshold="keypointConfidenceThreshold"
+          @update:score-threshold="scoreThreshold = $event"
+          @update:keypoint-confidence-threshold="keypointConfidenceThreshold = $event"
+        />
+        <ObbInferenceParameters
+          v-else
+          :score-threshold="scoreThreshold"
+          @update:score-threshold="scoreThreshold = $event"
+        />
         <label class="field">
           <span>{{ t('inferenceOps.fields.transportMode') }}</span>
           <SelectField :model-value="inputTransportMode" :options="inputTransportModeOptions" @update:model-value="setInputTransportMode" />
@@ -133,10 +157,10 @@
       <div>
         <h2>{{ t('inferenceOps.resultTitle') }}</h2>
       </div>
-      <div class="summary-grid">
+      <div v-if="directDetectionResult" class="summary-grid">
         <div>
           <span>{{ t('inferenceOps.fields.detectionCount') }}</span>
-          <strong>{{ directInferenceResult.detection_count }}</strong>
+          <strong>{{ directDetectionResult.detection_count }}</strong>
         </div>
         <div>
           <span>{{ t('inferenceOps.fields.latency') }}</span>
@@ -151,6 +175,10 @@
           <strong>{{ directInferenceResult.result_object_key || '-' }}</strong>
         </div>
       </div>
+      <ClassificationInferenceResult v-else-if="directClassificationResult" :result="directClassificationResult" />
+      <SegmentationInferenceResult v-else-if="directSegmentationResult" :result="directSegmentationResult" />
+      <PoseInferenceResult v-else-if="directPoseResult" :result="directPoseResult" />
+      <ObbInferenceResult v-else-if="directObbResult" :result="directObbResult" />
       <figure v-if="directPreviewImageSrc" class="inference-preview">
         <img :src="directPreviewImageSrc" :alt="t('inferenceOps.previewAlt')" />
       </figure>
@@ -175,7 +203,7 @@
               <th>{{ t('inferenceOps.columns.task') }}</th>
               <th>{{ t('inferenceOps.columns.status') }}</th>
               <th>{{ t('inferenceOps.columns.createdAt') }}</th>
-              <th>{{ t('inferenceOps.fields.detectionCount') }}</th>
+              <th>{{ resultCountLabel }}</th>
               <th>{{ t('inferenceOps.fields.latency') }}</th>
               <th>{{ t('inferenceOps.columns.actions') }}</th>
             </tr>
@@ -188,7 +216,7 @@
               </td>
               <td><TaskStateBadge :state="task.state" /></td>
               <td>{{ formatSystemDateTime(task.created_at) }}</td>
-              <td>{{ task.detection_count ?? '-' }}</td>
+              <td>{{ task.item_count ?? '-' }}</td>
               <td>{{ task.latency_ms ?? '-' }}</td>
               <td>
                 <div class="table-actions table-actions--wrap">
@@ -231,6 +259,10 @@
             <strong>{{ selectedInferenceTaskResult.object_key || '-' }}</strong>
           </div>
         </div>
+        <ClassificationInferenceResult v-if="asyncClassificationResult" :result="asyncClassificationResult" />
+        <SegmentationInferenceResult v-else-if="asyncSegmentationResult" :result="asyncSegmentationResult" />
+        <PoseInferenceResult v-else-if="asyncPoseResult" :result="asyncPoseResult" />
+        <ObbInferenceResult v-else-if="asyncObbResult" :result="asyncObbResult" />
         <figure v-if="selectedInferenceTaskPreviewImageSrc" class="inference-preview">
           <img :src="selectedInferenceTaskPreviewImageSrc" :alt="t('inferenceOps.previewAlt')" />
         </figure>
@@ -252,10 +284,23 @@ import {
   inferTaskDeployment,
   listTaskInferenceTasks,
   type TaskInferencePayload,
+  type ClassificationInferencePayload,
+  type DetectionInferencePayload,
+  type ObbInferencePayload,
+  type PoseInferencePayload,
+  type SegmentationInferencePayload,
   type TaskInferenceTaskResult,
   type TaskInferenceTaskSubmission,
   type TaskInferenceTaskSummary,
 } from '../services/inference.service'
+import ClassificationInferenceParameters from '../components/ClassificationInferenceParameters.vue'
+import ClassificationInferenceResult from '../components/ClassificationInferenceResult.vue'
+import ObbInferenceParameters from '../components/ObbInferenceParameters.vue'
+import ObbInferenceResult from '../components/ObbInferenceResult.vue'
+import PoseInferenceParameters from '../components/PoseInferenceParameters.vue'
+import PoseInferenceResult from '../components/PoseInferenceResult.vue'
+import SegmentationInferenceParameters from '../components/SegmentationInferenceParameters.vue'
+import SegmentationInferenceResult from '../components/SegmentationInferenceResult.vue'
 import {
   listTaskDeployments,
   type ModelTaskType,
@@ -303,6 +348,9 @@ const imageBase64 = ref('')
 const imageFile = ref<File | null>(null)
 const inputTransportMode = ref<'storage' | 'memory'>('memory')
 const scoreThreshold = ref(0.3)
+const topK = ref(5)
+const maskThreshold = ref(0.5)
+const keypointConfidenceThreshold = ref(0.3)
 const saveResultImage = ref(false)
 const returnPreviewBase64 = ref(true)
 const displayName = ref('')
@@ -329,6 +377,22 @@ const directInferenceResultJson = computed(() => (directInferenceResult.value ? 
 const selectedInferenceTaskResultJson = computed(() => (selectedInferenceTaskResult.value ? JSON.stringify(selectedInferenceTaskResult.value, null, 2) : ''))
 const directPreviewImageSrc = computed(() => buildPreviewImageSrc(directInferenceResult.value?.preview_image_base64))
 const selectedInferenceTaskPreviewImageSrc = computed(() => buildPreviewImageSrc(selectedInferenceTaskResult.value?.payload.preview_image_base64))
+const resultCountLabel = computed(() => t(
+  selectedTaskType.value === 'classification'
+    ? 'inferenceOps.fields.categoryCount'
+    : selectedTaskType.value === 'detection'
+      ? 'inferenceOps.fields.detectionCount'
+      : 'inferenceOps.fields.instanceCount',
+))
+const directDetectionResult = computed(() => castTaskResult<DetectionInferencePayload>('detection', directInferenceResult.value))
+const directClassificationResult = computed(() => castTaskResult<ClassificationInferencePayload>('classification', directInferenceResult.value))
+const directSegmentationResult = computed(() => castTaskResult<SegmentationInferencePayload>('segmentation', directInferenceResult.value))
+const directPoseResult = computed(() => castTaskResult<PoseInferencePayload>('pose', directInferenceResult.value))
+const directObbResult = computed(() => castTaskResult<ObbInferencePayload>('obb', directInferenceResult.value))
+const asyncClassificationResult = computed(() => castTaskResult<ClassificationInferencePayload>('classification', selectedInferenceTaskResult.value?.payload))
+const asyncSegmentationResult = computed(() => castTaskResult<SegmentationInferencePayload>('segmentation', selectedInferenceTaskResult.value?.payload))
+const asyncPoseResult = computed(() => castTaskResult<PoseInferencePayload>('pose', selectedInferenceTaskResult.value?.payload))
+const asyncObbResult = computed(() => castTaskResult<ObbInferencePayload>('obb', selectedInferenceTaskResult.value?.payload))
 
 onMounted(async () => {
   if (projectStore.projects.length === 0) {
@@ -352,6 +416,9 @@ function buildInferenceInput() {
     inputImage: imageFile.value,
     inputTransportMode: inputTransportMode.value,
     scoreThreshold: scoreThreshold.value,
+    topK: topK.value,
+    maskThreshold: maskThreshold.value,
+    keypointConfidenceThreshold: keypointConfidenceThreshold.value,
     saveResultImage: saveResultImage.value,
     returnPreviewImageBase64: returnPreviewBase64.value,
     displayName: displayName.value.trim(),
@@ -364,6 +431,11 @@ function buildPreviewImageSrc(value: unknown): string | null {
   if (!trimmed) return null
   if (trimmed.startsWith('data:image/')) return trimmed
   return `data:image/jpeg;base64,${trimmed}`
+}
+
+function castTaskResult<T extends TaskInferencePayload>(taskType: ModelTaskType, value: unknown): T | null {
+  if (selectedTaskType.value !== taskType || !value || typeof value !== 'object') return null
+  return value as T
 }
 
 function deploymentModelName(deployment: TaskDeploymentInstance): string {

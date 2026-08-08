@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
 )
@@ -92,8 +92,8 @@ def _resolve_coco_detection_splits(
         annotation_file = str(split_item.get("annotation_file") or "").strip()
         if not split_name or not image_root or not annotation_file:
             continue
-        annotation_path = dataset_storage.resolve(annotation_file)
-        image_root_path = dataset_storage.resolve(image_root)
+        annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
         if not annotation_path.is_file():
             raise InvalidRequestError(
                 "YOLO11 detection 训练输入 split 缺少 annotation 文件",
@@ -156,9 +156,9 @@ def _resolve_yolo_detection_splits(
         label_root = str(split_item.get("label_root") or "").strip()
         if not split_name or not image_root:
             continue
-        image_root_path = dataset_storage.resolve(image_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
         if annotation_file:
-            annotation_path = dataset_storage.resolve(annotation_file)
+            annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
             if not annotation_path.is_file():
                 raise InvalidRequestError(
                     "YOLO11 detection 训练输入 split 缺少 annotation 文件",
@@ -191,7 +191,7 @@ def _resolve_yolo_detection_splits(
             raise InvalidRequestError(
                 "YOLO11 detection 训练输入缺少有效的 category_names"
             )
-        label_root_path = dataset_storage.resolve(label_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "YOLO11 detection 训练输入 split 缺少图片目录",

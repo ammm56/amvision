@@ -72,6 +72,9 @@
 - `semantic-segmentation` 当前仍是数据对象和格式规划预留，还没有接通正式的 zip 导入解析链，因此不应在当前导入 UI 中作为已实现选项暴露
 - 输入统一为 zip 压缩包；zip 内允许存在一层额外包裹目录，导入器应先消除单层包裹目录后再识别结构
 - zip 中所有图片和标注都必须位于压缩包内部；不接受 xml 或 json 指向 zip 外绝对路径的情况
+- 导入前校验压缩包大小、解压总量、成员数量和压缩比；解析前再分别校验 metadata 文件和单图片 label/XML 文件大小。
+- 当前 DatasetVersion 在 worker 内完成统一化后一次性持久化，因此默认限制单版本 100000 个样本和 1000000 条标注，超过时明确失败，不允许依赖内存耗尽终止进程。该上限可在 service 和 worker 的 `dataset_storage` 配置中调整。
+- 默认单 metadata 文件上限为 256 MiB，单 label/XML 文件上限为 16 MiB。超大 COCO 数据集应按互斥 split 拆分 manifest；不得把上限调到超过目标机可用内存而不做负载验证。
 - 导入阶段不要求选择模型；同一个 DatasetVersion 后续按 `DatasetExport.format_id` 转成 YOLOX、YOLOv8、YOLO11、YOLO26 或 RF-DETR 需要的训练输入
 
 ## 对象链与生命周期

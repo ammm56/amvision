@@ -12,7 +12,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.bootstrap.core",
     "backend.bootstrap.settings",
     "backend.contracts.datasets.exports.coco_detection_export",
-    "backend.contracts.datasets.exports.dataset_formats",
+    "backend.contracts.datasets.dataset_formats",
     "backend.contracts.datasets.exports.voc_detection_export",
     "backend.contracts.nodes.node_pack_manifest",
     "backend.contracts.workflows.workflow_graph",

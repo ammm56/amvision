@@ -17,7 +17,9 @@ def register_exception_handlers(application: FastAPI) -> None:
     """
 
     @application.exception_handler(ServiceError)
-    async def handle_service_error(request: Request, error: ServiceError) -> JSONResponse:
+    async def handle_service_error(
+        request: Request, error: ServiceError
+    ) -> JSONResponse:
         """把 ServiceError 转成稳定错误响应。
 
         参数：
@@ -56,8 +58,29 @@ def register_exception_handlers(application: FastAPI) -> None:
             status_code=422,
             code="request_validation_failed",
             message="请求参数校验失败",
-            details={"errors": error.errors()},
+            details={"errors": _serialize_validation_errors(error.errors())},
         )
+
+
+def _serialize_validation_errors(
+    errors: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """把 Pydantic 校验错误转换为始终可 JSON 序列化的结构。"""
+
+    serialized: list[dict[str, object]] = []
+    for error in errors:
+        item = dict(error)
+        context = item.get("ctx")
+        if isinstance(context, dict):
+            item["ctx"] = {
+                str(key): str(value) if isinstance(value, BaseException) else value
+                for key, value in context.items()
+            }
+        raw_input = item.get("input")
+        if isinstance(raw_input, bytes):
+            item["input"] = f"<{len(raw_input)} bytes>"
+        serialized.append(item)
+    return serialized
 
 
 def _build_error_response(

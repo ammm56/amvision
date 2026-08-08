@@ -13,6 +13,9 @@ from typing import Protocol
 from uuid import uuid4
 
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.infrastructure.filesystem.atomic_files import (
+    replace_path_with_retry,
+)
 
 
 @dataclass(frozen=True)
@@ -153,6 +156,7 @@ class LocalFileQueueSettings:
     - completed_retention_seconds：completed 任务文件保留秒数。
     - failed_retention_seconds：failed 任务文件保留秒数。
     - response_queue_retention_seconds：一次性响应队列目录保留秒数。
+    - file_operation_retry_timeout_seconds：Windows 文件短暂占用时的重试预算秒数。
     """
 
     root_dir: str = "./data/queue"
@@ -160,6 +164,7 @@ class LocalFileQueueSettings:
     completed_retention_seconds: float = 86400.0
     failed_retention_seconds: float = 604800.0
     response_queue_retention_seconds: float = 3600.0
+    file_operation_retry_timeout_seconds: float = 2.0
 
 
 class LocalFileQueueBackend:
@@ -224,7 +229,7 @@ class LocalFileQueueBackend:
             for task_path in sorted(pending_dir.glob("*.json")):
                 leased_path = leased_dir / task_path.name
                 try:
-                    task_path.replace(leased_path)
+                    self._replace_path(task_path, leased_path)
                 except FileNotFoundError:
                     continue
                 except PermissionError:
@@ -233,7 +238,7 @@ class LocalFileQueueBackend:
                     queue_task = self._read_task(leased_path)
                 except PersistenceOperationError:
                     try:
-                        leased_path.replace(task_path)
+                        self._replace_path(leased_path, task_path)
                     except OSError:
                         pass
                     raise
@@ -288,7 +293,7 @@ class LocalFileQueueBackend:
                     if pending_path.exists():
                         task_path.unlink(missing_ok=True)
                         continue
-                    task_path.replace(pending_path)
+                    self._replace_path(task_path, pending_path)
                     self._overwrite_task_file(pending_path, recovered_task)
                     recovered_count += 1
                 except OSError as error:
@@ -654,8 +659,10 @@ class LocalFileQueueBackend:
         try:
             self._assert_current_lease(task_path=source_path, queue_message=queue_message)
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            source_path.replace(target_path)
-            self._overwrite_task_file(target_path, next_task)
+            # 先把当前 lease 原子更新为终态内容，再原子移动到终态目录。
+            # 这样任意读者看到的 JSON 都是完整文档，不会观察到截断写入。
+            self._overwrite_task_file(source_path, next_task)
+            self._replace_path(source_path, target_path)
         except OSError as error:
             raise PersistenceOperationError(
                 "更新队列任务状态失败",
@@ -700,32 +707,24 @@ class LocalFileQueueBackend:
         self._write_task_to_path(target_path, queue_task)
 
     def _overwrite_task_file(self, task_path: Path, queue_task: QueueMessage) -> None:
-        """原地覆写已存在的任务文件。"""
+        """通过唯一临时文件原子覆写任务，禁止读者看到半份 JSON。"""
 
-        try:
-            task_path.write_text(
-                json.dumps(self._build_task_payload(queue_task), ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError as error:
-            raise PersistenceOperationError(
-                "写入队列任务失败",
-                details={
-                    "queue_name": queue_task.queue_name,
-                    "task_id": queue_task.task_id,
-                    "error_type": error.__class__.__name__,
-                },
-            ) from error
+        self._write_task_to_path(task_path, queue_task)
 
     def _write_task_to_path(self, task_path: Path, queue_task: QueueMessage) -> None:
         """把队列消息原子写入指定路径。"""
 
         payload = self._build_task_payload(queue_task)
+        temp_path = task_path.with_name(
+            f".{task_path.name}.{uuid4().hex}.tmp"
+        )
         try:
             task_path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = task_path.with_suffix(f"{task_path.suffix}.tmp")
-            temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            temp_path.replace(task_path)
+            temp_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self._replace_path(temp_path, task_path)
         except OSError as error:
             raise PersistenceOperationError(
                 "写入队列任务失败",
@@ -735,6 +734,23 @@ class LocalFileQueueBackend:
                     "error_type": error.__class__.__name__,
                 },
             ) from error
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                # 原子替换成功时临时文件已经不存在；失败残留由队列维护清理。
+                pass
+
+    def _replace_path(self, source_path: Path, target_path: Path) -> None:
+        """原子替换路径，并对 Windows 短暂 sharing violation 做有界重试。"""
+
+        replace_path_with_retry(
+            source_path,
+            target_path,
+            retry_timeout_seconds=(
+                self.settings.file_operation_retry_timeout_seconds
+            ),
+        )
 
     def _build_task_payload(self, queue_task: QueueMessage) -> dict[str, object]:
         """构建用于持久化的队列消息载荷。"""

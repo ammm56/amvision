@@ -26,6 +26,7 @@ from tests.integration.yolo_model_full_chain_smoke import (
     DEFAULT_PROJECT_ID,
     DEFAULT_TOKEN,
     ManagedProcess,
+    REQUIRED_CONVERSION_FORMATS,
     SmokeApiClient,
     YoloModelTaskCase,
     collect_process_snapshots,
@@ -51,7 +52,7 @@ def build_rfdetr_task_cases() -> dict[str, YoloModelTaskCase]:
     return {
         "detection": YoloModelTaskCase(
             task_type="detection",
-            dataset_dir=dataset_root / "detection" / "coco128",
+            dataset_dir=dataset_root / "detection" / "medical-pills",
             export_format="coco-detection-v1",
             input_size=(384, 384),
             conversion_route="/models/detection/conversion-tasks",
@@ -60,7 +61,7 @@ def build_rfdetr_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "segmentation": YoloModelTaskCase(
             task_type="segmentation",
-            dataset_dir=dataset_root / "segmentation" / "fire-smoke",
+            dataset_dir=dataset_root / "segmentation" / "package-seg",
             export_format="coco-instance-seg-v1",
             input_size=(384, 384),
             conversion_route="/models/segmentation/conversion-tasks",
@@ -121,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                         target_formats=args.target_formats,
                         max_epochs=args.max_epochs,
                         batch_size=args.batch_size,
+                        training_device=args.training_device,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
                         run_workflow=args.run_workflow,
@@ -181,10 +183,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--target-formats",
         nargs="+",
         choices=("onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"),
-        default=("onnx",),
+        default=REQUIRED_CONVERSION_FORMATS,
     )
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument(
+        "--training-device",
+        default="auto",
+        help="训练设备：auto、cpu、cuda 或 cuda:<index>",
+    )
     parser.add_argument(
         "--start-processes",
         action="store_true",

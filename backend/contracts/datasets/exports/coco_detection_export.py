@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
-# COCO detection 数据集导出格式 id。
-COCO_DETECTION_DATASET_FORMAT = "coco-detection-v1"
+from backend.contracts.datasets.dataset_formats import (
+    COCO_DETECTION_DATASET_FORMAT as COCO_DETECTION_DATASET_FORMAT,
+)
 
 
 @dataclass(frozen=True)

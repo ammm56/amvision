@@ -12,6 +12,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.infrastructure.filesystem.atomic_files import (
+    replace_path_with_retry,
+)
+from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
 
 
 @dataclass(frozen=True)
@@ -27,6 +31,10 @@ class DatasetStorageSettings:
     max_import_extracted_bytes: int = 200 * 1024**3
     max_import_member_count: int = 2_000_000
     max_import_compression_ratio: float = 1000.0
+    max_import_metadata_file_bytes: int = 256 * 1024**2
+    max_import_label_file_bytes: int = 16 * 1024**2
+    max_import_sample_count: int = 100_000
+    max_import_annotation_count: int = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -110,7 +118,7 @@ class LocalDatasetStorage:
 
         self.settings = settings
         self.root_dir = Path(settings.root_dir).resolve()
-        self.root_dir.mkdir(parents=True, exist_ok=True)
+        self._mkdir(self.root_dir)
 
     def prepare_import_layout(
         self,
@@ -137,7 +145,7 @@ class LocalDatasetStorage:
         extracted_dir = staging_dir / "extracted"
 
         for directory in (manifests_dir, staging_dir, logs_dir, extracted_dir):
-            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+            self._mkdir(self.resolve(str(directory)))
 
         return DatasetImportLayout(
             import_path=str(import_root),
@@ -177,7 +185,7 @@ class LocalDatasetStorage:
         indexes_dir = version_root / "indexes"
 
         for directory in (manifests_dir, images_dir, samples_dir, indexes_dir):
-            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+            self._mkdir(self.resolve(str(directory)))
 
         return DatasetVersionLayout(
             version_path=str(version_root),
@@ -204,7 +212,7 @@ class LocalDatasetStorage:
         images_dir = export_root / "images"
 
         for directory in (annotations_dir, images_dir):
-            self.resolve(str(directory)).mkdir(parents=True, exist_ok=True)
+            self._mkdir(self.resolve(str(directory)))
 
         return DatasetExportLayout(
             export_path=str(export_root),
@@ -226,6 +234,16 @@ class LocalDatasetStorage:
         normalized_path = self._normalize_relative_path(relative_path)
         return self.root_dir.joinpath(*normalized_path.parts)
 
+    def resolve_filesystem_path(self, relative_path: str) -> Path:
+        """解析供本机文件 API 使用的绝对路径。
+
+        Windows 返回 extended-length path，训练框架、转换器或其他必须接收
+        本地路径的调用方应使用此方法。object key、数据库字段和 API 响应仍使用
+        相对路径，不得持久化该平台专用前缀。
+        """
+
+        return to_filesystem_path(self.resolve(relative_path))
+
     def write_bytes(self, relative_path: str, content: bytes) -> None:
         """把二进制内容写入本地文件。
 
@@ -235,14 +253,15 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex}.tmp"
+        self._mkdir(target_path.parent)
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
         )
         try:
             # checkpoint 等二进制文件同样必须原子替换，避免进程中断留下半截文件。
             temporary_path.write_bytes(content)
-            temporary_path.replace(target_path)
+            replace_path_with_retry(temporary_path, filesystem_target_path)
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -267,13 +286,14 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        self._mkdir(target_path.parent)
+        filesystem_target_path = to_filesystem_path(target_path)
         if hasattr(source_stream, "seek"):
             source_stream.seek(0)
 
         written_size = 0
         try:
-            with target_path.open("wb") as target_stream:
+            with filesystem_target_path.open("wb") as target_stream:
                 while True:
                     chunk = source_stream.read(chunk_size)
                     if not chunk:
@@ -286,7 +306,7 @@ class LocalDatasetStorage:
                     target_stream.write(chunk)
                     written_size += len(chunk)
         except Exception:
-            target_path.unlink(missing_ok=True)
+            filesystem_target_path.unlink(missing_ok=True)
             raise
 
         return written_size
@@ -300,15 +320,16 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        self._mkdir(target_path.parent)
         encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2)
-        temporary_path = target_path.with_name(
-            f".{target_path.name}.{uuid.uuid4().hex}.tmp"
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
         )
         try:
             # 同目录临时文件 + replace 可以避免进程中断时把目标 JSON 留成半截文件。
             temporary_path.write_text(encoded_payload, encoding="utf-8")
-            temporary_path.replace(target_path)
+            replace_path_with_retry(temporary_path, filesystem_target_path)
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -324,7 +345,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        return json.loads(target_path.read_text(encoding="utf-8"))
+        return json.loads(to_filesystem_path(target_path).read_text(encoding="utf-8"))
 
     def write_text(self, relative_path: str, content: str) -> None:
         """把文本内容写入本地文件。
@@ -335,8 +356,8 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding="utf-8")
+        self._mkdir(target_path.parent)
+        to_filesystem_path(target_path).write_text(content, encoding="utf-8")
 
     def copy_file(self, source_path: Path, destination_path: str) -> None:
         """把一个已存在文件复制到本地文件存储目录。
@@ -347,8 +368,8 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(destination_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, target_path)
+        self._mkdir(target_path.parent)
+        shutil.copy2(to_filesystem_path(source_path), to_filesystem_path(target_path))
 
     def copy_relative_file(self, source_relative_path: str, destination_path: str) -> None:
         """把一个本地文件存储中的相对路径复制到另一相对路径。
@@ -379,24 +400,29 @@ class LocalDatasetStorage:
         """
 
         source_dir = self.resolve(source_relative_path)
-        if not source_dir.is_dir():
+        filesystem_source_dir = to_filesystem_path(source_dir)
+        if not filesystem_source_dir.is_dir():
             raise InvalidRequestError(
                 "找不到要打包的导出目录",
                 details={"source_relative_path": source_relative_path},
             )
 
         target_path = self.resolve(destination_path)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(target_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for file_path in sorted(source_dir.rglob("*")):
+        self._mkdir(target_path.parent)
+        with zipfile.ZipFile(
+            to_filesystem_path(target_path),
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as archive:
+            for file_path in sorted(filesystem_source_dir.rglob("*")):
                 if not file_path.is_file():
                     continue
                 archive.write(
                     file_path,
-                    arcname=file_path.relative_to(source_dir).as_posix(),
+                    arcname=file_path.relative_to(filesystem_source_dir).as_posix(),
                 )
 
-        return target_path.stat().st_size
+        return to_filesystem_path(target_path).stat().st_size
 
     def extract_zip(self, archive_path: str, destination_path: str) -> None:
         """把 zip 包安全解压到目标目录。
@@ -409,8 +435,8 @@ class LocalDatasetStorage:
         - 当 zip 中存在路径穿越或符号链接时抛出请求错误。
         """
 
-        source_archive = self.resolve(archive_path)
-        destination_dir = self.resolve(destination_path)
+        source_archive = to_filesystem_path(self.resolve(archive_path))
+        destination_dir = to_filesystem_path(self.resolve(destination_path))
 
         with zipfile.ZipFile(source_archive) as zip_file:
             members = zip_file.infolist()
@@ -452,11 +478,12 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
-        if target_path.is_dir():
-            shutil.rmtree(target_path, ignore_errors=True)
+        filesystem_target_path = to_filesystem_path(target_path)
+        if filesystem_target_path.is_dir():
+            shutil.rmtree(filesystem_target_path, ignore_errors=True)
             return
-        if target_path.exists():
-            target_path.unlink(missing_ok=True)
+        if filesystem_target_path.exists():
+            filesystem_target_path.unlink(missing_ok=True)
 
     def move_tree(self, source_relative_path: str, destination_relative_path: str) -> None:
         """把一个相对目录或文件移动到另一个相对路径。
@@ -470,21 +497,23 @@ class LocalDatasetStorage:
         """
 
         source_path = self.resolve(source_relative_path)
-        if not source_path.exists():
+        filesystem_source_path = to_filesystem_path(source_path)
+        if not filesystem_source_path.exists():
             raise InvalidRequestError(
                 "找不到要移动的本地对象路径",
                 details={"source_relative_path": source_relative_path},
             )
 
         destination_path = self.resolve(destination_relative_path)
-        if destination_path.exists():
+        filesystem_destination_path = to_filesystem_path(destination_path)
+        if filesystem_destination_path.exists():
             raise InvalidRequestError(
                 "目标本地对象路径已存在",
                 details={"destination_relative_path": destination_relative_path},
             )
 
-        destination_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source_path), str(destination_path))
+        self._mkdir(destination_path.parent)
+        shutil.move(str(filesystem_source_path), str(filesystem_destination_path))
 
     def reset_directory(self, relative_path: str) -> None:
         """清空一个目录并重新创建空目录。
@@ -494,7 +523,13 @@ class LocalDatasetStorage:
         """
 
         self.delete_tree(relative_path)
-        self.resolve(relative_path).mkdir(parents=True, exist_ok=True)
+        self._mkdir(self.resolve(relative_path))
+
+    @staticmethod
+    def _mkdir(path: Path) -> None:
+        """使用 Windows extended-length path 创建目录。"""
+
+        to_filesystem_path(path).mkdir(parents=True, exist_ok=True)
 
     def _dataset_root(self, project_id: str, dataset_id: str) -> PurePosixPath:
         """构建 Dataset 的相对根目录。

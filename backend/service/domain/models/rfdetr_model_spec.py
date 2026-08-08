@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )

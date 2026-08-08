@@ -218,17 +218,9 @@ class ProjectSummaryService:
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_imports = unit_of_work.dataset_imports.list_dataset_imports_by_project(normalized_project_id)
-            dataset_exports = unit_of_work.dataset_exports.list_dataset_exports_by_project(normalized_project_id)
-            tasks = unit_of_work.tasks.list_tasks(normalized_project_id)
-            preview_run_state_counts = unit_of_work.workflow_runtime.count_preview_run_states_by_project(
-                normalized_project_id,
+            database_summary = unit_of_work.project_summaries.get_database_summary(
+                normalized_project_id
             )
-            workflow_run_state_counts = unit_of_work.workflow_runtime.count_workflow_run_states_by_project(
-                normalized_project_id,
-            )
-            app_runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes(normalized_project_id)
-            deployments = unit_of_work.deployments.list_deployment_instances(normalized_project_id)
         finally:
             unit_of_work.close()
 
@@ -246,34 +238,56 @@ class ProjectSummaryService:
             generated_at=_now_isoformat(),
             datasets=ProjectDatasetInventorySnapshot(dataset_total=len(dataset_ids)),
             imports=ProjectStatusSummarySnapshot(
-                total=len(dataset_imports),
-                status_counts=_build_counter(item.status for item in dataset_imports),
+                total=sum(database_summary.import_status_counts.values()),
+                status_counts=database_summary.import_status_counts,
             ),
             exports=ProjectStatusSummarySnapshot(
-                total=len(dataset_exports),
-                status_counts=_build_counter(item.status for item in dataset_exports),
+                total=sum(database_summary.export_status_counts.values()),
+                status_counts=database_summary.export_status_counts,
             ),
-            training=_build_task_status_summary(tasks, _TRAINING_TASK_KINDS),
+            training=_build_task_status_summary(
+                database_summary.task_state_counts_by_kind,
+                _TRAINING_TASK_KINDS,
+            ),
             validation=ProjectStatusSummarySnapshot(
                 total=len(validation_statuses),
                 status_counts=_build_counter(validation_statuses),
             ),
-            evaluation=_build_task_status_summary(tasks, _EVALUATION_TASK_KINDS),
-            conversion=_build_task_status_summary(tasks, _CONVERSION_TASK_KINDS),
-            inference=_build_task_status_summary(tasks, _DETECTION_INFERENCE_TASK_KIND),
+            evaluation=_build_task_status_summary(
+                database_summary.task_state_counts_by_kind,
+                _EVALUATION_TASK_KINDS,
+            ),
+            conversion=_build_task_status_summary(
+                database_summary.task_state_counts_by_kind,
+                _CONVERSION_TASK_KINDS,
+            ),
+            inference=_build_task_status_summary(
+                database_summary.task_state_counts_by_kind,
+                _DETECTION_INFERENCE_TASK_KIND,
+            ),
             workflows=ProjectWorkflowSummarySnapshot(
                 template_total=len(templates),
                 application_total=len(applications),
-                preview_run_total=sum(preview_run_state_counts.values()),
-                preview_run_state_counts=preview_run_state_counts,
-                workflow_run_total=sum(workflow_run_state_counts.values()),
-                workflow_run_state_counts=workflow_run_state_counts,
-                app_runtime_total=len(app_runtimes),
-                app_runtime_observed_state_counts=_build_counter(item.observed_state for item in app_runtimes),
+                preview_run_total=sum(
+                    database_summary.preview_run_state_counts.values()
+                ),
+                preview_run_state_counts=database_summary.preview_run_state_counts,
+                workflow_run_total=sum(
+                    database_summary.workflow_run_state_counts.values()
+                ),
+                workflow_run_state_counts=database_summary.workflow_run_state_counts,
+                app_runtime_total=sum(
+                    database_summary.app_runtime_observed_state_counts.values()
+                ),
+                app_runtime_observed_state_counts=(
+                    database_summary.app_runtime_observed_state_counts
+                ),
             ),
             deployments=ProjectDeploymentSummarySnapshot(
-                deployment_instance_total=len(deployments),
-                deployment_status_counts=_build_counter(item.status for item in deployments),
+                deployment_instance_total=sum(
+                    database_summary.deployment_status_counts.values()
+                ),
+                deployment_status_counts=database_summary.deployment_status_counts,
             ),
         )
 
@@ -449,7 +463,7 @@ def _build_counter(values: object) -> dict[str, int]:
 
 
 def _build_task_status_summary(
-    tasks: tuple[object, ...],
+    task_state_counts_by_kind: dict[str, dict[str, int]],
     task_kinds: str | tuple[str, ...],
 ) -> ProjectStatusSummarySnapshot:
     """按一个或多个 task_kind 聚合任务总数和状态分布。"""
@@ -460,13 +474,15 @@ def _build_task_status_summary(
         else tuple(task_kind for task_kind in task_kinds if isinstance(task_kind, str) and task_kind.strip())
     )
 
-    matched_tasks = tuple(
-        task_record for task_record in tasks
-        if getattr(task_record, "task_kind", None) in normalized_task_kinds
-    )
+    status_counts: Counter[str] = Counter()
+    for task_kind in normalized_task_kinds:
+        status_counts.update(task_state_counts_by_kind.get(task_kind, {}))
+    normalized_status_counts = {
+        state: int(status_counts[state]) for state in sorted(status_counts)
+    }
     return ProjectStatusSummarySnapshot(
-        total=len(matched_tasks),
-        status_counts=_build_counter(getattr(task_record, "state", None) for task_record in matched_tasks),
+        total=sum(normalized_status_counts.values()),
+        status_counts=normalized_status_counts,
     )
 
 

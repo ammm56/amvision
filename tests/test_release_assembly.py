@@ -35,6 +35,7 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert (release_dir / "config" / "backend-service.json").is_file()
     assert (release_dir / "launchers" / "common.py").is_file()
     assert (release_dir / "launchers" / "service" / "start_backend_service.py").is_file()
+    assert (release_dir / "launchers" / "enable_windows_long_paths.py").is_file()
     assert (release_dir / "launchers" / "service" / "start-backend-service.bat").is_file()
     assert (release_dir / "launchers" / "maintenance" / "invoke_backend_maintenance.py").is_file()
     assert (release_dir / "launchers" / "inference" / "start_inference_daemon.py").is_file()
@@ -582,6 +583,11 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
         "release_full_start_cleanup",
         result.release_dir / "start_amvision_full.py",
     )
+    monkeypatch.setattr(
+        start_module,
+        "ensure_windows_long_paths_enabled",
+        lambda **_kwargs: True,
+    )
     fake_process = SimpleNamespace(pid=321, poll=lambda: None)
     stopped_processes: list[object] = []
     monkeypatch.setattr(start_module, "_run_database_migration", lambda **_kwargs: None)
@@ -638,6 +644,11 @@ def test_release_full_database_migration_failure_prevents_component_start(
     start_module = _load_module_from_file(
         "release_full_migration_failure",
         result.release_dir / "start_amvision_full.py",
+    )
+    monkeypatch.setattr(
+        start_module,
+        "ensure_windows_long_paths_enabled",
+        lambda **_kwargs: True,
     )
     monkeypatch.setattr(
         start_module,

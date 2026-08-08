@@ -201,3 +201,18 @@ class DeploymentSourceModelDetailResponse(PlatformBaseModelDetailResponse):
 
     字段与平台基础模型详情保持一致，用于部署页选择 ModelVersion 或 ModelBuild。
     """
+class TrainingParameterSchemaItemResponse(BaseModel):
+    """描述一组 task/model 训练参数协议。"""
+
+    task_type: str
+    model_type: str
+    schema_name: str
+    parameter_schema: dict[str, object]
+    default_parameters: dict[str, object]
+
+
+class TrainingParameterSchemaCatalogResponse(BaseModel):
+    """描述训练参数协议目录。"""
+
+    protocol_version: int = Field(default=1, ge=1)
+    items: list[TrainingParameterSchemaItemResponse]

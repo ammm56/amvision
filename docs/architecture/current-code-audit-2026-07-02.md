@@ -59,13 +59,11 @@
 - `yolo-instance-seg-v1`
 - `coco-keypoints-v1`
 - `yolo-pose-v1`
+- `yolo-obb-v1`
 - `imagenet-classification-v1`
 - `dota-obb-v1`
 
-未实现但已预留：
-
-- `semantic-mask-dir-v1`
-- `sam-promptable-seg-v1`
+未实现格式不再放入公开支持列表；格式注册表只登记可导入、可导出且可验证的 v1 格式。
 
 ### 训练、验证、评估
 
@@ -173,7 +171,7 @@
 
 1. 补代表性 deployment 长驻负载 soak，记录 CPU、内存、显存、重启、异常恢复和日志。
 2. 收敛 detection conversion 到 task-native API，减少前后端历史路径分叉。
-3. 完成 `semantic-mask-dir-v1`、`sam-promptable-seg-v1` 导出，或从公开支持列表中保持明确隐藏。
+3. 新增数据集格式时先完成导入、导出、训练消费和回归测试，再登记到公开格式注册表。
 4. 明确 RKNN / ARM NPU 的阶段边界：要么补 runner/session，要么继续作为预留能力，不在页面和 API 中误导为可用。
 5. 继续拆分超大 training service 和 runtime service 文件，优先拆任务登记、输出登记、事件写入、执行适配。
 6. 为 YOLOv8 / YOLO11 / YOLO26 non-detection 训练继续补 task-specific DataLoader、target 同步和 validator 长期一致性验证。

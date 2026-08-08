@@ -12,6 +12,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
     scale_yolo_box_from_letterbox,
     scale_yolo_mask_from_letterbox,
 )
+from backend.service.application.models.yolo_core_common.postprocess_arrays import (
+    to_yolo_numpy_array,
+)
 
 
 @dataclass(frozen=True)
@@ -52,8 +55,12 @@ def normalize_yolo11_segmentation_outputs(
         raise InvalidRequestError(
             "YOLO11 segmentation 推理输出缺少 prediction/proto 双输出"
         )
-    prediction_array = np_module.asarray(outputs[0], dtype=np_module.float32)
-    proto_array = np_module.asarray(outputs[1], dtype=np_module.float32)
+    prediction_array = to_yolo_numpy_array(
+        value=outputs[0], np_module=np_module, dtype=np_module.float32
+    )
+    proto_array = to_yolo_numpy_array(
+        value=outputs[1], np_module=np_module, dtype=np_module.float32
+    )
     if prediction_array.ndim == 2:
         prediction_array = np_module.expand_dims(prediction_array, axis=0)
     if proto_array.ndim == 3:

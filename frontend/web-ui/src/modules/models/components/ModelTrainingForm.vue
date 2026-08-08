@@ -121,11 +121,11 @@
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.inputWidth') }}</span>
-            <input :value="inputWidth" type="number" min="32" step="32" @input="emitNumber('update:inputWidth', $event)" />
+            <input :value="inputWidth" type="number" min="32" max="8192" step="32" @input="emitNumber('update:inputWidth', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.inputHeight') }}</span>
-            <input :value="inputHeight" type="number" min="32" step="32" @input="emitNumber('update:inputHeight', $event)" />
+            <input :value="inputHeight" type="number" min="32" max="8192" step="32" @input="emitNumber('update:inputHeight', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
@@ -138,10 +138,6 @@
               :options="trainingDeviceOptions"
               @update:model-value="$emit('update:trainingDevice', normalizeSelectValue($event))"
             />
-          </label>
-          <label v-if="trainingSupportsGpuCount" class="field">
-            <span>{{ t('modelOps.fields.gpuCount') }}</span>
-            <input :value="gpuCount" type="number" min="1" step="1" @input="emitNumber('update:gpuCount', $event)" />
           </label>
           <div v-if="trainingTaskSupportsWarmStart" class="field field--wide">
             <span>{{ t('modelOps.fields.warmStart') }}</span>
@@ -313,7 +309,6 @@ type SelectValue = string | number | boolean | null
 type UpdateNumberEvent =
   | 'update:maxEpochs'
   | 'update:batchSize'
-  | 'update:gpuCount'
   | 'update:evaluationInterval'
   | 'update:inputWidth'
   | 'update:inputHeight'
@@ -333,7 +328,6 @@ const props = defineProps<{
   outputModelName: string
   maxEpochs: number
   batchSize: number
-  gpuCount: number
   trainingDevice: string
   evaluationInterval: number
   precision: string
@@ -341,7 +335,6 @@ const props = defineProps<{
   inputHeight: number
   trainingDisplayName: string
   warmStartModelVersionId: string
-  trainingSupportsGpuCount: boolean
   trainingTaskSupportsWarmStart: boolean
   trainingModelParameterFields: TrainingParameterField[]
   trainingAugmentationParameterFields: TrainingParameterField[]
@@ -363,7 +356,6 @@ const emit = defineEmits<{
   'update:outputModelName': [value: string]
   'update:maxEpochs': [value: number]
   'update:batchSize': [value: number]
-  'update:gpuCount': [value: number]
   'update:trainingDevice': [value: string]
   'update:evaluationInterval': [value: number]
   'update:precision': [value: string]
@@ -456,10 +448,6 @@ function emitNumber(eventName: UpdateNumberEvent, event: Event): void {
   }
   if (eventName === 'update:batchSize') {
     emit('update:batchSize', normalizedValue)
-    return
-  }
-  if (eventName === 'update:gpuCount') {
-    emit('update:gpuCount', normalizedValue)
     return
   }
   if (eventName === 'update:evaluationInterval') {

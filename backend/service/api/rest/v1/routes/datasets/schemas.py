@@ -197,6 +197,12 @@ class DatasetExportFormatItemResponse(BaseModel):
 	"""描述单个已实现数据集导出格式的公开规则项。"""
 
 	format_id: str = Field(description="导出格式 id")
+	family: str = Field(description="外部格式家族")
+	task_type: str = Field(description="唯一对应的任务类型")
+	annotation_kind: str = Field(description="标注记录形态")
+	coordinate_convention: str = Field(description="外部坐标约定")
+	class_index_base: int | None = Field(default=None, description="类别索引起点")
+	split_convention: str = Field(description="split 组织规则")
 
 
 class DatasetExportFormatCatalogResponse(BaseModel):

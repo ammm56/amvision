@@ -460,6 +460,8 @@ backend/service/application/models/rfdetr_core/
 - RF-DETR 公开 scale 已按真实 core 和本地预训练资产收窄：detection 只暴露 `nano / s / m / l`，segmentation 暴露 `nano / s / m / l / x`。`base`、`xxl` 等如果后续要开放，必须先补齐本地资产、训练/转换 smoke 和前端选择入口。
 - RF-DETR 模型文件类型已独立为 `rfdetr-checkpoint / rfdetr-onnx / rfdetr-openvino-ir / rfdetr-tensorrt-engine` 等，不再复用 YOLOv8 的文件类型常量。
 - detection / segmentation 训练共用的 Hungarian matcher、box / class / GIoU set criterion 按上游结构位于 `rfdetr_core/models/matcher.py` 和 `rfdetr_core/models/criterion.py`，外层训练 service 不再维护独立轻量 criterion。
+- detection / segmentation 的平台进度与控制已接入 Lightning 的真实 `on_train_batch_end` 和 `on_train_epoch_end` hook。batch 回调只传递已 detach 的有限标量；save、pause、terminate 在 epoch 边界先写出完整 `last.ckpt`，保存点离开临时目录前必须进入对象存储。结束后补发一次伪造 epoch 回调的旧路径已删除。
+- segmentation runtime 的 `mask_threshold` 在插值后的 mask logits 上执行，PyTorch、ONNX Runtime、OpenVINO 和 TensorRT 共用同一解码语义。mask 以固定大小分块插值，避免一次建立 `K x H x W` float 中间张量；top-k 数量按实际 query/class 数限制，输出 box 限制在图像边界内。
 - `build_rfdetr_model()` 和 `build_rfdetr_segmentation_model()` 当前都通过 `rfdetr_core/factory.py` 构建 full-core 模型，不再保留旧 project-native detection / segmentation 模型类作为长期入口。
 - `RfdetrPostProcess` 与 `RfdetrSegmentationPostProcess` 只做后处理 adapter，内部调用 upstream-aligned `rfdetr_core/models/postprocess.py`，并转成本项目 runtime 使用的 batched dict。
 - RF-DETR detection / segmentation conversion runner 的 ONNX 导出已改为调用 `rfdetr_core/export/_onnx/exporter.py`，该目录按 `projectsrc/rf-detr/src/rfdetr/export/_onnx` 复制适配，不再通过临时 wrapper/spec 自造导出层。

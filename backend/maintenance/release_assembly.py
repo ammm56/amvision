@@ -192,6 +192,10 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
 
     _copy_file(SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py")
     _copy_file(
+        SOURCE_LAUNCHERS_DIR / "enable_windows_long_paths.py",
+        release_dir / "launchers" / "enable_windows_long_paths.py",
+    )
+    _copy_file(
         SOURCE_LAUNCHERS_DIR / "service" / "start_backend_service.py",
         release_dir / "launchers" / "service" / "start_backend_service.py",
     )

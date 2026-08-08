@@ -186,12 +186,11 @@ export interface ModelTrainingTaskCreateInput {
   evaluationInterval?: number
   maxEpochs?: number
   batchSize?: number
-  gpuCount?: number
   precision?: string
   inputWidth?: number
   inputHeight?: number
   displayName?: string
-  extraOptions?: Record<string, unknown>
+  parameters?: Record<string, unknown>
 }
 
 export interface ModelConversionBuildSummary {
@@ -336,16 +335,6 @@ export async function getDeploymentSourceModelDetail(
 }
 
 export async function createModelTrainingTask(input: ModelTrainingTaskCreateInput): Promise<ModelTrainingTaskSubmissionResponse> {
-  const extraOptions: Record<string, unknown> = {
-    ...(input.extraOptions ?? {}),
-  }
-  if (
-    (input.taskType === 'classification' || input.taskType === 'segmentation')
-    && typeof input.evaluationInterval === 'number'
-    && Number.isFinite(input.evaluationInterval)
-  ) {
-    extraOptions.evaluation_interval = input.evaluationInterval
-  }
   const body: Record<string, unknown> = {
     project_id: input.projectId,
     model_type: input.modelType,
@@ -355,21 +344,15 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
     model_scale: input.modelScale,
     output_model_name: input.outputModelName,
     warm_start_model_version_id: input.warmStartModelVersionId || null,
+    evaluation_interval: input.evaluationInterval,
     max_epochs: input.maxEpochs,
     batch_size: input.batchSize,
     precision: input.precision || null,
     input_size: input.inputWidth && input.inputHeight
       ? { width: input.inputWidth, height: input.inputHeight }
       : null,
-    extra_options: extraOptions,
+    parameters: input.parameters ?? {},
     display_name: input.displayName ?? '',
-  }
-
-  if (input.taskType === 'detection') {
-    body.evaluation_interval = input.evaluationInterval
-    body.gpu_count = input.gpuCount
-  } else if (input.taskType === 'pose' || input.taskType === 'obb') {
-    body.evaluation_interval = input.evaluationInterval
   }
 
   return apiRequest<ModelTrainingTaskSubmissionResponse>(buildTrainingTaskPath(input.taskType), {

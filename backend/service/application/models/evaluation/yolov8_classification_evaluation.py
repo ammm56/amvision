@@ -121,7 +121,9 @@ def _run_classification_evaluation_with_session(
     for sample in samples:
         image_path = sample["image_path"]
         gt_class_id = sample["class_id"]
-        resolved = dataset_storage.resolve(image_path) if image_path else None
+        resolved = (
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
+        )
         if resolved is None or not resolved.is_file():
             raise InvalidRequestError(
                 "classification 评估样本文件不存在",

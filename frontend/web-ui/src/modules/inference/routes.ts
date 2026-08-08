@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import InferenceDebugPage from './pages/InferenceDebugPage.vue'
+const InferenceDebugPage = () => import('./pages/InferenceDebugPage.vue')
 
 export const inferenceRoutes: RouteRecordRaw[] = [
   {

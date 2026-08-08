@@ -12,4 +12,11 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     """注册Database SQL节点包中的全部 python-callable 节点。"""
 
     for node_type_id, handler in NODE_HANDLERS.items():
-        context.register_python_callable(node_type_id, handler)
+        context.register_python_callable(
+            node_type_id,
+            handler,
+            required_permission_scopes=(
+                "integration.database.connect",
+                "integration.database.write",
+            ),
+        )

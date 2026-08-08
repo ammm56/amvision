@@ -14,7 +14,8 @@
     "vision.image-input"
   ],
   "permissionScopes": [
-    "objectstore.write.ref"
+    "objectstore.write.ref",
+    "hardware.camera.capture"
   ],
   "entrypoints": {
     "backend": "custom_nodes.camera_nodes.backend.entry:register"
@@ -24,7 +25,13 @@
     "runtime": ">=3.12"
   },
   "timeout": {
-    "defaultSeconds": 30
+    "defaultSeconds": 30,
+    "maxSeconds": 30,
+    "killGraceSeconds": 2
+  },
+  "execution": {
+    "isolation": "workflow-process",
+    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

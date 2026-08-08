@@ -112,6 +112,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | GET | /api/v1/datasets/exports/{dataset_export_id}/download | datasets:read | 下载 DatasetExport 的 zip 包；当下载包不存在时会同步生成。 |
 | GET | /api/v1/datasets/exports/{dataset_export_id}/manifest | datasets:read | 下载 DatasetExport 的 manifest 文件。 |
 | POST | /api/v1/models/detection/training-tasks | datasets:read + tasks:write | 按统一 detection 控制面创建 YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 训练任务。 |
+| GET | /api/v1/models/training-parameter-schemas | models:read | 返回 18 个 task/model 组合的严格训练参数 JSON Schema 和默认值。 |
 | GET | /api/v1/models/detection/training-tasks | tasks:read | 按 Project、模型分类、DatasetExport 边界和状态列出 detection 训练任务。 |
 | GET | /api/v1/models/detection/training-tasks/{task_id} | tasks:read | 查询单条 detection 训练任务详情和事件流。 |
 | POST | /api/v1/models/detection/training-tasks/{task_id}/save | tasks:write | 为 running 的 detection 训练任务登记一次手动保存请求。 |
@@ -665,12 +666,13 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
   - yolo-instance-seg-v1
   - coco-keypoints-v1
   - yolo-pose-v1
+  - yolo-obb-v1
   - imagenet-classification-v1
   - dota-obb-v1
 - 导入阶段可以兼容多种外部目录结构，但导出阶段始终按 format_id 收口为单一标准格式，不沿用原始导入包目录布局
 - 当前若 format_id=coco-detection-v1，则固定导出为 images/{split}/ 和 annotations/instances_{split}.json
 - 当前若 format_id=imagenet-classification-v1，则固定导出为 `{split}/{class_name}/`、`annotations/{split}.json` 和 `manifest.json`
-- 当前若 format_id=yolo-detection-v1、yolo-instance-seg-v1 或 yolo-pose-v1，则固定导出为 `manifest.json`、`images/{split}/` 和 `labels/{split}/`
+- 当前若 format_id=yolo-detection-v1、yolo-instance-seg-v1、yolo-pose-v1 或 yolo-obb-v1，则固定导出为 `manifest.json`、`images/{split}/` 和 `labels/{split}/`；yolo-obb-v1 另写平台训练索引 `annotations/{split}.json`
 - 当前若 format_id=dota-obb-v1，则固定导出为 `manifest.json`、`images/{split}/`、`annotations/{split}.json` 和 `labels/{split}/`
 - 成功响应会同时返回：
   - dataset_export_id
@@ -1387,7 +1389,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - `memory` 模式不会写入临时输入文件，结果里的 `input_uri` 会返回 `memory://...` 虚拟 URI
 - 当前各 task type 的公开参数面差异如下：
   - `classification`：`top_k`
-  - `segmentation`：`score_threshold`、`mask_threshold`
+  - `segmentation`：`score_threshold`、`mask_threshold`；RF-DETR 会在 mask logits 插值到原图尺寸后应用该阈值，四种 runtime backend 语义一致
   - `pose`：`score_threshold`、`keypoint_confidence_threshold`
   - `obb`：`score_threshold`
 - 当前各 task type 的结果载荷形状差异如下：
@@ -1481,16 +1483,15 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
   - evaluation_interval
   - max_epochs
   - batch_size
-  - gpu_count
   - precision
   - input_size
-  - extra_options
+  - parameters
   - display_name
 - 当前实现会先解析并校验 DatasetExport，再创建 TaskRecord，并提交到 detection 训练队列
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
 - 当前 input_size 固定使用 `{"width": <integer>, "height": <integer>}` 对象，不再接受二元素数组；未指定时真实训练默认宽高均为 640。
-- 当前 Swagger/OpenAPI 已把 training create 的 extra_options 展开为具名字段，公开键包括 seed、num_workers、device、max_labels、flip_prob、hsv_prob、mosaic_prob、mixup_prob、enable_mixup、multiscale_range、ema、warmup_epochs、no_aug_epochs、min_lr_ratio、evaluation_confidence_threshold、evaluation_nms_threshold 等。
-- 当前 extra_options 默认关闭 flip、hsv、mosaic、mixup 和多尺度训练；EMA 默认保持启用。完整字段说明见 [docs/api/detection-training.md](detection-training.md)。
+- `parameters` 按 task/model 拆分为 runtime、optimization、loss、matching、evaluation、augmentation、advanced 等严格分组，未知字段会在入队前拒绝。
+- 机器可读参数目录由 `GET /api/v1/models/training-parameter-schemas` 返回。完整字段说明见 [训练参数协议](../architecture/training-parameter-support.md)。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证；只是速度会明显变慢。
 - 当前 `save`、`pause` 都是“请求登记后等待下一个 epoch 边界生效”，不是同步完成动作。
 - 当前 `resume` 会先把任务切回 `queued` 并重新入队；checkpoint 读取失败或配置不一致这类问题可能在后续 worker 执行阶段才把任务切成 `failed`。
@@ -1566,6 +1567,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 需要 tasks:write
 - 只允许 running 状态调用
 - 服务会在下一个 epoch 边界先保存 latest checkpoint、补齐 labels.txt，再把任务状态切到 paused
+- RF-DETR detection / segmentation 的 save、pause、terminate 由真实 Lightning epoch hook 执行；batch 进度来自真实 batch hook，不再在训练完成后补发伪进度
 
 ### POST /api/v1/models/detection/training-tasks/{task_id}/resume
 
@@ -1634,8 +1636,9 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 
 - 需要同时具备 datasets:read 和 tasks:write
 - 当前支持创建 YOLOv8、YOLO11、YOLO26 分类训练任务
-- 请求体字段：project_id、dataset_export_id、model_name（yolov8/yolo11/yolo26）、model_scale、epochs、batch_size、image_size、display_name、metadata
-- 响应字段：task_id、status、queue_name、queue_task_id、source_model_version_id（如有）
+- 请求体字段：project_id、model_type、dataset_export_id、dataset_export_manifest_key、recipe_id、model_scale、output_model_name、warm_start_model_version_id、evaluation_interval、max_epochs、batch_size、precision、input_size、parameters、display_name
+- `parameters` 使用 `YoloClassificationTrainingParameters`，分为 runtime、optimization 和 augmentation；未知字段与旧扁平训练参数会在入队前拒绝
+- 响应字段：task_id、status、queue_name、queue_task_id
 
 ### GET /api/v1/models/classification/training-tasks
 
@@ -1691,6 +1694,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 - `GET /api/v1/models/obb/training-tasks/{task_id}` — 旋转框训练任务详情
 - `POST .../obb/training-tasks/{task_id}/save|pause|terminate|resume` — 旋转框训练管理
 - `DELETE /api/v1/models/obb/training-tasks/{task_id}` — 删除旋转框训练任务
+- 四类任务统一把 `evaluation_interval` 作为顶层字段，并按 task/model 使用独立 `parameters` schema；具体目录见 `GET /api/v1/models/training-parameter-schemas`
 
 ## workflow 资源组
 

@@ -2,49 +2,63 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
-from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
-from backend.service.domain.models.platform_model_support import (
-    build_platform_model_type_field_description,
+from backend.service.api.rest.v1.routes.training_parameter_schemas import (
+    SegmentationTrainingParameters,
+    build_segmentation_training_parameters,
 )
 
 
 class SegmentationTrainingTaskCreateRequestBody(BaseModel):
     """segmentation 训练任务创建请求。"""
 
-    project_id: str = Field(description="所属 Project id")
-    model_type: str = Field(
-        description=build_platform_model_type_field_description(SEGMENTATION_TASK_TYPE)
-    )
-    dataset_export_id: str | None = Field(default=None, description="DatasetExport id")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    project_id: str = Field(min_length=1, max_length=128)
+    model_type: Literal["yolov8", "yolo11", "yolo26", "rfdetr"]
+    dataset_export_id: str | None = Field(default=None, min_length=1, max_length=256)
     dataset_export_manifest_key: str | None = Field(
-        default=None, description="导出 manifest key"
+        default=None, min_length=1, max_length=2048
     )
     warm_start_model_version_id: str | None = Field(
-        default=None, description="warm start 使用的 ModelVersion id"
+        default=None, min_length=1, max_length=256
     )
-    recipe_id: str = Field(default="default", description="训练 recipe id")
-    model_scale: str = Field(description="模型 scale")
-    output_model_name: str = Field(description="训练后登记的模型名")
-    max_epochs: int | None = Field(default=None, ge=1, description="最大训练轮数")
-    batch_size: int | None = Field(default=None, ge=1, description="batch size")
-    input_size: SpatialSizeRequest | None = Field(
-        default=None,
-        description="训练输入尺寸，使用明确的 width/height 字段",
-    )
-    precision: str | None = Field(default=None, description="训练 precision")
-    extra_options: dict[str, object] = Field(
-        default_factory=dict, description="附加训练选项"
-    )
-    display_name: str = Field(default="", description="可选展示名称")
+    recipe_id: str = Field(default="default", min_length=1, max_length=128)
+    model_scale: str = Field(min_length=1, max_length=64)
+    output_model_name: str = Field(min_length=1, max_length=128)
+    evaluation_interval: int = Field(default=5, ge=1, le=10_000)
+    max_epochs: int | None = Field(default=None, ge=1, le=10_000)
+    batch_size: int | None = Field(default=None, ge=1, le=4096)
+    input_size: SpatialSizeRequest | None = None
+    precision: Literal["fp16", "fp32"] | None = None
+    parameters: SegmentationTrainingParameters
+    display_name: str = Field(default="", max_length=256)
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_model_parameters(cls, value: object) -> object:
+        """根据 model_type 选择唯一 segmentation 参数 schema。"""
+
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        model_type = payload.get("model_type")
+        if isinstance(model_type, str):
+            payload["parameters"] = build_segmentation_training_parameters(
+                model_type=model_type,
+                value=payload.get("parameters"),
+            )
+        return payload
 
 
 class SegmentationTrainingTaskSubmissionResponse(BaseModel):
     """segmentation 训练任务提交响应。"""
 
-    task_id: str = Field(description="任务 id")
-    status: str = Field(description="当前状态")
-    queue_name: str = Field(description="提交到的队列名称")
-    queue_task_id: str = Field(description="队列任务 id")
+    task_id: str
+    status: str
+    queue_name: str
+    queue_task_id: str

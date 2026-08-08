@@ -141,6 +141,56 @@ def test_local_file_queue_deletes_queue_directory(tmp_path: Path) -> None:
     assert not (tmp_path / "queue" / "detection-ai-rsp-test").exists()
 
 
+def test_local_file_queue_retries_windows_sharing_violation_on_complete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Windows 短暂文件占用不会让已执行任务丢失终态。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(
+            root_dir=str(tmp_path / "queue"),
+            file_operation_retry_timeout_seconds=1.0,
+        )
+    )
+    queued_task = queue_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+    leased_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
+    assert leased_task is not None
+
+    original_replace = Path.replace
+    sharing_violation_count = 0
+
+    def replace_with_transient_lock(
+        source_path: Path,
+        target_path: str | Path,
+    ) -> Path:
+        nonlocal sharing_violation_count
+        normalized_target = Path(target_path)
+        if (
+            source_path.parent.name == "leased"
+            and normalized_target.parent.name == "completed"
+            and sharing_violation_count < 3
+        ):
+            sharing_violation_count += 1
+            error = PermissionError("simulated Windows sharing violation")
+            error.winerror = 32  # type: ignore[attr-defined]
+            raise error
+        return original_replace(source_path, target_path)
+
+    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+
+    completed_task = queue_backend.complete(leased_task)
+
+    assert sharing_violation_count == 3
+    assert completed_task.status == "completed"
+    stored_task = queue_backend.get_task(
+        queue_name="jobs",
+        task_id=queued_task.task_id,
+    )
+    assert stored_task is not None
+    assert stored_task.status == "completed"
+
+
 def _rewrite_queue_task_time(task_path: Path, *, leased_at: str) -> None:
     """改写测试队列任务文件里的 lease 时间。"""
 

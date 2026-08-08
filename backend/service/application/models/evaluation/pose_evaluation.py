@@ -121,7 +121,9 @@ def _run_pose_evaluation_with_session(
         gt_anns = sample.get("annotations", [])
         if not isinstance(gt_anns, list):
             gt_anns = []
-        resolved = dataset_storage.resolve(image_path) if image_path else None
+        resolved = (
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
+        )
         if not resolved or not resolved.is_file():
             raise InvalidRequestError(
                 "pose 评估样本文件不存在",
@@ -259,8 +261,8 @@ def _parse_pose_manifest(
             category_names=manifest.get("category_names"),
             format_label="YOLO pose",
         )
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "pose 图片目录不存在",

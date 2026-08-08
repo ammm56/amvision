@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_pack_loader import NodePackStatusItem, NodePackStatusSnapshot
+from backend.service.application.errors import InvalidRequestError
 
 
 def test_local_node_pack_loader_loads_enabled_custom_node_pack(tmp_path: Path) -> None:
@@ -162,6 +165,57 @@ def test_local_node_pack_loader_status_reports_disabled_and_missing_manifest(
     assert [issue.code for issue in missing_item.issues] == ["manifest_missing"]
 
 
+def test_local_node_pack_loader_reports_incompatible_pack_and_rejects_enable(
+    tmp_path: Path,
+) -> None:
+    """验证不兼容节点包不会进入目录，也不能被管理接口强制启用。"""
+
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path, enabled_by_default=False)
+    manifest_path = custom_nodes_root_dir / "opencv_basic_nodes" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["compatibility"] = {"api": ">=99.0", "runtime": ">=99.0"}
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+
+    status_snapshot = node_pack_loader.reload()
+    status_item = _find_status_item(status_snapshot, "opencv.nodes")
+
+    assert status_item.state == "failed"
+    assert status_item.enabled is False
+    assert {issue.code for issue in status_item.issues} == {"compatibility_unsatisfied"}
+    assert node_pack_loader.get_workflow_node_definitions() == ()
+    with pytest.raises(InvalidRequestError, match="不兼容"):
+        node_pack_loader.set_node_pack_enabled("opencv.nodes", True)
+
+
+def test_local_node_pack_loader_rejects_catalog_path_outside_pack_directory(
+    tmp_path: Path,
+) -> None:
+    """验证 manifest 不能通过相对路径读取节点包目录外的文件。"""
+
+    custom_nodes_root_dir = _create_node_pack_fixture(tmp_path)
+    manifest_path = custom_nodes_root_dir / "opencv_basic_nodes" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["customNodeCatalogPath"] = "../../outside-catalog.json"
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "outside-catalog.json").write_text("{}\n", encoding="utf-8")
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+
+    status_snapshot = node_pack_loader.reload()
+    status_item = _find_status_item(status_snapshot, "opencv.nodes")
+
+    assert status_item.state == "failed"
+    assert status_item.issues[0].code == "catalog_invalid"
+    assert "超出节点包目录" in status_item.issues[0].message
+    assert node_pack_loader.get_workflow_node_definitions() == ()
+
+
 def _create_node_pack_fixture(
     tmp_path: Path,
     *,
@@ -199,7 +253,8 @@ def register(context):
         "capabilities": ["pipeline.node"],
         "entrypoints": {"backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": enabled_by_default,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -303,7 +358,8 @@ def register(context):
         "dependencies": [dependency_payload],
         "entrypoints": {"backend": "custom_nodes.barcode_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }

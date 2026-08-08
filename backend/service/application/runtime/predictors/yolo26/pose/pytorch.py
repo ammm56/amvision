@@ -148,6 +148,7 @@ class PyTorchYolo26PoseRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = (
             self.imports.torch.from_numpy(input_tensor)

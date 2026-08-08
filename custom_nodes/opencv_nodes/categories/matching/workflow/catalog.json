@@ -1579,6 +1579,7 @@
       "description": "提取非线性尺度空间 AKAZE 关键点和 MLDB 二进制描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1655,6 +1656,7 @@
       "description": "提取快速多尺度 BRISK 关键点和二进制描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1731,6 +1733,7 @@
       "description": "通过最大化增强相关系数估计平移、欧氏、仿射或单应变换，并输出对齐图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1828,6 +1831,7 @@
       "description": "使用 FAST 检测高吞吐角点并按响应值截取结果。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1895,6 +1899,7 @@
       "description": "使用 KD-Tree 或 LSH 对 float32 或 binary 局部描述子执行近邻匹配。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1976,6 +1981,7 @@
       "description": "使用 Shi-Tomasi 或 Harris 响应提取适合跟踪的强角点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2053,6 +2059,7 @@
       "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2256,6 +2263,7 @@
       "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2333,6 +2341,7 @@
       "description": "在尺度金字塔中搜索模板，并以 regions.v1 返回经过 NMS 的匹配结果。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2459,6 +2468,7 @@
       "description": "对输入图片提取 ORB 局部特征点与二进制描述，适合在模板匹配不稳、存在旋转缩放或局部视角变化时做参考对位前处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2624,6 +2634,7 @@
       "description": "对两组 ORB 描述执行暴力匹配与过滤，并输出显式 feature-matches.v1，便于人工查看匹配密度、距离分布和误匹配情况。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2799,6 +2810,7 @@
       "description": "使用频域相位相关估计两张同尺寸图片间的亚像素平移。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2863,6 +2875,7 @@
       "description": "在角度与尺度网格中搜索模板，并输出角度、尺度和匹配区域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3002,6 +3015,7 @@
       "description": "提取具备尺度和旋转不变性的 SIFT 关键点与 float32 描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3088,6 +3102,7 @@
       "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

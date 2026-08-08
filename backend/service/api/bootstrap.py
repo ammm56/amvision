@@ -381,6 +381,7 @@ class BackendServiceBootstrap(
         workflow_node_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
             node_catalog_registry=node_catalog_registry,
             node_pack_loader=node_pack_loader,
+            load_custom_node_handlers=False,
         )
         workflow_model_session_manager = WorkflowModelSessionManager(
             runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
@@ -450,6 +451,9 @@ class BackendServiceBootstrap(
                     ),
                     startup_timeout_seconds=(
                         settings.deployment_process_supervisor.startup_timeout_seconds
+                    ),
+                    shutdown_timeout_seconds=(
+                        settings.deployment_process_supervisor.shutdown_timeout_seconds
                     ),
                     control_read_timeout_seconds=(
                         settings.inference_daemon.control_read_timeout_seconds

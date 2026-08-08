@@ -140,7 +140,9 @@ def _run_segmentation_evaluation_with_session(
     for img_idx, sample in enumerate(samples):
         image_path = sample["image_path"]
         gt_annotations = sample.get("annotations", [])
-        resolved = dataset_storage.resolve(image_path) if image_path else None
+        resolved = (
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
+        )
         if resolved is None or not resolved.is_file():
             raise InvalidRequestError(
                 "segmentation 评估样本文件不存在",
@@ -320,8 +322,8 @@ def _parse_segmentation_manifest(
             category_names=manifest.get("category_names"),
             format_label="YOLO segmentation",
         )
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "segmentation 图片目录不存在",

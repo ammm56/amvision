@@ -100,7 +100,7 @@ def _load_yolo26_classification_split_annotations(
 
     image_root = str(split.get("image_root", ""))
     annotation_file = str(split.get("annotation_file", ""))
-    ann_path = dataset_storage.resolve(annotation_file)
+    ann_path = dataset_storage.resolve_filesystem_path(annotation_file)
     if not ann_path.is_file():
         raise InvalidRequestError(
             f"YOLO26 classification 标注文件不存在: {annotation_file}"
@@ -164,7 +164,11 @@ def _resolve_yolo26_classification_annotations(
             continue
         resolved.append(
             Yolo26ClassificationTrainingAnnotation(
-                image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
+                image_path=str(
+                    dataset_storage.resolve_filesystem_path(
+                        f"{image_root}/{file_name}"
+                    )
+                ),
                 class_id=class_id,
             )
         )

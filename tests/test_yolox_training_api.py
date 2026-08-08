@@ -90,7 +90,6 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bolt",
                     "evaluation_interval": 3,
-                    "gpu_count": 1,
                     "precision": "fp16",
                 },
             )
@@ -162,8 +161,8 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
-def test_detection_training_create_openapi_exposes_documented_extra_options(tmp_path: Path) -> None:
-    """验证 detection 训练创建接口会展开统一公开 extra_options 字段。"""
+def test_detection_training_create_openapi_exposes_isolated_parameter_groups(tmp_path: Path) -> None:
+    """验证 detection 训练创建接口按模型族公开严格参数分组。"""
 
     client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
     try:
@@ -174,21 +173,29 @@ def test_detection_training_create_openapi_exposes_documented_extra_options(tmp_
         payload = response.json()
         components = payload.get("components", {})
         schemas = components.get("schemas", {})
-        extra_options_schema = schemas.get("DetectionTrainingExtraOptionsRequest")
-        assert isinstance(extra_options_schema, dict)
+        request_schema = schemas.get("DetectionTrainingTaskCreateRequestBody")
+        assert isinstance(request_schema, dict)
+        assert "parameters" in request_schema.get("properties", {})
+        for schema_name in (
+            "YoloXDetectionTrainingParameters",
+            "YoloDetectionTrainingParameters",
+            "RfdetrDetectionTrainingParameters",
+        ):
+            parameter_schema = schemas.get(schema_name)
+            assert isinstance(parameter_schema, dict)
+            assert parameter_schema.get("additionalProperties") is False
+            assert "runtime" in parameter_schema.get("properties", {})
+            assert "optimization" in parameter_schema.get("properties", {})
 
-        properties = extra_options_schema.get("properties", {})
-        assert "learning_rate" in properties
-        assert "weight_decay" in properties
-        assert "flip_prob" in properties
-        assert "mosaic_prob" in properties
-        assert "mixup_scale" in properties
-        assert "assign_topk" in properties
-        assert "evaluation_nms_threshold" in properties
-        assert "默认 0.01" in properties["learning_rate"]["description"]
-        assert "默认 0.5" in properties["flip_prob"]["description"]
-        assert "默认 10" in properties["close_mosaic"]["description"]
-        assert "端到端模型导出后会改走 top-k 输出" in properties["evaluation_nms_threshold"]["description"]
+        yolo_schema = schemas["YoloDetectionTrainingParameters"]
+        assert {
+            "runtime",
+            "optimization",
+            "loss",
+            "matching",
+            "evaluation",
+            "augmentation",
+        } <= set(yolo_schema["properties"])
     finally:
         session_factory.engine.dispose()
 
@@ -382,7 +389,6 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-a",
-                    "gpu_count": 1,
                     "precision": "fp16",
                 },
             )
@@ -760,7 +766,6 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-running-prefix",
-                    "gpu_count": 1,
                     "precision": "fp16",
                 },
             )
@@ -1474,7 +1479,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
             "max_epochs": 1,
             "precision": "fp32",
             "input_size": {"width": 384, "height": 384},
-            "extra_options": {},
+            "parameters": {},
         },
         "metrics_summary": {"best_metric_name": "map50", "best_metric_value": 0.72},
         "validation": {"map50": 0.72},
@@ -1512,7 +1517,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
                     "max_epochs": 1,
                     "precision": "fp32",
                     "input_size": {"width": 384, "height": 384},
-                    "extra_options": {},
+                    "parameters": {},
                 },
                 metadata={
                     "model_type": "rfdetr",

@@ -644,7 +644,7 @@ def _load_classification_manifest(
         split_name = str(split.get("name", ""))
         image_root = str(split.get("image_root", ""))
         annotation_file = str(split.get("annotation_file", ""))
-        ann_path = dataset_storage.resolve(annotation_file)
+        ann_path = dataset_storage.resolve_filesystem_path(annotation_file)
         if not ann_path.is_file():
             raise InvalidRequestError(
                 f"classification 标注文件不存在: {annotation_file}"
@@ -678,7 +678,7 @@ def _load_classification_manifest(
                 if not file_name:
                     continue
                 resolved_path = str(
-                    dataset_storage.resolve(f"{image_root}/{file_name}")
+                    dataset_storage.resolve_filesystem_path(f"{image_root}/{file_name}")
                 )
                 resolved.append(
                     _ResolvedClassificationTrainingAnnotation(

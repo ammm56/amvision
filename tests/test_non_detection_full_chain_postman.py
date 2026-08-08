@@ -33,7 +33,7 @@ COLLECTION_SPECS = [
         "export_format_id": "coco-instance-seg-v1",
         "dataset_zip_path": "data/files/postman-assets/segmentation-coco-min.zip",
         "training_batch_size": 2,
-        "training_input_size": [640, 640],
+        "training_input_size": {"width": 640, "height": 640},
         "validation_export_path_suffix": "/images/val/val-1.jpg",
     },
     {
@@ -44,7 +44,7 @@ COLLECTION_SPECS = [
         "export_format_id": "imagenet-classification-v1",
         "dataset_zip_path": "data/files/postman-assets/classification-imagenet-min.zip",
         "training_batch_size": 4,
-        "training_input_size": [224, 224],
+        "training_input_size": {"width": 224, "height": 224},
         "validation_export_path_suffix": "/val/ng/ng-1.jpg",
     },
     {
@@ -55,7 +55,7 @@ COLLECTION_SPECS = [
         "export_format_id": "coco-keypoints-v1",
         "dataset_zip_path": "data/files/postman-assets/pose-coco-keypoints-min.zip",
         "training_batch_size": 2,
-        "training_input_size": [640, 640],
+        "training_input_size": {"width": 640, "height": 640},
         "validation_export_path_suffix": "/images/val/val-1.jpg",
     },
     {
@@ -63,10 +63,10 @@ COLLECTION_SPECS = [
         "task_segment": "obb",
         "task_label": "OBB",
         "supported_model_types": {"yolov8", "yolo11", "yolo26"},
-        "export_format_id": "dota-obb-v1",
+        "export_format_id": "yolo-obb-v1",
         "dataset_zip_path": "data/files/postman-assets/obb-dota-min.zip",
         "training_batch_size": 2,
-        "training_input_size": [640, 640],
+        "training_input_size": {"width": 640, "height": 640},
         "validation_export_path_suffix": "/images/val/val-1.png",
     },
 ]
@@ -98,7 +98,9 @@ def _collect_raw_urls(collection_payload: dict[str, object]) -> list[str]:
     return urls
 
 
-def _find_request(collection_payload: dict[str, object], request_name: str) -> dict[str, object]:
+def _find_request(
+    collection_payload: dict[str, object], request_name: str
+) -> dict[str, object]:
     """按名称查找指定请求。"""
 
     for item in _iter_requests(collection_payload["item"]):
@@ -156,7 +158,10 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert top_level_names == EXPECTED_TOP_LEVEL_FOLDERS
 
         description = collection_payload["info"]["description"]
-        assert "dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke" in description
+        assert (
+            "dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke"
+            in description
+        )
         assert "12-15" in description
         assert "data/files/postman-assets/" in description
         assert "不纳入 git" in description
@@ -168,30 +173,50 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert "{{baseUrl}}/api/v1/datasets/imports" in urls
         assert "{{baseUrl}}/api/v1/datasets/exports" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/training-tasks" in urls
-        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/validation-sessions" in urls
+        assert (
+            f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/validation-sessions" in urls
+        )
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/evaluation-tasks" in urls
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks" in urls
         assert any(
-            url.startswith(f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}")
+            url.startswith(
+                f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}"
+            )
             for url in urls
         )
-        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}/result" in urls
-        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances" in urls
+        assert (
+            f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/conversion-tasks/{{{{conversionTaskId}}}}/result"
+            in urls
+        )
+        assert (
+            f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances" in urls
+        )
         for runtime_mode in ["sync", "async"]:
             for action in ["start", "warmup", "status", "health", "reset", "stop"]:
                 assert (
                     f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/"
                     f"{{{{deploymentInstanceId}}}}/{runtime_mode}/{action}"
                 ) in urls
-        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/{{{{deploymentInstanceId}}}}/infer" in urls
+        assert (
+            f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/deployment-instances/{{{{deploymentInstanceId}}}}/infer"
+            in urls
+        )
         assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks" in urls
         assert any(
-            url.startswith(f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}")
+            url.startswith(
+                f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}"
+            )
             and not url.endswith("/result")
             for url in urls
         )
-        assert f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}/result" in urls
-        assert "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke" in urls
+        assert (
+            f"{{{{baseUrl}}}}/api/v1/models/{task_segment}/inference-tasks/{{{{inferenceTaskId}}}}/result"
+            in urls
+        )
+        assert (
+            "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke"
+            in urls
+        )
 
         variables = _collect_variables(collection_payload)
         assert variables["exportFormatId"] == spec["export_format_id"]
@@ -208,29 +233,44 @@ def test_non_detection_full_chain_collections_cover_expected_stages() -> None:
         assert len(variables["inputImageBase64"]) > 100
 
         task_label = spec["task_label"]
-        create_export_request = _find_request(collection_payload, f"Create {task_label} Dataset Export")
+        create_export_request = _find_request(
+            collection_payload, f"Create {task_label} Dataset Export"
+        )
         create_export_body = json.loads(create_export_request["body"]["raw"])
         assert create_export_body["format_id"] == "{{exportFormatId}}"
 
-        sync_infer_request = _find_request(collection_payload, f"Sync Infer {task_label} Deployment")
+        sync_infer_request = _find_request(
+            collection_payload, f"Sync Infer {task_label} Deployment"
+        )
         sync_infer_body = json.loads(sync_infer_request["body"]["raw"])
         assert sync_infer_body["input_transport_mode"] == "memory"
         assert sync_infer_body["image_base64"] == "{{inputImageBase64}}"
 
-        training_request = _find_request(collection_payload, f"Create {task_label} Training Task")
+        training_request = _find_request(
+            collection_payload, f"Create {task_label} Training Task"
+        )
         training_body = json.loads(training_request["body"]["raw"])
         assert training_body["batch_size"] == spec["training_batch_size"]
         assert training_body["input_size"] == spec["training_input_size"]
         assert training_body["precision"] == "{{trainingPrecision}}"
+        assert "extra_options" not in training_body
+        assert training_body["parameters"] == {
+            "runtime": {"device": "cpu", "num_workers": 0},
+            "augmentation": {"enabled": False},
+        }
 
-        conversion_request = _find_request(collection_payload, f"Create {task_label} Conversion Task")
+        conversion_request = _find_request(
+            collection_payload, f"Create {task_label} Conversion Task"
+        )
         conversion_body = json.loads(conversion_request["body"]["raw"])
         assert conversion_body["source_model_version_id"] == "{{modelVersionId}}"
         assert conversion_body["target_formats"] == ["{{targetFormat}}"]
         assert "model_version_id" not in conversion_body
         assert "target_format" not in conversion_body
 
-        export_detail_item = _find_item(collection_payload["item"], f"Get {task_label} Dataset Export Detail")
+        export_detail_item = _find_item(
+            collection_payload["item"], f"Get {task_label} Dataset Export Detail"
+        )
         export_detail_event = export_detail_item["event"][0]["script"]["exec"]
         assert (
             f"    pm.collectionVariables.set('validationInputUri', payload.export_path + '{spec['validation_export_path_suffix']}');"
@@ -255,6 +295,15 @@ def test_non_detection_full_chain_readmes_point_to_root_collections() -> None:
 
     assert "docs/api/postman/local-debug-assets.md" in api_readme_text
     assert "data/files/postman-assets/" in api_readme_text
-    assert "12-*` 到 `15-*` 继续只表示 segmentation / classification / pose / OBB 的 workflow/runtime 使用面" in api_readme_text
-    assert "docs/api/postman/detection-full-chain.postman_collection.json" in workflow_readme_text
-    assert "`01-*` 到 `15-*` 这些目录只覆盖 workflow/runtime 场景面" in workflow_readme_text
+    assert (
+        "12-*` 到 `15-*` 继续只表示 segmentation / classification / pose / OBB 的 workflow/runtime 使用面"
+        in api_readme_text
+    )
+    assert (
+        "docs/api/postman/detection-full-chain.postman_collection.json"
+        in workflow_readme_text
+    )
+    assert (
+        "`01-*` 到 `15-*` 这些目录只覆盖 workflow/runtime 场景面"
+        in workflow_readme_text
+    )

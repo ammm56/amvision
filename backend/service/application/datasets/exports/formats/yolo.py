@@ -5,14 +5,18 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
+from backend.contracts.datasets.exports.dota_obb_export import DotaObbAnnotationPayload
 from backend.contracts.datasets.exports.yolo_export import (
     YoloDetectionExportManifest,
     YoloExportSplit,
     YoloInstanceSegmentationExportManifest,
+    YoloObbExportManifest,
+    YoloObbExportSplit,
     YoloPoseExportManifest,
 )
 from backend.service.application.datasets.exports.formats.common import (
@@ -25,8 +29,10 @@ from backend.service.domain.datasets.dataset_version import (
     DatasetVersion,
     DetectionAnnotation,
     InstanceSegmentationAnnotation,
+    ObbAnnotation,
     PoseAnnotation,
 )
+from backend.service.domain.datasets.coordinates import PixelBox
 
 if TYPE_CHECKING:
     from backend.service.application.datasets.exports.contracts import (
@@ -61,7 +67,26 @@ class YoloExportMixin:
             )
             for split_name, samples in split_samples
         )
-        if request.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
+        if request.format_id == YOLO_OBB_DATASET_FORMAT:
+            manifest = YoloObbExportManifest(
+                format_id=request.format_id,
+                dataset_version_id=request.dataset_version_id,
+                category_names=category_names,
+                splits=tuple(
+                    YoloObbExportSplit(
+                        name=split_name,
+                        image_root=f"{export_prefix}/images/{split_name}",
+                        label_root=f"{export_prefix}/labels/{split_name}",
+                        annotation_file=(
+                            f"{export_prefix}/annotations/{split_name}.json"
+                        ),
+                        sample_count=len(samples),
+                    )
+                    for split_name, samples in split_samples
+                ),
+                metadata=metadata,
+            )
+        elif request.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
             manifest = YoloInstanceSegmentationExportManifest(
                 format_id=request.format_id,
                 dataset_version_id=request.dataset_version_id,
@@ -94,13 +119,17 @@ class YoloExportMixin:
             dataset_version=dataset_version,
             split_samples=split_samples,
         )
-        return (
-            manifest,
-            self._build_coco_detection_payloads(
+        if request.format_id == YOLO_OBB_DATASET_FORMAT:
+            annotation_payloads = self._build_dota_obb_payloads(
                 dataset_version=dataset_version,
                 split_samples=split_samples,
-            ),
-        )
+            )
+        else:
+            annotation_payloads = self._build_coco_detection_payloads(
+                dataset_version=dataset_version,
+                split_samples=split_samples,
+            )
+        return manifest, annotation_payloads
 
     def _validate_yolo_export_samples(
         self,
@@ -127,8 +156,17 @@ class YoloExportMixin:
                             "YOLO 标注引用了未定义类别: "
                             f"annotation_id={annotation.annotation_id}"
                         )
-                    if format_id == YOLO_POSE_DATASET_FORMAT:
-                        if isinstance(annotation, PoseAnnotation) and annotation.keypoints:
+                    if format_id == YOLO_OBB_DATASET_FORMAT:
+                        self._build_yolo_obb_parts(
+                            annotation=annotation,
+                            category_index=category_index,
+                            sample=sample,
+                        )
+                    elif format_id == YOLO_POSE_DATASET_FORMAT:
+                        if (
+                            isinstance(annotation, PoseAnnotation)
+                            and annotation.keypoints
+                        ):
                             current_count = len(annotation.keypoints)
                             if pose_keypoint_value_count is None:
                                 pose_keypoint_value_count = current_count
@@ -179,6 +217,17 @@ class YoloExportMixin:
                 )
             )
         }
+        if export_result.format_id == YOLO_OBB_DATASET_FORMAT:
+            for (
+                split_name,
+                payload,
+            ) in export_result.annotation_payloads_by_split.items():
+                if not isinstance(payload, DotaObbAnnotationPayload):
+                    raise ValueError("YOLO OBB 导出缺少平台训练索引")
+                self.dataset_storage.write_json(
+                    f"{export_result.export_path}/annotations/{split_name}.json",
+                    self._serialize_dota_obb_payload(payload),
+                )
         for split_name, samples in split_samples:
             exported_file_names = _build_collision_safe_image_names(
                 samples,
@@ -204,13 +253,22 @@ class YoloExportMixin:
                             f"annotation_id={annotation.annotation_id}, "
                             f"category_id={annotation.category_id}"
                         )
-                    if export_result.format_id == YOLO_POSE_DATASET_FORMAT:
+                    if export_result.format_id == YOLO_OBB_DATASET_FORMAT:
+                        parts = self._build_yolo_obb_parts(
+                            annotation=annotation,
+                            category_index=category_index,
+                            sample=sample,
+                        )
+                    elif export_result.format_id == YOLO_POSE_DATASET_FORMAT:
                         parts = self._build_yolo_pose_parts(
                             annotation=annotation,
                             category_index=category_index,
                             sample=sample,
                         )
-                    elif export_result.format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
+                    elif (
+                        export_result.format_id
+                        == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
+                    ):
                         parts = self._build_yolo_segmentation_parts(
                             annotation=annotation,
                             category_index=category_index,
@@ -238,8 +296,40 @@ class YoloExportMixin:
                     "\n".join(label_lines),
                 )
 
+    def _build_yolo_obb_parts(
+        self,
+        *,
+        annotation: object,
+        category_index: int,
+        sample: DatasetSample,
+    ) -> list[str]:
+        """构建 YOLO OBB 的 ``class x1 y1 ... x4 y4`` 归一化行。"""
+
+        if not isinstance(annotation, ObbAnnotation):
+            annotation_id = getattr(annotation, "annotation_id", "unknown")
+            raise ValueError(
+                f"YOLO OBB 导出发现非 OBB 标注: annotation_id={annotation_id}"
+            )
+        if sample.width <= 0 or sample.height <= 0:
+            raise ValueError(f"样本图片尺寸无效: sample_id={sample.sample_id}")
+        polygon = self._require_obb_polygon(annotation)
+        parts = [str(category_index)]
+        for point_index, value in enumerate(polygon):
+            limit = sample.width if point_index % 2 == 0 else sample.height
+            if value < 0 or value > limit:
+                raise ValueError(
+                    "YOLO OBB polygon 坐标超出图片范围: "
+                    f"annotation_id={annotation.annotation_id}"
+                )
+            parts.append(f"{value / limit:.6f}")
+        return parts
+
     def _build_yolo_pose_parts(
-        self, *, annotation: object, category_index: int, sample: DatasetSample,
+        self,
+        *,
+        annotation: object,
+        category_index: int,
+        sample: DatasetSample,
     ) -> list[str]:
         """构建 pose 行，禁止错误降级成 detection 行。"""
 
@@ -286,7 +376,11 @@ class YoloExportMixin:
         return parts
 
     def _build_yolo_segmentation_parts(
-        self, *, annotation: object, category_index: int, sample: DatasetSample,
+        self,
+        *,
+        annotation: object,
+        category_index: int,
+        sample: DatasetSample,
     ) -> list[str]:
         """构建 segmentation 行，拒绝无法无损表达的 RLE 和多 polygon。"""
 
@@ -303,7 +397,8 @@ class YoloExportMixin:
             )
         polygons = annotation.segmentation
         valid_polygons = [
-            polygon for polygon in (polygons or [])
+            polygon
+            for polygon in (polygons or [])
             if isinstance(polygon, list) and len(polygon) >= 6 and len(polygon) % 2 == 0
         ]
         if not polygons or len(valid_polygons) != len(polygons):
@@ -321,7 +416,9 @@ class YoloExportMixin:
             value = float(raw_value)
             if not math.isfinite(value):
                 raise ValueError("YOLO segmentation polygon 必须是有限数字")
-            normalized = value / (sample.width if point_index % 2 == 0 else sample.height)
+            normalized = value / (
+                sample.width if point_index % 2 == 0 else sample.height
+            )
             if not 0.0 <= normalized <= 1.0:
                 raise ValueError("YOLO segmentation polygon 坐标超出图片范围")
             parts.append(f"{normalized:.6f}")
@@ -338,13 +435,16 @@ class YoloExportMixin:
 
         if sample.width <= 0 or sample.height <= 0:
             raise ValueError(f"样本图片尺寸无效: sample_id={sample.sample_id}")
-        x, y, width, height = (float(value) for value in bbox_xywh)
-        if not all(math.isfinite(value) for value in (x, y, width, height)):
-            raise ValueError(f"bbox 必须是有限数字: annotation_id={annotation_id}")
-        if width <= 0 or height <= 0 or x < 0 or y < 0:
-            raise ValueError(f"bbox 尺寸或起点无效: annotation_id={annotation_id}")
-        if x + width > sample.width or y + height > sample.height:
-            raise ValueError(f"bbox 超出图片范围: annotation_id={annotation_id}")
+        try:
+            x, y, width, height = PixelBox.from_xywh(
+                tuple(float(value) for value in bbox_xywh),
+                image_width=sample.width,
+                image_height=sample.height,
+            ).to_xywh()
+        except ValueError as error:
+            raise ValueError(
+                f"bbox 尺寸或范围无效: annotation_id={annotation_id}"
+            ) from error
         return [
             f"{(x + width / 2) / sample.width:.6f}",
             f"{(y + height / 2) / sample.height:.6f}",

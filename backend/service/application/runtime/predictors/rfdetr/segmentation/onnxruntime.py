@@ -159,6 +159,7 @@ class OnnxRuntimeRfdetrSegmentationRuntimeSession:
             },
             image_height=int(image.shape[0]),
             image_width=int(image.shape[1]),
+            mask_threshold=request.mask_threshold,
         )
         instances = build_rfdetr_segmentation_instances(
             cv2_module=imports.cv2,

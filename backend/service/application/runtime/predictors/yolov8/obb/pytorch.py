@@ -138,6 +138,7 @@ class PyTorchYoloV8ObbRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.torch.from_numpy(input_tensor).unsqueeze(0).to(self.device_name)
         input_tensor = input_tensor.float()

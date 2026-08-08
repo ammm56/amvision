@@ -18,9 +18,7 @@ from backend.service.application.datasets.imports.formats.yolo.segmentation impo
     YoloSegmentationAnnotationMixin,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.datasets.imports.formats.common import (
-    _validate_bbox_within_image,
-)
+from backend.service.domain.datasets.coordinates import PixelBox
 from backend.service.domain.datasets.dataset_version import (
     DatasetAnnotation,
     DetectionAnnotation,
@@ -62,7 +60,11 @@ class YoloAnnotationParserMixin(
                     "line_index": line_index,
                 },
             ) from error
-        if not math.isfinite(numeric_value) or numeric_value < 0 or not numeric_value.is_integer():
+        if (
+            not math.isfinite(numeric_value)
+            or numeric_value < 0
+            or not numeric_value.is_integer()
+        ):
             raise InvalidRequestError(
                 "YOLO 标注类别 id 必须是非负整数",
                 details={
@@ -175,20 +177,24 @@ class YoloAnnotationParserMixin(
                     "line_index": line_index,
                 },
             )
-        bbox_width = box_width * image_width
-        bbox_height = box_height * image_height
-        bbox_xywh = (
-            (center_x - box_width / 2.0) * image_width,
-            (center_y - box_height / 2.0) * image_height,
-            bbox_width,
-            bbox_height,
-        )
-        _validate_bbox_within_image(
-            bbox_xywh,
-            image_width=image_width,
-            image_height=image_height,
-        )
-        return bbox_xywh
+        try:
+            return PixelBox.from_yolo_normalized_xywh(
+                normalized_bbox,
+                image_width=image_width,
+                image_height=image_height,
+            ).to_xywh()
+        except ValueError as error:
+            raise InvalidRequestError(
+                "YOLO bbox 超出图片范围",
+                details={
+                    "label_file": self._relative_path_from_any(
+                        label_file,
+                        dataset_root,
+                        label_file.parent,
+                    ),
+                    "line_index": line_index,
+                },
+            ) from error
 
     def _build_pixel_polygon_from_yolo_values(
         self,

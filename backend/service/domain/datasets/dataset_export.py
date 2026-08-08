@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from backend.contracts.datasets.exports.dataset_formats import DatasetExportFormatId
+from backend.contracts.datasets.dataset_formats import DatasetExportFormatId
 from backend.service.domain.datasets.dataset_version import DatasetTaskType
 
 

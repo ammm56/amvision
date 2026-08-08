@@ -117,6 +117,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         service_id: str,
         request_timeout_seconds: float,
         startup_timeout_seconds: float,
+        shutdown_timeout_seconds: float = 5.0,
         control_read_timeout_seconds: float = 2.0,
         availability_probe_timeout_seconds: float = 1.0,
         local_buffer_reader: Any | None = None,
@@ -132,6 +133,10 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         self.request_timeout_seconds = max(0.1, request_timeout_seconds)
         self.startup_timeout_seconds = max(
             self.request_timeout_seconds, startup_timeout_seconds
+        )
+        self.shutdown_timeout_seconds = max(
+            0.1,
+            shutdown_timeout_seconds,
         )
         self.control_read_timeout_seconds = max(
             0.1,
@@ -180,7 +185,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
 
         self._require_daemon_available()
         return _deserialize_status(
-            self._request("stop", config, timeout=self.control_read_timeout_seconds)
+            self._request("stop", config, timeout=self.shutdown_timeout_seconds)
         )
 
     def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
@@ -214,7 +219,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
 
         self._require_daemon_available()
         return _deserialize_health(
-            self._request("reset", config, timeout=self.control_read_timeout_seconds)
+            self._request("reset", config, timeout=self.request_timeout_seconds)
         )
 
     def run_inference(

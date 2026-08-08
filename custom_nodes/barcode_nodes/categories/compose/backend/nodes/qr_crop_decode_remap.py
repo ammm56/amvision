@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from backend.nodes.runtime_support import require_image_payload
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -35,13 +37,10 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     remapped_items: list[dict[str, object]] = []
     for crop_list_index, crop_payload in enumerate(crops_payload["items"], start=1):
         crop_bbox = _require_crop_bbox(crop_payload, crop_list_index=crop_list_index)
-        crop_request = WorkflowNodeExecutionRequest(
+        crop_request = replace(
+            request,
             node_id=f"{request.node_id}.crop-{crop_list_index}",
-            node_definition=request.node_definition,
-            parameters=dict(request.parameters),
             input_values={"image": crop_payload},
-            execution_metadata=request.execution_metadata,
-            runtime_context=request.runtime_context,
         )
         crop_results = decode_barcodes(
             crop_request,

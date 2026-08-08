@@ -51,7 +51,9 @@ def _collect_raw_urls(collection_payload: dict[str, object]) -> list[str]:
     return urls
 
 
-def _find_request(collection_payload: dict[str, object], request_name: str) -> dict[str, object]:
+def _find_request(
+    collection_payload: dict[str, object], request_name: str
+) -> dict[str, object]:
     """按名称查找指定请求。"""
 
     for item in _iter_requests(collection_payload["item"]):
@@ -92,7 +94,10 @@ def test_detection_full_chain_collection_covers_expected_stages() -> None:
     assert top_level_names == EXPECTED_TOP_LEVEL_FOLDERS
 
     description = collection_payload["info"]["description"]
-    assert "dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke" in description
+    assert (
+        "dataset import -> dataset export -> training -> validation -> evaluation -> conversion -> deployment -> infer -> workflow invoke"
+        in description
+    )
     assert "data/files/postman-assets/" in description
     assert "不纳入 git" in description
     for model_type in ["yolox", "yolov8", "yolo11", "yolo26", "rfdetr"]:
@@ -110,11 +115,19 @@ def test_detection_full_chain_collection_covers_expected_stages() -> None:
     )
     assert "{{baseUrl}}/api/v1/models/detection/deployment-instances" in urls
     assert "{{baseUrl}}/api/v1/models/detection/inference-tasks" in urls
-    assert "{{baseUrl}}/api/v1/models/detection/inference-tasks/{{inferenceTaskId}}/result" in urls
-    assert "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke" in urls
+    assert (
+        "{{baseUrl}}/api/v1/models/detection/inference-tasks/{{inferenceTaskId}}/result"
+        in urls
+    )
+    assert (
+        "{{baseUrl}}/api/v1/workflows/app-runtimes/{{workflowRuntimeId}}/invoke" in urls
+    )
 
     variables = _collect_variables(collection_payload)
-    assert variables["datasetZipPath"] == "data/files/postman-assets/detection-coco-min.zip"
+    assert (
+        variables["datasetZipPath"]
+        == "data/files/postman-assets/detection-coco-min.zip"
+    )
     assert variables["exportFormatId"] == "coco-detection-v1"
     assert variables["modelType"] == "yolo11"
     assert variables["modelScale"] == "nano"
@@ -126,28 +139,54 @@ def test_detection_full_chain_collection_covers_expected_stages() -> None:
     assert variables["runtimePrecision"] == "fp32"
     assert variables["validationInputUri"] == "__SET_BY_GET_DATASET_EXPORT_DETAIL__"
     assert len(variables["inputImageBase64"]) > 100
+    assert "gpuCount" not in variables
 
-    create_export_request = _find_request(collection_payload, "Create Detection Dataset Export")
+    create_export_request = _find_request(
+        collection_payload, "Create Detection Dataset Export"
+    )
     create_export_body = json.loads(create_export_request["body"]["raw"])
     assert create_export_body["format_id"] == "{{exportFormatId}}"
 
-    validation_request = _find_request(collection_payload, "Create Detection Validation Session")
+    training_request = _find_request(
+        collection_payload,
+        "Create Detection Training Task - Default Lightweight",
+    )
+    training_raw = training_request["body"]["raw"]
+    assert '"input_size": {' in training_raw
+    assert '"width": {{inputWidth}}' in training_raw
+    assert '"height": {{inputHeight}}' in training_raw
+    assert '"parameters": {' in training_raw
+    assert '"augmentation": {' in training_raw
+    assert '"enabled": false' in training_raw
+    assert '"gpu_count"' not in training_raw
+    assert '"extra_options"' not in training_raw
+
+    validation_request = _find_request(
+        collection_payload, "Create Detection Validation Session"
+    )
     validation_raw = validation_request["body"]["raw"]
     assert '"model_type": "{{modelType}}"' in validation_raw
     assert '"runtime_backend": "{{validationRuntimeBackend}}"' in validation_raw
 
-    conversion_request = _find_request(collection_payload, "Create Detection ONNX Conversion Task")
+    conversion_request = _find_request(
+        collection_payload, "Create Detection ONNX Conversion Task"
+    )
     conversion_raw = conversion_request["body"]["raw"]
     assert '"model_type": "{{modelType}}"' in conversion_raw
 
-    deployment_request = _find_request(collection_payload, "Create Detection Deployment Instance (ONNXRuntime)")
+    deployment_request = _find_request(
+        collection_payload, "Create Detection Deployment Instance (ONNXRuntime)"
+    )
     deployment_raw = deployment_request["body"]["raw"]
     assert '"model_type": "{{modelType}}"' in deployment_raw
 
     preview_run_request = _find_request(collection_payload, "Create Preview Run")
     preview_run_body = json.loads(preview_run_request["body"]["raw"])
     assert preview_run_body["project_id"] == "{{projectId}}"
-    assert preview_run_body["input_bindings"]["request_image_base64"]["image_base64"] == "{{inputImageBase64}}"
+    assert (
+        preview_run_body["input_bindings"]["request_image_base64"]["image_base64"]
+        == "{{inputImageBase64}}"
+    )
 
 
 def test_detection_full_chain_readmes_point_to_current_collection() -> None:

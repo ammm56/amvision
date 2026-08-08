@@ -15,7 +15,8 @@
     "prompt.text"
   ],
   "permissionScopes": [
-    "objectstore.read.ref"
+    "objectstore.read.ref",
+    "model.asset.read"
   ],
   "entrypoints": {
     "backend": "custom_nodes.sam3_segment_nodes.backend.entry:register"
@@ -25,7 +26,13 @@
     "runtime": ">=3.12"
   },
   "timeout": {
-    "defaultSeconds": 300
+    "defaultSeconds": 300,
+    "maxSeconds": 300,
+    "killGraceSeconds": 5
+  },
+  "execution": {
+    "isolation": "workflow-process",
+    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

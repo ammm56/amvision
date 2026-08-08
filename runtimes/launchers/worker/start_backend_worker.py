@@ -12,6 +12,8 @@ if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
 from common import (  # noqa: E402
+    WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE,
+    ensure_windows_long_paths_enabled,
     json_env_value,
     load_json_file,
     resolve_app_root,
@@ -65,6 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_argument_parser()
     args = parser.parse_args(argv)
     app_root = resolve_app_root(script_file=Path(__file__), explicit_app_root=args.app_root)
+    if not ensure_windows_long_paths_enabled(
+        app_root=app_root,
+        python_executable=args.python_executable,
+    ):
+        return WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE
     worker_profile = _resolve_worker_profile(app_root, args.worker_profile_file)
 
     enabled_consumer_kinds: list[str] = []

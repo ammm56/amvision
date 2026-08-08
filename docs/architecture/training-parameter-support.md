@@ -1,295 +1,160 @@
-# 训练参数支持清单
+# 训练参数协议
 
-## 文档目的
+## 目标
 
-本文档用于同步当前主干训练参数的真实支持范围，作为训练页面参数实现、后端公开接口和执行层收口的依据。
+训练创建接口使用同一套 v1 规则覆盖 detection、classification、segmentation、pose、OBB，参数按任务和模型族隔离。公开请求不接受无类型字典，不允许未知字段，也不保留旧扁平参数入口。
 
-本文档只回答三件事：
+本协议解决以下问题：
 
-- 后端公开训练接口当前接受哪些参数
-- 训练执行层当前真正使用哪些参数
-- 前端 `/models` 页面当前已经暴露了哪些参数，还有哪些还没暴露
+- 参数在 OpenAPI、前端、任务快照和 runner 之间含义一致。
+- 只公开实际被对应 runner 读取的字段。
+- 模型族之间不能互传无效参数，例如 RF-DETR 不接受 Mosaic 字段。
+- 数值在任务入队前完成有限值、范围和资源上限校验。
+- 数据增强可以整体关闭，并在任务快照中固化最终配置。
 
-## 适用范围
+## 创建请求结构
 
-- detection / classification / segmentation / pose / obb 五类训练任务
-- `yolox / yolov8 / yolo11 / yolo26 / rfdetr` 当前主干已接入的训练链
-- 训练任务创建参数，不展开数据集导出、转换、部署和推理参数
+五类训练创建接口共享以下顶层字段：
 
-## 判断口径
-
-| 标记 | 含义 |
+| 字段 | 规则 |
 | --- | --- |
-| `公开` | REST 创建训练任务接口已经显式定义并接受该参数 |
-| `执行` | 训练 service 或训练执行函数已经真正读取并使用该参数 |
-| `前端` | 当前 `/models` 页面已经提供可见输入项或选择面板 |
-| `缺口` | 后端已经支持但前端还没暴露，或者前端有输入但当前公开接口 / 执行层并没有真正生效 |
+| `project_id` | 必填 |
+| `model_type` | 必须属于当前任务支持矩阵 |
+| `dataset_export_id` / `dataset_export_manifest_key` | 由服务解析为同一个已完成 DatasetExport |
+| `recipe_id` | 非空 recipe id |
+| `model_scale` | 必须属于所选模型的 scale |
+| `output_model_name` | 必填，最大 128 字符 |
+| `warm_start_model_version_id` | 可选，由训练 service 校验任务、模型和权重兼容性 |
+| `evaluation_interval` | `1..10000`，所有任务统一为顶层字段 |
+| `max_epochs` | `1..10000` |
+| `batch_size` | `1..4096` |
+| `precision` | `fp16` 或 `fp32` |
+| `input_size` | `{"width": W, "height": H}` |
+| `parameters` | 按当前 `task_type / model_type` 解析的严格参数对象 |
+| `display_name` | 可选，最大 256 字符 |
 
-## 当前结论
+单任务不再接收 `gpu_count`。当前训练架构是一任务一设备；设备选择由 `parameters.runtime.device` 表达，多卡并发由 worker 的设备租约调度，不等于单任务 DDP。
 
-- 当前训练页面已经收成两层：
-  - 通用参数层
-  - `model_type` 高级参数层
-- `recipe_id` 仍然保留在请求里，但当前实际只有 `default` 这一套生效，前端已固定为默认值，不再单独显示输入框。
-- 前端创建训练任务时，已经按 `task_type / model_type` 组装对应的 `extra_options`，不再固定传空字典。
-- 前端当前统一显示 `验证间隔`，其中：
-  - detection / pose / obb 走顶层公开字段
-  - classification / segmentation 走 `extra_options.evaluation_interval`
-- 前端当前只在 detection 显示 `Warm start`，不再把它暴露到非 detection 任务页面。
-- detection 公开接口里的 `extra_options` 是一份合并后的公开字段说明，不同 `model_type` 真正使用的字段并不相同。
-- 当前版本训练链路统一按单进程单 GPU 或 CPU 执行；`gpu_count` 只作为 detection 公开接口的保留字段接受空值或 `1`，前端不再显示该输入，传入大于 `1` 会被拒绝。
-- `extra_options.device` 用于指定单卡训练设备，支持空值 / `auto` / `cpu` / `cuda` / `cuda:<index>`。通过 backend-worker 执行训练时，空值、`auto` 或 `cuda` 会先由 worker 分配到当前空闲的具体 `cuda:<index>`；显式传入 `cuda:<index>` 会等待并使用指定 GPU。无可用 CUDA 时 `auto` 回退到 `cpu`，显式传入越界的 `cuda:<index>` 会被拒绝，不会静默回退。
-- 训练输入尺寸的模型差异以 [模型训练输入尺寸规则](model-training-input-size-rules.md) 为准：YOLOX 可按参考实现使用 `(height, width)`，RF-DETR 使用方形 `resolution`，YOLOv8 / YOLO11 / YOLO26 训练阶段按单整数 `imgsz=N` 收口为 `N x N`。
+## 参数分组
 
-## 通用参数层现状
+`parameters` 只包含当前模型实际需要的分组：
 
-| 参数 | detection | classification | segmentation | pose | obb | 当前前端 | 说明 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `output_model_name` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 当前已自动按基础模型生成默认名 |
-| `max_epochs` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 默认值当前为 `100` |
-| `batch_size` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 默认值当前为 `1` |
-| `precision` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 当前页面默认 `fp32` |
-| `input_size` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 当前页面用宽高两个输入框表达 |
-| `display_name` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 已暴露 | 当前页面字段名已收成“训练任务名称（可选）” |
-| `recipe_id` | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 公开 + 执行 | 固定默认值 | 当前实际只有 `default` 生效，前端不再单独暴露 |
-| `evaluation_interval` | 公开 + 执行 | 执行层已有，公开接口未收 | 执行层已有，公开接口未收 | 公开 + 执行 | 公开 + 执行 | 已暴露 | classification / segmentation 当前由前端写入 `extra_options.evaluation_interval` |
-| `warm_start_model_version_id` | 公开 + 部分执行 | 未公开 | 未公开 | 未公开 | 未公开 | detection 已暴露 | 当前只在 detection 前端显示 |
-| `gpu_count` | 公开保留 | 未公开 | 未公开 | 未公开 | 未公开 | 未暴露 | 当前只接受空值或 `1`；大于 `1` 会被拒绝 |
-| `extra_options.device` | 执行 | 执行 | 执行 | 执行 | 执行 | 已暴露 | 用于选择单卡训练设备；不是多 GPU 并行训练开关 |
-
-### 单卡 GPU 选择
-
-当前训练链路支持在多 GPU 设备上指定其中一张卡执行单进程训练，也支持同一个训练 worker 进程内并发运行多个单卡训练任务；但不支持一个训练任务同时使用多张 GPU 做 DDP / DataParallel 并行训练。
-
-| 模型族 | 支持任务 | 支持写法 | 执行边界 |
-| --- | --- | --- | --- |
-| `yolox` | detection | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLOX core 自行解析并绑定单张 CUDA 设备 |
-| `rfdetr` | detection / segmentation | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | RF-DETR core 把 `cuda:<index>` 映射为 Lightning `devices=[index]` |
-| `yolov8` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLOv8 core 使用统一单卡设备解析，不静默回退显式错误设备 |
-| `yolo11` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO11 core 使用统一单卡设备解析，不静默回退显式错误设备 |
-| `yolo26` | detection / classification / segmentation / pose / obb | 空值 / `auto` / `cpu` / `cuda` / `cuda:<index>` | YOLO26 core 使用统一单卡设备解析，不静默回退显式错误设备 |
-
-前端 `/models` 页面根据 `/system/bootstrap` 返回的设备摘要动态生成训练设备选项。无 GPU 时只显示自动选择和 `cpu`；检测到 CUDA GPU 时显示 `cuda` 和真实存在的 `cuda:<index>`。API 仍会在后端校验显式设备，指定不存在的 CUDA 序号会返回错误。worker 执行时还会为 `auto` / `cuda` 建立进程内设备租约，并把训练线程的当前 CUDA device 切到实际租约设备，避免多个训练任务或临时张量默认落到 `cuda:0`。
-
-当前设备租约面向单个训练 worker 进程内的并发任务；默认 backend-service 不直接消费训练队列，发布和开发环境应使用一个 training worker 进程承载多个并发训练 slot。不要同时启动多个消费同一训练队列的 training worker 进程，否则进程之间无法共享当前进程内的 GPU 租约状态。
-
-## 当前前端页面已暴露的训练输入
-
-当前 `frontend/web-ui/src/modules/models/pages/ModelOperationsPage.vue` 已经暴露的训练输入如下：
-
-- 基础模型选择面板：用于选择 `model_type`、`model_scale`，以及 detection 当前可用的 warm start 来源版本
-- 数据集导出选择面板：用于选择 `dataset_export_id`
-- `output_model_name`
-- `max_epochs`
-- `batch_size`
-- `evaluation_interval`
-- `precision`
-- `input_width`
-- `input_height`
-- `display_name`
-- `extra_options.device` 对应的训练设备选择
-- 按 `task_type / model_type` 切换的高级训练参数
-  - segmentation / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值
-  - pose / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值、关键点置信度阈值
-  - OBB / YOLO 主线：包含验证置信度阈值、验证 NMS 阈值
-
-当前页面还没有暴露的训练输入如下：
-
-- 当前没有新增独立的 `task_type` 参数层
-- 仍未把所有训练后端字段都完全前端化
-- 当前高级参数还没有按“优化器 / 损失权重 / 评估阈值”继续分组显示
-
-## 按任务和模型整理
-
-### detection
-
-支持的 `model_type`：
-
-- `yolox`
-- `yolov8`
-- `yolo11`
-- `yolo26`
-- `rfdetr`
-
-#### detection / yolox
-
-| 项目 | 内容 |
+| 分组 | 用途 |
 | --- | --- |
-| 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`seed`、`num_workers`、`max_labels`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`mosaic_scale`、`mixup_scale`、`multiscale_range`、`ema`、`warmup_epochs`、`no_aug_epochs`、`min_lr_ratio` |
-| 当前前端已暴露 | 通用层字段 + warm start 选择 + YOLOX 高级参数面 |
-| 当前缺口 | 公开字段里常见的 `learning_rate / weight_decay` 对当前 YOLOX 执行并没有实际切换作用；高级参数当前还没有继续按能力组分块显示；多 GPU 训练当前不支持 |
+| `runtime` | 单设备选择、随机种子、DataLoader worker 和预取参数 |
+| `data` | 模型特有的样本资源上限，目前只用于 YOLOX 单图标签上限 |
+| `optimization` | optimizer、学习率、weight decay、学习率调度和梯度裁剪 |
+| `loss` | 当前任务实际开放的损失权重 |
+| `matching` | YOLO 正样本匹配或 RF-DETR Hungarian matching 参数 |
+| `evaluation` | 训练期验证阈值和最大检测数 |
+| `augmentation` | 当前任务的增强参数和总开关 |
+| `advanced` | 不属于通用优化器或增强的模型行为参数 |
 
-#### detection / yolov8、yolo11、yolo26
+公开 schema 统一设置 `additionalProperties=false`。字段拼写错误、模型族不匹配或旧扁平字段会返回 422，不会进入队列。
 
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.learning_rate`、`weight_decay`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm`、`flip_prob`、`hsv_prob`、`mosaic_prob`、`mixup_prob`、`enable_mixup`、`degrees`、`translate`、`shear`、`mosaic_scale`、`mixup_scale` |
-| 当前前端已暴露 | 通用层字段 + warm start 选择 + detection / YOLO 主线高级参数面 |
-| 当前缺口 | 多 GPU 训练当前不支持；`gpu_count` 只保留空值或 `1` |
+## 支持矩阵
 
-#### detection / rfdetr
+| 任务 | 模型 | 参数 schema |
+| --- | --- | --- |
+| detection | YOLOX | `YoloXDetectionTrainingParameters` |
+| detection | YOLOv8 / YOLO11 / YOLO26 | `YoloDetectionTrainingParameters` |
+| detection | RF-DETR | `RfdetrDetectionTrainingParameters` |
+| classification | YOLOv8 / YOLO11 / YOLO26 | `YoloClassificationTrainingParameters` |
+| segmentation | YOLOv8 / YOLO11 / YOLO26 | `YoloSegmentationTrainingParameters` |
+| segmentation | RF-DETR | `RfdetrSegmentationTrainingParameters` |
+| pose | YOLOv8 / YOLO11 / YOLO26 | `YoloPoseTrainingParameters` |
+| OBB | YOLOv8 / YOLO11 / YOLO26 | `YoloObbTrainingParameters` |
 
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`warm_start_model_version_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`gpu_count`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `warm_start_model_version_id`、resume checkpoint、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`lr_scheduler`、`grad_accum_steps`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight`、`evaluation_max_detections`、`use_ema` / `ema`、`multi_scale`、`expanded_scales` 和增强配置 |
-| 当前前端已暴露 | 通用层字段 + warm start 选择 + RF-DETR detection 高级参数面 |
-| 当前缺口 | 多 GPU 训练当前不支持；`gpu_count` 只保留空值或 `1` |
+完整机器可读目录由 `GET /api/v1/models/training-parameter-schemas` 返回。目录包含 18 个 `task_type / model_type` 组合、JSON Schema 和默认参数，供前端、SDK 和外部集成读取。
 
-### classification
+## 通用运行参数
 
-支持的 `model_type`：
+YOLO 主线支持：
 
-- `yolov8`
-- `yolo11`
-- `yolo26`
+- `device=auto | cpu | cuda | cuda:<index>`
+- `seed=0..4294967295`
+- `num_workers=0..64`
+- `prefetch_factor=1..32`
+- `pin_memory`
+- `persistent_workers`
 
-#### classification / yolov8、yolo11、yolo26
+`num_workers=0` 时禁止 `persistent_workers=true`。RF-DETR 当前只公开 `device` 和 `num_workers`；YOLOX 默认 `num_workers=0`，避免 Windows queue worker 再次 spawn 时引入不可序列化上下文。
 
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval` 和下述 classification 数据增强参数 |
-| 当前前端已暴露 | 通用层字段 + classification 高级参数面 + classification 数据增强参数面 |
-| 当前缺口 | 公开接口没有显式 `evaluation_interval` 字段；当前靠 `extra_options` 传递；warm start 仍没有 classification 公开入口 |
+## 优化器规则
 
-classification 数据增强由 YOLOv8、YOLO11 和 YOLO26 共用同一份通用协议：
+YOLOv8、YOLO11、YOLO26 支持：
 
-- `disable_augmentation`
-- `flip_prob`
+- `optimizer=auto | musgd | sgd | adamw | adam | nadam | radam | rmsprop`
+- `learning_rate`
+- `weight_decay`
+- `min_lr_ratio`
+- `grad_clip_norm`
+
+`optimizer=auto` 由 runner 根据类别数、batch 和迭代量解析，不接受伪 `learning_rate`。显式 optimizer 必须同时指定大于 0 的 `learning_rate`。
+
+YOLOX 的基础学习率和 optimizer 按 reference 实现由 batch size 解析，公开协议只提供实际生效的 `warmup_epochs`、`no_aug_epochs`、`min_lr_ratio` 和 `ema`。短训练会把未显式填写的默认 warmup/no-aug 解析成可执行值并写入任务；显式提交的不可能调度会直接拒绝。
+
+RF-DETR 支持 `learning_rate`、`weight_decay`、`lr_scheduler=step | cosine`、`min_lr_ratio` 和 `grad_accum_steps`。`min_lr_ratio` 只在 cosine 下进入执行配置，step 模式不会保存无效字段。
+
+## 数据增强隔离
+
+### YOLO detection / segmentation / pose / OBB
+
+公开字段包括水平翻转、HSV、Mosaic、MixUp、随机仿射、透视、增强缩放区间、最后关闭 Mosaic 的 epoch 数和多尺度训练。概率范围固定为 `0..1`，角度最大 180 度，缩放区间必须为有限正数且最小值不大于最大值，多尺度比例最大 0.9。
+
+`augmentation.enabled=false` 会生成确定性执行配置，Mosaic、MixUp、随机仿射、HSV、翻转和多尺度训练全部关闭。
+
+### YOLOX detection
+
+YOLOX 使用独立增强 schema，保留 reference 默认 Mosaic scale、MixUp scale 和 `multiscale_range`。它不复用 YOLO 主线的 affine/multi-scale 字段名称。
+
+### Classification
+
+classification 使用图像级增强协议：
+
+- 水平翻转
 - `crop_mode=none | random_resized_crop`
-- `crop_scale_min / crop_scale_max`
+- crop scale 区间
 - `auto_augment=none | randaugment | autoaugment | augmix`
-- `rotation_degrees / translate_ratio / scale_min / scale_max`
-- `brightness_gain / contrast_gain / gamma_min / gamma_max`
-- `hue_gain / saturation_gain / value_gain`
-- `random_erasing_prob`
+- 手工 rotation、translation、affine scale 和颜色增强
+- Random Erasing
 
-执行边界如下：
+启用 AutoAugment 策略时，手工仿射和颜色字段会被执行层忽略，因此 API 禁止同时提交非中性手工值。`enabled=false` 只保留确定性 resize/center crop/normalize。
 
-- `crop_mode=none` 表示确定性保持比例缩放和中心裁剪，不是业务 ROI。
-- classification 模型输入尺寸固定，因此 `crop_mode=none` 关闭的是随机裁剪，不代表跳过尺寸适配；中心裁剪可避免直接拉伸变形和填充边框。
-- `auto_augment` 启用时不叠加手动 rotation、translate、scale 和颜色增强。
-- `auto_augment=none` 时才执行手动仿射和颜色增强；crop 与手动仿射合并为一次重采样。
-- Random Erasing 在 Normalize 后最后执行。
-- `disable_augmentation=true` 强制关闭全部随机增强，只保留确定性输入预处理。
-- validation、test 和 runtime 不使用训练随机增强。
-- 最终解析后的增强参数写入训练指标摘要的 `augmentation` 字段，便于复查训练条件。
-- ROI 定位、业务裁剪和受保护区域不属于模型训练增强协议，由数据准备或 Workflow Node App 处理。
+### RF-DETR
 
-参数防呆范围：
+RF-DETR 不接收 YOLO 增强字段，使用：
 
-- `crop_scale_min/max`：`0.08..1`，表示随机保留的源图面积比例。
-- `rotation_degrees`：`0..180`，实际角度从 `[-value, +value]` 采样；180° 已覆盖全部方向。
-- `translate_ratio`：`0..0.5`，实际平移从 `[-value, +value]` 采样。
-- `scale_min/max`：`0.1..2`。
-- `gamma_min/max`：`0.1..5`。
-- 概率、brightness、contrast、saturation 和 value：`0..1`；hue：`0..0.5`。
-- 前端数字输入失焦时钳制到字段合法范围，提交前再次校验；后端仍执行同一范围的强校验。
+- `preset=default | conservative | aggressive | aerial | industrial`
+- `backend=cpu | auto | gpu`
+- `enabled`
 
-### segmentation
+任意自定义 `aug_config` 不属于公开 v1 协议，避免未审计任意结构绕过参数校验。
 
-支持的 `model_type`：
+## 任务差异
 
-- `yolov8`
-- `yolo11`
-- `yolo26`
-- `rfdetr`
+- YOLO detection：开放 detection loss、matching、evaluation 和完整增强。
+- YOLO segmentation：在 detection loss 基础上增加 `mask_weight`。
+- YOLO pose：增加 `keypoint_weight` 和关键点验证置信度。
+- YOLO OBB：当前 runner 的类别、box、DFL、angle 和 matching 参数仍由模型 core 固定，因此公开接口不提供这些无效字段；只开放真实生效的优化器、验证阈值和增强。
+- RF-DETR segmentation：在 RF-DETR detection loss 基础上增加 mask CE/Dice 权重。
 
-#### segmentation / yolov8、yolo11、yolo26
+## 数值和资源边界
 
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_interval`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`mask_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
-| 当前前端已暴露 | 通用层字段 + segmentation / YOLO 主线高级参数面 |
-| 当前缺口 | 公开接口没有显式 `evaluation_interval` 字段；当前靠 `extra_options` 传递；warm start 当前也没有 segmentation 公开入口 |
+- 所有 float 禁止 NaN 和正负 Infinity。
+- 学习率必须大于 0 且不大于 1。
+- weight decay 和最小学习率比例限制在 `0..1`。
+- 概率和置信度限制在 `0..1`。
+- DataLoader worker 最大 64，预取因子最大 32。
+- gradient accumulation 最大 1024。
+- 匹配 top-k 最大 1000。
+- RF-DETR 验证最大检测数限制在 `100..100000`。
+- loss/cost 权重限制在 `0..1000`。
 
-#### segmentation / rfdetr
+这些边界用于阻止长期运行中的整数无界增长、异常显存/内存放大和非有限值污染指标。模型输入尺寸的几何与对齐规则见 [模型训练输入尺寸规则](model-training-input-size-rules.md)。
 
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | resume checkpoint、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`lr_scheduler`、`grad_accum_steps`、`evaluation_interval`、`class_cost`、`bbox_cost`、`giou_cost`、`class_loss_weight`、`bbox_loss_weight`、`giou_loss_weight`、`mask_ce_weight`、`mask_dice_weight`、`evaluation_max_detections`、`use_ema` / `ema`、`multi_scale`、`expanded_scales` 和增强配置 |
-| 当前前端已暴露 | 通用层字段 + segmentation / RF-DETR 高级参数面 |
-| 当前缺口 | 公开接口仍是原始 `extra_options`，没有分割任务下按 `model_type` 区分的正式参数 schema |
+## 执行与追溯
 
-### pose
+API schema 在任务入队前完成校验。应用服务调用 `to_execution_options()`，把分组字段一次性映射为具体 runner 的配置键。runner 配置、解析后的默认值、设备租约结果、增强摘要、训练指标、验证指标、test 指标和 checkpoint 均写入任务或模型产物，用于复查和恢复训练。
 
-支持的 `model_type`：
-
-- `yolov8`
-- `yolo11`
-- `yolo26`
-
-#### pose / yolov8、yolo11、yolo26
-
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`min_lr_ratio`、`evaluation_confidence_threshold`、`evaluation_nms_threshold`、`keypoint_confidence_threshold`、`class_loss_weight`、`box_loss_weight`、`dfl_loss_weight`、`kpt_loss_weight`、`assign_topk`、`assign_alpha`、`assign_beta`、`grad_clip_norm` |
-| 当前前端已暴露 | 通用层字段 + pose 高级参数面；`evaluation_interval` 当前对 pose 是有效的 |
-| 当前缺口 | warm start 当前没有 pose 公开入口 |
-
-### obb
-
-支持的 `model_type`：
-
-- `yolov8`
-- `yolo11`
-- `yolo26`
-
-#### obb / yolov8、yolo11、yolo26
-
-| 项目 | 内容 |
-| --- | --- |
-| 后端公开参数 | `recipe_id`、`evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`display_name`、`extra_options` |
-| 执行层真正使用 | `evaluation_interval`、`max_epochs`、`batch_size`、`precision`、`input_size`、`extra_options.device`、`learning_rate`、`weight_decay`、`evaluation_confidence_threshold`、`evaluation_nms_threshold` |
-| 当前前端已暴露 | 通用层字段 + OBB 高级参数面；`evaluation_interval` 当前对 OBB 是有效的 |
-| 当前缺口 | warm start 当前没有 OBB 公开入口 |
-
-## 训练页面下一步应怎么收
-
-当前已经先收成“通用参数层 + `model_type` 高级参数层”。下一步建议继续按下面顺序收，不要再回到同一层大表单里堆零散输入框：
-
-1. 继续优化通用参数层，保持只放高频和跨任务稳定字段：
-   - `output_model_name`
-   - `max_epochs`
-   - `batch_size`
-   - `precision`
-   - `input_size`
-   - `display_name`
-   - `evaluation_interval`
-   - detection 下的 `warm_start_model_version_id`
-2. 继续优化 `model_type` 高级参数层：
-   - detection：`yolox`、`yolov8 / yolo11 / yolo26`、`rfdetr`
-   - segmentation：`yolov8 / yolo11 / yolo26`、`rfdetr`
-   - pose：`yolov8 / yolo11 / yolo26`
-   - obb：`yolov8 / yolo11 / yolo26`
-3. 把高级参数继续分成更清楚的小组，例如：
-   - 训练设备
-   - 学习率与优化器
-   - 数据增强
-   - 损失权重
-   - 匹配与后处理
-4. 后端公开接口如果后续要长期稳定对外，classification / segmentation 里的 `evaluation_interval` 最好也收成正式顶层字段，而不是长期只靠 `extra_options`。
-
-## 主要代码落点
-
-- 前端训练页面：`frontend/web-ui/src/modules/models/pages/ModelOperationsPage.vue`
-- 前端训练请求：`frontend/web-ui/src/modules/models/services/model.service.ts`
-- detection 训练公开接口：`backend/service/api/rest/v1/routes/detection_training_tasks.py`
-- classification 训练公开接口：`backend/service/api/rest/v1/routes/classification_training_tasks/router.py`
-- segmentation 训练公开接口：`backend/service/api/rest/v1/routes/segmentation_training_tasks/router.py`
-- pose 训练公开接口：`backend/service/api/rest/v1/routes/pose_training_tasks/router.py`
-- obb 训练公开接口：`backend/service/api/rest/v1/routes/obb_training_tasks/router.py`
-- YOLOX detection 训练执行入口：`backend/service/application/models/training/yolox_detection.py`
-- YOLOv8 detection 训练执行：`backend/service/application/models/yolov8_core/training/detection_execution.py`
-- RF-DETR detection 训练执行：`backend/service/application/models/training/rfdetr_detection.py`
-- YOLOv8 classification 训练执行：`backend/service/application/models/yolov8_core/training/classification_execution.py`
-- YOLOv8 segmentation 训练执行：`backend/service/application/models/yolov8_core/training/segmentation_execution.py`
-- RF-DETR segmentation 训练执行：`backend/service/application/models/training/rfdetr_segmentation.py`
-- YOLOv8 pose 训练执行：`backend/service/application/models/yolov8_core/training/pose_execution.py`
-- YOLOv8 obb 训练执行：`backend/service/application/models/yolov8_core/training/obb_execution.py`
+公开协议不直接依赖 `projectsrc/` 中的参考代码。新增模型或任务时必须先登记新的参数 schema 和支持矩阵，再实现执行映射、OpenAPI/目录测试、runner 消费测试和前端表单。

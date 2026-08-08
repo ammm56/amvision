@@ -21,6 +21,60 @@ from backend.service.domain.datasets.dataset_version import DatasetSplitName
 class DatasetImportSupportMixin:
     """提供格式 parser 共用的路径、图片和字段读取能力。"""
 
+    def _read_import_text(
+        self,
+        path: Path,
+        *,
+        file_kind: str,
+        encoding: str = "utf-8",
+    ) -> str:
+        """在分配字符串内存前校验 metadata 或 label 文件大小。"""
+
+        if file_kind == "metadata":
+            max_bytes = self.dataset_storage.settings.max_import_metadata_file_bytes
+        elif file_kind == "label":
+            max_bytes = self.dataset_storage.settings.max_import_label_file_bytes
+        else:
+            raise ValueError(f"未知的导入文本文件类型: {file_kind}")
+        file_size = path.stat().st_size
+        if file_size > max_bytes:
+            raise InvalidRequestError(
+                "数据集文本文件超过当前安全读取上限",
+                details={
+                    "file": path.name,
+                    "file_kind": file_kind,
+                    "file_size": file_size,
+                    "max_bytes": max_bytes,
+                },
+            )
+        return path.read_text(encoding=encoding)
+
+    def _require_import_capacity(
+        self,
+        *,
+        sample_count: int,
+        annotation_count: int,
+    ) -> None:
+        """限制当前内存型 DatasetVersion 构建规模，超限时明确失败。"""
+
+        settings = self.dataset_storage.settings
+        if sample_count > settings.max_import_sample_count:
+            raise InvalidRequestError(
+                "数据集样本数超过当前单版本导入上限",
+                details={
+                    "sample_count": sample_count,
+                    "max_sample_count": settings.max_import_sample_count,
+                },
+            )
+        if annotation_count > settings.max_import_annotation_count:
+            raise InvalidRequestError(
+                "数据集标注数超过当前单版本导入上限",
+                details={
+                    "annotation_count": annotation_count,
+                    "max_annotation_count": settings.max_import_annotation_count,
+                },
+            )
+
     def _resolve_requested_split(
         self,
         split_strategy: DatasetImportRequestedSplitStrategy | None,
@@ -239,9 +293,9 @@ class DatasetImportSupportMixin:
         """从字典对象中读取整数值。"""
 
         raw_value = payload.get(key)
-        if raw_value is None:
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
             raise InvalidRequestError(error_message)
-        return int(raw_value)
+        return raw_value
 
     def _read_xml_int(
         self,

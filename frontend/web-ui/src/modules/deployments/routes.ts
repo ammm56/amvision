@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import DeploymentOperationsPage from './pages/DeploymentOperationsPage.vue'
+const DeploymentOperationsPage = () => import('./pages/DeploymentOperationsPage.vue')
 
 export const deploymentRoutes: RouteRecordRaw[] = [
   {

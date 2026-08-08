@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  buildTrainingExtraOptions,
+  buildTrainingParameters,
   buildTrainingDeviceOptions,
   getDefaultTrainingModelParameterValues,
   getModelLayerTrainingFields,
@@ -115,25 +115,34 @@ describe('training parameter augmentation support', () => {
       getModelLayerTrainingFields('classification', 'yolo11').find((field) => field.key === 'learning_rate')!,
       values,
     )).toBe(true)
-    expect(buildTrainingExtraOptions('classification', 'yolo11', values)).not.toHaveProperty('learning_rate')
+    expect(buildTrainingParameters('classification', 'yolo11', values).optimization).not.toHaveProperty('learning_rate')
     values.optimizer = 'adamw'
     values.learning_rate = '0.001'
-    expect(buildTrainingExtraOptions('classification', 'yolo11', values)).toMatchObject({
-      optimizer: 'adamw',
-      learning_rate: 0.001,
+    expect(buildTrainingParameters('classification', 'yolo11', values)).toMatchObject({
+      optimization: { optimizer: 'adamw', learning_rate: 0.001 },
     })
   })
 
   it('uses explicit RF-DETR scheduler semantics', () => {
     const stepValues = defaultValues('segmentation', 'rfdetr')
-    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).toMatchObject({
-      lr_scheduler: 'step',
+    expect(buildTrainingParameters('segmentation', 'rfdetr', stepValues)).toMatchObject({
+      optimization: { lr_scheduler: 'step' },
     })
-    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).not.toHaveProperty('min_lr_ratio')
+    expect(buildTrainingParameters('segmentation', 'rfdetr', stepValues).optimization).not.toHaveProperty('min_lr_ratio')
     stepValues.lr_scheduler = 'cosine'
-    expect(buildTrainingExtraOptions('segmentation', 'rfdetr', stepValues)).toMatchObject({
-      lr_scheduler: 'cosine',
-      min_lr_ratio: 0.01,
+    expect(buildTrainingParameters('segmentation', 'rfdetr', stepValues)).toMatchObject({
+      optimization: { lr_scheduler: 'cosine', min_lr_ratio: 0.01 },
+    })
+  })
+
+  it('submits RF-DETR runtime, evaluation, accumulation and advanced groups', () => {
+    const values = defaultValues('detection', 'rfdetr')
+
+    expect(buildTrainingParameters('detection', 'rfdetr', values)).toMatchObject({
+      runtime: { num_workers: 2 },
+      optimization: { weight_decay: 0.0001, grad_accum_steps: 4 },
+      evaluation: { max_detections: 500 },
+      advanced: { use_ema: true, multi_scale: true, expanded_scales: true },
     })
   })
 
@@ -168,9 +177,8 @@ describe('training parameter augmentation support', () => {
       augmentation_backend: 'auto',
     }
 
-    expect(buildTrainingExtraOptions('detection', 'rfdetr', values)).toMatchObject({
-      rfdetr_augmentation_preset: 'industrial',
-      augmentation_backend: 'auto',
+    expect(buildTrainingParameters('detection', 'rfdetr', values)).toMatchObject({
+      augmentation: { preset: 'industrial', backend: 'auto' },
     })
   })
 
@@ -179,11 +187,11 @@ describe('training parameter augmentation support', () => {
 
     expect(fieldKeys('detection', 'yolo11')).not.toContain('device')
     expect(
-      buildTrainingExtraOptions('detection', 'yolo11', values, {
+      buildTrainingParameters('detection', 'yolo11', values, {
         device: 'cuda:1',
       }),
     ).toMatchObject({
-      device: 'cuda:1',
+      runtime: { device: 'cuda:1' },
     })
   })
 
@@ -191,11 +199,11 @@ describe('training parameter augmentation support', () => {
     const values = defaultValues('segmentation', 'rfdetr')
 
     expect(
-      buildTrainingExtraOptions('segmentation', 'rfdetr', values, {
+      buildTrainingParameters('segmentation', 'rfdetr', values, {
         augmentationEnabled: false,
       }),
     ).toMatchObject({
-      disable_augmentation: true,
+      augmentation: { enabled: false },
     })
   })
 
@@ -203,18 +211,11 @@ describe('training parameter augmentation support', () => {
     const values = defaultValues('pose', 'yolo11')
 
     expect(
-      buildTrainingExtraOptions('pose', 'yolo11', values, {
+      buildTrainingParameters('pose', 'yolo11', values, {
         augmentationEnabled: false,
       }),
     ).toMatchObject({
-      flip_prob: 0,
-      hsv_prob: 0,
-      mosaic_prob: 0,
-      mixup_prob: 0,
-      enable_mixup: false,
-      affine_prob: 0,
-      close_mosaic: 0,
-      multi_scale: 0,
+      augmentation: { enabled: false },
     })
   })
 
@@ -222,17 +223,11 @@ describe('training parameter augmentation support', () => {
     const values = defaultValues('detection', 'yolox')
 
     expect(
-      buildTrainingExtraOptions('detection', 'yolox', values, {
+      buildTrainingParameters('detection', 'yolox', values, {
         augmentationEnabled: false,
       }),
     ).toMatchObject({
-      flip_prob: 0,
-      hsv_prob: 0,
-      mosaic_prob: 0,
-      mixup_prob: 0,
-      enable_mixup: false,
-      multiscale_range: 0,
-      no_aug_epochs: 0,
+      augmentation: { enabled: false },
     })
   })
 
@@ -240,28 +235,11 @@ describe('training parameter augmentation support', () => {
     const values = defaultValues('classification', 'yolov8')
 
     expect(
-      buildTrainingExtraOptions('classification', 'yolov8', values, {
+      buildTrainingParameters('classification', 'yolov8', values, {
         augmentationEnabled: false,
       }),
     ).toMatchObject({
-      flip_prob: 0,
-      crop_mode: 'none',
-      crop_scale_min: 1,
-      crop_scale_max: 1,
-      auto_augment: 'none',
-      rotation_degrees: 0,
-      translate_ratio: 0,
-      scale_min: 1,
-      scale_max: 1,
-      brightness_gain: 0,
-      contrast_gain: 0,
-      gamma_min: 1,
-      gamma_max: 1,
-      hue_gain: 0,
-      saturation_gain: 0,
-      value_gain: 0,
-      random_erasing_prob: 0,
-      disable_augmentation: true,
+      augmentation: { enabled: false },
     })
   })
 
@@ -292,6 +270,27 @@ describe('training parameter augmentation support', () => {
     values.gamma_min = '1.2'
     values.gamma_max = '0.8'
     expect(validateTrainingModelLayerValues('classification', 'yolov8', values)).toContain('gamma')
+  })
+
+  it('keeps validating model parameters when augmentation is disabled', () => {
+    const values = defaultValues('detection', 'yolo11')
+    values.weight_decay = '2'
+
+    expect(validateTrainingModelLayerValues(
+      'detection',
+      'yolo11',
+      values,
+      { augmentationEnabled: false },
+    )).toContain('权重衰减')
+  })
+
+  it('rejects reversed YOLO augmentation ranges', () => {
+    const values = defaultValues('segmentation', 'yolo26')
+    values.mosaic_scale_min = '2'
+    values.mosaic_scale_max = '0.5'
+
+    expect(validateTrainingModelLayerValues('segmentation', 'yolo26', values))
+      .toContain('mosaic_scale')
   })
 
   it('normalizes classification numeric inputs to their safe bounds on blur', () => {

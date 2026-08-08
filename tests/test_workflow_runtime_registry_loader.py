@@ -169,6 +169,67 @@ def test_runtime_registry_loader_requires_backend_entrypoint_for_executable_cust
         runtime_registry_loader.refresh()
 
 
+def test_runtime_registry_loader_rejects_entrypoint_outside_node_pack_module(
+    tmp_path: Path,
+) -> None:
+    """验证节点包不能把 backend entrypoint 指向其他包或平台模块。"""
+
+    custom_nodes_root_dir = _create_executable_node_pack_fixture(tmp_path)
+    manifest_path = custom_nodes_root_dir / "text_basic_nodes" / "manifest.json"
+    manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_payload["entrypoints"]["backend"] = "backend.version:BACKEND_VERSION"
+    manifest_path.write_text(
+        json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+    )
+
+    with pytest.raises(ServiceConfigurationError, match="module 边界"):
+        runtime_registry_loader.refresh()
+
+
+def test_runtime_registry_loader_can_keep_custom_code_out_of_control_process(
+    tmp_path: Path,
+) -> None:
+    """验证 API 控制面模式只加载目录，不导入或注册第三方 Python 代码。"""
+
+    custom_nodes_root_dir = _create_executable_node_pack_fixture(tmp_path)
+    import_marker_path = tmp_path / "custom-entrypoint-imported.txt"
+    entrypoint_path = custom_nodes_root_dir / "text_basic_nodes" / "backend" / "entry.py"
+    original_entrypoint = entrypoint_path.read_text(encoding="utf-8")
+    entrypoint_path.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(import_marker_path)!r}).write_text('imported', encoding='utf-8')\n"
+        f"{original_entrypoint}",
+        encoding="utf-8",
+    )
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+        load_custom_node_handlers=False,
+    )
+
+    runtime_registry_loader.refresh()
+
+    assert not import_marker_path.exists()
+    runtime_registry = runtime_registry_loader.get_runtime_registry()
+    custom_definition = next(
+        item
+        for item in runtime_registry.list_node_definitions()
+        if item.node_type_id == "custom.text.normalize"
+    )
+    assert runtime_registry.has_registered_handler(node_definition=custom_definition) is False
+
+
 def test_runtime_registry_loader_registers_core_basic_nodes(
     tmp_path: Path,
 ) -> None:
@@ -3877,7 +3938,8 @@ def register(context):
             "backend": "custom_nodes.text_basic_nodes.backend.entry:register"
         },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -3987,7 +4049,8 @@ def _create_missing_entrypoint_node_pack_fixture(tmp_path: Path) -> Path:
         "capabilities": ["pipeline.node"],
         "entrypoints": {},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -4091,7 +4154,8 @@ def register(context):
             "backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"
         },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }

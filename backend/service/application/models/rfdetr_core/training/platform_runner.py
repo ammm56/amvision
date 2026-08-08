@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -51,6 +52,14 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 
+if TYPE_CHECKING:
+    from backend.service.application.models.rfdetr_core.training.platform_control import (
+        RfdetrPlatformBatchProgress,
+        RfdetrPlatformEpochProgress,
+        RfdetrPlatformTrainingControlCommand,
+        RfdetrPlatformTrainingSavePoint,
+    )
+
 
 @dataclass(frozen=True)
 class RfdetrPlatformTrainingRequest:
@@ -68,6 +77,12 @@ class RfdetrPlatformTrainingRequest:
     warm_start_checkpoint_path: Path | None = None
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
+    batch_callback: Callable[[RfdetrPlatformBatchProgress], None] | None = None
+    epoch_callback: Callable[
+        [RfdetrPlatformEpochProgress],
+        RfdetrPlatformTrainingControlCommand | None,
+    ] | None = None
+    savepoint_callback: Callable[[RfdetrPlatformTrainingSavePoint], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -168,10 +183,15 @@ def run_rfdetr_platform_training(
             )
             module = RFDETRModelModule(model_config, train_config)
             data_module = RFDETRDataModule(model_config, train_config)
+            control_callback = _build_rfdetr_platform_control_callback(
+                request=request,
+                output_dir=output_dir,
+            )
             trainer = build_trainer(
                 train_config,
                 model_config,
                 accelerator=device_selection.lightning_accelerator,
+                extra_callbacks=(control_callback,) if control_callback is not None else (),
                 num_sanity_val_steps=0,
                 enable_model_summary=False,
             )
@@ -230,6 +250,33 @@ def run_rfdetr_platform_training(
             data_module=data_module,
             trainer=trainer,
         )
+
+
+def _build_rfdetr_platform_control_callback(
+    *,
+    request: RfdetrPlatformTrainingRequest,
+    output_dir: Path,
+) -> Any | None:
+    """按需构建 Lightning 平台控制 callback，避免无回调任务增加额外 hook。"""
+
+    if (
+        request.batch_callback is None
+        and request.epoch_callback is None
+        and request.savepoint_callback is None
+    ):
+        return None
+    from backend.service.application.models.rfdetr_core.training.platform_control import (
+        build_rfdetr_platform_training_callback,
+    )
+
+    return build_rfdetr_platform_training_callback(
+        task_type=request.task_type,
+        output_dir=output_dir,
+        max_epochs=request.max_epochs,
+        batch_callback=request.batch_callback,
+        epoch_callback=request.epoch_callback,
+        savepoint_callback=request.savepoint_callback,
+    )
 
 
 def resolve_rfdetr_platform_training_input_size(

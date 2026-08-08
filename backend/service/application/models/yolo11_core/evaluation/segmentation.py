@@ -128,7 +128,7 @@ def run_yolo11_segmentation_evaluation(
         image_path = sample["image_path"]
         gt_annotations = sample.get("annotations", [])
         resolved_image_path = (
-            dataset_storage.resolve(image_path) if image_path else None
+            dataset_storage.resolve_filesystem_path(image_path) if image_path else None
         )
         if resolved_image_path is None or not resolved_image_path.is_file():
             continue
@@ -307,8 +307,8 @@ def _parse_yolo11_segmentation_manifest(
             category_names=manifest.get("category_names"),
             format_label="YOLO11 segmentation",
         )
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "YOLO11 segmentation 图片目录不存在",

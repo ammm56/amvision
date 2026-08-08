@@ -5,13 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
+from backend.contracts.datasets.dataset_formats import (
+    DatasetFormatFamily,
+    DatasetFormatTaskType,
+    IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE as REGISTERED_IMPORT_FORMATS_BY_TASK,
+)
+
 
 # 当前支持的数据集导入格式类型。
-DatasetFormatType = Literal["coco", "voc", "yolo", "imagenet", "dota"]
+DatasetFormatType = DatasetFormatFamily
 
 
 # 当前已经正式实现的数据集导入任务类型。
-DatasetImportTaskType = Literal["detection", "segmentation", "pose", "classification", "obb"]
+DatasetImportTaskType = DatasetFormatTaskType
 
 
 IMPLEMENTED_DATASET_IMPORT_TASK_TYPES: Final[tuple[DatasetImportTaskType, ...]] = (
@@ -25,13 +31,7 @@ IMPLEMENTED_DATASET_IMPORT_TASK_TYPES: Final[tuple[DatasetImportTaskType, ...]] 
 
 IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE: Final[
     dict[DatasetImportTaskType, tuple[DatasetFormatType, ...]]
-] = {
-    "detection": ("coco", "voc", "yolo"),
-    "segmentation": ("coco", "yolo"),
-    "pose": ("coco", "yolo"),
-    "classification": ("imagenet",),
-    "obb": ("dota", "yolo"),
-}
+] = dict(REGISTERED_IMPORT_FORMATS_BY_TASK)
 
 
 # 数据集导入记录的最小状态集合。
@@ -46,6 +46,8 @@ DatasetImportRequestedSplitStrategy = Literal["auto", "train", "val", "test"]
 DatasetImportResolvedSplitStrategy = Literal[
     "manifest-name",
     "image_sets",
+    "image_sets-trainval-as-train",
+    "image_sets-multi-shard",
     "directory-name",
     "default-train",
     "forced-train",

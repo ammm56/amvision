@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
@@ -64,6 +64,7 @@ def load_yolo26_pose_training_manifest(
         labels=labels,
         train_annotations=train_annotations,
         val_annotations=val_annotations,
+        test_annotations=test_annotations,
         keypoint_shape=keypoint_shape,
     )
 
@@ -202,8 +203,8 @@ def _load_pose_split_payload(
 
     if format_id == YOLO_POSE_DATASET_FORMAT:
         label_root = str(split.get("label_root", ""))
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "YOLO26 pose 训练 split 缺少图片目录",
@@ -223,7 +224,7 @@ def _load_pose_split_payload(
         )
 
     annotation_file = str(split.get("annotation_file", ""))
-    annotation_path = dataset_storage.resolve(annotation_file)
+    annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
     if not annotation_path.is_file():
         return None
     payload = dataset_storage.read_json(annotation_file)
@@ -279,7 +280,7 @@ def _build_pose_split_records(
         records.append(
             Yolo26PoseTrainingAnnotation(
                 image_path=str(
-                    dataset_storage.resolve(f"{image_root}/{file_name}")
+                    dataset_storage.resolve_filesystem_path(f"{image_root}/{file_name}")
                 ),
                 boxes_xywh=boxes,
                 class_ids=class_ids,

@@ -71,6 +71,7 @@ class YoloDatasetImportParserMixin(
         image_refs: list[str] = []
         annotation_refs: list[str] = []
         missing_label_count = 0
+        annotation_count = 0
         image_split_by_path: dict[Path, str] = {}
         label_image_by_path: dict[Path, Path] = {}
         for detected_split_name, image_entries in split_image_entries.items():
@@ -134,7 +135,10 @@ class YoloDatasetImportParserMixin(
                 raw_annotations: list[dict[str, object]] = []
                 if label_path.is_file():
                     for line_index, line in enumerate(
-                        label_path.read_text(encoding="utf-8").splitlines(),
+                        self._read_import_text(
+                            label_path,
+                            file_kind="label",
+                        ).splitlines(),
                         start=1,
                     ):
                         stripped = line.strip()
@@ -179,6 +183,11 @@ class YoloDatasetImportParserMixin(
                             )
                         observed_class_ids.add(int(annotation_row["class_id"]))
                         raw_annotations.append(annotation_row)
+                        annotation_count += 1
+                        self._require_import_capacity(
+                            sample_count=len(raw_rows) + 1,
+                            annotation_count=annotation_count,
+                        )
 
                 raw_rows.append(
                     {
@@ -190,6 +199,10 @@ class YoloDatasetImportParserMixin(
                         "source_image_ref": source_image_ref,
                         "raw_annotations": raw_annotations,
                     }
+                )
+                self._require_import_capacity(
+                    sample_count=len(raw_rows),
+                    annotation_count=annotation_count,
                 )
 
         category_name_map = self._resolve_yolo_category_name_map(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -13,6 +14,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
 
 
 def test_write_stream_rejects_oversized_package_and_removes_partial_file(
@@ -96,5 +98,23 @@ def test_extract_zip_rejects_windows_style_parent_member(tmp_path: Path) -> None
 
     with pytest.raises(InvalidRequestError, match="非法路径"):
         storage.extract_zip("imports/package.zip", "imports/extracted")
+
+
+def test_local_dataset_storage_reads_and_writes_extended_length_paths(
+    tmp_path: Path,
+) -> None:
+    """验证存储层可在超过传统 MAX_PATH 的路径上原子读写。"""
+
+    storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "root")))
+    nested_parts = tuple(f"segment-{index}-{'x' * 40}" for index in range(6))
+    object_key = "/".join((*nested_parts, "payload.json"))
+    target_path = storage.resolve(object_key)
+    if os.name == "nt":
+        assert len(str(target_path)) > 260
+
+    storage.write_json(object_key, {"status": "ok"})
+
+    assert storage.read_json(object_key) == {"status": "ok"}
+    assert to_filesystem_path(target_path).is_file()
 
     assert not storage.resolve("imports/escape.txt").exists()

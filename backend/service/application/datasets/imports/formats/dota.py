@@ -55,6 +55,7 @@ class DotaDatasetImportParserMixin:
         raw_rows: list[dict[str, object]] = []
         image_refs: list[str] = []
         annotation_refs: list[str] = []
+        annotation_count = 0
         for detected_split_name in split_names:
             sample_split = forced_split or detected_split_name
             current_image_dir = image_root / detected_split_name
@@ -80,7 +81,10 @@ class DotaDatasetImportParserMixin:
                 raw_annotations: list[dict[str, object]] = []
                 if label_path.is_file():
                     for line_index, line in enumerate(
-                        label_path.read_text(encoding="utf-8").splitlines(),
+                        self._read_import_text(
+                            label_path,
+                            file_kind="label",
+                        ).splitlines(),
                         start=1,
                     ):
                         stripped = line.strip()
@@ -89,9 +93,9 @@ class DotaDatasetImportParserMixin:
                         if self._is_dota_metadata_line(stripped):
                             continue
                         parts = stripped.split()
-                        if len(parts) < 9:
+                        if len(parts) not in {9, 10}:
                             raise InvalidRequestError(
-                                "DOTA 标注行至少需要 9 列",
+                                "DOTA 标注行必须是 9 列或包含 difficult 的 10 列",
                                 details={
                                     "label_file": self._relative_path(dataset_root, label_path),
                                     "line_index": line_index,
@@ -116,6 +120,13 @@ class DotaDatasetImportParserMixin:
                             allow_edge_coordinates=False,
                         )
                         source_class_name = parts[8]
+                        if not source_class_name or any(
+                            character.isspace() for character in source_class_name
+                        ):
+                            raise InvalidRequestError(
+                                "DOTA 类别名称不能为空或包含空白字符",
+                                details={"line_index": line_index},
+                            )
                         difficult = 0
                         if len(parts) >= 10:
                             try:
@@ -144,6 +155,11 @@ class DotaDatasetImportParserMixin:
                                 "difficult": difficult,
                             }
                         )
+                        annotation_count += 1
+                        self._require_import_capacity(
+                            sample_count=len(raw_rows) + 1,
+                            annotation_count=annotation_count,
+                        )
 
                 raw_rows.append(
                     {
@@ -156,6 +172,28 @@ class DotaDatasetImportParserMixin:
                         "raw_annotations": raw_annotations,
                     }
                 )
+                self._require_import_capacity(
+                    sample_count=len(raw_rows),
+                    annotation_count=annotation_count,
+                )
+
+        mapped_source_names: dict[str, set[str]] = {}
+        for sample_row in raw_rows:
+            for annotation_row in sample_row["raw_annotations"]:
+                mapped_source_names.setdefault(
+                    str(annotation_row["class_name"]),
+                    set(),
+                ).add(str(annotation_row["source_class_name"]))
+        collisions = {
+            mapped_name: sorted(source_names)
+            for mapped_name, source_names in mapped_source_names.items()
+            if len(source_names) > 1
+        }
+        if collisions:
+            raise InvalidRequestError(
+                "DOTA 类别映射后名称必须唯一",
+                details={"collisions": collisions},
+            )
 
         categories = tuple(
             DatasetCategory(category_id=category_index, name=category_name)

@@ -1579,6 +1579,7 @@
       "description": "对输入灰度图执行 adaptive threshold，适合光照不均或背景变化明显的二值化场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1659,6 +1660,7 @@
       "description": "使用单通道 mask 保留输入图片前景，背景置零。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1722,6 +1724,7 @@
       "description": "对输入图片执行双边滤波，在平滑噪声的同时尽量保留边缘，适合纹理较弱但轮廓边界仍需保真的场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1844,6 +1847,7 @@
       "description": "把输入图片转为灰度后执行二值化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1908,6 +1912,7 @@
       "description": "执行可配置宽高的归一化或非归一化方框滤波。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1976,6 +1981,7 @@
       "description": "按 dst = src × alpha + beta 调整亮度与对比度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2041,6 +2047,7 @@
       "description": "对输入图片执行 Canny 边缘检测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2177,6 +2184,7 @@
       "description": "把三个或四个同尺寸单通道输入合并成一张图片。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2258,6 +2266,7 @@
       "description": "按零起始通道序号提取单个通道。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2318,6 +2327,7 @@
       "description": "把输入图片拆成最多四个独立的单通道图片。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2395,6 +2405,7 @@
       "description": "对输入图片执行 CLAHE 局部对比度增强，适合光照不稳、局部对比不足或表面纹理偏弱的工业图像预处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2464,6 +2475,7 @@
       "description": "在 BGR、RGB、Gray、HSV、HLS、Lab、YCrCb、XYZ、Luv 和 BGRA 之间执行显式颜色空间转换。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2542,6 +2554,7 @@
       "description": "在指定颜色空间按各通道上下界执行 inRange，输出二值 mask。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2635,6 +2648,7 @@
       "description": "按输入 roi.v1 裁剪图片，并输出裁剪摘要。ROI 应由 ROI Create、ROI Grid Create 或 ROI From Contour 等节点创建。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2723,6 +2737,7 @@
       "description": "把 image 和 detections 或 roi-list.v1 裁成 image-refs.v1 图片集合。常见接法：原图接 image，检测结果接 detections，或 ROI Grid Create.rois 接 rois，输出 crops 可继续接 Gallery Preview.images、Get Image Ref.images 或 QR Crop Decode Remap.crops。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2911,6 +2926,7 @@
       "description": "使用用户提供的二维卷积核执行通用 filter2D。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2995,6 +3011,7 @@
       "description": "使用 Gabor 核增强指定方向和空间频率的纹理响应。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3077,6 +3094,7 @@
       "description": "把 image-refs.v1 图片集合转换成可直接进入 HTTP 响应的 gallery body。最常见接法是直接连接 crop-export.crops，先快速检查每张裁剪图是否正确。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3147,6 +3165,7 @@
       "description": "使用 8-bit LUT 调整非线性亮度响应。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3206,6 +3225,7 @@
       "description": "对输入图片执行高斯模糊。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3268,6 +3288,7 @@
       "description": "把输入图片转为灰度图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3322,6 +3343,7 @@
       "description": "计算整图或搜索 ROI 的逐通道直方图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3400,6 +3422,7 @@
       "description": "执行全局直方图均衡化，彩色图片默认只处理亮度通道。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3458,6 +3481,7 @@
       "description": "对两张同形状图片执行加、减、乘、除、绝对差或加权叠加。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3545,6 +3569,7 @@
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 empty / non-empty 判断，适合批量槽位空槽检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3706,6 +3731,7 @@
       "description": "消费 Image Refs Slot Metrics.summary，并按多指标规则输出 occupied / empty 判断，适合批量槽位有料检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -3861,6 +3887,7 @@
       "description": "对 image-refs.v1 图片集合逐张计算灰度、暗像素、边缘和暗连通域指标，作为空槽、有料和统计判断的基础节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4007,6 +4034,7 @@
       "description": "对 image-refs.v1 图片集合逐张计算灰度、亮暗比例和边缘密度，并可按配置输出 empty / non-empty 判断，适合批量 ROI 裁剪后的槽位复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4137,6 +4165,7 @@
       "description": "对输入图片执行按位反相，适合把暗前景/亮背景切换成后续阈值或轮廓流程更稳定的方向。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4191,6 +4220,7 @@
       "description": "对输入图片执行二阶 Laplacian 边缘增强，适合在缺口、毛刺和细小轮廓前处理时强化边界变化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4278,6 +4308,7 @@
       "description": "对一个或两个 mask 执行 AND、OR、XOR 或 NOT 运算。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4351,6 +4382,7 @@
       "description": "对输入图片执行中值滤波，适合去除椒盐噪声、小颗粒噪声和零散脏点，同时尽量保留边缘结构。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4411,6 +4443,7 @@
       "description": "对输入图片执行 morphology 操作。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4493,6 +4526,7 @@
       "description": "对输入图片执行 min-max 强度归一化，适合把不同亮度区间先规整到稳定范围，再进入阈值、差异和轮廓流程。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4559,6 +4593,7 @@
       "description": "对输入灰度图执行 Otsu 自动阈值分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4625,6 +4660,7 @@
       "description": "把 OpenCV 几何、匹配和区域类结构化结果包装成 value.v1，供 object-create、response-envelope 和 value-preview 继续组合或预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4879,6 +4915,7 @@
       "description": "按目标宽高缩放输入图片；当仅提供一个边时按原始比例推导另一边。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -4951,6 +4988,7 @@
       "description": "计算整图或 ROI 各通道的均值、标准差、极值与常用百分位数。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5017,6 +5055,7 @@
       "description": "计算 Scharr x、y 方向梯度或梯度幅值。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5088,6 +5127,7 @@
       "description": "合并批量空槽检查和批量有料检查结果，按比例阈值输出 empty-tray、full-tray 或 partial-or-abnormal 状态。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5188,6 +5228,7 @@
       "description": "对输入图片执行一阶 Sobel 边缘增强，适合在轮廓、边线和缺陷显著化前先强化方向性边缘。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5284,6 +5325,7 @@
       "description": "从同尺寸棋盘格图片或结构化标定观测估计针孔相机内参、畸变系数和逐视图重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5372,6 +5414,7 @@
       "description": "检测棋盘格内角点并输出包含 3D-2D 对应关系的标定观测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5442,6 +5485,7 @@
       "description": "检测对称或非对称圆点阵并输出带物理坐标的标定观测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5517,6 +5561,7 @@
       "description": "依据灰度梯度对二维角点执行亚像素细化。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5598,6 +5643,7 @@
       "description": "从棋盘格图片或结构化标定观测估计 OpenCV fisheye 相机内参和四项畸变系数。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5679,6 +5725,7 @@
       "description": "由机器人夹具到基座和标定目标到相机的位姿序列估计相机到夹具外参。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5751,6 +5798,7 @@
       "description": "依据针孔或 fisheye 标定参数和位姿将三维点投影到图像平面。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5820,6 +5868,7 @@
       "description": "根据标定观测和相机内参估计物体位姿，并返回重投影误差。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5891,6 +5940,7 @@
       "description": "依据针孔或 fisheye 标定参数矫正二维图像点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -5956,6 +6006,7 @@
       "description": "把差分图通过阈值化收成前景变化区域二值图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6037,6 +6088,7 @@
       "description": "删除与图像边界相接的二值连通域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6101,6 +6153,7 @@
       "description": "把二值前景图分解成连通区域，并输出标准 regions.v1 与摘要。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6213,6 +6266,7 @@
       "description": "对二值前景执行距离变换，并输出灰度预览图和距离摘要，适合胶线厚度趋势、孔腔中心性或骨架前置分析。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6319,6 +6373,7 @@
       "description": "填充白色前景内部孔洞，适合胶线、涂布、闭合区域和空腔缺口的前置规整。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6389,6 +6444,7 @@
       "description": "从种子点按颜色差容差提取连通区域 mask。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6487,6 +6543,7 @@
       "description": "使用矩形或可选初始 mask 执行交互式前景分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6590,6 +6647,7 @@
       "description": "把差异图、距离图或边缘强度图映射为伪彩色热力图，支持可选底图叠加，适合现场调试异常强度分布。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6690,6 +6748,7 @@
       "description": "对当前图片和参考图片执行绝对差分，生成差异图和差异摘要。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6770,6 +6829,7 @@
       "description": "按 BGR 颜色向量执行像素 K-Means 聚类分割。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6855,6 +6915,7 @@
       "description": "使用包含 -1、0、1 的结构元素在二值图中搜索像素模式。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -6950,6 +7011,7 @@
       "description": "计算二值区域 A 减区域 B。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7023,6 +7085,7 @@
       "description": "计算两个同尺寸二值区域的交集。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7096,6 +7159,7 @@
       "description": "计算两个同尺寸二值区域的并集。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7169,6 +7233,7 @@
       "description": "按像素面积删除小型二值连通域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7246,6 +7311,7 @@
       "description": "把二值前景规整成近似单像素骨架，适合细线、焊缝、胶线中心线和跨度趋势分析。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7320,6 +7386,7 @@
       "description": "把粘连前景通过 watershed 拆成带边界隔离的二值结果，适合相邻颗粒、连在一起的缺陷块或胶点分离前处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7425,6 +7492,7 @@
       "description": "使用显式 marker label 图执行 watershed 并输出区域 mask 与边界。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7507,6 +7575,7 @@
       "description": "按 2x3 仿射矩阵或三对点关系对图片执行几何矫正，支持直接读取上游 value.v1 变换对象，适合平移、缩放、轻微旋转或剪切对位。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7687,6 +7756,7 @@
       "description": "沿水平、垂直或双轴翻转图像。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7751,6 +7821,7 @@
       "description": "围绕浮点中心坐标提取指定尺寸的亚像素矩形 patch。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7822,6 +7893,7 @@
       "description": "按角度、法向距离和线段投影重叠关系过滤重复直线；保持输入顺序并默认最多输出 10 条。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7900,6 +7972,7 @@
       "description": "按显式 line index 计算两个 lines.v1 输入的无限直线交点；平行、近似平行或来源不一致时快速失败。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -7980,6 +8053,7 @@
       "description": "按 constant、replicate、reflect 或 wrap 策略扩展图像边界。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8079,6 +8153,7 @@
       "description": "按四点透视关系把输入图片矫正为规则矩形输出，支持直接使用 roi.v1 或固定 source_points，适合治具面矫正、标签拍扁和视角收正。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8226,6 +8301,7 @@
       "description": "把 structured planar-transform.v1 显式桥接为图片 warp 和 ROI 投影输出，适合把 ORB/homography 结果继续接到参考帧校正、后续量测或 ROI 对位链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8372,6 +8448,7 @@
       "description": "从显式连接的 TL、TR、BR、BL 四个 circles.v1 输入构建凸四边形 ROI；不猜测角点语义。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8539,6 +8616,7 @@
       "description": "从显式连接的 Top、Right、Bottom、Left lines.v1 输入构建凸四边形 ROI；不猜测边线语义。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8687,6 +8765,7 @@
       "description": "按显式映射表执行像素级重映射，支持 map_xy 或 map_x/map_y，适合配合本地标定映射文件做展开、对位和固定几何校正。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8825,6 +8904,7 @@
       "description": "按给定角度或上游 value.v1 输入对图片做旋转矫正，并输出摘要，适合先把工件姿态收正再进入后续 ROI、量测和规则链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -8964,6 +9044,7 @@
       "description": "交换图像行列轴。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9019,6 +9100,7 @@
       "description": "按相机标定参数执行镜头畸变矫正，支持参数默认值或 value.v1 动态配置对象，适合先把桶形/枕形畸变收正再进入定位和量测链。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9215,6 +9297,7 @@
       "description": "执行线性或对数极坐标变换，适用于圆形标签、密封圈、瓶盖和环形焊缝展开。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9300,6 +9383,7 @@
       "description": "提取非线性尺度空间 AKAZE 关键点和 MLDB 二进制描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9376,6 +9460,7 @@
       "description": "提取快速多尺度 BRISK 关键点和二进制描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9452,6 +9537,7 @@
       "description": "通过最大化增强相关系数估计平移、欧氏、仿射或单应变换，并输出对齐图。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9549,6 +9635,7 @@
       "description": "使用 FAST 检测高吞吐角点并按响应值截取结果。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9616,6 +9703,7 @@
       "description": "使用 KD-Tree 或 LSH 对 float32 或 binary 局部描述子执行近邻匹配。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9697,6 +9785,7 @@
       "description": "使用 Shi-Tomasi 或 Harris 响应提取适合跟踪的强角点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9774,6 +9863,7 @@
       "description": "根据局部特征匹配估计平面 homography 变换，并输出结构化 planar-transform.v1，适合复杂对位、参考板注册和视角有一定变化的单帧场景。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -9977,6 +10067,7 @@
       "description": "使用 LSD 检测亚像素直线段并输出长度和角度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10054,6 +10145,7 @@
       "description": "在尺度金字塔中搜索模板，并以 regions.v1 返回经过 NMS 的匹配结果。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10180,6 +10272,7 @@
       "description": "对输入图片提取 ORB 局部特征点与二进制描述，适合在模板匹配不稳、存在旋转缩放或局部视角变化时做参考对位前处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10345,6 +10438,7 @@
       "description": "对两组 ORB 描述执行暴力匹配与过滤，并输出显式 feature-matches.v1，便于人工查看匹配密度、距离分布和误匹配情况。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10520,6 +10614,7 @@
       "description": "使用频域相位相关估计两张同尺寸图片间的亚像素平移。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10584,6 +10679,7 @@
       "description": "在角度与尺度网格中搜索模板，并输出角度、尺度和匹配区域。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10723,6 +10819,7 @@
       "description": "提取具备尺度和旋转不变性的 SIFT 关键点与 float32 描述子。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10809,6 +10906,7 @@
       "description": "在输入图片中按模板匹配搜索重复结构位置，并输出标准 regions.v1 与摘要，适合基准定位、标签找位和治具 presence 检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -10976,6 +11074,7 @@
       "description": "在轴向 ROI 或任意方向 Caliper 内搜索一个或多个边缘，支持极性、NMS 和亚像素位置。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11137,6 +11236,7 @@
       "description": "读取选中圆的直径、半径、面积或周长，适合孔径、圆形工件和圆斑量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11220,6 +11320,7 @@
       "description": "计算两圆之间的中心偏移和半径差，适合同心孔、轴套和圆环装配检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11316,6 +11417,7 @@
       "description": "读取选中直线的方向角或相对参考角度的偏差，适合做角度姿态和装配方向量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11401,6 +11503,7 @@
       "description": "对 contour 集合执行面积、周长与包围框度量。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11469,6 +11572,7 @@
       "description": "计算两条直线的角度差和相对偏移，适合导轨、边线和平行边装配检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11565,6 +11669,7 @@
       "description": "计算两点之间的欧氏距离、曼哈顿距离和坐标差，适合中心距、孔距和装配偏移量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11644,6 +11749,7 @@
       "description": "读取单个点到选中直线的距离，适合做中心点偏移、边缘偏移和装配位置量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11734,6 +11840,7 @@
       "description": "计算两条边线之间的槽宽，适合卡槽、导轨间隙和双边距量测。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11830,6 +11937,7 @@
       "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -11925,6 +12033,7 @@
       "description": "通过 OpenCV 把 contours.v1 结果绘制到图片上，适合轮廓调试和规则依据复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12007,6 +12116,7 @@
       "description": "通过 OpenCV 把 detection 结果绘制到图片上。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12168,6 +12278,7 @@
       "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12263,6 +12374,7 @@
       "description": "通过 OpenCV 把通用量测 summary 绘制到图片上，适合距离、偏移、槽宽和同心度依据复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12346,6 +12458,7 @@
       "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上，适合模板匹配、分割和缺陷区域复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12443,6 +12556,7 @@
       "description": "通过 OpenCV 把 roi.v1 直接绘制回原图，适合现场复核换型区域、检测范围和工位边界。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12531,6 +12645,7 @@
       "description": "把 roi-list.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12625,6 +12740,7 @@
       "description": "围绕参考圆径向采样亚像素边缘，使用 robust circle fitting 输出稳定圆定位和质量诊断。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -12842,6 +12958,7 @@
       "description": "对输入图片提取 contour，并输出结构化 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13069,6 +13186,7 @@
       "description": "对 contour 集合执行多边形近似，适合把毛刺边界先规整成更稳定的工艺轮廓或多边形骨架。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13183,6 +13301,7 @@
       "description": "按面积、宽高、点数和排序规则筛选 contour 集合。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13378,6 +13497,7 @@
       "description": "把 contours.v1 规整成标准 regions.v1，便于继续接工业规则和 ROI/连续性节点。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13465,6 +13585,7 @@
       "description": "对 contour 集合计算凸包，适合先把凹陷、缺角或局部锯齿规整成更稳定的外形包络。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13576,6 +13697,7 @@
       "description": "计算每个轮廓相对凸包的凹陷位置和深度。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13626,6 +13748,7 @@
       "description": "对 contour 集合执行椭圆拟合，并输出结构化 ellipses.v1，适合孔位、椭圆件、压装位和圆孔变形检查。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13743,6 +13866,7 @@
       "description": "对 contour 集合执行拟合直线，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -13873,6 +13997,7 @@
       "description": "在 Search ROI 内执行位置无关的工业圆搜索；Reference Circle 只定义目标半径，不固定圆心，并使用径向边缘、robust fitting 和质量门槛过滤伪圆。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14217,6 +14342,7 @@
       "description": "对输入图片执行概率 Hough 直线检测，并输出结构化 lines.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14434,6 +14560,7 @@
       "description": "计算七个 Hu 不变矩，默认输出便于比较的有符号对数值。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14489,6 +14616,7 @@
       "description": "计算轮廓的空间矩、中心矩、归一化中心矩和质心。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14539,6 +14667,7 @@
       "description": "对 contour 集合计算最小外接旋转矩形，并输出结构化 rotated-rects.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14660,6 +14789,7 @@
       "description": "对 contour 集合计算最小外接圆，并输出结构化 circles.v1。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14776,6 +14906,7 @@
       "description": "判断一个或多个点位于指定轮廓内部、边界还是外部，并可输出有符号距离。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14855,6 +14986,7 @@
       "description": "计算面积、周长、质心、方向、长短轴、偏心率、圆度、实心度和外接率等区域特征。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -14905,6 +15037,7 @@
       "description": "使用 Hu 矩比较两个 contour 集合中的指定轮廓，分数越低越相似。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

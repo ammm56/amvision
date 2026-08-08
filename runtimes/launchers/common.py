@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 
+WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE = 78
+
+
 def resolve_app_root(
     *,
     script_file: Path,
@@ -47,6 +50,51 @@ def resolve_path(app_root: Path, path_value: str) -> Path:
     if candidate.is_absolute():
         return candidate.resolve()
     return (app_root / candidate).resolve()
+
+
+def ensure_windows_long_paths_enabled(
+    *,
+    app_root: Path,
+    python_executable: str | None = None,
+) -> bool:
+    """在 Windows 发行包首次启动时检查并提权启用长路径。"""
+
+    if os.name != "nt" or not (app_root / "manifests" / "release-profiles").is_dir():
+        return True
+    import winreg
+
+    registry_path = r"SYSTEM\CurrentControlSet\Control\FileSystem"
+    access = winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0)
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            registry_path,
+            0,
+            access,
+        ) as registry_key:
+            value, value_type = winreg.QueryValueEx(registry_key, "LongPathsEnabled")
+        if value_type == winreg.REG_DWORD and int(value) == 1:
+            return True
+    except FileNotFoundError:
+        pass
+
+    script_candidates = (
+        app_root / "launchers" / "enable_windows_long_paths.py",
+        app_root / "runtimes" / "launchers" / "enable_windows_long_paths.py",
+    )
+    script_path = next((path for path in script_candidates if path.is_file()), None)
+    if script_path is None:
+        raise FileNotFoundError("发行包缺少 enable_windows_long_paths.py")
+    resolved_python = python_executable or str(app_root / "python" / "python.exe")
+    completed = subprocess.run(
+        [resolved_python, str(script_path)],
+        cwd=str(app_root),
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("Windows 长路径启用失败或 UAC 授权被取消")
+    print("Windows 长路径已启用；请重新启动 amvision 使系统策略对所有进程生效。")
+    return False
 
 
 def load_json_file(app_root: Path, path_value: str) -> dict[str, object]:

@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
-    SUPPORTED_DATASET_EXPORT_FORMATS,
 )
 from backend.service.application.datasets.exports.contracts import (
     DatasetExportRequest,
@@ -74,12 +73,8 @@ class SqlAlchemyDatasetExporter(
             raise ValueError("请求中的 project_id 与 DatasetVersion 不一致")
         if dataset_version.dataset_id != request.dataset_id:
             raise ValueError("请求中的 dataset_id 与 DatasetVersion 不一致")
-        if request.format_id not in SUPPORTED_DATASET_EXPORT_FORMATS:
-            raise ValueError(f"未知的导出格式: {request.format_id}")
         if request.format_id not in IMPLEMENTED_DATASET_EXPORT_FORMATS:
-            raise NotImplementedError(
-                f"当前最小实现只落了 {IMPLEMENTED_DATASET_EXPORT_FORMATS}，其他格式已在支持列表中预留"
-            )
+            raise ValueError(f"未知的导出格式: {request.format_id}")
         if not _dataset_export_format_matches_task_type(
             format_id=request.format_id,
             task_type=dataset_version.task_type,

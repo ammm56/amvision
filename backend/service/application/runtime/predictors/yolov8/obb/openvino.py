@@ -165,6 +165,7 @@ class OpenVINOYoloV8ObbRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             self.imports.np.float32,

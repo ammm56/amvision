@@ -62,8 +62,13 @@ class YoloScannerMixin:
                 candidate_name,
                 default="train",
             )
-            expected_label_root = labels_root / normalized_split_name
-            if normalized_split_name != "test" and not expected_label_root.is_dir():
+            expected_label_roots = {
+                labels_root / candidate_name,
+                labels_root / normalized_split_name,
+            }
+            if normalized_split_name != "test" and not any(
+                label_root.is_dir() for label_root in expected_label_roots
+            ):
                 continue
             image_paths = tuple(
                 (candidate_root, image_path)
@@ -78,6 +83,11 @@ class YoloScannerMixin:
             )
             if not image_paths:
                 continue
+            if normalized_split_name in split_entries:
+                raise InvalidRequestError(
+                    "YOLO 数据集同时存在多个归一化后相同的 split 目录",
+                    details={"split_name": normalized_split_name},
+                )
             split_entries[normalized_split_name] = image_paths
 
         if split_entries:
@@ -203,7 +213,10 @@ class YoloScannerMixin:
         """读取 YOLO txt 图片列表文件。"""
 
         image_paths: list[Path] = []
-        for line in list_file_path.read_text(encoding="utf-8").splitlines():
+        for line in self._read_import_text(
+            list_file_path,
+            file_kind="metadata",
+        ).splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
@@ -321,7 +334,9 @@ class YoloScannerMixin:
 
         for yaml_path in self._collect_yolo_yaml_paths(dataset_root):
             try:
-                raw_payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                raw_payload = yaml.safe_load(
+                    self._read_import_text(yaml_path, file_kind="metadata")
+                )
             except yaml.YAMLError:
                 continue
             if isinstance(raw_payload, dict) and self._looks_like_yolo_config_payload(
@@ -332,7 +347,9 @@ class YoloScannerMixin:
         manifest_path = dataset_root / "manifest.json"
         if manifest_path.is_file():
             try:
-                manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest_payload = json.loads(
+                    self._read_import_text(manifest_path, file_kind="metadata")
+                )
             except json.JSONDecodeError:
                 manifest_payload = None
             if isinstance(manifest_payload, dict) and str(

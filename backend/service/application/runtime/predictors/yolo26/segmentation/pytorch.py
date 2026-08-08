@@ -146,6 +146,7 @@ class PyTorchYolo26SegmentationRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_tensor = (
             self.imports.torch.from_numpy(input_tensor)
@@ -205,11 +206,15 @@ class PyTorchYolo26SegmentationRuntimeSession:
             instances=instances,
             save_result_image=request.save_result_image,
         )
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
 
         return Yolo26SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
             preview_image_bytes=preview_image_bytes,
+            image_width=image_width,
+            image_height=image_height,
             runtime_session_info=Yolo26SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,

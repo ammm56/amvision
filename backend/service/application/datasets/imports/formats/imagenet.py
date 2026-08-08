@@ -46,6 +46,7 @@ class ImageNetDatasetImportParserMixin:
         source_classes_by_split: dict[str, set[str]] = {}
         raw_rows: list[dict[str, object]] = []
         image_refs: list[str] = []
+        source_name_by_mapped_name: dict[str, str] = {}
         for split_name, split_dir in split_dirs.items():
             current_source_classes: set[str] = set()
             for class_dir in sorted(
@@ -60,6 +61,19 @@ class ImageNetDatasetImportParserMixin:
                     source_class_name,
                 )
                 self._validate_class_directory_name(mapped_class_name)
+                previous_source_name = source_name_by_mapped_name.get(mapped_class_name)
+                if (
+                    previous_source_name is not None
+                    and previous_source_name != source_class_name
+                ):
+                    raise InvalidRequestError(
+                        "ImageNet 类别映射后名称必须唯一",
+                        details={
+                            "mapped_name": mapped_class_name,
+                            "source_classes": [previous_source_name, source_class_name],
+                        },
+                    )
+                source_name_by_mapped_name[mapped_class_name] = source_class_name
                 if mapped_class_name not in source_class_names:
                     source_class_names.append(mapped_class_name)
                 for image_path in sorted(
@@ -79,6 +93,10 @@ class ImageNetDatasetImportParserMixin:
                             "source_image_path": image_path,
                             "source_image_ref": self._relative_path(dataset_root, image_path),
                         }
+                    )
+                    self._require_import_capacity(
+                        sample_count=len(raw_rows),
+                        annotation_count=len(raw_rows),
                     )
             source_classes_by_split[str(forced_split or split_name)] = current_source_classes
 

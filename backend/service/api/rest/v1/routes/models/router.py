@@ -14,6 +14,8 @@ from backend.service.api.rest.v1.routes.models.schemas import (
     DeploymentRuntimeCapabilitiesResponse,
     PlatformBaseModelDetailResponse,
     PlatformBaseModelSummaryResponse,
+    TrainingParameterSchemaCatalogResponse,
+    TrainingParameterSchemaItemResponse,
 )
 from backend.service.api.rest.v1.routes.models.services import (
     get_deployment_source_model_detail_response,
@@ -25,9 +27,48 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.application.runtime.deployment.runtime_capabilities import (
     inspect_deployment_runtime_capabilities,
 )
+from backend.service.api.rest.v1.routes.training_parameter_schemas import (
+    TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL,
+)
 
 
 models_router = APIRouter(prefix="/models", tags=["models"])
+
+
+@models_router.get(
+    "/training-parameter-schemas",
+    response_model=TrainingParameterSchemaCatalogResponse,
+)
+def list_training_parameter_schemas(
+    principal: Annotated[
+        AuthenticatedPrincipal, Depends(require_scopes("models:read"))
+    ],
+    task_type: Annotated[str | None, Query(description="任务类型筛选")] = None,
+    model_type: Annotated[str | None, Query(description="模型类型筛选")] = None,
+) -> TrainingParameterSchemaCatalogResponse:
+    """返回前端表单和 SDK 共用的严格训练参数协议。"""
+
+    _ = principal
+    normalized_task = str(task_type).strip().lower() if task_type else None
+    normalized_model = str(model_type).strip().lower() if model_type else None
+    items: list[TrainingParameterSchemaItemResponse] = []
+    for (registered_task, registered_model), schema in sorted(
+        TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL.items()
+    ):
+        if normalized_task is not None and registered_task != normalized_task:
+            continue
+        if normalized_model is not None and registered_model != normalized_model:
+            continue
+        items.append(
+            TrainingParameterSchemaItemResponse(
+                task_type=registered_task,
+                model_type=registered_model,
+                schema_name=schema.__name__,
+                parameter_schema=schema.model_json_schema(),
+                default_parameters=schema().model_dump(mode="json"),
+            )
+        )
+    return TrainingParameterSchemaCatalogResponse(items=items)
 
 
 @models_router.get(

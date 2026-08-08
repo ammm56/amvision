@@ -50,6 +50,40 @@ export interface NodePackStatusResponse {
   logs: NodePackStatusLog[]
 }
 
+export interface NodePackVersion {
+  node_pack_id: string
+  version: string
+  content_sha256: string
+  directory_name: string
+  installed_at: string
+  installed_by: string
+  source_file_name: string | null
+  active: boolean
+}
+
+export interface NodePackAuditRecord {
+  event_id: string
+  action: string
+  status: 'succeeded' | 'failed' | string
+  created_at: string
+  actor_id: string
+  node_pack_id: string | null
+  from_version: string | null
+  to_version: string | null
+  content_sha256: string | null
+  source_file_name: string | null
+  details: Record<string, unknown>
+}
+
+export interface NodePackLifecycleResponse {
+  node_pack_id: string
+  version: string
+  active_directory: string
+  versions: NodePackVersion[]
+  audit: NodePackAuditRecord
+  status: NodePackStatusResponse
+}
+
 export async function getNodePackStatus(): Promise<NodePackStatusResponse> {
   return apiRequest<NodePackStatusResponse>('/workflows/node-pack-status')
 }
@@ -72,4 +106,31 @@ export async function disableNodePack(nodePackId: string): Promise<NodePackStatu
 
 export async function getNodePackLogs(nodePackId: string): Promise<NodePackStatusLog[]> {
   return apiRequest<NodePackStatusLog[]>(`/workflows/node-packs/${encodeURIComponent(nodePackId)}/logs`)
+}
+
+export async function installNodePack(packageFile: File, enabled = true): Promise<NodePackLifecycleResponse> {
+  const body = new FormData()
+  body.set('package', packageFile)
+  body.set('enabled', String(enabled))
+  return apiRequest<NodePackLifecycleResponse>('/workflows/node-packs/install', {
+    method: 'POST',
+    body,
+  })
+}
+
+export async function getNodePackVersions(nodePackId: string): Promise<NodePackVersion[]> {
+  return apiRequest<NodePackVersion[]>(`/workflows/node-packs/${encodeURIComponent(nodePackId)}/versions`)
+}
+
+export async function rollbackNodePack(nodePackId: string, targetVersion: string): Promise<NodePackLifecycleResponse> {
+  return apiRequest<NodePackLifecycleResponse>(
+    `/workflows/node-packs/${encodeURIComponent(nodePackId)}/rollback/${encodeURIComponent(targetVersion)}`,
+    { method: 'POST' },
+  )
+}
+
+export async function getNodePackAudit(nodePackId?: string): Promise<NodePackAuditRecord[]> {
+  return apiRequest<NodePackAuditRecord[]>('/workflows/node-packs/audit', {
+    query: { node_pack_id: nodePackId, limit: 200 },
+  })
 }

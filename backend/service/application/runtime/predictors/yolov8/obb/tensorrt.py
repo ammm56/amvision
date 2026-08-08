@@ -270,6 +270,7 @@ class TensorRTYoloV8ObbRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             resolve_yolov8_obb_numpy_dtype(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
@@ -13,6 +14,22 @@ from backend.service.application.local_buffers import LocalBufferBrokerSettings
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.persistence.dataset_export_repository import (
+    SqlAlchemyDatasetExportRepository,
+)
+from backend.service.infrastructure.persistence.dataset_import_repository import (
+    SqlAlchemyDatasetImportRepository,
+)
+from backend.service.infrastructure.persistence.deployment_repository import (
+    SqlAlchemyDeploymentInstanceRepository,
+)
+from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
+from backend.service.infrastructure.persistence.task_repository import (
+    SqlAlchemyTaskRepository,
+)
+from backend.service.infrastructure.persistence.workflow_runtime_repository import (
+    SqlAlchemyWorkflowRuntimeRepository,
+)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -30,6 +47,87 @@ from tests.test_workflow_application_process_executor import (
     _wait_for_workflow_run_state,
 )
 from tests.yolox_test_support import FakeDeploymentProcessSupervisor, seed_yolox_model_version
+
+
+def test_project_summary_first_fetch_aggregates_large_task_history_without_hydration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证高负载首次读取不会加载 TaskRecord 的大 JSON 字段。"""
+
+    client, session_factory, _ = _create_project_summary_test_client(
+        tmp_path,
+        database_name="project-summary-large-history.db",
+    )
+    task_kinds = (
+        "yolov8-training",
+        "detection-evaluation",
+        "yolov8-conversion",
+        "detection-inference",
+        "unrelated-background-task",
+    )
+    task_states = ("queued", "running", "succeeded", "failed")
+    large_value = "x" * 8192
+    with session_factory.create_session() as session:
+        session.add_all(
+            TaskRecordEntity(
+                task_id=f"summary-large-task-{index:04d}",
+                task_kind=task_kinds[index % len(task_kinds)],
+                project_id="project-1",
+                created_at=f"2026-08-08T00:{index // 60:02d}:{index % 60:02d}+00:00",
+                state=task_states[index % len(task_states)],
+                task_spec_json={"large_value": large_value},
+                result_json={"large_value": large_value},
+            )
+            for index in range(500)
+        )
+        session.commit()
+
+    def fail_if_resource_list_is_loaded(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Project summary 不得加载完整资源实体")
+
+    monkeypatch.setattr(
+        SqlAlchemyTaskRepository,
+        "list_tasks",
+        fail_if_resource_list_is_loaded,
+    )
+    monkeypatch.setattr(
+        SqlAlchemyDatasetImportRepository,
+        "list_dataset_imports_by_project",
+        fail_if_resource_list_is_loaded,
+    )
+    monkeypatch.setattr(
+        SqlAlchemyDatasetExportRepository,
+        "list_dataset_exports_by_project",
+        fail_if_resource_list_is_loaded,
+    )
+    monkeypatch.setattr(
+        SqlAlchemyWorkflowRuntimeRepository,
+        "list_workflow_app_runtimes",
+        fail_if_resource_list_is_loaded,
+    )
+    monkeypatch.setattr(
+        SqlAlchemyDeploymentInstanceRepository,
+        "list_deployment_instances",
+        fail_if_resource_list_is_loaded,
+    )
+
+    try:
+        with client:
+            response = client.get(
+                "/api/v1/projects/project-1/summary",
+                headers=_build_headers(),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["training"]["total"] == 100
+    assert payload["evaluation"]["total"] == 100
+    assert payload["conversion"]["total"] == 100
+    assert payload["inference"]["total"] == 100
+    assert sum(payload["training"]["status_counts"].values()) == 100
 
 
 def test_project_summary_api_aggregates_workflow_and_deployment_counts(tmp_path: Path) -> None:

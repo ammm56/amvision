@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT = "coco-instance-seg-v1"
+from backend.contracts.datasets.dataset_formats import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+)
 
 
 @dataclass(frozen=True)

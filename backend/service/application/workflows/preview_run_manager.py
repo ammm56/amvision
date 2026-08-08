@@ -34,6 +34,9 @@ from backend.service.application.workflows.preview_display_outputs import WORKFL
 from backend.service.application.workflows.preview_partial_results import (
     build_completed_node_records_from_events,
 )
+from backend.service.application.workflows.execution.custom_node_policy import (
+    CUSTOM_NODE_TIMEOUT_EXIT_CODE,
+)
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
     serialize_node_execution_record,
@@ -373,6 +376,31 @@ class WorkflowPreviewRunManager:
                 except Empty:
                     if not active_run.handle.process.is_alive():
                         self._settle_child_events(active_run)
+                        if active_run.handle.process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
+                            error = OperationTimeoutError(
+                                "custom node 执行超过 manifest timeout，workflow snapshot 进程已终止",
+                                details={
+                                    "preview_run_id": preview_run_id,
+                                    "process_exit_code": CUSTOM_NODE_TIMEOUT_EXIT_CODE,
+                                },
+                            )
+                            updated_preview_run = self._mark_run_timed_out(
+                                preview_run_id,
+                                error,
+                                node_records=self._build_partial_node_records(active_run),
+                            )
+                            active_run.final_preview_run = updated_preview_run
+                            self._append_event(
+                                preview_run_id,
+                                event_type="preview.timed_out",
+                                message="custom node hard timeout",
+                                payload={
+                                    "state": "timed_out",
+                                    "error_message": updated_preview_run.error_message,
+                                },
+                                event_lock=active_run.event_lock,
+                            )
+                            return
                         error = ServiceConfigurationError(
                             "workflow snapshot 子进程已退出且未返回结果",
                             details={"preview_run_id": preview_run_id},

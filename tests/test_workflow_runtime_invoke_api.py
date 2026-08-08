@@ -28,6 +28,7 @@ from backend.service.settings import (
 )
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
 from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
+from tests.workflow_test_timing import WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS
 
 
 def test_workflow_app_runtime_invoke_api_accepts_image_base64_for_barcode_result_display(
@@ -912,7 +913,7 @@ def _wait_for_workflow_run(
     client: TestClient,
     headers: dict[str, str],
     workflow_run_id: str,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
     """等待异步 WorkflowRun 进入终态。"""
 

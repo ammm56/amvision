@@ -23,4 +23,5 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     context.register_model_session_provider(
         "custom.sam3.load-checkpoint",
         Sam3WorkflowModelSessionProvider(),
+        required_permission_scopes=("model.asset.read",),
     )

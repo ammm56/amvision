@@ -135,6 +135,7 @@ def postprocess_rfdetr_segmentation_runtime_outputs(
     raw_outputs: dict[str, Any],
     image_height: int,
     image_width: int,
+    mask_threshold: float,
 ) -> dict[str, Any]:
     """执行 `postprocess_rfdetr_segmentation_runtime_outputs`。
 
@@ -149,6 +150,11 @@ def postprocess_rfdetr_segmentation_runtime_outputs(
     - 当前函数的执行结果。
     """
 
+    if not 0.0 <= float(mask_threshold) <= 1.0:
+        raise ServiceConfigurationError(
+            "RF-DETR segmentation mask_threshold 必须位于 [0, 1]",
+            details={"mask_threshold": mask_threshold},
+        )
     return postprocess_model.postprocess(
         {
             "pred_logits": _as_torch_tensor(
@@ -168,6 +174,7 @@ def postprocess_rfdetr_segmentation_runtime_outputs(
             [[float(image_height), float(image_width)]],
             dtype=torch_module.float32,
         ),
+        mask_threshold=float(mask_threshold),
     )
 
 

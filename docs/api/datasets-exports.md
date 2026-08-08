@@ -53,6 +53,7 @@
   - yolo-instance-seg-v1
   - coco-keypoints-v1
   - yolo-pose-v1
+  - yolo-obb-v1
   - imagenet-classification-v1
   - dota-obb-v1
 - DatasetVersion 的内部保存结构是按当前任务类型归一化后的平台内部格式，不是“跨所有任务通用”的标注集合
@@ -80,14 +81,15 @@
   - implemented_formats
   - default_format
   - format_types_by_task_type
-  - items[].format_id
+  - items[].format_id / family / task_type / annotation_kind
+  - items[].coordinate_convention / class_index_base / split_convention
 
 #### 当前返回语义
 
 - `implemented_formats` 表示当前已经正式实现并可用的格式。
 - `default_format` 表示当前默认导出格式；当前值为 `coco-detection-v1`。
 - `format_types_by_task_type` 按 task_type 返回当前允许的导出格式列表，前端或脚本应优先用它过滤可选项，而不是把全部 format_id 混在一起展示。
-- `items` 只列出当前已经实现并可直接使用的格式。
+- `items` 只列出当前已经实现并可直接使用的格式，并返回坐标、类别索引和 split 规范，调用端不需要根据格式名猜测规则。
 
 ### POST /api/v1/datasets/exports
 
@@ -115,7 +117,7 @@
 - format_id 控制的是导出目标标准格式，不是导入阶段识别到的原始目录变体
 - format_id 必须与 DatasetVersion.task_type 匹配；当前接口不会做跨任务类型导出
 - 当前若请求 coco-detection-v1，服务会统一生成 COCO 标准导出目录：images/{split}/、annotations/instances_{split}.json、manifest.json
-- 当前若请求 voc-detection-v1，服务会统一生成 Pascal VOC 标准导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json
+- 当前若请求 voc-detection-v1，服务会统一生成 VOC 导出目录：Annotations/、JPEGImages/、ImageSets/Main/、manifest.json；坐标固定为 0-based、右下 exclusive，并在 manifest 和 XML 中显式声明
 - 当前若请求 imagenet-classification-v1，服务会统一生成 `{split}/{class_name}/` 图片目录、`annotations/{split}.json` 和 `manifest.json`
 - 当前若请求 yolo-detection-v1、yolo-instance-seg-v1 或 yolo-pose-v1，服务会统一生成 `manifest.json`、`images/{split}/` 和 `labels/{split}/`；当前不会额外写 `data.yaml`
 - 当前若请求 dota-obb-v1，服务会统一生成 `manifest.json`、`images/{split}/`、`annotations/{split}.json` 和 `labels/{split}/`，annotation 使用 DOTA polygon 风格字段

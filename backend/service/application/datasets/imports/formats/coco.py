@@ -66,7 +66,22 @@ class CocoDatasetImportParserMixin:
             tuple[tuple[str, ...], tuple[tuple[int, int], ...]],
         ] = {}
         for manifest_path in manifest_paths:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            try:
+                payload = json.loads(
+                    self._read_import_text(manifest_path, file_kind="metadata")
+                )
+            except json.JSONDecodeError as error:
+                raise InvalidRequestError(
+                    "COCO manifest 不是合法 JSON",
+                    details={
+                        "manifest_file": self._relative_path(
+                            dataset_root,
+                            manifest_path,
+                        ),
+                        "line": error.lineno,
+                        "column": error.colno,
+                    },
+                ) from error
             if not isinstance(payload, dict):
                 raise InvalidRequestError(
                     "COCO manifest 必须是 JSON 对象",
@@ -86,7 +101,11 @@ class CocoDatasetImportParserMixin:
             for category_payload in categories_payload:
                 if not isinstance(category_payload, dict):
                     raise InvalidRequestError("COCO category 项必须是对象")
-                category_key = str(category_payload.get("id", "")).strip()
+                category_key = self._read_coco_id(
+                    category_payload,
+                    "id",
+                    item_kind="category",
+                )
                 category_name = str(category_payload.get("name", "")).strip()
                 if not category_key or not category_name:
                     raise InvalidRequestError("COCO category id 和 name 不能为空")
@@ -169,6 +188,7 @@ class CocoDatasetImportParserMixin:
         parsed_samples: list[ParsedDatasetSample] = []
         split_by_resolved_image: dict[Path, DatasetSplitName] = {}
         image_id_counter = 1
+        annotation_count = 0
         manifest_files: list[str] = []
         image_refs: list[str] = []
         annotation_refs: list[str] = []
@@ -184,9 +204,11 @@ class CocoDatasetImportParserMixin:
             for image_payload in images_payload:
                 if not isinstance(image_payload, dict):
                     raise InvalidRequestError("COCO image 项必须是对象")
-                image_key = str(image_payload.get("id", "")).strip()
-                if not image_key:
-                    raise InvalidRequestError("COCO image id 不能为空")
+                image_key = self._read_coco_id(
+                    image_payload,
+                    "id",
+                    item_kind="image",
+                )
                 if image_key in image_payload_by_id:
                     raise InvalidRequestError(
                         "COCO images 存在重复 id",
@@ -199,7 +221,11 @@ class CocoDatasetImportParserMixin:
             for annotation_payload in annotations_payload:
                 if not isinstance(annotation_payload, dict):
                     raise InvalidRequestError("COCO annotation 项必须是对象")
-                image_key = str(annotation_payload.get("image_id", "")).strip()
+                image_key = self._read_coco_id(
+                    annotation_payload,
+                    "image_id",
+                    item_kind="annotation",
+                )
                 if image_key not in image_payload_by_id:
                     raise InvalidRequestError(
                         "COCO annotation 引用了未定义的 image_id",
@@ -207,14 +233,29 @@ class CocoDatasetImportParserMixin:
                     )
                 raw_annotation_id = annotation_payload.get("id")
                 if raw_annotation_id is not None:
-                    annotation_id = str(raw_annotation_id).strip()
-                    if not annotation_id or annotation_id in annotation_ids:
+                    annotation_id = self._read_coco_id(
+                        annotation_payload,
+                        "id",
+                        item_kind="annotation",
+                    )
+                    if annotation_id in annotation_ids:
                         raise InvalidRequestError(
-                            "COCO annotations 存在空或重复 id",
+                            "COCO annotations 存在重复 id",
                             details={"annotation_id": annotation_id},
                         )
                     annotation_ids.add(annotation_id)
                 annotations_by_image_id[image_key].append(annotation_payload)
+
+            annotation_count += len(annotations_payload)
+            self._require_import_capacity(
+                sample_count=len(parsed_samples) + len(image_payload_by_id),
+                annotation_count=annotation_count,
+            )
+            manifest_category_ids = {
+                self._read_coco_id(category, "id", item_kind="category")
+                for category in payload.get("categories", [])
+                if isinstance(category, dict)
+            }
 
             for source_image_key, image_payload in image_payload_by_id.items():
                 file_name = str(image_payload.get("file_name", "")).strip()
@@ -258,7 +299,16 @@ class CocoDatasetImportParserMixin:
                     annotations_by_image_id.get(source_image_key, ()),
                     start=1,
                 ):
-                    source_category_id = str(annotation_payload.get("category_id", "")).strip()
+                    source_category_id = self._read_coco_id(
+                        annotation_payload,
+                        "category_id",
+                        item_kind="annotation",
+                    )
+                    if source_category_id not in manifest_category_ids:
+                        raise InvalidRequestError(
+                            "COCO annotation 引用了当前 manifest 未声明的 category_id",
+                            details={"category_id": source_category_id},
+                        )
                     if source_category_id not in category_id_map:
                         raise InvalidRequestError("COCO annotation 引用了未定义的 category_id", details={"category_id": source_category_id})
                     bbox_xywh = self._read_bbox_xywh(annotation_payload.get("bbox"))
@@ -273,9 +323,9 @@ class CocoDatasetImportParserMixin:
                         if raw_area is not None
                         else bbox_xywh[2] * bbox_xywh[3]
                     )
-                    if not math.isfinite(area) or area < 0:
+                    if not math.isfinite(area) or area <= 0:
                         raise InvalidRequestError(
-                            "COCO annotation.area 必须是非负有限数字",
+                            "COCO annotation.area 必须是正有限数字",
                             details={"annotation_id": annotation_payload.get("id")},
                         )
                     annotations.append(
@@ -284,7 +334,7 @@ class CocoDatasetImportParserMixin:
                             annotation_id=str(annotation_payload.get("id", f"coco-ann-{source_image_key}-{annotation_index}")),
                             category_id=category_id_map[source_category_id],
                             bbox_xywh=bbox_xywh,
-                            iscrowd=int(annotation_payload.get("iscrowd", 0) or 0),
+                            iscrowd=self._read_coco_iscrowd(annotation_payload),
                             area=area,
                             annotation_payload=annotation_payload,
                         )
@@ -394,6 +444,33 @@ class CocoDatasetImportParserMixin:
                 "errors": [],
             },
         )
+
+    def _read_coco_id(
+        self,
+        payload: dict[str, object],
+        key: str,
+        *,
+        item_kind: str,
+    ) -> str:
+        """读取 COCO 非负整数 id，拒绝 bool、浮点和字符串方言。"""
+
+        raw_value = payload.get(key)
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
+            raise InvalidRequestError(
+                f"COCO {item_kind}.{key} 必须是非负整数",
+                details={key: raw_value},
+            )
+        return str(raw_value)
+
+    def _read_coco_iscrowd(self, payload: dict[str, object]) -> int:
+        """读取 COCO iscrowd，值域固定为 0 或 1。"""
+
+        raw_value = payload.get("iscrowd", 0)
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+            raise InvalidRequestError("COCO annotation.iscrowd 必须是 0 或 1")
+        if raw_value not in {0, 1}:
+            raise InvalidRequestError("COCO annotation.iscrowd 必须是 0 或 1")
+        return raw_value
 
     def _collect_coco_manifest_paths(self, dataset_root: Path) -> tuple[Path, ...]:
         """收集当前数据集根目录下可疑的 COCO manifest 文件。

@@ -24,6 +24,7 @@ from backend.service.application.models.rfdetr_core.training.platform_artifacts 
 )
 from backend.service.application.models.rfdetr_core.training.platform_dataset import (
     _build_rfdetr_roboflow_file_name,
+    prepare_roboflow_coco_dataset,
 )
 from backend.service.application.models.rfdetr_core.training.callbacks.best_model import (
     BestModelCallback,
@@ -50,6 +51,10 @@ from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 
 
 def test_rfdetr_platform_dataset_preserves_nested_image_paths() -> None:
@@ -63,6 +68,64 @@ def test_rfdetr_platform_dataset_preserves_nested_image_paths() -> None:
         split_name="train",
         file_name="camera-b/shared.jpg",
     ) == "camera-b/shared.jpg"
+
+
+def test_rfdetr_platform_dataset_reads_extended_length_source_paths(
+    tmp_path: Path,
+) -> None:
+    """验证 RF-DETR 数据准备可读取 Windows extended-length 图片路径。"""
+
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    long_image_root = "/".join(
+        f"segment-{index}-{'x' * 40}" for index in range(6)
+    )
+    splits: list[dict[str, object]] = []
+    for split_index, split_name in enumerate(("train", "val"), start=1):
+        image_key = f"{long_image_root}/{split_name}/sample.jpg"
+        annotation_key = f"annotations/{split_name}.json"
+        storage.write_bytes(image_key, f"image-{split_name}".encode())
+        storage.write_json(
+            annotation_key,
+            {
+                "images": [
+                    {
+                        "id": split_index,
+                        "file_name": f"{split_name}/sample.jpg",
+                        "width": 16,
+                        "height": 16,
+                    }
+                ],
+                "annotations": [
+                    {
+                        "id": split_index,
+                        "image_id": split_index,
+                        "category_id": 0,
+                        "bbox": [1, 1, 4, 4],
+                    }
+                ],
+                "categories": [{"id": 0, "name": "part"}],
+            },
+        )
+        splits.append(
+            {
+                "name": split_name,
+                "annotation_file": annotation_key,
+                "image_root": long_image_root,
+            }
+        )
+
+    prepared = prepare_roboflow_coco_dataset(
+        dataset_storage=storage,
+        manifest_payload={"splits": splits},
+        dataset_dir=tmp_path / "prepared",
+        task_type=DETECTION_TASK_TYPE,
+    )
+
+    assert prepared.labels == ("part",)
+    assert (prepared.dataset_dir / "train" / "sample.jpg").read_bytes() == b"image-train"
+    assert (prepared.dataset_dir / "valid" / "val" / "sample.jpg").read_bytes() == b"image-val"
 
 
 def test_rfdetr_export_rejects_implicit_input_alignment() -> None:

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
@@ -787,8 +787,8 @@ def _seg_load_manifest(
         im_root = str(sp.get("image_root", ""))
         if format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
             label_root = str(sp.get("label_root", ""))
-            image_root_path = dataset_storage.resolve(im_root)
-            label_root_path = dataset_storage.resolve(label_root)
+            image_root_path = dataset_storage.resolve_filesystem_path(im_root)
+            label_root_path = dataset_storage.resolve_filesystem_path(label_root)
             if not image_root_path.is_dir():
                 raise InvalidRequestError(
                     "segmentation 训练 split 缺少图片目录",
@@ -807,7 +807,7 @@ def _seg_load_manifest(
             )
         else:
             af = str(sp.get("annotation_file", ""))
-            ap = dataset_storage.resolve(af)
+            ap = dataset_storage.resolve_filesystem_path(af)
             if not ap.is_file():
                 raise InvalidRequestError(f"标注文件不存在: {af}")
             payload = dataset_storage.read_json(af)
@@ -824,7 +824,9 @@ def _seg_load_manifest(
                 img_map[int(im.get("id", -1))] = str(im.get("file_name", ""))
         annotations_by_image: dict[int, _SegTrainingAnnotation] = {
             image_id: _SegTrainingAnnotation(
-                image_path=str(dataset_storage.resolve(f"{im_root}/{file_name}")),
+                image_path=str(
+                    dataset_storage.resolve_filesystem_path(f"{im_root}/{file_name}")
+                ),
                 boxes_xywh=[],
                 class_ids=[],
                 segmentations=[],

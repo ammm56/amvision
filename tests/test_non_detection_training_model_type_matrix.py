@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,

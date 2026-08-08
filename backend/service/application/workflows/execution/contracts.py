@@ -26,6 +26,14 @@ class WorkflowNodeExecutionRequest:
     input_values: dict[str, object] = field(default_factory=dict)
     execution_metadata: dict[str, object] = field(default_factory=dict)
     runtime_context: object | None = None
+    node_pack_id: str | None = None
+    node_pack_version: str | None = None
+    granted_permission_scopes: frozenset[str] = frozenset()
+    node_timeout_seconds: int | None = None
+    node_timeout_max_seconds: int | None = None
+    process_isolation: str | None = None
+    timeout_action: str | None = None
+    node_cancellation_event: object | None = None
 
 
 @dataclass(frozen=True)

@@ -101,6 +101,25 @@ class SegmentationEvaluationTaskResult:
     sample_count: int
     report_summary: dict[str, object] = field(default_factory=dict)
 
+    def to_task_result_payload(self) -> dict[str, object]:
+        """构造任务持久化与 REST API 共用的完整结果。"""
+
+        return {
+            "dataset_export_id": self.dataset_export_id,
+            "dataset_version_id": self.dataset_version_id,
+            "model_version_id": self.model_version_id,
+            "output_object_prefix": self.output_object_prefix,
+            "report_object_key": self.report_object_key,
+            "predictions_object_key": self.predictions_object_key,
+            "result_package_object_key": self.result_package_object_key,
+            "map50": self.map50,
+            "map50_95": self.map50_95,
+            "mask_map50": self.mask_map50,
+            "mask_map50_95": self.mask_map50_95,
+            "sample_count": self.sample_count,
+            "report_summary": dict(self.report_summary),
+        }
+
 
 class SqlAlchemySegmentationEvaluationService:
     """管理 segmentation 评估任务的完整生命周期。"""
@@ -301,6 +320,8 @@ class SqlAlchemySegmentationEvaluationService:
                 "sample_count": eval_result.sample_count,
                 "map50": eval_result.map50,
                 "map50_95": eval_result.map50_95,
+                "mask_map50": eval_result.mask_map50,
+                "mask_map50_95": eval_result.mask_map50_95,
                 "duration_seconds": eval_result.duration_seconds,
             },
         )
@@ -318,13 +339,7 @@ class SqlAlchemySegmentationEvaluationService:
                         "percent": 100.0,
                         "sample_count": eval_result.sample_count,
                     },
-                    "result": {
-                        "output_object_prefix": output_prefix,
-                        "report_object_key": report_key,
-                        "map50": eval_result.map50,
-                        "map50_95": eval_result.map50_95,
-                        "sample_count": eval_result.sample_count,
-                    },
+                    "result": task_result.to_task_result_payload(),
                 },
             )
         )
@@ -452,6 +467,11 @@ class SqlAlchemySegmentationEvaluationService:
             mask_map50=float(result.get("mask_map50", 0.0)),
             mask_map50_95=float(result.get("mask_map50_95", 0.0)),
             sample_count=int(result.get("sample_count", 0)),
+            report_summary=(
+                dict(result["report_summary"])
+                if isinstance(result.get("report_summary"), dict)
+                else {}
+            ),
         )
 
     def _write_result_package(

@@ -12,6 +12,7 @@ import weakref
 import pytest
 
 import backend.nodes.runtime_support as runtime_support
+from backend.contracts.workflows.workflow_graph import NodeDefinition
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     IMAGE_TRANSPORT_MEMORY,
@@ -33,6 +34,15 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
+)
+
+
+RUNTIME_SUPPORT_TEST_NODE_DEFINITION = NodeDefinition(
+    node_type_id="core.test.runtime-support",
+    display_name="Runtime Support Test",
+    category="core.test.runtime",
+    implementation_kind="core-node",
+    runtime_kind="python-callable",
 )
 
 
@@ -887,7 +897,7 @@ def _build_request(
 
     return WorkflowNodeExecutionRequest(
         node_id="test-node",
-        node_definition=object(),
+        node_definition=RUNTIME_SUPPORT_TEST_NODE_DEFINITION,
         input_values={"image": payload},
         execution_metadata={
             "dataset_storage": dataset_storage,

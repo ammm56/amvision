@@ -10,7 +10,7 @@
       "description": "按受限映射规则构造并发送 HTTP JSON 请求，支持常用方法、鉴权、query、header、body 和响应结果处理。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

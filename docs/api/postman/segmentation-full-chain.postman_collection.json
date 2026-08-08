@@ -521,7 +521,7 @@
             "description": "Segmentation 训练入口。默认预置 modelType=yolo11、modelScale=nano、batch_size=2、input_size=640x640、precision=fp32，用于当前仓库内最小联调样本。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": [\n    640,\n    640\n  ],\n  \"precision\": \"{{trainingPrecision}}\",\n  \"extra_options\": {},\n  \"display_name\": \"{{trainingDisplayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": \"{{datasetExportManifestKey}}\",\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"evaluation_interval\": 1,\n  \"max_epochs\": 1,\n  \"batch_size\": 2,\n  \"input_size\": {\n    \"width\": 640,\n    \"height\": 640\n  },\n  \"precision\": \"{{trainingPrecision}}\",\n  \"parameters\": {\n    \"runtime\": {\n      \"device\": \"cpu\",\n      \"num_workers\": 0\n    },\n    \"augmentation\": {\n      \"enabled\": false\n    }\n  },\n  \"display_name\": \"{{trainingDisplayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

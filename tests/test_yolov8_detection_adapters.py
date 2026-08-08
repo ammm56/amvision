@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from backend.contracts.datasets.exports.dataset_formats import YOLO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.dataset_formats import YOLO_DETECTION_DATASET_FORMAT
 from backend.queue.local_file_queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,

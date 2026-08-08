@@ -7,6 +7,9 @@ from torch import nn
 from backend.service.application.models.rfdetr_core.utilities import box_ops
 
 
+_MASK_INTERPOLATION_CHUNK_SIZE = 32
+
+
 class PostProcess(nn.Module):
     """RF-DETR core 类：`PostProcess`。"""
 
@@ -15,7 +18,7 @@ class PostProcess(nn.Module):
         self.num_select = num_select
 
     @torch.no_grad()
-    def forward(self, outputs, target_sizes):
+    def forward(self, outputs, target_sizes, *, mask_threshold: float = 0.5):
         """执行 `forward`。
         
         参数：
@@ -28,8 +31,17 @@ class PostProcess(nn.Module):
         assert len(out_logits) == len(target_sizes)
         assert target_sizes.shape[1] == 2
 
+        if not 0.0 <= float(mask_threshold) <= 1.0:
+            raise ValueError("mask_threshold 必须位于 [0, 1]")
+
         prob = out_logits.sigmoid()
-        topk_values, topk_indexes = torch.topk(prob.view(out_logits.shape[0], -1), self.num_select, dim=1)
+        flattened_prob = prob.view(out_logits.shape[0], -1)
+        num_to_select = min(max(0, int(self.num_select)), flattened_prob.shape[1])
+        topk_values, topk_indexes = torch.topk(
+            flattened_prob,
+            num_to_select,
+            dim=1,
+        )
         scores = topk_values
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
@@ -39,6 +51,7 @@ class PostProcess(nn.Module):
         img_h, img_w = target_sizes.unbind(1)
         scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
         boxes = boxes * scale_fct[:, None, :]
+        boxes = boxes.clamp_min(0.0).clamp(max=scale_fct[:, None, :])
 
         results = []
         if out_masks is not None:
@@ -51,13 +64,28 @@ class PostProcess(nn.Module):
                     k_idx.unsqueeze(-1).unsqueeze(-1).repeat(1, out_masks.shape[-2], out_masks.shape[-1]),
                 )
                 h, w = target_sizes[i].tolist()
-                masks_i = F.interpolate(
-                    masks_i.unsqueeze(1),
-                    size=(int(h), int(w)),
-                    mode="bilinear",
-                    align_corners=False,
+                mask_chunks = [
+                    F.interpolate(
+                        masks_i[start : start + _MASK_INTERPOLATION_CHUNK_SIZE].unsqueeze(1),
+                        size=(int(h), int(w)),
+                        mode="bilinear",
+                        align_corners=False,
+                    ).sigmoid()
+                    >= float(mask_threshold)
+                    for start in range(
+                        0,
+                        masks_i.shape[0],
+                        _MASK_INTERPOLATION_CHUNK_SIZE,
+                    )
+                ]
+                res_i["masks"] = (
+                    torch.cat(mask_chunks, dim=0)
+                    if mask_chunks
+                    else masks_i.new_zeros(
+                        (0, 1, int(h), int(w)),
+                        dtype=torch.bool,
+                    )
                 )
-                res_i["masks"] = masks_i > 0.0
                 results.append(res_i)
         else:
             results = [

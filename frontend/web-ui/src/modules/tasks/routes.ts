@@ -1,7 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import TaskDetailPage from './pages/TaskDetailPage.vue'
-import TaskListPage from './pages/TaskListPage.vue'
+const TaskDetailPage = () => import('./pages/TaskDetailPage.vue')
+const TaskListPage = () => import('./pages/TaskListPage.vue')
 
 export const taskRoutes: RouteRecordRaw[] = [
   {

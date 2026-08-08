@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     COCO_KEYPOINTS_DATASET_FORMAT,
@@ -13,6 +13,7 @@ from backend.contracts.datasets.exports.dataset_formats import (
     VOC_DETECTION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.service.application.datasets.formats import (
@@ -78,9 +79,9 @@ from backend.service.domain.models.yolo_model_profiles import (
         ("yolov8", POSE_TASK_TYPE, (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT)),
         ("yolo11", POSE_TASK_TYPE, (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT)),
         ("yolo26", POSE_TASK_TYPE, (YOLO_POSE_DATASET_FORMAT, COCO_KEYPOINTS_DATASET_FORMAT)),
-        ("yolov8", OBB_TASK_TYPE, (DOTA_OBB_DATASET_FORMAT,)),
-        ("yolo11", OBB_TASK_TYPE, (DOTA_OBB_DATASET_FORMAT,)),
-        ("yolo26", OBB_TASK_TYPE, (DOTA_OBB_DATASET_FORMAT,)),
+        ("yolov8", OBB_TASK_TYPE, (YOLO_OBB_DATASET_FORMAT, DOTA_OBB_DATASET_FORMAT)),
+        ("yolo11", OBB_TASK_TYPE, (YOLO_OBB_DATASET_FORMAT, DOTA_OBB_DATASET_FORMAT)),
+        ("yolo26", OBB_TASK_TYPE, (YOLO_OBB_DATASET_FORMAT, DOTA_OBB_DATASET_FORMAT)),
         ("yolov8", CLASSIFICATION_TASK_TYPE, (IMAGENET_CLASSIFICATION_DATASET_FORMAT,)),
         ("yolo11", CLASSIFICATION_TASK_TYPE, (IMAGENET_CLASSIFICATION_DATASET_FORMAT,)),
         ("yolo26", CLASSIFICATION_TASK_TYPE, (IMAGENET_CLASSIFICATION_DATASET_FORMAT,)),
@@ -111,7 +112,7 @@ def test_yolo_model_profiles_match_current_supported_dataset_formats() -> None:
         assert profile.resolve_default_dataset_format(DETECTION_TASK_TYPE) == YOLO_DETECTION_DATASET_FORMAT
         assert profile.resolve_default_dataset_format(SEGMENTATION_TASK_TYPE) == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT
         assert profile.resolve_default_dataset_format(POSE_TASK_TYPE) == YOLO_POSE_DATASET_FORMAT
-        assert profile.resolve_default_dataset_format(OBB_TASK_TYPE) == DOTA_OBB_DATASET_FORMAT
+        assert profile.resolve_default_dataset_format(OBB_TASK_TYPE) == YOLO_OBB_DATASET_FORMAT
         assert profile.resolve_default_dataset_format(CLASSIFICATION_TASK_TYPE) == IMAGENET_CLASSIFICATION_DATASET_FORMAT
 
 

@@ -16,4 +16,8 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     """
 
     for node_type_id, handler in NODE_HANDLERS.items():
-        context.register_python_callable(node_type_id, handler)
+        context.register_python_callable(
+            node_type_id,
+            handler,
+            required_permission_scopes=("model.asset.read",),
+        )

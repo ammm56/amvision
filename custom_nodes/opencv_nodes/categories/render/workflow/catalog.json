@@ -1579,6 +1579,7 @@
       "description": "通过 OpenCV 把 circles.v1 结果绘制到图片上，适合圆检测、孔径量测和同心度调试。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1674,6 +1675,7 @@
       "description": "通过 OpenCV 把 contours.v1 结果绘制到图片上，适合轮廓调试和规则依据复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1756,6 +1758,7 @@
       "description": "通过 OpenCV 把 detection 结果绘制到图片上。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -1917,6 +1920,7 @@
       "description": "通过 OpenCV 把 lines.v1 结果绘制到图片上，适合直线检测、拟合直线和边线量测调试。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2012,6 +2016,7 @@
       "description": "通过 OpenCV 把通用量测 summary 绘制到图片上，适合距离、偏移、槽宽和同心度依据复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2095,6 +2100,7 @@
       "description": "通过 OpenCV 把 regions.v1 的 mask、polygon 和 bbox 绘制到图片上，适合模板匹配、分割和缺陷区域复核。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2192,6 +2198,7 @@
       "description": "通过 OpenCV 把 roi.v1 直接绘制回原图，适合现场复核换型区域、检测范围和工位边界。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {
@@ -2280,6 +2287,7 @@
       "description": "把 roi-list.v1 中的 ROI 列表批量绘制回原图，适合槽位网格、批量 ROI 复核和现场调试预览。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

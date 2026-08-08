@@ -119,10 +119,6 @@
       "value": "1"
     },
     {
-      "key": "gpuCount",
-      "value": "null"
-    },
-    {
       "key": "inputWidth",
       "value": "640"
     },
@@ -1062,7 +1058,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.0,\n    \"hsv_prob\": 0.0,\n    \"mosaic_prob\": 0.0,\n    \"mixup_prob\": 0.0,\n    \"enable_mixup\": false,\n    \"multiscale_range\": 0,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": {\n    \"width\": {{inputWidth}},\n    \"height\": {{inputHeight}}\n  },\n  \"parameters\": {\n    \"runtime\": {\n      \"device\": \"auto\",\n      \"seed\": 42,\n      \"num_workers\": 0\n    },\n    \"augmentation\": {\n      \"enabled\": false\n    }\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1082,7 +1078,7 @@
                 "training-tasks"
               ]
             },
-            "description": "默认保守训练示例。以 DatasetExport 为唯一输入边界创建 detection 训练任务，并保持固定尺寸与保守数据链：flip_prob=0、hsv_prob=0、mosaic_prob=0、mixup_prob=0、enable_mixup=false、multiscale_range=0、ema=true。当前请求体已经同步 model_scale、evaluation_interval、gpu_count、precision、batch_size、max_epochs、input_size 和 warm_start_model_version_id；precision 当前只接受 fp16、fp32。若本机没有可用 GPU，可把 gpuCount 变量保留为 null，并按 CPU + fp32 跑短链路调试。若需要 reference 风格增强训练，请直接使用下方单独拆出的 Create Detection Training Task - Reference Augmentation 请求。"
+            "description": "YOLOv8/YOLO11/YOLO26 默认保守训练示例。以 DatasetExport 为唯一输入边界创建 detection 训练任务，input_size 使用无顺序歧义的 width/height 对象，parameters 按 runtime、optimization、loss、matching、evaluation、augmentation 分组。此请求关闭数据增强，适合先验证固定尺寸短链路。YOLOX 和 RF-DETR 必须按 GET /api/v1/models/training-parameter-schemas 返回的对应 schema 构造 parameters，不能复用其他模型族字段。"
           },
           "response": []
         },
@@ -1122,7 +1118,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"gpu_count\": {{gpuCount}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": [{{inputWidth}}, {{inputHeight}}],\n  \"extra_options\": {\n    \"seed\": 42,\n    \"num_workers\": 0,\n    \"flip_prob\": 0.5,\n    \"hsv_prob\": 1.0,\n    \"mosaic_prob\": 1.0,\n    \"enable_mixup\": true,\n    \"mixup_prob\": 1.0,\n    \"multiscale_range\": 5,\n    \"ema\": true\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
+              "raw": "{\n  \"project_id\": \"{{projectId}}\",\n  \"model_type\": \"{{modelType}}\",\n  \"dataset_export_id\": \"{{datasetExportId}}\",\n  \"dataset_export_manifest_key\": null,\n  \"recipe_id\": \"{{recipeId}}\",\n  \"model_scale\": \"{{modelScale}}\",\n  \"output_model_name\": \"{{outputModelName}}\",\n  \"warm_start_model_version_id\": null,\n  \"evaluation_interval\": {{evaluationInterval}},\n  \"max_epochs\": {{maxEpochs}},\n  \"batch_size\": {{batchSize}},\n  \"precision\": \"{{precision}}\",\n  \"input_size\": {\n    \"width\": {{inputWidth}},\n    \"height\": {{inputHeight}}\n  },\n  \"parameters\": {\n    \"runtime\": {\n      \"device\": \"auto\",\n      \"seed\": 42,\n      \"num_workers\": 0\n    },\n    \"augmentation\": {\n      \"enabled\": true,\n      \"horizontal_flip_probability\": 0.5,\n      \"hsv_probability\": 1.0,\n      \"mosaic_probability\": 1.0,\n      \"mixup_enabled\": true,\n      \"mixup_probability\": 1.0,\n      \"multi_scale_ratio\": 0.5\n    }\n  },\n  \"display_name\": \"{{displayName}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1142,7 +1138,7 @@
                 "training-tasks"
               ]
             },
-            "description": "reference 风格增强训练示例。当前请求会显式启用 flip_prob=0.5、hsv_prob=1.0、mosaic_prob=1.0、enable_mixup=true、mixup_prob=1.0、multiscale_range=5，并保持 ema=true。这样会进入 Mosaic/MixUp 与动态尺寸训练链，训练速度会比默认保守示例更慢，但更接近 reference trainer 的增强行为。顶层字段 gpu_count、precision、input_size、evaluation_interval 仍建议直接放在请求体顶层，不建议重复塞进 extra_options。若需要同时使用平台基础预训练权重，可把 warm_start_model_version_id 改成对应的 ModelVersion id，并让 model_scale 与来源 scale 保持一致。"
+            "description": "YOLOv8/YOLO11/YOLO26 增强训练示例。当前请求在 augmentation 组中显式启用翻转、HSV、Mosaic、MixUp 与多尺度训练；公开字段与 runner 字段不混用。YOLOX 和 RF-DETR 使用各自独立 schema，应先读取 GET /api/v1/models/training-parameter-schemas。若使用平台预训练权重，warm_start_model_version_id 对应的 model_type、task_type 和 model_scale 必须一致。"
           },
           "response": []
         },

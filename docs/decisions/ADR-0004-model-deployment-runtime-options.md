@@ -13,7 +13,7 @@
 - TensorRT engine 副本、execution context 和 CUDA stream
 - 同一进程内 session 隔离与独立进程故障隔离
 
-开发机器和现场机器的 CPU、GPU、NPU 型号也可能不同。发布记录需要保存明确的 requested 值，同时不能用硬件资源预算拒绝启动，否则不适合现场设备升级、降配和服务器迁移。
+开发机器和现场机器的 CPU、GPU、NPU 型号也可能不同。发布记录需要保存明确的 requested 值；运行时还必须控制多个常驻 deployment 的总资源，不能只告警后继续制造不可预测的 CPU 过度订阅。
 
 ## 决策
 
@@ -22,7 +22,7 @@
 1. 平台部署策略保存 `instance_count`、`isolation_level`、`overflow_policy`、`performance_goal` 和 `device_id`。
 2. OpenVINO CPU、GPU、NPU 和 TensorRT 分别使用后端专属 options，不建立一个包含所有低层字段的扁平通用表。
 3. 发布记录区分 requested 和 effective 配置。OpenVINO CPU 新建发布默认使用创建时主机物理核心数，用户可显式选择 `auto`；硬件迁移后不自动改写 requested。
-4. CPU、GPU 和 NPU 的资源管理器只提供诊断、告警和 benchmark 上下文，不因估算出的超额订阅拒绝创建或启动。
+4. OpenVINO CPU resource manager 在 worker 启动前按物理核心执行原子预留，requested 超出剩余预算时生成裁剪后的 effective 线程数；无法满足每实例至少一个线程时拒绝启动。GPU 和 NPU 仍按各自设备能力独立管理。
 5. TensorRT engine 构建参数属于 `ModelBuild`，execution context、CUDA stream 和内存策略属于 deployment runtime。
 6. 默认保持工业同步推理和 `overflow_policy=reject`，不在本次配置扩展中引入内部等待队列或隐式 batching。
 7. 同一进程内多个 session 不表述为进程级故障隔离；需要故障隔离时显式使用 `isolation_level=process`。
@@ -38,11 +38,11 @@
 
 ### 只保存 `auto`，不提供明确的 CPU 默认线程数
 
-未采用。工业现场需要复现发布时的节拍配置。OpenVINO CPU 默认保存创建时物理核心数，同时保留 `auto` 选项；换机后超额预算只告警，不拒绝运行。
+未采用。工业现场需要复现发布时的节拍配置。OpenVINO CPU 默认保存创建时物理核心数，同时保留 `auto` 选项；换机后 requested 不变，effective 由启动时资源预留重新计算。
 
-### 按核心预算设置启动硬门槛
+### 只告警、不控制 CPU 线程预算
 
-未采用。服务器升级、现场设备降配和不同 CPU 拓扑都可能改变资源数量。资源预算用于提示，不作为失败条件。
+未采用。多个常驻 deployment 会把各自的显式线程数同时交给 OpenVINO，单纯告警不能阻止真实过度订阅。当前采用“可裁剪则裁剪、最小一线程预算无法满足则拒绝”的确定性准入规则，并保留 requested/effective 两套数据。
 
 ### 只保留 OpenVINO 或 TensorRT 自动配置
 
@@ -64,7 +64,7 @@
 ## 后续动作
 
 1. 先增加共享 contract 和只读 capability / effective 配置观测。
-2. 实现 OpenVINO CPU 参数和超额订阅提示。
+2. 实现 OpenVINO CPU 参数、进程级资源预留和 effective 线程调度。
 3. 按设备 capability 实现 OpenVINO GPU / NPU 参数。
 4. 拆分 TensorRT engine 构建配置和 deployment runtime 配置。
 5. 完成跨硬件迁移、并发 benchmark 和长期 soak 验收。

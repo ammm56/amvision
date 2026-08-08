@@ -12,10 +12,11 @@ from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECT
 from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
@@ -27,6 +28,15 @@ from backend.service.application.datasets.exports import (
 from backend.service.application.datasets.tasks import (
     DATASET_EXPORT_QUEUE_NAME,
     SqlAlchemyDatasetExportTaskService,
+)
+from backend.service.application.models.yolo11_core.training.obb_manifest import (
+    load_yolo11_obb_training_manifest,
+)
+from backend.service.application.models.yolo26_core.training.obb_manifest import (
+    load_yolo26_obb_training_manifest,
+)
+from backend.service.application.models.yolov8_core.training.obb_execution import (
+    _load_obb_manifest,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_version import (
@@ -179,8 +189,8 @@ def test_export_dataset_supports_custom_prefix_and_test_split(tmp_path: Path) ->
     assert dataset_storage.resolve("task-runs/training/task-1/dataset-export/images/test/test-1.jpg").is_file()
 
 
-def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> None:
-    """验证数据集导出支持 Pascal VOC detection 目录与 XML。"""
+def test_export_dataset_generates_zero_based_voc_layout_and_xml(tmp_path: Path) -> None:
+    """验证 VOC 导出使用项目默认 0-based、右下 exclusive 坐标。"""
 
     dataset_version = DatasetVersion(
         dataset_version_id="dataset-version-voc-1",
@@ -227,7 +237,7 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
     train_payload = export_result.annotation_payloads_by_split["train"]
     assert train_payload.documents[0].file_name == "sample-1.jpg"
     assert train_payload.documents[0].annotation_relative_path == "Annotations/sample-1.xml"
-    assert train_payload.documents[0].objects[0].bbox_xyxy == (11, 21, 40, 60)
+    assert train_payload.documents[0].objects[0].bbox_xyxy == (10, 20, 40, 60)
 
     manifest_payload = json.loads(
         dataset_storage.resolve(export_result.manifest_object_key).read_text(encoding="utf-8")
@@ -240,10 +250,12 @@ def test_export_dataset_generates_pascal_voc_layout_and_xml(tmp_path: Path) -> N
     ).read_text(encoding="utf-8")
 
     assert manifest_payload["format_id"] == VOC_DETECTION_DATASET_FORMAT
+    assert manifest_payload["coordinate_convention"] == "zero-based-exclusive"
     assert manifest_payload["splits"][0]["image_set_file"].endswith("/ImageSets/Main/train.txt")
     assert "<name>bolt</name>" in annotation_xml
-    assert "<xmin>11</xmin>" in annotation_xml
-    assert "<ymin>21</ymin>" in annotation_xml
+    assert "<coordinateConvention>zero-based-exclusive</coordinateConvention>" in annotation_xml
+    assert "<xmin>10</xmin>" in annotation_xml
+    assert "<ymin>20</ymin>" in annotation_xml
     assert "<xmax>40</xmax>" in annotation_xml
     assert "<ymax>60</ymax>" in annotation_xml
     assert image_set_file == "sample-1\n"
@@ -515,6 +527,143 @@ def test_export_dataset_generates_dota_obb_layout(tmp_path: Path) -> None:
     )
 
 
+def test_export_dataset_generates_native_yolo_obb_layout(tmp_path: Path) -> None:
+    """验证 YOLO OBB 写出归一化四角点并保留平台训练索引。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-yolo-obb-1",
+        dataset_id="dataset-yolo-obb-1",
+        project_id="project-1",
+        task_type="obb",
+        categories=(DatasetCategory(category_id=5, name="ship"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="ship-1.png",
+                width=200,
+                height=100,
+                split="train",
+                annotations=(
+                    ObbAnnotation(
+                        annotation_id="ann-1",
+                        category_id=5,
+                        bbox_xywh=(20.0, 10.0, 100.0, 60.0),
+                        polygon_xy=(20.0, 10.0, 120.0, 10.0, 120.0, 70.0, 20.0, 70.0),
+                        area=6000.0,
+                    ),
+                ),
+            ),
+            DatasetSample(
+                sample_id="sample-2",
+                image_id=2,
+                file_name="ship-val.png",
+                width=200,
+                height=100,
+                split="val",
+                annotations=(),
+            ),
+        ),
+    )
+    exporter, dataset_storage = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    result = exporter.export_dataset(
+        DatasetExportRequest(
+            project_id="project-1",
+            dataset_id="dataset-yolo-obb-1",
+            dataset_version_id="dataset-version-yolo-obb-1",
+            format_id=YOLO_OBB_DATASET_FORMAT,
+            include_test_split=False,
+        )
+    )
+
+    label = dataset_storage.resolve(
+        f"{result.export_path}/labels/train/ship-1.txt"
+    ).read_text(encoding="utf-8")
+    manifest = dataset_storage.read_json(result.manifest_object_key)
+    platform_index = dataset_storage.read_json(
+        f"{result.export_path}/annotations/train.json"
+    )
+    assert label == (
+        "0 0.100000 0.100000 0.600000 0.100000 "
+        "0.600000 0.700000 0.100000 0.700000"
+    )
+    assert manifest["format_id"] == YOLO_OBB_DATASET_FORMAT
+    assert manifest["splits"][0]["label_root"].endswith("/labels/train")
+    assert manifest["splits"][0]["annotation_file"].endswith(
+        "/annotations/train.json"
+    )
+    assert platform_index["annotations"][0]["poly"] == [
+        20.0,
+        10.0,
+        120.0,
+        10.0,
+        120.0,
+        70.0,
+        20.0,
+        70.0,
+    ]
+    yolov8_labels, yolov8_train, yolov8_val, _ = _load_obb_manifest(
+        dataset_storage,
+        manifest,
+    )
+    yolo11_manifest = load_yolo11_obb_training_manifest(
+        dataset_storage=dataset_storage,
+        manifest_payload=manifest,
+    )
+    yolo26_manifest = load_yolo26_obb_training_manifest(
+        dataset_storage=dataset_storage,
+        manifest_payload=manifest,
+    )
+    assert yolov8_labels == ("ship",)
+    assert len(yolov8_train) == len(yolov8_val) == 1
+    assert yolov8_train[0].class_ids == [0]
+    assert yolo11_manifest.train_annotations[0].class_ids == [0]
+    assert yolo26_manifest.train_annotations[0].class_ids == [0]
+
+
+def test_yolo_obb_export_rejects_inconsistent_polygon_geometry(tmp_path: Path) -> None:
+    """验证 OBB bbox/area 与 polygon 不一致时不会生成可疑训练产物。"""
+
+    dataset_version = DatasetVersion(
+        dataset_version_id="dataset-version-yolo-obb-invalid",
+        dataset_id="dataset-yolo-obb-invalid",
+        project_id="project-1",
+        task_type="obb",
+        categories=(DatasetCategory(category_id=0, name="ship"),),
+        samples=(
+            DatasetSample(
+                sample_id="sample-1",
+                image_id=1,
+                file_name="ship.png",
+                width=100,
+                height=100,
+                split="train",
+                annotations=(
+                    ObbAnnotation(
+                        annotation_id="ann-invalid",
+                        category_id=0,
+                        bbox_xywh=(10.0, 10.0, 30.0, 30.0),
+                        polygon_xy=(10.0, 10.0, 30.0, 10.0, 30.0, 30.0, 10.0, 30.0),
+                        area=999.0,
+                    ),
+                ),
+            ),
+        ),
+    )
+    exporter, _ = _create_exporter_with_storage(tmp_path, dataset_version)
+
+    with pytest.raises(ValueError, match="bbox 必须与 polygon 外接框一致"):
+        exporter.export_dataset(
+            DatasetExportRequest(
+                project_id="project-1",
+                dataset_id="dataset-yolo-obb-invalid",
+                dataset_version_id="dataset-version-yolo-obb-invalid",
+                format_id=YOLO_OBB_DATASET_FORMAT,
+            )
+        )
+
+
 def test_export_dataset_preserves_coco_rle_segmentation(tmp_path: Path) -> None:
     """验证 COCO RLE 经数据库持久化和导出后不会丢失。"""
 
@@ -738,8 +887,8 @@ def test_export_dataset_generates_yolo_pose_layout(tmp_path: Path) -> None:
     ).is_file()
 
 
-def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
-    """验证导出器会明确拒绝当前未落地的支持格式。"""
+def test_export_dataset_rejects_unknown_format_without_public_placeholder() -> None:
+    """验证未实现格式不会进入公开格式集合。"""
 
     dataset_version = DatasetVersion(
         dataset_version_id="dataset-version-3",
@@ -751,7 +900,7 @@ def test_export_dataset_rejects_supported_but_unimplemented_format() -> None:
     )
     exporter = _create_exporter_with_dataset_versions(dataset_version)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="未知的导出格式"):
         exporter.export_dataset(
             DatasetExportRequest(
                 project_id="project-1",

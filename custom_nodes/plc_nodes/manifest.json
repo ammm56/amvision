@@ -26,7 +26,13 @@
     "runtime": ">=3.12"
   },
   "timeout": {
-    "defaultSeconds": 60
+    "defaultSeconds": 60,
+    "maxSeconds": 60,
+    "killGraceSeconds": 2
+  },
+  "execution": {
+    "isolation": "workflow-process",
+    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

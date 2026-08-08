@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 import json
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi.testclient import TestClient
 
@@ -540,6 +542,75 @@ def test_workflow_node_pack_status_and_control_endpoints(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
+def test_workflow_node_pack_install_versions_rollback_and_audit_endpoints(
+    tmp_path: Path,
+) -> None:
+    """验证节点包 ZIP 升级、版本查询、回滚和审计 API 闭环。"""
+
+    client, session_factory, _ = _create_test_client(tmp_path)
+    upgrade_zip = _build_node_pack_upgrade_zip(
+        tmp_path / "custom_nodes" / "opencv_basic_nodes",
+        version="0.2.0",
+    )
+
+    try:
+        with client:
+            install_response = client.post(
+                "/api/v1/workflows/node-packs/install",
+                headers=_build_workflow_write_headers(),
+                files={"package": ("opencv-nodes-0.2.0.zip", upgrade_zip, "application/zip")},
+                data={"enabled": "true"},
+            )
+            versions_response = client.get(
+                "/api/v1/workflows/node-packs/opencv.nodes/versions",
+                headers=_build_workflow_read_headers(),
+            )
+            rollback_response = client.post(
+                "/api/v1/workflows/node-packs/opencv.nodes/rollback/0.1.0",
+                headers=_build_workflow_write_headers(),
+            )
+            audit_response = client.get(
+                "/api/v1/workflows/node-packs/audit",
+                params={"node_pack_id": "opencv.nodes"},
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert install_response.status_code == 200, install_response.text
+        install_payload = install_response.json()
+        assert install_payload["node_pack_id"] == "opencv.nodes"
+        assert install_payload["version"] == "0.2.0"
+        assert install_payload["audit"]["action"] == "upgrade"
+        assert _find_node_pack_status_item(install_payload["status"], "opencv.nodes")[
+            "state"
+        ] == "loaded"
+
+        assert versions_response.status_code == 200
+        assert {item["version"] for item in versions_response.json()} == {"0.1.0", "0.2.0"}
+        assert [item["version"] for item in versions_response.json() if item["active"]] == [
+            "0.2.0"
+        ]
+
+        assert rollback_response.status_code == 200, rollback_response.text
+        assert rollback_response.json()["version"] == "0.1.0"
+        assert rollback_response.json()["audit"]["action"] == "rollback"
+        assert [
+            item["version"]
+            for item in rollback_response.json()["versions"]
+            if item["active"]
+        ] == ["0.1.0"]
+
+        assert audit_response.status_code == 200
+        assert [item["action"] for item in audit_response.json()][:2] == [
+            "rollback",
+            "upgrade",
+        ]
+        actor_ids = {item["actor_id"] for item in audit_response.json()}
+        assert len(actor_ids) == 1
+        assert next(iter(actor_ids))
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: Path) -> None:
     """验证节点目录接口会返回可直接渲染的参数 UI 规则。"""
 
@@ -785,7 +856,8 @@ def register(context):
         "permissionScopes": ["task.read", "task.result.write"],
         "entrypoints": {"backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -843,4 +915,28 @@ def register(context):
         encoding="utf-8",
     )
     return tmp_path / "custom_nodes"
+
+
+def _build_node_pack_upgrade_zip(node_pack_dir: Path, *, version: str) -> bytes:
+    """基于 API 测试节点包构造指定版本的安装 ZIP。"""
+
+    archive_stream = BytesIO()
+    with ZipFile(archive_stream, mode="w", compression=ZIP_DEFLATED) as archive:
+        for source_path in sorted(node_pack_dir.rglob("*")):
+            if not source_path.is_file() or "__pycache__" in source_path.parts:
+                continue
+            relative_path = source_path.relative_to(node_pack_dir).as_posix()
+            content = source_path.read_bytes()
+            if relative_path == "manifest.json":
+                payload = json.loads(content.decode("utf-8"))
+                payload["version"] = version
+                content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            elif relative_path == "workflow/catalog.json":
+                payload = json.loads(content.decode("utf-8"))
+                for definition in payload["node_definitions"]:
+                    definition["version"] = version
+                    definition["node_pack_version"] = version
+                content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            archive.writestr(f"opencv_basic_nodes/{relative_path}", content)
+    return archive_stream.getvalue()
 

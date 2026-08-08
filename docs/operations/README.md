@@ -8,3 +8,4 @@
 
 - [docs/operations/yoloe-sam3-troubleshooting.md](yoloe-sam3-troubleshooting.md)：YOLOE 与 SAM3 custom node 的常见问题、检查顺序和快速入口
 - [docs/operations/release-full-troubleshooting.md](release-full-troubleshooting.md)：`release/full/` 的日志入口、worker profile 检查点和现场排障顺序
+- [docs/operations/windows-long-paths.md](windows-long-paths.md)：Windows 长路径的独立启用脚本、首次启动检查和验证方法

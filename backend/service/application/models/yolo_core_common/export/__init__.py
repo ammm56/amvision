@@ -15,6 +15,7 @@ from backend.service.application.models.yolo_core_common.export.execution import
     summarize_yolo_onnx_numeric_validation,
     use_yolo_model_export_mode,
     validate_yolo_converted_input_tensor,
+    validate_yolo_onnx_graph_output_contract,
     validate_yolo_onnx,
 )
 from backend.service.application.models.yolo_core_common.export.segmentation import (
@@ -63,5 +64,6 @@ __all__ = [
     "summarize_yolo_onnx_numeric_validation",
     "use_yolo_model_export_mode",
     "validate_yolo_converted_input_tensor",
+    "validate_yolo_onnx_graph_output_contract",
     "validate_yolo_onnx",
 ]

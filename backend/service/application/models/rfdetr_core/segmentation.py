@@ -30,19 +30,31 @@ class RfdetrSegmentationPostProcess(nn.Module):
         self,
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
+        *,
+        mask_threshold: float = 0.5,
     ) -> dict[str, Any]:
         """执行 segmentation 后处理前向。"""
 
-        return self.postprocess(outputs, target_sizes)
+        return self.postprocess(
+            outputs,
+            target_sizes,
+            mask_threshold=mask_threshold,
+        )
 
     def postprocess(
         self,
         outputs: dict[str, torch.Tensor],
         target_sizes: torch.Tensor,
+        *,
+        mask_threshold: float = 0.5,
     ) -> dict[str, Any]:
         """把 logits、boxes 和 masks 转成 runtime 统一输出字段。"""
 
-        results = self.upstream_postprocess(outputs, target_sizes)
+        results = self.upstream_postprocess(
+            outputs,
+            target_sizes,
+            mask_threshold=mask_threshold,
+        )
         top_scores = torch.stack([item["scores"] for item in results], dim=0)
         top_labels = torch.stack([item["labels"] for item in results], dim=0)
         boxes_xyxy = torch.stack([item["boxes"] for item in results], dim=0)
@@ -83,9 +95,16 @@ def build_rfdetr_segmentation_postprocess(
 
 
 def mask_logits_to_xyxy(masks: torch.Tensor) -> torch.Tensor:
-    """根据 mask logits 的前景范围估算 xyxy box。"""
+    """根据 mask logits 的前景范围估算 0-based exclusive xyxy box。"""
 
-    binary_masks = masks > 0.0
+    if masks.ndim == 5 and int(masks.shape[2]) == 1:
+        masks = masks.squeeze(2)
+    if masks.ndim != 4:
+        raise ValueError(
+            "RF-DETR masks 必须是 [B,N,H,W] 或 [B,N,1,H,W]，"
+            f"当前 shape={tuple(masks.shape)}"
+        )
+    binary_masks = masks if masks.dtype == torch.bool else masks > 0.0
     batch_boxes: list[torch.Tensor] = []
     for per_image_masks in binary_masks:
         if per_image_masks.numel() == 0:
@@ -103,8 +122,8 @@ def mask_logits_to_xyxy(masks: torch.Tensor) -> torch.Tensor:
                 continue
             y_min = coords[:, 0].min().float()
             x_min = coords[:, 1].min().float()
-            y_max = coords[:, 0].max().float()
-            x_max = coords[:, 1].max().float()
+            y_max = coords[:, 0].max().float() + 1.0
+            x_max = coords[:, 1].max().float() + 1.0
             per_mask_boxes.append(torch.stack([x_min, y_min, x_max, y_max]))
         batch_boxes.append(torch.stack(per_mask_boxes, dim=0))
     return torch.stack(batch_boxes, dim=0)

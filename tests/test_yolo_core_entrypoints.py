@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 import random
 from pathlib import Path
@@ -2473,6 +2474,7 @@ def test_yolo_core_segmentation_export_entrypoints_are_model_specific(
     assert runner_cls.export_task_plan_builder is plan_func
     assert export_plan.input_names == ("images",)
     assert export_plan.output_names == output_name_func()
+    assert export_plan.export_mode_enabled is True
     assert export_plan.onnx_opset_version == TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION
     assert tuple(spec.step_kind for spec in export_plan.target_specs) == (
         "export-onnx",
@@ -3379,7 +3381,9 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
     )
     assert segmentation_batch is not None
     assert segmentation_batch.targets[0]["boxes"] == [[6.0, 2.0, 14.0, 10.0]]
-    assert int(segmentation_batch.targets[0]["masks"][0, :, 11:14].sum().item()) > 0
+    segmentation_mask = segmentation_batch.targets[0]["masks"][0]
+    assert tuple(segmentation_mask.shape) == (4, 4)
+    assert int(segmentation_mask[:, 1:4].sum().item()) > 0
 
     keypoints = [
         coordinate
@@ -3477,7 +3481,9 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
     )
     assert segmentation_batch is not None
     assert segmentation_batch.targets[0]["boxes"] == [[6.0, 6.0, 12.0, 12.0]]
-    assert int(segmentation_batch.targets[0]["masks"][0, 6:12, 6:12].sum().item()) > 0
+    segmentation_mask = segmentation_batch.targets[0]["masks"][0]
+    assert tuple(segmentation_mask.shape) == (4, 4)
+    assert int(segmentation_mask[1:4, 1:4].sum().item()) > 0
 
     keypoints = [
         coordinate
@@ -3601,11 +3607,9 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
         for x1, y1, x2, y2 in segmentation_boxes:
             assert 0.0 <= x1 < x2 <= 16.0
             assert 0.0 <= y1 < y2 <= 16.0
-        assert tuple(segmentation_batch.targets[0]["masks"].shape) == (
-            len(segmentation_boxes),
-            16,
-            16,
-        )
+        segmentation_masks = segmentation_batch.targets[0]["masks"]
+        assert tuple(segmentation_masks.shape) == (len(segmentation_boxes), 4, 4)
+        assert int(segmentation_masks.sum().item()) > 0
         assert tuple(segmentation_batch.targets[0]["mask_valid"].shape) == (
             len(segmentation_boxes),
         )
@@ -3893,3 +3897,102 @@ class _StaticYoloV8ObbModel(torch.nn.Module):
         prediction[:, 0, 4] = 0.95
         prediction[:, 0, 5] = 0.0
         return prediction
+
+@pytest.mark.parametrize("model_type", ("yolo11", "yolo26"))
+def test_segmentation_runtime_backends_pass_registered_input_size(
+    model_type: str,
+) -> None:
+    """四种 runtime backend 都必须使用 ModelBuild 登记的输入尺寸。"""
+
+    predictor_root = (
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "service"
+        / "application"
+        / "runtime"
+        / "predictors"
+        / model_type
+        / "segmentation"
+    )
+    function_name = f"preprocess_{model_type}_segmentation_image"
+    result_class_name = (
+        "Yolo11SegmentationPredictionExecutionResult"
+        if model_type == "yolo11"
+        else "Yolo26SegmentationPredictionExecutionResult"
+    )
+    for backend_file_name in (
+        "pytorch.py",
+        "onnxruntime.py",
+        "openvino.py",
+        "tensorrt.py",
+    ):
+        source_path = predictor_root / backend_file_name
+        syntax_tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        calls = [
+            node
+            for node in ast.walk(syntax_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == function_name
+        ]
+        assert len(calls) == 1, source_path
+        input_size_keywords = [
+            keyword for keyword in calls[0].keywords if keyword.arg == "input_size"
+        ]
+        assert len(input_size_keywords) == 1, source_path
+        assert ast.unparse(input_size_keywords[0].value) == "self.runtime_target.input_size"
+        result_calls = [
+            node
+            for node in ast.walk(syntax_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == result_class_name
+        ]
+        assert len(result_calls) == 1, source_path
+        result_keywords = {
+            keyword.arg: ast.unparse(keyword.value)
+            for keyword in result_calls[0].keywords
+        }
+        assert result_keywords["image_width"] == "image_width", source_path
+        assert result_keywords["image_height"] == "image_height", source_path
+
+
+@pytest.mark.parametrize("model_type", ("yolov8", "yolo11", "yolo26"))
+@pytest.mark.parametrize("task_type", ("pose", "obb"))
+def test_pose_and_obb_runtime_backends_pass_registered_input_size(
+    model_type: str,
+    task_type: str,
+) -> None:
+    """四种 pose/OBB runtime backend 都必须使用 ModelBuild 登记的输入尺寸。"""
+
+    predictor_root = (
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "service"
+        / "application"
+        / "runtime"
+        / "predictors"
+        / model_type
+        / task_type
+    )
+    function_name = f"preprocess_{model_type}_{task_type}_image"
+    for backend_file_name in (
+        "pytorch.py",
+        "onnxruntime.py",
+        "openvino.py",
+        "tensorrt.py",
+    ):
+        source_path = predictor_root / backend_file_name
+        syntax_tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        calls = [
+            node
+            for node in ast.walk(syntax_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == function_name
+        ]
+        assert len(calls) == 1, source_path
+        keywords = {
+            keyword.arg: ast.unparse(keyword.value) for keyword in calls[0].keywords
+        }
+        assert keywords["input_size"] == "self.runtime_target.input_size", source_path

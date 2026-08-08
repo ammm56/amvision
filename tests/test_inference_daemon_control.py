@@ -131,6 +131,18 @@ class _FakeRefSupervisor(_FakeSupervisor):
         )
 
 
+class _SlowMutationSupervisor(_FakeSupervisor):
+    """模拟 runtime session 释放时间超过只读控制超时的 supervisor。"""
+
+    def stop_deployment(self, config):
+        sleep(0.15)
+        return super().stop_deployment(config)
+
+    def reset_deployment(self, config):
+        sleep(0.15)
+        return super().reset_deployment(config)
+
+
 def _run_mmap_echo_server(
     *, path: str, ready_queue, stop_event
 ) -> None:
@@ -495,6 +507,130 @@ def test_local_mmap_timeout_slot_is_reclaimed_for_next_request(tmp_path: Path) -
         server.stop()
 
 
+def test_local_mmap_cancelled_active_slot_is_not_reused_by_next_client(
+    tmp_path: Path,
+) -> None:
+    """验证超时 handler 未退出前，同一槽位不会被下一代请求复用或覆盖。"""
+
+    mmap_path = tmp_path / "cancelled-active" / "inference.mmap"
+
+    def handle_request(payload: dict[str, object]) -> dict[str, object]:
+        if payload.get("slow") is True:
+            sleep(0.25)
+        return {"value": payload.get("value")}
+
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=handle_request,
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    timing_out_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=0.1,
+        poll_interval_seconds=0.0005,
+    )
+    next_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=1.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        with pytest.raises(OperationTimeoutError, match="mmap 响应超时"):
+            timing_out_client.request({"slow": True, "value": "expired"})
+        response = next_client.request({"value": "next-generation"})
+        assert response["result"] == {"value": "next-generation"}
+    finally:
+        timing_out_client.close()
+        next_client.close()
+        server.stop()
+
+
+def test_local_mmap_deadline_race_never_reuses_slot_generation(
+    tmp_path: Path,
+) -> None:
+    """验证 deadline 边界连续回收不会覆盖下一代请求。"""
+
+    mmap_path = tmp_path / "deadline-race" / "inference.mmap"
+
+    def handle_request(payload: dict[str, object]) -> dict[str, object]:
+        if payload.get("near_deadline") is True:
+            sleep(0.105)
+        return {"value": payload.get("value")}
+
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=handle_request,
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    deadline_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=0.1,
+        poll_interval_seconds=0.0005,
+    )
+    next_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=1.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        for index in range(20):
+            with pytest.raises(OperationTimeoutError, match="mmap 响应超时"):
+                deadline_client.request(
+                    {"near_deadline": True, "value": f"expired-{index}"}
+                )
+            response = next_client.request({"value": f"next-{index}"})
+            assert response["result"] == {"value": f"next-{index}"}
+    finally:
+        deadline_client.close()
+        next_client.close()
+        server.stop()
+
+
+def test_local_mmap_concurrent_publication_never_exposes_partial_generation(
+    tmp_path: Path,
+) -> None:
+    """验证高并发两阶段发布不会让 server 读取半写入 header。"""
+
+    mmap_path = tmp_path / "concurrent-publication" / "inference.mmap"
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda payload: {"value": payload.get("value")},
+        slot_count=8,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=8,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            responses = tuple(
+                executor.map(
+                    lambda value: client.request({"value": value}),
+                    range(1000),
+                )
+            )
+    finally:
+        client.close()
+        server.stop()
+
+    assert [response["result"]["value"] for response in responses] == list(
+        range(1000)
+    )
+
+
 def test_inference_control_dispatcher_cleans_abandoned_response_queues(
     tmp_path: Path,
 ) -> None:
@@ -564,6 +700,65 @@ def test_inference_control_timeout_removes_pending_request_and_response_queue(
     control_pending_dir = queue_root / "inference-control-missing-daemon" / "pending"
     assert not control_pending_dir.exists() or not any(control_pending_dir.glob("*.json"))
     assert not list(queue_root.glob("inference-control-response-*"))
+
+
+def test_inference_control_mutations_do_not_use_short_read_timeout(
+    tmp_path: Path,
+) -> None:
+    """验证 reset/stop 使用各自业务超时，不被 status/health 快速窗口截断。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-slow-mutations",
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    fake_supervisor = _SlowMutationSupervisor(dataset_storage=dataset_storage)
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        service_id="test-daemon",
+        bindings_by_task_type={
+            "detection": InferenceControlBinding(
+                sync_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_gateway_registry=_FakeRegistry(),
+            )
+        },
+        poll_interval_seconds=0.005,
+    )
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=0.5,
+        startup_timeout_seconds=0.5,
+        shutdown_timeout_seconds=0.5,
+        control_read_timeout_seconds=0.05,
+        availability_probe_timeout_seconds=0.05,
+    )
+
+    dispatcher.start()
+    try:
+        assert client.reset_deployment(config).process_state == "running"
+        assert client.stop_deployment(config).process_state == "stopped"
+    finally:
+        dispatcher.stop()
+
+    assert fake_supervisor.actions == ["reset", "stop"]
 
 
 def test_inference_control_dispatcher_discards_expired_mutating_request(

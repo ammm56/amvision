@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,

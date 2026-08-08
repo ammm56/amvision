@@ -76,7 +76,7 @@ def evaluate_runtime_configuration_warnings(
     return (
         "OpenVINO CPU session 的线程预算总和 "
         f"{requested_thread_count} 超过当前主机物理核心数 {physical_core_count}；"
-        "允许启动，但并发推理可能因 CPU 过度订阅而变慢",
+        "启动时资源调度器会按可用物理核心裁剪每实例有效线程数",
     )
 
 

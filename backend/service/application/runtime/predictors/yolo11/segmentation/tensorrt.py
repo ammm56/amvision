@@ -291,6 +291,7 @@ class TensorRTYolo11SegmentationRuntimeSession:
             cv2_module=self.imports.cv2,
             np_module=self.imports.np,
             image=image,
+            input_size=self.runtime_target.input_size,
         )
         input_array = self.imports.np.expand_dims(input_tensor, axis=0).astype(
             resolve_yolo11_segmentation_numpy_dtype(
@@ -434,11 +435,15 @@ class TensorRTYolo11SegmentationRuntimeSession:
             instances=instances,
             save_result_image=request.save_result_image,
         )
+        image_height = int(image.shape[0])
+        image_width = int(image.shape[1])
 
         return Yolo11SegmentationPredictionExecutionResult(
             instances=instances,
             latency_ms=round(latency_ms, 3),
             preview_image_bytes=preview_image_bytes,
+            image_width=image_width,
+            image_height=image_height,
             runtime_session_info=Yolo11SegmentationRuntimeSessionInfo(
                 backend_name=self.runtime_target.runtime_backend,
                 model_uri=self.runtime_target.runtime_artifact_storage_uri,

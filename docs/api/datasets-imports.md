@@ -118,9 +118,11 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 
 - 请求允许值：auto、train、val、test。
 - detail 响应中的 split_strategy 返回的是实际生效后的策略标记，而不是原始请求值。
-- 当前已落地的响应值包括：manifest-name、image_sets、default-train、forced-train、forced-val、forced-test。
+- 当前已落地的响应值包括：manifest-name、image_sets、image_sets-trainval-as-train、image_sets-multi-shard、default-train、forced-train、forced-val、forced-test。
 - manifest-name 表示 COCO 通过 manifest 文件名推断 split。
 - image_sets 表示 Pascal VOC 通过 ImageSets/Main 下的 split 文件推断 split。
+- image_sets-trainval-as-train 表示 VOC 只有 trainval 时将其作为 train，并在 validation report 中记录缺少 val 的 warning。
+- image_sets-multi-shard 表示一次导入合并了多个完整 VOC shard，例如 VOC2007 与 VOC2012。
 - default-train 表示既没有显式 split，也没有检测到可用 split 信息时，默认全部归到 train。
 - forced-* 表示调用方通过请求参数显式覆盖了导入器自动识别出的 split。
 
@@ -458,6 +460,8 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 ## 当前实现边界
 
 - 当前导入接口只支持 zip 压缩包。
+- 默认资源边界为：单 metadata 文件 256 MiB、单 label/XML 文件 16 MiB、单 DatasetVersion 100000 个样本和 1000000 条标注。具体值由 backend-service 与 dataset worker 的 `dataset_storage.max_import_*` 配置共同决定，两端应保持一致。
+- 达到资源边界时任务以结构化校验错误结束，不会继续读取超大文本或构建无界内存对象。
 - 当前任务类型支持 detection、classification、segmentation、pose、obb。
 - 当前自动识别和解析覆盖：
   - COCO：detection、segmentation、pose

@@ -640,7 +640,7 @@ def _load_obb_manifest(
         image_root = str(split.get("image_root", ""))
         annotation_file = str(split.get("annotation_file", ""))
 
-        annotation_path = dataset_storage.resolve(annotation_file)
+        annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
         if not annotation_path.is_file():
             continue
 
@@ -680,7 +680,9 @@ def _load_obb_manifest(
             records.append(
                 _ObbAnnotation(
                     image_path=str(
-                        dataset_storage.resolve(f"{image_root}/{file_name}")
+                        dataset_storage.resolve_filesystem_path(
+                            f"{image_root}/{file_name}"
+                        )
                     ),
                     boxes_xywhr=boxes_xywhr,
                     class_ids=class_ids,

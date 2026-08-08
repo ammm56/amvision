@@ -22,6 +22,7 @@ def postprocess_rfdetr_segmentation_outputs(
     raw_outputs: dict[str, Any],
     image_height: int,
     image_width: int,
+    mask_threshold: float,
 ) -> tuple[dict[str, Any], float]:
     """执行 RF-DETR segmentation 后处理，并返回耗时。"""
 
@@ -32,6 +33,7 @@ def postprocess_rfdetr_segmentation_outputs(
         raw_outputs=raw_outputs,
         image_height=image_height,
         image_width=image_width,
+        mask_threshold=mask_threshold,
     )
     postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
     return processed, postprocess_ms

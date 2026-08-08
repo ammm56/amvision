@@ -14,11 +14,12 @@ from backend.contracts.datasets.exports.coco_instance_segmentation_export import
 from backend.contracts.datasets.exports.coco_keypoints_export import (
     COCO_KEYPOINTS_DATASET_FORMAT,
 )
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.contracts.datasets.exports.voc_detection_export import (
@@ -104,6 +105,7 @@ class DatasetExportFileWriterMixin(
             YOLO_DETECTION_DATASET_FORMAT,
             YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
             YOLO_POSE_DATASET_FORMAT,
+            YOLO_OBB_DATASET_FORMAT,
         }:
             self._write_yolo_export_files(
                 dataset_version=dataset_version,

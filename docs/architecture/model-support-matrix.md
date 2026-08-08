@@ -8,7 +8,7 @@
 - 这些组合在 `导入 -> 导出 -> 训练 -> 验证 -> 评估 -> 转换 -> 部署 -> 推理 -> workflow -> 前端` 各阶段做到哪里
 - 哪些能力已经有显式回归，哪些只是代码已接通但还需要继续补 smoke 或工程化收口
 
-本文档按 2026-07-27 的仓库主干代码整理，只描述本项目正式实现，不包含
+本文档按 2026-08-07 的仓库主干代码整理，只描述本项目正式实现，不包含
 `projectsrc/` 参考仓库。参考仓库只用于开发期逐项核对，运行时、测试和发布包均不得依赖。
 
 ## 适用范围
@@ -74,6 +74,17 @@ RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开�
 
 ## 当前主验收组合
 
+完整统一入口为
+`python -m tests.integration.model_task_e2e_matrix --start-processes`。默认矩阵与公开
+训练参数 registry 使用同一组 18 个模型/任务组合，固定要求 ONNX、OpenVINO IR、
+TensorRT engine 三种产物，并对每种产物实际执行独立进程 sync/async 推理。
+脚本会把全量和筛选运行分别标成 `full`、`partial`，不能用局部成功替代全量结论。
+
+2026-08-07 已用该入口的局部模式实跑通过 `yolov8 + detection`：真实
+`medical-pills` 数据完成导入、YOLO 导出、1 epoch 训练、4 个 validation 样本评估，
+并完成三种转换产物的登记、加载、sync/async 推理、reset 和 stop。完整 18 项结果
+只有在统一入口全量执行成功后才记为完整通过。
+
 下面这些组合当前已经不是“只有接口或只有路由”，而是仓库里有更明确的显式回归或正式样例：
 
 | 组合 | 当前主证据 |
@@ -117,15 +128,11 @@ RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开�
 - `yolo-instance-seg-v1`
 - `coco-keypoints-v1`
 - `yolo-pose-v1`
+- `yolo-obb-v1`
 - `imagenet-classification-v1`
 - `dota-obb-v1`
 
-### 已在支持列表中，但当前还没有正式实现的导出格式
-
-- `semantic-mask-dir-v1`
-- `sam-promptable-seg-v1`
-
-这两个格式当前不能算“还能用的残缺功能”，而是明确的未实现预留项。
+公开格式列表不包含未实现占位项。
 
 ## 运行时后端当前状态
 
@@ -156,7 +163,7 @@ RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开�
 
 ## 当前还没完全收口的点
 
-- `semantic-mask-dir-v1`、`sam-promptable-seg-v1` 还没有正式导出实现。
+- 数据集格式注册表、导入能力、导出能力和训练格式矩阵已经统一；新增格式必须先完成双向实现和测试，再进入公开列表。
 - 平台通用 dataset evaluation 使用项目内 101 点 COCO-style AP、OKS、mask IoU
   和 rotated IoU，已统一全类别每图 `maxDets`、多类别匹配和资源释放；它不是
   `pycocotools.COCOeval` 的 area range、crowd/ignore、全部 stats 字段替代品。

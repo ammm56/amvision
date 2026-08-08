@@ -29,6 +29,9 @@ from backend.service.infrastructure.persistence.workflow_trigger_source_reposito
 from backend.service.infrastructure.persistence.project_deletion_repository import (
     SqlAlchemyProjectDeletionRepository,
 )
+from backend.service.infrastructure.persistence.project_summary_repository import (
+    SqlAlchemyProjectSummaryRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -46,6 +49,7 @@ class SqlAlchemyUnitOfWork:
     - resource_profiles：ResourceProfile 仓储。
     - workflow_runtime：WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 仓储。
     - workflow_trigger_sources：WorkflowTriggerSource 仓储。
+    - project_summaries：Project summary 数据库聚合读仓储。
     """
 
     def __init__(self, session: Session) -> None:
@@ -68,6 +72,7 @@ class SqlAlchemyUnitOfWork:
         self.workflow_runtime = SqlAlchemyWorkflowRuntimeRepository(session)
         self.workflow_trigger_sources = SqlAlchemyWorkflowTriggerSourceRepository(session)
         self.project_deletions = SqlAlchemyProjectDeletionRepository(session)
+        self.project_summaries = SqlAlchemyProjectSummaryRepository(session)
 
     def scalar(self, statement: Executable) -> object | None:
         """执行查询并返回第一列的标量结果。

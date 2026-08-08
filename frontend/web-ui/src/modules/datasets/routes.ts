@@ -1,8 +1,8 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import DatasetExportDetailPage from './pages/DatasetExportDetailPage.vue'
-import DatasetImportDetailPage from './pages/DatasetImportDetailPage.vue'
-import DatasetOperationsPage from './pages/DatasetOperationsPage.vue'
+const DatasetExportDetailPage = () => import('./pages/DatasetExportDetailPage.vue')
+const DatasetImportDetailPage = () => import('./pages/DatasetImportDetailPage.vue')
+const DatasetOperationsPage = () => import('./pages/DatasetOperationsPage.vue')
 
 export const datasetRoutes: RouteRecordRaw[] = [
   {

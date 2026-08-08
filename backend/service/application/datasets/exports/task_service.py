@@ -7,9 +7,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.queue import QueueBackend
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
-    SUPPORTED_DATASET_EXPORT_FORMATS,
 )
 from backend.service.application.datasets.exports.contracts import (
     DatasetExportArtifact,
@@ -331,18 +330,10 @@ class SqlAlchemyDatasetExportTaskService:
             raise InvalidRequestError("dataset_id 不能为空")
         if not request.dataset_version_id.strip():
             raise InvalidRequestError("dataset_version_id 不能为空")
-        if request.format_id not in SUPPORTED_DATASET_EXPORT_FORMATS:
+        if request.format_id not in IMPLEMENTED_DATASET_EXPORT_FORMATS:
             raise InvalidRequestError(
                 "当前导出格式不受支持",
                 details={"format_id": request.format_id},
-            )
-        if request.format_id not in IMPLEMENTED_DATASET_EXPORT_FORMATS:
-            raise InvalidRequestError(
-                "当前导出格式尚未实现",
-                details={
-                    "format_id": request.format_id,
-                    "implemented_formats": IMPLEMENTED_DATASET_EXPORT_FORMATS,
-                },
             )
 
     def _require_queue_backend(self) -> QueueBackend:

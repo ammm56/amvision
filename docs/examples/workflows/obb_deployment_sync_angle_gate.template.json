@@ -41,14 +41,18 @@
       "node_id": "extract_top_angle",
       "node_type_id": "core.logic.value-field-extract",
       "parameters": {
-        "path": "items.0.angle"
+        "path": "items.0.angle",
+        "missing_policy": "default",
+        "default_value": 0.0
       }
     },
     {
       "node_id": "extract_top_class_name",
       "node_type_id": "core.logic.value-field-extract",
       "parameters": {
-        "path": "items.0.class_name"
+        "path": "items.0.class_name",
+        "missing_policy": "default",
+        "default_value": ""
       }
     },
     {

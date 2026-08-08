@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import ProjectListPage from './pages/ProjectListPage.vue'
+const ProjectListPage = () => import('./pages/ProjectListPage.vue')
 
 export const projectRoutes: RouteRecordRaw[] = [
   {

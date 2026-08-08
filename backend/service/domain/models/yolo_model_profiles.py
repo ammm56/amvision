@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
-from backend.contracts.datasets.exports.dataset_formats import (
-    DOTA_OBB_DATASET_FORMAT,
+from backend.contracts.datasets.dataset_formats import (
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+    YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
 from backend.service.domain.models.model_build_formats import (
@@ -86,7 +86,7 @@ YOLOV8_MODEL_PROFILE: Final[YoloModelProfile] = YoloModelProfile(
         DETECTION_TASK_TYPE: YOLO_DETECTION_DATASET_FORMAT,
         SEGMENTATION_TASK_TYPE: YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
         POSE_TASK_TYPE: YOLO_POSE_DATASET_FORMAT,
-        OBB_TASK_TYPE: DOTA_OBB_DATASET_FORMAT,
+        OBB_TASK_TYPE: YOLO_OBB_DATASET_FORMAT,
         CLASSIFICATION_TASK_TYPE: IMAGENET_CLASSIFICATION_DATASET_FORMAT,
     },
 )

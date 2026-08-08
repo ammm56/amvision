@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -15,6 +16,10 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
+from backend.service.application.runtime.deployment import cpu_device_resource_manager
+from backend.service.application.runtime.deployment.cpu_device_resource_manager import (
+    CpuDeviceResourceManager,
+)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
@@ -27,6 +32,7 @@ from backend.service.application.runtime.targets.runtime_target import (
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentExecutionPolicy,
     DeploymentRuntimeConfiguration,
+    OpenVinoCpuRuntimeOptions,
 )
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from tests.deployment_process_fake_worker import fake_deployment_process_worker
@@ -210,6 +216,72 @@ def test_deployment_process_supervisor_limits_running_processes_across_superviso
     finally:
         sync_supervisor.stop()
         async_supervisor.stop()
+
+
+def test_deployment_process_supervisor_applies_and_releases_cpu_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 CPU 线程在 worker 启动前裁剪，并在进程停止后完整释放。"""
+
+    monkeypatch.setattr(
+        cpu_device_resource_manager,
+        "read_cpu_hardware_summary",
+        lambda: {
+            "cpu_physical_core_count": 6,
+            "cpu_logical_processor_count": 12,
+        },
+    )
+    runtime_artifact_path = tmp_path / "runtime-artifact.xml"
+    runtime_artifact_path.write_bytes(b"fake-openvino-artifact")
+    runtime_target = replace(
+        _build_runtime_target(runtime_artifact_path),
+        runtime_backend="openvino",
+        runtime_artifact_file_type="openvino.xml",
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-cpu-allocation",
+        runtime_target=runtime_target,
+        runtime_configuration=DeploymentRuntimeConfiguration(
+            execution=DeploymentExecutionPolicy(instance_count=2),
+            backend_options=OpenVinoCpuRuntimeOptions(
+                inference_num_threads=4,
+                num_streams=1,
+            ),
+        ),
+    )
+    manager = CpuDeviceResourceManager()
+    supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="sync",
+        settings=BackendServiceDeploymentProcessSupervisorConfig(
+            auto_restart=False,
+            request_timeout_seconds=30.0,
+            shutdown_timeout_seconds=1.0,
+            operator_thread_count=8,
+        ),
+        cpu_device_resource_manager=manager,
+        worker_target=fake_deployment_process_worker,
+    )
+
+    supervisor.start()
+    try:
+        supervisor.start_deployment(config)
+        health = _wait_for_health(supervisor, config)
+
+        assert health.requested_runtime_configuration["backend_options"][
+            "inference_num_threads"
+        ] == 4
+        allocated = health.effective_runtime_configuration[
+            "allocated_runtime_configuration"
+        ]
+        assert allocated["backend_options"]["inference_num_threads"] == 3
+        assert manager.snapshot()["allocated_thread_count"] == 6
+
+        supervisor.stop_deployment(config)
+        assert manager.snapshot()["allocated_thread_count"] == 0
+    finally:
+        supervisor.stop()
 
 
 def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:

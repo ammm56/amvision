@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.queue import LocalFileQueueBackend
 from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
     IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
 )
@@ -241,6 +241,9 @@ def test_dataset_export_format_catalog_only_exposes_implemented_formats(tmp_path
     assert set(items_by_id) == set(IMPLEMENTED_DATASET_EXPORT_FORMATS)
     assert COCO_DETECTION_DATASET_FORMAT in items_by_id
     assert VOC_DETECTION_DATASET_FORMAT in items_by_id
+    assert items_by_id[VOC_DETECTION_DATASET_FORMAT]["coordinate_convention"] == (
+        "zero-based-exclusive-default;official-one-based-inclusive-explicit"
+    )
 
 
 def test_create_dataset_export_rejects_format_that_mismatches_dataset_version_task_type(

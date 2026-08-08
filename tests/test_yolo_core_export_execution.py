@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,6 +18,22 @@ from backend.service.application.models.yolo_core_common.export import (
     resolve_yolo_openvino_weights_object_key,
     summarize_yolo_onnx_numeric_validation,
     validate_yolo_converted_input_tensor,
+    validate_yolo_onnx_graph_output_contract,
+)
+from backend.service.application.models.yolo11_core.export import (
+    build_yolo11_export_task_plan,
+    build_yolo11_openvino_ir,
+    build_yolo11_tensorrt_engine,
+)
+from backend.service.application.models.yolo26_core.export import (
+    build_yolo26_export_task_plan,
+    build_yolo26_openvino_ir,
+    build_yolo26_tensorrt_engine,
+)
+from backend.service.application.models.yolov8_core.export import (
+    build_yolov8_export_task_plan,
+    build_yolov8_openvino_ir,
+    build_yolov8_tensorrt_engine,
 )
 from backend.service.domain.models.model_input_spec import (
     SpatialSize,
@@ -110,6 +127,147 @@ def test_yolo_tensorrt_build_helper_parses_stdout_payload(tmp_path: Path) -> Non
     assert summary["engine_file_bytes"] == len(b"fake-engine")
     assert summary["builder"] == "fake-tensorrt"
     assert summary["input_shape"] == [1, 3, 256, 384]
+
+
+def test_yolo_onnx_output_contract_rejects_training_intermediate_tensors() -> None:
+    """验证公开 predictions 之外的训练中间输出不能流入转换和部署。"""
+
+    onnx_model = SimpleNamespace(
+        graph=SimpleNamespace(
+            output=(
+                SimpleNamespace(name="predictions"),
+                SimpleNamespace(name="raw_head_feature"),
+            )
+        )
+    )
+
+    with pytest.raises(ServiceConfigurationError, match="输出与任务公开契约"):
+        validate_yolo_onnx_graph_output_contract(
+            onnx_model=onnx_model,
+            expected_output_names=("predictions",),
+        )
+
+
+@pytest.mark.parametrize(
+    "build_export_plan",
+    (
+        build_yolov8_export_task_plan,
+        build_yolo11_export_task_plan,
+        build_yolo26_export_task_plan,
+    ),
+)
+@pytest.mark.parametrize(
+    "task_type",
+    ("detection", "classification", "segmentation", "pose", "obb"),
+)
+def test_yolo_export_plans_only_emit_deployment_outputs(
+    build_export_plan: object,
+    task_type: str,
+) -> None:
+    """验证三代五任务均开启纯部署输出模式。"""
+
+    plan = build_export_plan(task_type=task_type, target_formats=("onnx",))
+
+    assert plan.export_mode_enabled is True
+
+
+@pytest.mark.parametrize(
+    "build_openvino_ir",
+    (
+        build_yolov8_openvino_ir,
+        build_yolo11_openvino_ir,
+        build_yolo26_openvino_ir,
+    ),
+)
+def test_yolo_generation_openvino_entrypoints_return_real_input_tensor(
+    tmp_path: Path,
+    build_openvino_ir: object,
+) -> None:
+    """三代 YOLO 的公开 OpenVINO 入口统一返回子进程读取的真实张量。"""
+
+    source_path = tmp_path / "model.optimized.onnx"
+    output_path = tmp_path / "model.openvino.xml"
+    source_path.write_bytes(b"fake-onnx")
+
+    def fake_script_runner(
+        *, script_file_name: str, args: list[str]
+    ) -> subprocess.CompletedProcess[str]:
+        """模拟生成完整 IR 和真实输入摘要。"""
+
+        assert script_file_name == YOLO_OPENVINO_IR_BUILD_SCRIPT_FILE
+        output_path.write_text("<xml />", encoding="utf-8")
+        output_path.with_suffix(".bin").write_bytes(b"fake-bin")
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=(
+                '{"input_name":"images","input_shape":[1,3,256,384],'
+                '"input_dtype":"float32"}\n'
+            ),
+            stderr="",
+        )
+
+    summary = build_openvino_ir(
+        source_path=source_path,
+        output_path=output_path,
+        source_object_key="runs/model.optimized.onnx",
+        output_object_key="runs/model.openvino.xml",
+        build_precision="fp32",
+        run_conversion_script=fake_script_runner,
+    )
+
+    assert summary["input_name"] == "images"
+    assert summary["input_shape"] == [1, 3, 256, 384]
+    assert summary["input_dtype"] == "float32"
+
+
+@pytest.mark.parametrize(
+    "build_tensorrt_engine",
+    (
+        build_yolov8_tensorrt_engine,
+        build_yolo11_tensorrt_engine,
+        build_yolo26_tensorrt_engine,
+    ),
+)
+def test_yolo_generation_tensorrt_entrypoints_return_real_input_tensor(
+    tmp_path: Path,
+    build_tensorrt_engine: object,
+) -> None:
+    """三代 YOLO 的公开 TensorRT 入口统一返回网络解析后的真实张量。"""
+
+    source_path = tmp_path / "model.optimized.onnx"
+    output_path = tmp_path / "model.tensorrt.engine"
+    source_path.write_bytes(b"fake-onnx")
+
+    def fake_script_runner(
+        *, script_file_name: str, args: list[str]
+    ) -> subprocess.CompletedProcess[str]:
+        """模拟生成 engine 和真实输入摘要。"""
+
+        assert script_file_name == YOLO_TENSORRT_ENGINE_BUILD_SCRIPT_FILE
+        output_path.write_bytes(b"fake-engine")
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=(
+                '{"input_name":"images","input_shape":[1,3,256,384],'
+                '"input_dtype":"DataType.FLOAT"}\n'
+            ),
+            stderr="",
+        )
+
+    summary = build_tensorrt_engine(
+        source_path=source_path,
+        output_path=output_path,
+        source_object_key="runs/model.optimized.onnx",
+        output_object_key="runs/model.tensorrt.engine",
+        build_precision="fp32",
+        run_conversion_script=fake_script_runner,
+    )
+
+    assert summary["input_name"] == "images"
+    assert summary["input_shape"] == [1, 3, 256, 384]
+    assert summary["input_dtype"] == "DataType.FLOAT"
 
 
 def test_yolo_numeric_validation_summary_accepts_close_outputs() -> None:

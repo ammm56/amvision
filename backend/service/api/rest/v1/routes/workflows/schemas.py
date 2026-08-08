@@ -225,6 +225,49 @@ class WorkflowNodePackStatusResponse(BaseModel):
     logs: list[WorkflowNodePackStatusLogResponse] = Field(default_factory=list, description="聚合日志")
 
 
+class WorkflowNodePackVersionResponse(BaseModel):
+    """描述节点包版本库中的一个版本。"""
+
+    node_pack_id: str = Field(description="node pack id")
+    version: str = Field(description="节点包版本")
+    content_sha256: str = Field(description="规范化内容 SHA-256")
+    directory_name: str = Field(description="稳定运行时目录名")
+    installed_at: str = Field(description="版本登记时间")
+    installed_by: str = Field(description="版本登记主体 id")
+    source_file_name: str | None = Field(default=None, description="安装 ZIP 文件名")
+    active: bool = Field(description="是否为当前激活版本")
+
+
+class WorkflowNodePackAuditResponse(BaseModel):
+    """描述节点包生命周期审计事件。"""
+
+    event_id: str = Field(description="审计事件 id")
+    action: str = Field(description="install、upgrade、rollback、enable、disable 等动作")
+    status: str = Field(description="succeeded 或 failed")
+    created_at: str = Field(description="事件时间")
+    actor_id: str = Field(description="操作主体 id")
+    node_pack_id: str | None = Field(default=None, description="node pack id")
+    from_version: str | None = Field(default=None, description="操作前版本")
+    to_version: str | None = Field(default=None, description="目标版本")
+    content_sha256: str | None = Field(default=None, description="目标内容 SHA-256")
+    source_file_name: str | None = Field(default=None, description="安装 ZIP 文件名")
+    details: dict[str, object] = Field(default_factory=dict, description="附加审计细节")
+
+
+class WorkflowNodePackLifecycleResponse(BaseModel):
+    """描述节点包安装、升级或回滚结果。"""
+
+    node_pack_id: str = Field(description="node pack id")
+    version: str = Field(description="当前激活版本")
+    active_directory: str = Field(description="当前激活目录名")
+    versions: list[WorkflowNodePackVersionResponse] = Field(
+        default_factory=list,
+        description="全部可回滚版本",
+    )
+    audit: WorkflowNodePackAuditResponse = Field(description="本次生命周期审计事件")
+    status: WorkflowNodePackStatusResponse = Field(description="激活后的 loader 状态")
+
+
 class WorkflowTemplateSummaryResponse(BaseModel):
     """描述图模板聚合摘要响应。"""
 

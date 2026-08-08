@@ -17,6 +17,9 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
+from backend.service.application.workflows.execution.custom_node_policy import (
+    WorkflowCustomNodeRuntimePolicy,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
     WorkflowModelSessionLoadResult,
@@ -109,10 +112,7 @@ def test_different_loaders_prepare_in_parallel_and_publish_atomically() -> None:
             )
 
     provider = _ParallelProvider()
-    registry.register_model_session_provider(
-        "custom.fake.load-checkpoint",
-        provider,
-    )
+    _register_fake_provider(registry, provider)
     manager = WorkflowModelSessionManager(
         runtime_registry=registry,
         max_parallel_loads=2,
@@ -168,10 +168,7 @@ def test_parallel_prepare_failure_closes_every_new_session() -> None:
             return {"warmup": "passed"}
 
     provider = _FailingProvider()
-    registry.register_model_session_provider(
-        "custom.fake.load-checkpoint",
-        provider,
-    )
+    _register_fake_provider(registry, provider)
     manager = WorkflowModelSessionManager(
         runtime_registry=registry,
         max_parallel_loads=2,
@@ -224,10 +221,7 @@ def test_close_scope_attempts_every_lease_when_one_provider_close_fails() -> Non
                 raise RuntimeError("first close failed")
 
     provider = _CloseFailingProvider()
-    registry.register_model_session_provider(
-        "custom.fake.load-checkpoint",
-        provider,
-    )
+    _register_fake_provider(registry, provider)
     manager = WorkflowModelSessionManager(
         runtime_registry=registry,
         max_parallel_loads=1,
@@ -508,10 +502,31 @@ def _build_registry() -> tuple[WorkflowNodeRuntimeRegistry, _FakeProvider]:
     registry = WorkflowNodeRuntimeRegistry()
     _register_fake_definition(registry)
     provider = _FakeProvider()
-    registry.register_model_session_provider(
-        "custom.fake.load-checkpoint", provider
-    )
+    _register_fake_provider(registry, provider)
     return registry, provider
+
+
+def _register_fake_provider(
+    registry: WorkflowNodeRuntimeRegistry,
+    provider: object,
+) -> None:
+    """按正式 custom node 契约注册测试模型 provider。"""
+
+    registry.register_model_session_provider(
+        "custom.fake.load-checkpoint",
+        provider,  # type: ignore[arg-type]
+        custom_node_policy=WorkflowCustomNodeRuntimePolicy(
+            node_pack_id="fake.nodes",
+            node_pack_version="0.1.3",
+            permission_scopes=frozenset({"model.asset.read"}),
+            default_timeout_seconds=30,
+            max_timeout_seconds=30,
+            kill_grace_seconds=2,
+            isolation="workflow-process",
+            timeout_action="terminate-workflow-process",
+        ),
+        required_permission_scopes=("model.asset.read",),
+    )
 
 
 def _register_fake_definition(registry: WorkflowNodeRuntimeRegistry) -> None:

@@ -16,6 +16,9 @@ InputPreprocessKind = Literal[
 InputNormalizationKind = Literal["none", "zero-to-one", "imagenet"]
 InputInterpolationKind = Literal["bilinear"]
 
+MAX_MODEL_INPUT_DIMENSION = 8192
+MAX_MODEL_INPUT_PIXELS = 16_777_216
+
 
 @dataclass(frozen=True)
 class SpatialSize:
@@ -25,10 +28,26 @@ class SpatialSize:
     height: int
 
     def __post_init__(self) -> None:
-        """校验尺寸必须为正整数。"""
+        """校验尺寸类型和有界像素规模。"""
 
-        if int(self.width) <= 0 or int(self.height) <= 0:
+        if (
+            not isinstance(self.width, int)
+            or isinstance(self.width, bool)
+            or not isinstance(self.height, int)
+            or isinstance(self.height, bool)
+        ):
+            raise ValueError("SpatialSize width 和 height 必须是整数")
+        if self.width <= 0 or self.height <= 0:
             raise ValueError("SpatialSize width 和 height 必须大于 0")
+        if (
+            self.width > MAX_MODEL_INPUT_DIMENSION
+            or self.height > MAX_MODEL_INPUT_DIMENSION
+        ):
+            raise ValueError(
+                f"SpatialSize 单边不能超过 {MAX_MODEL_INPUT_DIMENSION} 像素"
+            )
+        if self.width * self.height > MAX_MODEL_INPUT_PIXELS:
+            raise ValueError(f"SpatialSize 总像素不能超过 {MAX_MODEL_INPUT_PIXELS}")
 
     @property
     def hw(self) -> tuple[int, int]:
@@ -48,7 +67,9 @@ class SpatialSize:
         return {"width": int(self.width), "height": int(self.height)}
 
     @classmethod
-    def from_payload(cls, value: object, *, field_name: str = "input_size") -> "SpatialSize":
+    def from_payload(
+        cls, value: object, *, field_name: str = "input_size"
+    ) -> "SpatialSize":
         """从明确的 width/height 对象解析尺寸。
 
         断代升级后不接受二元素数组或 tuple，避免重新引入尺寸顺序猜测。
@@ -256,7 +277,9 @@ def build_yolo_model_input_spec(
         auto=False,
         stride=None if is_classification else 32,
         postprocess_contract=(
-            "yolo-classification-v1" if is_classification else f"yolo-{normalized_task}-v1"
+            "yolo-classification-v1"
+            if is_classification
+            else f"yolo-{normalized_task}-v1"
         ),
     )
 

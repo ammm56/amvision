@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
+	DATASET_FORMAT_REGISTRY,
 	IMPLEMENTED_DATASET_EXPORT_FORMATS,
 	IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
 )
@@ -293,7 +294,16 @@ def _build_dataset_export_format_catalog_response() -> DatasetExportFormatCatalo
 			for task_type, format_types in IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE.items()
 		},
 		items=[
-			DatasetExportFormatItemResponse(format_id=format_id)
+			DatasetExportFormatItemResponse(
+				format_id=specification.format_id,
+				family=specification.family,
+				task_type=specification.task_type,
+				annotation_kind=specification.annotation_kind,
+				coordinate_convention=specification.coordinate_convention,
+				class_index_base=specification.class_index_base,
+				split_convention=specification.split_convention,
+			)
 			for format_id in IMPLEMENTED_DATASET_EXPORT_FORMATS
+			if (specification := DATASET_FORMAT_REGISTRY.get(format_id)) is not None
 		],
 	)

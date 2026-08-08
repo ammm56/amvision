@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import weakref
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from threading import Event, Lock, Thread
 from time import monotonic
@@ -66,6 +66,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
+    OpenVinoCpuRuntimeOptions,
+    serialize_deployment_runtime_configuration,
 )
 
 
@@ -78,6 +80,7 @@ class DeploymentProcessConfig:
     - runtime_target：当前 deployment 绑定的运行时快照。
     - project_id：所属 Project id；为空时表示当前调用方不关心项目级聚合事件。
     - runtime_configuration：完整 deployment 运行时配置。
+    - effective_runtime_configuration：仅供 supervisor 传入 worker 的资源调度后配置。
     """
 
     deployment_instance_id: str
@@ -86,6 +89,7 @@ class DeploymentProcessConfig:
     runtime_configuration: DeploymentRuntimeConfiguration = field(
         default_factory=DeploymentRuntimeConfiguration
     )
+    effective_runtime_configuration: DeploymentRuntimeConfiguration | None = None
 
     @property
     def instance_count(self) -> int:
@@ -236,6 +240,7 @@ class _DeploymentProcessState:
     """描述单个 deployment 在父进程中的监督状态。"""
 
     config: DeploymentProcessConfig
+    effective_runtime_configuration: DeploymentRuntimeConfiguration | None = None
     desired_running: bool = False
     process: Any | None = None
     request_queue: Any | None = None
@@ -428,7 +433,7 @@ class DeploymentProcessSupervisor:
             with state.lock:
                 state.desired_running = False
                 self._stop_process_locked(state)
-        self.cpu_device_resource_manager.deactivate_owner(self._resource_owner_id)
+        self.cpu_device_resource_manager.release_owner(self._resource_owner_id)
 
     def ensure_deployment(
         self, config: DeploymentProcessConfig
@@ -489,12 +494,6 @@ class DeploymentProcessSupervisor:
                     },
                 ) from error
             current_status = self._build_status(state)
-            self.cpu_device_resource_manager.activate(
-                owner_id=self._resource_owner_id,
-                deployment_instance_id=state.config.deployment_instance_id,
-                runtime_mode=self.runtime_mode,
-                runtime_configuration=state.config.runtime_configuration,
-            )
         if self._status_changed(previous_status, current_status):
             self._record_deployment_status_event(
                 current_status,
@@ -518,7 +517,7 @@ class DeploymentProcessSupervisor:
             state.desired_running = False
             state.last_error = error_message
             self._stop_process_locked(state)
-            self.cpu_device_resource_manager.deactivate(
+            self.cpu_device_resource_manager.release(
                 owner_id=self._resource_owner_id,
                 deployment_instance_id=state.config.deployment_instance_id,
             )
@@ -535,7 +534,7 @@ class DeploymentProcessSupervisor:
             state.desired_running = False
             self._stop_process_locked(state)
             current_status = self._build_status_from_locked_state(state)
-        self.cpu_device_resource_manager.deactivate(
+        self.cpu_device_resource_manager.release(
             owner_id=self._resource_owner_id,
             deployment_instance_id=state.config.deployment_instance_id,
         )
@@ -826,15 +825,29 @@ class DeploymentProcessSupervisor:
 
         if state.process is not None and state.process.is_alive():
             return
+        effective_runtime_configuration = self.cpu_device_resource_manager.reserve(
+            owner_id=self._resource_owner_id,
+            deployment_instance_id=state.config.deployment_instance_id,
+            runtime_mode=self.runtime_mode,
+            runtime_configuration=state.config.runtime_configuration,
+        )
+        state.effective_runtime_configuration = effective_runtime_configuration
+        worker_config = replace(
+            state.config,
+            effective_runtime_configuration=effective_runtime_configuration,
+        )
         request_queue = self._context.Queue()
         response_queue = self._context.Queue()
         state.response_stop_event.clear()
         worker_kwargs: dict[str, object] = {
-            "config": state.config,
+            "config": worker_config,
             "dataset_storage_root_dir": self.dataset_storage_root_dir,
             "request_queue": request_queue,
             "response_queue": response_queue,
-            "operator_thread_count": self.settings.operator_thread_count,
+            "operator_thread_count": _resolve_worker_operator_thread_count(
+                effective_runtime_configuration,
+                configured_thread_count=self.settings.operator_thread_count,
+            ),
             "supervisor_settings": self.settings.model_dump(mode="python"),
         }
         local_buffer_broker_event_channel = (
@@ -848,13 +861,23 @@ class DeploymentProcessSupervisor:
             worker_kwargs["local_buffer_direct_reader_settings"] = dict(
                 self.local_buffer_direct_reader_settings
             )
-        process = self._context.Process(
-            target=self.worker_target,
-            kwargs=worker_kwargs,
-            name=f"{self.runtime_mode}-{state.config.deployment_instance_id}",
-            daemon=True,
-        )
-        process.start()
+        try:
+            process = self._context.Process(
+                target=self.worker_target,
+                kwargs=worker_kwargs,
+                name=f"{self.runtime_mode}-{state.config.deployment_instance_id}",
+                daemon=True,
+            )
+            process.start()
+        except BaseException:
+            self.cpu_device_resource_manager.release(
+                owner_id=self._resource_owner_id,
+                deployment_instance_id=state.config.deployment_instance_id,
+            )
+            state.effective_runtime_configuration = None
+            request_queue.close()
+            response_queue.close()
+            raise
         state.process = process
         state.request_queue = request_queue
         state.response_queue = response_queue
@@ -876,11 +899,19 @@ class DeploymentProcessSupervisor:
         """在进程级运行数量上限内启动 deployment 子进程。"""
 
         self._validate_process_start_supported_locked(state)
-        _DEPLOYMENT_PROCESS_FLEET_LIMITER.start_with_capacity(
-            state=state,
-            max_running_process_count=self.settings.max_running_process_count,
-            starter=lambda: self._start_process_locked(state),
-        )
+        try:
+            _DEPLOYMENT_PROCESS_FLEET_LIMITER.start_with_capacity(
+                state=state,
+                max_running_process_count=self.settings.max_running_process_count,
+                starter=lambda: self._start_process_locked(state),
+            )
+        except InvalidRequestError as error:
+            state.last_error = error.message
+            self.cpu_device_resource_manager.release(
+                owner_id=self._resource_owner_id,
+                deployment_instance_id=state.config.deployment_instance_id,
+            )
+            raise
 
     def _validate_process_start_supported_locked(
         self, state: _DeploymentProcessState
@@ -1002,6 +1033,13 @@ class DeploymentProcessSupervisor:
                                 restarted_status = self._build_status_from_locked_state(
                                     state
                                 )
+                        else:
+                            self.cpu_device_resource_manager.release(
+                                owner_id=self._resource_owner_id,
+                                deployment_instance_id=(
+                                    state.config.deployment_instance_id
+                                ),
+                            )
                 if crashed_status is not None:
                     self._record_deployment_status_event(
                         crashed_status,
@@ -1087,8 +1125,18 @@ class DeploymentProcessSupervisor:
         """根据监督状态和子进程返回构建健康视图。"""
 
         status = self._build_status(state)
+        allocated_configuration = (
+            state.effective_runtime_configuration
+            or state.config.runtime_configuration
+        )
+        allocated_configuration_payload = (
+            serialize_deployment_runtime_configuration(allocated_configuration)
+        )
         cpu_resource_snapshot = self.cpu_device_resource_manager.snapshot()
-        cpu_resource_warnings = self.cpu_device_resource_manager.warnings()
+        cpu_resource_warnings = self.cpu_device_resource_manager.warnings(
+            owner_id=self._resource_owner_id,
+            deployment_instance_id=state.config.deployment_instance_id,
+        )
         if payload is None:
             return DeploymentProcessHealth(
                 deployment_instance_id=status.deployment_instance_id,
@@ -1102,8 +1150,16 @@ class DeploymentProcessSupervisor:
                 restart_count_rollover_count=status.restart_count_rollover_count,
                 last_exit_code=status.last_exit_code,
                 last_error=status.last_error,
+                requested_runtime_configuration=(
+                    serialize_deployment_runtime_configuration(
+                        state.config.runtime_configuration
+                    )
+                ),
                 effective_runtime_configuration={
-                    "cpu_device_resource_manager": cpu_resource_snapshot
+                    "allocated_runtime_configuration": (
+                        allocated_configuration_payload
+                    ),
+                    "cpu_device_resource_manager": cpu_resource_snapshot,
                 },
                 configuration_warnings=cpu_resource_warnings,
             )
@@ -1140,6 +1196,9 @@ class DeploymentProcessSupervisor:
         )
         effective_runtime_configuration = _read_response_dict(
             payload, "effective_runtime_configuration"
+        )
+        effective_runtime_configuration["allocated_runtime_configuration"] = (
+            allocated_configuration_payload
         )
         effective_runtime_configuration["cpu_device_resource_manager"] = (
             cpu_resource_snapshot
@@ -1179,8 +1238,11 @@ class DeploymentProcessSupervisor:
             instances=instances,
             keep_warm=_deserialize_keep_warm_status(keep_warm_payload),
             local_buffer_broker=dict(local_buffer_broker_payload),
-            requested_runtime_configuration=_read_response_dict(
-                payload, "requested_runtime_configuration"
+            requested_runtime_configuration=(
+                _read_response_dict(payload, "requested_runtime_configuration")
+                or serialize_deployment_runtime_configuration(
+                    state.config.runtime_configuration
+                )
             ),
             effective_runtime_configuration=effective_runtime_configuration,
             configuration_warnings=configuration_warnings,
@@ -1351,6 +1413,23 @@ def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ..
         runtime_target.labels,
         repr(config.runtime_configuration),
     )
+
+
+def _resolve_worker_operator_thread_count(
+    runtime_configuration: DeploymentRuntimeConfiguration,
+    *,
+    configured_thread_count: int,
+) -> int:
+    """让 OpenCV/PyTorch 算子线程上限不超过 CPU deployment 的总预留。"""
+
+    options = runtime_configuration.backend_options
+    if not isinstance(options, OpenVinoCpuRuntimeOptions):
+        return max(1, configured_thread_count)
+    threads_per_instance = options.inference_num_threads
+    if not isinstance(threads_per_instance, int):  # pragma: no cover
+        return max(1, configured_thread_count)
+    allocated_thread_count = runtime_configuration.instance_count * threads_per_instance
+    return max(1, min(configured_thread_count, allocated_thread_count))
 
 
 def _now_isoformat() -> str:

@@ -22,6 +22,64 @@ from backend.service.application.models.yolov8_core.data import (
 from backend.service.application.models.yolov8_core.data.detection_types import (
     YoloV8DetectionAugmentationOptions,
 )
+from backend.service.application.models.yolov8_core.postprocess.segmentation import (
+    normalize_yolov8_segmentation_outputs,
+)
+from backend.service.application.models.yolo11_core.postprocess.segmentation import (
+    normalize_yolo11_segmentation_outputs,
+)
+from backend.service.application.models.yolo26_core.postprocess.segmentation import (
+    normalize_yolo26_segmentation_outputs,
+)
+
+
+class _CudaTensorLike:
+    """模拟必须先转到 CPU 才能读取 NumPy 的 tensor。"""
+
+    def __init__(self, value: np.ndarray) -> None:
+        self.value = value
+        self.cpu_called = False
+
+    def detach(self) -> _CudaTensorLike:
+        return self
+
+    def cpu(self) -> _CudaTensorLike:
+        self.cpu_called = True
+        return self
+
+    def numpy(self) -> np.ndarray:
+        if not self.cpu_called:
+            raise RuntimeError("tensor is not on CPU")
+        return self.value
+
+
+@pytest.mark.parametrize(
+    ("normalizer", "extra_kwargs"),
+    [
+        (normalize_yolov8_segmentation_outputs, {}),
+        (normalize_yolo11_segmentation_outputs, {"num_classes": 2}),
+        (normalize_yolo26_segmentation_outputs, {"num_classes": 2}),
+    ],
+)
+def test_yolo_segmentation_normalizers_accept_cuda_tensor_outputs(
+    normalizer: object,
+    extra_kwargs: dict[str, object],
+) -> None:
+    """验证训练期 CUDA tensor 与部署期数组使用相同后处理契约。"""
+
+    prediction = _CudaTensorLike(np.zeros((1, 100, 38), dtype=np.float32))
+    proto = _CudaTensorLike(np.zeros((1, 32, 2, 2), dtype=np.float32))
+
+    prediction_array, proto_array = normalizer(
+        outputs=(prediction, proto),
+        np_module=np,
+        **extra_kwargs,
+    )
+
+    assert prediction.cpu_called is True
+    assert proto.cpu_called is True
+    assert prediction_array.dtype == np.float32
+    assert proto_array.shape == (1, 32, 2, 2)
 
 
 @pytest.mark.parametrize(

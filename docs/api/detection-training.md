@@ -67,78 +67,46 @@
 | evaluation_interval | integer \| null | 否 | 每隔多少轮执行一次真实验证评估，默认 5；最后一轮会强制补做一次评估。 |
 | max_epochs | integer \| null | 否 | 最大训练轮数。 |
 | batch_size | integer \| null | 否 | batch size。 |
-| gpu_count | integer \| null | 否 | 当前版本只支持单 GPU 或 CPU 训练；该字段只能省略或填写 1，大于 1 会被拒绝。 |
 | precision | string \| null | 否 | 请求使用的训练 precision；当前接口字段只接受 fp16、fp32。未指定时默认 fp32。 |
 | input_size | object \| null | 否 | 训练输入尺寸，固定使用 `{"width": 640, "height": 384}` 这类无顺序歧义的对象；未指定时默认宽高均为 640。 |
-| extra_options | object | 否 | 附加训练选项；当前 Swagger/OpenAPI 已展开公开可选字段。 |
+| parameters | object | 是 | 按 `model_type` 选择的严格参数对象；未填写内部字段时使用该模型默认值。 |
 | display_name | string | 否 | 可选的任务展示名称。 |
 
-#### extra_options 当前公开字段
+#### parameters 示例
 
-以下字段当前已经在 Swagger/OpenAPI 中按具名字段展开，建议只使用这些公开键。训练接口已经把新增重增强改为默认关闭，只有显式传入时才会启用。
-
-| 字段 | 类型 | 当前默认值 | reference 值 | 说明 |
-| --- | --- | --- | --- | --- |
-| seed | integer | 0 | - | 训练随机种子。 |
-| num_workers | integer | 0 | - | DataLoader worker 数量。 |
-| device | string | 自动解析 | - | 强制指定 cpu、cuda 或 cuda:&lt;index&gt;。 |
-| max_labels | integer | 120 | 120 | 单张图片允许保留的最大标签数。 |
-| flip_prob | number | 0.0 | 0.5 | 随机翻转概率。 |
-| hsv_prob | number | 0.0 | 1.0 | HSV 增强概率。 |
-| mosaic_prob | number | 0.0 | 1.0 | Mosaic 增强概率。 |
-| mixup_prob | number | 0.0 | 1.0 | MixUp 增强概率；只有在 Mosaic 链路启用时才会实际生效。 |
-| enable_mixup | boolean | false | true | 是否允许在 Mosaic 链路内叠加 MixUp。 |
-| degrees | number | 10.0 | 10.0 | 随机仿射旋转角度范围。 |
-| translate | number | 0.1 | 0.1 | 随机仿射平移比例。 |
-| mosaic_scale | array[number, number] | [0.1, 2.0] | [0.1, 2.0] | Mosaic 拼图缩放范围。 |
-| mixup_scale | array[number, number] | [0.5, 1.5] | [0.5, 1.5] | MixUp 缩放范围。 |
-| shear | number | 2.0 | 2.0 | 随机仿射错切角度范围。 |
-| multiscale_range | integer | 0 | 5 | 多尺度训练范围；0 表示关闭动态尺寸。 |
-| ema | boolean | true | true | 是否启用 ModelEMA；内部 decay 固定为 0.9998。 |
-| warmup_epochs | integer | 5 | 5 | warmup epoch 数。 |
-| no_aug_epochs | integer | 15 | 15 | 训练尾段 no_aug epoch 数。 |
-| min_lr_ratio | number | 0.05 | 0.05 | 余弦退火最小学习率比例。 |
-| evaluation_confidence_threshold | number | YOLOX: 0.01；YOLOv8/YOLO11/YOLO26: 0.001 | YOLOX: 0.01；Ultralytics 普通 YOLO: 0.001 | 验证阶段 COCO mAP 的 confidence threshold。 |
-| evaluation_nms_threshold | number | YOLOX: 0.65；YOLOv8/YOLO11/YOLO26: 0.7 | YOLOX: 0.65；Ultralytics 普通 YOLO: 0.7 | 验证阶段 COCO mAP 的 NMS threshold。 |
-
-#### extra_options 示例
-
-默认保守训练示例：保持固定尺寸，关闭新增重增强。
+YOLOX 参数分为 runtime、data、optimization、evaluation 和 augmentation：
 
 ```json
 {
-  "extra_options": {
-    "seed": 42,
-    "num_workers": 0,
-    "flip_prob": 0.0,
-    "hsv_prob": 0.0,
-    "mosaic_prob": 0.0,
-    "mixup_prob": 0.0,
-    "enable_mixup": false,
-    "multiscale_range": 0,
-    "ema": true
+  "parameters": {
+    "runtime": {
+      "device": "cuda:0",
+      "seed": 42,
+      "num_workers": 0
+    },
+    "data": {
+      "max_labels_per_image": 120
+    },
+    "optimization": {
+      "warmup_epochs": 5,
+      "no_aug_epochs": 15,
+      "min_lr_ratio": 0.05,
+      "ema": true
+    },
+    "evaluation": {
+      "confidence_threshold": 0.01,
+      "nms_threshold": 0.65
+    },
+    "augmentation": {
+      "enabled": false
+    }
   }
 }
 ```
 
-reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸。
+YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值和数值范围由 `GET /api/v1/models/training-parameter-schemas`、Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供。未知分组、未知字段、其他模型族的字段和旧扁平参数会在入队前返回 422。
 
-```json
-{
-  "extra_options": {
-    "seed": 42,
-    "flip_prob": 0.5,
-    "hsv_prob": 1.0,
-    "mosaic_prob": 1.0,
-    "enable_mixup": true,
-    "mixup_prob": 1.0,
-    "multiscale_range": 5,
-    "ema": true
-  }
-}
-```
-
-当前公开接口里，gpu_count、precision、input_size、evaluation_interval 仍建议使用请求体顶层字段，不建议再通过 extra_options 重复传入同名控制项。
+当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 
 #### warm_start_model_version_id 说明
 
@@ -165,7 +133,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - input_size 未显式指定时，真实训练默认使用 `{"width": 640, "height": 640}`。
 - 公开 API、任务快照、ModelVersion 和部署响应均使用 `width / height` 对象；模型 core 内部才转换为 `(height, width)`。
 - precision 未显式指定时，默认使用 fp32。
-- extra_options 未显式指定时，当前默认关闭 flip、hsv、mosaic、mixup 和 multiscale_range，EMA 保持启用。
+- parameters 内未显式指定的字段按对应模型 schema 固化默认值；`augmentation.enabled=false` 会关闭该模型的全部随机增强。
 - 当前训练支持 CPU 执行；当环境没有可用 GPU 或未分配 GPU 时，会回退到 CPU 训练。这个模式主要用于最小硬件支持和开发环境验证，训练速度会明显变慢。
 
 #### 输入边界规则
@@ -281,6 +249,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前用途
 
 - 服务会在下一个 epoch 边界先保存 latest checkpoint，再把任务状态切到 `paused`。
+- RF-DETR detection 使用 Lightning 的真实 epoch hook 处理该控制命令；保存的是包含 optimizer、scheduler、epoch 和 global step 的 `last.ckpt`，不是仅包含模型权重的临时文件。
 - 同一个暂停边界也会补齐 labels.txt，并自动更新 latest checkpoint 的固定 ModelVersion。
 - `paused` 后可以基于 latest checkpoint 做人工验证或外部推理，再决定是否继续训练。
 
@@ -591,7 +560,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 #### 当前 training_summary 重点内容
 
 - implementation_mode：当前训练执行模式，当前值为 yolox-detection-core。
-- requested_gpu_count / gpu_count：请求的 GPU 数量与实际生效的 GPU 数量。
+- requested_device / device：请求的单设备与 worker 实际租约设备。
 - requested_precision / precision：请求的 precision 与实际生效的 precision。
 - device / device_ids / distributed_mode：训练运行设备信息。
 - evaluation_interval：当前真实验证评估周期。
@@ -1066,7 +1035,7 @@ reference 风格增强示例：按需显式开启 Mosaic、MixUp 和动态尺寸
 - 当前已经公开最小 evaluation-tasks create/list/detail/report/output-files 接口，可直接用训练产出的 ModelVersion 对 DatasetExport 做数据集级回归验证。
 - 当前已经公开最小 deployment-instances create/list/detail 与 inference-tasks create/list/detail/result 接口，可通过 deployment_instance_id 承接正式推理请求，并真实消费 `tensorrt-engine` ModelBuild。
 - 当前 YOLOX detection 真实训练执行链支持 `coco-detection-v1` 和 `voc-detection-v1` 输入；验证 split 选择顺序是 val、valid、validation，缺失时回退 test，再缺失时才退回无验证模式。只要存在非训练验证 split，就默认每 5 轮执行一次真实评估，并以验证集 val_map50_95 作为 best metric；没有任何可用验证 split 时退回 train_total_loss。
-- 当前训练链路只支持单 GPU 或 CPU；`gpu_count` 只接受空值或 `1`，大于 `1` 的请求会被拒绝，不再使用 DataParallel 或 DDP 多 GPU 路径。
+- 当前训练链路是一任务一张 GPU 或 CPU；设备由 `parameters.runtime.device` 选择，不提供单任务 DataParallel 或 DDP 参数。
 - 当前 precision 字段已经纳入公开接口；当前公开值为 fp16、fp32，未指定时默认 fp32。
 - 当前 input_size 未显式指定时，真实训练默认使用 [640, 640]。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证。

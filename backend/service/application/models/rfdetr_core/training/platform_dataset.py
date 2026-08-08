@@ -13,6 +13,7 @@ from backend.service.domain.models.model_task_types import (
     ModelTaskType,
     SEGMENTATION_TASK_TYPE,
 )
+from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -199,7 +200,7 @@ def _resolve_coco_source_image_path(
         candidate_keys.append(str(PurePosixPath(image_root) / normalized_file_name.name))
 
     for candidate_key in dict.fromkeys(candidate_keys):
-        source_path = dataset_storage.resolve(candidate_key)
+        source_path = dataset_storage.resolve_filesystem_path(candidate_key)
         if source_path.is_file():
             return source_path
 
@@ -228,7 +229,9 @@ def _build_rfdetr_roboflow_file_name(*, split_name: str, file_name: str) -> str:
 def _link_or_copy_image(*, source_path: Path, destination_path: Path) -> None:
     """优先用 hard link 准备临时训练目录，跨卷或不支持时再复制。"""
 
+    filesystem_source_path = to_filesystem_path(source_path)
+    filesystem_destination_path = to_filesystem_path(destination_path)
     try:
-        os.link(source_path, destination_path)
+        os.link(filesystem_source_path, filesystem_destination_path)
     except OSError:
-        shutil.copy2(source_path, destination_path)
+        shutil.copy2(filesystem_source_path, filesystem_destination_path)

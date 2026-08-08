@@ -9,7 +9,7 @@ from typing import Literal
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.version import BACKEND_VERSION, PREVIOUS_BACKEND_VERSION
+from backend.version import BACKEND_VERSION
 
 
 WORKFLOW_PAYLOAD_CONTRACT_FORMAT = "amvision.workflow-payload-contract.v1"
@@ -271,7 +271,7 @@ class NodeDefinition(BaseModel):
         NODE_RUNTIME_WORKER_TASK,
         NODE_RUNTIME_SERVICE_CALL,
     ]
-    version: str = PREVIOUS_BACKEND_VERSION
+    version: str = BACKEND_VERSION
     concurrency_policy: Literal[
         "thread-safe",
         "serialized",
@@ -288,17 +288,6 @@ class NodeDefinition(BaseModel):
     node_pack_version: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
-    @model_validator(mode="before")
-    @classmethod
-    def populate_node_version(cls, value: object) -> object:
-        """为旧节点目录补充兼容的单节点版本。"""
-
-        if not isinstance(value, dict) or value.get("version") is not None:
-            return value
-        normalized_value = dict(value)
-        normalized_value["version"] = PREVIOUS_BACKEND_VERSION
-        return normalized_value
-
     @model_validator(mode="after")
     def validate_definition(self) -> NodeDefinition:
         """校验节点定义字段和节点包边界。"""
@@ -307,13 +296,9 @@ class NodeDefinition(BaseModel):
         _require_stripped_text(self.display_name, "display_name")
         normalized_version = _require_stripped_text(self.version, "version")
         try:
-            resolved_version = Version(normalized_version)
+            Version(normalized_version)
         except InvalidVersion as exc:
             raise ValueError("version 不是有效的节点版本") from exc
-        if resolved_version > Version(BACKEND_VERSION):
-            raise ValueError(
-                f"节点 version {normalized_version} 不能高于后端版本 {BACKEND_VERSION}"
-            )
         normalized_category = _require_stripped_text(self.category, "category")
         if "/" in normalized_category:
             raise ValueError("category 不能包含 /，分类层级统一使用 . 分隔")
@@ -336,14 +321,9 @@ class NodeDefinition(BaseModel):
                 "node_pack_version",
             )
             try:
-                resolved_pack_version = Version(normalized_pack_version)
+                Version(normalized_pack_version)
             except InvalidVersion as exc:
                 raise ValueError("node_pack_version 不是有效的版本") from exc
-            if resolved_pack_version > Version(BACKEND_VERSION):
-                raise ValueError(
-                    "node_pack_version "
-                    f"{normalized_pack_version} 不能高于后端版本 {BACKEND_VERSION}"
-                )
         if self.implementation_kind == NODE_IMPLEMENTATION_CORE:
             if self.node_pack_id is not None or self.node_pack_version is not None:
                 raise ValueError("core-node 不能声明 node_pack_id 或 node_pack_version")

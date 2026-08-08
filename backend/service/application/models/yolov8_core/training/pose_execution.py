@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
@@ -667,8 +667,8 @@ def _load_pose_manifest(
         image_root = str(split.get("image_root", ""))
         if format_id == YOLO_POSE_DATASET_FORMAT:
             label_root = str(split.get("label_root", ""))
-            image_root_path = dataset_storage.resolve(image_root)
-            label_root_path = dataset_storage.resolve(label_root)
+            image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+            label_root_path = dataset_storage.resolve_filesystem_path(label_root)
             if not image_root_path.is_dir():
                 raise InvalidRequestError(
                     "pose 训练 split 缺少图片目录",
@@ -688,7 +688,7 @@ def _load_pose_manifest(
             )
         else:
             annotation_file = str(split.get("annotation_file", ""))
-            annotation_path = dataset_storage.resolve(annotation_file)
+            annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
             if not annotation_path.is_file():
                 continue
 
@@ -732,7 +732,9 @@ def _load_pose_manifest(
             records.append(
                 _PoseAnnotation(
                     image_path=str(
-                        dataset_storage.resolve(f"{image_root}/{file_name}")
+                        dataset_storage.resolve_filesystem_path(
+                            f"{image_root}/{file_name}"
+                        )
                     ),
                     boxes_xywh=boxes,
                     class_ids=class_ids,

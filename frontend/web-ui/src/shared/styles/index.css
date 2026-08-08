@@ -1579,6 +1579,18 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .node-pack-workbench__table table,
 .node-diagnostics-workbench__table table {
   min-width: 720px;
@@ -1675,6 +1687,44 @@ textarea:focus-visible {
   border-radius: 8px;
   background: var(--am-surface-raised);
   box-shadow: var(--am-shadow-floating);
+}
+
+.node-pack-version-list {
+  display: grid;
+  gap: 8px;
+}
+
+.node-pack-version-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--am-border);
+  border-radius: 8px;
+  background: var(--am-surface-soft);
+}
+
+.node-pack-version-list article > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.node-pack-version-list article > span,
+.node-pack-version-list article > code {
+  color: var(--am-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.node-pack-version-list article > code {
+  grid-column: 1;
+}
+
+.node-pack-version-list article > .ui-button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
 }
 
 .node-catalog-inspector__header {

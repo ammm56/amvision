@@ -117,6 +117,7 @@ def _validate_coco_segmentation(
             or len(size) != 2
             or not all(isinstance(value, int) and value > 0 for value in size)
             or not isinstance(counts, (str, list))
+            or (isinstance(counts, str) and not counts)
         ):
             raise InvalidRequestError(
                 "COCO segmentation RLE 必须包含合法的 size 和 counts",

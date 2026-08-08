@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
 from backend.workers.task_manager import (
@@ -84,6 +86,7 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import.status == "completed"
         assert dataset_import.format_type == "coco"
         assert dataset_import.detected_profile["format_type"] == "coco"
+        assert dataset_import.detected_profile["format_id"] == "coco-detection-v1"
         assert dataset_version is not None
         assert dataset_version.metadata["source_import_id"] == payload["dataset_import_id"]
         assert dataset_version.samples[0].annotations[0].bbox_xywh == (1.0, 2.0, 3.0, 4.0)
@@ -202,8 +205,8 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
-    """验证导入 Pascal VOC zip 会完成 bbox 转换并写入版本目录。"""
+def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Path) -> None:
+    """验证无声明 VOC 按项目默认 0-based exclusive 语义导入。"""
 
     client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
     try:
@@ -240,7 +243,10 @@ def test_import_dataset_zip_creates_voc_dataset_version(tmp_path: Path) -> None:
         assert dataset_import is not None
         assert dataset_import.validation_report["format_type"] == "voc"
         assert dataset_version is not None
-        assert dataset_version.samples[0].annotations[0].bbox_xywh == (9.0, 19.0, 21.0, 31.0)
+        assert dataset_version.samples[0].annotations[0].bbox_xywh == (10.0, 20.0, 20.0, 30.0)
+        assert dataset_import.detected_profile["coordinate_convention"] == (
+            "zero-based-exclusive"
+        )
         assert dataset_version.categories[0].name == "bolt"
 
         validation_report = json.loads(
@@ -336,6 +342,207 @@ def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> N
         assert dataset_version is not None
         assert dataset_import.format_type == "voc"
         assert dataset_import.status == "completed"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_converts_explicit_official_pascal_voc_coordinates(
+    tmp_path: Path,
+) -> None:
+    """验证只有 XML 明确声明时才按官方 1-based inclusive 坐标转换。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-voc-official",
+                    "format_type": "voc",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "voc-official.zip",
+                        _build_voc_zip_bytes(
+                            coordinate_convention="pascal-voc-1-based-inclusive",
+                        ),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.detected_profile["coordinate_convention"] == (
+            "pascal-voc-1-based-inclusive"
+        )
+        assert dataset_version is not None
+        assert dataset_version.samples[0].annotations[0].bbox_xywh == (
+            9.0,
+            19.0,
+            21.0,
+            31.0,
+        )
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_accepts_voc2007_trainval_and_test_layout(
+    tmp_path: Path,
+) -> None:
+    """验证 VOC2007 根和 trainval/test split 可直接导入且告知缺少 val。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-voc-trainval",
+                    "format_type": "voc",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "voc2007-trainval-test.zip",
+                        _build_voc_zip_bytes(
+                            with_nested_wrappers=True,
+                            use_trainval_and_test=True,
+                        ),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.split_strategy == "image_sets-trainval-as-train"
+        assert dataset_import.validation_report["status"] == "warning"
+        assert dataset_import.validation_report["warnings"][0]["code"] == (
+            "VOC_VALIDATION_SPLIT_MISSING"
+        )
+        assert dataset_version is not None
+        assert {sample.split for sample in dataset_version.samples} == {"train", "test"}
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_merges_voc2007_and_voc2012_shards(tmp_path: Path) -> None:
+    """验证 VOCdevkit 中多个年份 shard 合并为一个 DatasetVersion。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-voc-multi",
+                    "format_type": "voc",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "vocdevkit.zip",
+                        _build_multi_shard_voc_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_import.split_strategy == "image_sets-multi-shard"
+        assert len(dataset_import.detected_profile["shards"]) == 2
+        assert dataset_version is not None
+        assert len(dataset_version.samples) == 4
+        assert len({sample.metadata["source_shard_id"] for sample in dataset_version.samples}) == 2
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_mixed_voc_coordinate_conventions(
+    tmp_path: Path,
+) -> None:
+    """验证一次导入不能混用无声明默认坐标和显式官方坐标。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-voc-mixed",
+                    "format_type": "voc",
+                    "task_type": "detection",
+                },
+                files={
+                    "package": (
+                        "voc-mixed.zip",
+                        _build_voc_zip_bytes(
+                            second_coordinate_convention=(
+                                "pascal-voc-1-based-inclusive"
+                            ),
+                        ),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "failed"
+        assert dataset_import.validation_report["error"]["details"]["issues"][0][
+            "code"
+        ] == "VOC_COORDINATE_CONVENTION_MIXED"
+        assert dataset_version is None
     finally:
         session_factory.engine.dispose()
 
@@ -856,6 +1063,61 @@ def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: 
         assert round(annotation.bbox_xywh[3], 4) == 40.0
         assert annotation.segmentation is not None
         assert dataset_import.validation_report["task_type"] == "segmentation"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_yolo_segmentation_reads_source_beyond_windows_max_path(
+    tmp_path: Path,
+) -> None:
+    """验证格式解析器可读取超过传统 MAX_PATH 的图片和 label。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    dataset_id = f"dataset-{'x' * 120}"
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": dataset_id,
+                    "format_type": "yolo",
+                    "task_type": "segmentation",
+                },
+                files={
+                    "package": (
+                        "yolo-segmentation-long-path.zip",
+                        _build_yolo_segmentation_zip_bytes(),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        payload = response.json()
+        source_label_path = dataset_storage.resolve(
+            f"{payload['staging_path']}/dataset-root/labels/train/train-1.txt"
+        )
+        if os.name == "nt":
+            assert len(str(source_label_path)) > 260
+
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=payload["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "completed"
+        assert dataset_version is not None
+        assert dataset_version.task_type == "segmentation"
+        assert dataset_version.samples[0].annotations[0].segmentation is not None
+        assert not to_filesystem_path(source_label_path).exists()
     finally:
         session_factory.engine.dispose()
 
@@ -1766,18 +2028,29 @@ def _build_roboflow_coco_zip_bytes() -> bytes:
 
 
 def _build_voc_zip_bytes(
-        *,
-        with_nested_wrappers: bool = False,
-        use_unspecified_flags: bool = False,
+    *,
+    with_nested_wrappers: bool = False,
+    use_unspecified_flags: bool = False,
+    coordinate_convention: str | None = None,
+    second_coordinate_convention: str | None = None,
+    use_trainval_and_test: bool = False,
 ) -> bytes:
-        """构建一个最小 Pascal VOC detection zip 数据集。"""
+    """构建一个最小 VOC detection zip 数据集。"""
 
-        buffer = io.BytesIO()
-        truncated_value = "Unspecified" if use_unspecified_flags else "0"
-        difficult_value = "Unspecified" if use_unspecified_flags else "0"
-        xml_payload = """<annotation>
+    buffer = io.BytesIO()
+    truncated_value = "Unspecified" if use_unspecified_flags else "0"
+    difficult_value = "Unspecified" if use_unspecified_flags else "0"
+    coordinate_source = (
+        "<source><coordinateConvention>"
+        f"{coordinate_convention}"
+        "</coordinateConvention></source>"
+        if coordinate_convention is not None
+        else ""
+    )
+    xml_payload = """<annotation>
 <folder>JPEGImages</folder>
 <filename>voc-1.jpg</filename>
+{coordinate_source}
 <size><width>120</width><height>90</height><depth>3</depth></size>
 <object>
     <name>bolt</name>
@@ -1792,26 +2065,82 @@ def _build_voc_zip_bytes(
     </bndbox>
 </object>
 </annotation>""".format(
-                truncated_value=truncated_value,
-                difficult_value=difficult_value,
+        truncated_value=truncated_value,
+        difficult_value=difficult_value,
+        coordinate_source=coordinate_source,
+    )
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        prefix = "dataset-root/VOC2007/" if with_nested_wrappers else ""
+        image_bytes = _build_test_image_bytes(
+            image_format="JPEG",
+            size=(120, 90),
         )
-        with zipfile.ZipFile(buffer, mode="w") as zip_file:
-                prefix = "dataset-root/VOC2007/" if with_nested_wrappers else ""
-                image_bytes = _build_test_image_bytes(
-                    image_format="JPEG",
-                    size=(120, 90),
+        zip_file.writestr(f"{prefix}JPEGImages/voc-1.jpg", image_bytes)
+        zip_file.writestr(f"{prefix}JPEGImages/voc-2.jpg", image_bytes)
+        zip_file.writestr(f"{prefix}Annotations/voc-1.xml", xml_payload)
+        second_xml_payload = xml_payload.replace("voc-1.jpg", "voc-2.jpg")
+        if second_coordinate_convention is not None:
+            second_source = (
+                "<source><coordinateConvention>"
+                f"{second_coordinate_convention}"
+                "</coordinateConvention></source>"
+            )
+            if coordinate_source:
+                second_xml_payload = second_xml_payload.replace(
+                    coordinate_source,
+                    second_source,
                 )
-                zip_file.writestr(f"{prefix}JPEGImages/voc-1.jpg", image_bytes)
-                zip_file.writestr(f"{prefix}JPEGImages/voc-2.jpg", image_bytes)
-                zip_file.writestr(f"{prefix}Annotations/voc-1.xml", xml_payload)
-                zip_file.writestr(
-                    f"{prefix}Annotations/voc-2.xml",
-                    xml_payload.replace("voc-1.jpg", "voc-2.jpg"),
+            else:
+                second_xml_payload = second_xml_payload.replace(
+                    "<filename>voc-2.jpg</filename>",
+                    f"<filename>voc-2.jpg</filename>\n{second_source}",
                 )
-                zip_file.writestr(f"{prefix}ImageSets/Main/train.txt", "voc-1\n")
-                zip_file.writestr(f"{prefix}ImageSets/Main/val.txt", "voc-2\n")
+        zip_file.writestr(f"{prefix}Annotations/voc-2.xml", second_xml_payload)
+        if use_trainval_and_test:
+            zip_file.writestr(f"{prefix}ImageSets/Main/trainval.txt", "voc-1\n")
+            zip_file.writestr(f"{prefix}ImageSets/Main/test.txt", "voc-2\n")
+        else:
+            zip_file.writestr(f"{prefix}ImageSets/Main/train.txt", "voc-1\n")
+            zip_file.writestr(f"{prefix}ImageSets/Main/val.txt", "voc-2\n")
 
-        return buffer.getvalue()
+    return buffer.getvalue()
+
+
+def _build_multi_shard_voc_zip_bytes() -> bytes:
+    """构建含 VOC2007 和 VOC2012 的多 shard zip。"""
+
+    buffer = io.BytesIO()
+    image_bytes = _build_test_image_bytes(image_format="JPEG", size=(64, 48))
+    with zipfile.ZipFile(buffer, mode="w") as zip_file:
+        for year in ("VOC2007", "VOC2012"):
+            prefix = f"dataset-root/VOCdevkit/{year}"
+            train_sample = f"{year.lower()}-train"
+            val_sample = f"{year.lower()}-val"
+            for sample_name in (train_sample, val_sample):
+                xml_payload = f"""<annotation>
+<filename>{sample_name}.jpg</filename>
+<size><width>64</width><height>48</height><depth>3</depth></size>
+<object><name>bolt</name><bndbox>
+<xmin>0</xmin><ymin>1</ymin><xmax>20</xmax><ymax>30</ymax>
+</bndbox></object>
+</annotation>"""
+                zip_file.writestr(
+                    f"{prefix}/JPEGImages/{sample_name}.jpg",
+                    image_bytes,
+                )
+                zip_file.writestr(
+                    f"{prefix}/Annotations/{sample_name}.xml",
+                    xml_payload,
+                )
+            zip_file.writestr(
+                f"{prefix}/ImageSets/Main/train.txt",
+                f"{train_sample}\n",
+            )
+            zip_file.writestr(
+                f"{prefix}/ImageSets/Main/val.txt",
+                f"{val_sample}\n",
+            )
+    return buffer.getvalue()
 
 
 def _build_imagenet_zip_bytes() -> bytes:

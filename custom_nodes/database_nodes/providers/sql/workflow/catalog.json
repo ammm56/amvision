@@ -10,7 +10,7 @@
       "description": "通过受限列映射向 SQLite、MySQL 或 PostgreSQL 单表执行 upsert。",
       "implementation_kind": "custom-node",
       "runtime_kind": "python-callable",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "concurrency_policy": "serialized",
       "input_ports": [
         {

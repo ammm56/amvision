@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.contracts.datasets.dataset_formats import (
+    VOC_DETECTION_DATASET_FORMAT as VOC_DETECTION_DATASET_FORMAT,
+)
 
-# VOC detection 数据集导出格式 id。
-VOC_DETECTION_DATASET_FORMAT = "voc-detection-v1"
+VOC_DETECTION_COORDINATE_CONVENTION = "zero-based-exclusive"
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class VocDetectionDocument:
     annotation_relative_path: str
     width: int
     height: int
+    coordinate_convention: str
     objects: tuple[VocDetectionObject, ...]
     metadata: dict[str, object] = field(default_factory=dict)
 
@@ -79,6 +82,7 @@ class VocDetectionExportManifest:
 
     format_id: str
     dataset_version_id: str
+    coordinate_convention: str
     category_names: tuple[str, ...]
     splits: tuple[VocDetectionSplit, ...]
     metadata: dict[str, object] = field(default_factory=dict)

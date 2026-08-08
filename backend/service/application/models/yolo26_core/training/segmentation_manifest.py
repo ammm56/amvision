@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
@@ -132,8 +132,8 @@ def _load_yolo26_segmentation_split_payload(
 
     if format_id == YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT:
         label_root = str(split_payload.get("label_root", ""))
-        image_root_path = dataset_storage.resolve(image_root)
-        label_root_path = dataset_storage.resolve(label_root)
+        image_root_path = dataset_storage.resolve_filesystem_path(image_root)
+        label_root_path = dataset_storage.resolve_filesystem_path(label_root)
         if not image_root_path.is_dir():
             raise InvalidRequestError(
                 "YOLO26 segmentation 训练 split 缺少图片目录",
@@ -152,7 +152,7 @@ def _load_yolo26_segmentation_split_payload(
         )
 
     annotation_file = str(split_payload.get("annotation_file", ""))
-    annotation_path = dataset_storage.resolve(annotation_file)
+    annotation_path = dataset_storage.resolve_filesystem_path(annotation_file)
     if not annotation_path.is_file():
         raise InvalidRequestError(
             f"YOLO26 segmentation 标注文件不存在: {annotation_file}"
@@ -196,7 +196,9 @@ def _build_yolo26_segmentation_split_annotations(
 
     annotations_by_image: dict[int, Yolo26SegmentationTrainingAnnotation] = {
         image_id: Yolo26SegmentationTrainingAnnotation(
-            image_path=str(dataset_storage.resolve(f"{image_root}/{file_name}")),
+            image_path=str(
+                dataset_storage.resolve_filesystem_path(f"{image_root}/{file_name}")
+            ),
             boxes_xywh=[],
             class_ids=[],
             segmentations=[],

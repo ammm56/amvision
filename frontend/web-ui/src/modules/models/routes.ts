@@ -1,8 +1,8 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-import ConversionTaskDetailPage from './pages/ConversionTaskDetailPage.vue'
-import ModelOperationsPage from './pages/ModelOperationsPage.vue'
-import TrainingTaskDetailPage from './pages/TrainingTaskDetailPage.vue'
+const ConversionTaskDetailPage = () => import('./pages/ConversionTaskDetailPage.vue')
+const ModelOperationsPage = () => import('./pages/ModelOperationsPage.vue')
+const TrainingTaskDetailPage = () => import('./pages/TrainingTaskDetailPage.vue')
 
 export const modelRoutes: RouteRecordRaw[] = [
   {

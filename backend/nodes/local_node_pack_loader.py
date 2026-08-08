@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 from typing import Mapping
+from uuid import uuid4
 
 from backend.contracts.nodes.node_pack_manifest import CustomNodeCatalogDocument, NodePackManifest
 from backend.contracts.workflows.workflow_graph import (
@@ -36,6 +38,7 @@ class LocalNodePackLoader:
 
         self.custom_nodes_root_dir = Path(custom_nodes_root_dir).resolve()
         self._catalog_snapshot = NodeCatalogSnapshot()
+        self._runtime_module_prefixes: dict[tuple[str, str], str] = {}
         self._last_refresh_at: str | None = None
         self._last_status_snapshot = self.inspect_node_pack_status()
 
@@ -44,6 +47,7 @@ class LocalNodePackLoader:
 
         if not self.custom_nodes_root_dir.exists():
             self._catalog_snapshot = NodeCatalogSnapshot()
+            self._runtime_module_prefixes = {}
             self._last_refresh_at = _utc_now()
             self._last_status_snapshot = self.inspect_node_pack_status()
             return
@@ -57,6 +61,7 @@ class LocalNodePackLoader:
         payload_contracts: list[WorkflowPayloadContract] = []
         node_definitions: list[NodeDefinition] = []
         discovered_node_packs: list[tuple[Path, NodePackManifest]] = []
+        runtime_module_prefixes: dict[tuple[str, str], str] = {}
 
         for node_pack_dir in self._discover_node_pack_directories():
             manifest_path = self._resolve_manifest_path(node_pack_dir)
@@ -68,16 +73,26 @@ class LocalNodePackLoader:
                 continue
             discovered_node_packs.append((node_pack_dir, manifest))
             node_pack_manifests.append(manifest)
+            if manifest.entrypoints.get("backend") is not None:
+                runtime_module_prefixes[(manifest.node_pack_id, manifest.version)] = (
+                    self._build_runtime_module_prefix(node_pack_dir)
+                )
 
         manifest_index, duplicated_manifest_ids = self._build_non_throwing_manifest_index(node_pack_manifests)
         enabled_manifest_index = {
             manifest.node_pack_id: manifest
             for manifest in node_pack_manifests
-            if manifest.enabled_by_default and manifest.node_pack_id not in duplicated_manifest_ids
+            if (
+                manifest.enabled_by_default
+                and manifest.node_pack_id not in duplicated_manifest_ids
+                and not manifest.compatibility.current_incompatibilities()
+            )
         }
 
         for node_pack_dir, manifest in discovered_node_packs:
             if not manifest.enabled_by_default or manifest.node_pack_id in duplicated_manifest_ids:
+                continue
+            if manifest.compatibility.current_incompatibilities():
                 continue
             dependency_statuses = self._build_dependency_statuses(
                 manifest=manifest,
@@ -107,6 +122,7 @@ class LocalNodePackLoader:
             payload_contracts=_merge_payload_contracts(payload_contracts),
             node_definitions=tuple(node_definitions),
         )
+        self._runtime_module_prefixes = runtime_module_prefixes
         self._last_refresh_at = _utc_now()
         self._last_status_snapshot = self.inspect_node_pack_status()
 
@@ -191,6 +207,15 @@ class LocalNodePackLoader:
                     details={"node_pack_id": node_pack_id, "dependent_node_pack_ids": blocking_dependents},
                 )
         else:
+            compatibility_issue = next(
+                (issue for issue in target.issues if issue.code == "compatibility_unsatisfied"),
+                None,
+            )
+            if compatibility_issue is not None:
+                raise InvalidRequestError(
+                    "节点包与当前平台不兼容，无法启用",
+                    details={"node_pack_id": node_pack_id, **compatibility_issue.details},
+                )
             for dependency in target.dependencies:
                 if not dependency.satisfied:
                     raise InvalidRequestError(
@@ -208,11 +233,14 @@ class LocalNodePackLoader:
             raise InvalidRequestError("节点包 manifest 必须是对象", details={"manifest_path": str(manifest_path)})
         payload["enabledByDefault"] = enabled
         NodePackManifest.model_validate(payload)
-        manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _write_text_atomic(
+            manifest_path,
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        )
         try:
             return self.reload()
         except Exception:
-            manifest_path.write_text(original_text, encoding="utf-8")
+            _write_text_atomic(manifest_path, original_text)
             self.refresh()
             raise
 
@@ -240,6 +268,59 @@ class LocalNodePackLoader:
         """返回导入本地 node pack entrypoint 所需的模块搜索路径。"""
 
         return (str(self.custom_nodes_root_dir.parent),)
+
+    def get_node_pack_runtime_module_prefix(
+        self,
+        node_pack_id: str,
+        node_pack_version: str,
+    ) -> str:
+        """返回指定节点包唯一允许导入的 Python module 前缀。"""
+
+        module_prefix = self._runtime_module_prefixes.get((node_pack_id, node_pack_version))
+        if module_prefix is None:
+            raise ServiceConfigurationError(
+                "node pack 缺少可信的运行时 module 边界",
+                details={
+                    "node_pack_id": node_pack_id,
+                    "node_pack_version": node_pack_version,
+                },
+            )
+        return module_prefix
+
+    def validate_node_pack_directory(
+        self,
+        node_pack_dir: str | Path,
+    ) -> tuple[NodePackManifest, CustomNodeCatalogDocument | None]:
+        """按正式 loader 规则校验单个节点包目录，不执行依赖或启用状态判断。"""
+
+        resolved_node_pack_dir = Path(node_pack_dir).resolve()
+        if not resolved_node_pack_dir.is_relative_to(self.custom_nodes_root_dir):
+            raise ServiceConfigurationError(
+                "node pack 校验目录超出 custom_nodes 根目录",
+                details={"node_pack_dir": str(resolved_node_pack_dir)},
+            )
+        manifest_path = self._resolve_manifest_path(resolved_node_pack_dir)
+        if manifest_path is None:
+            raise ServiceConfigurationError(
+                "节点包缺少 manifest 文件",
+                details={"node_pack_dir": str(resolved_node_pack_dir)},
+            )
+        manifest = self._load_manifest(manifest_path)
+        if manifest.entrypoints.get("backend") is not None:
+            self._build_runtime_module_prefix(resolved_node_pack_dir)
+        custom_node_catalog_path = self._resolve_custom_node_catalog_path(
+            node_pack_dir=resolved_node_pack_dir,
+            manifest=manifest,
+        )
+        custom_node_catalog = (
+            self._load_custom_node_catalog(
+                manifest=manifest,
+                custom_node_catalog_path=custom_node_catalog_path,
+            )
+            if custom_node_catalog_path is not None
+            else None
+        )
+        return manifest, custom_node_catalog
 
     def inspect_node_pack_status(self) -> NodePackStatusSnapshot:
         """扫描 custom_nodes 根目录并返回 node pack 状态快照。"""
@@ -306,7 +387,11 @@ class LocalNodePackLoader:
         enabled_manifest_index = {
             manifest.node_pack_id: manifest
             for manifest in valid_manifests
-            if manifest.enabled_by_default and manifest.node_pack_id not in duplicated_manifest_ids
+            if (
+                manifest.enabled_by_default
+                and manifest.node_pack_id not in duplicated_manifest_ids
+                and not manifest.compatibility.current_incompatibilities()
+            )
         }
         items = tuple(
             self._build_node_pack_status_item(
@@ -373,6 +458,7 @@ class LocalNodePackLoader:
         custom_node_catalog_path: Path | None = None
         node_count = 0
         state = "loaded"
+        incompatibilities = manifest.compatibility.current_incompatibilities()
         if manifest.node_pack_id in duplicated_manifest_ids:
             issues.append(
                 NodePackStatusIssue(
@@ -380,6 +466,19 @@ class LocalNodePackLoader:
                     code="duplicate_node_pack_id",
                     message="发现重复的节点包 id",
                     details={"node_pack_id": manifest.node_pack_id},
+                )
+            )
+            state = "failed"
+        elif incompatibilities:
+            issues.append(
+                NodePackStatusIssue(
+                    severity="error",
+                    code="compatibility_unsatisfied",
+                    message="节点包与当前平台不兼容",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "incompatibilities": [dict(item) for item in incompatibilities],
+                    },
                 )
             )
             state = "failed"
@@ -676,6 +775,20 @@ class LocalNodePackLoader:
                 return candidate_path
         return None
 
+    def _build_runtime_module_prefix(self, node_pack_dir: Path) -> str:
+        """根据受信任的根目录和一级包目录生成 import 边界。"""
+
+        module_segments = (self.custom_nodes_root_dir.name, node_pack_dir.name)
+        if any(not segment.isidentifier() for segment in module_segments):
+            raise ServiceConfigurationError(
+                "node pack 目录名不能作为 Python module 导入",
+                details={
+                    "source_dir": str(node_pack_dir),
+                    "required_module_segments": list(module_segments),
+                },
+            )
+        return ".".join(module_segments)
+
     def _load_manifest(self, manifest_path: Path) -> NodePackManifest:
         """读取并校验单个节点包 manifest。"""
 
@@ -705,6 +818,14 @@ class LocalNodePackLoader:
 
         if manifest.custom_node_catalog_path is not None:
             custom_node_catalog_path = (node_pack_dir / manifest.custom_node_catalog_path).resolve()
+            if not custom_node_catalog_path.is_relative_to(node_pack_dir.resolve()):
+                raise ServiceConfigurationError(
+                    "节点包声明的自定义节点目录文件超出节点包目录",
+                    details={
+                        "node_pack_id": manifest.node_pack_id,
+                        "custom_node_catalog_path": str(custom_node_catalog_path),
+                    },
+                )
             if not custom_node_catalog_path.is_file():
                 raise ServiceConfigurationError(
                     "节点包声明的自定义节点目录文件不存在",
@@ -723,7 +844,16 @@ class LocalNodePackLoader:
             node_pack_dir / "schemas" / "workflow" / "catalog.yml",
         ):
             if candidate_path.is_file():
-                return candidate_path
+                resolved_candidate_path = candidate_path.resolve()
+                if not resolved_candidate_path.is_relative_to(node_pack_dir.resolve()):
+                    raise ServiceConfigurationError(
+                        "节点包目录文件超出节点包目录",
+                        details={
+                            "node_pack_id": manifest.node_pack_id,
+                            "custom_node_catalog_path": str(resolved_candidate_path),
+                        },
+                    )
+                return resolved_candidate_path
         return None
 
     def _load_custom_node_catalog(
@@ -816,6 +946,20 @@ def _utc_now() -> str:
     """返回 ISO 8601 UTC 时间字符串。"""
 
     return datetime.now(UTC).isoformat()
+
+
+def _write_text_atomic(target_path: Path, content: str) -> None:
+    """在同目录写临时文件并原子替换目标文本文件。"""
+
+    temporary_path = target_path.parent / f".{target_path.name}.tmp-{uuid4().hex}"
+    try:
+        with temporary_path.open("w", encoding="utf-8", newline="\n") as temporary_file:
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, target_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _merge_payload_contracts(

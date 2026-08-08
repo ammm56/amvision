@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
@@ -27,6 +27,12 @@ from backend.service.application.models.evaluation.segmentation_evaluation impor
 from backend.service.application.models.yolov8_core.training.segmentation_execution import (
     _seg_load_manifest,
 )
+from backend.service.application.models.yolo11_core.training import (
+    pose_manifest as yolo11_pose_manifest,
+)
+from backend.service.application.models.yolo26_core.training import (
+    pose_manifest as yolo26_pose_manifest,
+)
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
@@ -41,6 +47,54 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+
+
+@pytest.mark.parametrize(
+    ("module", "loader_name", "shape_resolver_name"),
+    [
+        (
+            yolo11_pose_manifest,
+            "load_yolo11_pose_training_manifest",
+            "resolve_yolo11_pose_keypoint_shape",
+        ),
+        (
+            yolo26_pose_manifest,
+            "load_yolo26_pose_training_manifest",
+            "resolve_yolo26_pose_keypoint_shape",
+        ),
+    ],
+)
+def test_model_specific_pose_manifest_preserves_test_split(
+    monkeypatch: pytest.MonkeyPatch,
+    module: object,
+    loader_name: str,
+    shape_resolver_name: str,
+) -> None:
+    """验证模型专属 pose manifest 不丢弃已解析的 test split。"""
+
+    train_annotations = [object()]
+    val_annotations = [object()]
+    test_annotations = [object()]
+    monkeypatch.setattr(
+        module,
+        "_load_pose_annotations",
+        lambda **_: (
+            ("hand",),
+            train_annotations,
+            val_annotations,
+            test_annotations,
+        ),
+    )
+    monkeypatch.setattr(module, shape_resolver_name, lambda **_: (17, 3))
+
+    result = getattr(module, loader_name)(
+        dataset_storage=object(),
+        manifest_payload={},
+    )
+
+    assert result.train_annotations is train_annotations
+    assert result.val_annotations is val_annotations
+    assert result.test_annotations is test_annotations
 
 
 def test_export_dataset_writes_yolo_instance_segmentation_labels(tmp_path: Path) -> None:

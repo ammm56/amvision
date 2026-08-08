@@ -27,7 +27,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
 import httpx
@@ -39,11 +39,15 @@ DEFAULT_TOKEN = "amvision-default-user-token"
 DEFAULT_PROJECT_ID = "project-1"
 DEFAULT_MODEL_TYPE = "yolov8"
 DEFAULT_MODEL_SCALE = "nano"
+YOLO_MAIN_MODEL_TYPES = ("yolov8", "yolo11", "yolo26")
+REQUIRED_CONVERSION_FORMATS = ("onnx", "openvino-ir", "tensorrt-engine")
 WORKFLOW_EXAMPLES_DIR = PROJECT_ROOT / "docs" / "examples" / "workflows"
 SMOKE_ROOT = PROJECT_ROOT / ".tmp" / "yolo-model-full-chain-smoke"
 
 TERMINAL_TASK_STATES = {"succeeded", "failed", "cancelled"}
 TERMINAL_RESOURCE_STATES = {"completed", "failed"}
+MAX_SAMPLE_IMAGE_BYTES = 64 * 1024 * 1024
+PROCESS_WORKING_DIRECTORY_ARTIFACTS = ("kernel.errors.txt",)
 
 
 @dataclass(frozen=True)
@@ -51,12 +55,14 @@ class YoloModelTaskCase:
     """描述一个 YOLO 主线 task 的真实短链路输入。"""
 
     task_type: str
-    dataset_dir: Path
+    dataset_dir: Path | None
     export_format: str
     input_size: tuple[int, int]
     conversion_route: str
     deployment_route: str
     inference_route: str
+    dataset_archive: Path | None = None
+    import_format: str | None = None
     sample_extensions: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp")
 
 
@@ -67,6 +73,16 @@ class ManagedProcess:
     name: str
     process: subprocess.Popen[bytes]
     log_path: Path
+    working_directory_artifact_snapshot: WorkingDirectoryArtifactSnapshot | None = None
+
+
+@dataclass(frozen=True)
+class WorkingDirectoryArtifactSnapshot:
+    """记录隔离进程启动前工作目录内受管诊断文件的状态。"""
+
+    working_directory: Path
+    artifact_names: tuple[str, ...]
+    preexisting_names: frozenset[str]
 
 
 WORKFLOW_EXAMPLE_BY_TASK_TYPE = {
@@ -121,8 +137,12 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "obb": YoloModelTaskCase(
             task_type="obb",
-            dataset_dir=dataset_root / "detection" / "dota128",
-            export_format="dota-obb-v1",
+            dataset_dir=None,
+            dataset_archive=(
+                PROJECT_ROOT / "data" / "files" / "postman-assets" / "obb-dota-min.zip"
+            ),
+            import_format="dota",
+            export_format="yolo-obb-v1",
             input_size=(256, 384),
             conversion_route="/models/obb/conversion-tasks",
             deployment_route="/models/obb/deployment-instances",
@@ -242,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
                         target_formats=args.target_formats,
                         max_epochs=args.max_epochs,
                         batch_size=args.batch_size,
+                        training_device=args.training_device,
                         timeout_seconds=args.task_timeout_seconds,
                         skip_deployment=args.skip_deployment,
                         run_workflow=args.run_workflow,
@@ -287,7 +308,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--token", default=DEFAULT_TOKEN, help="调用 API 使用的 Bearer token"
     )
     parser.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
-    parser.add_argument("--model-type", default=DEFAULT_MODEL_TYPE)
+    parser.add_argument(
+        "--model-type",
+        choices=YOLO_MAIN_MODEL_TYPES,
+        default=DEFAULT_MODEL_TYPE,
+    )
     parser.add_argument("--model-scale", default=DEFAULT_MODEL_SCALE)
     parser.add_argument(
         "--tasks", nargs="+", choices=tuple(cases), default=tuple(cases)
@@ -296,10 +321,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--target-formats",
         nargs="+",
         choices=("onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"),
-        default=("onnx",),
+        default=REQUIRED_CONVERSION_FORMATS,
     )
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument(
+        "--training-device",
+        default="auto",
+        help="训练设备：auto、cpu、cuda 或 cuda:<index>",
+    )
     parser.add_argument(
         "--start-processes", action="store_true", help="由脚本启动 service 和 worker"
     )
@@ -333,16 +363,21 @@ def start_service_processes(
     port: int,
     service_timeout_seconds: float,
 ) -> list[ManagedProcess]:
-    """按真实发布顺序启动 backend-service 和 worker。
+    """按真实发布顺序启动 backend-service、inference daemon 和 worker。
 
     说明：
     - backend-service 负责数据库 schema、seeder 和 runtime 控制面初始化。
-    - worker 只负责消费队列；必须等 service health 可用后再启动。
+    - inference daemon 使用本轮唯一 service id，不复用桌面或其他测试进程。
+    - worker 只负责消费队列；必须等 service 和 daemon 可用后再启动。
     """
 
-    process_env = os.environ.copy()
-    process_env.setdefault("AMVISION_TASK_MANAGER__ENABLED", "false")
+    process_env = build_e2e_process_environment(run_dir=run_dir, port=port)
+    working_directory_artifact_snapshot = snapshot_working_directory_artifacts(
+        working_directory=PROJECT_ROOT,
+        artifact_names=PROCESS_WORKING_DIRECTORY_ARTIFACTS,
+    )
     service_log = run_dir / "backend-service.log"
+    inference_daemon_log = run_dir / "inference-daemon.log"
     worker_log = run_dir / "backend-worker.log"
     processes: list[ManagedProcess] = []
     try:
@@ -360,6 +395,7 @@ def start_service_processes(
             ],
             env=process_env,
             log_path=service_log,
+            working_directory_artifact_snapshot=(working_directory_artifact_snapshot),
         )
         processes.append(service_process)
         wait_for_service(
@@ -367,11 +403,22 @@ def start_service_processes(
             timeout_seconds=service_timeout_seconds,
         )
 
+        inference_daemon_process = start_process(
+            name="inference-daemon",
+            args=[sys.executable, "-m", "backend.inference_daemon.main"],
+            env=process_env,
+            log_path=inference_daemon_log,
+            working_directory_artifact_snapshot=(working_directory_artifact_snapshot),
+        )
+        processes.append(inference_daemon_process)
+        ensure_managed_processes_running(processes, startup_wait_seconds=2.0)
+
         worker_process = start_process(
             name="backend-worker",
             args=[sys.executable, "-m", "backend.workers.main"],
             env=process_env,
             log_path=worker_log,
+            working_directory_artifact_snapshot=(working_directory_artifact_snapshot),
         )
         processes.append(worker_process)
         ensure_managed_processes_running(processes, startup_wait_seconds=2.0)
@@ -381,12 +428,44 @@ def start_service_processes(
         raise
 
 
+def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]:
+    """为一轮 E2E 构造独立数据库、队列、workspace 和 IPC 配置。"""
+
+    process_env = os.environ.copy()
+    runtime_root = (run_dir / "runtime").resolve()
+    database_path = runtime_root / "amvision.db"
+    queue_root = runtime_root / "queue"
+    worker_root = runtime_root / "worker"
+    buffer_root = runtime_root / "buffers"
+    dataset_storage_root = (PROJECT_ROOT / "data" / "files").resolve()
+    sqlite_url = f"sqlite:///{database_path.as_posix()}"
+    service_id = f"e2e-{port}-{os.getpid()}"
+
+    process_env["AMVISION_DATABASE__URL"] = sqlite_url
+    process_env["AMVISION_DATASET_STORAGE__ROOT_DIR"] = str(dataset_storage_root)
+    process_env["AMVISION_QUEUE__ROOT_DIR"] = str(queue_root)
+    process_env["AMVISION_TASK_MANAGER__ENABLED"] = "false"
+    process_env["AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID"] = service_id
+    process_env["AMVISION_LOCAL_BUFFER_BROKER__ENABLED"] = "false"
+    process_env["AMVISION_LOCAL_BUFFER_BROKER__ROOT_DIR"] = str(buffer_root)
+    process_env["AMVISION_INFERENCE_DAEMON__RUNTIME_OWNER"] = "daemon"
+    process_env["AMVISION_INFERENCE_DAEMON__SERVICE_ID"] = service_id
+    process_env["AMVISION_DEPLOYMENT_RUNTIME_RECONCILER__ENABLED"] = "false"
+
+    process_env["AMVISION_WORKER_DATABASE__URL"] = sqlite_url
+    process_env["AMVISION_WORKER_DATASET_STORAGE__ROOT_DIR"] = str(dataset_storage_root)
+    process_env["AMVISION_WORKER_QUEUE__ROOT_DIR"] = str(queue_root)
+    process_env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"] = str(worker_root)
+    return process_env
+
+
 def start_process(
     *,
     name: str,
     args: list[str],
     env: dict[str, str],
     log_path: Path,
+    working_directory_artifact_snapshot: WorkingDirectoryArtifactSnapshot | None = None,
 ) -> ManagedProcess:
     """启动一个隐藏窗口子进程并写入日志。"""
 
@@ -401,21 +480,127 @@ def start_process(
         stderr=subprocess.STDOUT,
         creationflags=creation_flags,
     )
-    return ManagedProcess(name=name, process=process, log_path=log_path)
+    return ManagedProcess(
+        name=name,
+        process=process,
+        log_path=log_path,
+        working_directory_artifact_snapshot=working_directory_artifact_snapshot,
+    )
 
 
 def stop_managed_processes(processes: Iterable[ManagedProcess]) -> None:
-    """停止本脚本启动的进程。"""
+    """按依赖逆序停止本脚本启动的完整进程树。"""
 
-    for item in processes:
-        if item.process.poll() is not None:
+    managed_processes = tuple(processes)
+    for item in reversed(managed_processes):
+        _stop_process_tree(item.process)
+    for item in managed_processes:
+        snapshot = item.working_directory_artifact_snapshot
+        if snapshot is None:
             continue
-        item.process.terminate()
+        collect_generated_working_directory_artifacts(
+            snapshot=snapshot,
+            destination_root=(
+                item.log_path.parent / "process-working-directory-artifacts"
+            ),
+        )
+        break
+
+
+def snapshot_working_directory_artifacts(
+    *,
+    working_directory: Path,
+    artifact_names: tuple[str, ...],
+) -> WorkingDirectoryArtifactSnapshot:
+    """记录进程启动前已存在的诊断文件，避免移动用户原有文件。"""
+
+    normalized_names = tuple(dict.fromkeys(artifact_names))
+    preexisting_names = frozenset(
+        name for name in normalized_names if (working_directory / name).is_file()
+    )
+    return WorkingDirectoryArtifactSnapshot(
+        working_directory=working_directory,
+        artifact_names=normalized_names,
+        preexisting_names=preexisting_names,
+    )
+
+
+def collect_generated_working_directory_artifacts(
+    *,
+    snapshot: WorkingDirectoryArtifactSnapshot,
+    destination_root: Path,
+) -> tuple[Path, ...]:
+    """将本轮新生成的编译器诊断文件移入隔离验收结果目录。"""
+
+    collected_paths: list[Path] = []
+    for artifact_name in snapshot.artifact_names:
+        if artifact_name in snapshot.preexisting_names:
+            continue
+        source_path = snapshot.working_directory / artifact_name
+        if not source_path.is_file():
+            continue
+        destination_root.mkdir(parents=True, exist_ok=True)
+        destination_path = destination_root / artifact_name
+        suffix_index = 1
+        while destination_path.exists():
+            destination_path = destination_root / f"{artifact_name}.{suffix_index}"
+            suffix_index += 1
+        source_path.replace(destination_path)
+        collected_paths.append(destination_path)
+    return tuple(collected_paths)
+
+
+def _stop_process_tree(process: subprocess.Popen[bytes]) -> None:
+    """停止根进程及其 multiprocessing 子进程，避免 Windows 留下孤儿。"""
+
+    try:
+        import psutil  # type: ignore[import-not-found]
+    except ImportError:
+        _stop_root_process(process)
+        return
+
+    try:
+        root_process = psutil.Process(process.pid)
+        descendants = root_process.children(recursive=True)
+    except psutil.NoSuchProcess:
+        _stop_root_process(process)
+        return
+
+    # 先结束根进程，防止 supervisor 在清理子进程期间再次拉起 worker；子进程
+    # 对象必须在根进程退出前取得，因为 Windows 不会自动重新挂载孤儿进程。
+    _stop_root_process(process)
+    alive_descendants = []
+    for child in descendants:
         try:
-            item.process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            item.process.kill()
-            item.process.wait(timeout=10)
+            if child.is_running() and child.status() != psutil.STATUS_ZOMBIE:
+                alive_descendants.append(child)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    for child in reversed(alive_descendants):
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            continue
+    _, alive_descendants = psutil.wait_procs(alive_descendants, timeout=5.0)
+    for child in alive_descendants:
+        try:
+            child.kill()
+        except psutil.NoSuchProcess:
+            continue
+    psutil.wait_procs(alive_descendants, timeout=5.0)
+
+
+def _stop_root_process(process: subprocess.Popen[bytes]) -> None:
+    """停止一个 Popen 根进程并等待句柄回收。"""
+
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5.0)
 
 
 def ensure_managed_processes_running(
@@ -469,6 +654,7 @@ def run_task_case(
     target_formats: tuple[str, ...],
     max_epochs: int,
     batch_size: int,
+    training_device: str,
     timeout_seconds: float,
     skip_deployment: bool,
     run_workflow: bool,
@@ -476,24 +662,39 @@ def run_task_case(
 ) -> dict[str, Any]:
     """运行单个 task_type 的完整短链路。"""
 
-    if not case.dataset_dir.is_dir():
-        raise RuntimeError(f"{case.task_type} 数据集目录不存在：{case.dataset_dir}")
+    validate_task_case_source(case)
 
     started_at = datetime.now().isoformat(timespec="seconds")
-    zip_path = build_dataset_zip(
-        case=case,
-        run_dir=run_dir,
-        max_images_per_split=max_images_per_split,
-    )
-    sample_image_path = find_sample_image(case.dataset_dir, case.sample_extensions)
+    if case.dataset_archive is not None:
+        zip_path = case.dataset_archive
+        sample_image_path = extract_sample_image_from_archive(
+            archive_path=case.dataset_archive,
+            run_dir=run_dir,
+            sample_extensions=case.sample_extensions,
+        )
+    else:
+        zip_path = build_dataset_zip(
+            case=case,
+            run_dir=run_dir,
+            max_images_per_split=max_images_per_split,
+        )
+        if case.dataset_dir is None:
+            raise RuntimeError(f"{case.task_type} 数据集目录未配置")
+        sample_image_path = find_sample_image(
+            case.dataset_dir,
+            case.sample_extensions,
+        )
     dataset_id = build_dataset_id(
-        model_type=model_type, task_type=case.task_type, run_id=run_dir.name
+        model_type=model_type,
+        task_type=case.task_type,
+        run_id=f"{run_dir.parent.name}-{run_dir.name}",
     )
     dataset_import = submit_dataset_import(
         client=client,
         project_id=project_id,
         dataset_id=dataset_id,
         task_type=case.task_type,
+        format_type=case.import_format,
         zip_path=zip_path,
     )
     dataset_import_detail = poll_resource(
@@ -543,6 +744,7 @@ def run_task_case(
         output_model_name=output_model_name,
         max_epochs=max_epochs,
         batch_size=batch_size,
+        training_device=training_device,
     )
     training_detail = poll_task(
         client=client,
@@ -613,9 +815,14 @@ def run_task_case(
 
     return {
         "status": "succeeded",
+        "model_type": model_type,
+        "task_type": case.task_type,
         "started_at": started_at,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
-        "dataset_dir": str(case.dataset_dir),
+        "dataset_dir": str(case.dataset_dir) if case.dataset_dir is not None else None,
+        "dataset_archive": (
+            str(case.dataset_archive) if case.dataset_archive is not None else None
+        ),
         "dataset_zip": str(zip_path),
         "sample_image": str(sample_image_path),
         "dataset_import_id": dataset_import["dataset_import_id"],
@@ -629,6 +836,69 @@ def run_task_case(
     }
 
 
+def validate_task_case_source(case: YoloModelTaskCase) -> None:
+    """确认矩阵用例只配置一个存在的数据源。"""
+
+    configured_sources = sum(
+        source is not None for source in (case.dataset_dir, case.dataset_archive)
+    )
+    if configured_sources != 1:
+        raise RuntimeError(
+            f"{case.task_type} 必须且只能配置 dataset_dir 或 dataset_archive"
+        )
+    if case.dataset_dir is not None and not case.dataset_dir.is_dir():
+        raise RuntimeError(f"{case.task_type} 数据集目录不存在：{case.dataset_dir}")
+    if case.dataset_archive is not None:
+        if not case.dataset_archive.is_file():
+            raise RuntimeError(
+                f"{case.task_type} 数据集压缩包不存在：{case.dataset_archive}"
+            )
+        if case.dataset_archive.suffix.lower() != ".zip":
+            raise RuntimeError(
+                f"{case.task_type} dataset_archive 必须是 zip：{case.dataset_archive}"
+            )
+
+
+def extract_sample_image_from_archive(
+    *,
+    archive_path: Path,
+    run_dir: Path,
+    sample_extensions: tuple[str, ...],
+) -> Path:
+    """从受控数据集 zip 提取一张有大小上限的推理样本。"""
+
+    sample_dir = run_dir / "sample"
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    normalized_extensions = {suffix.lower() for suffix in sample_extensions}
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for member in archive.infolist():
+            member_path = PurePosixPath(member.filename.replace("\\", "/"))
+            if (
+                member.is_dir()
+                or member_path.is_absolute()
+                or ".." in member_path.parts
+            ):
+                continue
+            if member_path.suffix.lower() not in normalized_extensions:
+                continue
+            if member.file_size <= 0 or member.file_size > MAX_SAMPLE_IMAGE_BYTES:
+                continue
+            target_path = sample_dir / member_path.name
+            with archive.open(member, "r") as source, target_path.open("wb") as target:
+                remaining_bytes = MAX_SAMPLE_IMAGE_BYTES + 1
+                while remaining_bytes > 0:
+                    chunk = source.read(min(1024 * 1024, remaining_bytes))
+                    if not chunk:
+                        return target_path
+                    target.write(chunk)
+                    remaining_bytes -= len(chunk)
+            target_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"数据集样本解压后超过 {MAX_SAMPLE_IMAGE_BYTES} 字节：{member.filename}"
+            )
+    raise RuntimeError(f"数据集压缩包中没有可用推理图片：{archive_path}")
+
+
 def build_dataset_zip(
     *,
     case: YoloModelTaskCase,
@@ -637,6 +907,8 @@ def build_dataset_zip(
 ) -> Path:
     """把真实数据目录打包为 API 上传使用的 zip。"""
 
+    if case.dataset_dir is None:
+        raise RuntimeError(f"{case.task_type} 数据集目录未配置")
     zip_dir = run_dir / "datasets"
     zip_dir.mkdir(parents=True, exist_ok=True)
     zip_path = zip_dir / f"{case.task_type}.zip"
@@ -858,19 +1130,23 @@ def submit_dataset_import(
     project_id: str,
     dataset_id: str,
     task_type: str,
+    format_type: str | None,
     zip_path: Path,
 ) -> dict[str, Any]:
     """提交 DatasetImport。"""
 
+    form_data = {
+        "project_id": project_id,
+        "dataset_id": dataset_id,
+        "task_type": task_type,
+        "split_strategy": "auto",
+    }
+    if format_type is not None:
+        form_data["format_type"] = format_type
     with zip_path.open("rb") as file_obj:
         return client.post(
             "/datasets/imports",
-            data={
-                "project_id": project_id,
-                "dataset_id": dataset_id,
-                "task_type": task_type,
-                "split_strategy": "auto",
-            },
+            data=form_data,
             files={"package": (zip_path.name, file_obj, "application/zip")},
         )
 
@@ -911,6 +1187,7 @@ def submit_training_task(
     output_model_name: str,
     max_epochs: int,
     batch_size: int,
+    training_device: str,
 ) -> dict[str, Any]:
     """提交训练任务。"""
 
@@ -929,14 +1206,16 @@ def submit_training_task(
             "height": int(case.input_size[0]),
         },
         "precision": "fp32",
-        "extra_options": {
-            "num_workers": 0,
-            "smoke_validation": True,
+        "parameters": {
+            "runtime": {
+                "device": training_device,
+                "num_workers": 0,
+            },
+            "augmentation": {"enabled": False},
         },
         "display_name": f"smoke {model_type} {case.task_type}",
     }
-    if case.task_type in {"detection", "pose", "obb"}:
-        payload["evaluation_interval"] = 1
+    payload["evaluation_interval"] = 1
     return client.post(
         f"/models/{case.task_type}/training-tasks",
         json=payload,
@@ -1044,7 +1323,6 @@ def run_deployment_smoke(
             "model_build_id": model_build_id,
             "runtime_backend": runtime_backend,
             "runtime_precision": "fp32",
-            "instance_count": 1,
             "display_name": f"smoke {model_type} {case.task_type} {target_format}",
             "metadata": {"smoke_validation": True},
         },
@@ -1162,9 +1440,12 @@ def run_workflow_app_runtime_smoke(
         )
         invoke_payload = client.post(
             f"/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+            params={"response_mode": "run"},
             json={
                 "input_bindings": {
-                    "request_image_base64": build_image_base64_payload(sample_image_path),
+                    "request_image_base64": build_image_base64_payload(
+                        sample_image_path
+                    ),
                     "deployment_request": {
                         "value": {"deployment_instance_id": deployment_id}
                     },
@@ -1244,7 +1525,9 @@ def build_image_base64_payload(sample_image_path: Path) -> dict[str, str]:
     """把本地样例图编码成 workflow image-base64.v1 payload。"""
 
     return {
-        "image_base64": base64.b64encode(sample_image_path.read_bytes()).decode("ascii"),
+        "image_base64": base64.b64encode(sample_image_path.read_bytes()).decode(
+            "ascii"
+        ),
         "media_type": resolve_image_media_type(sample_image_path),
     }
 
@@ -1576,10 +1859,11 @@ def summarize_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """提取 evaluation 响应里的关键字段。"""
 
     result = payload.get("result")
+    result_payload = result if isinstance(result, dict) else {}
     summary: dict[str, Any] = {
         "task_id": payload.get("task_id"),
         "state": payload.get("state"),
-        "sample_count": payload.get("sample_count"),
+        "sample_count": payload.get("sample_count", result_payload.get("sample_count")),
         "error_message": payload.get("error_message"),
     }
     for key in (
@@ -1594,8 +1878,8 @@ def summarize_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "rotated_map50",
         "rotated_map50_95",
     ):
-        if key in payload:
-            summary[key] = payload.get(key)
+        if key in payload or key in result_payload:
+            summary[key] = payload.get(key, result_payload.get(key))
     if isinstance(result, dict):
         summary["result_keys"] = sorted(result)
     return summary

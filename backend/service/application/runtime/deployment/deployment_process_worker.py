@@ -164,10 +164,14 @@ def run_deployment_process_worker(
         DatasetStorageSettings(root_dir=dataset_storage_root_dir)
     )
     runtime_pool = DeploymentRuntimePool(dataset_storage=dataset_storage)
+    effective_runtime_configuration = (
+        config.effective_runtime_configuration or config.runtime_configuration
+    )
     runtime_pool_config = DeploymentRuntimePoolConfig(
         deployment_instance_id=config.deployment_instance_id,
         runtime_target=config.runtime_target,
-        runtime_configuration=config.runtime_configuration,
+        runtime_configuration=effective_runtime_configuration,
+        requested_runtime_configuration=config.runtime_configuration,
     )
     runtime_pool.ensure_deployment(runtime_pool_config)
     infer_slots = BoundedSemaphore(max(1, config.instance_count))

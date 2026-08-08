@@ -16,7 +16,7 @@ from backend.contracts.datasets.exports.coco_instance_segmentation_export import
 from backend.contracts.datasets.exports.coco_keypoints_export import (
     CocoKeypointsExportManifest,
 )
-from backend.contracts.datasets.exports.dataset_formats import DatasetExportFormatId
+from backend.contracts.datasets.dataset_formats import DatasetExportFormatId
 from backend.contracts.datasets.exports.dota_obb_export import (
     DotaObbAnnotationPayload,
     DotaObbExportManifest,
@@ -32,6 +32,7 @@ from backend.contracts.datasets.exports.voc_detection_export import (
 from backend.contracts.datasets.exports.yolo_export import (
     YoloDetectionExportManifest,
     YoloInstanceSegmentationExportManifest,
+    YoloObbExportManifest,
     YoloPoseExportManifest,
 )
 
@@ -44,6 +45,7 @@ DatasetExportFormatManifest = (
     | YoloDetectionExportManifest
     | YoloInstanceSegmentationExportManifest
     | YoloPoseExportManifest
+    | YoloObbExportManifest
     | CocoInstanceSegmentationExportManifest
     | CocoKeypointsExportManifest
 )

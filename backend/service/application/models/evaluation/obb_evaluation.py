@@ -133,7 +133,7 @@ def _run_obb_evaluation_with_session(
         if not img_info:
             continue
         image_path = img_info.get("file_name", "")
-        resolved = dataset_storage.resolve(image_path)
+        resolved = dataset_storage.resolve_filesystem_path(image_path)
         if not resolved or not resolved.is_file():
             raise InvalidRequestError(
                 "OBB 评估样本文件不存在",

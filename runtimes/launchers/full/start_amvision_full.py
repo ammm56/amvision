@@ -20,7 +20,13 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import is_pid_alive, resolve_app_root, resolve_path  # noqa: E402
+from common import (  # noqa: E402
+    WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE,
+    ensure_windows_long_paths_enabled,
+    is_pid_alive,
+    resolve_app_root,
+    resolve_path,
+)
 
 
 def _build_child_process_environment() -> dict[str, str]:
@@ -318,6 +324,7 @@ def _validate_required_files(
         app_root / "app" / "backend" / "alembic.ini",
         app_root / "app" / "backend" / "alembic" / "env.py",
         app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py",
+        app_root / "launchers" / "enable_windows_long_paths.py",
     ]
     daemon_entry = release_manifest.get("inference_daemon")
     if not isinstance(daemon_entry, dict):
@@ -759,6 +766,11 @@ def main(argv: list[str] | None = None) -> int:
     app_root = resolve_app_root(
         script_file=Path(__file__), explicit_app_root=args.app_root
     )
+    if not ensure_windows_long_paths_enabled(
+        app_root=app_root,
+        python_executable=args.python_executable,
+    ):
+        return WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE
     state_file_path = _resolve_stack_state_file(
         app_root,
         logs_subdir=args.logs_subdir,

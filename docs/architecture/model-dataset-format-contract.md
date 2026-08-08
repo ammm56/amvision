@@ -21,9 +21,9 @@
 | `detection` | `coco / voc / yolo` | `yolo-detection-v1 / coco-detection-v1 / voc-detection-v1` |
 | `segmentation` | `coco / yolo` | `yolo-instance-seg-v1 / coco-instance-seg-v1` |
 | `pose` | `coco / yolo` | `yolo-pose-v1 / coco-keypoints-v1` |
-| `obb` | `dota / yolo` | `dota-obb-v1` |
+| `obb` | `dota / yolo` | `yolo-obb-v1 / dota-obb-v1` |
 
-`semantic-mask-dir-v1` 和 `sam-promptable-seg-v1` 仍是预留格式，当前不得当作已实现导出格式使用。
+代码中的统一格式注册表是导入、导出、API 能力目录和训练格式矩阵的单一事实来源。公开能力中不保留未实现格式。
 
 ## 模型任务规范
 
@@ -45,7 +45,7 @@
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | YOLO 原生目录为默认训练格式。 |
 | `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | YOLO 导出不接受 RLE 或多 polygon 无损表达不了的样本。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | YOLO pose 导出要求全部标注关键点数量一致。 |
-| `obb` | 支持 | `dota / yolo` | `dota-obb-v1` | - | OBB 统一用四角点 polygon 表达。 |
+| `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | OBB 内部统一用像素四角点，YOLO 导出使用归一化四角点。 |
 
 ### YOLO11
 
@@ -55,7 +55,7 @@
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | 与 YOLOv8 detection 共用导入导出格式。 |
 | `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | 与 YOLOv8 pose 共用格式规则。 |
-| `obb` | 支持 | `dota / yolo` | `dota-obb-v1` | - | 与 YOLOv8 OBB 共用格式规则。 |
+| `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | 与 YOLOv8 OBB 共用格式规则。 |
 
 ### YOLO26
 
@@ -65,7 +65,7 @@
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | 与 YOLOv8 detection 共用导入导出格式。 |
 | `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | 与 YOLOv8 pose 共用格式规则。 |
-| `obb` | 支持 | `dota / yolo` | `dota-obb-v1` | - | 与 YOLOv8 OBB 共用格式规则。 |
+| `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | 与 YOLOv8 OBB 共用格式规则。 |
 
 ### RF-DETR
 
@@ -163,14 +163,15 @@ dataset-root/
       └─ test.txt
 ```
 
-`train.txt` 和 `val.txt` 是标准导入必需文件。`trainval.txt` 和 `test.txt` 可选，其中 `trainval.txt` 是 train 与 val 的合集，不作为独立互斥 split。
+支持直接根、`VOC2007 / VOC2012` 包装目录和同一包中的多 shard。`train.txt` 与 `val.txt` 使用时必须成对存在；只有 `trainval.txt` 时明确作为 train 导入并记录缺少 val 的 warning。`test.txt` 可独立存在。
 
 XML 最小字段：
 
 - 根节点为 `annotation`。
 - 必须包含 `filename`、`size/width`、`size/height`。
 - 有目标图像的每个 `object` 必须包含 `name` 和 `bndbox/xmin/ymin/xmax/ymax`；无目标图像可以不包含 `object`。
-- VOC 坐标按 1-based inclusive `xyxy` 读取，导入后转换为平台内部 0-based `xywh`。
+- 无声明 VOC 坐标按项目默认 0-based、右下 exclusive `xyxy` 读取；只有 XML 明确声明 `pascal-voc-1-based-inclusive` 时才按官方坐标转换。
+- 导入后统一转换为平台 0-based、右下 exclusive 的绝对像素 `xywh`。
 - `difficult / truncated / pose` 写入 annotation metadata。
 
 VOC detection 标准导入图片只支持 `.jpg / .jpeg / .png / .bmp`。`.webp / .tif / .tiff` 不属于当前 VOC detection 标准导入格式。
@@ -345,6 +346,22 @@ class_index cx cy w h kpt_x kpt_y visibility ...
 
 `manifest.json.metadata.kpt_shape` 写入 `[keypoint_count, 3]`。全部 pose 标注必须使用一致关键点数量。
 
+### `yolo-obb-v1`
+
+任务：`obb`。
+
+目录：
+
+```text
+export-root/
+├─ manifest.json
+├─ images/{split}/
+├─ labels/{split}/
+└─ annotations/{split}.json
+```
+
+YOLO 标签行为 `class_index x1 y1 x2 y2 x3 y3 x4 y4`，四角点坐标归一化到 0 到 1。平台索引保留像素 `bbox` 和 `poly`，供 YOLOv8、YOLO11、YOLO26 的训练、验证和评估读取；两种表达由同一 DatasetVersion 同步生成。
+
 ### `coco-detection-v1`
 
 任务：`detection`。
@@ -374,7 +391,7 @@ export-root/
 └─ ImageSets/Main/{split}.txt
 ```
 
-XML bbox 输出为 VOC 1-based inclusive `xyxy`。
+XML bbox 固定输出为项目默认 0-based、右下 exclusive `xyxy`。manifest 和每个 XML 都显式写入 `coordinate_convention=zero-based-exclusive`，避免消费端猜测方言。
 
 ### `coco-instance-seg-v1`
 

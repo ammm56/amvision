@@ -447,6 +447,21 @@
             <span>{{ t('deploymentOps.fields.warmedInstances') }}</span>
             <strong>{{ selectedRuntimeHealth?.warmed_instance_count ?? '-' }}</strong>
           </div>
+          <div v-if="selectedCpuResourceSummary">
+            <span>{{ t('deploymentOps.fields.cpuThreadAllocation') }}</span>
+            <strong>
+              {{ selectedCpuResourceSummary.allocatedThreadCount }} /
+              {{ selectedCpuResourceSummary.physicalCoreCount }}
+            </strong>
+          </div>
+          <div v-if="selectedCpuResourceSummary">
+            <span>{{ t('deploymentOps.fields.cpuThreadsAvailable') }}</span>
+            <strong>{{ selectedCpuResourceSummary.availableThreadCount }}</strong>
+          </div>
+          <div v-if="selectedCpuResourceSummary">
+            <span>{{ t('deploymentOps.fields.cpuConstrainedDeployments') }}</span>
+            <strong>{{ selectedCpuResourceSummary.constrainedDeploymentCount }}</strong>
+          </div>
           <div>
             <span>{{ t('deploymentOps.fields.pinnedBytes') }}</span>
             <strong>{{ selectedRuntimeHealth?.pinned_output_total_bytes ?? '-' }}</strong>
@@ -650,6 +665,50 @@ const selectedProjectId = computed(() => projectStore.selectedProjectId)
 const selectedDeployment = computed(() => deployments.value.find((item) => item.deployment_instance_id === selectedDeploymentId.value) ?? null)
 const selectedRuntimeStatus = computed(() => deploymentRuntimeStatus(selectedDeploymentId.value))
 const selectedRuntimeHealth = computed(() => deploymentRuntimeHealth(selectedDeploymentId.value))
+const selectedCpuResourceSummary = computed(() => {
+  const deployment = selectedDeployment.value
+  if (
+    deployment?.runtime_backend.trim().toLowerCase() !== 'openvino'
+    || !deployment.device_name.trim().toLowerCase().startsWith('cpu')
+  ) {
+    return null
+  }
+  const manager = asRecord(
+    selectedRuntimeHealth.value?.effective_runtime_configuration.cpu_device_resource_manager,
+  )
+  if (!manager) {
+    return null
+  }
+  const physicalCoreCount = readNonNegativeInteger(manager, 'cpu_physical_core_count')
+  const allocatedThreadCount = readNonNegativeInteger(manager, 'allocated_thread_count')
+  const availableThreadCount = readNonNegativeInteger(manager, 'available_thread_count')
+  const constrainedDeploymentCount = readNonNegativeInteger(manager, 'constrained_deployment_count')
+  if (
+    physicalCoreCount === null
+    || allocatedThreadCount === null
+    || availableThreadCount === null
+    || constrainedDeploymentCount === null
+  ) {
+    return null
+  }
+  return {
+    physicalCoreCount,
+    allocatedThreadCount,
+    availableThreadCount,
+    constrainedDeploymentCount,
+  }
+})
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function readNonNegativeInteger(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key]
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+}
 
 function formatRuntimeConfiguration(value: Record<string, unknown>): string {
   return JSON.stringify(value, null, 2)

@@ -15,7 +15,7 @@
 
 ## 当前状态
 
-截至 2026-07-23，第一阶段运行时配置已经进入公开 API、workflow service node、deployment 子进程、runtime adapter 和 Vue 3 发布界面。
+截至 2026-08-07，运行时配置和 OpenVINO CPU 进程级资源调度已经进入公开 API、workflow service node、deployment 子进程、runtime adapter 和 Vue 3 发布界面。
 
 当前已经完成：
 
@@ -26,7 +26,7 @@
 - TensorRT conversion 会把 `input_shape_mode`、`optimization_profile_count` 和每个 profile 的输入名及 `min/opt/max shape` 写入具体 `ModelBuild.metadata`；部署表单和后端校验都读取所选 build 的能力，不按模型名或任务类型猜测。
 - capability API 按当前机器和 OpenVINO plugin 的 `SUPPORTED_PROPERTIES` 返回可用字段、设备信息和发布默认值。
 - 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。
-- 进程级 CPU device resource manager 汇总全部 supervisor 中正在运行的 OpenVINO CPU deployment；线程预算超出当前物理核心数时只告警，不拒绝创建、启动或运行。
+- 进程级 CPU device resource manager 在 worker 启动前原子预留物理核心预算，并把裁剪后的每实例线程数作为 effective 配置传给 OpenVINO；无法满足每实例至少一个线程时明确拒绝启动。
 
 当前仍有下面这些限制：
 
@@ -46,9 +46,9 @@
 4. OpenVINO `num_streams` 在 CPU 和 GPU 上可配置；NPU 是否可写必须以目标机器插件返回的 `supported_properties` 为准，当前 OpenVINO NPU 文档将其列为只读结果。
 5. TensorRT 使用 engine、execution context 和 CUDA stream 表达运行并发，不能复用 OpenVINO 字段名掩盖不同语义。
 6. TensorRT engine 构建参数与部署运行参数必须分开保存；运行期不能假装修改已经固化到 engine 的构建选项。
-7. OpenVINO CPU 新建发布的默认线程数取创建时主机物理核心数并作为 requested 值保存；`auto` 仍可显式选择。硬件变化只改变诊断结论，不构成启动失败条件。
+7. OpenVINO CPU 新建发布的默认线程数取创建时主机物理核心数并作为 requested 值保存；`auto` 仍可显式选择。启动时根据当前服务进程的剩余物理核心预算生成 effective 值，不改写 requested。
 8. 运行状态同时返回请求值和实际生效值，现场性能分析不得只读取创建请求。
-9. CPU、GPU 或 NPU 的资源估算用于提示和诊断，不得仅因目标机器核心数或计算单元数量变化而拒绝创建、启动或运行。
+9. 创建发布不受当前资源占用影响；启动 OpenVINO CPU 常驻进程时必须先取得严格资源预留。可用线程不足以覆盖 `instance_count` 的最小一线程预算时拒绝启动，不创建过度订阅进程。
 10. 工业同步推理默认保持立即执行、立即返回结果的调用边界；本规划不引入内部等待队列，不自动把 workflow 的多次同步调用合并成 list、batch 或隐藏队列，也不自动改写显式并行分支。
 
 ## 概念边界
@@ -106,8 +106,9 @@ effective:
 从 16 核机器迁移到 6 核机器时：
 
 - `requested=auto` 时由新机器重新解析
-- requested 为显式线程数时保持该值，并在超出新机器物理核心预算时返回告警
-- 不因核心数变化拒绝启动
+- requested 为显式线程数时保持该值，effective 按启动时剩余物理核心数裁剪
+- 可用线程仍能覆盖全部实例时允许以裁剪后的 effective 配置启动
+- 可用线程不足以为每个实例分配一个线程时拒绝启动，并返回物理核心数、可用线程数和最小需求
 - 健康状态和诊断结果明确显示新的实际值
 
 用户显式填写数值时保留该请求值。目标插件不支持或目标硬件范围发生变化时，runtime adapter 应返回明确的降级或裁剪说明，不得静默伪装成原值已经生效。
@@ -148,16 +149,23 @@ OpenVINO CPU 的常用运行参数包括：
 - `scheduling_core_type` 用于 P-core / E-core 混合处理器。
 - `enable_hyper_threading` 和 `enable_cpu_pinning` 的默认行为与平台、核心类型和性能目标有关。
 
-CPU 发布表单提供“自动”和显式线程数。新建发布默认填入当前机器物理核心数并落库，以便现场节拍测试具有明确 requested 值；需要跨硬件自动重算时可主动选择 `auto`。迁移到不同 CPU 后不自动改写已保存值，也不因此拒绝运行。
+CPU 发布表单提供“自动”和显式线程数。新建发布默认填入当前机器物理核心数并落库，以便现场节拍测试具有明确 requested 值；需要跨硬件自动重算时可主动选择 `auto`。迁移到不同 CPU 后不自动改写已保存值，启动时重新执行资源预留并记录 effective 值。
 
-下面的计算只能用于诊断：
+资源调度使用下面的边界：
 
 ```text
-estimated_thread_demand =
-  active_instance_count × effective_inference_num_threads
+requested_thread_demand =
+  instance_count × resolved_requested_threads_per_instance
+
+allocated_threads_per_instance = min(
+  resolved_requested_threads_per_instance,
+  floor(available_physical_cores / instance_count)
+)
 ```
 
-它不能作为发布创建或启动的失败条件。全局 CPU device resource manager 负责汇总当前正在运行的 deployment 资源估算、给出超额订阅提示和记录 benchmark 上下文，不负责因硬件差异拒绝运行。
+`auto` 的 resolved requested 值取当前物理核心数。运行中的预留按启动顺序保持稳定，不动态修改已经编译的 session；deployment 停止、启动失败或 supervisor 退出时释放。若 `available_physical_cores < instance_count`，启动失败。该规则不引入隐藏等待队列，也不会重启其他正在运行的 deployment。
+
+健康状态同时返回 requested 配置、调度后的 `allocated_runtime_configuration`、全局 CPU manager 快照和 OpenVINO 编译后的实际属性。manager 的作用域是单个 backend-service 进程；同一机器运行多个独立 backend-service 时必须由部署层限制实例，当前不宣称具备跨服务机器级账本。
 
 ### GPU
 
@@ -365,12 +373,12 @@ backend_options:
 4. 读取编译后或加载后的实际属性。
 5. 返回 requested、effective、device summary 和 warnings。
 
-硬件资源数量变化不构成失败条件。下面这些情况可以产生 warning：
+下面这些情况可以产生 warning：
 
 - 显式线程数超过当前可用处理器数量并被 runtime 裁剪
 - 当前 NPU driver 不支持某个高级属性
 - GPU/NPU 属性在迁移后回退到 `auto`
-- 估算出的活动 deployment CPU 线程总量明显超出当前物理核心数
+- OpenVINO CPU requested 线程总量被资源调度器裁剪
 - TensorRT context 并发高于已经验证的 benchmark profile
 
 下面这些无法执行的情况仍应失败：
@@ -379,6 +387,7 @@ backend_options:
 - TensorRT engine 与目标 GPU、TensorRT 或 CUDA 运行时不兼容
 - 运行时产物损坏
 - 显式配置值语法无效且无法安全降级
+- OpenVINO CPU 剩余线程不足以为全部实例各分配一个线程
 
 降级不能静默发生。健康状态、事件和部署详情必须能看到原因和实际值。
 
@@ -430,7 +439,7 @@ OpenVINO stream：自动（当前实际 1）
 
 - 接入 `performance_hint`、`inference_num_threads` 和 `num_streams`。
 - 正确识别物理核心、逻辑处理器、P-core / E-core 和 NUMA 信息。
-- 增加全局 CPU 资源估算和超额订阅提示，不设置硬启动门槛。
+- 增加进程级 CPU 原子预留、每实例有效线程分配、最小预算准入和完整释放。
 - 对单实例全核心、多实例分核和默认自动配置建立真实 benchmark。
 
 ### 第三阶段：OpenVINO GPU 和 NPU
@@ -459,7 +468,7 @@ OpenVINO stream：自动（当前实际 1）
 相关实现完成时至少满足：
 
 - 同一份发布配置使用 `auto` 时可以在不同核心数的 CPU 上启动。
-- 硬件变化不会仅因资源预算估算而导致创建或启动失败。
+- 硬件变化不会改写 requested；effective 会按当前预算重新计算，无法满足最小实例预算时返回明确启动错误。
 - OpenVINO CPU、GPU、NPU 不共享错误的低层字段。
 - TensorRT 构建参数不能在 deployment 页面被伪装成运行期可修改参数。
 - 运行详情能够同时显示 requested 和 effective 配置。

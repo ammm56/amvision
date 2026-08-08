@@ -116,9 +116,9 @@ def resolve_yolov8_export_output_names(*, task_type: str) -> tuple[str, ...]:
 
 
 def is_yolov8_export_mode_enabled(*, task_type: str) -> bool:
-    """返回当前 YOLOv8 task 导出时是否需要打开模型 export 模式。"""
+    """返回受支持 task 的纯部署输出模式，禁止携带训练中间张量。"""
 
-    return task_type == "classification"
+    return task_type in {"classification", "detection", "segmentation", "pose", "obb"}
 
 
 def resolve_yolov8_export_target_specs(

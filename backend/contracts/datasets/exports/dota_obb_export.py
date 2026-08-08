@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from backend.contracts.datasets.exports.dataset_formats import DOTA_OBB_DATASET_FORMAT
+from backend.contracts.datasets.dataset_formats import DOTA_OBB_DATASET_FORMAT
 
 
 @dataclass(frozen=True)

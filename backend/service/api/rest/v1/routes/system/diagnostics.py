@@ -266,6 +266,9 @@ def _build_service_diagnostics(
             "lease_timeout_seconds": settings.queue.lease_timeout_seconds,
             "completed_retention_seconds": settings.queue.completed_retention_seconds,
             "failed_retention_seconds": settings.queue.failed_retention_seconds,
+            "file_operation_retry_timeout_seconds": (
+                settings.queue.file_operation_retry_timeout_seconds
+            ),
         },
         "object_store": {
             "kind": "local-filesystem",

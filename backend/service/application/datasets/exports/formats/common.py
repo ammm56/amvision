@@ -5,17 +5,9 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 
 from backend.contracts.datasets.exports.coco_detection_export import CocoDetectionAnnotation
-from backend.contracts.datasets.exports.coco_instance_segmentation_export import COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT
-from backend.contracts.datasets.exports.coco_keypoints_export import COCO_KEYPOINTS_DATASET_FORMAT
-from backend.contracts.datasets.exports.dataset_formats import (
-    DOTA_OBB_DATASET_FORMAT,
-    IMAGENET_CLASSIFICATION_DATASET_FORMAT,
-    YOLO_DETECTION_DATASET_FORMAT,
-    YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
-    YOLO_POSE_DATASET_FORMAT,
+from backend.contracts.datasets.dataset_formats import (
+    get_dataset_format_specification,
 )
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.service.domain.datasets.dataset_version import (
     DatasetSample,
     DatasetVersion,
@@ -98,18 +90,8 @@ def _dataset_export_format_matches_task_type(
 ) -> bool:
     """判断导出格式与 DatasetVersion.task_type 是否匹配。"""
 
-    format_to_task_types = {
-        COCO_DETECTION_DATASET_FORMAT: {"detection"},
-        VOC_DETECTION_DATASET_FORMAT: {"detection"},
-        YOLO_DETECTION_DATASET_FORMAT: {"detection"},
-        COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT: {"segmentation"},
-        YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT: {"segmentation"},
-        COCO_KEYPOINTS_DATASET_FORMAT: {"pose"},
-        YOLO_POSE_DATASET_FORMAT: {"pose"},
-        IMAGENET_CLASSIFICATION_DATASET_FORMAT: {"classification"},
-        DOTA_OBB_DATASET_FORMAT: {"obb"},
-    }
-    return task_type in format_to_task_types.get(format_id, set())
+    specification = get_dataset_format_specification(format_id)
+    return specification is not None and specification.task_type == task_type
 
 def _resolve_pose_keypoint_shape(
     split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],

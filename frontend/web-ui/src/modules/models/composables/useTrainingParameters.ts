@@ -80,7 +80,6 @@ export function useTrainingParameters(options: {
   const lastSuggestedOutputModelName = ref('')
   const maxEpochs = ref(100)
   const batchSize = ref(1)
-  const gpuCount = ref(1)
   const trainingDevice = ref('')
   const evaluationInterval = ref(5)
   const precision = ref('fp32')
@@ -93,7 +92,6 @@ export function useTrainingParameters(options: {
   const trainingTaskSupportsWarmStart = computed(
     () => supportsTrainingWarmStart(options.selectedTaskType.value),
   )
-  const trainingSupportsGpuCount = computed(() => false)
   const allTrainingModelParameterFields = computed(
     () => getModelLayerTrainingFields(options.selectedTaskType.value, options.resolvedTrainingModelType.value),
   )
@@ -197,9 +195,6 @@ export function useTrainingParameters(options: {
       }
       evaluationInterval.value = getDefaultTrainingEvaluationInterval(taskType, modelType)
       trainingAugmentationEnabled.value = true
-      if (taskType !== 'detection') {
-        gpuCount.value = 1
-      }
     },
     { immediate: true },
   )
@@ -208,7 +203,6 @@ export function useTrainingParameters(options: {
     outputModelName,
     maxEpochs,
     batchSize,
-    gpuCount,
     trainingDevice,
     evaluationInterval,
     precision,
@@ -218,7 +212,6 @@ export function useTrainingParameters(options: {
     trainingModelParameterValues,
     trainingAugmentationEnabled,
     trainingTaskSupportsWarmStart,
-    trainingSupportsGpuCount,
     trainingModelParameterFields,
     trainingAugmentationParameterFields,
     trainingSupportsAugmentationToggle,

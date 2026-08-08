@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings

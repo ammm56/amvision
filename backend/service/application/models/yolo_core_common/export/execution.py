@@ -82,6 +82,10 @@ def validate_yolo_onnx(
 
     onnx_model = onnx_module.load(str(onnx_path))
     onnx_module.checker.check_model(onnx_model)
+    validate_yolo_onnx_graph_output_contract(
+        onnx_model=onnx_model,
+        expected_output_names=export_plan.output_names,
+    )
 
     dummy_input = _build_dummy_input(session=session)
     with session.imports.torch.no_grad():
@@ -311,6 +315,31 @@ def normalize_yolo_export_model_outputs(
         "当前模型输出格式不受支持",
         details={"output_type": model_outputs.__class__.__name__},
     )
+
+
+def validate_yolo_onnx_graph_output_contract(
+    *,
+    onnx_model: object,
+    expected_output_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    """校验 ONNX 只公开任务 schema 声明的输出，拒绝训练中间张量泄漏。"""
+
+    graph = getattr(onnx_model, "graph", None)
+    graph_outputs = getattr(graph, "output", None)
+    if graph_outputs is None:
+        raise ServiceConfigurationError("YOLO ONNX graph 缺少输出定义")
+    actual_output_names = tuple(
+        str(getattr(output, "name", "")).strip() for output in graph_outputs
+    )
+    if actual_output_names != expected_output_names:
+        raise ServiceConfigurationError(
+            "YOLO ONNX 输出与任务公开契约不一致",
+            details={
+                "expected_output_names": list(expected_output_names),
+                "actual_output_names": list(actual_output_names),
+            },
+        )
+    return actual_output_names
 
 
 def summarize_yolo_onnx_numeric_validation(

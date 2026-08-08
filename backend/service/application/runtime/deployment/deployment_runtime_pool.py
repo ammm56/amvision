@@ -43,7 +43,8 @@ class DeploymentRuntimePoolConfig:
     字段：
     - deployment_instance_id：DeploymentInstance id。
     - runtime_target：当前 deployment 绑定的运行时快照。
-    - runtime_configuration：完整 deployment 运行时配置。
+    - runtime_configuration：经过资源调度后传给模型 runtime 的有效配置。
+    - requested_runtime_configuration：用户保存的原始请求配置；为空时与有效配置相同。
     """
 
     deployment_instance_id: str
@@ -51,6 +52,7 @@ class DeploymentRuntimePoolConfig:
     runtime_configuration: DeploymentRuntimeConfiguration = field(
         default_factory=DeploymentRuntimeConfiguration
     )
+    requested_runtime_configuration: DeploymentRuntimeConfiguration | None = None
 
     @property
     def instance_count(self) -> int:
@@ -387,8 +389,12 @@ class DeploymentRuntimePool:
         instance_health: list[DeploymentRuntimeInstanceHealth] = []
         pinned_output_total_bytes = 0
         effective_runtime_configuration: dict[str, object] = {}
+        requested_configuration = (
+            state.config.requested_runtime_configuration
+            or state.config.runtime_configuration
+        )
         configuration_warnings = evaluate_runtime_configuration_warnings(
-            state.config.runtime_configuration
+            requested_configuration
         )
         for instance in instance_states:
             with instance.lock:
@@ -432,7 +438,7 @@ class DeploymentRuntimePool:
             pinned_output_total_bytes=pinned_output_total_bytes,
             instances=health_items,
             requested_runtime_configuration=serialize_deployment_runtime_configuration(
-                state.config.runtime_configuration
+                requested_configuration
             ),
             effective_runtime_configuration=effective_runtime_configuration,
             configuration_warnings=configuration_warnings,
@@ -625,6 +631,7 @@ def _build_config_signature(config: DeploymentRuntimePoolConfig) -> tuple[object
         runtime_target.input_size,
         runtime_target.labels,
         repr(config.runtime_configuration),
+        repr(config.requested_runtime_configuration),
     )
 
 

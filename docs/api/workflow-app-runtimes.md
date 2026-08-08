@@ -52,12 +52,13 @@
 
 - stopped：当前没有活动 worker 进程
 - running：worker 已启动并完成 snapshot 装载
-- failed：worker 启动失败、健康检查失败或最近一次 invoke 让 worker 进入失败态
+- failed：worker 启动失败、健康检查失败，或超时 worker 被隔离后尚未完成进程替换
 
 补充说明：
 
 - 领域状态机内部允许 starting 和 stopping，但第一阶段 HTTP start/stop 是同步接口，接口返回时通常已经落到 running、stopped 或 failed。
 - health 接口会刷新 observed_state、heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint。
+- invoke 超时只把对应 WorkflowRun 记录为 timed_out；旧 worker 会被强制终止。desired_state 仍为 running 时，监督器会创建新进程并记录 runtime.recovered，恢复完成后 runtime 回到 running。
 
 ## 稳定字段
 

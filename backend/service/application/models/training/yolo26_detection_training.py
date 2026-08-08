@@ -1375,6 +1375,7 @@ def _build_yolo26_metrics_payload(
     optimizer: Any,
     training_schedule: YoloUltralyticsTrainingSchedule,
     validation_metrics_payload: dict[str, object],
+    test_metrics_payload: dict[str, object],
     augmentation_options: Any,
 ) -> dict[str, object]:
     """组装 YOLO26 detection training metrics payload。"""
@@ -1454,6 +1455,7 @@ def _build_yolo26_metrics_payload(
             augmentation_options
         ),
         "validation": validation_metrics_payload,
+        "test": test_metrics_payload,
     }
 
 

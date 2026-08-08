@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from backend.contracts.workflows.workflow_graph import NodeDefinition
 from backend.nodes import ExecutionImageRegistry
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
@@ -27,6 +28,17 @@ from custom_nodes.camera_nodes.providers.usb_uvc.backend.nodes import (
     read_latest_frame,
     set_parameter,
     start_stream,
+)
+
+
+CAMERA_CAPTURE_TEST_NODE_DEFINITION = NodeDefinition(
+    node_type_id=capture_frame.NODE_TYPE_ID,
+    display_name="Capture Frame Test",
+    category="camera.usb",
+    implementation_kind="custom-node",
+    runtime_kind="python-callable",
+    node_pack_id="camera.nodes",
+    node_pack_version="0.1.4",
 )
 
 
@@ -311,7 +323,7 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
     output = capture_frame.handle_node(
         WorkflowNodeExecutionRequest(
             node_id="capture-camera-storage-node",
-            node_definition=SimpleNamespace(node_type_id=capture_frame.NODE_TYPE_ID),
+            node_definition=CAMERA_CAPTURE_TEST_NODE_DEFINITION,
             parameters={
                 "device_index": 0,
                 "output_format": "png",
@@ -326,6 +338,9 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
                 }
             },
             execution_metadata={"dataset_storage": dataset_storage},
+            node_pack_id="camera.nodes",
+            node_pack_version="0.1.4",
+            granted_permission_scopes=frozenset({"objectstore.write.ref"}),
         )
     )
 

@@ -22,6 +22,9 @@ from backend.service.application.workflows.process_executor import (
     WorkflowApplicationProcessExecutor,
     WorkflowApplicationRuntimeExecutor,
 )
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
@@ -32,6 +35,10 @@ from backend.service.settings import (
     BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_test_headers, create_test_runtime, get_default_test_principal_id
+from tests.workflow_test_timing import (
+    WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
+    WORKFLOW_TEST_WEBSOCKET_TIMEOUT_SECONDS,
+)
 
 
 def test_workflow_application_process_executor_runs_application_in_child_process(
@@ -134,10 +141,16 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
 
     try:
         with TestClient(application):
+            runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+                node_catalog_registry=node_catalog_registry,
+                node_pack_loader=node_pack_loader,
+                load_custom_node_handlers=True,
+            )
+            runtime_registry_loader.refresh()
             execution_result = WorkflowApplicationRuntimeExecutor(
                 dataset_storage=dataset_storage,
                 node_catalog_registry=node_catalog_registry,
-                runtime_registry=application.state.workflow_node_runtime_registry,
+                runtime_registry=runtime_registry_loader.get_runtime_registry(),
                 runtime_context=application.state.workflow_service_node_runtime_context,
             ).execute(
                 WorkflowApplicationExecutionRequest(
@@ -535,12 +548,12 @@ def test_workflow_preview_run_events_websocket_streams_live_events(tmp_path: Pat
                 f"/ws/v1/workflows/preview-runs/events?preview_run_id={preview_run_id}&after_cursor={after_cursor}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             ) as websocket:
-                connected_payload = websocket.receive_json()
+                connected_payload = _receive_websocket_json_with_timeout(websocket)
                 while {item["event_type"] for item in streamed_payloads} < {
                     "node.completed",
                     "preview.succeeded",
                 }:
-                    streamed_payloads.append(websocket.receive_json())
+                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
 
             final_preview_response = _wait_for_preview_run_state(
                 client,
@@ -655,7 +668,7 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 f"/ws/v1/workflows/runs/events?workflow_run_id={workflow_run_id}&after_cursor={after_cursor}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             ) as websocket:
-                connected_payload = websocket.receive_json()
+                connected_payload = _receive_websocket_json_with_timeout(websocket)
                 cancel_response = client.post(
                     f"/api/v1/workflows/runs/{workflow_run_id}/cancel",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -664,7 +677,7 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                     "run.cancel_requested",
                     "run.cancelled",
                 }:
-                    streamed_payloads.append(websocket.receive_json())
+                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
 
             final_run_response = _wait_for_workflow_run_state(
                 client,
@@ -764,7 +777,7 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
                 f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             ) as websocket:
-                connected_payload = websocket.receive_json()
+                connected_payload = _receive_websocket_json_with_timeout(websocket)
                 start_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -777,7 +790,7 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
                     "runtime.started",
                     "runtime.stopped",
                 }:
-                    streamed_payloads.append(websocket.receive_json())
+                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
 
             limited_live_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
@@ -870,7 +883,7 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
                 f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             ) as websocket:
-                connected_payload = websocket.receive_json()
+                connected_payload = _receive_websocket_json_with_timeout(websocket)
                 start_response = client.post(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -881,7 +894,7 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 )
                 for _ in range(3):
-                    streamed_payloads.append(websocket.receive_json())
+                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
 
             final_events_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
@@ -2229,6 +2242,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            original_process_id = start_response.json()["worker_process_id"]
             invoke_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
                 params={"response_mode": "run"},
@@ -2240,6 +2254,18 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 },
             )
             workflow_run_id = invoke_response.json()["workflow_run_id"]
+            _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id=workflow_runtime_id,
+                expected_event_types={"runtime.recovered"},
+                timeout_seconds=15.0,
+            )
+            recovered_process_id = _wait_for_recovered_runtime_process(
+                application,
+                workflow_runtime_id=workflow_runtime_id,
+                previous_process_id=original_process_id,
+                timeout_seconds=10.0,
+            )
             get_run_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -2250,7 +2276,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
             restart_response = client.post(
-                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
             stop_response = client.post(
@@ -2273,9 +2299,11 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     assert run_payload["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
     assert run_payload["outputs"] == {}
     assert get_run_response.json()["state"] == "timed_out"
-    assert runtime_payload["observed_state"] == "failed"
-    assert runtime_payload["last_error"] == "等待 workflow runtime worker 同步调用结果超时"
+    assert recovered_process_id != original_process_id
+    assert runtime_payload["observed_state"] == "running"
+    assert runtime_payload["worker_process_id"] == recovered_process_id
     assert restart_response.json()["observed_state"] == "running"
+    assert restart_response.json()["worker_process_id"] != recovered_process_id
     assert stop_response.json()["observed_state"] == "stopped"
 
 
@@ -2972,6 +3000,7 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            original_process_id = start_response.json()["worker_process_id"]
             create_run_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -2986,6 +3015,18 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
                 client,
                 workflow_run_id,
                 expected_states={"timed_out"},
+            )
+            recovered_events_response = _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id=workflow_runtime_id,
+                expected_event_types={"runtime.failed", "runtime.recovered"},
+                timeout_seconds=15.0,
+            )
+            recovered_process_id = _wait_for_recovered_runtime_process(
+                application,
+                workflow_runtime_id=workflow_runtime_id,
+                previous_process_id=original_process_id,
+                timeout_seconds=10.0,
             )
             get_runtime_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
@@ -3018,10 +3059,19 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
     assert create_run_response.json()["state"] == "queued"
     assert final_run_response.json()["state"] == "timed_out"
     assert final_run_response.json()["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
-    assert get_runtime_response.json()["observed_state"] == "failed"
-    assert get_runtime_response.json()["last_error"] == "等待 workflow runtime worker 同步调用结果超时"
-    assert health_response.json()["observed_state"] == "stopped"
+    runtime_event_types = [
+        item["event_type"] for item in recovered_events_response.json()
+    ]
+    assert runtime_event_types.index("runtime.failed") < runtime_event_types.index(
+        "runtime.recovered"
+    )
+    assert recovered_process_id != original_process_id
+    assert get_runtime_response.json()["observed_state"] == "running"
+    assert get_runtime_response.json()["worker_process_id"] == recovered_process_id
+    assert health_response.json()["observed_state"] == "running"
+    assert health_response.json()["worker_process_id"] == recovered_process_id
     assert restart_response.json()["observed_state"] == "running"
+    assert restart_response.json()["worker_process_id"] != recovered_process_id
     assert stop_response.json()["observed_state"] == "stopped"
 
 
@@ -3590,9 +3640,14 @@ def register(context):
         "description": "用于验证 workflow application 隔离子进程执行的测试节点包。",
         "category": "custom-node-pack",
         "capabilities": ["pipeline.node"],
+        "permissionScopes": [
+            "objectstore.read.ref",
+            "objectstore.write.ref",
+        ],
         "entrypoints": {"backend": "custom_nodes.process_test_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30},
+        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -3744,7 +3799,7 @@ def _wait_for_workflow_run_state(
     workflow_run_id: str,
     *,
     expected_states: set[str],
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowRun，直到进入目标状态。"""
 
@@ -3770,7 +3825,7 @@ def _wait_for_preview_run_state(
     preview_run_id: str,
     *,
     expected_states: set[str],
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowPreviewRun，直到进入目标状态。"""
 
@@ -3796,7 +3851,7 @@ def _wait_for_preview_run_event_types(
     *,
     expected_event_types: set[str],
     after_sequence: int | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 preview run 事件接口，直到出现指定事件类型。"""
 
@@ -3828,7 +3883,7 @@ def _wait_for_workflow_run_event_types(
     *,
     expected_event_types: set[str],
     after_sequence: int | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowRun 事件接口，直到出现指定事件类型。"""
 
@@ -3860,7 +3915,7 @@ def _wait_for_workflow_app_runtime_health_state(
     *,
     expected_state: str,
     expected_last_error: str | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowAppRuntime health，直到进入目标观测状态。"""
 
@@ -3889,7 +3944,7 @@ def _wait_for_workflow_app_runtime_instance_state(
     *,
     expected_state: str,
     expected_last_error: str | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowAppRuntime instances，直到单实例状态进入目标值。"""
 
@@ -3918,7 +3973,7 @@ def _wait_for_workflow_app_runtime_event_types(
     *,
     expected_event_types: set[str],
     after_sequence: int | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
 ):
     """轮询 WorkflowAppRuntime 事件接口，直到出现指定事件类型。"""
 
@@ -3944,7 +3999,11 @@ def _wait_for_workflow_app_runtime_event_types(
     )
 
 
-def _receive_websocket_json_with_timeout(websocket, *, timeout_seconds: float = 5.0) -> dict[str, object]:
+def _receive_websocket_json_with_timeout(
+    websocket,
+    *,
+    timeout_seconds: float = WORKFLOW_TEST_WEBSOCKET_TIMEOUT_SECONDS,
+) -> dict[str, object]:
     """在限定时间内读取一条 WebSocket JSON 消息。"""
 
     result: list[dict[str, object]] = []

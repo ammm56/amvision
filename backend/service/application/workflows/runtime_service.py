@@ -16,7 +16,11 @@ from backend.service.application.project_summary import (
     publish_project_summary_event,
     should_publish_project_summary_for_workflow_run_event,
 )
-from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    NODE_IMPLEMENTATION_CUSTOM,
+    FlowApplication,
+    WorkflowGraphTemplate,
+)
 from backend.contracts.workflows.resource_semantics import (
     WorkflowPreviewRunState,
     build_workflow_app_runtime_storage_dir,
@@ -337,6 +341,10 @@ class WorkflowRuntimeService:
             preview_metadata,
             execution_policy=execution_policy,
         )
+        template_requires_process_isolation = self._template_requires_process_isolation(template)
+        if template_requires_process_isolation:
+            preview_metadata["custom_node_process_isolation"] = "workflow-process"
+            preview_metadata["preview_execution_mode"] = "process"
 
         now = _now_isoformat()
         preview_run = WorkflowPreviewRun(
@@ -371,7 +379,11 @@ class WorkflowRuntimeService:
             return_sync_response_payload_enabled=normalized_request.wait_mode == "sync",
             target_node_id=normalized_request.target_node_id,
         )
-        if normalized_request.wait_mode == "sync" and _should_run_preview_inline(preview_metadata):
+        if (
+            normalized_request.wait_mode == "sync"
+            and _should_run_preview_inline(preview_metadata)
+            and not template_requires_process_isolation
+        ):
             return self._execute_preview_run_inline(
                 preview_run_id,
                 execution_request,
@@ -403,6 +415,28 @@ class WorkflowRuntimeService:
                 + 5.0
             ),
         )
+
+    def _template_requires_process_isolation(
+        self,
+        template: WorkflowGraphTemplate,
+    ) -> bool:
+        """判断模板是否包含必须离开 API 主进程执行的 custom node。"""
+
+        definition_index = {
+            definition.node_type_id: definition
+            for definition in self.node_catalog_registry.get_workflow_node_definitions()
+        }
+        for graph_node in template.nodes:
+            if not graph_node.enabled:
+                continue
+            node_definition = definition_index.get(graph_node.node_type_id)
+            if (
+                node_definition is not None
+                and node_definition.implementation_kind == NODE_IMPLEMENTATION_CUSTOM
+            ):
+                return True
+        return False
+
     def _execute_preview_run_inline(
         self,
         preview_run_id: str,
@@ -1467,16 +1501,13 @@ class WorkflowRuntimeService:
                 finished_at=_now_isoformat(),
                 error_message=exc.message,
             )
-            workflow_app_runtime = replace(
-                workflow_app_runtime,
-                observed_state="failed",
-                updated_at=_now_isoformat(),
-                last_error=exc.message,
-                health_summary={
-                    "mode": "single-instance-sync",
-                    "worker_state": "failed",
-                    "last_error": exc.message,
-                },
+            with self._open_unit_of_work() as unit_of_work:
+                current_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            workflow_app_runtime = self._apply_worker_failure_unless_recovered(
+                current_runtime or workflow_app_runtime,
+                error=exc,
             )
         except ServiceError:
             self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
@@ -1841,19 +1872,11 @@ class WorkflowRuntimeService:
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
             if workflow_app_runtime is not None:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                    replace(
-                        workflow_app_runtime,
-                        observed_state="failed",
-                        updated_at=_now_isoformat(),
-                        last_error=error.message,
-                        health_summary={
-                            "mode": "single-instance-sync",
-                            "worker_state": "failed",
-                            "last_error": error.message,
-                        },
-                    )
+                updated_runtime = self._apply_worker_failure_unless_recovered(
+                    workflow_app_runtime,
+                    error=error,
                 )
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
             unit_of_work.commit()
             updated_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
         self._append_workflow_run_event(
@@ -1861,13 +1884,53 @@ class WorkflowRuntimeService:
             event_type="run.timed_out",
             message="workflow run 已超时",
         )
-        if updated_runtime is not None:
+        if updated_runtime is not None and updated_runtime.observed_state == "failed":
             self._append_workflow_app_runtime_event(
                 updated_runtime,
                 event_type="runtime.failed",
                 message="workflow app runtime 已进入 failed 状态",
                 payload={"reason": "run.timed_out"},
             )
+
+    @staticmethod
+    def _apply_worker_failure_unless_recovered(
+        workflow_app_runtime: WorkflowAppRuntime,
+        *,
+        error: OperationTimeoutError,
+    ) -> WorkflowAppRuntime:
+        """仅在超时对应的旧 worker 尚未被替换时记录 runtime 失败。
+
+        参数：
+        - workflow_app_runtime：事务内读取的最新 runtime 记录。
+        - error：携带超时 worker process id 的异常。
+
+        返回：
+        - WorkflowAppRuntime：旧 worker 仍是当前代时返回 failed；监督器已经恢复为
+          新进程时保留新一代 running 状态，避免迟到回调覆盖恢复结果。
+        """
+
+        failed_worker_process_id = error.details.get("worker_process_id")
+        current_worker_process_id = workflow_app_runtime.worker_process_id
+        recovered_by_new_worker = (
+            isinstance(failed_worker_process_id, int)
+            and isinstance(current_worker_process_id, int)
+            and current_worker_process_id != failed_worker_process_id
+            and workflow_app_runtime.observed_state == "running"
+        )
+        if recovered_by_new_worker:
+            return workflow_app_runtime
+        return replace(
+            workflow_app_runtime,
+            observed_state="failed",
+            updated_at=_now_isoformat(),
+            last_error=error.message,
+            health_summary={
+                "mode": "single-instance-sync",
+                "worker_state": "failed",
+                "last_error": error.message,
+                "failed_worker_process_id": failed_worker_process_id,
+            },
+        )
 
     def _finish_async_workflow_run_cancelled(
         self,

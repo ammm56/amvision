@@ -18,6 +18,9 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
     WorkflowNodeRuntimeRegistry,
 )
+from backend.service.application.workflows.execution.custom_node_policy import (
+    WorkflowCustomNodeRuntimePolicy,
+)
 
 
 SUPPORTED_EXECUTABLE_RUNTIME_KINDS = frozenset({"python-callable", "worker-task"})
@@ -79,6 +82,8 @@ class NodePackEntrypointRegistrationContext:
         self,
         node_type_id: str,
         handler: WorkflowNodeHandler,
+        *,
+        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 python-callable 节点注册 handler。
 
@@ -88,12 +93,19 @@ class NodePackEntrypointRegistrationContext:
         """
 
         node_definition = self.get_node_definition(node_type_id)
-        self.runtime_registry.register_python_callable(node_definition, handler)
+        self.runtime_registry.register_python_callable(
+            node_definition,
+            handler,
+            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(self.manifest),
+            required_permission_scopes=required_permission_scopes,
+        )
 
     def register_worker_task(
         self,
         node_type_id: str,
         handler: WorkflowNodeHandler,
+        *,
+        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 worker-task 节点注册 handler。
 
@@ -103,12 +115,19 @@ class NodePackEntrypointRegistrationContext:
         """
 
         node_definition = self.get_node_definition(node_type_id)
-        self.runtime_registry.register_worker_task(node_definition, handler)
+        self.runtime_registry.register_worker_task(
+            node_definition,
+            handler,
+            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(self.manifest),
+            required_permission_scopes=required_permission_scopes,
+        )
 
     def register_model_session_provider(
         self,
         loader_node_type_id: str,
         provider: object,
+        *,
+        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 Load Checkpoint 节点注册生命周期 provider。"""
 
@@ -116,6 +135,10 @@ class NodePackEntrypointRegistrationContext:
         self.runtime_registry.register_model_session_provider(
             loader_node_type_id,
             cast("WorkflowModelSessionProvider", provider),
+            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(
+                self.manifest
+            ),
+            required_permission_scopes=required_permission_scopes,
         )
 
 
@@ -136,6 +159,7 @@ class WorkflowNodeRuntimeRegistryLoader:
         *,
         node_catalog_registry: NodeCatalogRegistry,
         node_pack_loader: NodePackLoader,
+        load_custom_node_handlers: bool = True,
     ) -> None:
         """初始化 workflow 节点运行时注册表加载器。
 
@@ -146,6 +170,7 @@ class WorkflowNodeRuntimeRegistryLoader:
 
         self.node_catalog_registry = node_catalog_registry
         self.node_pack_loader = node_pack_loader
+        self.load_custom_node_handlers = bool(load_custom_node_handlers)
         self._runtime_registry = WorkflowNodeRuntimeRegistry()
 
     def refresh(self) -> None:
@@ -155,6 +180,9 @@ class WorkflowNodeRuntimeRegistryLoader:
         for node_definition in self.node_catalog_registry.get_workflow_node_definitions():
             self._runtime_registry.register_node_definition(node_definition)
         register_core_node_handlers(self._runtime_registry)
+
+        if not self.load_custom_node_handlers:
+            return
 
         node_definitions_by_pack_key = self._build_node_pack_definition_index()
         for manifest in self.node_pack_loader.get_node_pack_manifests():
@@ -264,6 +292,22 @@ class WorkflowNodeRuntimeRegistryLoader:
                 details={
                     "node_pack_id": manifest.node_pack_id,
                     "backend_entrypoint": backend_entrypoint,
+                },
+            )
+        allowed_module_prefix = self.node_pack_loader.get_node_pack_runtime_module_prefix(
+            manifest.node_pack_id,
+            manifest.version,
+        )
+        if module_name != allowed_module_prefix and not module_name.startswith(
+            f"{allowed_module_prefix}."
+        ):
+            raise ServiceConfigurationError(
+                "node pack backend entrypoint 超出当前节点包 module 边界",
+                details={
+                    "node_pack_id": manifest.node_pack_id,
+                    "node_pack_version": manifest.version,
+                    "backend_entrypoint": backend_entrypoint,
+                    "allowed_module_prefix": allowed_module_prefix,
                 },
             )
 

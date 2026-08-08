@@ -9,6 +9,11 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.domain.datasets.coordinates import PixelBox
+from backend.service.domain.datasets.voc_coordinates import (
+    VocCoordinateDeclarationError,
+    resolve_voc_xml_coordinate_convention,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
@@ -274,7 +279,20 @@ def read_voc_annotation_objects(*, annotation_file: Path) -> tuple[ParsedVocObje
 
 
 def _parse_voc_objects(root: ET.Element) -> tuple[ParsedVocObject, ...]:
-    """从 VOC XML root 中解析 object 列表。"""
+    """按 XML 声明解析 object，并统一为 0-based exclusive 坐标。"""
+
+    size = root.find("size")
+    if size is None:
+        raise InvalidRequestError("VOC annotation 缺少 size 节点")
+    width = _read_required_int(size, "width")
+    height = _read_required_int(size, "height")
+    try:
+        convention = resolve_voc_xml_coordinate_convention(root)
+    except VocCoordinateDeclarationError as error:
+        raise InvalidRequestError(
+            "VOC annotation 坐标声明无效",
+            details={"reason": error.reason, "values": list(error.values)},
+        ) from error
 
     objects: list[ParsedVocObject] = []
     for object_node in root.iter("object"):
@@ -284,15 +302,31 @@ def _parse_voc_objects(root: ET.Element) -> tuple[ParsedVocObject, ...]:
         bbox = object_node.find("bndbox")
         if bbox is None:
             raise InvalidRequestError("VOC object 缺少 bndbox 节点")
-        xmin = float(_read_required_int(bbox, "xmin") - 1)
-        ymin = float(_read_required_int(bbox, "ymin") - 1)
-        xmax = float(_read_required_int(bbox, "xmax") - 1)
-        ymax = float(_read_required_int(bbox, "ymax") - 1)
+        try:
+            pixel_box = PixelBox.from_external_xyxy(
+                xmin=float(_read_required_int(bbox, "xmin")),
+                ymin=float(_read_required_int(bbox, "ymin")),
+                xmax=float(_read_required_int(bbox, "xmax")),
+                ymax=float(_read_required_int(bbox, "ymax")),
+                convention=convention,
+                image_width=width,
+                image_height=height,
+            )
+        except ValueError as error:
+            raise InvalidRequestError(
+                "VOC object bbox 无效",
+                details={"class_name": class_name, "reason": str(error)},
+            ) from error
         objects.append(
             ParsedVocObject(
                 name=class_name,
                 difficult=difficult,
-                bbox_xyxy=(xmin, ymin, xmax, ymax),
+                bbox_xyxy=(
+                    pixel_box.x_min,
+                    pixel_box.y_min,
+                    pixel_box.x_max,
+                    pixel_box.y_max,
+                ),
             )
         )
     return tuple(objects)

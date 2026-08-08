@@ -32,6 +32,19 @@ python -m ruff check backend tests custom_nodes --select F,E9
 - `F841`：局部变量赋值后没有使用。
 - `E9`：严重语法类问题，例如 SyntaxError、IndentationError。
 
+## workflow 异步测试等待时间
+
+workflow 进程、事件轮询和 WebSocket 测试统一使用 `tests/workflow_test_timing.py` 的等待基线：普通终态等待默认为 10 秒，单次 WebSocket 接收默认为 5 秒。阻塞式 `receive_json()` 不得直接出现在这类测试的主线程中，必须通过有界辅助函数接收，避免失败时无限挂起整套 pytest。
+
+较慢的 CI 或虚拟机可以统一放大测试等待上限：
+
+```powershell
+$env:AMVISION_WORKFLOW_TEST_TIMEOUT_SCALE = "2"
+python -m pytest tests/test_workflow_application_process_executor.py
+```
+
+该变量只放大测试观察窗口，不改变 workflow API 请求里的 `timeout_seconds`、worker 超时或生产运行策略。变量必须是有限正数，配置错误会在测试收集时直接报告。
+
 ## 使用边界
 
 - 结构重构时只修当前改动引入的问题，不顺手清理全仓库历史 lint。

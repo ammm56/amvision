@@ -40,7 +40,7 @@
 | --- | --- | --- | --- | --- |
 | stopped | starting | 无 | 无 | 无 |
 | starting | running、failed、stopped | starting -> failed | starting -> failed | 无 |
-| running | stopping、failed | invoke 超时不改变 runtime 状态 | worker 退出或健康检查失败时 running -> failed | 无 |
+| running | stopping、failed | invoke 记录转为 timed_out；旧 worker 终止并按 desired_state 替换 | worker 退出或健康检查失败时 running -> failed | 无 |
 | stopping | stopped、failed | stopping -> failed | stopping -> failed | 无 |
 | failed | starting、stopped | 无 | failed 保持不变 | 无 |
 
@@ -48,6 +48,7 @@
 
 - start 只允许把 stopped 或 failed 拉回 starting。
 - stop 只允许把 starting 或 running 切到 stopping，然后落到 stopped。
+- invoke 超时不会改变 desired_state；单实例 worker 无法安全中断正在执行的节点，因此必须终止旧进程。desired_state 为 running 时由监督器创建新进程，恢复完成后 observed_state 回到 running。
 - 第一阶段单 runtime 只维护一个 instance，不做 scale、restart 或 instances 公开接口。
 
 ### WorkflowRun

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     COCO_DETECTION_DATASET_FORMAT,
     VOC_DETECTION_DATASET_FORMAT,
 )
@@ -61,6 +61,7 @@ def test_yolox_voc_dataset_export_resolves_samples_and_native_metrics(tmp_path) 
 <annotation>
   <folder>JPEGImages</folder>
   <filename>sample-1.jpg</filename>
+  <source><coordinateConvention>zero-based-exclusive</coordinateConvention></source>
   <size>
     <width>100</width>
     <height>50</height>
@@ -70,10 +71,10 @@ def test_yolox_voc_dataset_export_resolves_samples_and_native_metrics(tmp_path) 
     <name>defect</name>
     <difficult>0</difficult>
     <bndbox>
-      <xmin>11</xmin>
-      <ymin>6</ymin>
-      <xmax>71</xmax>
-      <ymax>26</ymax>
+      <xmin>10</xmin>
+      <ymin>5</ymin>
+      <xmax>70</xmax>
+      <ymax>25</ymax>
     </bndbox>
   </object>
 </annotation>
@@ -147,6 +148,7 @@ def test_yolox_voc_dataset_export_runs_pytorch_evaluation_smoke(tmp_path) -> Non
 <annotation>
   <folder>JPEGImages</folder>
   <filename>sample-1.jpg</filename>
+  <source><coordinateConvention>zero-based-exclusive</coordinateConvention></source>
   <size>
     <width>64</width>
     <height>64</height>

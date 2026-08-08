@@ -29,6 +29,28 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(moduleId) {
+          const normalizedId = moduleId.replaceAll('\\', '/')
+          if (
+            normalizedId.includes('/node_modules/vue/')
+            || normalizedId.includes('/node_modules/vue-router/')
+            || normalizedId.includes('/node_modules/pinia/')
+            || normalizedId.includes('/node_modules/vue-i18n/')
+          ) {
+            return 'vendor-vue'
+          }
+          if (
+            normalizedId.includes('/node_modules/@lucide/vue/')
+            || normalizedId.includes('/node_modules/@vueuse/')
+            || normalizedId.includes('/node_modules/reka-ui/')
+          ) {
+            return 'vendor-ui'
+          }
+        },
+      },
+    },
   },
   test: {
     environment: 'jsdom',

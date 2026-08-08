@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from backend.service.api.rest.v1.routes.detection_deployments.schemas import (
     DetectionDeploymentInstanceCreateRequestBody,
 )
-from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.runtime.deployment import runtime_capabilities
 from backend.service.application.runtime.deployment import cpu_device_resource_manager
 from backend.service.application.runtime.deployment.cpu_device_resource_manager import (
@@ -97,10 +97,10 @@ def test_runtime_configuration_domain_validation_rejects_invalid_direct_inputs(
         serialize_deployment_runtime_configuration(configuration)
 
 
-def test_host_default_uses_physical_core_count_without_enforcing_cpu_budget(
+def test_host_default_uses_physical_core_count_and_reports_scheduler_constraint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 OpenVINO CPU 默认线程数来自物理核心，超额预算只产生告警。"""
+    """验证 OpenVINO CPU 默认线程数来自物理核心，并提示启动时会执行资源裁剪。"""
 
     monkeypatch.setattr(
         runtime_capabilities,
@@ -134,10 +134,10 @@ def test_host_default_uses_physical_core_count_without_enforcing_cpu_budget(
     assert "6" in warnings[0]
 
 
-def test_cpu_device_resource_manager_aggregates_running_deployments_without_rejecting(
+def test_cpu_device_resource_manager_allocates_without_oversubscription(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证全局 CPU 预算只聚合和告警，不承担启动拒绝。"""
+    """验证全局 CPU manager 原子裁剪有效线程，并拒绝无法满足的最小预留。"""
 
     monkeypatch.setattr(
         cpu_device_resource_manager,
@@ -156,13 +156,13 @@ def test_cpu_device_resource_manager_aggregates_running_deployments_without_reje
         ),
     )
 
-    manager.activate(
+    first_effective = manager.reserve(
         owner_id="sync-supervisor",
         deployment_instance_id="deployment-1",
         runtime_mode="sync",
         runtime_configuration=configuration,
     )
-    manager.activate(
+    second_effective = manager.reserve(
         owner_id="async-supervisor",
         deployment_instance_id="deployment-2",
         runtime_mode="async",
@@ -171,13 +171,72 @@ def test_cpu_device_resource_manager_aggregates_running_deployments_without_reje
 
     snapshot = manager.snapshot()
     assert snapshot["active_deployment_count"] == 2
-    assert snapshot["estimated_thread_demand"] == 12
-    assert snapshot["oversubscribed"] is True
+    assert snapshot["requested_thread_demand"] == 12
+    assert snapshot["allocated_thread_count"] == 8
+    assert snapshot["available_thread_count"] == 0
+    assert snapshot["constrained_deployment_count"] == 1
+    assert snapshot["oversubscribed"] is False
     assert len(manager.warnings()) == 1
+    assert first_effective.backend_options.inference_num_threads == 3
+    assert second_effective.backend_options.inference_num_threads == 1
 
-    manager.deactivate_owner("async-supervisor")
-    assert manager.snapshot()["estimated_thread_demand"] == 6
+    with pytest.raises(InvalidRequestError, match="可用线程不足"):
+        manager.reserve(
+            owner_id="sync-supervisor",
+            deployment_instance_id="deployment-3",
+            runtime_mode="sync",
+            runtime_configuration=DeploymentRuntimeConfiguration(
+                backend_options=OpenVinoCpuRuntimeOptions(
+                    inference_num_threads=1,
+                )
+            ),
+        )
+    assert manager.snapshot()["active_deployment_count"] == 2
+
+    manager.release_owner("async-supervisor")
+    assert manager.snapshot()["allocated_thread_count"] == 6
     assert manager.warnings() == ()
+
+
+def test_cpu_device_resource_manager_resolves_auto_and_replaces_same_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 auto 使用可用核心，并且同一 deployment 重启不会重复占用。"""
+
+    monkeypatch.setattr(
+        cpu_device_resource_manager,
+        "read_cpu_hardware_summary",
+        lambda: {
+            "cpu_physical_core_count": 8,
+            "cpu_logical_processor_count": 16,
+        },
+    )
+    manager = CpuDeviceResourceManager()
+    configuration = DeploymentRuntimeConfiguration(
+        execution=DeploymentExecutionPolicy(instance_count=2),
+        backend_options=OpenVinoCpuRuntimeOptions(
+            inference_num_threads="auto",
+            num_streams=1,
+        ),
+    )
+
+    first_effective = manager.reserve(
+        owner_id="sync-supervisor",
+        deployment_instance_id="deployment-auto",
+        runtime_mode="sync",
+        runtime_configuration=configuration,
+    )
+    restarted_effective = manager.reserve(
+        owner_id="sync-supervisor",
+        deployment_instance_id="deployment-auto",
+        runtime_mode="sync",
+        runtime_configuration=configuration,
+    )
+
+    assert first_effective.backend_options.inference_num_threads == 4
+    assert restarted_effective.backend_options.inference_num_threads == 4
+    assert manager.snapshot()["active_deployment_count"] == 1
+    assert manager.snapshot()["allocated_thread_count"] == 8
 
 
 def test_openvino_compile_filters_unsupported_properties_and_records_effective_values() -> (

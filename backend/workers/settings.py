@@ -148,6 +148,10 @@ class BackendWorkerDatasetStorageConfig(BaseModel):
     max_import_extracted_bytes: int = Field(default=200 * 1024**3, gt=0)
     max_import_member_count: int = Field(default=2_000_000, gt=0)
     max_import_compression_ratio: float = Field(default=1000.0, gt=0)
+    max_import_metadata_file_bytes: int = Field(default=256 * 1024**2, gt=0)
+    max_import_label_file_bytes: int = Field(default=16 * 1024**2, gt=0)
+    max_import_sample_count: int = Field(default=100_000, gt=0)
+    max_import_annotation_count: int = Field(default=1_000_000, gt=0)
 
 
 class BackendWorkerQueueConfig(BaseModel):
@@ -159,6 +163,7 @@ class BackendWorkerQueueConfig(BaseModel):
     - completed_retention_seconds：completed 任务文件保留秒数。
     - failed_retention_seconds：failed 任务文件保留秒数。
     - response_queue_retention_seconds：一次性响应队列目录保留秒数。
+    - file_operation_retry_timeout_seconds：Windows 文件短暂占用的重试预算秒数。
     """
 
     root_dir: str = "./data/queue"
@@ -166,6 +171,7 @@ class BackendWorkerQueueConfig(BaseModel):
     completed_retention_seconds: float = 86400.0
     failed_retention_seconds: float = 604800.0
     response_queue_retention_seconds: float = 3600.0
+    file_operation_retry_timeout_seconds: float = Field(default=2.0, ge=0)
 
 
 class BackendWorkerTaskManagerConfig(BaseModel):
@@ -315,6 +321,10 @@ class BackendWorkerSettings(BaseSettings):
             max_import_extracted_bytes=self.dataset_storage.max_import_extracted_bytes,
             max_import_member_count=self.dataset_storage.max_import_member_count,
             max_import_compression_ratio=self.dataset_storage.max_import_compression_ratio,
+            max_import_metadata_file_bytes=self.dataset_storage.max_import_metadata_file_bytes,
+            max_import_label_file_bytes=self.dataset_storage.max_import_label_file_bytes,
+            max_import_sample_count=self.dataset_storage.max_import_sample_count,
+            max_import_annotation_count=self.dataset_storage.max_import_annotation_count,
         )
 
     def to_queue_settings(self) -> LocalFileQueueSettings:
@@ -326,6 +336,9 @@ class BackendWorkerSettings(BaseSettings):
             completed_retention_seconds=self.queue.completed_retention_seconds,
             failed_retention_seconds=self.queue.failed_retention_seconds,
             response_queue_retention_seconds=self.queue.response_queue_retention_seconds,
+            file_operation_retry_timeout_seconds=(
+                self.queue.file_operation_retry_timeout_seconds
+            ),
         )
 
 

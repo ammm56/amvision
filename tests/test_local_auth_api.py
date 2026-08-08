@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.contracts.datasets.exports.dataset_formats import (
+from backend.contracts.datasets.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
     IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
 )
