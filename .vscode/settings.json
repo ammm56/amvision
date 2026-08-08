@@ -1,5 +1,7 @@
 {
     "python.terminal.activateEnvironment": true,
     "chat.restoreLastPanelSession": true,
-    "chat.viewProgressBadge.enabled": true
+    "chat.viewProgressBadge.enabled": true,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
 }
