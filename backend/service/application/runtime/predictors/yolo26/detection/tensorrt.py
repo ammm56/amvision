@@ -25,7 +25,6 @@ from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.support.detection import (
-    DEFAULT_DETECTION_NMS_THRESHOLD,
     ensure_cuda_success,
     get_tensorrt_logger,
     import_tensorrt_module,
@@ -39,7 +38,6 @@ from backend.service.application.runtime.support.detection import (
     require_cuda_inference_imports,
     resolve_cuda_device_index,
     resolve_cuda_runtime_device_name,
-    resolve_probability,
     resolve_tensorrt_dtype_name,
     resolve_tensorrt_io_tensor_name,
 )
@@ -383,12 +381,6 @@ class TensorRTYolo26RuntimeSession:
         requested_input_shape = tuple(int(dim) for dim in input_array.shape)
         preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
 
-        nms_threshold = resolve_probability(
-            value=request.extra_options.get("nms_threshold"),
-            field_name="nms_threshold",
-            default=DEFAULT_DETECTION_NMS_THRESHOLD,
-        )
-
         infer_started_at = perf_counter()
         device_index = resolve_cuda_device_index(self.device_name)
         set_device_started_at = perf_counter()
@@ -545,7 +537,6 @@ class TensorRTYolo26RuntimeSession:
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
-            nms_threshold=nms_threshold,
             letterbox_transform=letterbox_transform,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
@@ -589,7 +580,6 @@ class TensorRTYolo26RuntimeSession:
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
                     "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
                     "max_detections": DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
                     "class_count": len(self.runtime_target.labels),

@@ -33,7 +33,6 @@ from backend.service.application.runtime.targets.runtime_target import (
     describe_runtime_execution_mode,
 )
 from backend.service.application.runtime.support.detection import (
-    DEFAULT_DETECTION_NMS_THRESHOLD,
     enable_pytorch_cuda_inference_fast_path,
     load_prediction_image,
     measure_stage_elapsed_ms,
@@ -41,7 +40,6 @@ from backend.service.application.runtime.support.detection import (
     render_preview_image,
     require_inference_imports,
     resolve_execution_device_name,
-    resolve_probability,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -173,12 +171,6 @@ class PyTorchYolo26RuntimeSession:
             started_at=preprocess_started_at,
         )
 
-        nms_threshold = resolve_probability(
-            value=request.extra_options.get("nms_threshold"),
-            field_name="nms_threshold",
-            default=DEFAULT_DETECTION_NMS_THRESHOLD,
-        )
-
         infer_started_at = perf_counter()
         inference_mode = getattr(self.imports.torch, "inference_mode", None)
         if callable(inference_mode):
@@ -206,7 +198,6 @@ class PyTorchYolo26RuntimeSession:
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
-            nms_threshold=nms_threshold,
             letterbox_transform=letterbox_transform,
         )
         postprocess_ms = measure_stage_elapsed_ms(
@@ -259,7 +250,6 @@ class PyTorchYolo26RuntimeSession:
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
                     "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
                     "max_detections": DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
                     "class_count": len(self.runtime_target.labels),

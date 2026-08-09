@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
 from backend.service.api.rest.v1.routes.training_parameter_schemas import (
-    YoloObbTrainingParameters,
+    ObbTrainingParameters,
+    build_obb_training_parameters,
 )
 
 
@@ -34,10 +35,24 @@ class ObbTrainingTaskCreateRequestBody(BaseModel):
     batch_size: int | None = Field(default=None, ge=1, le=4096)
     input_size: SpatialSizeRequest | None = None
     precision: Literal["fp16", "fp32"] | None = None
-    parameters: YoloObbTrainingParameters = Field(
-        default_factory=YoloObbTrainingParameters
-    )
+    parameters: ObbTrainingParameters
     display_name: str = Field(default="", max_length=256)
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_model_parameters(cls, value: object) -> object:
+        """根据 model_type 选择唯一 OBB 参数 schema。"""
+
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        model_type = payload.get("model_type")
+        if isinstance(model_type, str):
+            payload["parameters"] = build_obb_training_parameters(
+                model_type=model_type,
+                value=payload.get("parameters"),
+            )
+        return payload
 
 
 class ObbTrainingTaskSubmissionResponse(BaseModel):

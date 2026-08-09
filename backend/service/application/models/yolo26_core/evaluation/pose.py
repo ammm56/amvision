@@ -32,7 +32,6 @@ from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_pose_postprocess_instances,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
-from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -77,7 +76,6 @@ def evaluate_yolo26_pose_samples(
     device: str,
     precision: str,
     score_threshold: float,
-    nms_threshold: float,
     keypoint_confidence_threshold: float,
     kpt_shape: tuple[int, int],
     imports: Any,
@@ -122,8 +120,6 @@ def evaluate_yolo26_pose_samples(
                 keypoint_confidence_threshold=keypoint_confidence_threshold,
                 letterbox_transform=letterbox_transform,
                 default_kpt_shape=kpt_shape,
-                nms_threshold=nms_threshold,
-                nms_indices_func=batched_nms_indices,
             )
             target = batch.targets[0]
             _append_yolo26_pose_gt_items(

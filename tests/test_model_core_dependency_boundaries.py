@@ -14,6 +14,9 @@ MODEL_RUNTIME_DIRS = (
 PROJECT_MODEL_CODE_DIRS = (*MODEL_RUNTIME_DIRS, REPO_ROOT / "tests")
 DISALLOWED_IMPORT_ROOTS = {"ultralytics", "rfdetr"}
 DISALLOWED_REFERENCE_TREE_NAME = "project" + "src"
+DEVELOPMENT_REFERENCE_AUDIT_FILES = frozenset(
+    {Path("tests/integration/test_yolo_detection_reference_parity.py")}
+)
 
 
 def test_model_runtime_does_not_import_external_model_packages() -> None:
@@ -21,6 +24,8 @@ def test_model_runtime_does_not_import_external_model_packages() -> None:
 
     violations: list[str] = []
     for source_path in _iter_python_files(PROJECT_MODEL_CODE_DIRS):
+        if _is_development_reference_audit(source_path):
+            continue
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -41,11 +46,19 @@ def test_project_model_code_does_not_reference_development_source_tree() -> None
 
     violations: list[str] = []
     for source_path in _iter_python_files(PROJECT_MODEL_CODE_DIRS):
+        if _is_development_reference_audit(source_path):
+            continue
         text = source_path.read_text(encoding="utf-8")
         if DISALLOWED_REFERENCE_TREE_NAME in text:
             violations.append(str(source_path.relative_to(REPO_ROOT)))
 
     assert violations == []
+
+
+def _is_development_reference_audit(source_path: Path) -> bool:
+    """只允许明确登记的开发一致性测试读取参考仓库。"""
+
+    return source_path.relative_to(REPO_ROOT) in DEVELOPMENT_REFERENCE_AUDIT_FILES
 
 
 def _iter_python_files(paths: tuple[Path, ...]) -> tuple[Path, ...]:

@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.contracts.datasets.dataset_formats import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
@@ -81,7 +85,7 @@ _SEG_DEFAULT_ASSIGN_TOPK = 10
 _SEG_DEFAULT_CLASS_LOSS = 0.5
 _SEG_DEFAULT_BOX_LOSS = 7.5
 _SEG_DEFAULT_DFL_LOSS = 1.5
-_SEG_DEFAULT_MASK_LOSS = 1.0
+_SEG_DEFAULT_MASK_LOSS = 7.5
 _SEG_DEFAULT_ASSIGN_ALPHA = 0.5
 _SEG_DEFAULT_ASSIGN_BETA = 6.0
 _SEG_DEFAULT_LR = 1e-2
@@ -402,7 +406,7 @@ def run_yolov8_segmentation_training(
         model.train()
         ep_loss = 0.0
         ep_cls_loss, ep_box_loss, ep_dfl_loss, ep_mask_loss = 0.0, 0.0, 0.0, 0.0
-        ep_iters = 0
+        ep_samples = 0
         effective_yolov8_augmentation_options = resolve_yolov8_task_augmentation_for_epoch(
             augmentation_options=yolov8_augmentation_options,
             epoch_index=epoch,
@@ -526,34 +530,42 @@ def run_yolov8_segmentation_training(
                         fg,
                     )
                     loss_mask_t += l_m
-            total_loss = (
-                cl_w * loss_cls
-                + box_w * loss_box
-                + dfl_w * loss_dfl
-                + mask_w * loss_mask_t
+            reported_class_loss = cl_w * loss_cls
+            reported_box_loss = box_w * loss_box
+            reported_dfl_loss = dfl_w * loss_dfl
+            reported_mask_loss = mask_w * loss_mask_t
+            reported_total_loss = (
+                reported_class_loss
+                + reported_box_loss
+                + reported_dfl_loss
+                + reported_mask_loss
             )
-            if not total_loss.requires_grad:
-                total_loss = raw_scores.sum() * 0.0
+            batch_sample_count = len(targets_list)
+            # 当前 segmentation helper 逐图归一化后在 batch 内求和，量纲已是
+            # batch sum；不能像 detection 的全 batch 均值 loss 一样再次乘 B。
+            optimization_loss = reported_total_loss
+            if not optimization_loss.requires_grad:
+                optimization_loss = raw_scores.sum() * 0.0
             optimizer_step.backward_and_step(
-                loss=total_loss,
+                loss=optimization_loss,
                 iteration_index=g_iter,
                 is_last_batch=(
                     epoch + 1 == me and iteration == max_iterations
                 ),
             )
-            ep_loss += float(total_loss.item())
-            ep_cls_loss += float(loss_cls.item())
-            ep_box_loss += float(loss_box.item())
-            ep_dfl_loss += float(loss_dfl.item())
-            ep_mask_loss += float(loss_mask_t.item())
-            ep_iters += 1
+            ep_loss += float(reported_total_loss.item())
+            ep_cls_loss += float(reported_class_loss.item())
+            ep_box_loss += float(reported_box_loss.item())
+            ep_dfl_loss += float(reported_dfl_loss.item())
+            ep_mask_loss += float(reported_mask_loss.item())
+            ep_samples += batch_sample_count
 
-        if ep_iters > 0:
-            ep_loss /= ep_iters
-            ep_cls_loss /= ep_iters
-            ep_box_loss /= ep_iters
-            ep_dfl_loss /= ep_iters
-            ep_mask_loss /= ep_iters
+        if ep_samples > 0:
+            ep_loss /= ep_samples
+            ep_cls_loss /= ep_samples
+            ep_box_loss /= ep_samples
+            ep_dfl_loss /= ep_samples
+            ep_mask_loss /= ep_samples
         epoch_metrics = {
             "loss": round(ep_loss, 6),
             "class_loss": round(ep_cls_loss, 6),
@@ -595,7 +607,15 @@ def run_yolov8_segmentation_training(
             )
             v_hist.append({"epoch": epoch, **val_metrics})
         current_val = float(val_metrics.get("map50_95", 0.0))
-        best_metric_improved = bool(val_metrics) and current_val > best_val
+        best_metric_improved = (
+            bool(val_metrics)
+            and is_better_training_metric(
+                current_value=current_val,
+                best_value=best_val,
+                direction="maximize",
+                maximum=1.0,
+            )
+        )
         if best_metric_improved:
             best_val = current_val
             best_name = "val_map50_95"

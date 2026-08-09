@@ -143,4 +143,82 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('top1_accuracy')
     expect(wrapper.text()).toContain('train-metrics')
   })
+
+  it('separates completed epoch metrics from volatile batch metrics', async () => {
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
+      task_id: 'task-classification-1',
+      task_type: 'classification',
+      model_type: 'yolo11',
+      display_name: 'yolo11 classifier',
+      project_id: 'project-1',
+      created_at: '2026-07-10T02:00:00Z',
+      state: 'running',
+      current_attempt_no: 1,
+      progress: {
+        stage: 'running',
+        granularity: 'batch',
+        epoch: 3,
+        max_epochs: 4,
+        percent: 75,
+        train_metrics: { loss: 9.9 },
+        batch_metrics: { loss: 2.75, box_loss: 0 },
+      },
+      result: {},
+      metadata: {},
+      dataset_export_id: 'dataset-export-1',
+      model_version_id: null,
+      latest_checkpoint_model_version_id: null,
+      output_object_prefix: 'task-runs/task-classification-1',
+      checkpoint_object_key: null,
+      latest_checkpoint_object_key: null,
+      labels_object_key: null,
+      metrics_object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      validation_metrics_object_key: null,
+      summary_object_key: null,
+      best_metric_name: null,
+      best_metric_value: null,
+      training_summary: {},
+      available_actions: [],
+      control_status: {
+        status: 'idle',
+        pending_action: null,
+        resume_count: 0,
+        resume_checkpoint_object_key: null,
+      },
+      task_spec: {},
+      events: [],
+    })
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([{
+      file_name: 'train-metrics',
+      file_kind: 'json',
+      file_status: 'ready',
+      task_state: 'running',
+      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      size_bytes: 128,
+      updated_at: '2026-07-10T02:01:00Z',
+    }])
+    vi.mocked(getModelTrainingOutputFileDetail).mockResolvedValue({
+      file_name: 'train-metrics',
+      file_kind: 'json',
+      file_status: 'ready',
+      task_state: 'running',
+      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      size_bytes: 128,
+      updated_at: '2026-07-10T02:01:00Z',
+      payload: { final_metrics: { epoch: 2, loss: 1.25 } },
+      text_content: null,
+      lines: [],
+    })
+
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已完成轮次训练指标')
+    expect(wrapper.text()).toContain('完整轮次的样本加权平均')
+    expect(wrapper.text()).not.toContain('总 loss 是带权训练目标')
+    expect(wrapper.text()).toContain('当前批次指标')
+    expect(wrapper.text()).toContain('1.25')
+    expect(wrapper.text()).toContain('2.75')
+    expect(wrapper.text()).not.toContain('9.9')
+  })
 })

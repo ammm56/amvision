@@ -31,11 +31,18 @@ from backend.service.api.rest.v1.routes.training_parameter_schemas import (
     RfdetrDetectionTrainingParameters,
     RfdetrSegmentationTrainingParameters,
     YoloClassificationTrainingParameters,
+    Yolo26DetectionTrainingParameters,
+    Yolo26ObbTrainingParameters,
+    Yolo26PoseTrainingParameters,
+    Yolo26SegmentationTrainingParameters,
     YoloDetectionTrainingParameters,
     YoloObbTrainingParameters,
     YoloPoseTrainingParameters,
     YoloSegmentationTrainingParameters,
     YoloXDetectionTrainingParameters,
+)
+from backend.service.api.rest.v1.routes.training_parameter_capabilities import (
+    TRAINING_PARAMETER_CAPABILITIES_BY_TASK_AND_MODEL,
 )
 
 
@@ -57,7 +64,7 @@ def _base_request(*, model_type: str) -> dict[str, object]:
         ("yolox", YoloXDetectionTrainingParameters),
         ("yolov8", YoloDetectionTrainingParameters),
         ("yolo11", YoloDetectionTrainingParameters),
-        ("yolo26", YoloDetectionTrainingParameters),
+        ("yolo26", Yolo26DetectionTrainingParameters),
         ("rfdetr", RfdetrDetectionTrainingParameters),
     ],
 )
@@ -91,7 +98,7 @@ def test_detection_request_selects_exact_model_parameter_schema(
             "rfdetr",
             RfdetrSegmentationTrainingParameters,
         ),
-        (PoseTrainingTaskCreateRequestBody, "yolo26", YoloPoseTrainingParameters),
+        (PoseTrainingTaskCreateRequestBody, "yolo26", Yolo26PoseTrainingParameters),
         (ObbTrainingTaskCreateRequestBody, "yolov8", YoloObbTrainingParameters),
     ],
 )
@@ -104,6 +111,21 @@ def test_non_detection_request_selects_task_parameter_schema(
 
     request = schema.model_validate(_base_request(model_type=model_type))
     assert isinstance(request.parameters, expected_type)
+
+
+@pytest.mark.parametrize("model_type", ["yolov8", "yolo11", "yolo26"])
+def test_yolo_segmentation_default_mask_gain_matches_reference_box_gain(
+    model_type: str,
+) -> None:
+    """YOLO segmentation 默认 mask gain 应与参考实现的 box gain 一致。"""
+
+    request = SegmentationTrainingTaskCreateRequestBody.model_validate(
+        _base_request(model_type=model_type)
+    )
+
+    assert request.parameters.loss.box_weight == 7.5
+    assert request.parameters.loss.mask_weight == 7.5
+    assert request.parameters.to_execution_options()["mask_loss_weight"] == 7.5
 
 
 def test_request_rejects_removed_extra_options_and_unknown_nested_fields() -> None:
@@ -254,6 +276,9 @@ def test_training_parameter_catalog_exposes_all_supported_task_model_pairs() -> 
     assert catalog.protocol_version == 1
     assert len(catalog.items) == 18
     assert len({(item.task_type, item.model_type) for item in catalog.items}) == 18
+    assert set(TRAINING_PARAMETER_CAPABILITIES_BY_TASK_AND_MODEL) == set(
+        TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL
+    )
     assert all(
         item.parameter_schema.get("additionalProperties") is False
         for item in catalog.items
@@ -267,6 +292,78 @@ def test_training_parameter_catalog_exposes_all_supported_task_model_pairs() -> 
     assert [(item.task_type, item.model_type) for item in filtered.items] == [
         ("segmentation", "rfdetr")
     ]
+
+
+@pytest.mark.parametrize(
+    ("task_type", "request_schema", "expected_parameter_schema"),
+    [
+        ("detection", DetectionTrainingTaskCreateRequestBody, Yolo26DetectionTrainingParameters),
+        (
+            "segmentation",
+            SegmentationTrainingTaskCreateRequestBody,
+            Yolo26SegmentationTrainingParameters,
+        ),
+        ("pose", PoseTrainingTaskCreateRequestBody, Yolo26PoseTrainingParameters),
+        ("obb", ObbTrainingTaskCreateRequestBody, Yolo26ObbTrainingParameters),
+    ],
+)
+def test_yolo26_end_to_end_tasks_reject_nms_parameter(
+    task_type: str,
+    request_schema: type,
+    expected_parameter_schema: type,
+) -> None:
+    """YOLO26 end-to-end 任务不能接受或展示 NMS 参数。"""
+
+    catalog_item = list_training_parameter_schemas(
+        principal=object(),
+        task_type=task_type,
+        model_type="yolo26",
+    ).items[0]
+    assert catalog_item.capabilities.postprocess_mode == "end_to_end"
+    assert catalog_item.capabilities.supports_nms_threshold is False
+    assert catalog_item.capabilities.distribution_loss_name == "l1_loss"
+    numeric_keys = {
+        field.key for field in catalog_item.numeric_fields
+    }
+    assert "evaluation_nms_threshold" not in numeric_keys
+    if task_type in {"detection", "segmentation", "pose"}:
+        assert "l1_loss_weight" in numeric_keys
+        assert "dfl_loss_weight" not in numeric_keys
+
+    request = request_schema.model_validate(_base_request(model_type="yolo26"))
+    assert isinstance(request.parameters, expected_parameter_schema)
+    payload = _base_request(model_type="yolo26")
+    payload["parameters"] = {"evaluation": {"nms_threshold": 0.7}}
+    with pytest.raises(ValidationError, match="nms_threshold"):
+        request_schema.model_validate(payload)
+
+    if task_type in {"detection", "segmentation", "pose"}:
+        l1_payload = _base_request(model_type="yolo26")
+        l1_payload["parameters"] = {"loss": {"l1_weight": 2.0}}
+        l1_request = request_schema.model_validate(l1_payload)
+        execution_options = l1_request.parameters.to_execution_options()
+        assert execution_options["l1_loss_weight"] == 2.0
+        assert "dfl_loss_weight" not in execution_options
+
+        legacy_payload = _base_request(model_type="yolo26")
+        legacy_payload["parameters"] = {"loss": {"dfl_weight": 1.5}}
+        with pytest.raises(ValidationError, match="dfl_weight"):
+            request_schema.model_validate(legacy_payload)
+
+
+def test_capability_nms_flag_matches_every_public_numeric_catalog() -> None:
+    """能力声明和页面数值字段必须由同一模型语义约束。"""
+
+    catalog = list_training_parameter_schemas(
+        principal=object(),
+        task_type=None,
+        model_type=None,
+    )
+    for item in catalog.items:
+        exposes_nms = "evaluation_nms_threshold" in {
+            field.key for field in item.numeric_fields
+        }
+        assert exposes_nms is item.capabilities.supports_nms_threshold
 
 
 def test_training_parameter_catalog_exposes_aligned_numeric_input_specs() -> None:
@@ -355,9 +452,12 @@ def test_training_parameter_catalog_uses_model_specific_decimal_steps() -> None:
     assert yolo_fields["learning_rate"].step == pytest.approx(0.00001)
     assert yolo_fields["learning_rate"].default_value == pytest.approx(0.01)
     assert yolo_fields["grad_clip_norm"].step == pytest.approx(0.1)
-    assert yolo_fields["mosaic_scale_min"].minimum == pytest.approx(0.01)
-    assert yolo_fields["mosaic_scale_min"].step == pytest.approx(0.01)
-    assert yolo_fields["mosaic_scale_min"].default_value == pytest.approx(0.5)
+    assert yolo_fields["hsv_h"].minimum == pytest.approx(0.0)
+    assert yolo_fields["hsv_h"].step == pytest.approx(0.001)
+    assert yolo_fields["hsv_h"].default_value == pytest.approx(0.015)
+    assert "mosaic_scale_min" not in yolo_fields
+    assert "mixup_scale_min" not in yolo_fields
+    assert "evaluation_nms_threshold" not in yolo_fields
 
     rfdetr = list_training_parameter_schemas(
         principal=object(),
@@ -375,15 +475,12 @@ def test_training_parameter_schema_rejects_values_outside_public_step_grid() -> 
         YoloDetectionTrainingParameters.model_validate(
             {"optimization": {"optimizer": "adamw", "learning_rate": 0.000011}}
         )
-    with pytest.raises(ValidationError, match="multiple"):
+    with pytest.raises(ValidationError, match="Extra inputs"):
         YoloDetectionTrainingParameters.model_validate(
             {"augmentation": {"mosaic_scale": {"minimum": 0.505, "maximum": 1.5}}}
         )
 
-    accepted = YoloDetectionTrainingParameters.model_validate(
-        {
-            "optimization": {"optimizer": "adamw", "learning_rate": 0.001},
-            "augmentation": {"mosaic_scale": {"minimum": 0.5, "maximum": 1.5}},
-        }
-    )
-    assert accepted.augmentation.mosaic_scale.minimum == pytest.approx(0.5)
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        YoloDetectionTrainingParameters.model_validate(
+            {"augmentation": {"mixup_scale": {"minimum": 0.5, "maximum": 1.5}}}
+        )

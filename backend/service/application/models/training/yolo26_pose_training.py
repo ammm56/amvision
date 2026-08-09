@@ -77,7 +77,6 @@ YOLO26_POSE_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO26_POSE_DEFAULT_ASSIGN_BETA = 6.0
 YOLO26_POSE_DEFAULT_GRAD_CLIP = 10.0
 YOLO26_POSE_DEFAULT_EVAL_CONF = 0.001
-YOLO26_POSE_DEFAULT_EVAL_NMS = 0.7
 YOLO26_POSE_DEFAULT_KPT_CONF = 0.25
 
 
@@ -199,7 +198,7 @@ def run_yolo26_pose_training(
         extra.get("class_loss_weight", YOLO26_POSE_DEFAULT_CLASS_LOSS)
     )
     box_loss_weight = float(extra.get("box_loss_weight", YOLO26_POSE_DEFAULT_BOX_LOSS))
-    dfl_loss_weight = float(extra.get("dfl_loss_weight", YOLO26_POSE_DEFAULT_DFL_LOSS))
+    dfl_loss_weight = float(extra.get("l1_loss_weight", YOLO26_POSE_DEFAULT_DFL_LOSS))
     kpt_loss_weight = float(extra.get("kpt_loss_weight", YOLO26_POSE_DEFAULT_KPT_LOSS))
     assign_topk = max(1, int(extra.get("assign_topk", YOLO26_POSE_DEFAULT_ASSIGN_TOPK)))
     assign_alpha = float(extra.get("assign_alpha", YOLO26_POSE_DEFAULT_ASSIGN_ALPHA))
@@ -212,9 +211,6 @@ def run_yolo26_pose_training(
         extra.get(
             "evaluation_confidence_threshold", YOLO26_POSE_DEFAULT_EVAL_CONF
         )
-    )
-    eval_nms = float(
-        extra.get("evaluation_nms_threshold", YOLO26_POSE_DEFAULT_EVAL_NMS)
     )
     keypoint_conf = float(
         extra.get("keypoint_confidence_threshold", YOLO26_POSE_DEFAULT_KPT_CONF)
@@ -239,7 +235,6 @@ def run_yolo26_pose_training(
             assign_beta=assign_beta,
             grad_clip_norm=grad_clip_norm,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
             keypoint_confidence_threshold=keypoint_conf,
         )
 
@@ -334,7 +329,6 @@ def run_yolo26_pose_training(
         assign_topk2=assign_topk2,
         grad_clip_norm=grad_clip_norm,
         evaluation_confidence_threshold=eval_conf,
-        evaluation_nms_threshold=eval_nms,
         keypoint_confidence_threshold=keypoint_conf,
         augmentation_options=augmentation_options,
         start_epoch=start_epoch,
@@ -384,7 +378,6 @@ def run_yolo26_pose_training(
             device=device_name,
             precision=precision,
             score_threshold=eval_conf,
-            nms_threshold=eval_nms,
             keypoint_confidence_threshold=keypoint_conf,
             kpt_shape=kpt_shape,
             imports=imports,

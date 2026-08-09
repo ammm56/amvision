@@ -58,18 +58,17 @@ class YoloV8DetectionAugmentationOptions:
     """描述 YOLOv8 detection 训练阶段启用的数据增强参数。"""
 
     flip_prob: float
-    hsv_prob: float
+    hsv_h: float
+    hsv_s: float
+    hsv_v: float
     mosaic_prob: float
     mixup_prob: float
-    enable_mixup: bool
     affine_prob: float
     degrees: float
     translate: float
     scale: float
     shear: float
     perspective: float
-    mosaic_scale: tuple[float, float]
-    mixup_scale: tuple[float, float]
     close_mosaic_epochs: int
     multi_scale: bool
     multi_scale_range: tuple[float, float]

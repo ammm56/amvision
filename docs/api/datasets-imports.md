@@ -276,6 +276,20 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 | metadata | object | 附加元数据。当前会记录源文件名、包大小、主体 id 和统计信息。 |
 | dataset_version | object \| null | 关联 DatasetVersion 的摘要。导入失败或版本未写入时为 null。 |
 
+#### 类别语义审计
+
+detection、instance segmentation、pose 和 OBB 在格式解析完成后统一执行类别语义审计，结果写入 `validation_report.annotation_semantics`：
+
+- `none`、`other`、`unknown`、`undefined` 等无法确定业务含义的占位名产生 `DATASET_AMBIGUOUS_CATEGORY_NAME` 警告。应在导入时通过 `class_map` 映射为明确领域类别；不能确定时需要删除或重新标注。
+- 当存在 `helmet / no_helmet` 或 `goggles / no_goggle` 这类正负类别时，报告列出匹配后的 polarity pairs 和同图样本数。单纯同图出现不是冲突，因为一张图可能有多个人。
+- 正负类别 bbox 的 IoU 达到 `0.5` 即视为同区域矛盾，导入失败并返回样本文件、类别、annotation id 和 IoU。示例数量固定上限，统计数量继续累计，避免损坏的大数据集造成无界内存。
+- 类别名经小写 snake_case 归一化后发生重名时，导入失败并返回 `DATASET_NORMALIZED_CATEGORY_NAME_COLLISION`，避免 `No Helmet` 与 `no_helmet` 形成两个下游不可稳定区分的类别。
+- 存在正负类别时，非小写 snake_case 名称产生 `DATASET_CATEGORY_NAME_STYLE_INCONSISTENT` 警告，避免规则节点和外部协议发生大小写歧义。
+
+审计不会根据 bbox 位置擅自把 `none` 改名为 `no_vest`。这类领域含义必须由数据提供方确认后用显式 `class_map` 固化。
+
+Construction-PPE 的原始类别 5 为 `none`、类别 6 为 `Person`。在已确认该数据副本中类别 5 表示未穿反光背心后，导入请求应显式使用 `{"5":"no_vest","6":"person"}`，并保留其他类别的原始映射；未经人工确认的数据副本不得直接套用该映射。
+
 #### detected_profile 字段
 
 | 字段 | 类型 | 说明 |

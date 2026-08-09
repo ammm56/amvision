@@ -34,6 +34,10 @@ from backend.service.application.models.yolo26_core.data import (
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
+from backend.service.application.models.evaluation.pycocotools_metrics import (
+    YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    evaluate_pycocotools_average_precision,
+)
 from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
     Yolo26DetectionDataLoaderPlan,
     build_yolo26_detection_training_dataloader,
@@ -64,7 +68,6 @@ from backend.service.application.models.yolo26_core.training.detection_support i
     YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT,
     YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
     YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
-    YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
     YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL,
     YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM,
     YOLO26_DETECTION_DEFAULT_MAX_EPOCHS,
@@ -74,6 +77,7 @@ from backend.service.application.models.yolo26_core.training.detection_support i
     require_yolo26_detection_training_imports,
     resolve_yolo26_detection_input_size,
     resolve_yolo26_detection_runtime,
+    serialize_yolo26_spatial_loss_metrics,
     unwrap_yolo26_detection_outputs,
 )
 from backend.service.application.models.yolo26_core.weights import (
@@ -85,8 +89,10 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloDetectionLossAccumulator,
     YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
+    normalize_yolo_detection_loss_metrics,
     resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolo26_core.training.execution import (
@@ -233,16 +239,11 @@ def run_yolo26_detection_training(
                 if validation_split is not None and bool(validation_samples)
                 else None
             ),
-            expected_evaluation_nms_threshold=(
-                training_options["evaluation_nms_threshold"]
-                if validation_split is not None and bool(validation_samples)
-                else None
-            ),
             expected_learning_rate=training_options["learning_rate"],
             expected_weight_decay=training_options["weight_decay"],
             expected_class_loss_weight=training_options["class_loss_weight"],
             expected_box_loss_weight=training_options["box_loss_weight"],
-            expected_dfl_loss_weight=training_options["dfl_loss_weight"],
+            expected_dfl_loss_weight=training_options["l1_loss_weight"],
             expected_assign_topk=training_options["assign_topk"],
             expected_assign_alpha=training_options["assign_alpha"],
             expected_assign_beta=training_options["assign_beta"],
@@ -358,7 +359,7 @@ def run_yolo26_detection_training(
                 num_classes=len(category_names),
                 class_loss_weight=training_options["class_loss_weight"],
                 box_loss_weight=training_options["box_loss_weight"],
-                dfl_loss_weight=training_options["dfl_loss_weight"],
+                dfl_loss_weight=training_options["l1_loss_weight"],
                 assign_topk=training_options["assign_topk"],
                 assign_alpha=training_options["assign_alpha"],
                 assign_beta=training_options["assign_beta"],
@@ -386,14 +387,13 @@ def run_yolo26_detection_training(
                 num_classes=len(category_names),
                 class_loss_weight=training_options["class_loss_weight"],
                 box_loss_weight=training_options["box_loss_weight"],
-                dfl_loss_weight=training_options["dfl_loss_weight"],
+                dfl_loss_weight=training_options["l1_loss_weight"],
                 assign_topk=training_options["assign_topk"],
                 assign_alpha=training_options["assign_alpha"],
                 assign_beta=training_options["assign_beta"],
                 confidence_threshold=training_options[
                     "evaluation_confidence_threshold"
                 ],
-                nms_threshold=training_options["evaluation_nms_threshold"],
                 dataloader_plan=dataloader_plan,
             ),
             grad_clip_norm=training_options["grad_clip_norm"],
@@ -407,14 +407,11 @@ def run_yolo26_detection_training(
                 if has_validation
                 else None
             ),
-            evaluation_nms_threshold=(
-                training_options["evaluation_nms_threshold"] if has_validation else None
-            ),
             learning_rate=training_options["learning_rate"],
             weight_decay=training_options["weight_decay"],
             class_loss_weight=training_options["class_loss_weight"],
             box_loss_weight=training_options["box_loss_weight"],
-            dfl_loss_weight=training_options["dfl_loss_weight"],
+            dfl_loss_weight=training_options["l1_loss_weight"],
             assign_topk=training_options["assign_topk"],
             assign_alpha=training_options["assign_alpha"],
             assign_beta=training_options["assign_beta"],
@@ -497,7 +494,6 @@ def run_yolo26_detection_training(
         validation_sample_count=len(validation_samples),
         evaluation_interval=evaluation_interval,
         confidence_threshold=training_options["evaluation_confidence_threshold"],
-        nms_threshold=training_options["evaluation_nms_threshold"],
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
         evaluated_epochs=evaluated_epochs,
@@ -539,14 +535,13 @@ def run_yolo26_detection_training(
             num_classes=len(category_names),
             class_loss_weight=training_options["class_loss_weight"],
             box_loss_weight=training_options["box_loss_weight"],
-            dfl_loss_weight=training_options["dfl_loss_weight"],
+            dfl_loss_weight=training_options["l1_loss_weight"],
             assign_topk=training_options["assign_topk"],
             assign_alpha=training_options["assign_alpha"],
             assign_beta=training_options["assign_beta"],
             confidence_threshold=training_options[
                 "evaluation_confidence_threshold"
             ],
-            nms_threshold=training_options["evaluation_nms_threshold"],
             dataloader_plan=dataloader_plan,
         )
         test_metrics_payload = build_detection_test_metrics_report(
@@ -649,20 +644,15 @@ def _resolve_yolo26_detection_training_options(
             "box_loss_weight",
             default=YOLO26_DETECTION_DEFAULT_BOX_LOSS_WEIGHT,
         ),
-        "dfl_loss_weight": read_yolo26_float_option(
+        "l1_loss_weight": read_yolo26_float_option(
             extra_options,
-            "dfl_loss_weight",
+            "l1_loss_weight",
             default=YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
         ),
         "evaluation_confidence_threshold": read_yolo26_float_option(
             extra_options,
             "evaluation_confidence_threshold",
             default=YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
-        ),
-        "evaluation_nms_threshold": read_yolo26_float_option(
-            extra_options,
-            "evaluation_nms_threshold",
-            default=YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
         ),
         "assign_topk": max(
             1,
@@ -737,7 +727,6 @@ def _load_yolo26_resume_checkpoint(
     expected_validation_split_name: str | None,
     expected_evaluation_interval: int,
     expected_evaluation_confidence_threshold: float | None,
-    expected_evaluation_nms_threshold: float | None,
     expected_learning_rate: float,
     expected_weight_decay: float,
     expected_class_loss_weight: float,
@@ -767,7 +756,6 @@ def _load_yolo26_resume_checkpoint(
             validation_split_name=expected_validation_split_name,
             evaluation_interval=expected_evaluation_interval,
             evaluation_confidence_threshold=expected_evaluation_confidence_threshold,
-            evaluation_nms_threshold=expected_evaluation_nms_threshold,
             learning_rate=expected_learning_rate,
             weight_decay=expected_weight_decay,
             class_loss_weight=expected_class_loss_weight,
@@ -927,7 +915,6 @@ def _evaluate_yolo26_detection_model(
     assign_alpha: float,
     assign_beta: float,
     confidence_threshold: float,
-    nms_threshold: float,
     dataloader_plan: Yolo26DetectionDataLoaderPlan,
 ) -> dict[str, object]:
     """执行 YOLO26 detection validation loss 与 COCO bbox mAP。"""
@@ -951,18 +938,21 @@ def _evaluate_yolo26_detection_model(
         assign_alpha=assign_alpha,
         assign_beta=assign_beta,
         confidence_threshold=confidence_threshold,
-        nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
     )
-    return {
+    evaluation_summary: dict[str, object] = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
         "class_loss": round(float(validation_losses.get("class_loss", 0.0)), 6),
         "box_loss": round(float(validation_losses.get("box_loss", 0.0)), 6),
-        "dfl_loss": round(float(validation_losses.get("dfl_loss", 0.0)), 6),
+        "l1_loss": round(float(validation_losses.get("l1_loss", 0.0)), 6),
         "map50": round(float(validation_map.get("map50", 0.0)), 6),
         "map50_95": round(float(validation_map.get("map50_95", 0.0)), 6),
         "sample_count": len(samples),
     }
+    per_category = validation_map.get("per_category")
+    if isinstance(per_category, list):
+        evaluation_summary["per_category"] = per_category
+    return evaluation_summary
 
 
 def _evaluate_yolo26_detection_model_once(
@@ -985,9 +975,8 @@ def _evaluate_yolo26_detection_model_once(
     assign_alpha: float,
     assign_beta: float,
     confidence_threshold: float,
-    nms_threshold: float,
     dataloader_plan: Yolo26DetectionDataLoaderPlan,
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, object]]:
     """按 Ultralytics validator 语义一次 forward 统计 YOLO26 loss 和 mAP。"""
 
     if not samples:
@@ -1016,8 +1005,7 @@ def _evaluate_yolo26_detection_model_once(
         device=device,
         runtime_precision=runtime_precision,
     )
-    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    batch_count = 0
+    loss_accumulator = YoloDetectionLossAccumulator()
     detections: list[dict[str, object]] = []
     previous_training_mode = bool(model.training)
     model.eval()
@@ -1045,11 +1033,14 @@ def _evaluate_yolo26_detection_model_once(
                         assign_alpha=assign_alpha,
                         assign_beta=assign_beta,
                     )
-                batch_count += 1
-                for metric_name in epoch_totals:
-                    epoch_totals[metric_name] += float(
-                        loss_components[metric_name].detach().item()
-                    )
+                reported_metrics = normalize_yolo_detection_loss_metrics(
+                    loss_components=loss_components,
+                    batch_sample_count=len(batch_targets),
+                )
+                loss_accumulator.add(
+                    metrics=reported_metrics,
+                    batch_sample_count=len(batch_targets),
+                )
                 if annotation_payload is not None:
                     detections.extend(
                         convert_yolo26_predictions_to_coco_detections(
@@ -1059,19 +1050,13 @@ def _evaluate_yolo26_detection_model_once(
                             input_size=input_size,
                             category_ids=category_ids,
                             confidence_threshold=confidence_threshold,
-                            nms_threshold=nms_threshold,
+                            max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
                         )
                     )
     finally:
         model.train(previous_training_mode)
 
-    if batch_count <= 0:
-        losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    else:
-        losses = {
-            metric_name: round(metric_total / batch_count, 6)
-            for metric_name, metric_total in epoch_totals.items()
-        }
+    losses = serialize_yolo26_spatial_loss_metrics(loss_accumulator.mean())
     if annotation_payload is None or not detections:
         return losses, {"map50": 0.0, "map50_95": 0.0}
 
@@ -1080,16 +1065,25 @@ def _evaluate_yolo26_detection_model_once(
         annotation_file=annotation_file,
         annotation_payload=annotation_payload,
     )
-    with redirect_stdout(io.StringIO()):
-        coco_detections = ground_truth.loadRes(detections)
-        coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
-        coco_evaluator.params.maxDets = [1, 10, 300]
-        coco_evaluator.evaluate()
-        coco_evaluator.accumulate()
-        coco_evaluator.summarize()
+    average_precision = evaluate_pycocotools_average_precision(
+        ground_truth=ground_truth,
+        detections=detections,
+        cocoeval_class=imports.COCOeval,
+        iou_type="bbox",
+        max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    )
     return losses, {
-        "map50_95": float(coco_evaluator.stats[0]),
-        "map50": float(coco_evaluator.stats[1]),
+        "map50_95": average_precision.map50_95,
+        "map50": average_precision.map50,
+        "per_category": [
+            {
+                "category_id": item.category_id,
+                "category_name": item.category_name,
+                "map50": item.map50,
+                "map50_95": item.map50_95,
+            }
+            for item in average_precision.per_category
+        ],
     }
 
 
@@ -1320,7 +1314,6 @@ def _build_yolo26_validation_metrics_payload(
     validation_sample_count: int,
     evaluation_interval: int,
     confidence_threshold: float,
-    nms_threshold: float,
     best_metric_name: str,
     best_metric_value: float,
     evaluated_epochs: list[int],
@@ -1335,11 +1328,10 @@ def _build_yolo26_validation_metrics_payload(
         "split_name": validation_split_name,
         "sample_count": validation_sample_count,
         "confidence_threshold": confidence_threshold if enabled else None,
-        "nms_threshold": nms_threshold if enabled else None,
         "postprocess_mode": (
             YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK if enabled else None
         ),
-        "max_detections": None,
+        "max_detections": YOLO_DETECTION_COCO_MAX_DETECTIONS if enabled else None,
         "best_metric_name": best_metric_name if enabled else None,
         "best_metric_value": best_metric_value if enabled else None,
         "evaluated_epochs": evaluated_epochs,
@@ -1416,7 +1408,11 @@ def _build_yolo26_metrics_payload(
             "accumulate": training_schedule.accumulate,
         },
         "scheduler": {
-            "name": "UltralyticsCosineLambdaLR",
+            "name": (
+                "UltralyticsCosineLambdaLR"
+                if training_schedule.cosine_schedule
+                else "UltralyticsLinearLambdaLR"
+            ),
             "min_lr_ratio": training_options["min_lr_ratio"],
             "warmup_iterations": training_schedule.warmup_iterations,
             "warmup_momentum": training_schedule.warmup_momentum,
@@ -1430,18 +1426,17 @@ def _build_yolo26_metrics_payload(
                 if validation_sample_count > 0
                 else None
             ),
-            "nms_threshold": (
-                training_options["evaluation_nms_threshold"]
+            "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
+            "max_detections": (
+                YOLO_DETECTION_COCO_MAX_DETECTIONS
                 if validation_sample_count > 0
                 else None
             ),
-            "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
-            "max_detections": None,
         },
         "loss_weights": {
             "class_loss_weight": training_options["class_loss_weight"],
             "box_loss_weight": training_options["box_loss_weight"],
-            "dfl_loss_weight": training_options["dfl_loss_weight"],
+            "l1_loss_weight": training_options["l1_loss_weight"],
         },
         "assignment": {
             "assign_topk": training_options["assign_topk"],

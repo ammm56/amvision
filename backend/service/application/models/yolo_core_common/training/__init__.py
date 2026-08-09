@@ -39,10 +39,17 @@ from backend.service.application.models.yolo_core_common.training.task_dataloade
     resolve_yolo_task_evaluation_dataloader_plan,
     resolve_yolo_task_dataloader_plan,
 )
+from backend.service.application.models.yolo_core_common.training.detection_metrics import (
+    YOLO_DETECTION_LOSS_METRIC_NAMES,
+    YoloDetectionLossAccumulator,
+    normalize_yolo_detection_loss_metrics,
+)
 
 __all__ = [
     "YoloInfiniteDataLoader",
+    "YOLO_DETECTION_LOSS_METRIC_NAMES",
     "YoloClassificationDataLoaderPlan",
+    "YoloDetectionLossAccumulator",
     "YoloModelEMA",
     "YoloUltralyticsOptimizerStep",
     "YoloTaskDataLoaderPlan",
@@ -58,6 +65,7 @@ __all__ = [
     "load_yolo_task_dataloader_imports",
     "move_yolo_classification_batch_to_device",
     "move_yolo_task_batch_to_device",
+    "normalize_yolo_detection_loss_metrics",
     "pin_yolo_task_value",
     "replace_yolo_classification_dataloader_plan_seed",
     "replace_yolo_task_dataloader_plan_seed",

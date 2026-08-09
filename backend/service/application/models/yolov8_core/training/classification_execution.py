@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -460,7 +464,15 @@ def run_yolov8_classification_training(
             validation_history.append({"epoch": epoch, **val_metrics})
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
         current_metric_value = current_val_metric if should_evaluate else None
-        is_best = should_evaluate and current_val_metric > best_metric_value
+        is_best = (
+            should_evaluate
+            and is_better_training_metric(
+                current_value=current_val_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
+        )
         if is_best:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"

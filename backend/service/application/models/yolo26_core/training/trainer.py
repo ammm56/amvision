@@ -109,7 +109,6 @@ def run_yolo26_detection_training_loop(
     validation_split_name: str | None,
     evaluation_interval: int,
     evaluation_confidence_threshold: float | None,
-    evaluation_nms_threshold: float | None,
     learning_rate: float,
     weight_decay: float,
     class_loss_weight: float,
@@ -201,6 +200,7 @@ def run_yolo26_detection_training_loop(
         )
         validation_ran = validation_snapshot is not None
         best_metric_update = resolve_yolo26_detection_best_metric_update(
+            has_validation=has_validation,
             validation_ran=validation_ran,
             current_metric_value=current_metric_value,
             train_loss=float(train_metrics["loss"]),
@@ -230,9 +230,6 @@ def run_yolo26_detection_training_loop(
             evaluation_interval=evaluation_interval,
             evaluation_confidence_threshold=(
                 evaluation_confidence_threshold if has_validation else None
-            ),
-            evaluation_nms_threshold=(
-                evaluation_nms_threshold if has_validation else None
             ),
             learning_rate=learning_rate,
             weight_decay=weight_decay,

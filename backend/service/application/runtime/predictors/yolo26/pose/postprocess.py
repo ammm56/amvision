@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolox_core.postprocess import (
-    batched_yolox_nms_indices,
-)
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
 )
@@ -17,9 +14,6 @@ from backend.service.application.models.yolo26_core.cfg import get_yolo26_model_
 from backend.service.application.runtime.contracts.pose.prediction import (
     PosePredictionInstance,
     PosePredictionKeypoint,
-)
-from backend.service.application.runtime.predictors.yolo26.pose.contracts import (
-    DEFAULT_YOLO26_POSE_NMS_THRESHOLD,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
 
@@ -59,8 +53,6 @@ def build_yolo26_pose_runtime_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
-        nms_threshold=DEFAULT_YOLO26_POSE_NMS_THRESHOLD,
-        nms_indices_func=batched_yolox_nms_indices,
     )
     return (
         tuple(

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from backend.service.application.models.training.metric_policy import (
+    resolve_best_metric_decision,
+)
+
 
 @dataclass(frozen=True)
 class YoloV8DetectionBestMetricUpdate:
@@ -42,6 +46,7 @@ def resolve_yolov8_detection_initial_best_metric_value(*, has_validation: bool) 
 
 def resolve_yolov8_detection_best_metric_update(
     *,
+    has_validation: bool,
     validation_ran: bool,
     current_metric_value: float | None,
     train_loss: float,
@@ -49,24 +54,22 @@ def resolve_yolov8_detection_best_metric_update(
 ) -> YoloV8DetectionBestMetricUpdate:
     """比较当前 epoch 指标和历史 best metric。"""
 
-    if validation_ran and current_metric_value is not None:
-        if current_metric_value >= best_metric_value:
-            return YoloV8DetectionBestMetricUpdate(
-                improved=True,
-                candidate_value=current_metric_value,
-            )
+    if has_validation and not validation_ran:
         return YoloV8DetectionBestMetricUpdate(
             improved=False,
-            candidate_value=best_metric_value,
+            candidate_value=float(best_metric_value),
         )
-    if train_loss <= best_metric_value:
-        return YoloV8DetectionBestMetricUpdate(
-            improved=True,
-            candidate_value=train_loss,
-        )
+
+    decision = resolve_best_metric_decision(
+        current_value=current_metric_value if has_validation else train_loss,
+        best_value=best_metric_value,
+        direction="maximize" if has_validation else "minimize",
+        minimum=0.0,
+        maximum=1.0 if has_validation else None,
+    )
     return YoloV8DetectionBestMetricUpdate(
-        improved=False,
-        candidate_value=best_metric_value,
+        improved=decision.improved,
+        candidate_value=decision.candidate_value,
     )
 
 

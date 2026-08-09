@@ -101,8 +101,10 @@
 本轮针对训练中 `map50 / map50_95` 异常偏低的问题，重新核对了 `projectsrc/YOLOX_2026/yolox`、`projectsrc/ultralytics/ultralytics` 和本项目 evaluation / training / frontend 参数链路。结论如下：
 
 - `YOLOX detection` 保持 YOLOX 原生默认：`score_threshold=0.01`、`nms_threshold=0.65`。
-- `YOLOv8 / YOLO11 / YOLO26` 的普通 `detection / segmentation / pose` validation 默认按 Ultralytics validator：`score_threshold=0.001`、`nms_threshold=0.7`。
-- `YOLOv8 / YOLO11 / YOLO26` 的 `OBB` validation 默认按 Ultralytics validator 的 OBB 分支：`score_threshold=0.01`、`nms_threshold=0.7`。
+- `YOLOv8 / YOLO11` 的普通 `detection / segmentation / pose` validation 默认按 NMS validator：`score_threshold=0.001`、`nms_threshold=0.7`；OBB 使用 `score_threshold=0.01`、`nms_threshold=0.7`。
+- `YOLO26` 的 `detection / segmentation / pose / OBB` 使用 end-to-end 后处理，只公开 score/confidence threshold，不接受或显示 NMS threshold。
+- YOLOX、YOLOv8、YOLO11、YOLO26 detection 的 COCO AP50 和 AP50-95 必须由共享 evaluator 按同一显式 `maxDets` precision 切片计算，禁止直接读取 `COCOeval.stats[0] / stats[1]`。
+- 所有 best checkpoint 比较必须拒绝负数、NaN、Infinity，且只在严格改进时更新；平值保留历史 best。
 - `RF-DETR` 和通用 fallback evaluator 不能套普通 YOLO 阈值。RF-DETR 参考实现 predict 默认 `threshold=0.5`，本项目通用 evaluator 的 `0.01 / 0.65` 只作为非普通 YOLO fallback，不作为 YOLOv8 / YOLO11 / YOLO26 的 validation 默认。
 - 前端训练参数、API schema、训练入口和独立 evaluation task service 必须保持同一套默认值；旧任务不会被追溯修改，需要在服务和 worker 重启后重新提交训练或 evaluation。
 
@@ -125,7 +127,7 @@
 - segmentation 修正 batch 大于 1 时的重复 loss 缩放；pose AP 使用仅由 GT visibility 决定 mask 的 COCO OKS；OBB 共享解码同时应用中心偏移 `/2` 和 anchor stride。
 - detection 独立评估把模型零基 class index 映射到 manifest 的真实 category id；普通 NMS 与 COCO 评估统一使用 `max_det=300`。
 - 直接推理和转换加载完整 checkpoint 时恢复 activation 以及 BatchNorm `eps/momentum`；训练 warm-start 显式保留当前模型训练语义，只加载可兼容 tensor。
-- evaluation runtime session 使用统一幂等释放代理。测试不得导入 `projectsrc`；参考仓库只用于开发期行为核对。
+- evaluation runtime session 使用统一幂等释放代理。生产代码和普通测试不得导入 `projectsrc`；仅允许显式登记的 `tests/integration/test_yolo_detection_reference_parity.py` 在开发机存在参考仓库时执行数值一致性审计，参考目录缺失时跳过，且不得被产品运行时调用。
 
 ## 残留关键词分类
 

@@ -500,9 +500,9 @@ def _reference_detection_loss(
     )
     return {
         "loss": total_loss,
-        "box_loss": box_loss,
-        "class_loss": class_loss,
-        "dfl_loss": dfl_loss,
+        "box_loss": box_loss * box_weight,
+        "class_loss": class_loss * class_weight,
+        "dfl_loss": dfl_loss * dfl_weight,
     }
 
 

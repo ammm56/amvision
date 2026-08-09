@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolox_core.postprocess import (
-    batched_yolox_nms_indices,
-)
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
 )
@@ -15,9 +12,6 @@ from backend.service.application.models.yolo26_core.inference import (
 )
 from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionInstance,
-)
-from backend.service.application.runtime.predictors.yolo26.obb.contracts import (
-    DEFAULT_YOLO26_OBB_NMS_THRESHOLD,
 )
 
 
@@ -37,8 +31,6 @@ def build_yolo26_obb_runtime_instances(
         labels=labels,
         score_threshold=score_threshold,
         letterbox_transform=letterbox_transform,
-        nms_threshold=DEFAULT_YOLO26_OBB_NMS_THRESHOLD,
-        nms_indices_func=batched_yolox_nms_indices,
     )
     return tuple(
         ObbPredictionInstance(

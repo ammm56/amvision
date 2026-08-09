@@ -129,7 +129,13 @@
       </div>
       <div class="training-metric-panels">
         <article class="training-metric-panel">
-          <h3>{{ t('trainingDetail.trainMetricsTitle') }}</h3>
+          <div>
+            <h3>{{ t('trainingDetail.completedEpochMetricsTitle') }}</h3>
+            <p class="training-metric-hint">{{ t('trainingDetail.completedEpochMetricsHint') }}</p>
+            <p v-if="showsYoloSpatialLossHint" class="training-metric-hint">
+              {{ t('trainingDetail.yoloLossComponentsHint') }}
+            </p>
+          </div>
           <dl v-if="trainMetricEntries.length > 0" class="training-metric-list">
             <template v-for="metric in trainMetricEntries" :key="metric.name">
               <dt>{{ metric.name }}</dt>
@@ -137,6 +143,18 @@
             </template>
           </dl>
           <span v-else class="training-muted-value">-</span>
+        </article>
+        <article v-if="batchMetricEntries.length > 0" class="training-metric-panel">
+          <div>
+            <h3>{{ t('trainingDetail.currentBatchMetricsTitle') }}</h3>
+            <p class="training-metric-hint">{{ t('trainingDetail.currentBatchMetricsHint') }}</p>
+          </div>
+          <dl class="training-metric-list">
+            <template v-for="metric in batchMetricEntries" :key="metric.name">
+              <dt>{{ metric.name }}</dt>
+              <dd>{{ metric.value }}</dd>
+            </template>
+          </dl>
         </article>
         <article class="training-metric-panel">
           <h3>{{ t('trainingDetail.validationMetricsTitle') }}</h3>
@@ -258,6 +276,10 @@ const taskType = computed<ModelTaskType | null>(() => {
     : null
 })
 const visibleControlActions = computed(() => task.value?.available_actions.filter((action) => action !== 'delete') ?? [])
+const showsYoloSpatialLossHint = computed(() => (
+  ['yolov8', 'yolo11', 'yolo26'].includes(String(task.value?.model_type ?? '').toLowerCase())
+  && ['detection', 'segmentation', 'pose', 'obb'].includes(String(taskType.value ?? ''))
+))
 const canDeleteTask = computed(() => task.value?.available_actions.includes('delete') ?? false)
 const canRegisterCheckpoint = computed(() => Boolean(task.value?.latest_checkpoint_object_key || task.value?.control_status.resume_checkpoint_object_key))
 const progressSnapshot = computed(() => task.value?.progress ?? {})
@@ -294,7 +316,22 @@ const bestMetricText = computed(() => {
   if (!name || name === '-') return '-'
   return `${name}: ${formatMetricValue(value)}`
 })
-const trainMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.train_metrics))
+const completedEpochMetrics = computed(() => {
+  const persistedMetrics = readRecord(trainingMetricsPayload.value.final_metrics)
+  if (Object.keys(persistedMetrics).length > 0) return persistedMetrics
+  return readRecord(progressSnapshot.value.train_metrics)
+})
+const trainMetricEntries = computed(() => buildMetricEntries(completedEpochMetrics.value))
+const batchMetricEntries = computed(() => {
+  const explicitBatchMetrics = readRecord(progressSnapshot.value.batch_metrics)
+  if (Object.keys(explicitBatchMetrics).length > 0) {
+    return buildMetricEntries(explicitBatchMetrics)
+  }
+  // 兼容修复前仍在运行的进程：旧 batch 事件把单批指标放在 train_metrics。
+  return progressSnapshot.value.granularity === 'batch'
+    ? buildMetricEntries(progressSnapshot.value.train_metrics)
+    : []
+})
 const validationMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.validation_metrics))
 const selectedOutputContent = computed(() => {
   const outputFile = selectedOutputFile.value
@@ -508,6 +545,13 @@ function formatPlainValue(value: unknown): string {
   margin: 0;
   color: var(--am-text);
   font-size: 13px;
+}
+
+.training-metric-hint {
+  margin: 4px 0 0;
+  color: var(--am-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .training-metric-list {

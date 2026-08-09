@@ -156,9 +156,17 @@ def _prepare_yolo11_obb_sample_with_mix(
     if prepared is None:
         return None
     image, target = prepared
+    if augmentation_options is not None:
+        image, target = _apply_yolo11_obb_random_affine(
+            imports=imports,
+            image=image,
+            target=target,
+            target_width=target_width,
+            target_height=target_height,
+            augmentation_options=augmentation_options,
+        )
     if (
         augmentation_options is None
-        or not augmentation_options.enable_mixup
         or augmentation_options.mixup_prob <= 0.0
         or random.random() >= augmentation_options.mixup_prob
     ):
@@ -198,7 +206,7 @@ def _prepare_yolo11_obb_mixup_sample(
         augmentation_options.mosaic_prob > 0.0
         and random.random() < augmentation_options.mosaic_prob
     ):
-        return _build_yolo11_obb_mosaic_sample(
+        prepared = _build_yolo11_obb_mosaic_sample(
             imports=imports,
             primary_sample=sample,
             available_samples=available_samples,
@@ -206,12 +214,24 @@ def _prepare_yolo11_obb_mixup_sample(
             target_height=target_height,
             augmentation_options=augmentation_options,
         )
-    return _prepare_yolo11_obb_single_sample(
+    else:
+        prepared = _prepare_yolo11_obb_single_sample(
+            imports=imports,
+            sample=sample,
+            output_size=(target_width, target_height),
+            scale_gain=1.0,
+            scaleup=True,
+        )
+    if prepared is None:
+        return None
+    image, target = prepared
+    return _apply_yolo11_obb_random_affine(
         imports=imports,
-        sample=sample,
-        output_size=(target_width, target_height),
-        scale_gain=random.uniform(*augmentation_options.mixup_scale),
-        scaleup=True,
+        image=image,
+        target=target,
+        target_width=target_width,
+        target_height=target_height,
+        augmentation_options=augmentation_options,
     )
 
 
@@ -381,18 +401,10 @@ def _apply_yolo11_obb_augmentation(
 
     if augmentation_options is None:
         return image, target
-    image, target = _apply_yolo11_obb_random_affine(
-        imports=imports,
-        image=image,
-        target=target,
-        target_width=target_width,
-        target_height=target_height,
-        augmentation_options=augmentation_options,
-    )
     image = apply_yolo11_random_hsv(
         imports=imports,
         image=image,
-        hsv_prob=augmentation_options.hsv_prob,
+        augmentation_options=augmentation_options,
     )
     if not should_apply_yolo11_horizontal_flip(augmentation_options.flip_prob):
         return image, target

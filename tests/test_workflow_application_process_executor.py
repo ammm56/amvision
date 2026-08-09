@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from threading import Thread
 import time
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -31,7 +32,7 @@ from backend.service.settings import (
     BackendServiceDatabaseConfig,
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
-    BackendServiceSettings,
+    BackendServiceSettings as BackendServiceSettingsModel,
     BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_test_headers, create_test_runtime, get_default_test_principal_id
@@ -39,6 +40,20 @@ from tests.workflow_test_timing import (
     WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
     WORKFLOW_TEST_WEBSOCKET_TIMEOUT_SECONDS,
 )
+
+
+def BackendServiceSettings(**values: Any) -> BackendServiceSettingsModel:
+    """为本文件的每个测试实例分配独立 LocalBufferBroker 根目录。"""
+
+    if "local_buffer_broker" not in values:
+        queue_config = values.get("queue")
+        if not isinstance(queue_config, BackendServiceQueueConfig):
+            raise TypeError("workflow 测试设置必须显式提供 queue 配置")
+        queue_root = Path(queue_config.root_dir).resolve()
+        values["local_buffer_broker"] = LocalBufferBrokerSettings(
+            root_dir=str(queue_root.parent / "buffers")
+        )
+    return BackendServiceSettingsModel(**values)
 
 
 def test_workflow_application_process_executor_runs_application_in_child_process(

@@ -744,7 +744,7 @@ def test_yolo11_detection_data_core_builds_training_batch(tmp_path: Path) -> Non
         augmentation_options
     )
     assert serialized_options["mosaic_prob"] == 0.0
-    assert serialized_options["enable_mixup"] is False
+    assert serialized_options["hsv_h"] == 0.0
 
 
 def test_yolo26_detection_loss_supports_backward() -> None:
@@ -879,7 +879,7 @@ def test_yolo26_detection_data_core_builds_training_batch(tmp_path: Path) -> Non
         augmentation_options
     )
     assert serialized_options["mosaic_prob"] == 0.0
-    assert serialized_options["enable_mixup"] is False
+    assert serialized_options["hsv_h"] == 0.0
 
 
 def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
@@ -916,7 +916,6 @@ def test_yolo26_detection_postprocess_uses_end2end_topk() -> None:
         prediction_array=prediction,
         labels=("a", "b"),
         score_threshold=0.0,
-        nms_threshold=0.01,
         letterbox_transform=_identity_yolo_letterbox(128),
         max_detections=3,
     )
@@ -953,7 +952,7 @@ def test_yolo26_end2end_loss_weights_match_ultralytics_schedule() -> None:
     assert middle_weights[0] > final_weights[0]
     assert final_weights == pytest.approx((0.1, 0.9))
     assert float(combined["loss"].item()) == pytest.approx(8.4)
-    assert float(combined["class_loss"].item()) == pytest.approx(2.8)
+    assert float(combined["class_loss"].item()) == pytest.approx(6.0)
 
 
 @pytest.mark.parametrize(
@@ -1041,7 +1040,6 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         prediction_array=detection_prediction,
         labels=("background", "part"),
         score_threshold=0.1,
-        nms_threshold=0.65,
         letterbox_transform=_identity_yolo_letterbox(32),
     )
 
@@ -1054,10 +1052,8 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         proto_array=np.ones((1, 1, 4, 4), dtype=np.float32),
         labels=("part",),
         score_threshold=0.1,
-        nms_threshold=0.65,
         mask_threshold=0.5,
         letterbox_transform=_identity_yolo_letterbox(32),
-        nms_indices_func=batched_nms_indices,
     )
 
     pose_prediction = np.zeros((1, 300, 57), dtype=np.float32)
@@ -1073,8 +1069,6 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         keypoint_confidence_threshold=0.2,
         letterbox_transform=_identity_yolo_letterbox(32),
         default_kpt_shape=(17, 3),
-        nms_threshold=0.65,
-        nms_indices_func=batched_nms_indices,
     )
 
     obb_prediction = np.zeros((1, 300, 7), dtype=np.float32)
@@ -1085,8 +1079,6 @@ def test_yolo26_processed_export_layouts_feed_runtime_postprocess() -> None:
         labels=("part",),
         score_threshold=0.1,
         letterbox_transform=_identity_yolo_letterbox(32),
-        nms_threshold=0.65,
-        nms_indices_func=batched_nms_indices,
     )
 
     assert detections[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
@@ -1111,7 +1103,6 @@ def test_yolo26_postprocess_normalizes_reversed_xyxy_boxes() -> None:
         prediction_array=detection_prediction,
         labels=("part",),
         score_threshold=0.1,
-        nms_threshold=0.65,
         letterbox_transform=_identity_yolo_letterbox(32),
     )
 
@@ -1124,10 +1115,8 @@ def test_yolo26_postprocess_normalizes_reversed_xyxy_boxes() -> None:
         proto_array=np.ones((1, 1, 4, 4), dtype=np.float32),
         labels=("part",),
         score_threshold=0.1,
-        nms_threshold=0.65,
         mask_threshold=0.5,
         letterbox_transform=_identity_yolo_letterbox(32),
-        nms_indices_func=batched_nms_indices,
     )
 
     assert detections[0].bbox_xyxy == (2.0, 3.0, 18.0, 20.0)
@@ -2037,9 +2026,16 @@ def test_yolo_evaluation_default_thresholds_match_ultralytics_validator() -> Non
     for request_cls in (
         YoloV8DetectionEvaluationRequest,
         Yolo11DetectionEvaluationRequest,
-        Yolo26DetectionEvaluationRequest,
     ):
         assert request_cls.__dataclass_fields__["nms_threshold"].default == 0.7
+
+    for request_cls in (
+        Yolo26DetectionEvaluationRequest,
+        Yolo26SegmentationEvaluationRequest,
+        Yolo26PoseEvaluationRequest,
+        Yolo26ObbEvaluationRequest,
+    ):
+        assert "nms_threshold" not in request_cls.__dataclass_fields__
 
     for request_cls in (
         YoloV8ObbEvaluationRequest,
@@ -2272,10 +2268,8 @@ def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
         proto_array=normalized_proto,
         labels=("scratch",),
         score_threshold=0.1,
-        nms_threshold=0.65,
         mask_threshold=0.5,
         letterbox_transform=_identity_yolo_letterbox(16),
-        nms_indices_func=batched_nms_indices,
     )
 
     assert normalize_yolo26_segmentation_inference_outputs.__module__.endswith(
@@ -2299,10 +2293,8 @@ def test_yolo26_segmentation_core_inference_and_postprocess_entries() -> None:
             proto_array=normalized_proto,
             labels=("scratch",),
             score_threshold=0.1,
-            nms_threshold=0.65,
             mask_threshold=0.5,
             letterbox_transform=_identity_yolo_letterbox(16),
-            nms_indices_func=batched_nms_indices,
         )
     ) == len(instances)
 
@@ -2335,8 +2327,6 @@ def test_yolo26_pose_core_inference_postprocess_and_export_entries() -> None:
         keypoint_confidence_threshold=0.2,
         letterbox_transform=_identity_yolo_letterbox(16),
         default_kpt_shape=(17, 3),
-        nms_threshold=0.65,
-        nms_indices_func=batched_nms_indices,
     )
 
     assert normalize_yolo26_pose_inference_outputs.__module__.endswith(
@@ -2365,8 +2355,6 @@ def test_yolo26_pose_core_inference_postprocess_and_export_entries() -> None:
             keypoint_confidence_threshold=0.2,
             letterbox_transform=_identity_yolo_letterbox(16),
             default_kpt_shape=(17, 3),
-            nms_threshold=0.65,
-            nms_indices_func=batched_nms_indices,
         )[0]
     ) == len(instances)
 
@@ -2393,8 +2381,6 @@ def test_yolo26_obb_core_inference_postprocess_and_export_entries() -> None:
         labels=("part",),
         score_threshold=0.1,
         letterbox_transform=_identity_yolo_letterbox(16),
-        nms_threshold=0.65,
-        nms_indices_func=batched_nms_indices,
     )
 
     assert normalize_yolo26_obb_inference_outputs.__module__.endswith(
@@ -2422,8 +2408,6 @@ def test_yolo26_obb_core_inference_postprocess_and_export_entries() -> None:
             labels=("part",),
             score_threshold=0.1,
             letterbox_transform=_identity_yolo_letterbox(16),
-            nms_threshold=0.65,
-            nms_indices_func=batched_nms_indices,
         )
     ) == len(instances)
 
@@ -3358,7 +3342,9 @@ def test_yolov8_task_augmentation_flips_segmentation_pose_and_obb(
     )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
-        hsv_prob=0.0,
+        hsv_h=0.0,
+        hsv_s=0.0,
+        hsv_v=0.0,
         flip_prob=1.0,
         mosaic_prob=0.0,
         affine_prob=0.0,
@@ -3453,7 +3439,9 @@ def test_yolov8_task_random_affine_transforms_segmentation_pose_and_obb(
     )
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
-        hsv_prob=0.0,
+        hsv_h=0.0,
+        hsv_s=0.0,
+        hsv_v=0.0,
         flip_prob=0.0,
         mosaic_prob=0.0,
         affine_prob=1.0,
@@ -3585,11 +3573,12 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
     )
     for segmentation_builder, pose_builder, obb_builder, options_class in builders:
         augmentation_options = options_class(
-            hsv_prob=0.0,
+                hsv_h=0.0,
+                hsv_s=0.0,
+                hsv_v=0.0,
             flip_prob=0.0,
             mosaic_prob=1.0,
             affine_prob=0.0,
-            mosaic_scale=(1.0, 1.0),
         )
         random.seed(17)
         segmentation_batch = segmentation_builder(
@@ -3672,13 +3661,13 @@ def test_yolov8_task_mixup_merges_segmentation_pose_and_obb_targets(
     assert cv2.imwrite(str(image_b), np.full((16, 16, 3), 96, dtype=np.uint8)) is True
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
     augmentation_options = YoloV8TaskAugmentationOptions(
-        hsv_prob=0.0,
+        hsv_h=0.0,
+        hsv_s=0.0,
+        hsv_v=0.0,
         flip_prob=0.0,
         mosaic_prob=0.0,
         mixup_prob=1.0,
-        enable_mixup=True,
         affine_prob=0.0,
-        mixup_scale=(1.0, 1.0),
     )
 
     segmentation_a = SimpleNamespace(
@@ -3768,10 +3757,11 @@ def test_ordinary_yolo_task_augmentation_defaults_match_reference() -> None:
         options = build_options({})
 
         assert options.flip_prob == pytest.approx(0.5)
-        assert options.hsv_prob == pytest.approx(1.0)
+        assert options.hsv_h == pytest.approx(0.015)
+        assert options.hsv_s == pytest.approx(0.7)
+        assert options.hsv_v == pytest.approx(0.4)
         assert options.mosaic_prob == pytest.approx(1.0)
         assert options.mixup_prob == pytest.approx(0.0)
-        assert options.enable_mixup is True
         assert options.degrees == pytest.approx(0.0)
         assert options.translate == pytest.approx(0.1)
         assert options.scale == pytest.approx(0.5)
@@ -3788,7 +3778,6 @@ def test_yolov8_task_close_mosaic_and_multiscale_schedule(
         {
             "mosaic": 1.0,
             "mixup": 0.5,
-            "enable_mixup": True,
             "close_mosaic": 1,
             "multi_scale": 0.5,
             "multi_scale_stride": 32,

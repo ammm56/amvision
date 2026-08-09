@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
@@ -83,7 +87,7 @@ YOLO11_SEGMENTATION_DEFAULT_ASSIGN_TOPK = 10
 YOLO11_SEGMENTATION_DEFAULT_CLASS_LOSS = 0.5
 YOLO11_SEGMENTATION_DEFAULT_BOX_LOSS = 7.5
 YOLO11_SEGMENTATION_DEFAULT_DFL_LOSS = 1.5
-YOLO11_SEGMENTATION_DEFAULT_MASK_LOSS = 1.0
+YOLO11_SEGMENTATION_DEFAULT_MASK_LOSS = 7.5
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO11_SEGMENTATION_DEFAULT_ASSIGN_BETA = 6.0
 YOLO11_SEGMENTATION_DEFAULT_LR = 1e-2
@@ -452,7 +456,15 @@ def run_yolo11_segmentation_training(
         if val_metrics:
             validation_history.append({"epoch": epoch, **val_metrics})
         current_metric = float(val_metrics.get("map50_95", 0.0))
-        best_metric_improved = bool(val_metrics) and current_metric > best_metric_value
+        best_metric_improved = (
+            bool(val_metrics)
+            and is_better_training_metric(
+                current_value=current_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
+        )
         if best_metric_improved:
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
@@ -615,7 +627,7 @@ def _run_yolo11_segmentation_epoch(
     box_loss_sum = 0.0
     dfl_loss_sum = 0.0
     mask_loss_sum = 0.0
-    iteration_count = 0
+    sample_count = 0
     effective_augmentation_options = resolve_yolo11_task_augmentation_for_epoch(
         augmentation_options=augmentation_options,
         epoch_index=epoch,
@@ -674,27 +686,34 @@ def _run_yolo11_segmentation_epoch(
                 assign_beta=assign_beta,
                 dfl_loss_weight=dfl_loss_weight,
             )
-        total_loss = (
-            class_loss_weight * loss_payload["class_loss"]
-            + box_loss_weight * loss_payload["box_loss"]
-            + dfl_loss_weight * loss_payload["dfl_loss"]
-            + mask_loss_weight * loss_payload["mask_loss"]
+        reported_class_loss = class_loss_weight * loss_payload["class_loss"]
+        reported_box_loss = box_loss_weight * loss_payload["box_loss"]
+        reported_dfl_loss = dfl_loss_weight * loss_payload["dfl_loss"]
+        reported_mask_loss = mask_loss_weight * loss_payload["mask_loss"]
+        reported_total_loss = (
+            reported_class_loss
+            + reported_box_loss
+            + reported_dfl_loss
+            + reported_mask_loss
         )
-        if not total_loss.requires_grad:
-            total_loss = loss_payload["fallback_tensor"].sum() * 0.0
+        batch_sample_count = len(batch.targets)
+        # loss payload 是逐图归一化后的 batch sum，不再重复乘 batch size。
+        optimization_loss = reported_total_loss
+        if not optimization_loss.requires_grad:
+            optimization_loss = loss_payload["fallback_tensor"].sum() * 0.0
         optimizer_step.backward_and_step(
-            loss=total_loss,
+            loss=optimization_loss,
             iteration_index=global_iteration,
             is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
         )
-        total_loss_sum += float(total_loss.item())
-        class_loss_sum += float(loss_payload["class_loss"].item())
-        box_loss_sum += float(loss_payload["box_loss"].item())
-        dfl_loss_sum += float(loss_payload["dfl_loss"].item())
-        mask_loss_sum += float(loss_payload["mask_loss"].item())
-        iteration_count += 1
+        total_loss_sum += float(reported_total_loss.item())
+        class_loss_sum += float(reported_class_loss.item())
+        box_loss_sum += float(reported_box_loss.item())
+        dfl_loss_sum += float(reported_dfl_loss.item())
+        mask_loss_sum += float(reported_mask_loss.item())
+        sample_count += batch_sample_count
 
-    divisor = max(1, iteration_count)
+    divisor = max(1, sample_count)
     return (
         {
             "loss": round(total_loss_sum / divisor, 6),

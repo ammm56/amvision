@@ -99,9 +99,9 @@ def compute_yolo11_detection_loss(
     batch_size = max(1, len(batch_targets))
     return {
         "loss": total_loss * batch_size,
-        "class_loss": class_loss,
-        "box_loss": box_loss,
-        "dfl_loss": dfl_loss,
+        "class_loss": class_loss * class_loss_weight,
+        "box_loss": box_loss * box_loss_weight,
+        "dfl_loss": dfl_loss * dfl_loss_weight,
     }
 
 

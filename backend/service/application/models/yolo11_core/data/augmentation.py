@@ -16,19 +16,18 @@ from backend.service.application.models.yolo_core_common.geometry import (
 class Yolo11TaskAugmentationOptions:
     """描述 YOLO11 非 detection 任务使用的受控增强参数。"""
 
-    hsv_prob: float = 1.0
+    hsv_h: float = 0.015
+    hsv_s: float = 0.7
+    hsv_v: float = 0.4
     flip_prob: float = 0.5
     mosaic_prob: float = 1.0
     mixup_prob: float = 0.0
-    enable_mixup: bool = True
     affine_prob: float = 1.0
     degrees: float = 0.0
     translate: float = 0.1
     scale: float = 0.5
     shear: float = 0.0
     perspective: float = 0.0
-    mosaic_scale: tuple[float, float] = (0.5, 1.5)
-    mixup_scale: tuple[float, float] = (0.5, 1.5)
     close_mosaic_epochs: int = 10
     multi_scale: bool = False
     multi_scale_range: tuple[float, float] = (0.5, 1.5)
@@ -50,11 +49,12 @@ def build_yolo11_task_augmentation_options(
     )
     if augmentation_disabled:
         return Yolo11TaskAugmentationOptions(
-            hsv_prob=0.0,
+            hsv_h=0.0,
+            hsv_s=0.0,
+            hsv_v=0.0,
             flip_prob=0.0,
             mosaic_prob=0.0,
             mixup_prob=0.0,
-            enable_mixup=False,
             affine_prob=0.0,
             degrees=0.0,
             translate=0.0,
@@ -81,7 +81,9 @@ def build_yolo11_task_augmentation_options(
         else (0.5, 1.5)
     )
     return Yolo11TaskAugmentationOptions(
-        hsv_prob=_clamp_probability(_read_float_option(extra, "hsv_prob", default=1.0)),
+        hsv_h=max(0.0, _read_float_option(extra, "hsv_h", default=0.015)),
+        hsv_s=max(0.0, _read_float_option(extra, "hsv_s", default=0.7)),
+        hsv_v=max(0.0, _read_float_option(extra, "hsv_v", default=0.4)),
         flip_prob=_clamp_probability(
             _read_float_option(
                 extra,
@@ -103,7 +105,6 @@ def build_yolo11_task_augmentation_options(
                 default=_read_float_option(extra, "mixup", default=0.0),
             )
         ),
-        enable_mixup=_read_bool_option(extra, "enable_mixup", default=True),
         affine_prob=_clamp_probability(
             _read_float_option(extra, "affine_prob", default=1.0)
         ),
@@ -112,8 +113,6 @@ def build_yolo11_task_augmentation_options(
         scale=max(0.0, _read_float_option(extra, "scale", default=0.5)),
         shear=max(0.0, _read_float_option(extra, "shear", default=0.0)),
         perspective=max(0.0, _read_float_option(extra, "perspective", default=0.0)),
-        mosaic_scale=_read_float_pair_option(extra, "mosaic_scale", default=(0.5, 1.5)),
-        mixup_scale=_read_float_pair_option(extra, "mixup_scale", default=(0.5, 1.5)),
         close_mosaic_epochs=max(
             0, int(_read_float_option(extra, "close_mosaic", default=10.0))
         ),
@@ -144,19 +143,18 @@ def resolve_yolo11_task_augmentation_for_epoch(
     if close_epochs <= 0 or int(epoch_index) < max(0, int(max_epochs) - close_epochs):
         return augmentation_options
     return Yolo11TaskAugmentationOptions(
-        hsv_prob=augmentation_options.hsv_prob,
+        hsv_h=augmentation_options.hsv_h,
+        hsv_s=augmentation_options.hsv_s,
+        hsv_v=augmentation_options.hsv_v,
         flip_prob=augmentation_options.flip_prob,
         mosaic_prob=0.0,
         mixup_prob=0.0,
-        enable_mixup=False,
         affine_prob=augmentation_options.affine_prob,
         degrees=augmentation_options.degrees,
         translate=augmentation_options.translate,
         scale=augmentation_options.scale,
         shear=augmentation_options.shear,
         perspective=augmentation_options.perspective,
-        mosaic_scale=augmentation_options.mosaic_scale,
-        mixup_scale=augmentation_options.mixup_scale,
         close_mosaic_epochs=augmentation_options.close_mosaic_epochs,
         multi_scale=augmentation_options.multi_scale,
         multi_scale_range=augmentation_options.multi_scale_range,
@@ -184,26 +182,33 @@ def resolve_yolo11_task_batch_input_size(
 
 
 def blend_yolo11_mixup_images(*, imports: Any, image: Any, other_image: Any) -> Any:
-    """按 YOLO11 MixUp 权重混合两张同尺寸图片。"""
+    """按 Ultralytics Beta(32, 32) 权重混合两张同尺寸图片。"""
 
+    ratio = float(imports.np.random.beta(32.0, 32.0))
     mixed = (
-        image.astype(imports.np.float32) * 0.5
-        + other_image.astype(imports.np.float32) * 0.5
+        image.astype(imports.np.float32) * ratio
+        + other_image.astype(imports.np.float32) * (1.0 - ratio)
     )
     return mixed.clip(0.0, 255.0).astype(imports.np.uint8)
 
 
-def apply_yolo11_random_hsv(*, imports: Any, image: Any, hsv_prob: float) -> Any:
-    """按概率执行 YOLO11 task HSV 抖动。"""
+def apply_yolo11_random_hsv(
+    *, imports: Any, image: Any, augmentation_options: Yolo11TaskAugmentationOptions
+) -> Any:
+    """按独立 H/S/V 增益执行 YOLO11 task HSV 抖动。"""
 
-    if hsv_prob <= 0.0 or random.random() >= hsv_prob:
+    if max(
+        augmentation_options.hsv_h,
+        augmentation_options.hsv_s,
+        augmentation_options.hsv_v,
+    ) <= 0.0:
         return image
     hsv_image = imports.cv2.cvtColor(image, imports.cv2.COLOR_BGR2HSV).astype(
         imports.np.float32
     )
-    hue_offset = random.uniform(-0.015, 0.015) * 180.0
-    saturation_gain = 1.0 + random.uniform(-0.7, 0.7)
-    value_gain = 1.0 + random.uniform(-0.4, 0.4)
+    hue_offset = random.uniform(-augmentation_options.hsv_h, augmentation_options.hsv_h) * 180.0
+    saturation_gain = 1.0 + random.uniform(-augmentation_options.hsv_s, augmentation_options.hsv_s)
+    value_gain = 1.0 + random.uniform(-augmentation_options.hsv_v, augmentation_options.hsv_v)
     hsv_image[..., 0] = (hsv_image[..., 0] + hue_offset) % 180.0
     hsv_image[..., 1] = imports.np.clip(hsv_image[..., 1] * saturation_gain, 0.0, 255.0)
     hsv_image[..., 2] = imports.np.clip(hsv_image[..., 2] * value_gain, 0.0, 255.0)
@@ -682,22 +687,6 @@ def _read_float_option(
         return float(options.get(key, default))
     except (TypeError, ValueError):
         return float(default)
-
-
-def _read_bool_option(
-    options: dict[str, object],
-    key: str,
-    *,
-    default: bool,
-) -> bool:
-    """读取训练增强布尔参数。"""
-
-    value = options.get(key, default)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return bool(value)
 
 
 def _read_float_pair_option(

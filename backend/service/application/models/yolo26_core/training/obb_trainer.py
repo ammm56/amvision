@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.models.yolo_core_common.training import (
     YoloTaskDataLoaderPlan,
     YoloUltralyticsOptimizerStep,
@@ -31,6 +35,9 @@ from backend.service.application.models.yolo26_core.losses import (
 )
 from backend.service.application.models.yolo26_core.training.obb_checkpoint import (
     build_yolo26_obb_checkpoint_bytes,
+)
+from backend.service.application.models.yolo26_core.training.detection_support import (
+    serialize_yolo26_spatial_loss_metrics,
 )
 
 
@@ -112,7 +119,6 @@ def run_yolo26_obb_training_loop(
     min_lr_ratio: float,
     assign_topk2: int | None,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     augmentation_options: Any,
     start_epoch: int,
     global_iteration: int,
@@ -192,7 +198,6 @@ def run_yolo26_obb_training_loop(
             device_name=device_name,
             precision=precision,
             evaluation_confidence_threshold=evaluation_confidence_threshold,
-            evaluation_nms_threshold=evaluation_nms_threshold,
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
@@ -201,7 +206,13 @@ def run_yolo26_obb_training_loop(
             validation_history.append({"epoch": epoch, **validation_metrics})
         current_metric = float(validation_metrics.get("map50_95", 0.0))
         best_metric_improved = (
-            bool(validation_metrics) and current_metric > best_metric_value
+            bool(validation_metrics)
+            and is_better_training_metric(
+                current_value=current_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -228,7 +239,6 @@ def run_yolo26_obb_training_loop(
             evaluation_interval=evaluation_interval,
             min_lr_ratio=min_lr_ratio,
             evaluation_confidence_threshold=evaluation_confidence_threshold,
-            evaluation_nms_threshold=evaluation_nms_threshold,
             torch_module=imports.torch,
         )
         if best_metric_improved:
@@ -288,6 +298,7 @@ def _run_yolo26_obb_epoch(
 
     epoch_losses: dict[str, float] = {}
     iteration_count = 0
+    sample_count = 0
     effective_augmentation_options = resolve_yolo26_task_augmentation_for_epoch(
         augmentation_options=augmentation_options,
         epoch_index=epoch,
@@ -381,12 +392,22 @@ def _run_yolo26_obb_epoch(
             is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
         )
         iteration_count += 1
+        batch_sample_count = len(batch.targets)
         for key, value in loss_payload.items():
-            epoch_losses[key] = epoch_losses.get(key, 0.0) + float(value.item())
+            metric_value = float(value.item())
+            if key == "loss":
+                metric_value /= batch_sample_count
+            epoch_losses[key] = (
+                epoch_losses.get(key, 0.0)
+                + metric_value * batch_sample_count
+            )
+        sample_count += batch_sample_count
 
-    divisor = max(1, iteration_count)
+    divisor = max(1, sample_count)
     return (
-        {key: round(value / divisor, 6) for key, value in epoch_losses.items()}
+        serialize_yolo26_spatial_loss_metrics(
+            {key: round(value / divisor, 6) for key, value in epoch_losses.items()}
+        )
         if epoch_losses
         else {"loss": 0.0},
         global_iteration,
@@ -403,7 +424,6 @@ def _run_yolo26_obb_validation(
     device_name: str,
     precision: str,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
@@ -423,7 +443,6 @@ def _run_yolo26_obb_validation(
         device=device_name,
         precision=precision,
         score_threshold=evaluation_confidence_threshold,
-        nms_threshold=evaluation_nms_threshold,
         imports=imports,
     )
 

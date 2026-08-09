@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolox_core.postprocess import (
-    batched_yolox_nms_indices,
-)
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
 )
@@ -14,7 +11,6 @@ from backend.service.application.models.yolo26_core.inference import (
     build_yolo26_segmentation_inference_instances,
 )
 from backend.service.application.runtime.predictors.yolo26.segmentation.contracts import (
-    DEFAULT_YOLO26_SEGMENTATION_NMS_THRESHOLD,
     Yolo26SegmentationPredictionInstance,
 )
 
@@ -39,10 +35,8 @@ def build_yolo26_segmentation_runtime_instances(
         proto_array=proto_array,
         labels=labels,
         score_threshold=score_threshold,
-        nms_threshold=DEFAULT_YOLO26_SEGMENTATION_NMS_THRESHOLD,
         mask_threshold=mask_threshold,
         letterbox_transform=letterbox_transform,
-        nms_indices_func=batched_yolox_nms_indices,
     )
     return tuple(
         Yolo26SegmentationPredictionInstance(

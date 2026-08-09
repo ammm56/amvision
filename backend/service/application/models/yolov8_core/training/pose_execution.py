@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.contracts.datasets.dataset_formats import (
     COCO_KEYPOINTS_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
@@ -333,6 +337,7 @@ def run_yolov8_pose_training(
         model.train()
         epoch_losses: dict[str, float] = {}
         epoch_iters = 0
+        epoch_samples = 0
         effective_yolov8_augmentation_options = resolve_yolov8_task_augmentation_for_epoch(
             augmentation_options=yolov8_augmentation_options,
             epoch_index=epoch,
@@ -415,13 +420,21 @@ def run_yolov8_pose_training(
                 ),
             )
 
+            batch_sample_count = len(targets)
             for k, v in loss_dict.items():
-                epoch_losses[k] = epoch_losses.get(k, 0.0) + float(v.item())
+                metric_value = float(v.item())
+                if k == "loss":
+                    metric_value /= batch_sample_count
+                epoch_losses[k] = (
+                    epoch_losses.get(k, 0.0)
+                    + metric_value * batch_sample_count
+                )
             epoch_iters += 1
+            epoch_samples += batch_sample_count
 
-        if epoch_iters > 0:
+        if epoch_samples > 0:
             avg_metrics = {
-                k: round(v / epoch_iters, 6) for k, v in epoch_losses.items()
+                k: round(v / epoch_samples, 6) for k, v in epoch_losses.items()
             }
         else:
             avg_metrics = {"loss": 0.0}
@@ -467,7 +480,12 @@ def run_yolov8_pose_training(
             )
             validation_history.append({"epoch": epoch, **val_metrics})
             current_metric = float(val_metrics.get("map50_95", 0.0))
-            best_metric_improved = current_metric > best_metric_value
+            best_metric_improved = is_better_training_metric(
+                current_value=current_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
             if best_metric_improved:
                 best_metric_value = current_metric
                 best_metric_name = "val_map50_95"

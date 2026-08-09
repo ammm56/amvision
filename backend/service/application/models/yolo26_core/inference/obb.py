@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -47,8 +46,6 @@ def build_yolo26_obb_inference_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
-    nms_threshold: float,
-    nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26ObbPostprocessInstance, ...]:
     """把 YOLO26 OBB inference 输出转换为 core 实例记录。"""
 
@@ -58,8 +55,6 @@ def build_yolo26_obb_inference_instances(
         labels=labels,
         score_threshold=score_threshold,
         letterbox_transform=letterbox_transform,
-        nms_threshold=nms_threshold,
-        nms_indices_func=nms_indices_func,
     )
 
 

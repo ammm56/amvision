@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -32,6 +33,9 @@ from backend.service.api.rest.v1.routes.training_parameter_schemas import (
 )
 from backend.service.api.rest.v1.routes.training_parameter_catalog import (
     build_training_numeric_parameter_specs,
+)
+from backend.service.api.rest.v1.routes.training_parameter_capabilities import (
+    get_training_parameter_capabilities,
 )
 
 
@@ -73,6 +77,12 @@ def list_training_parameter_schemas(
                     task_type=registered_task,
                     model_type=registered_model,
                     schema=schema,
+                ),
+                capabilities=asdict(
+                    get_training_parameter_capabilities(
+                        task_type=registered_task,
+                        model_type=registered_model,
+                    )
                 ),
             )
         )

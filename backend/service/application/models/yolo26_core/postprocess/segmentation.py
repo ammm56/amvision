@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,10 +96,8 @@ def build_yolo26_segmentation_postprocess_instances(
     proto_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    nms_threshold: float,
     mask_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
-    nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26SegmentationPostprocessInstance, ...]:
     """把 YOLO26 segmentation 输出转换为实例记录。"""
 
@@ -112,8 +109,6 @@ def build_yolo26_segmentation_postprocess_instances(
         num_classes=len(labels),
         mask_coefficient_count=mask_coefficient_count,
         score_threshold=score_threshold,
-        nms_threshold=nms_threshold,
-        nms_indices_func=nms_indices_func,
     )
     if not postprocess_results:
         return ()
@@ -211,12 +206,9 @@ def postprocess_yolo26_segmentation_prediction_array(
     num_classes: int,
     mask_coefficient_count: int,
     score_threshold: float,
-    nms_threshold: float,
-    nms_indices_func: Callable[..., Any],
 ) -> list[Yolo26SegmentationTopKInputArrays | None]:
     """执行 YOLO26 segmentation end2end top-k 后处理。"""
 
-    _ = nms_threshold, nms_indices_func
     normalized_prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if normalized_prediction.ndim == 2:
         normalized_prediction = np_module.expand_dims(normalized_prediction, axis=0)

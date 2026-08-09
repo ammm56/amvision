@@ -1491,7 +1491,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 - 当前公开 precision 字段只接受 fp16、fp32；未指定时默认 fp32。
 - 当前 input_size 固定使用 `{"width": <integer>, "height": <integer>}` 对象，不再接受二元素数组；未指定时真实训练默认宽高均为 640。
 - `parameters` 按 task/model 拆分为 runtime、optimization、loss、matching、evaluation、augmentation、advanced 等严格分组，未知字段会在入队前拒绝。
-- 机器可读参数目录由 `GET /api/v1/models/training-parameter-schemas` 返回。每个目录项同时公开 `parameter_schema`、`default_parameters` 和 `numeric_fields`；`numeric_fields` 中的范围、`step`、小数位数和默认值是前端数值输入的唯一运行时来源，`step` 与 JSON Schema `multipleOf` 保持一致。完整字段说明见 [训练参数协议](../architecture/training-parameter-support.md)。
+- 机器可读参数目录由 `GET /api/v1/models/training-parameter-schemas` 返回。每个目录项同时公开 `parameter_schema`、`default_parameters`、`numeric_fields` 和 `capabilities`；`numeric_fields` 中的范围、`step`、小数位数和默认值是前端数值输入的唯一运行时来源，`step` 与 JSON Schema `multipleOf` 保持一致。`capabilities` 控制 NMS、后处理模式、增强族和 best metric；例如 YOLO26 end-to-end 任务不展示也不提交 NMS。完整字段说明见 [训练参数协议](../architecture/training-parameter-support.md)。
 - 当前没有可用 GPU 时会回退到 CPU 训练，用于最小硬件支持和开发环境验证；只是速度会明显变慢。
 - 当前 `save`、`pause` 都是“请求登记后等待下一个 epoch 边界生效”，不是同步完成动作。
 - 当前 `resume` 会先把任务切回 `queued` 并重新入队；checkpoint 读取失败或配置不一致这类问题可能在后续 worker 执行阶段才把任务切成 `failed`。

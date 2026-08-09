@@ -19,7 +19,6 @@ YOLO26_DETECTION_DEFAULT_BATCH_SIZE = 1
 YOLO26_DETECTION_DEFAULT_MAX_EPOCHS = 1
 YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL = 5
 YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD = 0.001
-YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD = 0.7
 YOLO26_DETECTION_DEFAULT_ASSIGN_TOPK = 10
 YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT = 0.5
 YOLO26_DETECTION_DEFAULT_BOX_LOSS_WEIGHT = 7.5
@@ -166,6 +165,22 @@ def read_yolo26_int_option(
     return int(value)
 
 
+def serialize_yolo26_spatial_loss_metrics(
+    metrics: dict[str, float],
+) -> dict[str, float]:
+    """把内部第三项回归 loss 按 YOLO26 reference 名称输出为 l1_loss。
+
+    YOLO26 Detect 的 ``reg_max=1``，参考实现会把第三项命名为 ``l1_loss``；
+    内部 loss 函数仍复用统一的 ``dfl_loss`` 槽位和 gain 参数，公开训练指标不得
+    把实际 Smooth L1 项误报成 DFL。
+    """
+
+    serialized = dict(metrics)
+    if "dfl_loss" in serialized:
+        serialized["l1_loss"] = serialized.pop("dfl_loss")
+    return serialized
+
+
 __all__ = [
     "YOLO26_DETECTION_DEFAULT_ASSIGN_ALPHA",
     "YOLO26_DETECTION_DEFAULT_ASSIGN_BETA",
@@ -175,7 +190,6 @@ __all__ = [
     "YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT",
     "YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT",
     "YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD",
-    "YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD",
     "YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL",
     "YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM",
     "YOLO26_DETECTION_DEFAULT_INPUT_SIZE",
@@ -187,5 +201,6 @@ __all__ = [
     "require_yolo26_detection_training_imports",
     "resolve_yolo26_detection_input_size",
     "resolve_yolo26_detection_runtime",
+    "serialize_yolo26_spatial_loss_metrics",
     "unwrap_yolo26_detection_outputs",
 ]

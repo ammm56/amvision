@@ -184,6 +184,19 @@ class DetectionEvaluationParameters(TrainingParameterGroup):
         }
 
 
+class EndToEndDetectionEvaluationParameters(TrainingParameterGroup):
+    """YOLO26 end-to-end detection 验证参数。"""
+
+    confidence_threshold: float = Field(
+        default=0.001, ge=0.0, le=1.0, multiple_of=0.001
+    )
+
+    def to_execution_options(self) -> dict[str, object]:
+        """只发送 end-to-end 后处理实际使用的置信度阈值。"""
+
+        return {"evaluation_confidence_threshold": self.confidence_threshold}
+
+
 class YoloXDetectionEvaluationParameters(DetectionEvaluationParameters):
     """YOLOX detection 验证参数。"""
 
@@ -197,6 +210,12 @@ class ObbEvaluationParameters(DetectionEvaluationParameters):
     confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.01)
 
 
+class EndToEndObbEvaluationParameters(EndToEndDetectionEvaluationParameters):
+    """YOLO26 end-to-end OBB 验证参数。"""
+
+    confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.01)
+
+
 class PoseEvaluationParameters(DetectionEvaluationParameters):
     """Pose 验证参数。"""
 
@@ -206,6 +225,21 @@ class PoseEvaluationParameters(DetectionEvaluationParameters):
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测和关键点验证字段。"""
+
+        options = super().to_execution_options()
+        options["keypoint_confidence_threshold"] = self.keypoint_confidence_threshold
+        return options
+
+
+class EndToEndPoseEvaluationParameters(EndToEndDetectionEvaluationParameters):
+    """YOLO26 end-to-end pose 验证参数。"""
+
+    keypoint_confidence_threshold: float = Field(
+        default=0.25, ge=0.0, le=1.0, multiple_of=0.01
+    )
+
+    def to_execution_options(self) -> dict[str, object]:
+        """映射 end-to-end 检测和关键点置信度字段。"""
 
         options = super().to_execution_options()
         options["keypoint_confidence_threshold"] = self.keypoint_confidence_threshold
@@ -254,13 +288,43 @@ class YoloDetectionLossParameters(TrainingParameterGroup):
         }
 
 
+class Yolo26DetectionLossParameters(TrainingParameterGroup):
+    """YOLO26 reg_max=1 detection 损失权重。"""
+
+    class_weight: float = Field(default=0.5, ge=0.0, le=1000.0, multiple_of=0.1)
+    box_weight: float = Field(default=7.5, ge=0.0, le=1000.0, multiple_of=0.1)
+    l1_weight: float = Field(default=1.5, ge=0.0, le=1000.0, multiple_of=0.1)
+
+    def to_execution_options(self) -> dict[str, object]:
+        """映射为 YOLO26 Smooth L1 回归 gain 字段。"""
+
+        return {
+            "class_loss_weight": self.class_weight,
+            "box_loss_weight": self.box_weight,
+            "l1_loss_weight": self.l1_weight,
+        }
+
+
 class YoloSegmentationLossParameters(YoloDetectionLossParameters):
     """YOLO instance segmentation 损失权重。"""
 
-    mask_weight: float = Field(default=1.0, ge=0.0, le=1000.0, multiple_of=0.1)
+    mask_weight: float = Field(default=7.5, ge=0.0, le=1000.0, multiple_of=0.1)
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测与 mask 损失字段。"""
+
+        options = super().to_execution_options()
+        options["mask_loss_weight"] = self.mask_weight
+        return options
+
+
+class Yolo26SegmentationLossParameters(Yolo26DetectionLossParameters):
+    """YOLO26 instance segmentation 损失权重。"""
+
+    mask_weight: float = Field(default=7.5, ge=0.0, le=1000.0, multiple_of=0.1)
+
+    def to_execution_options(self) -> dict[str, object]:
+        """映射 L1 回归与 mask 损失字段。"""
 
         options = super().to_execution_options()
         options["mask_loss_weight"] = self.mask_weight
@@ -274,6 +338,19 @@ class YoloPoseLossParameters(YoloDetectionLossParameters):
 
     def to_execution_options(self) -> dict[str, object]:
         """映射检测与关键点损失字段。"""
+
+        options = super().to_execution_options()
+        options["kpt_loss_weight"] = self.keypoint_weight
+        return options
+
+
+class Yolo26PoseLossParameters(Yolo26DetectionLossParameters):
+    """YOLO26 pose 损失权重。"""
+
+    keypoint_weight: float = Field(default=12.0, ge=0.0, le=1000.0, multiple_of=0.1)
+
+    def to_execution_options(self) -> dict[str, object]:
+        """映射 L1 回归与关键点损失字段。"""
 
         options = super().to_execution_options()
         options["kpt_loss_weight"] = self.keypoint_weight
@@ -391,22 +468,17 @@ class YoloTaskAugmentationParameters(TrainingParameterGroup):
     horizontal_flip_probability: float = Field(
         default=0.5, ge=0.0, le=1.0, multiple_of=0.01
     )
-    hsv_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
+    hue_gain: float = Field(default=0.015, ge=0.0, le=0.5, multiple_of=0.001)
+    saturation_gain: float = Field(default=0.7, ge=0.0, le=1.0, multiple_of=0.01)
+    value_gain: float = Field(default=0.4, ge=0.0, le=1.0, multiple_of=0.01)
     mosaic_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
     mixup_probability: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.01)
-    mixup_enabled: bool = True
     affine_probability: float = Field(default=1.0, ge=0.0, le=1.0, multiple_of=0.01)
     rotation_degrees: float = Field(default=0.0, ge=0.0, le=180.0, multiple_of=0.1)
     translation_ratio: float = Field(default=0.1, ge=0.0, le=1.0, multiple_of=0.01)
     scale_ratio: float = Field(default=0.5, ge=0.0, le=10.0, multiple_of=0.01)
     shear_degrees: float = Field(default=0.0, ge=0.0, le=180.0, multiple_of=0.1)
     perspective_ratio: float = Field(default=0.0, ge=0.0, le=1.0, multiple_of=0.0001)
-    mosaic_scale: PositiveScaleRangeParameters = Field(
-        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.5, maximum=1.5)
-    )
-    mixup_scale: PositiveScaleRangeParameters = Field(
-        default_factory=lambda: PositiveScaleRangeParameters(minimum=0.5, maximum=1.5)
-    )
     close_mosaic_epochs: int = Field(default=10, ge=0, le=10_000)
     multi_scale_ratio: float = Field(default=0.0, ge=0.0, le=0.9, multiple_of=0.01)
     multi_scale_stride: int = Field(default=32, ge=1, le=1024)
@@ -418,10 +490,11 @@ class YoloTaskAugmentationParameters(TrainingParameterGroup):
             return {
                 "disable_augmentation": True,
                 "flip_prob": 0.0,
-                "hsv_prob": 0.0,
+                "hsv_h": 0.0,
+                "hsv_s": 0.0,
+                "hsv_v": 0.0,
                 "mosaic_prob": 0.0,
                 "mixup_prob": 0.0,
-                "enable_mixup": False,
                 "affine_prob": 0.0,
                 "degrees": 0.0,
                 "translate": 0.0,
@@ -435,18 +508,17 @@ class YoloTaskAugmentationParameters(TrainingParameterGroup):
         return {
             "disable_augmentation": False,
             "flip_prob": self.horizontal_flip_probability,
-            "hsv_prob": self.hsv_probability,
+            "hsv_h": self.hue_gain,
+            "hsv_s": self.saturation_gain,
+            "hsv_v": self.value_gain,
             "mosaic_prob": self.mosaic_probability,
             "mixup_prob": self.mixup_probability,
-            "enable_mixup": self.mixup_enabled,
             "affine_prob": self.affine_probability,
             "degrees": self.rotation_degrees,
             "translate": self.translation_ratio,
             "scale": self.scale_ratio,
             "shear": self.shear_degrees,
             "perspective": self.perspective_ratio,
-            "mosaic_scale": self.mosaic_scale.pair,
-            "mixup_scale": self.mixup_scale.pair,
             "close_mosaic": self.close_mosaic_epochs,
             "multi_scale": self.multi_scale_ratio,
             "multi_scale_stride": self.multi_scale_stride,
@@ -650,6 +722,17 @@ class YoloDetectionTrainingParameters(StrictTrainingParameters):
     )
 
 
+class Yolo26DetectionTrainingParameters(YoloDetectionTrainingParameters):
+    """YOLO26 end-to-end detection 完整公开参数。"""
+
+    loss: Yolo26DetectionLossParameters = Field(
+        default_factory=Yolo26DetectionLossParameters
+    )
+    evaluation: EndToEndDetectionEvaluationParameters = Field(
+        default_factory=EndToEndDetectionEvaluationParameters
+    )
+
+
 class RfdetrDetectionTrainingParameters(StrictTrainingParameters):
     """RF-DETR detection 完整公开参数。"""
 
@@ -701,6 +784,17 @@ class YoloSegmentationTrainingParameters(StrictTrainingParameters):
     )
 
 
+class Yolo26SegmentationTrainingParameters(YoloSegmentationTrainingParameters):
+    """YOLO26 end-to-end instance segmentation 完整公开参数。"""
+
+    loss: Yolo26SegmentationLossParameters = Field(
+        default_factory=Yolo26SegmentationLossParameters
+    )
+    evaluation: EndToEndDetectionEvaluationParameters = Field(
+        default_factory=EndToEndDetectionEvaluationParameters
+    )
+
+
 class RfdetrSegmentationTrainingParameters(StrictTrainingParameters):
     """RF-DETR instance segmentation 完整公开参数。"""
 
@@ -738,6 +832,17 @@ class YoloPoseTrainingParameters(StrictTrainingParameters):
     )
 
 
+class Yolo26PoseTrainingParameters(YoloPoseTrainingParameters):
+    """YOLO26 end-to-end pose 完整公开参数。"""
+
+    loss: Yolo26PoseLossParameters = Field(
+        default_factory=Yolo26PoseLossParameters
+    )
+    evaluation: EndToEndPoseEvaluationParameters = Field(
+        default_factory=EndToEndPoseEvaluationParameters
+    )
+
+
 class YoloObbTrainingParameters(StrictTrainingParameters):
     """YOLO OBB 完整公开参数。"""
 
@@ -751,6 +856,14 @@ class YoloObbTrainingParameters(StrictTrainingParameters):
     )
 
 
+class Yolo26ObbTrainingParameters(YoloObbTrainingParameters):
+    """YOLO26 end-to-end OBB 完整公开参数。"""
+
+    evaluation: EndToEndObbEvaluationParameters = Field(
+        default_factory=EndToEndObbEvaluationParameters
+    )
+
+
 DetectionTrainingParameters: TypeAlias = (
     YoloXDetectionTrainingParameters
     | YoloDetectionTrainingParameters
@@ -759,6 +872,8 @@ DetectionTrainingParameters: TypeAlias = (
 SegmentationTrainingParameters: TypeAlias = (
     YoloSegmentationTrainingParameters | RfdetrSegmentationTrainingParameters
 )
+PoseTrainingParameters: TypeAlias = YoloPoseTrainingParameters | Yolo26PoseTrainingParameters
+ObbTrainingParameters: TypeAlias = YoloObbTrainingParameters | Yolo26ObbTrainingParameters
 
 
 TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL: Final[
@@ -767,21 +882,21 @@ TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL: Final[
     ("detection", "yolox"): YoloXDetectionTrainingParameters,
     ("detection", "yolov8"): YoloDetectionTrainingParameters,
     ("detection", "yolo11"): YoloDetectionTrainingParameters,
-    ("detection", "yolo26"): YoloDetectionTrainingParameters,
+    ("detection", "yolo26"): Yolo26DetectionTrainingParameters,
     ("detection", "rfdetr"): RfdetrDetectionTrainingParameters,
     ("classification", "yolov8"): YoloClassificationTrainingParameters,
     ("classification", "yolo11"): YoloClassificationTrainingParameters,
     ("classification", "yolo26"): YoloClassificationTrainingParameters,
     ("segmentation", "yolov8"): YoloSegmentationTrainingParameters,
     ("segmentation", "yolo11"): YoloSegmentationTrainingParameters,
-    ("segmentation", "yolo26"): YoloSegmentationTrainingParameters,
+    ("segmentation", "yolo26"): Yolo26SegmentationTrainingParameters,
     ("segmentation", "rfdetr"): RfdetrSegmentationTrainingParameters,
     ("pose", "yolov8"): YoloPoseTrainingParameters,
     ("pose", "yolo11"): YoloPoseTrainingParameters,
-    ("pose", "yolo26"): YoloPoseTrainingParameters,
+    ("pose", "yolo26"): Yolo26PoseTrainingParameters,
     ("obb", "yolov8"): YoloObbTrainingParameters,
     ("obb", "yolo11"): YoloObbTrainingParameters,
-    ("obb", "yolo26"): YoloObbTrainingParameters,
+    ("obb", "yolo26"): Yolo26ObbTrainingParameters,
 }
 
 
@@ -817,19 +932,45 @@ def build_segmentation_training_parameters(
     return schema.model_validate({} if value is None else value)
 
 
+def build_pose_training_parameters(
+    *, model_type: str, value: object | None
+) -> PoseTrainingParameters:
+    """按 pose model_type 构造唯一参数 schema。"""
+
+    schema = get_training_parameter_schema(task_type="pose", model_type=model_type)
+    return schema.model_validate({} if value is None else value)
+
+
+def build_obb_training_parameters(
+    *, model_type: str, value: object | None
+) -> ObbTrainingParameters:
+    """按 OBB model_type 构造唯一参数 schema。"""
+
+    schema = get_training_parameter_schema(task_type="obb", model_type=model_type)
+    return schema.model_validate({} if value is None else value)
+
+
 __all__ = [
     "DetectionTrainingParameters",
+    "ObbTrainingParameters",
+    "PoseTrainingParameters",
     "TRAINING_PARAMETER_SCHEMA_BY_TASK_AND_MODEL",
     "RfdetrDetectionTrainingParameters",
     "RfdetrSegmentationTrainingParameters",
     "SegmentationTrainingParameters",
     "YoloClassificationTrainingParameters",
+    "Yolo26DetectionTrainingParameters",
+    "Yolo26ObbTrainingParameters",
+    "Yolo26PoseTrainingParameters",
+    "Yolo26SegmentationTrainingParameters",
     "YoloDetectionTrainingParameters",
     "YoloObbTrainingParameters",
     "YoloPoseTrainingParameters",
     "YoloSegmentationTrainingParameters",
     "YoloXDetectionTrainingParameters",
     "build_detection_training_parameters",
+    "build_obb_training_parameters",
+    "build_pose_training_parameters",
     "build_segmentation_training_parameters",
     "get_training_parameter_schema",
 ]

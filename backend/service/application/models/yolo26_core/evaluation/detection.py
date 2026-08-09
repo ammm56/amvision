@@ -34,7 +34,6 @@ class Yolo26DetectionEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.001
-    nms_threshold: float = 0.7
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -52,7 +51,7 @@ def run_yolo26_detection_evaluation(
             runtime_target=request.runtime_target,
             manifest_payload=request.manifest_payload,
             score_threshold=request.score_threshold,
-            nms_threshold=request.nms_threshold,
+            nms_threshold=None,
             extra_options=dict(request.extra_options),
         )
     )
@@ -66,7 +65,7 @@ def convert_yolo26_predictions_to_coco_detections(
     input_size: tuple[int, int],
     category_ids: tuple[int, ...],
     confidence_threshold: float,
-    nms_threshold: float,
+    max_detections: int | None = None,
 ) -> list[dict[str, object]]:
     """把 YOLO26 detection 预测转换为 COCO detection 结果列表。"""
 
@@ -74,12 +73,12 @@ def convert_yolo26_predictions_to_coco_detections(
         outputs=prediction_tensor,
         np_module=np_module,
     )
-    _ = nms_threshold
     postprocess_results = postprocess_yolo26_detection_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,
         num_classes=len(category_ids),
         score_threshold=confidence_threshold,
+        max_detections=max_detections,
     )
     detections: list[dict[str, object]] = []
     for batch_index, result in enumerate(postprocess_results):

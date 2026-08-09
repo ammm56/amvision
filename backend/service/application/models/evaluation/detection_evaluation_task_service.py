@@ -328,10 +328,6 @@ class SqlAlchemyDetectionEvaluationTaskService:
                             request.score_threshold,
                             _YOLO_DETECTION_DEFAULT_SCORE_THRESHOLD,
                         ),
-                        nms_threshold=_resolve_optional_float(
-                            request.nms_threshold,
-                            _YOLO_DETECTION_DEFAULT_NMS_THRESHOLD,
-                        ),
                         extra_options=dict(request.extra_options),
                     )
                 )

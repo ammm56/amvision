@@ -37,13 +37,11 @@ def build_yolo26_detection_records(
     prediction_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    nms_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     max_detections: int | None = None,
 ) -> tuple[DetectionPredictionDetection, ...]:
     """把 YOLO26 detection 输出转换成平台 detection 记录。"""
 
-    _ = nms_threshold
     postprocess_results = postprocess_yolo26_detection_prediction_array(
         prediction_array=prediction_array,
         np_module=np_module,

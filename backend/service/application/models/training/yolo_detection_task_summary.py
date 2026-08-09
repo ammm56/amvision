@@ -47,16 +47,27 @@ def build_yolo_detection_training_summary(
         input_size=request.input_size,
         extra_options=request.extra_options,
     )
+    validation_metrics_payload = (
+        dict(execution_result.validation_metrics_payload)
+        if isinstance(execution_result.validation_metrics_payload, dict)
+        else {}
+    )
+    raw_evaluated_epochs = validation_metrics_payload.get("evaluated_epochs")
+    evaluated_epochs = (
+        [int(value) for value in raw_evaluated_epochs]
+        if isinstance(raw_evaluated_epochs, list | tuple)
+        else None
+    )
     validation_summary = build_detection_validation_summary_payload(
         enabled=execution_result.validation_split_name is not None,
         split_name=execution_result.validation_split_name,
         sample_count=execution_result.validation_sample_count,
         evaluation_interval=execution_result.evaluation_interval,
-        final_metrics=(
-            dict(execution_result.validation_metrics_payload.get("final_metrics", {}))
-            if isinstance(execution_result.validation_metrics_payload, dict)
-            else {}
-        ),
+        final_metrics=dict(validation_metrics_payload.get("final_metrics") or {}),
+        best_metric_name=execution_result.best_metric_name,
+        best_metric_value=execution_result.best_metric_value,
+        evaluated_epochs=evaluated_epochs,
+        metrics_object_key=output_files.validation_metrics_object_key,
     )
     summary = build_detection_training_summary_base(
         task_id=task_id,
@@ -101,7 +112,7 @@ def build_yolo_detection_training_summary(
         )
     )
     summary["metrics_payload"] = execution_result.metrics_payload
-    summary["validation_metrics_payload"] = execution_result.validation_metrics_payload
+    summary["validation_metrics_payload"] = validation_metrics_payload
     summary["test_metrics_payload"] = execution_result.test_metrics_payload
     return summary
 
@@ -122,7 +133,7 @@ def build_yolo_detection_resolved_extra_options_payload(
     assignment_summary = dict(metrics_payload.get("assignment") or {})
     gradient_summary = dict(metrics_payload.get("gradient_control") or {})
     augmentation_summary = dict(metrics_payload.get("augmentation") or {})
-    return {
+    payload = {
         "learning_rate": optimizer_summary.get(
             "initial_learning_rate", optimizer_summary.get("learning_rate")
         ),
@@ -130,11 +141,9 @@ def build_yolo_detection_resolved_extra_options_payload(
         "weight_decay": optimizer_summary.get("weight_decay"),
         "class_loss_weight": loss_weight_summary.get("class_loss_weight"),
         "box_loss_weight": loss_weight_summary.get("box_loss_weight"),
-        "dfl_loss_weight": loss_weight_summary.get("dfl_loss_weight"),
         "evaluation_confidence_threshold": evaluation_summary.get(
             "confidence_threshold"
         ),
-        "evaluation_nms_threshold": evaluation_summary.get("nms_threshold"),
         "evaluation_postprocess_mode": evaluation_summary.get("postprocess_mode"),
         "evaluation_max_detections": evaluation_summary.get("max_detections"),
         "assign_topk": assignment_summary.get("assign_topk"),
@@ -143,13 +152,26 @@ def build_yolo_detection_resolved_extra_options_payload(
         "min_lr_ratio": scheduler_summary.get("min_lr_ratio"),
         "grad_clip_norm": gradient_summary.get("grad_clip_norm"),
         "flip_prob": augmentation_summary.get("flip_prob"),
-        "hsv_prob": augmentation_summary.get("hsv_prob"),
+        "hsv_h": augmentation_summary.get("hsv_h"),
+        "hsv_s": augmentation_summary.get("hsv_s"),
+        "hsv_v": augmentation_summary.get("hsv_v"),
         "mosaic_prob": augmentation_summary.get("mosaic_prob"),
         "mixup_prob": augmentation_summary.get("mixup_prob"),
-        "enable_mixup": augmentation_summary.get("enable_mixup"),
+        "affine_prob": augmentation_summary.get("affine_prob"),
         "degrees": augmentation_summary.get("degrees"),
         "translate": augmentation_summary.get("translate"),
+        "scale": augmentation_summary.get("scale"),
         "shear": augmentation_summary.get("shear"),
-        "mosaic_scale": augmentation_summary.get("mosaic_scale"),
-        "mixup_scale": augmentation_summary.get("mixup_scale"),
+        "perspective": augmentation_summary.get("perspective"),
+        "close_mosaic": augmentation_summary.get("close_mosaic_epochs"),
+        "multi_scale": augmentation_summary.get("multi_scale"),
+        "multi_scale_range": augmentation_summary.get("multi_scale_range"),
+        "multi_scale_stride": augmentation_summary.get("multi_scale_stride"),
     }
+    if "nms_threshold" in evaluation_summary:
+        payload["evaluation_nms_threshold"] = evaluation_summary["nms_threshold"]
+    if "l1_loss_weight" in loss_weight_summary:
+        payload["l1_loss_weight"] = loss_weight_summary["l1_loss_weight"]
+    else:
+        payload["dfl_loss_weight"] = loss_weight_summary.get("dfl_loss_weight")
+    return payload

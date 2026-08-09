@@ -57,15 +57,19 @@
 | 任务 | 模型 | 参数 schema |
 | --- | --- | --- |
 | detection | YOLOX | `YoloXDetectionTrainingParameters` |
-| detection | YOLOv8 / YOLO11 / YOLO26 | `YoloDetectionTrainingParameters` |
+| detection | YOLOv8 / YOLO11 | `YoloDetectionTrainingParameters` |
+| detection | YOLO26 | `Yolo26DetectionTrainingParameters` |
 | detection | RF-DETR | `RfdetrDetectionTrainingParameters` |
 | classification | YOLOv8 / YOLO11 / YOLO26 | `YoloClassificationTrainingParameters` |
-| segmentation | YOLOv8 / YOLO11 / YOLO26 | `YoloSegmentationTrainingParameters` |
+| segmentation | YOLOv8 / YOLO11 | `YoloSegmentationTrainingParameters` |
+| segmentation | YOLO26 | `Yolo26SegmentationTrainingParameters` |
 | segmentation | RF-DETR | `RfdetrSegmentationTrainingParameters` |
-| pose | YOLOv8 / YOLO11 / YOLO26 | `YoloPoseTrainingParameters` |
-| OBB | YOLOv8 / YOLO11 / YOLO26 | `YoloObbTrainingParameters` |
+| pose | YOLOv8 / YOLO11 | `YoloPoseTrainingParameters` |
+| pose | YOLO26 | `Yolo26PoseTrainingParameters` |
+| OBB | YOLOv8 / YOLO11 | `YoloObbTrainingParameters` |
+| OBB | YOLO26 | `Yolo26ObbTrainingParameters` |
 
-完整机器可读目录由 `GET /api/v1/models/training-parameter-schemas` 返回。目录包含 18 个 `task_type / model_type` 组合、JSON Schema、默认参数和 `numeric_fields` 数值输入规格，供前端、SDK 和外部集成读取。前端运行时以该目录为数值范围、步长和默认值的唯一来源；页面内只保留标签、分组、选项和依赖关系等展示规则。
+完整机器可读目录由 `GET /api/v1/models/training-parameter-schemas` 返回。目录包含 18 个 `task_type / model_type` 组合、JSON Schema、默认参数、`numeric_fields` 数值输入规格和 `capabilities` 能力声明，供前端、SDK 和外部集成读取。前端运行时以该目录为数值范围、步长、默认值和后处理能力的唯一来源；页面内只保留标签、分组、选项和依赖关系等展示规则。`capabilities.postprocess_mode` 区分 `nms`、`end_to_end`、`set_prediction` 和 `classification`，`supports_nms_threshold=false` 时前端不得展示或提交 NMS 参数。
 
 ## 数值输入精度
 
@@ -91,7 +95,8 @@
 | --- | ---: |
 | epoch、worker、标签数、top-k、检测数 | `1` |
 | loss、matching、角度、gradient clip | `0.1` |
-| 概率、普通比例、Mosaic/MixUp scale | `0.01` |
+| 概率、普通比例、MixUp scale | `0.01` |
+| HSV hue gain | `0.001` |
 | detection 高精度置信度 | `0.001` |
 | perspective、weight decay、最小学习率比例 | `0.0001` |
 | YOLO 学习率 | `0.00001` |
@@ -132,9 +137,15 @@ RF-DETR 支持 `learning_rate`、`weight_decay`、`lr_scheduler=step | cosine`�
 
 ### YOLO detection / segmentation / pose / OBB
 
-公开字段包括水平翻转、HSV、Mosaic、MixUp、随机仿射、透视、增强缩放区间、最后关闭 Mosaic 的 epoch 数和多尺度训练。概率范围固定为 `0..1`，角度最大 180 度，缩放区间必须为有限正数且最小值不大于最大值，多尺度比例最大 0.9。
+公开字段包括水平翻转概率，独立的 HSV hue/saturation/value gain，Mosaic 概率、MixUp 概率、随机仿射、透视、最后关闭 Mosaic 的 epoch 数和多尺度训练。Mosaic 的几何缩放由当前模型仿射 `scale` 唯一控制，不再公开未被 runner 使用的 `mosaic_scale`。普通 YOLO 的 MixUp 与 reference 一致：两路样本分别完成 Mosaic/LetterBox 和 RandomPerspective 后，以 `Beta(32, 32)` 权重混合，不公开 reference 中不存在的 `mixup_scale`。MixUp 是否执行只由 `mixup_probability` 控制，`0` 表示关闭，不再保留与概率重复的 `mixup_enabled`。HSV 三个 gain 分别进入色相、饱和度和明度扰动，不再用一个 `hsv_probability` 同时替代强度和触发概率。
 
 `augmentation.enabled=false` 会生成确定性执行配置，Mosaic、MixUp、随机仿射、HSV、翻转和多尺度训练全部关闭。
+
+## 验证指标与 best checkpoint
+
+YOLOX、YOLOv8、YOLO11 和 YOLO26 detection 统一从真实 `pycocotools.COCOeval.eval["precision"]` 提取 AP。AP50 和 AP50-95 必须使用同一个显式 `maxDets` 切片，不能读取把 `maxDets=100` 写死的 `stats[0] / stats[1]`。无检测结果按 0 处理；有评估结果但 precision 张量缺失或无有效单元时直接报错，不能把 `-1` 当成质量指标。
+
+所有任务的 best checkpoint 只接受业务范围内的有限指标。负数、NaN 和正负 Infinity 不参与比较；新指标必须严格优于历史值才会更新 best，平值保留原 checkpoint。latest/savepoint 仍按训练控制策略独立保存，不改变历史 best 的追溯语义。
 
 ### YOLOX detection
 
@@ -166,9 +177,10 @@ RF-DETR 不接收 YOLO 增强字段，使用：
 ## 任务差异
 
 - YOLO detection：开放 detection loss、matching、evaluation 和完整增强。
-- YOLO segmentation：在 detection loss 基础上增加 `mask_weight`。
+- YOLO segmentation：在 detection loss 基础上增加独立 `mask_weight`；默认值为 `7.5`，与参考实现使用 `box` gain 缩放 mask loss 的行为一致，调整后只影响 mask 分量。
 - YOLO pose：增加 `keypoint_weight` 和关键点验证置信度。
 - YOLO OBB：当前 runner 的类别、box、DFL、angle 和 matching 参数仍由模型 core 固定，因此公开接口不提供这些无效字段；只开放真实生效的优化器、验证阈值和增强。
+- YOLO26 detection / segmentation / pose / OBB：使用 end-to-end 后处理，不公开 NMS threshold。YOLOv8 / YOLO11 对应任务仍使用 NMS。YOLO26 Detect head 的 `reg_max=1`，第三项框回归 loss 按参考实现公开为 `l1_loss`，表单显示“L1 框回归损失权重”；YOLOv8 / YOLO11 的对应项才是 `dfl_loss`。能力目录通过 `distribution_loss_name` 明确返回该差异。
 - RF-DETR segmentation：在 RF-DETR detection loss 基础上增加 mask CE/Dice 权重。
 
 ## 数值和资源边界
@@ -184,6 +196,8 @@ RF-DETR 不接收 YOLO 增强字段，使用：
 - loss/cost 权重限制在 `0..1000`。
 
 这些边界用于阻止长期运行中的整数无界增长、异常显存/内存放大和非有限值污染指标。模型输入尺寸的几何与对齐规则见 [模型训练输入尺寸规则](model-training-input-size-rules.md)。
+
+训练页的 `train_metrics` 始终表示完整 epoch 的样本加权均值；正在执行的单个 batch 指标只写入 `batch_metrics`，不得覆盖 epoch 历史。未执行验证的 epoch 不清空最近一次 `validation_metrics` 和当前验证指标，页面刷新不会在有效数值与空值之间跳变。各 loss 分量按参考实现的 gain 加权后展示，总 loss 去除只用于反向传播的 batch-size 倍数。YOLO26 end-to-end 的总 loss 同时包含 one-to-many 与 one-to-one 分支，公开分量使用参考实现的 one-to-one 口径，因此总 loss 不要求等于页面分量的简单相加。
 
 ## 执行与追溯
 

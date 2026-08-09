@@ -69,7 +69,6 @@ YOLO26_OBB_DEFAULT_LR = 1e-2
 YOLO26_OBB_DEFAULT_WEIGHT_DECAY = 5e-4
 YOLO26_OBB_DEFAULT_MIN_LR_RATIO = 0.01
 YOLO26_OBB_DEFAULT_EVAL_CONF = 0.01
-YOLO26_OBB_DEFAULT_EVAL_NMS = 0.7
 
 
 @dataclass(frozen=True)
@@ -188,9 +187,6 @@ def run_yolo26_obb_training(
     eval_conf = float(
         extra.get("evaluation_confidence_threshold", YOLO26_OBB_DEFAULT_EVAL_CONF)
     )
-    eval_nms = float(
-        extra.get("evaluation_nms_threshold", YOLO26_OBB_DEFAULT_EVAL_NMS)
-    )
     augmentation_options = build_yolo26_task_augmentation_options(extra)
 
     if resume_state is not None:
@@ -203,7 +199,6 @@ def run_yolo26_obb_training(
             evaluation_interval=evaluation_interval,
             min_lr_ratio=min_lr_ratio,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
         )
 
     model.to(device_name)
@@ -288,7 +283,6 @@ def run_yolo26_obb_training(
         min_lr_ratio=min_lr_ratio,
         assign_topk2=assign_topk2,
         evaluation_confidence_threshold=eval_conf,
-        evaluation_nms_threshold=eval_nms,
         augmentation_options=augmentation_options,
         start_epoch=start_epoch,
         global_iteration=global_iteration,
@@ -337,7 +331,6 @@ def run_yolo26_obb_training(
             device=device_name,
             precision=precision,
             score_threshold=eval_conf,
-            nms_threshold=eval_nms,
             imports=imports,
         )
         test_metrics_payload = build_detection_test_metrics_report(

@@ -201,6 +201,7 @@ def run_yolo11_detection_training_loop(
         )
         validation_ran = validation_snapshot is not None
         best_metric_update = resolve_yolo11_detection_best_metric_update(
+            has_validation=has_validation,
             validation_ran=validation_ran,
             current_metric_value=current_metric_value,
             train_loss=float(train_metrics["loss"]),

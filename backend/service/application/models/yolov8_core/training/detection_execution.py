@@ -29,6 +29,10 @@ from backend.service.application.models.training.device_selection import (
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
+from backend.service.application.models.evaluation.pycocotools_metrics import (
+    YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    evaluate_pycocotools_average_precision,
+)
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_detection_training_batch,
 )
@@ -81,7 +85,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
     scale_yolo_box_from_letterbox,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloDetectionLossAccumulator,
     YoloModelEMA,
+    normalize_yolo_detection_loss_metrics,
     resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolov8_core import (
@@ -108,18 +114,17 @@ YOLOV8_DETECTION_DEFAULT_ASSIGN_BETA = 6.0
 YOLOV8_DETECTION_DEFAULT_MIN_LR_RATIO = 0.01
 YOLOV8_DETECTION_DEFAULT_GRAD_CLIP_NORM = 10.0
 YOLOV8_DETECTION_DEFAULT_FLIP_PROB = 0.5
-YOLOV8_DETECTION_DEFAULT_HSV_PROB = 1.0
+YOLOV8_DETECTION_DEFAULT_HSV_H = 0.015
+YOLOV8_DETECTION_DEFAULT_HSV_S = 0.7
+YOLOV8_DETECTION_DEFAULT_HSV_V = 0.4
 YOLOV8_DETECTION_DEFAULT_MOSAIC_PROB = 1.0
 YOLOV8_DETECTION_DEFAULT_MIXUP_PROB = 0.0
-YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP = True
 YOLOV8_DETECTION_DEFAULT_AFFINE_PROB = 1.0
 YOLOV8_DETECTION_DEFAULT_AFFINE_DEGREES = 0.0
 YOLOV8_DETECTION_DEFAULT_AFFINE_TRANSLATE = 0.1
 YOLOV8_DETECTION_DEFAULT_AFFINE_SCALE = 0.5
 YOLOV8_DETECTION_DEFAULT_AFFINE_SHEAR = 0.0
 YOLOV8_DETECTION_DEFAULT_AFFINE_PERSPECTIVE = 0.0
-YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE = (0.5, 1.5)
-YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE = (0.5, 1.5)
 YOLOV8_DETECTION_DEFAULT_CLOSE_MOSAIC_EPOCHS = 10
 YOLOV8_DETECTION_DEFAULT_MULTI_SCALE = False
 YOLOV8_DETECTION_DEFAULT_MULTI_SCALE_RANGE = (0.5, 1.5)
@@ -287,18 +292,17 @@ class _DetectionAugmentationOptions:
     """描述 detection 训练阶段启用的数据增强参数。"""
 
     flip_prob: float
-    hsv_prob: float
+    hsv_h: float
+    hsv_s: float
+    hsv_v: float
     mosaic_prob: float
     mixup_prob: float
-    enable_mixup: bool
     affine_prob: float
     degrees: float
     translate: float
     scale: float
     shear: float
     perspective: float
-    mosaic_scale: tuple[float, float]
-    mixup_scale: tuple[float, float]
     close_mosaic_epochs: int
     multi_scale: bool
     multi_scale_range: tuple[float, float]
@@ -708,6 +712,7 @@ def run_yolov8_detection_training(
             current_metric_value = validation_metrics[best_metric_name]
 
         best_metric_update = resolve_yolov8_detection_best_metric_update(
+            has_validation=has_validation,
             validation_ran=validation_ran,
             current_metric_value=current_metric_value,
             train_loss=float(train_metrics["loss"]),
@@ -856,7 +861,7 @@ def run_yolov8_detection_training(
         best_metric_value = 0.0
 
     evaluation_postprocess_mode = DETECTION_POSTPROCESS_MODE_NMS
-    evaluation_max_detections = None
+    evaluation_max_detections = YOLO_DETECTION_COCO_MAX_DETECTIONS
 
     validation_metrics_payload = {
         "enabled": validation_split is not None and bool(validation_samples),
@@ -985,7 +990,11 @@ def run_yolov8_detection_training(
             "accumulate": training_runtime.schedule.accumulate,
         },
         "scheduler": {
-            "name": "UltralyticsCosineLambdaLR",
+            "name": (
+                "UltralyticsCosineLambdaLR"
+                if training_runtime.schedule.cosine_schedule
+                else "UltralyticsLinearLambdaLR"
+            ),
             "min_lr_ratio": min_lr_ratio,
             "warmup_iterations": training_runtime.schedule.warmup_iterations,
             "warmup_momentum": training_runtime.schedule.warmup_momentum,
@@ -1687,7 +1696,7 @@ def _evaluate_detection_model(
         nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
     )
-    evaluation_summary = {
+    evaluation_summary: dict[str, object] = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
         "class_loss": round(float(validation_losses.get("class_loss", 0.0)), 6),
         "box_loss": round(float(validation_losses.get("box_loss", 0.0)), 6),
@@ -1696,6 +1705,9 @@ def _evaluate_detection_model(
         "map50_95": round(float(validation_map.get("map50_95", 0.0)), 6),
         "sample_count": len(samples),
     }
+    per_category = validation_map.get("per_category")
+    if isinstance(per_category, list):
+        evaluation_summary["per_category"] = per_category
     if "one2many_loss" in validation_losses:
         evaluation_summary["one2many_loss"] = round(
             float(validation_losses.get("one2many_loss", 0.0)),
@@ -1731,7 +1743,7 @@ def _evaluate_detection_model_once(
     confidence_threshold: float,
     nms_threshold: float,
     dataloader_plan: YoloV8DetectionDataLoaderPlan,
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, object]]:
     """按 Ultralytics validator 语义一次 forward 统计 loss 和 mAP。"""
 
     if not samples:
@@ -1758,8 +1770,7 @@ def _evaluate_detection_model_once(
         device=device,
         runtime_precision=runtime_precision,
     )
-    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    batch_count = 0
+    loss_accumulator = YoloDetectionLossAccumulator()
     detections: list[dict[str, object]] = []
     can_compute_map = annotation_payload is not None
     if can_compute_map and (imports.COCO is None or imports.COCOeval is None):
@@ -1794,11 +1805,14 @@ def _evaluate_detection_model_once(
                         assign_alpha=assign_alpha,
                         assign_beta=assign_beta,
                     )
-                batch_count += 1
-                for metric_name in epoch_totals:
-                    epoch_totals[metric_name] += float(
-                        loss_components[metric_name].detach().item()
-                    )
+                reported_metrics = normalize_yolo_detection_loss_metrics(
+                    loss_components=loss_components,
+                    batch_sample_count=len(batch_targets),
+                )
+                loss_accumulator.add(
+                    metrics=reported_metrics,
+                    batch_sample_count=len(batch_targets),
+                )
                 if can_compute_map:
                     detections.extend(
                         _convert_yolov8_predictions_to_coco_detections(
@@ -1810,19 +1824,13 @@ def _evaluate_detection_model_once(
                             confidence_threshold=confidence_threshold,
                             nms_threshold=nms_threshold,
                             postprocess_mode=DETECTION_POSTPROCESS_MODE_NMS,
-                            max_detections=None,
+                            max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
                         )
                     )
     finally:
         model.train(previous_training_mode)
 
-    if batch_count <= 0:
-        losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    else:
-        losses = {
-            metric_name: round(metric_total / batch_count, 6)
-            for metric_name, metric_total in epoch_totals.items()
-        }
+    losses = loss_accumulator.mean()
     if not can_compute_map or not detections:
         return losses, {"map50": 0.0, "map50_95": 0.0}
 
@@ -1831,16 +1839,25 @@ def _evaluate_detection_model_once(
         annotation_file=annotation_file,
         annotation_payload=annotation_payload,
     )
-    with redirect_stdout(io.StringIO()):
-        coco_detections = ground_truth.loadRes(detections)
-        coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
-        coco_evaluator.params.maxDets = [1, 10, 300]
-        coco_evaluator.evaluate()
-        coco_evaluator.accumulate()
-        coco_evaluator.summarize()
+    average_precision = evaluate_pycocotools_average_precision(
+        ground_truth=ground_truth,
+        detections=detections,
+        cocoeval_class=imports.COCOeval,
+        iou_type="bbox",
+        max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    )
     return losses, {
-        "map50_95": float(coco_evaluator.stats[0]),
-        "map50": float(coco_evaluator.stats[1]),
+        "map50_95": average_precision.map50_95,
+        "map50": average_precision.map50,
+        "per_category": [
+            {
+                "category_id": item.category_id,
+                "category_name": item.category_name,
+                "map50": item.map50,
+                "map50_95": item.map50_95,
+            }
+            for item in average_precision.per_category
+        ],
     }
 
 
@@ -2164,12 +2181,23 @@ def _resolve_detection_augmentation_options(
                 default=YOLOV8_DETECTION_DEFAULT_FLIP_PROB,
             )
         ),
-        hsv_prob=_clamp_probability(
+        hsv_h=max(
+            0.0,
             _read_float_option(
-                extra_options,
-                "hsv_prob",
-                default=YOLOV8_DETECTION_DEFAULT_HSV_PROB,
-            )
+                extra_options, "hsv_h", default=YOLOV8_DETECTION_DEFAULT_HSV_H
+            ),
+        ),
+        hsv_s=max(
+            0.0,
+            _read_float_option(
+                extra_options, "hsv_s", default=YOLOV8_DETECTION_DEFAULT_HSV_S
+            ),
+        ),
+        hsv_v=max(
+            0.0,
+            _read_float_option(
+                extra_options, "hsv_v", default=YOLOV8_DETECTION_DEFAULT_HSV_V
+            ),
         ),
         mosaic_prob=_clamp_probability(
             _read_float_option(
@@ -2184,11 +2212,6 @@ def _resolve_detection_augmentation_options(
                 "mixup_prob",
                 default=YOLOV8_DETECTION_DEFAULT_MIXUP_PROB,
             )
-        ),
-        enable_mixup=_read_bool_option(
-            extra_options,
-            "enable_mixup",
-            default=YOLOV8_DETECTION_DEFAULT_ENABLE_MIXUP,
         ),
         affine_prob=_clamp_probability(
             _read_float_option(
@@ -2236,16 +2259,6 @@ def _resolve_detection_augmentation_options(
                 "perspective",
                 default=YOLOV8_DETECTION_DEFAULT_AFFINE_PERSPECTIVE,
             ),
-        ),
-        mosaic_scale=_read_float_pair_option(
-            extra_options,
-            "mosaic_scale",
-            default=YOLOV8_DETECTION_DEFAULT_MOSAIC_SCALE,
-        ),
-        mixup_scale=_read_float_pair_option(
-            extra_options,
-            "mixup_scale",
-            default=YOLOV8_DETECTION_DEFAULT_MIXUP_SCALE,
         ),
         close_mosaic_epochs=max(
             0,
@@ -2324,18 +2337,17 @@ def _resolve_detection_augmentation_for_epoch(
         return augmentation_options
     return _DetectionAugmentationOptions(
         flip_prob=augmentation_options.flip_prob,
-        hsv_prob=augmentation_options.hsv_prob,
+        hsv_h=augmentation_options.hsv_h,
+        hsv_s=augmentation_options.hsv_s,
+        hsv_v=augmentation_options.hsv_v,
         mosaic_prob=0.0,
         mixup_prob=0.0,
-        enable_mixup=False,
         affine_prob=augmentation_options.affine_prob,
         degrees=augmentation_options.degrees,
         translate=augmentation_options.translate,
         scale=augmentation_options.scale,
         shear=augmentation_options.shear,
         perspective=augmentation_options.perspective,
-        mosaic_scale=augmentation_options.mosaic_scale,
-        mixup_scale=augmentation_options.mixup_scale,
         close_mosaic_epochs=augmentation_options.close_mosaic_epochs,
         multi_scale=augmentation_options.multi_scale,
         multi_scale_range=augmentation_options.multi_scale_range,
@@ -2367,18 +2379,17 @@ def _serialize_detection_augmentation_options(
 
     return {
         "flip_prob": options.flip_prob,
-        "hsv_prob": options.hsv_prob,
+        "hsv_h": options.hsv_h,
+        "hsv_s": options.hsv_s,
+        "hsv_v": options.hsv_v,
         "mosaic_prob": options.mosaic_prob,
         "mixup_prob": options.mixup_prob,
-        "enable_mixup": options.enable_mixup,
         "affine_prob": options.affine_prob,
         "degrees": options.degrees,
         "translate": options.translate,
         "scale": options.scale,
         "shear": options.shear,
         "perspective": options.perspective,
-        "mosaic_scale": list(options.mosaic_scale),
-        "mixup_scale": list(options.mixup_scale),
         "close_mosaic_epochs": options.close_mosaic_epochs,
         "multi_scale": options.multi_scale,
         "multi_scale_range": list(options.multi_scale_range),

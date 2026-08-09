@@ -160,6 +160,7 @@ export function useModelTrainingState(options: {
           {
             augmentationEnabled: options.trainingAugmentationEnabled.value,
             device: options.trainingDevice.value,
+            parameterSchema: options.trainingParameterSchema.value,
           },
         ),
       })

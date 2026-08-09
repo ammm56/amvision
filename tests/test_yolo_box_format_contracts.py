@@ -192,7 +192,6 @@ def test_yolo26_runtime_records_consume_processed_xyxy_output() -> None:
         ),
         labels=("barcode",),
         score_threshold=0.01,
-        nms_threshold=0.7,
         letterbox_transform=build_yolo_letterbox_transform(
             source_width=1920,
             source_height=1080,
@@ -269,8 +268,6 @@ def test_yolo26_pose_processed_boxes_are_xyxy_and_keypoints_are_task_output() ->
         keypoint_confidence_threshold=0.01,
         letterbox_transform=_wide_letterbox_transform(),
         default_kpt_shape=(1, 3),
-        nms_threshold=0.7,
-        nms_indices_func=_keep_all_nms_indices,
     )
 
     assert keypoint_shape == (1, 3)
@@ -311,8 +308,6 @@ def test_yolo26_obb_processed_uses_xywhr_as_task_output_and_xyxy_as_bounds() -> 
         labels=("defect",),
         score_threshold=0.01,
         letterbox_transform=_wide_letterbox_transform(),
-        nms_threshold=0.7,
-        nms_indices_func=_keep_all_nms_indices,
     )
 
     assert instances[0].bbox_xywhr == (960.0, 540.0, 480.0, 240.0, 0.0)

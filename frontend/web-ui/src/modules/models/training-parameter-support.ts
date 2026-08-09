@@ -159,20 +159,17 @@ export function isTrainingAugmentationField(field: TrainingParameterField): bool
 
 const ordinaryYoloAugmentationFields: TrainingParameterField[] = withTrainingParameterGroup([
   numberField('flip_prob', '水平翻转概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.5' }),
-  numberField('hsv_prob', 'HSV 增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
+  numberField('hsv_h', 'HSV 色相增益', { min: 0, max: 0.5, step: 0.001, defaultValue: '0.015' }),
+  numberField('hsv_s', 'HSV 饱和度增益', { min: 0, max: 1, step: 0.01, defaultValue: '0.7' }),
+  numberField('hsv_v', 'HSV 明度增益', { min: 0, max: 1, step: 0.01, defaultValue: '0.4' }),
   numberField('mosaic_prob', 'Mosaic 概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
   numberField('mixup_prob', 'MixUp 概率', { min: 0, max: 1, step: 0.01, defaultValue: '0.0' }),
-  selectField('enable_mixup', '启用 MixUp', boolOptions, { valueKind: 'bool', defaultValue: 'true' }),
   numberField('affine_prob', '仿射增强概率', { min: 0, max: 1, step: 0.01, defaultValue: '1.0' }),
   numberField('degrees', '仿射旋转角度', { min: 0, max: 180, step: 0.1, defaultValue: '0.0' }),
   numberField('translate', '仿射平移比例', { min: 0, max: 1, step: 0.01, defaultValue: '0.1' }),
   numberField('scale', '仿射缩放比例', { min: 0, max: 10, step: 0.01, defaultValue: '0.5' }),
   numberField('shear', '仿射错切角度', { min: 0, max: 180, step: 0.1, defaultValue: '0.0' }),
   numberField('perspective', '透视变换比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.0' }),
-  numberField('mosaic_scale_min', 'Mosaic 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.5' }),
-  numberField('mosaic_scale_max', 'Mosaic 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '1.5' }),
-  numberField('mixup_scale_min', 'MixUp 缩放最小值', { min: 0.01, max: 10, step: 0.01, defaultValue: '0.5' }),
-  numberField('mixup_scale_max', 'MixUp 缩放最大值', { min: 0.01, max: 10, step: 0.01, defaultValue: '1.5' }),
   numberField('close_mosaic', '最后关闭 Mosaic 轮数', { integer: true, min: 0, max: 10000, step: 1, defaultValue: '10' }),
   numberField('multi_scale', '多尺度范围比例', { min: 0, max: 0.9, step: 0.01, defaultValue: '0.0' }),
   numberField('multi_scale_stride', '多尺度步长', { integer: true, min: 1, max: 1024, step: 1, defaultValue: '32' }),
@@ -441,7 +438,7 @@ const segmentationYoloPrimaryFields: TrainingParameterField[] = [
   numberField('class_loss_weight', '分类损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '1.5' }),
-  numberField('mask_loss_weight', '掩码损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '1.0' }),
+  numberField('mask_loss_weight', '掩码损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '7.5' }),
   numberField('assign_topk', '正样本匹配 topk', { integer: true, min: 1, max: 1000, step: 1, defaultValue: '10' }),
   numberField('assign_alpha', '正样本匹配 alpha', { min: 0, max: 100, step: 0.1, defaultValue: '0.5' }),
   numberField('assign_beta', '正样本匹配 beta', { min: 0, max: 100, step: 0.1, defaultValue: '6.0' }),
@@ -592,12 +589,27 @@ export function getModelLayerTrainingFields(
   } else if (taskType === 'obb') {
     fields = obbFields
   }
+  if (normalizedModelType === 'yolo26') {
+    fields = fields
+      .filter((field) => field.key !== 'evaluation_nms_threshold')
+      .map((field) => field.key === 'dfl_loss_weight'
+        ? { ...field, key: 'l1_loss_weight', label: 'L1 框回归损失权重' }
+        : field)
+  }
   if (parameterSchema) {
     if (
       parameterSchema.task_type !== taskType
       || normalizeModelType(parameterSchema.model_type) !== normalizedModelType
     ) {
       throw new Error(`训练参数目录与当前模型不匹配: ${taskType}/${normalizedModelType}`)
+    }
+    if (!parameterSchema.capabilities.supports_nms_threshold) {
+      fields = fields.filter((field) => field.key !== 'evaluation_nms_threshold')
+    }
+    if (parameterSchema.capabilities.distribution_loss_name === 'l1_loss') {
+      fields = fields.map((field) => field.key === 'dfl_loss_weight'
+        ? { ...field, key: 'l1_loss_weight', label: 'L1 框回归损失权重' }
+        : field)
     }
   }
   return applyTrainingNumericParameterSpecs(fields, parameterSchema)
@@ -616,6 +628,9 @@ function buildFlatTrainingParameterValues(
 
   const augmentationEnabled = options.augmentationEnabled !== false
   const result: Record<string, unknown> = {}
+  const regressionLossWeightKey = normalizedModelType === 'yolo26'
+    ? 'l1_loss_weight'
+    : 'dfl_loss_weight'
   const trainingDevice = String(options.device ?? '').trim()
   if (trainingDevice) {
     result.device = trainingDevice
@@ -669,10 +684,11 @@ function buildFlatTrainingParameterValues(
   const assignOrdinaryYoloAugmentationValues = (): void => {
     for (const key of [
       'flip_prob',
-      'hsv_prob',
+      'hsv_h',
+      'hsv_s',
+      'hsv_v',
       'mosaic_prob',
       'mixup_prob',
-      'enable_mixup',
       'affine_prob',
       'degrees',
       'translate',
@@ -685,16 +701,15 @@ function buildFlatTrainingParameterValues(
     ]) {
       assignValue(key)
     }
-    assignPair('mosaic_scale', 'mosaic_scale_min', 'mosaic_scale_max')
-    assignPair('mixup_scale', 'mixup_scale_min', 'mixup_scale_max')
   }
 
   const disableOrdinaryYoloAugmentationValues = (): void => {
     result.flip_prob = 0
-    result.hsv_prob = 0
+    result.hsv_h = 0
+    result.hsv_s = 0
+    result.hsv_v = 0
     result.mosaic_prob = 0
     result.mixup_prob = 0
-    result.enable_mixup = false
     result.affine_prob = 0
     result.degrees = 0
     result.translate = 0
@@ -859,7 +874,7 @@ function buildFlatTrainingParameterValues(
       'min_lr_ratio',
       'class_loss_weight',
       'box_loss_weight',
-      'dfl_loss_weight',
+      regressionLossWeightKey,
       'evaluation_confidence_threshold',
       'evaluation_nms_threshold',
       'assign_topk',
@@ -924,7 +939,7 @@ function buildFlatTrainingParameterValues(
       'evaluation_nms_threshold',
       'class_loss_weight',
       'box_loss_weight',
-      'dfl_loss_weight',
+      regressionLossWeightKey,
       'mask_loss_weight',
       'assign_topk',
       'assign_alpha',
@@ -950,7 +965,7 @@ function buildFlatTrainingParameterValues(
       'keypoint_confidence_threshold',
       'class_loss_weight',
       'box_loss_weight',
-      'dfl_loss_weight',
+      regressionLossWeightKey,
       'kpt_loss_weight',
       'assign_topk',
       'assign_alpha',
@@ -1004,18 +1019,17 @@ function buildYoloTaskAugmentationParameters(
   return compactTrainingGroup({
     enabled,
     horizontal_flip_probability: flat.flip_prob,
-    hsv_probability: flat.hsv_prob,
+    hue_gain: flat.hsv_h,
+    saturation_gain: flat.hsv_s,
+    value_gain: flat.hsv_v,
     mosaic_probability: flat.mosaic_prob,
     mixup_probability: flat.mixup_prob,
-    mixup_enabled: flat.enable_mixup,
     affine_probability: flat.affine_prob,
     rotation_degrees: flat.degrees,
     translation_ratio: flat.translate,
     scale_ratio: flat.scale,
     shear_degrees: flat.shear,
     perspective_ratio: flat.perspective,
-    mosaic_scale: readRange(flat.mosaic_scale),
-    mixup_scale: readRange(flat.mixup_scale),
     close_mosaic_epochs: flat.close_mosaic,
     multi_scale_ratio: flat.multi_scale,
     multi_scale_stride: flat.multi_scale_stride,
@@ -1032,10 +1046,17 @@ export function buildTrainingParameters(
   taskType: ModelTaskType,
   modelType: string | null | undefined,
   values: TrainingParameterValues,
-  options: { augmentationEnabled?: boolean; device?: string } = {},
+  options: {
+    augmentationEnabled?: boolean
+    device?: string
+    parameterSchema?: TrainingParameterSchemaItem | null
+  } = {},
 ): Record<string, unknown> {
   const normalizedModelType = normalizeModelType(modelType)
   if (!normalizedModelType) return {}
+  const supportsNmsThreshold = options.parameterSchema
+    ? options.parameterSchema.capabilities.supports_nms_threshold
+    : normalizedModelType !== 'yolo26'
   const flat = buildFlatTrainingParameterValues(taskType, normalizedModelType, values, options)
   const augmentationEnabled = options.augmentationEnabled !== false
   const runtime = compactTrainingGroup({
@@ -1160,7 +1181,9 @@ export function buildTrainingParameters(
 
   const evaluation = compactTrainingGroup({
     confidence_threshold: flat.evaluation_confidence_threshold,
-    nms_threshold: flat.evaluation_nms_threshold,
+    nms_threshold: supportsNmsThreshold
+      ? flat.evaluation_nms_threshold
+      : undefined,
     keypoint_confidence_threshold: flat.keypoint_confidence_threshold,
   })
 
@@ -1176,7 +1199,8 @@ export function buildTrainingParameters(
   const loss = compactTrainingGroup({
     class_weight: flat.class_loss_weight,
     box_weight: flat.box_loss_weight,
-    dfl_weight: flat.dfl_loss_weight,
+    dfl_weight: normalizedModelType === 'yolo26' ? undefined : flat.dfl_loss_weight,
+    l1_weight: normalizedModelType === 'yolo26' ? flat.l1_loss_weight : undefined,
     mask_weight: flat.mask_loss_weight,
     keypoint_weight: flat.kpt_loss_weight,
   })
@@ -1247,23 +1271,24 @@ export function validateTrainingModelLayerValues(
   }
 
   const isYoloTask = ['detection', 'segmentation', 'pose', 'obb'].includes(taskType)
-  const isYoloModel = normalizedModelType === 'yolox'
-    || normalizedModelType === 'yolov8'
-    || normalizedModelType === 'yolo11'
-    || normalizedModelType === 'yolo26'
-  if (isYoloTask && isYoloModel && options.augmentationEnabled !== false) {
+  if (
+    isYoloTask
+    && normalizedModelType === 'yolox'
+    && options.augmentationEnabled !== false
+  ) {
+    const mixupRangeError = checkNumericRangeOrder(
+      values,
+      'mixup_scale',
+      'mixup_scale_min',
+      'mixup_scale_max',
+    )
+    if (mixupRangeError) return mixupRangeError
     return checkNumericRangeOrder(
       values,
       'mosaic_scale',
       'mosaic_scale_min',
       'mosaic_scale_max',
     )
-      ?? checkNumericRangeOrder(
-        values,
-        'mixup_scale',
-        'mixup_scale_min',
-        'mixup_scale_max',
-      )
   }
 
   if (

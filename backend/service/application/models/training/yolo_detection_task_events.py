@@ -135,6 +135,8 @@ def build_yolo_detection_training_cancelled_event(
     - result：任务结果快照。
     """
 
+    cancelled_progress = dict(progress)
+    cancelled_progress["batch_metrics"] = {}
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="status",
@@ -142,7 +144,7 @@ def build_yolo_detection_training_cancelled_event(
         payload={
             "state": "cancelled",
             "finished_at": finished_at,
-            "progress": progress,
+            "progress": cancelled_progress,
             "metadata": {control_metadata_key: control},
             "result": result,
         },
@@ -170,6 +172,7 @@ def build_yolo_detection_training_resume_requested_event(
 
     queued_progress = dict(progress)
     queued_progress["stage"] = "queued"
+    queued_progress["batch_metrics"] = {}
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="status",
@@ -252,7 +255,11 @@ def build_yolo_detection_training_started_event(
             "state": "running",
             "started_at": started_at,
             "attempt_no": attempt_no,
-            "progress": {"stage": "training", "percent": 5.0},
+            "progress": {
+                "stage": "training",
+                "batch_metrics": {},
+                "percent": 5.0,
+            },
             "metadata": {
                 "output_object_prefix": output_files.output_object_prefix,
                 "requested_precision": requested_precision,
@@ -287,7 +294,11 @@ def build_yolo_detection_training_completed_event(
         payload={
             "state": "succeeded",
             "finished_at": finished_at,
-            "progress": {"stage": "completed", "percent": 100.0},
+            "progress": {
+                "stage": "completed",
+                "batch_metrics": {},
+                "percent": 100.0,
+            },
             "result": result,
         },
     )
@@ -316,7 +327,7 @@ def build_yolo_detection_training_paused_event(
 
     paused_progress = dict(progress)
     paused_progress["stage"] = "paused"
-    paused_progress["percent"] = 100.0
+    paused_progress["batch_metrics"] = {}
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="result",
@@ -348,6 +359,7 @@ def build_yolo_detection_training_terminated_result_event(
 
     cancelled_progress = dict(progress)
     cancelled_progress["stage"] = "cancelled"
+    cancelled_progress["batch_metrics"] = {}
     cancelled_progress["percent"] = 100.0
     return AppendTaskEventRequest(
         task_id=task_id,
@@ -385,7 +397,7 @@ def build_yolo_detection_training_failed_event(
             error_message=error_message,
             error=error,
             finished_at=finished_at,
-            progress={"stage": "failed", "percent": 100.0},
+            progress={"stage": "failed", "batch_metrics": {}, "percent": 100.0},
         ),
     )
 
@@ -441,7 +453,10 @@ def build_yolo_detection_training_batch_progress_event(
                 "total_iterations": progress.total_iterations,
                 "input_size": serialize_spatial_size_hw(progress.input_size),
                 "learning_rate": progress.learning_rate,
-                "train_metrics": dict(progress.train_metrics),
+                # batch loss 天然会随样本和正样本数量波动，不能覆盖上一轮已经
+                # 聚合完成的 train_metrics，否则详情页刷新时会把单 batch
+                # 快照误呈现成 epoch 训练趋势。
+                "batch_metrics": dict(progress.train_metrics),
                 "percent": percent,
             },
             "metadata": {
@@ -484,6 +499,31 @@ def build_yolo_detection_training_epoch_progress_event(
     - control：训练控制状态。
     """
 
+    progress_payload: dict[str, object] = {
+        "stage": "training",
+        "granularity": "epoch",
+        "epoch": progress.epoch,
+        "max_epochs": progress.max_epochs,
+        "evaluation_interval": progress.evaluation_interval,
+        "validation_ran": progress.validation_ran,
+        "evaluated_epochs": list(progress.evaluated_epochs),
+        "train_metrics": dict(progress.train_metrics),
+        "batch_metrics": {},
+        "best_metric_name": progress.best_metric_name,
+        "best_metric_value": progress.best_metric_value,
+        "percent": percent,
+    }
+    if progress.validation_ran:
+        # 非验证轮次不得用空字典和 None 清除最近一次有效验证结果，
+        # 否则页面会在相邻 epoch 或刷新时交替显示数值与“-”。
+        progress_payload.update(
+            {
+                "validation_metrics": dict(progress.validation_metrics),
+                "current_metric_name": progress.current_metric_name,
+                "current_metric_value": progress.current_metric_value,
+            }
+        )
+
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="progress",
@@ -491,22 +531,7 @@ def build_yolo_detection_training_epoch_progress_event(
         payload={
             "state": "running",
             "attempt_no": attempt_no,
-            "progress": {
-                "stage": "training",
-                "granularity": "epoch",
-                "epoch": progress.epoch,
-                "max_epochs": progress.max_epochs,
-                "evaluation_interval": progress.evaluation_interval,
-                "validation_ran": progress.validation_ran,
-                "evaluated_epochs": list(progress.evaluated_epochs),
-                "train_metrics": dict(progress.train_metrics),
-                "validation_metrics": dict(progress.validation_metrics),
-                "current_metric_name": progress.current_metric_name,
-                "current_metric_value": progress.current_metric_value,
-                "best_metric_name": progress.best_metric_name,
-                "best_metric_value": progress.best_metric_value,
-                "percent": percent,
-            },
+            "progress": progress_payload,
             "metadata": {
                 "output_object_prefix": output_files.output_object_prefix,
                 "validation_metrics_object_key": output_files.validation_metrics_object_key,

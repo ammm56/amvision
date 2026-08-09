@@ -28,17 +28,32 @@ def combine_yolo26_end2end_loss_payloads(
     one2many_weight: float,
     one2one_weight: float,
 ) -> dict[str, Any]:
-    """合并 YOLO26 end2end one2many / one2one loss payload。"""
+    """按 Ultralytics E2ELoss 语义合并 YOLO26 loss payload。
 
-    combined: dict[str, Any] = {}
-    for key, one2many_value in one2many_payload.items():
-        if key not in one2one_payload:
-            continue
-        one2one_value = one2one_payload[key]
-        combined[key] = (
-            one2many_value * float(one2many_weight)
-            + one2one_value * float(one2one_weight)
-        )
+    反向传播总 loss 按动态权重合并 one-to-many 和 one-to-one；用于报告的
+    各分项保持 one-to-one 分支口径，与参考实现返回的 ``loss_one2one[1]``
+    一致，避免把报告字段误当成两个分支总 loss 的可加和拆解。
+    """
+
+    if "loss" not in one2many_payload or "loss" not in one2one_payload:
+        # segmentation 的底层 helper 先返回未加 gain 的 component payload，
+        # 上层再构造总 loss。该内部边界仍需按分支权重线性合并；完整 task
+        # payload 一旦包含 loss，则严格采用 reference 的 one-to-one 报告口径。
+        return {
+            key: (
+                value * float(one2many_weight)
+                + one2one_payload[key] * float(one2one_weight)
+            )
+            for key, value in one2many_payload.items()
+            if key in one2one_payload
+        }
+    combined: dict[str, Any] = {
+        key: value for key, value in one2one_payload.items() if key != "loss"
+    }
+    combined["loss"] = (
+        one2many_payload["loss"] * float(one2many_weight)
+        + one2one_payload["loss"] * float(one2one_weight)
+    )
     return combined
 
 

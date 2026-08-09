@@ -218,6 +218,17 @@ class TrainingNumericParameterSpecResponse(BaseModel):
     default_value: int | float = Field(description="表单默认值")
 
 
+class TrainingParameterCapabilitiesResponse(BaseModel):
+    """描述模型/任务训练参数的实际能力边界。"""
+
+    postprocess_mode: Literal["nms", "end_to_end", "set_prediction", "classification"]
+    supports_nms_threshold: bool
+    distribution_loss_name: Literal["dfl_loss", "l1_loss"] | None
+    augmentation_families: list[str]
+    best_metric_name: str
+    best_metric_direction: Literal["maximize", "minimize"]
+
+
 class TrainingParameterSchemaItemResponse(BaseModel):
     """描述一组 task/model 训练参数协议。"""
 
@@ -229,6 +240,7 @@ class TrainingParameterSchemaItemResponse(BaseModel):
     numeric_fields: list[TrainingNumericParameterSpecResponse] = Field(
         description="表单使用的数值范围、步长和默认值"
     )
+    capabilities: TrainingParameterCapabilitiesResponse
 
 
 class TrainingParameterSchemaCatalogResponse(BaseModel):

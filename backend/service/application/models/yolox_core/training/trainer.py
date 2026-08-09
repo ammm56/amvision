@@ -14,6 +14,9 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.training.metric_policy import (
+    resolve_best_metric_decision,
+)
 from backend.service.application.models.yolox_core.cfg import YOLOX_DEFAULT_INPUT_SIZE
 from backend.service.application.models.yolox_core.utils.torch_runtime import (
     build_yolox_autocast_context,
@@ -1242,11 +1245,13 @@ def is_yolox_metric_improved(
 ) -> bool:
     """按指标方向判断当前轮是否刷新最佳结果。"""
 
-    if best_metric_value is None:
-        return True
-    if higher_is_better:
-        return current_metric_value >= best_metric_value
-    return current_metric_value <= best_metric_value
+    return resolve_best_metric_decision(
+        current_value=current_metric_value,
+        best_value=best_metric_value,
+        direction="maximize" if higher_is_better else "minimize",
+        minimum=0.0,
+        maximum=1.0 if higher_is_better else None,
+    ).improved
 
 
 def build_yolox_train_metrics_payload(

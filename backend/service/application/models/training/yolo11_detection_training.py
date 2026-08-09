@@ -34,6 +34,10 @@ from backend.service.application.models.yolo11_core.data import (
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
+from backend.service.application.models.evaluation.pycocotools_metrics import (
+    YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    evaluate_pycocotools_average_precision,
+)
 from backend.service.application.models.yolo11_core.training.pytorch_dataloader import (
     Yolo11DetectionDataLoaderPlan,
     build_yolo11_detection_training_dataloader,
@@ -85,8 +89,10 @@ from backend.service.application.models.yolo_core_common.weights import (
     build_yolo_warm_start_summary,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloDetectionLossAccumulator,
     YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
+    normalize_yolo_detection_loss_metrics,
     resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolo11_core.training.execution import (
@@ -950,7 +956,7 @@ def _evaluate_yolo11_detection_model(
         nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
     )
-    return {
+    evaluation_summary: dict[str, object] = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
         "class_loss": round(float(validation_losses.get("class_loss", 0.0)), 6),
         "box_loss": round(float(validation_losses.get("box_loss", 0.0)), 6),
@@ -959,6 +965,10 @@ def _evaluate_yolo11_detection_model(
         "map50_95": round(float(validation_map.get("map50_95", 0.0)), 6),
         "sample_count": len(samples),
     }
+    per_category = validation_map.get("per_category")
+    if isinstance(per_category, list):
+        evaluation_summary["per_category"] = per_category
+    return evaluation_summary
 
 
 def _evaluate_yolo11_detection_model_once(
@@ -983,7 +993,7 @@ def _evaluate_yolo11_detection_model_once(
     confidence_threshold: float,
     nms_threshold: float,
     dataloader_plan: Yolo11DetectionDataLoaderPlan,
-) -> tuple[dict[str, float], dict[str, float]]:
+) -> tuple[dict[str, float], dict[str, object]]:
     """按 Ultralytics validator 语义一次 forward 统计 YOLO11 loss 和 mAP。"""
 
     if not samples:
@@ -1012,8 +1022,7 @@ def _evaluate_yolo11_detection_model_once(
         device=device,
         runtime_precision=runtime_precision,
     )
-    epoch_totals = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    batch_count = 0
+    loss_accumulator = YoloDetectionLossAccumulator()
     detections: list[dict[str, object]] = []
     previous_training_mode = bool(model.training)
     model.eval()
@@ -1041,11 +1050,14 @@ def _evaluate_yolo11_detection_model_once(
                         assign_alpha=assign_alpha,
                         assign_beta=assign_beta,
                     )
-                batch_count += 1
-                for metric_name in epoch_totals:
-                    epoch_totals[metric_name] += float(
-                        loss_components[metric_name].detach().item()
-                    )
+                reported_metrics = normalize_yolo_detection_loss_metrics(
+                    loss_components=loss_components,
+                    batch_sample_count=len(batch_targets),
+                )
+                loss_accumulator.add(
+                    metrics=reported_metrics,
+                    batch_sample_count=len(batch_targets),
+                )
                 if annotation_payload is not None:
                     detections.extend(
                         convert_yolo11_predictions_to_coco_detections(
@@ -1056,18 +1068,13 @@ def _evaluate_yolo11_detection_model_once(
                             category_ids=category_ids,
                             confidence_threshold=confidence_threshold,
                             nms_threshold=nms_threshold,
+                            max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
                         )
                     )
     finally:
         model.train(previous_training_mode)
 
-    if batch_count <= 0:
-        losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
-    else:
-        losses = {
-            metric_name: round(metric_total / batch_count, 6)
-            for metric_name, metric_total in epoch_totals.items()
-        }
+    losses = loss_accumulator.mean()
     if annotation_payload is None or not detections:
         return losses, {"map50": 0.0, "map50_95": 0.0}
 
@@ -1076,16 +1083,25 @@ def _evaluate_yolo11_detection_model_once(
         annotation_file=annotation_file,
         annotation_payload=annotation_payload,
     )
-    with redirect_stdout(io.StringIO()):
-        coco_detections = ground_truth.loadRes(detections)
-        coco_evaluator = imports.COCOeval(ground_truth, coco_detections, "bbox")
-        coco_evaluator.params.maxDets = [1, 10, 300]
-        coco_evaluator.evaluate()
-        coco_evaluator.accumulate()
-        coco_evaluator.summarize()
+    average_precision = evaluate_pycocotools_average_precision(
+        ground_truth=ground_truth,
+        detections=detections,
+        cocoeval_class=imports.COCOeval,
+        iou_type="bbox",
+        max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    )
     return losses, {
-        "map50_95": float(coco_evaluator.stats[0]),
-        "map50": float(coco_evaluator.stats[1]),
+        "map50_95": average_precision.map50_95,
+        "map50": average_precision.map50,
+        "per_category": [
+            {
+                "category_id": item.category_id,
+                "category_name": item.category_name,
+                "map50": item.map50,
+                "map50_95": item.map50_95,
+            }
+            for item in average_precision.per_category
+        ],
     }
 
 
@@ -1333,7 +1349,7 @@ def _build_yolo11_validation_metrics_payload(
         "confidence_threshold": confidence_threshold if enabled else None,
         "nms_threshold": nms_threshold if enabled else None,
         "postprocess_mode": YOLO11_DETECTION_POSTPROCESS_MODE_NMS if enabled else None,
-        "max_detections": None,
+        "max_detections": YOLO_DETECTION_COCO_MAX_DETECTIONS if enabled else None,
         "best_metric_name": best_metric_name if enabled else None,
         "best_metric_value": best_metric_value if enabled else None,
         "evaluated_epochs": evaluated_epochs,
@@ -1410,7 +1426,11 @@ def _build_yolo11_metrics_payload(
             "accumulate": training_schedule.accumulate,
         },
         "scheduler": {
-            "name": "UltralyticsCosineLambdaLR",
+            "name": (
+                "UltralyticsCosineLambdaLR"
+                if training_schedule.cosine_schedule
+                else "UltralyticsLinearLambdaLR"
+            ),
             "min_lr_ratio": training_options["min_lr_ratio"],
             "warmup_iterations": training_schedule.warmup_iterations,
             "warmup_momentum": training_schedule.warmup_momentum,
@@ -1430,7 +1450,11 @@ def _build_yolo11_metrics_payload(
                 else None
             ),
             "postprocess_mode": YOLO11_DETECTION_POSTPROCESS_MODE_NMS,
-            "max_detections": None,
+            "max_detections": (
+                YOLO_DETECTION_COCO_MAX_DETECTIONS
+                if validation_sample_count > 0
+                else None
+            ),
         },
         "loss_weights": {
             "class_loss_weight": training_options["class_loss_weight"],

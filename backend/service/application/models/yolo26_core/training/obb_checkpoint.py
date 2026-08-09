@@ -33,7 +33,6 @@ class Yolo26ObbResumeState:
     saved_evaluation_interval: int
     saved_min_lr_ratio: float
     saved_evaluation_confidence_threshold: float
-    saved_evaluation_nms_threshold: float
 
 
 def load_yolo26_obb_resume_state(
@@ -74,9 +73,6 @@ def load_yolo26_obb_resume_state(
         saved_evaluation_confidence_threshold=float(
             checkpoint.get("saved_evaluation_confidence_threshold", 0)
         ),
-        saved_evaluation_nms_threshold=float(
-            checkpoint.get("saved_evaluation_nms_threshold", 0)
-        ),
     )
 
 
@@ -90,7 +86,6 @@ def validate_yolo26_obb_resume_parameters(
     evaluation_interval: int,
     min_lr_ratio: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
 ) -> None:
     """校验 YOLO26 OBB resume 参数是否匹配当前请求。"""
 
@@ -107,9 +102,6 @@ def validate_yolo26_obb_resume_parameters(
                 - evaluation_confidence_threshold
             )
             <= 1e-8
-        ),
-        "evaluation_nms_threshold": (
-            abs(state.saved_evaluation_nms_threshold - evaluation_nms_threshold) <= 1e-8
         ),
     }
     mismatches = [name for name, matched in checks.items() if not matched]
@@ -161,7 +153,6 @@ def build_yolo26_obb_checkpoint_bytes(
     evaluation_interval: int,
     min_lr_ratio: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     torch_module: Any,
 ) -> bytes:
     """把 YOLO26 OBB 训练状态编码为 checkpoint bytes。"""
@@ -186,7 +177,6 @@ def build_yolo26_obb_checkpoint_bytes(
         "saved_evaluation_interval": evaluation_interval,
         "saved_min_lr": min_lr_ratio,
         "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
-        "saved_evaluation_nms_threshold": evaluation_nms_threshold,
         "model_type": "yolo26",
         "task_type": "obb",
     }

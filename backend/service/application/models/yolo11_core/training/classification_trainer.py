@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.models.yolo11_core.data import (
     build_yolo11_classification_training_batch,
 )
@@ -243,7 +247,15 @@ def run_yolo11_classification_training_loop(
 
         current_val_metric = float(val_metrics.get("top1_accuracy", 0.0))
         current_metric_value = current_val_metric if should_evaluate else None
-        best_metric_improved = should_evaluate and current_val_metric > best_metric_value
+        best_metric_improved = (
+            should_evaluate
+            and is_better_training_metric(
+                current_value=current_val_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
+        )
         if best_metric_improved:
             best_metric_value = current_val_metric
             best_metric_name = "val_top1_accuracy"

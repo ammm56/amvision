@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
@@ -51,6 +55,9 @@ from backend.service.application.models.yolo26_core.losses import (
 from backend.service.application.models.yolo26_core.training.segmentation_anchors import (
     build_yolo26_segmentation_anchors_from_features,
 )
+from backend.service.application.models.yolo26_core.training.detection_support import (
+    serialize_yolo26_spatial_loss_metrics,
+)
 from backend.service.application.models.yolo26_core.training.segmentation_checkpoint import (
     build_yolo26_segmentation_checkpoint_bytes,
     load_yolo26_segmentation_resume_state,
@@ -80,12 +87,11 @@ YOLO26_SEGMENTATION_DEFAULT_BATCH_SIZE = 1
 YOLO26_SEGMENTATION_DEFAULT_MAX_EPOCHS = 1
 YOLO26_SEGMENTATION_DEFAULT_EVAL_INTERVAL = 5
 YOLO26_SEGMENTATION_DEFAULT_EVAL_CONF = 0.001
-YOLO26_SEGMENTATION_DEFAULT_EVAL_NMS = 0.7
 YOLO26_SEGMENTATION_DEFAULT_ASSIGN_TOPK = 10
 YOLO26_SEGMENTATION_DEFAULT_CLASS_LOSS = 0.5
 YOLO26_SEGMENTATION_DEFAULT_BOX_LOSS = 7.5
 YOLO26_SEGMENTATION_DEFAULT_DFL_LOSS = 1.5
-YOLO26_SEGMENTATION_DEFAULT_MASK_LOSS = 1.0
+YOLO26_SEGMENTATION_DEFAULT_MASK_LOSS = 7.5
 YOLO26_SEGMENTATION_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO26_SEGMENTATION_DEFAULT_ASSIGN_BETA = 6.0
 YOLO26_SEGMENTATION_DEFAULT_LR = 1e-2
@@ -264,7 +270,7 @@ def run_yolo26_segmentation_training(
         extra.get("box_loss_weight", YOLO26_SEGMENTATION_DEFAULT_BOX_LOSS)
     )
     dfl_loss_weight = float(
-        extra.get("dfl_loss_weight", YOLO26_SEGMENTATION_DEFAULT_DFL_LOSS)
+        extra.get("l1_loss_weight", YOLO26_SEGMENTATION_DEFAULT_DFL_LOSS)
     )
     mask_loss_weight = float(
         extra.get("mask_loss_weight", YOLO26_SEGMENTATION_DEFAULT_MASK_LOSS)
@@ -286,9 +292,6 @@ def run_yolo26_segmentation_training(
             "evaluation_confidence_threshold", YOLO26_SEGMENTATION_DEFAULT_EVAL_CONF
         )
     )
-    eval_nms = float(
-        extra.get("evaluation_nms_threshold", YOLO26_SEGMENTATION_DEFAULT_EVAL_NMS)
-    )
     augmentation_options = build_yolo26_task_augmentation_options(extra)
 
     if resume is not None:
@@ -309,7 +312,6 @@ def run_yolo26_segmentation_training(
             assign_beta=assign_beta,
             grad_clip_norm=grad_clip,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
         )
 
     model.to(device)
@@ -446,7 +448,6 @@ def run_yolo26_segmentation_training(
             device=device,
             precision=precision,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
@@ -454,7 +455,15 @@ def run_yolo26_segmentation_training(
         if val_metrics:
             validation_history.append({"epoch": epoch, **val_metrics})
         current_metric = float(val_metrics.get("map50_95", 0.0))
-        best_metric_improved = bool(val_metrics) and current_metric > best_metric_value
+        best_metric_improved = (
+            bool(val_metrics)
+            and is_better_training_metric(
+                current_value=current_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
+        )
         if best_metric_improved:
             best_metric_value = current_metric
             best_metric_name = "val_map50_95"
@@ -488,7 +497,6 @@ def run_yolo26_segmentation_training(
             assign_beta=assign_beta,
             grad_clip_norm=grad_clip,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
             torch_module=imports.torch,
         )
         if best_metric_improved:
@@ -542,7 +550,6 @@ def run_yolo26_segmentation_training(
             device=device,
             precision=precision,
             evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
             imports=imports,
         )
         test_metrics_payload = build_detection_test_metrics_report(
@@ -617,7 +624,7 @@ def _run_yolo26_segmentation_epoch(
     box_loss_sum = 0.0
     dfl_loss_sum = 0.0
     mask_loss_sum = 0.0
-    iteration_count = 0
+    sample_count = 0
     effective_augmentation_options = resolve_yolo26_task_augmentation_for_epoch(
         augmentation_options=augmentation_options,
         epoch_index=epoch,
@@ -678,35 +685,52 @@ def _run_yolo26_segmentation_epoch(
                 epoch=epoch + 1,
                 max_epochs=max_epochs,
             )
-        total_loss = (
+        optimization_total_loss = (
             class_loss_weight * loss_payload["class_loss"]
             + box_loss_weight * loss_payload["box_loss"]
             + dfl_loss_weight * loss_payload["dfl_loss"]
             + mask_loss_weight * loss_payload["mask_loss"]
         )
-        if not total_loss.requires_grad:
-            total_loss = loss_payload["fallback_tensor"].sum() * 0.0
+        reported_class_loss = class_loss_weight * loss_payload.get(
+            "reported_class_loss", loss_payload["class_loss"]
+        )
+        reported_box_loss = box_loss_weight * loss_payload.get(
+            "reported_box_loss", loss_payload["box_loss"]
+        )
+        reported_dfl_loss = dfl_loss_weight * loss_payload.get(
+            "reported_dfl_loss", loss_payload["dfl_loss"]
+        )
+        reported_mask_loss = mask_loss_weight * loss_payload.get(
+            "reported_mask_loss", loss_payload["mask_loss"]
+        )
+        batch_sample_count = len(batch.targets)
+        # 两个 end-to-end 分支均为逐图归一化后的 batch sum，组合后直接反传。
+        optimization_loss = optimization_total_loss
+        if not optimization_loss.requires_grad:
+            optimization_loss = loss_payload["fallback_tensor"].sum() * 0.0
         optimizer_step.backward_and_step(
-            loss=total_loss,
+            loss=optimization_loss,
             iteration_index=global_iteration,
             is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
         )
-        total_loss_sum += float(total_loss.item())
-        class_loss_sum += float(loss_payload["class_loss"].item())
-        box_loss_sum += float(loss_payload["box_loss"].item())
-        dfl_loss_sum += float(loss_payload["dfl_loss"].item())
-        mask_loss_sum += float(loss_payload["mask_loss"].item())
-        iteration_count += 1
+        total_loss_sum += float(optimization_total_loss.item())
+        class_loss_sum += float(reported_class_loss.item())
+        box_loss_sum += float(reported_box_loss.item())
+        dfl_loss_sum += float(reported_dfl_loss.item())
+        mask_loss_sum += float(reported_mask_loss.item())
+        sample_count += batch_sample_count
 
-    divisor = max(1, iteration_count)
+    divisor = max(1, sample_count)
     return (
-        {
-            "loss": round(total_loss_sum / divisor, 6),
-            "class_loss": round(class_loss_sum / divisor, 6),
-            "box_loss": round(box_loss_sum / divisor, 6),
-            "dfl_loss": round(dfl_loss_sum / divisor, 6),
-            "mask_loss": round(mask_loss_sum / divisor, 6),
-        },
+        serialize_yolo26_spatial_loss_metrics(
+            {
+                "loss": round(total_loss_sum / divisor, 6),
+                "class_loss": round(class_loss_sum / divisor, 6),
+                "box_loss": round(box_loss_sum / divisor, 6),
+                "dfl_loss": round(dfl_loss_sum / divisor, 6),
+                "mask_loss": round(mask_loss_sum / divisor, 6),
+            }
+        ),
         global_iteration,
     )
 
@@ -790,12 +814,15 @@ def _compute_yolo26_segmentation_training_loss(
             epoch=epoch,
             max_epochs=max_epochs,
         )
-        return combine_yolo26_end2end_loss_payloads(
+        combined = combine_yolo26_end2end_loss_payloads(
             one2many_payload=one2many_payload,
             one2one_payload=one2one_payload,
             one2many_weight=one2many_weight,
             one2one_weight=one2one_weight,
         )
+        for name in ("class_loss", "box_loss", "dfl_loss", "mask_loss"):
+            combined[f"reported_{name}"] = one2one_payload[name]
+        return combined
 
     raw_boxes = raw_outputs["boxes"]
     raw_scores = raw_outputs["scores"]
@@ -887,7 +914,6 @@ def _run_yolo26_segmentation_validation(
     device: str,
     precision: str,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
@@ -907,7 +933,6 @@ def _run_yolo26_segmentation_validation(
         device=device,
         precision=precision,
         evaluation_confidence_threshold=evaluation_confidence_threshold,
-        evaluation_nms_threshold=evaluation_nms_threshold,
         imports=imports,
     )
 

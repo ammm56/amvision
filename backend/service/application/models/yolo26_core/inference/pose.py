@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -49,8 +48,6 @@ def build_yolo26_pose_inference_instances(
     keypoint_confidence_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
     default_kpt_shape: tuple[int, int],
-    nms_threshold: float,
-    nms_indices_func: Callable[..., Any],
 ) -> tuple[tuple[Yolo26PosePostprocessInstance, ...], tuple[int, int]]:
     """把 YOLO26 pose inference 输出转换为 core 实例记录。"""
 
@@ -62,8 +59,6 @@ def build_yolo26_pose_inference_instances(
         keypoint_confidence_threshold=keypoint_confidence_threshold,
         letterbox_transform=letterbox_transform,
         default_kpt_shape=default_kpt_shape,
-        nms_threshold=nms_threshold,
-        nms_indices_func=nms_indices_func,
     )
 
 

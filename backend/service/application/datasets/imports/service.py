@@ -21,6 +21,9 @@ from backend.service.application.datasets.imports.contracts import (
     DatasetImportResult,
     ParsedDatasetContent,
 )
+from backend.service.application.datasets.imports.annotation_semantics import (
+    attach_annotation_semantics_audit,
+)
 from backend.service.application.datasets.imports.formats.coco import CocoDatasetImportParserMixin
 from backend.service.application.datasets.imports.formats.detection import (
     DatasetImportFormatDetectorMixin,
@@ -779,7 +782,8 @@ class SqlAlchemyDatasetImportService(
                 "当前只支持 COCO、Pascal VOC、YOLO、ImageNet classification 和 DOTA OBB",
                 details={"format_type": format_type},
             )
-        return self._attach_registered_format_profile(parsed_content)
+        audited_content = attach_annotation_semantics_audit(parsed_content)
+        return self._attach_registered_format_profile(audited_content)
 
     def _attach_registered_format_profile(
         self,

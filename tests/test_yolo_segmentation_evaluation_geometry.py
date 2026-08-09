@@ -136,16 +136,18 @@ def test_yolo_segmentation_evaluation_masks_use_height_width_order(
     monkeypatch.setattr(module, normalize_name, fake_normalize_outputs)
     monkeypatch.setattr(module, postprocess_name, fake_postprocess_instances)
 
-    _, mask_items, _ = getattr(module, builder_name)(
-        outputs=object(),
-        labels=("barcode",),
-        input_size=input_size,
-        score_threshold=0.01,
-        nms_threshold=0.7,
-        mask_threshold=0.5,
-        imports=SimpleNamespace(np=np, cv2=object()),
-        image_index=1,
-    )
+    builder_kwargs = {
+        "outputs": object(),
+        "labels": ("barcode",),
+        "input_size": input_size,
+        "score_threshold": 0.01,
+        "mask_threshold": 0.5,
+        "imports": SimpleNamespace(np=np, cv2=object()),
+        "image_index": 1,
+    }
+    if module is not yolo26_segmentation:
+        builder_kwargs["nms_threshold"] = 0.7
+    _, mask_items, _ = getattr(module, builder_name)(**builder_kwargs)
 
     assert len(mask_items) == 1
     assert np.asarray(mask_items[0]["mask"]).shape == input_size
@@ -178,18 +180,17 @@ def test_yolov8_detection_random_affine_filters_heavily_cropped_boxes(
         output_size=(100, 100),
         augmentation_options=YoloV8DetectionAugmentationOptions(
             flip_prob=0.0,
-            hsv_prob=0.0,
+            hsv_h=0.0,
+            hsv_s=0.0,
+            hsv_v=0.0,
             mosaic_prob=0.0,
             mixup_prob=0.0,
-            enable_mixup=False,
             affine_prob=1.0,
             degrees=0.0,
             translate=0.0,
             scale=0.0,
             shear=0.0,
             perspective=0.0,
-            mosaic_scale=(1.0, 1.0),
-            mixup_scale=(1.0, 1.0),
             close_mosaic_epochs=0,
             multi_scale=False,
             multi_scale_range=(1.0, 1.0),

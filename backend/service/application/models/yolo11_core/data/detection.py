@@ -177,23 +177,18 @@ def serialize_yolo11_detection_augmentation_options(
     if augmentation_options is None:
         augmentation_options = _build_disabled_yolo11_detection_augmentation()
     return {
-        "hsv_prob": float(augmentation_options.hsv_prob),
+        "hsv_h": float(augmentation_options.hsv_h),
+        "hsv_s": float(augmentation_options.hsv_s),
+        "hsv_v": float(augmentation_options.hsv_v),
         "flip_prob": float(augmentation_options.flip_prob),
         "mosaic_prob": float(augmentation_options.mosaic_prob),
         "mixup_prob": float(augmentation_options.mixup_prob),
-        "enable_mixup": bool(augmentation_options.enable_mixup),
         "affine_prob": float(augmentation_options.affine_prob),
         "degrees": float(augmentation_options.degrees),
         "translate": float(augmentation_options.translate),
         "scale": float(augmentation_options.scale),
         "shear": float(augmentation_options.shear),
         "perspective": float(augmentation_options.perspective),
-        "mosaic_scale": tuple(
-            float(value) for value in augmentation_options.mosaic_scale
-        ),
-        "mixup_scale": tuple(
-            float(value) for value in augmentation_options.mixup_scale
-        ),
         "close_mosaic_epochs": int(augmentation_options.close_mosaic_epochs),
         "multi_scale": bool(augmentation_options.multi_scale),
         "multi_scale_range": tuple(
@@ -230,7 +225,68 @@ def _prepare_yolo11_detection_sample_with_augmentation(
     input_size: tuple[int, int],
     augmentation_options: Yolo11TaskAugmentationOptions,
 ) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
-    """构造启用增强后的 YOLO11 detection 训练样本。"""
+    """按参考顺序构造启用增强后的 YOLO11 detection 训练样本。"""
+
+    image, boxes_xyxy, category_indexes = _prepare_yolo11_detection_pre_transform(
+        imports=imports,
+        primary_sample=primary_sample,
+        available_samples=available_samples,
+        input_size=input_size,
+        augmentation_options=augmentation_options,
+    )
+
+    if (
+        augmentation_options.mixup_prob > 0.0
+        and random.random() < augmentation_options.mixup_prob
+    ):
+        mixup_source_sample = random.choice(
+            tuple(available_samples) or (primary_sample,)
+        )
+        mixup_image, mixup_boxes, mixup_categories = (
+            _prepare_yolo11_detection_pre_transform(
+                imports=imports,
+                primary_sample=mixup_source_sample,
+                available_samples=available_samples,
+                input_size=input_size,
+                augmentation_options=augmentation_options,
+            )
+        )
+        image = blend_yolo11_mixup_images(
+            imports=imports,
+            image=image,
+            other_image=mixup_image,
+        )
+        boxes_xyxy.extend(mixup_boxes)
+        category_indexes.extend(mixup_categories)
+
+    image = apply_yolo11_random_hsv(
+        imports=imports,
+        image=image,
+        augmentation_options=augmentation_options,
+    )
+    image, boxes_xyxy = _apply_yolo11_detection_flip(
+        image=image,
+        boxes_xyxy=boxes_xyxy,
+        flip_prob=augmentation_options.flip_prob,
+        input_size=input_size,
+    )
+    return _filter_yolo11_detection_boxes(
+        boxes_xyxy=boxes_xyxy,
+        category_indexes=category_indexes,
+        input_size=input_size,
+        image=image,
+    )
+
+
+def _prepare_yolo11_detection_pre_transform(
+    *,
+    imports: Any,
+    primary_sample: Any,
+    available_samples: Sequence[Any],
+    input_size: tuple[int, int],
+    augmentation_options: Yolo11TaskAugmentationOptions,
+) -> tuple[Any, list[tuple[float, float, float, float]], list[int]]:
+    """执行参考实现中 MixUp 之前的 Mosaic/LetterBox 和 RandomPerspective。"""
 
     if (
         augmentation_options.mosaic_prob > 0.0
@@ -252,69 +308,13 @@ def _prepare_yolo11_detection_sample_with_augmentation(
                 scaleup=True,
             )
         )
-
-    if (
-        augmentation_options.enable_mixup
-        and augmentation_options.mixup_prob > 0.0
-        and random.random() < augmentation_options.mixup_prob
-    ):
-        mixup_source_sample = random.choice(
-            tuple(available_samples) or (primary_sample,)
-        )
-        if (
-            augmentation_options.mosaic_prob > 0.0
-            and random.random() < augmentation_options.mosaic_prob
-        ):
-            mixup_image, mixup_boxes, mixup_categories = (
-                _build_yolo11_detection_mosaic_sample(
-                    imports=imports,
-                    primary_sample=mixup_source_sample,
-                    available_samples=tuple(available_samples),
-                    input_size=input_size,
-                    augmentation_options=augmentation_options,
-                )
-            )
-        else:
-            mixup_image, mixup_boxes, mixup_categories = (
-                _build_yolo11_detection_scaled_sample(
-                    imports=imports,
-                    sample=mixup_source_sample,
-                    input_size=input_size,
-                    scale_range=augmentation_options.mixup_scale,
-                )
-            )
-        image = blend_yolo11_mixup_images(
-            imports=imports,
-            image=image,
-            other_image=mixup_image,
-        )
-        boxes_xyxy.extend(mixup_boxes)
-        category_indexes.extend(mixup_categories)
-
-    image = apply_yolo11_random_hsv(
-        imports=imports,
-        image=image,
-        hsv_prob=augmentation_options.hsv_prob,
-    )
-    image, boxes_xyxy = _apply_yolo11_detection_flip(
-        image=image,
-        boxes_xyxy=boxes_xyxy,
-        flip_prob=augmentation_options.flip_prob,
-        input_size=input_size,
-    )
-    image, boxes_xyxy, category_indexes = _apply_yolo11_detection_affine(
+    return _apply_yolo11_detection_affine(
         imports=imports,
         image=image,
         boxes_xyxy=boxes_xyxy,
         category_indexes=category_indexes,
         input_size=input_size,
         augmentation_options=augmentation_options,
-    )
-    return _filter_yolo11_detection_boxes(
-        boxes_xyxy=boxes_xyxy,
-        category_indexes=category_indexes,
-        input_size=input_size,
-        image=image,
     )
 
 
@@ -552,19 +552,18 @@ def _build_disabled_yolo11_detection_augmentation() -> Yolo11TaskAugmentationOpt
     """构造关闭增强的 YOLO11 detection 默认参数。"""
 
     return Yolo11TaskAugmentationOptions(
-        hsv_prob=0.0,
+        hsv_h=0.0,
+        hsv_s=0.0,
+        hsv_v=0.0,
         flip_prob=0.0,
         mosaic_prob=0.0,
         mixup_prob=0.0,
-        enable_mixup=False,
         affine_prob=0.0,
         degrees=0.0,
         translate=0.0,
         scale=0.0,
         shear=0.0,
         perspective=0.0,
-        mosaic_scale=(1.0, 1.0),
-        mixup_scale=(1.0, 1.0),
         close_mosaic_epochs=0,
         multi_scale=False,
     )

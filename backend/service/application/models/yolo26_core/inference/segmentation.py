@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -42,10 +41,8 @@ def build_yolo26_segmentation_inference_instances(
     proto_array: Any,
     labels: tuple[str, ...],
     score_threshold: float,
-    nms_threshold: float,
     mask_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
-    nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26SegmentationPostprocessInstance, ...]:
     """把 YOLO26 segmentation inference 输出转换为 core 实例记录。"""
 
@@ -56,10 +53,8 @@ def build_yolo26_segmentation_inference_instances(
         proto_array=proto_array,
         labels=labels,
         score_threshold=score_threshold,
-        nms_threshold=nms_threshold,
         mask_threshold=mask_threshold,
         letterbox_transform=letterbox_transform,
-        nms_indices_func=nms_indices_func,
     )
 
 

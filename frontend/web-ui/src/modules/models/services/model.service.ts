@@ -20,6 +20,16 @@ export interface TrainingParameterSchemaItem {
   parameter_schema: Record<string, unknown>
   default_parameters: Record<string, unknown>
   numeric_fields: TrainingNumericParameterSpec[]
+  capabilities: TrainingParameterCapabilities
+}
+
+export interface TrainingParameterCapabilities {
+  postprocess_mode: 'nms' | 'end_to_end' | 'set_prediction' | 'classification'
+  supports_nms_threshold: boolean
+  distribution_loss_name: 'dfl_loss' | 'l1_loss' | null
+  augmentation_families: string[]
+  best_metric_name: string
+  best_metric_direction: 'maximize' | 'minimize'
 }
 
 export interface TrainingParameterSchemaCatalog {
@@ -443,6 +453,7 @@ function isTrainingParameterSchemaItem(value: unknown): value is TrainingParamet
     || !isRecord(value.default_parameters)
     || !Array.isArray(value.numeric_fields)
     || value.numeric_fields.length === 0
+    || !isTrainingParameterCapabilities(value.capabilities)
   ) {
     return false
   }
@@ -452,6 +463,17 @@ function isTrainingParameterSchemaItem(value: unknown): value is TrainingParamet
     fieldKeys.add(field.key)
   }
   return true
+}
+
+function isTrainingParameterCapabilities(value: unknown): value is TrainingParameterCapabilities {
+  return isRecord(value)
+    && ['nms', 'end_to_end', 'set_prediction', 'classification'].includes(String(value.postprocess_mode))
+    && typeof value.supports_nms_threshold === 'boolean'
+    && (value.distribution_loss_name === null || ['dfl_loss', 'l1_loss'].includes(String(value.distribution_loss_name)))
+    && Array.isArray(value.augmentation_families)
+    && value.augmentation_families.every(isNonEmptyString)
+    && isNonEmptyString(value.best_metric_name)
+    && ['maximize', 'minimize'].includes(String(value.best_metric_direction))
 }
 
 function isTrainingNumericParameterSpec(value: unknown): value is TrainingNumericParameterSpec {

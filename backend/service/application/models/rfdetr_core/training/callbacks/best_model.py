@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import math
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,6 +26,10 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from backend.service.application.models.rfdetr_core.utilities.logger import get_logger
 from backend.service.application.models.rfdetr_core.utilities.package import get_version
 from backend.service.application.models.rfdetr_core.utilities.state_dict import _make_fit_loop_state
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+    is_valid_training_metric,
+)
 
 logger = get_logger()
 
@@ -202,9 +205,12 @@ class BestModelCallback(ModelCheckpoint):
         - 当前函数的执行结果。
         """
         state = dict(state_dict)
-        self._best_ema = float(state.pop("_best_ema", 0.0))
-        if not math.isfinite(self._best_ema):
-            self._best_ema = 0.0
+        restored_best_ema = state.pop("_best_ema", 0.0)
+        self._best_ema = (
+            float(restored_best_ema)
+            if is_valid_training_metric(restored_best_ema, maximum=1.0)
+            else 0.0
+        )
         super().load_state_dict(state)
 
     def _save_checkpoint(self, trainer: Trainer, filepath: str) -> None:
@@ -261,12 +267,29 @@ class BestModelCallback(ModelCheckpoint):
             return
         if self.monitor not in trainer.callback_metrics:
             return
+        regular_metric = trainer.callback_metrics[self.monitor]
+        regular_value = float(
+            regular_metric.item() if hasattr(regular_metric, "item") else regular_metric
+        )
+        if not is_valid_training_metric(regular_value, maximum=1.0):
+            logger.error(
+                "Ignoring invalid RF-DETR best metric %s=%r at epoch %d",
+                self.monitor,
+                regular_value,
+                trainer.current_epoch,
+            )
+            return
         super().on_validation_end(trainer, pl_module)
 
         if self._monitor_ema is None or not trainer.is_global_zero:
             return
         ema_val = trainer.callback_metrics.get(self._monitor_ema, torch.tensor(0.0)).item()
-        if ema_val > self._best_ema:
+        if is_better_training_metric(
+            current_value=ema_val,
+            best_value=self._best_ema,
+            direction="maximize",
+            maximum=1.0,
+        ):
             self._best_ema = ema_val
             self._output_dir.mkdir(parents=True, exist_ok=True)
             ema_state_dict = self._get_ema_model_state_dict(trainer, pl_module)
@@ -314,12 +337,26 @@ class BestModelCallback(ModelCheckpoint):
         if not trainer.is_global_zero:
             return
 
-        best_regular = self.best_model_score.item() if self.best_model_score is not None else 0.0
+        restored_best_regular = (
+            self.best_model_score.item()
+            if self.best_model_score is not None
+            else 0.0
+        )
+        best_regular = (
+            float(restored_best_regular)
+            if is_valid_training_metric(restored_best_regular, maximum=1.0)
+            else 0.0
+        )
         regular_path = Path(self.best_model_path) if self.best_model_path else None
         ema_path = self._output_dir / "checkpoint_best_ema.pth"
         total_path = self._output_dir / "checkpoint_best_total.pth"
 
-        best_is_ema = self._best_ema > best_regular
+        best_is_ema = is_better_training_metric(
+            current_value=self._best_ema,
+            best_value=best_regular,
+            direction="maximize",
+            maximum=1.0,
+        )
         best_path = ema_path if (best_is_ema and ema_path.exists()) else regular_path
 
         if best_path and best_path.exists():
@@ -418,6 +455,14 @@ class RFDETREarlyStopping(EarlyStopping):
             effective = ema_val
         else:
             effective = regular_val  # type: ignore[assignment]
+
+        if not is_valid_training_metric(effective, maximum=1.0):
+            logger.error(
+                "Ignoring invalid RF-DETR early-stop metric %r at epoch %d",
+                effective,
+                trainer.current_epoch,
+            )
+            return
 
         trainer.callback_metrics[self._SYNTHETIC_MONITOR] = torch.tensor(effective)
         super().on_validation_end(trainer, pl_module)

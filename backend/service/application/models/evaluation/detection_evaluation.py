@@ -34,7 +34,7 @@ class DetectionEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
-    nms_threshold: float = 0.65
+    nms_threshold: float | None = 0.65
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -160,11 +160,14 @@ def _run_detection_evaluation_with_session(
 
         # 推理
         image_bytes = resolved.read_bytes()
+        prediction_extra_options: dict[str, object] = {}
+        if request.nms_threshold is not None:
+            prediction_extra_options["nms_threshold"] = request.nms_threshold
         pred_request = DetectionPredictionRequest(
             score_threshold=request.score_threshold,
             save_result_image=False,
             input_image_bytes=image_bytes,
-            extra_options={"nms_threshold": request.nms_threshold},
+            extra_options=prediction_extra_options,
         )
         result = session.predict(pred_request)
 
@@ -268,7 +271,7 @@ def _run_detection_evaluation_with_session(
         else 0.0
     )
 
-    report = {
+    report: dict[str, object] = {
         "task_type": "detection",
         "model_type": runtime_target.model_type,
         "split_name": split_name,
@@ -280,9 +283,10 @@ def _run_detection_evaluation_with_session(
         "mean_recall": round(mean_recall, 6),
         "mean_f1": round(mean_f1, 6),
         "score_threshold": request.score_threshold,
-        "nms_threshold": request.nms_threshold,
         "per_class_metrics": per_class,
     }
+    if request.nms_threshold is not None:
+        report["nms_threshold"] = request.nms_threshold
 
     return DetectionEvaluationResult(
         split_name=split_name,

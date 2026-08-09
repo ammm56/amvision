@@ -22,7 +22,6 @@ from backend.service.application.runtime.targets.runtime_target import (
     describe_runtime_execution_mode,
 )
 from backend.service.application.runtime.support.detection import (
-    DEFAULT_DETECTION_NMS_THRESHOLD,
     import_onnxruntime_module,
     load_prediction_image,
     normalize_onnxruntime_outputs,
@@ -30,7 +29,6 @@ from backend.service.application.runtime.support.detection import (
     render_preview_image,
     require_inference_imports,
     resolve_onnxruntime_providers,
-    resolve_probability,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -131,12 +129,6 @@ class OnnxRuntimeYolo26RuntimeSession:
         )
         preprocess_ms = round((perf_counter() - preprocess_started_at) * 1000, 3)
 
-        nms_threshold = resolve_probability(
-            value=request.extra_options.get("nms_threshold"),
-            field_name="nms_threshold",
-            default=DEFAULT_DETECTION_NMS_THRESHOLD,
-        )
-
         infer_started_at = perf_counter()
         outputs = self.session.run(
             [self.output_name],
@@ -156,7 +148,6 @@ class OnnxRuntimeYolo26RuntimeSession:
             prediction_array=prediction_array,
             labels=self.runtime_target.labels,
             score_threshold=request.score_threshold,
-            nms_threshold=nms_threshold,
             letterbox_transform=letterbox_transform,
         )
         postprocess_ms = round((perf_counter() - postprocess_started_at) * 1000, 3)
@@ -205,7 +196,6 @@ class OnnxRuntimeYolo26RuntimeSession:
                         device_name=self.device_name,
                     ),
                     "score_threshold": request.score_threshold,
-                    "nms_threshold": nms_threshold,
                     "postprocess_mode": YOLO26_DETECTION_POSTPROCESS_MODE_END2END_TOPK,
                     "max_detections": DEFAULT_YOLO26_END2END_MAX_DETECTIONS,
                     "class_count": len(self.runtime_target.labels),

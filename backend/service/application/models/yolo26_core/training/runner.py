@@ -11,11 +11,16 @@ from backend.service.application.models.yolo_core_common.data.tensor_transfer im
     move_yolo_tensor_to_training_device,
 )
 from backend.service.application.models.yolo_core_common.training import (
+    YoloDetectionLossAccumulator,
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
+    normalize_yolo_detection_loss_metrics,
 )
 from backend.service.application.models.yolo26_core.training.pytorch_dataloader import (
     Yolo26DetectionDataLoaderBatch,
+)
+from backend.service.application.models.yolo26_core.training.detection_support import (
+    serialize_yolo26_spatial_loss_metrics,
 )
 
 
@@ -81,7 +86,7 @@ def run_yolo26_detection_training_epoch(
     else:
         batch_iterator = dataloader_batches
         max_iterations = max(1, _safe_len(dataloader_batches))
-    epoch_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+    epoch_losses = YoloDetectionLossAccumulator()
     model.train()
     optimizer.zero_grad(set_to_none=True)
     last_optimizer_step_iteration = 0
@@ -134,10 +139,14 @@ def run_yolo26_detection_training_epoch(
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
 
-        for metric_name in epoch_losses:
-            epoch_losses[metric_name] += float(
-                loss_components[metric_name].detach().item()
-            )
+        reported_metrics = normalize_yolo_detection_loss_metrics(
+            loss_components=loss_components,
+            batch_sample_count=len(batch_targets),
+        )
+        epoch_losses.add(
+            metrics=reported_metrics,
+            batch_sample_count=len(batch_targets),
+        )
 
         if batch_callback is not None:
             batch_callback(
@@ -150,23 +159,15 @@ def run_yolo26_detection_training_epoch(
                     total_iterations=total_iterations,
                     input_size=progress_input_size,
                     learning_rate=float(optimizer.param_groups[0]["lr"]),
-                    train_metrics={
-                        "loss": float(loss_components["loss"].detach().item()),
-                        "class_loss": float(
-                            loss_components["class_loss"].detach().item()
-                        ),
-                        "box_loss": float(loss_components["box_loss"].detach().item()),
-                        "dfl_loss": float(loss_components["dfl_loss"].detach().item()),
-                    },
+                    train_metrics=serialize_yolo26_spatial_loss_metrics(
+                        reported_metrics
+                    ),
                 )
             )
 
     return Yolo26DetectionTrainingEpochResult(
         global_iteration=global_iteration,
-        train_metrics={
-            metric_name: round(metric_total / max_iterations, 6)
-            for metric_name, metric_total in epoch_losses.items()
-        },
+        train_metrics=serialize_yolo26_spatial_loss_metrics(epoch_losses.mean()),
     )
 
 

@@ -41,7 +41,6 @@ class Yolo26PoseResumeState:
     saved_assign_beta: float
     saved_grad_clip_norm: float
     saved_evaluation_confidence_threshold: float
-    saved_evaluation_nms_threshold: float
     saved_keypoint_confidence_threshold: float
 
 
@@ -91,9 +90,6 @@ def load_yolo26_pose_resume_state(
         saved_evaluation_confidence_threshold=float(
             checkpoint.get("saved_evaluation_confidence_threshold", 0)
         ),
-        saved_evaluation_nms_threshold=float(
-            checkpoint.get("saved_evaluation_nms_threshold", 0)
-        ),
         saved_keypoint_confidence_threshold=float(
             checkpoint.get("saved_keypoint_confidence_threshold", 0)
         ),
@@ -118,7 +114,6 @@ def validate_yolo26_pose_resume_parameters(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     keypoint_confidence_threshold: float,
 ) -> None:
     """校验 YOLO26 pose resume 参数是否匹配当前请求。"""
@@ -145,9 +140,6 @@ def validate_yolo26_pose_resume_parameters(
                 - evaluation_confidence_threshold
             )
             <= 1e-8
-        ),
-        "evaluation_nms_threshold": (
-            abs(state.saved_evaluation_nms_threshold - evaluation_nms_threshold) <= 1e-8
         ),
         "keypoint_confidence_threshold": (
             abs(
@@ -214,7 +206,6 @@ def build_yolo26_pose_checkpoint_bytes(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     keypoint_confidence_threshold: float,
     torch_module: Any,
 ) -> bytes:
@@ -248,7 +239,6 @@ def build_yolo26_pose_checkpoint_bytes(
         "saved_assign_beta": assign_beta,
         "saved_grad_clip": grad_clip_norm,
         "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
-        "saved_evaluation_nms_threshold": evaluation_nms_threshold,
         "saved_keypoint_confidence_threshold": keypoint_confidence_threshold,
         "model_type": "yolo26",
         "task_type": "pose",

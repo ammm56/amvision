@@ -13,6 +13,9 @@ from typing import Any
 import numpy as np
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.models.evaluation.pycocotools_metrics import (
+    extract_pycocotools_average_precision,
+)
 from backend.service.application.models.yolox_core.data.datasets import (
     load_coco_ground_truth_silently,
 )
@@ -59,11 +62,16 @@ def evaluate_coco_detections(
         coco_evaluator = cocoeval_class(ground_truth, coco_detections, "bbox")
         coco_evaluator.evaluate()
         coco_evaluator.accumulate()
-        coco_evaluator.summarize()
+
+    max_detections = int(coco_evaluator.params.maxDets[-1])
+    average_precision = extract_pycocotools_average_precision(
+        evaluator=coco_evaluator,
+        max_detections=max_detections,
+    )
 
     return CocoDetectionMetrics(
-        map50_95=float(coco_evaluator.stats[0]),
-        map50=float(coco_evaluator.stats[1]),
+        map50_95=average_precision.map50_95,
+        map50=average_precision.map50,
         per_class_metrics=build_coco_per_class_metrics(
             coco_evaluator=coco_evaluator,
             ground_truth=ground_truth,

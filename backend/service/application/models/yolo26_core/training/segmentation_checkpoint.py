@@ -41,7 +41,6 @@ class Yolo26SegmentationResumeState:
     saved_assign_beta: float
     saved_grad_clip_norm: float
     saved_evaluation_confidence_threshold: float
-    saved_evaluation_nms_threshold: float
 
 
 def load_yolo26_segmentation_resume_state(
@@ -90,9 +89,6 @@ def load_yolo26_segmentation_resume_state(
         saved_evaluation_confidence_threshold=float(
             checkpoint.get("saved_evaluation_confidence_threshold", 0)
         ),
-        saved_evaluation_nms_threshold=float(
-            checkpoint.get("saved_evaluation_nms_threshold", 0)
-        ),
     )
 
 
@@ -114,7 +110,6 @@ def validate_yolo26_segmentation_resume_parameters(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
 ) -> None:
     """校验 resume checkpoint 记录的训练参数是否匹配当前请求。"""
 
@@ -155,8 +150,6 @@ def validate_yolo26_segmentation_resume_parameters(
         > 1e-8
     ):
         mismatches.append("evaluation_confidence_threshold")
-    if abs(state.saved_evaluation_nms_threshold - evaluation_nms_threshold) > 1e-8:
-        mismatches.append("evaluation_nms_threshold")
     if mismatches:
         raise InvalidRequestError(
             "YOLO26 segmentation resume 参数与 checkpoint 记录不一致",
@@ -252,7 +245,6 @@ def build_yolo26_segmentation_checkpoint_bytes(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     torch_module: Any,
 ) -> bytes:
     """把 YOLO26 segmentation 训练状态编码为 checkpoint bytes。"""
@@ -285,7 +277,6 @@ def build_yolo26_segmentation_checkpoint_bytes(
         "saved_assign_beta": assign_beta,
         "saved_grad_clip": grad_clip_norm,
         "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
-        "saved_evaluation_nms_threshold": evaluation_nms_threshold,
         "model_type": "yolo26",
         "task_type": "segmentation",
     }

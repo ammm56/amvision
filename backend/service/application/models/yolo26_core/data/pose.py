@@ -159,9 +159,17 @@ def _prepare_yolo26_pose_sample_with_mix(
     if prepared is None:
         return None
     image, target = prepared
+    if augmentation_options is not None:
+        image, target = _apply_yolo26_pose_random_affine(
+            imports=imports,
+            image=image,
+            target=target,
+            target_width=target_width,
+            target_height=target_height,
+            augmentation_options=augmentation_options,
+        )
     if (
         augmentation_options is None
-        or not augmentation_options.enable_mixup
         or augmentation_options.mixup_prob <= 0.0
         or random.random() >= augmentation_options.mixup_prob
     ):
@@ -203,7 +211,7 @@ def _prepare_yolo26_pose_mixup_sample(
         augmentation_options.mosaic_prob > 0.0
         and random.random() < augmentation_options.mosaic_prob
     ):
-        return _build_yolo26_pose_mosaic_sample(
+        prepared = _build_yolo26_pose_mosaic_sample(
             imports=imports,
             primary_sample=sample,
             available_samples=available_samples,
@@ -211,12 +219,24 @@ def _prepare_yolo26_pose_mixup_sample(
             target_height=target_height,
             augmentation_options=augmentation_options,
         )
-    return _prepare_yolo26_pose_single_sample(
+    else:
+        prepared = _prepare_yolo26_pose_single_sample(
+            imports=imports,
+            sample=sample,
+            output_size=(target_width, target_height),
+            scale_gain=1.0,
+            scaleup=True,
+        )
+    if prepared is None:
+        return None
+    image, target = prepared
+    return _apply_yolo26_pose_random_affine(
         imports=imports,
-        sample=sample,
-        output_size=(target_width, target_height),
-        scale_gain=random.uniform(*augmentation_options.mixup_scale),
-        scaleup=True,
+        image=image,
+        target=target,
+        target_width=target_width,
+        target_height=target_height,
+        augmentation_options=augmentation_options,
     )
 
 
@@ -424,40 +444,38 @@ def _apply_yolo26_pose_augmentation(
 
     if augmentation_options is None:
         return image, target
-    image, target = _apply_yolo26_pose_random_affine(
-        imports=imports,
-        image=image,
-        target=target,
-        target_width=target_width,
-        target_height=target_height,
-        augmentation_options=augmentation_options,
-    )
     image = apply_yolo26_random_hsv(
         imports=imports,
         image=image,
-        hsv_prob=augmentation_options.hsv_prob,
+        augmentation_options=augmentation_options,
     )
-    if not target.keypoints:
+    if not should_apply_yolo26_horizontal_flip(augmentation_options.flip_prob):
         return image, target
-    keypoint_count = len(target.keypoints[0]) // 3
-    flip_indices = resolve_yolo26_pose_flip_indices(
-        keypoint_count=keypoint_count,
-        keypoint_flip_indices=augmentation_options.keypoint_flip_indices,
-    )
-    if flip_indices is None or not should_apply_yolo26_horizontal_flip(
-        augmentation_options.flip_prob
-    ):
-        return image, target
+    flip_indices: tuple[int, ...] | None = None
+    if target.keypoints:
+        keypoint_count = len(target.keypoints[0]) // 3
+        flip_indices = resolve_yolo26_pose_flip_indices(
+            keypoint_count=keypoint_count,
+            keypoint_flip_indices=augmentation_options.keypoint_flip_indices,
+        )
+        if flip_indices is None:
+            return image, target
     flipped_boxes = [
         [target_width - box[2], box[1], target_width - box[0], box[3]]
         for box in target.boxes_xyxy
     ]
-    flipped_keypoints = [
-        _flip_yolo26_pose_keypoints(
-            keypoints=keypoints, target_width=target_width, flip_indices=flip_indices
-        )
-        for keypoints in target.keypoints
-    ]
+    flipped_keypoints = (
+        [
+            _flip_yolo26_pose_keypoints(
+                keypoints=keypoints,
+                target_width=target_width,
+                flip_indices=flip_indices,
+            )
+            for keypoints in target.keypoints
+        ]
+        if target.keypoints and flip_indices is not None
+        else target.keypoints
+    )
     return (
         flip_yolo26_image_horizontally(image),
         Yolo26PosePreparedTarget(

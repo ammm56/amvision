@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from backend.service.application.models.training.metric_policy import (
+    is_better_training_metric,
+)
+
 from backend.service.application.models.yolo_core_common.training import (
     YoloTaskDataLoaderPlan,
     YoloUltralyticsOptimizerStep,
@@ -219,7 +223,13 @@ def run_yolo11_pose_training_loop(
             validation_history.append({"epoch": epoch, **validation_metrics})
         current_metric = float(validation_metrics.get("map50_95", 0.0))
         best_metric_improved = (
-            bool(validation_metrics) and current_metric > best_metric_value
+            bool(validation_metrics)
+            and is_better_training_metric(
+                current_value=current_metric,
+                best_value=best_metric_value,
+                direction="maximize",
+                maximum=1.0,
+            )
         )
         if best_metric_improved:
             best_metric_value = current_metric
@@ -323,6 +333,7 @@ def _run_yolo11_pose_epoch(
 
     epoch_losses: dict[str, float] = {}
     iteration_count = 0
+    sample_count = 0
     effective_augmentation_options = resolve_yolo11_task_augmentation_for_epoch(
         augmentation_options=augmentation_options,
         epoch_index=epoch,
@@ -391,10 +402,18 @@ def _run_yolo11_pose_epoch(
             is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
         )
         iteration_count += 1
+        batch_sample_count = len(batch.targets)
         for key, value in loss_payload.items():
-            epoch_losses[key] = epoch_losses.get(key, 0.0) + float(value.item())
+            metric_value = float(value.item())
+            if key == "loss":
+                metric_value /= batch_sample_count
+            epoch_losses[key] = (
+                epoch_losses.get(key, 0.0)
+                + metric_value * batch_sample_count
+            )
+        sample_count += batch_sample_count
 
-    divisor = max(1, iteration_count)
+    divisor = max(1, sample_count)
     return (
         {key: round(value / divisor, 6) for key, value in epoch_losses.items()}
         if epoch_losses

@@ -63,7 +63,6 @@ from backend.service.application.models.yolo26_core.training.detection_support i
     YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT,
     YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT,
     YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD,
-    YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD,
     YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL,
     YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM,
     YOLO26_DETECTION_DEFAULT_INPUT_SIZE,
@@ -75,6 +74,7 @@ from backend.service.application.models.yolo26_core.training.detection_support i
     require_yolo26_detection_training_imports,
     resolve_yolo26_detection_input_size,
     resolve_yolo26_detection_runtime,
+    serialize_yolo26_spatial_loss_metrics,
     unwrap_yolo26_detection_outputs,
 )
 from backend.service.application.models.yolo26_core.training.epoch import (
@@ -208,7 +208,6 @@ __all__ = [
     "YOLO26_DETECTION_DEFAULT_CLASS_LOSS_WEIGHT",
     "YOLO26_DETECTION_DEFAULT_DFL_LOSS_WEIGHT",
     "YOLO26_DETECTION_DEFAULT_EVAL_CONFIDENCE_THRESHOLD",
-    "YOLO26_DETECTION_DEFAULT_EVAL_NMS_THRESHOLD",
     "YOLO26_DETECTION_DEFAULT_EVALUATION_INTERVAL",
     "YOLO26_DETECTION_DEFAULT_GRAD_CLIP_NORM",
     "YOLO26_DETECTION_DEFAULT_INPUT_SIZE",
@@ -312,6 +311,7 @@ __all__ = [
     "resolve_yolo26_detection_initial_best_metric_value",
     "resolve_yolo26_detection_input_size",
     "resolve_yolo26_detection_runtime",
+    "serialize_yolo26_spatial_loss_metrics",
     "resolve_yolo26_obb_training_device",
     "run_yolo26_classification_training_loop",
     "run_yolo26_detection_training_epoch",

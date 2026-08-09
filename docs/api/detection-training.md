@@ -45,7 +45,7 @@
 
 创建一个以 DatasetExport 为唯一输入边界的 detection 训练任务，并按 `model_type` 提交到对应模型训练队列。
 
-当前公开入口统一是 `/api/v1/models/detection/training-tasks`，但内部 worker kind、队列和 runner 仍按模型隔离。YOLOX 示例会返回 `yolox-training` / `yolox-trainings` 这类模型专属名字；YOLOv8、YOLO11、YOLO26、RF-DETR 会返回各自的训练队列名字。
+当前公开入口统一是 `/api/v1/models/detection/training-tasks`，但内部 worker kind、队列和 runner 仍按模型隔离。YOLOX 示例会返回 `yolox-training` / `yolox-trainings` 这类模型专属名字；YOLOv8、YOLO11、YOLO26、RF-DETR 会返回各自的训练队列名字。YOLO26 的第三项框回归指标按 reference 命名为 `l1_loss`，不能标成 YOLOv8 / YOLO11 使用的 `dfl_loss`。
 
 训练链顺序图与常见失败分支见 [docs/architecture/execution-sequences.md](../architecture/execution-sequences.md)。
 
@@ -104,7 +104,7 @@ YOLOX 参数分为 runtime、data、optimization、evaluation 和 augmentation�
 }
 ```
 
-YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数值范围和输入步长由 `GET /api/v1/models/training-parameter-schemas` 的 `default_parameters`、`parameter_schema` 和 `numeric_fields` 提供；其中 `numeric_fields[].step` 与 JSON Schema `multipleOf` 一致。Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供同一规则的说明。未知分组、未知字段、其他模型族的字段、超出步长精度的数值和旧扁平参数会在入队前返回 422。
+YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数值范围、输入步长和后处理能力由 `GET /api/v1/models/training-parameter-schemas` 的 `default_parameters`、`parameter_schema`、`numeric_fields` 和 `capabilities` 提供；其中 `numeric_fields[].step` 与 JSON Schema `multipleOf` 一致。YOLO26 detection 是 end-to-end 模型，`supports_nms_threshold=false`，因此训练参数不接受 NMS threshold。Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供同一规则的说明。未知分组、未知字段、其他模型族的字段、超出步长精度的数值和旧扁平参数会在入队前返回 422。
 
 当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 

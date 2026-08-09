@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,12 +49,9 @@ def build_yolo26_obb_postprocess_instances(
     labels: tuple[str, ...],
     score_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
-    nms_threshold: float,
-    nms_indices_func: Callable[..., Any],
 ) -> tuple[Yolo26ObbPostprocessInstance, ...]:
     """把 YOLO26 OBB 输出转换为实例记录。"""
 
-    _ = nms_indices_func, nms_threshold
     prediction = np_module.asarray(prediction_array, dtype=np_module.float32)
     if prediction.ndim == 2:
         prediction = np_module.expand_dims(prediction, axis=0)

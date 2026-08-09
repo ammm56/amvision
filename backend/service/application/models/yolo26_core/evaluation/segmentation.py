@@ -44,7 +44,6 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationPredictionRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
-from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -515,7 +514,6 @@ def evaluate_yolo26_segmentation_samples(
     device: str,
     precision: str,
     evaluation_confidence_threshold: float,
-    evaluation_nms_threshold: float,
     imports: Any,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 segmentation 训练期评估。"""
@@ -560,7 +558,6 @@ def evaluate_yolo26_segmentation_samples(
                     labels=labels,
                     input_size=input_size,
                     score_threshold=evaluation_confidence_threshold,
-                    nms_threshold=evaluation_nms_threshold,
                     mask_threshold=0.5,
                     imports=imports,
                     image_index=image_index,
@@ -654,7 +651,6 @@ def _build_yolo26_segmentation_prediction_items(
     labels: tuple[str, ...],
     input_size: tuple[int, int],
     score_threshold: float,
-    nms_threshold: float,
     mask_threshold: float,
     imports: Any,
     image_index: int,
@@ -681,10 +677,8 @@ def _build_yolo26_segmentation_prediction_items(
         proto_array=proto_array,
         labels=labels,
         score_threshold=score_threshold,
-        nms_threshold=nms_threshold,
         mask_threshold=mask_threshold,
         letterbox_transform=letterbox_transform,
-        nms_indices_func=batched_nms_indices,
     )
     for instance in instances:
         bbox_items.append(

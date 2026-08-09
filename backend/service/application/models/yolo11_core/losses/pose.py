@@ -128,11 +128,11 @@ def compute_yolo11_pose_loss(
     batch_size = max(1, len(batch_targets))
     return {
         "loss": total_loss * batch_size,
-        "class_loss": class_loss,
-        "box_loss": box_loss,
-        "dfl_loss": dfl_loss,
-        "kpt_loss": keypoint_loss,
-        "visibility_loss": visibility_loss,
+        "class_loss": class_loss * class_loss_weight,
+        "box_loss": box_loss * box_loss_weight,
+        "dfl_loss": dfl_loss * dfl_loss_weight,
+        "kpt_loss": keypoint_loss * kpt_loss_weight,
+        "visibility_loss": visibility_loss * visibility_loss_weight,
     }
 
 

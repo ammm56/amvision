@@ -32,7 +32,6 @@ from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_obb_postprocess_instances,
 )
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
-from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -77,7 +76,6 @@ def evaluate_yolo26_obb_samples(
     device: str,
     precision: str,
     score_threshold: float,
-    nms_threshold: float,
     imports: Any,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 OBB 训练期评估。"""
@@ -118,8 +116,6 @@ def evaluate_yolo26_obb_samples(
                 labels=labels,
                 score_threshold=score_threshold,
                 letterbox_transform=letterbox_transform,
-                nms_threshold=nms_threshold,
-                nms_indices_func=batched_nms_indices,
             )
             target = batch.targets[0]
             _append_yolo26_obb_gt_items(

@@ -67,6 +67,7 @@ def convert_yolo11_predictions_to_coco_detections(
     category_ids: tuple[int, ...],
     confidence_threshold: float,
     nms_threshold: float,
+    max_detections: int | None = None,
 ) -> list[dict[str, object]]:
     """把 YOLO11 detection 预测转换为 COCO detection 结果列表。"""
 
@@ -80,7 +81,7 @@ def convert_yolo11_predictions_to_coco_detections(
         nms_threshold=nms_threshold,
         postprocess_mode=YOLO11_DETECTION_POSTPROCESS_MODE_NMS,
         box_format="xywh",
-        max_detections=None,
+        max_detections=max_detections,
     )
     detections: list[dict[str, object]] = []
     for batch_index, result in enumerate(postprocess_results):

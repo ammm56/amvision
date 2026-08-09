@@ -32,6 +32,9 @@ _YOLO_OPTIMIZATION_NUMERIC_PATHS: dict[str, str] = {
 
 _YOLO_EVALUATION_NUMERIC_PATHS: dict[str, str] = {
     "evaluation_confidence_threshold": "evaluation.confidence_threshold",
+}
+
+_YOLO_NMS_NUMERIC_PATHS: dict[str, str] = {
     "evaluation_nms_threshold": "evaluation.nms_threshold",
 }
 
@@ -43,7 +46,9 @@ _YOLO_MATCHING_NUMERIC_PATHS: dict[str, str] = {
 
 _YOLO_AUGMENTATION_NUMERIC_PATHS: dict[str, str] = {
     "flip_prob": "augmentation.horizontal_flip_probability",
-    "hsv_prob": "augmentation.hsv_probability",
+    "hsv_h": "augmentation.hue_gain",
+    "hsv_s": "augmentation.saturation_gain",
+    "hsv_v": "augmentation.value_gain",
     "mosaic_prob": "augmentation.mosaic_probability",
     "mixup_prob": "augmentation.mixup_probability",
     "affine_prob": "augmentation.affine_probability",
@@ -52,10 +57,6 @@ _YOLO_AUGMENTATION_NUMERIC_PATHS: dict[str, str] = {
     "scale": "augmentation.scale_ratio",
     "shear": "augmentation.shear_degrees",
     "perspective": "augmentation.perspective_ratio",
-    "mosaic_scale_min": "augmentation.mosaic_scale.minimum",
-    "mosaic_scale_max": "augmentation.mosaic_scale.maximum",
-    "mixup_scale_min": "augmentation.mixup_scale.minimum",
-    "mixup_scale_max": "augmentation.mixup_scale.maximum",
     "close_mosaic": "augmentation.close_mosaic_epochs",
     "multi_scale": "augmentation.multi_scale_ratio",
     "multi_scale_stride": "augmentation.multi_scale_stride",
@@ -159,28 +160,45 @@ def get_training_numeric_parameter_paths(
         return _merge_paths(paths, _CLASSIFICATION_AUGMENTATION_NUMERIC_PATHS)
 
     paths = _merge_paths(paths, _YOLO_EVALUATION_NUMERIC_PATHS)
+    if model != "yolo26":
+        paths = _merge_paths(paths, _YOLO_NMS_NUMERIC_PATHS)
     if task == "detection":
+        regression_loss_path = (
+            {"l1_loss_weight": "loss.l1_weight"}
+            if model == "yolo26"
+            else {"dfl_loss_weight": "loss.dfl_weight"}
+        )
         paths = _merge_paths(
             paths,
             {
                 "class_loss_weight": "loss.class_weight",
                 "box_loss_weight": "loss.box_weight",
-                "dfl_loss_weight": "loss.dfl_weight",
             },
+            regression_loss_path,
             _YOLO_MATCHING_NUMERIC_PATHS,
         )
     elif task == "segmentation":
+        regression_loss_path = (
+            {"l1_loss_weight": "loss.l1_weight"}
+            if model == "yolo26"
+            else {"dfl_loss_weight": "loss.dfl_weight"}
+        )
         paths = _merge_paths(
             paths,
             {
                 "class_loss_weight": "loss.class_weight",
                 "box_loss_weight": "loss.box_weight",
-                "dfl_loss_weight": "loss.dfl_weight",
                 "mask_loss_weight": "loss.mask_weight",
             },
+            regression_loss_path,
             _YOLO_MATCHING_NUMERIC_PATHS,
         )
     elif task == "pose":
+        regression_loss_path = (
+            {"l1_loss_weight": "loss.l1_weight"}
+            if model == "yolo26"
+            else {"dfl_loss_weight": "loss.dfl_weight"}
+        )
         paths = _merge_paths(
             paths,
             {
@@ -189,9 +207,9 @@ def get_training_numeric_parameter_paths(
                 ),
                 "class_loss_weight": "loss.class_weight",
                 "box_loss_weight": "loss.box_weight",
-                "dfl_loss_weight": "loss.dfl_weight",
                 "kpt_loss_weight": "loss.keypoint_weight",
             },
+            regression_loss_path,
             _YOLO_MATCHING_NUMERIC_PATHS,
         )
     elif task != "obb":

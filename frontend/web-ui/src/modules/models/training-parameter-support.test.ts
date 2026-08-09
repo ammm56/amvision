@@ -63,6 +63,14 @@ function buildSchemaItem(
     schema_name: `${taskType}-${modelType}`,
     parameter_schema: {},
     default_parameters: {},
+    capabilities: {
+      postprocess_mode: modelType === 'yolo26' ? 'end_to_end' : 'nms',
+      supports_nms_threshold: modelType !== 'yolo26',
+      distribution_loss_name: modelType === 'yolo26' ? 'l1_loss' : 'dfl_loss',
+      augmentation_families: ['hsv', 'mosaic', 'mixup', 'affine', 'multi_scale'],
+      best_metric_name: 'map50_95',
+      best_metric_direction: 'maximize',
+    },
     numeric_fields: fields
       .filter((field) => field.inputKind === 'number')
       .map((field) => ({
@@ -120,28 +128,28 @@ describe('training parameter augmentation support', () => {
 
   it('uses backend numeric specs as the rendered constraint source', () => {
     const schema = buildSchemaItem('detection', 'yolo26', {
-      mosaic_scale_min: {
+      hsv_h: {
         minimum: 0.02,
-        maximum: 8,
+        maximum: 0.5,
         step: 0.02,
         decimals: 2,
-        default_value: 0.6,
+        default_value: 0.02,
       },
     })
     const field = getModelLayerTrainingFields('detection', 'yolo26', schema)
-      .find((item) => item.key === 'mosaic_scale_min')!
+      .find((item) => item.key === 'hsv_h')!
 
     expect(field).toMatchObject({
       min: 0.02,
-      max: 8,
+      max: 0.5,
       step: 0.02,
-      defaultValue: '0.6',
+      defaultValue: '0.02',
     })
   })
 
   it('rejects a backend numeric catalog that does not cover the rendered form', () => {
     const schema = buildSchemaItem('detection', 'yolo26')
-    schema.numeric_fields = schema.numeric_fields.filter((field) => field.key !== 'mosaic_scale_min')
+    schema.numeric_fields = schema.numeric_fields.filter((field) => field.key !== 'hsv_h')
 
     expect(() => getModelLayerTrainingFields('detection', 'yolo26', schema))
       .toThrow('训练参数目录缺少数值字段')
@@ -206,10 +214,11 @@ describe('training parameter augmentation support', () => {
         expect(augmentationFieldKeys(taskType, modelType)).toEqual(
           expect.arrayContaining([
             'flip_prob',
-            'hsv_prob',
+            'hsv_h',
+            'hsv_s',
+            'hsv_v',
             'mosaic_prob',
             'mixup_prob',
-            'enable_mixup',
             'affine_prob',
             'close_mosaic',
             'multi_scale',
@@ -225,6 +234,46 @@ describe('training parameter augmentation support', () => {
         expect(fieldKeys(taskType, modelType)).toContain('optimizer')
         expect(defaultValues(taskType, modelType).optimizer).toBe('auto')
       }
+    }
+  })
+
+  it('does not submit stale NMS values for YOLO26 end-to-end tasks', () => {
+    for (const taskType of ['detection', 'segmentation', 'pose', 'obb'] as const) {
+      const values = defaultValues(taskType, 'yolo26')
+      values.evaluation_nms_threshold = '0.5'
+      const parameters = buildTrainingParameters(taskType, 'yolo26', values, {
+        parameterSchema: buildSchemaItem(taskType, 'yolo26'),
+      })
+
+      expect(parameters.evaluation).not.toHaveProperty('nms_threshold')
+    }
+  })
+
+  it('labels the third box regression loss from model capabilities', () => {
+    const yolo26Field = getModelLayerTrainingFields(
+      'detection',
+      'yolo26',
+      buildSchemaItem('detection', 'yolo26'),
+    ).find((field) => field.key === 'l1_loss_weight')
+    const yolo11Field = getModelLayerTrainingFields(
+      'detection',
+      'yolo11',
+      buildSchemaItem('detection', 'yolo11'),
+    ).find((field) => field.key === 'dfl_loss_weight')
+
+    expect(yolo26Field?.label).toBe('L1 框回归损失权重')
+    expect(yolo11Field?.label).toBe('DFL 损失权重')
+    expect(fieldKeys('detection', 'yolo26')).not.toContain('dfl_loss_weight')
+  })
+
+  it('uses the reference box gain as the default YOLO mask gain', () => {
+    for (const modelType of ['yolov8', 'yolo11', 'yolo26']) {
+      const values = defaultValues('segmentation', modelType)
+      expect(values.box_loss_weight).toBe('7.5')
+      expect(values.mask_loss_weight).toBe('7.5')
+      expect(buildTrainingParameters('segmentation', modelType, values)).toMatchObject({
+        loss: { box_weight: 7.5, mask_weight: 7.5 },
+      })
     }
   })
 
@@ -403,23 +452,23 @@ describe('training parameter augmentation support', () => {
     )).toContain('权重衰减')
   })
 
-  it('rejects reversed YOLO augmentation ranges', () => {
-    const values = defaultValues('segmentation', 'yolo26')
-    values.mosaic_scale_min = '2'
-    values.mosaic_scale_max = '0.5'
+  it('rejects reversed YOLOX augmentation ranges', () => {
+    const values = defaultValues('detection', 'yolox')
+    values.mixup_scale_min = '2'
+    values.mixup_scale_max = '0.5'
 
-    expect(validateTrainingModelLayerValues('segmentation', 'yolo26', values))
-      .toContain('mosaic_scale')
+    expect(validateTrainingModelLayerValues('detection', 'yolox', values))
+      .toContain('mixup_scale')
   })
 
   it('rejects values outside the declared decimal step grid', () => {
     const values = defaultValues('detection', 'yolo26')
-    values.mosaic_scale_min = '0.505'
+    values.hsv_h = '0.0155'
 
     expect(validateTrainingModelLayerValues('detection', 'yolo26', values))
-      .toContain('0.01')
+      .toContain('0.001')
 
-    values.mosaic_scale_min = '0.5'
+    values.hsv_h = '0.015'
     expect(validateTrainingModelLayerValues('detection', 'yolo26', values)).toBeNull()
   })
 

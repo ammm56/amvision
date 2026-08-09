@@ -26,7 +26,6 @@ class Yolo26DetectionResumeValidationRequest:
     validation_split_name: str | None
     evaluation_interval: int
     evaluation_confidence_threshold: float | None
-    evaluation_nms_threshold: float | None
     learning_rate: float
     weight_decay: float
     class_loss_weight: float
@@ -177,11 +176,6 @@ def _validate_yolo26_resume_validation_config(
         checkpoint_value=checkpoint_payload.get("evaluation_confidence_threshold"),
         expected_value=request.evaluation_confidence_threshold,
         field_name="evaluation_confidence_threshold",
-    )
-    _assert_yolo26_resume_optional_float_matches(
-        checkpoint_value=checkpoint_payload.get("evaluation_nms_threshold"),
-        expected_value=request.evaluation_nms_threshold,
-        field_name="evaluation_nms_threshold",
     )
 
 
