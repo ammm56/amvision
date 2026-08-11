@@ -15,6 +15,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
+)
 from backend.service.application.models.training.yolo_detection_task_registration import (
     register_yolo_detection_checkpoint_model_version,
     register_yolo_detection_training_output_model_version,
@@ -30,7 +33,6 @@ from backend.service.application.models.training.yolo_detection_task_control imp
     resolve_yolo_detection_resume_checkpoint_object_key,
 )
 from backend.service.application.models.training.yolo_detection_task_events import (
-    build_yolo_detection_training_batch_progress_event,
     build_yolo_detection_training_cancelled_event,
     build_yolo_detection_training_checkpoint_saved_event,
     build_yolo_detection_training_completed_event,
@@ -858,10 +860,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     extra_options=dict(request.extra_options),
                     batch_callback=lambda progress: self._append_batch_progress(
                         task_id=task_id,
-                        request=request,
-                        output_files=output_files,
                         attempt_no=attempt_no,
-                        resolved_evaluation_interval=resolved_evaluation_interval,
                         progress=progress,
                     ),
                     epoch_callback=lambda progress: self._handle_epoch_progress(
@@ -1114,39 +1113,33 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         self,
         *,
         task_id: str,
-        request: YoloDetectionTrainingTaskRequest,
-        output_files: DetectionTrainingOutputFiles,
         attempt_no: int,
-        resolved_evaluation_interval: int,
         progress: YoloDetectionTrainingBatchProgress,
     ) -> None:
-        """回写单个 batch 的进度事件。"""
+        """发布单个 batch 的易失遥测，不写 TaskEvent 或任务快照。"""
 
-        current_task = self._require_training_task(task_id)
-        control = read_yolo_detection_training_control(
-            metadata=current_task.metadata,
-            control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-        )
         percent = self._build_progress_percent(
             epoch=progress.epoch,
             max_epochs=progress.max_epochs,
             iteration=progress.iteration,
             max_iterations=progress.max_iterations,
         )
-        self.task_service.append_task_event(
-            build_yolo_detection_training_batch_progress_event(
-                task_id=task_id,
-                model_type=self.model_type,
-                attempt_no=attempt_no,
-                progress=progress,
-                percent=percent,
-                output_files=output_files,
-                requested_precision=request.precision,
-                requested_gpu_count=request.gpu_count,
-                requested_evaluation_interval=resolved_evaluation_interval,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=control,
-            )
+        publish_training_batch_telemetry(
+            session_factory=self.session_factory,
+            task_id=task_id,
+            attempt_no=attempt_no,
+            task_type="detection",
+            model_type=self.model_type,
+            epoch=progress.epoch,
+            max_epochs=progress.max_epochs,
+            step=progress.iteration,
+            steps_per_epoch=progress.max_iterations,
+            global_step=progress.global_iteration,
+            total_steps=progress.total_iterations,
+            progress_percent=percent,
+            learning_rate=progress.learning_rate,
+            metrics=dict(progress.train_metrics),
+            input_size=progress.input_size,
         )
 
     def _append_epoch_progress(

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.geometry import make_anchors
 from backend.service.application.models.yolo_core_common.losses.obb import (
+    compute_obb_angle_loss,
     probiou_aligned,
+)
+from backend.service.application.models.yolo_core_common.losses import (
+    write_assignment_quality_scores,
 )
 from backend.service.application.models.yolov8_core.losses.detection import (
     yolov8_distribution_focal_loss,
@@ -65,11 +68,17 @@ def compute_yolov8_obb_loss(
         pred_angles=pred_angles,
     )
     anchor_points_batch = anchor_points.unsqueeze(0).expand(batch_size, -1, -1)
-    pred_rboxes = yolov8_decode_distances_to_rboxes(
+    pred_rboxes_grid = yolov8_decode_distances_to_rboxes(
         torch_module=torch,
         pred_dist=decoded_distances,
         pred_angle=angle_all,
         anchor_points=anchor_points_batch,
+    )
+    pred_rboxes_pixel = pred_rboxes_grid.clone()
+    pred_rboxes_pixel[..., :4] = pred_rboxes_pixel[..., :4] * stride_tensor.view(
+        1,
+        -1,
+        1,
     )
     anchor_centers_xy = anchor_points * stride_tensor
     min_candidate_box_size = float(min(int(item) for item in obb_head.strides))
@@ -83,7 +92,8 @@ def compute_yolov8_obb_loss(
     for batch_index in range(batch_size):
         image_class_logits = class_logits_all[batch_index]
         image_class_probabilities = image_class_logits.sigmoid()
-        image_pred_rboxes = pred_rboxes[batch_index]
+        image_pred_rboxes_grid = pred_rboxes_grid[batch_index]
+        image_pred_rboxes_pixel = pred_rboxes_pixel[batch_index]
         image_angle = angle_all[batch_index] if angle_all.dim() == 3 else angle_all
         target_scores = torch.zeros_like(image_class_logits)
 
@@ -94,19 +104,19 @@ def compute_yolov8_obb_loss(
         if gt_rboxes_list is not None and len(gt_rboxes_list) > 0:
             gt_rboxes = torch.tensor(
                 gt_rboxes_list,
-                device=image_pred_rboxes.device,
-                dtype=image_pred_rboxes.dtype,
+                device=image_pred_rboxes_grid.device,
+                dtype=image_pred_rboxes_grid.dtype,
             )
             gt_classes = torch.tensor(
                 gt_classes_list,
-                device=image_pred_rboxes.device,
+                device=image_pred_rboxes_grid.device,
                 dtype=torch.long,
             )
 
             with torch.no_grad():
                 assignment = assign_yolov8_obb_targets(
                     torch_module=torch,
-                    pred_rboxes=image_pred_rboxes.detach(),
+                    pred_rboxes=image_pred_rboxes_pixel.detach(),
                     class_probabilities=image_class_probabilities.detach(),
                     anchor_centers_xy=anchor_centers_xy,
                     gt_rboxes=gt_rboxes,
@@ -121,21 +131,29 @@ def compute_yolov8_obb_loss(
             if bool(foreground_mask.any()):
                 assigned_indices = assignment["assigned_gt_indices"][foreground_mask]
                 quality_scores = assignment["quality_scores"][foreground_mask]
-                foreground_pred_rboxes = image_pred_rboxes[foreground_mask]
-                foreground_gt_rboxes = gt_rboxes[assigned_indices]
+                foreground_pred_rboxes_grid = image_pred_rboxes_grid[
+                    foreground_mask
+                ]
+                foreground_gt_rboxes_pixel = gt_rboxes[assigned_indices]
+                foreground_stride = stride_tensor[foreground_mask]
+                foreground_gt_rboxes_grid = foreground_gt_rboxes_pixel.clone()
+                foreground_gt_rboxes_grid[:, :4] = (
+                    foreground_gt_rboxes_grid[:, :4]
+                    / foreground_stride.view(-1, 1)
+                )
 
                 iou_values = yolov8_probiou_aligned(
                     torch_module=torch,
-                    obb1=foreground_pred_rboxes,
-                    obb2=foreground_gt_rboxes,
+                    obb1=foreground_pred_rboxes_grid,
+                    obb2=foreground_gt_rboxes_grid,
+                    floor=0.01,
                 ).clamp(0.0, 1.0)
                 total_box_loss = total_box_loss + ((1.0 - iou_values) * quality_scores).sum()
 
                 foreground_anchor_points = anchor_points[foreground_mask]
-                foreground_stride = stride_tensor[foreground_mask]
                 target_distances = yolov8_rbox_to_distances(
                     torch_module=torch,
-                    rboxes=foreground_gt_rboxes,
+                    rboxes=foreground_gt_rboxes_pixel,
                     anchor_points=foreground_anchor_points,
                     stride_tensor=foreground_stride,
                     reg_max=reg_max,
@@ -164,8 +182,8 @@ def compute_yolov8_obb_loss(
                     ).sum()
 
                 foreground_pred_angle = image_angle[foreground_mask].view(-1, 1)
-                foreground_gt_angle = foreground_gt_rboxes[:, 4:5]
-                foreground_gt_wh = foreground_gt_rboxes[:, 2:4]
+                foreground_gt_angle = foreground_gt_rboxes_pixel[:, 4:5]
+                foreground_gt_wh = foreground_gt_rboxes_pixel[:, 2:4]
                 image_angle_loss = compute_yolov8_obb_angle_loss(
                     torch_module=torch,
                     pred_angle=foreground_pred_angle,
@@ -173,9 +191,15 @@ def compute_yolov8_obb_loss(
                     gt_wh=foreground_gt_wh,
                     target_scores=quality_scores,
                 )
-                total_angle_loss = total_angle_loss + image_angle_loss * quality_scores.sum()
+                total_angle_loss = total_angle_loss + image_angle_loss
                 total_target_score = total_target_score + quality_scores.sum()
-                target_scores[foreground_mask, gt_classes[assigned_indices]] = quality_scores
+                write_assignment_quality_scores(
+                    target_scores=target_scores,
+                    foreground_mask=foreground_mask,
+                    gt_classes=gt_classes,
+                    assigned_gt_indices=assigned_indices,
+                    quality_scores=quality_scores,
+                )
 
         total_class_loss = total_class_loss + torch.nn.functional.binary_cross_entropy_with_logits(
             image_class_logits,
@@ -220,13 +244,20 @@ def _normalize_yolov8_obb_angle_tensor(
     raise ValueError(f"YOLOv8 OBB angle 输出 shape 不合法: {tuple(pred_angles.shape)}")
 
 
-def yolov8_probiou_aligned(torch_module: Any, obb1: Any, obb2: Any) -> Any:
+def yolov8_probiou_aligned(
+    torch_module: Any,
+    obb1: Any,
+    obb2: Any,
+    *,
+    floor: float = 0.0,
+) -> Any:
     """计算 YOLOv8 OBB 一一对应旋转框 probiou。"""
 
     return probiou_aligned(
         torch_module=torch_module,
         obb1=obb1,
         obb2=obb2,
+        floor=floor,
     )
 
 
@@ -237,22 +268,15 @@ def compute_yolov8_obb_angle_loss(
     gt_wh: Any,
     target_scores: Any,
 ) -> Any:
-    """计算 YOLOv8 OBB 角度损失。"""
+    """通过三代 YOLO 共用的 FP32 稳定边界计算角度损失。"""
 
-    if int(pred_angle.shape[0]) == 0:
-        return pred_angle.new_zeros(())
-
-    delta = pred_angle - gt_angle
-    delta = delta - (delta / math.pi).round() * math.pi
-    angle_loss = (2.0 * delta).sin() ** 2
-
-    width = gt_wh[:, 0:1].clamp_min(1e-3)
-    height = gt_wh[:, 1:2].clamp_min(1e-3)
-    log_aspect_ratio = (width / height).log()
-    scale_weight = (-(log_aspect_ratio**2) / (3.0**2)).exp()
-
-    weighted_loss = (angle_loss * scale_weight).squeeze(-1) * target_scores
-    return weighted_loss.sum() / target_scores.sum().clamp_min(1.0)
+    return compute_obb_angle_loss(
+        torch_module=torch_module,
+        pred_angle=pred_angle,
+        gt_angle=gt_angle,
+        gt_wh=gt_wh,
+        target_scores=target_scores,
+    )
 
 
 __all__ = [

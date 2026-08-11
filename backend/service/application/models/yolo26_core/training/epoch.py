@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from backend.service.application.models.training.metric_policy import (
     resolve_best_metric_decision,
 )
+from backend.service.application.models.yolo_core_common.training.validation_schedule import (
+    should_run_yolo_validation,
+)
 
 
 @dataclass(frozen=True)
@@ -26,10 +29,12 @@ def should_run_yolo26_detection_validation(
 ) -> bool:
     """判断当前 epoch 是否需要执行 YOLO26 detection validation。"""
 
-    if validation_sample_count <= 0:
-        return False
-    resolved_interval = max(1, int(evaluation_interval))
-    return int(epoch) == int(max_epochs) or int(epoch) % resolved_interval == 0
+    return should_run_yolo_validation(
+        epoch_index=epoch,
+        max_epochs=max_epochs,
+        evaluation_interval=evaluation_interval,
+        has_validation_samples=validation_sample_count > 0,
+    )
 
 
 def resolve_yolo26_detection_best_metric_name(*, has_validation: bool) -> str:

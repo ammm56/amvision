@@ -97,6 +97,8 @@ class PoseEvaluationTaskResult:
     report_object_key: str
     predictions_object_key: str
     result_package_object_key: str | None
+    bbox_map50: float
+    bbox_map50_95: float
     oks_ap50: float
     oks_ap50_95: float
     sample_count: int
@@ -285,6 +287,8 @@ class SqlAlchemyPoseEvaluationTaskService:
             report_object_key=report_key,
             predictions_object_key=predictions_key,
             result_package_object_key=package_key,
+            bbox_map50=eval_result.bbox_map50,
+            bbox_map50_95=eval_result.bbox_map50_95,
             oks_ap50=eval_result.oks_ap50,
             oks_ap50_95=eval_result.oks_ap50_95,
             sample_count=eval_result.sample_count,
@@ -308,6 +312,8 @@ class SqlAlchemyPoseEvaluationTaskService:
                         "report_object_key": report_key,
                         "predictions_object_key": predictions_key,
                         "result_package_object_key": package_key,
+                        "bbox_map50": eval_result.bbox_map50,
+                        "bbox_map50_95": eval_result.bbox_map50_95,
                         "oks_ap50": eval_result.oks_ap50,
                         "oks_ap50_95": eval_result.oks_ap50_95,
                         "sample_count": eval_result.sample_count,
@@ -442,6 +448,8 @@ class SqlAlchemyPoseEvaluationTaskService:
             report_object_key=report_key,
             predictions_object_key=str(result.get("predictions_object_key", "")),
             result_package_object_key=result.get("result_package_object_key"),
+            bbox_map50=float(result.get("bbox_map50", 0.0)),
+            bbox_map50_95=float(result.get("bbox_map50_95", 0.0)),
             oks_ap50=float(result.get("oks_ap50", 0.0)),
             oks_ap50_95=float(result.get("oks_ap50_95", 0.0)),
             sample_count=int(result.get("sample_count", 0)),

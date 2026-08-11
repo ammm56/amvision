@@ -184,7 +184,17 @@ def test_yolo_detection_summary_keeps_validation_provenance() -> None:
     execution_result = YoloDetectionTrainingExecutionResult(
         checkpoint_bytes=b"best",
         latest_checkpoint_bytes=b"latest",
-        metrics_payload={},
+        metrics_payload={
+            "training_runtime": {
+                "batch_size": 46,
+                "batch_resolution_mode": "auto-cuda-profile",
+                "amp_enabled": True,
+                "precision": "fp16",
+                "amp_dtype": "fp16",
+                "device": "cuda:0",
+                "oom_recovery_count": 0,
+            }
+        },
         validation_metrics_payload={
             "final_metrics": {"map50": 0.99, "map50_95": 0.95},
             "evaluated_epochs": [5, 10],
@@ -199,13 +209,13 @@ def test_yolo_detection_summary_keeps_validation_provenance() -> None:
         sample_count=10,
         train_sample_count=8,
         input_size=(640, 640),
-        batch_size=4,
+        batch_size=46,
         max_epochs=10,
-        device="cpu",
-        gpu_count=0,
-        device_ids=(),
+        device="cuda:0",
+        gpu_count=1,
+        device_ids=(0,),
         distributed_mode="single-process",
-        precision="fp32",
+        precision="fp16",
         validation_split_name="val",
         validation_sample_count=2,
         parameter_count=100,
@@ -252,6 +262,11 @@ def test_yolo_detection_summary_keeps_validation_provenance() -> None:
         "evaluated_epochs": [5, 10],
         "metrics_object_key": "task-runs/training/task-1/validation.json",
     }
+    assert summary["training_config"]["requested_batch_size"] == 4
+    assert summary["training_config"]["batch_size"] == 46
+    assert summary["training_config"]["requested_precision"] == "fp32"
+    assert summary["training_config"]["precision"] == "fp16"
+    assert summary["training_config"]["device"] == "cuda:0"
 
 
 def test_yolo26_summary_uses_l1_weight_name_without_fake_dfl_field() -> None:

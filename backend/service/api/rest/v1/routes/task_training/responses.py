@@ -200,7 +200,13 @@ def build_training_task_available_actions(
             actions.append("resume")
         actions.extend(["terminate", "delete"])
         return actions
-    if task.state in {"succeeded", "failed", "cancelled"}:
+    if task.state == "failed":
+        actions = []
+        if resolve_resume_checkpoint_object_key(task):
+            actions.append("resume")
+        actions.append("delete")
+        return actions
+    if task.state in {"succeeded", "cancelled"}:
         return ["delete"]
     return []
 

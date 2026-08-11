@@ -77,6 +77,8 @@ def run_worker_forever() -> None:
         task_manager.run_forever()
     finally:
         heartbeat.stop()
+        if runtime.training_telemetry_publisher is not None:
+            runtime.training_telemetry_publisher.close()
         runtime.session_factory.engine.dispose()
 
 

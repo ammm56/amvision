@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
+
+from backend.service.application.models.evaluation.model_mode import evaluating_model
 
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
@@ -20,8 +23,11 @@ from backend.service.application.models.evaluation.obb_evaluation import (
     run_obb_evaluation,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    YoloTaskDataLoaderPlan,
     build_yolo_task_evaluation_dataloader,
+    iter_yolo_task_evaluation_items,
     load_yolo_task_dataloader_imports,
+    managed_yolo_task_evaluation_dataloader,
     move_yolo_task_batch_to_device,
     resolve_yolo_task_evaluation_dataloader_plan,
 )
@@ -31,7 +37,9 @@ from backend.service.application.models.yolo26_core.data import (
 from backend.service.application.models.yolo26_core.postprocess import (
     build_yolo26_obb_postprocess_instances,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -77,23 +85,39 @@ def evaluate_yolo26_obb_samples(
     precision: str,
     score_threshold: float,
     imports: Any,
+    batch_size: int = 1,
+    dataloader_plan: YoloTaskDataLoaderPlan | None = None,
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 OBB 训练期评估。"""
 
-    model.eval()
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
+        batch_size=batch_size,
         input_size=input_size,
-        plan=resolve_yolo_task_evaluation_dataloader_plan(device=device),
+        plan=dataloader_plan
+        or resolve_yolo_task_evaluation_dataloader_plan(device=device),
         build_batch=build_yolo26_obb_training_batch,
         load_imports=load_yolo_task_dataloader_imports,
     )
-    with imports.torch.no_grad():
-        for image_index, batch in enumerate(evaluation_loader):
+    next_image_index = 0
+    letterbox_transform = build_yolo_letterbox_transform(
+        source_width=int(input_size[1]),
+        source_height=int(input_size[0]),
+        input_size=input_size,
+    )
+    with (
+        managed_yolo_task_evaluation_dataloader(evaluation_loader),
+        evaluating_model(model),
+        imports.torch.no_grad(),
+    ):
+        for batch in evaluation_loader:
+            if control_callback is not None:
+                control_callback()
             if batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -105,32 +129,33 @@ def evaluate_yolo26_obb_samples(
             with _yolo26_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
             prediction_array = _yolo26_tensor_to_np(outputs, imports)
-            letterbox_transform = build_yolo_letterbox_transform(
-                source_width=int(input_size[1]),
-                source_height=int(input_size[0]),
-                input_size=input_size,
-            )
-            instances = build_yolo26_obb_postprocess_instances(
-                np_module=imports.np,
-                prediction_array=prediction_array,
-                labels=labels,
-                score_threshold=score_threshold,
-                letterbox_transform=letterbox_transform,
-            )
-            target = batch.targets[0]
-            _append_yolo26_obb_gt_items(
-                image_index=image_index,
-                target=target,
-                gt_items=gt_items,
-            )
-            total_predictions += len(instances)
-            pred_items.extend(
-                _build_yolo26_obb_prediction_items(
-                    image_index=image_index,
-                    predictions=instances,
+            for image_index, target, output_slices in iter_yolo_task_evaluation_items(
+                targets=batch.targets,
+                batched_outputs=(prediction_array,),
+                image_index_start=next_image_index,
+            ):
+                instances = build_yolo26_obb_postprocess_instances(
+                    np_module=imports.np,
+                    prediction_array=output_slices[0],
+                    labels=labels,
+                    score_threshold=score_threshold,
+                    letterbox_transform=letterbox_transform,
                 )
-            )
-    model.train()
+                _append_yolo26_obb_gt_items(
+                    image_index=image_index,
+                    target=target,
+                    gt_items=gt_items,
+                )
+                total_predictions += len(instances)
+                pred_items.extend(
+                    _build_yolo26_obb_prediction_items(
+                        image_index=image_index,
+                        predictions=instances,
+                    )
+                )
+            next_image_index += len(batch.targets)
+    if control_callback is not None:
+        control_callback()
     rotated_metrics = compute_coco_style_ap(
         gt_items=gt_items,
         pred_items=pred_items,

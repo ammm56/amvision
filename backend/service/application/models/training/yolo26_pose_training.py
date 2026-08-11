@@ -8,6 +8,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+)
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
@@ -49,10 +62,14 @@ from backend.service.application.models.yolo_core_common.weights import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    YoloTaskTrainingBatchProgress,
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
     resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_task_dataloader_plan,
+)
+from backend.service.application.models.yolo_core_common.training.pose_topology import (
+    prepare_pose_augmentation_options,
 )
 from backend.service.domain.models.model_task_types import POSE_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -77,7 +94,6 @@ YOLO26_POSE_DEFAULT_ASSIGN_ALPHA = 0.5
 YOLO26_POSE_DEFAULT_ASSIGN_BETA = 6.0
 YOLO26_POSE_DEFAULT_GRAD_CLIP = 10.0
 YOLO26_POSE_DEFAULT_EVAL_CONF = 0.001
-YOLO26_POSE_DEFAULT_KPT_CONF = 0.25
 
 
 @dataclass(frozen=True)
@@ -105,6 +121,8 @@ class Yolo26PoseTrainingExecutionRequest:
         ]
         | None
     ) = None
+    batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
+    control_callback: Callable[[], None] | None = None
     savepoint_callback: Callable[[Yolo26PoseTrainingSavePoint], None] | None = None
 
 
@@ -125,6 +143,7 @@ class Yolo26PoseTrainingExecutionResult:
     test_sample_count: int = 0
 
 
+@training_engine_entrypoint
 def run_yolo26_pose_training(
     request: Yolo26PoseTrainingExecutionRequest,
 ) -> Yolo26PoseTrainingExecutionResult:
@@ -141,7 +160,12 @@ def run_yolo26_pose_training(
         torch_module=imports.torch,
         extra_options=request.extra_options,
     )
-    precision = request.precision
+    precision = resolve_training_amp_runtime(
+        torch_module=imports.torch,
+        device_name=device_name,
+        requested_precision=request.precision,
+        extra_options=request.extra_options,
+    ).precision
     input_size = request.input_size or YOLO26_POSE_DEFAULT_INPUT_SIZE
     manifest = load_yolo26_pose_training_manifest(
         dataset_storage=request.dataset_storage,
@@ -184,7 +208,11 @@ def run_yolo26_pose_training(
             torch_module=imports.torch,
         )
 
-    extra = dict(request.extra_options or {})
+    extra = prepare_pose_augmentation_options(
+        extra_options=request.extra_options,
+        manifest_payload=request.manifest_payload,
+        keypoint_shape=kpt_shape,
+    )
     learning_rate = float(extra.get("learning_rate", YOLO26_POSE_DEFAULT_LR))
     weight_decay = float(extra.get("weight_decay", YOLO26_POSE_DEFAULT_WEIGHT_DECAY))
     min_lr_ratio = float(extra.get("min_lr_ratio", YOLO26_POSE_DEFAULT_MIN_LR_RATIO))
@@ -208,12 +236,7 @@ def run_yolo26_pose_training(
         0.0, float(extra.get("grad_clip_norm", YOLO26_POSE_DEFAULT_GRAD_CLIP))
     )
     eval_conf = float(
-        extra.get(
-            "evaluation_confidence_threshold", YOLO26_POSE_DEFAULT_EVAL_CONF
-        )
-    )
-    keypoint_conf = float(
-        extra.get("keypoint_confidence_threshold", YOLO26_POSE_DEFAULT_KPT_CONF)
+        extra.get("evaluation_confidence_threshold", YOLO26_POSE_DEFAULT_EVAL_CONF)
     )
     augmentation_options = build_yolo26_task_augmentation_options(extra)
 
@@ -235,10 +258,24 @@ def run_yolo26_pose_training(
             assign_beta=assign_beta,
             grad_clip_norm=grad_clip_norm,
             evaluation_confidence_threshold=eval_conf,
-            keypoint_confidence_threshold=keypoint_conf,
         )
 
     model.to(device_name)
+    batch_size = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device_name,
+        input_size=input_size,
+        dataset_size=len(manifest.train_annotations),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLO26_POSE_DEFAULT_BATCH_SIZE,
+        runtime_precision=precision,
+        extra_options=extra,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
     optimizer, training_schedule = build_yolo_ultralytics_optimizer(
         torch_module=imports.torch,
         model=model,
@@ -270,7 +307,7 @@ def run_yolo26_pose_training(
     metrics_history: list[dict[str, float]] = []
     validation_history: list[dict[str, float]] = []
     best_metric_value = -1.0
-    best_metric_name = "val_map50_95"
+    best_metric_name = "val_oks_ap50_95"
     if resume_state is not None:
         restore_yolo26_pose_training_state(
             model=model,
@@ -312,6 +349,7 @@ def run_yolo26_pose_training(
         batch_size=batch_size,
         max_epochs=max_epochs,
         evaluation_interval=evaluation_interval,
+        checkpoint_interval=read_training_checkpoint_interval(extra),
         input_size=input_size,
         precision=precision,
         device_name=device_name,
@@ -329,7 +367,6 @@ def run_yolo26_pose_training(
         assign_topk2=assign_topk2,
         grad_clip_norm=grad_clip_norm,
         evaluation_confidence_threshold=eval_conf,
-        keypoint_confidence_threshold=keypoint_conf,
         augmentation_options=augmentation_options,
         start_epoch=start_epoch,
         global_iteration=global_iteration,
@@ -344,6 +381,8 @@ def run_yolo26_pose_training(
             else b""
         ),
         epoch_callback=request.epoch_callback,
+        batch_callback=request.batch_callback,
+        control_callback=request.control_callback,
         savepoint_callback=request.savepoint_callback,
         dataloader_plan=resolve_yolo_task_dataloader_plan(
             extra_options=extra,
@@ -378,9 +417,10 @@ def run_yolo26_pose_training(
             device=device_name,
             precision=precision,
             score_threshold=eval_conf,
-            keypoint_confidence_threshold=keypoint_conf,
             kpt_shape=kpt_shape,
             imports=imports,
+            batch_size=batch_size,
+            control_callback=request.control_callback,
         )
         test_metrics_payload = build_detection_test_metrics_report(
             available=True,

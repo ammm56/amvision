@@ -30,15 +30,33 @@ from backend.service.application.models.yolo_core_common.decode.obb import (
     OBB_ANGLE_DECODE_MODE_RAW,
     build_obb_prediction,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    build_yolo_letterbox_transform,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
     YoloUltralyticsOptimizerStep,
+    YoloTrainingNumericalError,
     build_yolo_ultralytics_optimizer,
     compute_yolo_ultralytics_lr_factor,
     resolve_yolo_optimizer_base_learning_rate,
 )
+from backend.service.application.models.yolo_core_common.postprocess import (
+    crop_binary_mask_to_box,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     restore_yolo_checkpoint_module_attributes,
+)
+from backend.service.application.models.yolo11_core.postprocess.segmentation import (
+    build_yolo11_segmentation_postprocess_instances,
+    postprocess_yolo11_segmentation_prediction_array,
+)
+from backend.service.application.models.yolo26_core.postprocess.segmentation import (
+    build_yolo26_segmentation_postprocess_instances,
+)
+from backend.service.application.models.yolov8_core.postprocess.segmentation import (
+    build_yolov8_segmentation_postprocess_instances,
+    postprocess_yolov8_segmentation_prediction_array,
 )
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
     DeploymentRuntimePool,
@@ -194,6 +212,115 @@ def test_optimizer_groups_accumulation_weight_decay_and_ema() -> None:
 
     assert not torch.equal(model[0].weight.detach(), original)
     assert ema.updates == 1
+    scheduler_calls: list[bool] = []
+    scheduler = type(
+        "_Scheduler",
+        (),
+        {"step": lambda _self: scheduler_calls.append(True)},
+    )()
+    assert step.step_scheduler_if_optimizer_updated(scheduler) is True
+    assert step.step_scheduler_if_optimizer_updated(scheduler) is False
+    assert scheduler_calls == [True]
+
+
+@pytest.mark.parametrize("invalid_loss", [float("nan"), float("inf"), float("-inf")])
+def test_optimizer_rejects_non_finite_loss_before_backward(invalid_loss: float) -> None:
+    """NaN/Inf loss 不得进入 backward、optimizer 或 checkpoint。"""
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=1,
+        train_sample_count=1,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=None,
+        schedule=schedule,
+        ema=None,
+        grad_clip_norm=10.0,
+    )
+
+    with pytest.raises(YoloTrainingNumericalError, match="非有限 total loss"):
+        step.backward_and_step(
+            loss=torch.tensor(invalid_loss, requires_grad=True),
+            iteration_index=1,
+            is_last_batch=True,
+        )
+
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+
+def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
+    """GradScaler 跳过 overflow step 时不得伪装成一次有效模型更新。"""
+
+    class _OverflowGradScaler:
+        def __init__(self) -> None:
+            self.scale_value = 65536.0
+
+        def scale(self, loss):
+            return loss
+
+        def unscale_(self, _optimizer) -> None:
+            return None
+
+        def step(self, _optimizer) -> None:
+            return None
+
+        def update(self) -> None:
+            self.scale_value /= 2.0
+
+        def get_scale(self) -> float:
+            return self.scale_value
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=1,
+        train_sample_count=1,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    ema = YoloModelEMA(model=model)
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=_OverflowGradScaler(),
+        schedule=schedule,
+        ema=ema,
+        grad_clip_norm=10.0,
+    )
+    original = model.weight.detach().clone()
+
+    did_step = optimizer_step.backward_and_step(
+        loss=model(torch.ones((1, 2))).square().mean(),
+        iteration_index=1,
+        is_last_batch=True,
+    )
+
+    assert did_step is False
+    assert optimizer_step.successful_optimizer_steps == 0
+    assert optimizer_step.skipped_optimizer_steps == 1
+    assert optimizer_step.consecutive_skipped_optimizer_steps == 1
+    assert ema.updates == 0
+    assert torch.equal(model.weight.detach(), original)
+    scheduler_calls: list[bool] = []
+    scheduler = type(
+        "_Scheduler",
+        (),
+        {"step": lambda _self: scheduler_calls.append(True)},
+    )()
+    assert optimizer_step.step_scheduler_if_optimizer_updated(scheduler) is False
+    assert scheduler_calls == []
 
 
 def test_auto_optimizer_resolves_adamw_or_musgd_and_restores_state() -> None:
@@ -363,6 +490,118 @@ def test_detection_postprocess_caps_nms_results_at_max_detections() -> None:
 
     assert result is not None
     assert result.boxes_xyxy.shape[0] == 2
+
+
+@pytest.mark.parametrize(
+    "postprocess_func",
+    [
+        postprocess_yolov8_segmentation_prediction_array,
+        postprocess_yolo11_segmentation_prediction_array,
+    ],
+)
+def test_segmentation_postprocess_caps_instances_before_mask_decode(
+    postprocess_func: object,
+) -> None:
+    """验证 v8/11 在 mask decode 前仅保留分数最高的 max_det 候选。"""
+
+    prediction = np.asarray(
+        [
+            [
+                [8.0, 8.0, 4.0, 4.0, 0.20, 1.0],
+                [16.0, 8.0, 4.0, 4.0, 0.95, 2.0],
+                [24.0, 8.0, 4.0, 4.0, 0.70, 3.0],
+                [32.0, 8.0, 4.0, 4.0, 0.80, 4.0],
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    result = postprocess_func(
+        prediction_array=prediction,
+        np_module=np,
+        num_classes=1,
+        score_threshold=0.01,
+        nms_threshold=0.7,
+        nms_indices_func=lambda **_kwargs: np.asarray([0, 1, 2, 3]),
+        max_detections=2,
+    )[0]
+
+    assert result is not None
+    assert result.scores.tolist() == pytest.approx([0.95, 0.80])
+    assert result.mask_coefficients[:, 0].tolist() == pytest.approx([2.0, 4.0])
+
+
+def test_segmentation_binary_mask_is_cropped_with_ultralytics_pixel_rules() -> None:
+    """验证 segmentation mask 使用左闭右开像素坐标裁到预测框。"""
+
+    cropped = crop_binary_mask_to_box(
+        binary_mask=np.ones((5, 6), dtype=np.uint8),
+        box_xyxy=(1.2, 0.8, 4.1, 3.0),
+        np_module=np,
+    )
+
+    assert int(cropped.sum()) == 6
+    assert np.all(cropped[1:3, 2:5] == 1)
+    assert np.count_nonzero(cropped[:, :2]) == 0
+    assert np.count_nonzero(cropped[3:, :]) == 0
+
+
+def test_segmentation_evaluation_can_encode_cropped_masks_without_polygons() -> None:
+    """验证三个 family 的评估路径可直接编码裁剪后的 binary mask。"""
+
+    transform = build_yolo_letterbox_transform(
+        source_width=32,
+        source_height=32,
+        input_size=(32, 32),
+    )
+    encoded_masks: list[np.ndarray] = []
+
+    def encode_mask(mask: np.ndarray) -> dict[str, object]:
+        encoded_masks.append(mask.copy())
+        return {"size": [32, 32], "counts": "encoded"}
+
+    common_prediction = np.asarray(
+        [[[16.0, 16.0, 16.0, 16.0, 0.9, 8.0]]],
+        dtype=np.float32,
+    )
+    common_kwargs = {
+        "cv2_module": cv2,
+        "np_module": np,
+        "prediction_array": common_prediction,
+        "proto_array": np.ones((1, 1, 4, 4), dtype=np.float32),
+        "labels": ("part",),
+        "score_threshold": 0.01,
+        "mask_threshold": 0.5,
+        "letterbox_transform": transform,
+        "mask_encoder": encode_mask,
+        "include_segments": False,
+    }
+    v8_instances = build_yolov8_segmentation_postprocess_instances(
+        **common_kwargs,
+        nms_threshold=0.7,
+        nms_indices_func=lambda **_kwargs: np.asarray([0]),
+    )
+    y11_instances = build_yolo11_segmentation_postprocess_instances(
+        **common_kwargs,
+        nms_threshold=0.7,
+        nms_indices_func=lambda **_kwargs: np.asarray([0]),
+    )
+    y26_instances = build_yolo26_segmentation_postprocess_instances(
+        **{
+            **common_kwargs,
+            "prediction_array": np.asarray(
+                [[[8.0, 8.0, 24.0, 24.0, 0.9, 0.0, 8.0]]],
+                dtype=np.float32,
+            ),
+        }
+    )
+
+    for instances in (v8_instances, y11_instances, y26_instances):
+        assert len(instances) == 1
+        assert instances[0].segments == ()
+        assert instances[0].mask_rle == {"size": [32, 32], "counts": "encoded"}
+    assert len(encoded_masks) == 3
+    assert all(int(mask.sum()) == 256 for mask in encoded_masks)
 
 
 def test_runtime_session_lease_closes_once() -> None:

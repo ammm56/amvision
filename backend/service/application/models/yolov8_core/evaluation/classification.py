@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
+
+from backend.service.application.models.evaluation.model_mode import evaluating_model
 
 from backend.service.application.models.training.classification_evaluation_report import (
     build_classification_evaluation_report,
@@ -11,6 +14,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloClassificationDataLoaderPlan,
     build_yolo_classification_training_dataloader,
     load_yolo_classification_dataloader_imports,
+    managed_yolo_task_evaluation_dataloader,
     move_yolo_classification_batch_to_device,
 )
 from backend.service.application.models.yolov8_core.data import (
@@ -35,6 +39,7 @@ def evaluate_yolov8_classification_samples(
     include_details: bool = False,
     split_name: str = "val",
     checkpoint_role: str = "current",
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """对验证样本执行 YOLOv8 classification 训练期评估。"""
 
@@ -57,15 +62,19 @@ def evaluate_yolov8_classification_samples(
         build_batch=build_yolov8_classification_training_batch,
         load_imports=load_yolo_classification_dataloader_imports,
     )
-    previous_training_mode = bool(model.training)
-    model.eval()
     correct_top1 = 0
     correct_top5 = 0
     total = 0
     targets: list[int] = []
     predictions: list[int] = []
-    with imports.torch.no_grad():
+    with (
+        managed_yolo_task_evaluation_dataloader(validation_dataloader),
+        evaluating_model(model),
+        imports.torch.no_grad(),
+    ):
         for cpu_batch in validation_dataloader:
+            if control_callback is not None:
+                control_callback()
             if cpu_batch is None:
                 continue
             batch = move_yolo_classification_batch_to_device(
@@ -80,7 +89,9 @@ def evaluate_yolov8_classification_samples(
             )
             _, top1_prediction = imports.torch.max(probabilities, 1)
             correct_top1 += int((top1_prediction == batch.targets).sum().item())
-            targets.extend(int(value) for value in batch.targets.detach().cpu().tolist())
+            targets.extend(
+                int(value) for value in batch.targets.detach().cpu().tolist()
+            )
             predictions.extend(
                 int(value) for value in top1_prediction.detach().cpu().tolist()
             )
@@ -93,7 +104,8 @@ def evaluate_yolov8_classification_samples(
                 if target in topk_prediction[index]:
                     correct_top5 += 1
             total += int(batch.targets.size(0))
-    model.train(previous_training_mode)
+    if control_callback is not None:
+        control_callback()
     top1_accuracy = round(correct_top1 / max(1, total), 6) if total > 0 else 0.0
     top5_accuracy = round(correct_top5 / max(1, total), 6) if total > 0 else 0.0
     fitness = round((top1_accuracy + top5_accuracy) / 2.0, 6)

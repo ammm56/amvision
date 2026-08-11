@@ -59,6 +59,14 @@
     "max_concurrent_tasks": 16,
     "poll_interval_seconds": 1.0
   },
+  "training_telemetry": {
+    "enabled": true,
+    "root_dir": "./data/runtime/training-telemetry",
+    "slot_count": 512,
+    "payload_capacity_bytes": 16384,
+    "poll_interval_seconds": 0.1,
+    "scan_interval_seconds": 1.0
+  },
   "async_inference_gateway": {
     "service_id": "backend-service-main"
   },

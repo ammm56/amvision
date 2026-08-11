@@ -5,6 +5,9 @@ from __future__ import annotations
 from backend.service.application.models.yolo_core_common.losses.detection import (
     distribution_focal_loss,
 )
+from backend.service.application.models.yolo_core_common.losses.assignment import (
+    write_assignment_quality_scores,
+)
 from backend.service.application.models.yolo_core_common.losses.obb import (
     compute_obb_angle_loss,
     probiou_aligned,
@@ -38,4 +41,5 @@ __all__ = [
     "distribution_focal_loss",
     "probiou_aligned",
     "segmentation_bbox_iou_aligned",
+    "write_assignment_quality_scores",
 ]

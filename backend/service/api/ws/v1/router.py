@@ -17,6 +17,11 @@ from backend.service.application.deployments.deployment_instance_service import 
     SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.events import InMemoryServiceEventBus, ServiceEvent
+from backend.service.application.models.training.training_telemetry import (
+    TRAINING_TELEMETRY_PROTOCOL,
+    TRAINING_TELEMETRY_STREAM,
+    TrainingTelemetryBroker,
+)
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_SNAPSHOT_EVENT_TYPE,
     ProjectSummaryService,
@@ -249,6 +254,128 @@ async def subscribe_task_events(socket: WebSocket) -> None:
             if event_id:
                 sent_event_ids.add(event_id)
             await socket.send_json(_build_service_event_message(service_event))
+    except WebSocketDisconnect:
+        return
+    finally:
+        subscription.close()
+
+
+@ws_v1_router.websocket("/training/telemetry")
+async def subscribe_training_telemetry(socket: WebSocket) -> None:
+    """订阅不写入 TaskEvent 表的有界训练高频遥测。"""
+
+    principal = _get_socket_principal(socket)
+    if principal is None:
+        await socket.close(code=4401, reason="authentication_required")
+        return
+    if not _scope_granted(principal.scopes, "tasks:read"):
+        await socket.close(code=4403, reason="permission_denied")
+        return
+
+    task_id = socket.query_params.get("task_id")
+    if task_id is None or not task_id.strip():
+        await socket.close(code=4400, reason="task_id_required")
+        return
+    session_factory = _get_socket_session_factory(socket)
+    event_bus = _get_socket_event_bus(socket)
+    broker = _get_socket_training_telemetry_broker(socket)
+    if session_factory is None:
+        await socket.close(code=1011, reason="session_factory_not_ready")
+        return
+    if event_bus is None or broker is None:
+        await socket.close(code=1011, reason="training_telemetry_not_ready")
+        return
+
+    service = SqlAlchemyTaskService(session_factory)
+    try:
+        task_detail = service.get_task(task_id)
+    except Exception:
+        await socket.close(code=4404, reason="task_not_found")
+        return
+    if principal.project_ids and task_detail.task.project_id not in principal.project_ids:
+        await socket.close(code=4404, reason="task_not_found")
+        return
+    if "training" not in task_detail.task.task_kind:
+        await socket.close(code=4400, reason="training_task_required")
+        return
+
+    after_cursor = socket.query_params.get("after_cursor")
+    limit = _parse_limit(socket.query_params.get("limit"))
+    sent_cursors: set[str] = set()
+    subscription = event_bus.subscribe(
+        stream=TRAINING_TELEMETRY_STREAM,
+        resource_id=task_id,
+        queue_size=512,
+    )
+    await socket.accept()
+    await socket.send_json(
+        _build_training_telemetry_control_message(
+            task_id=task_id,
+            event_type="training.telemetry.connected",
+            cursor=after_cursor,
+            payload={
+                "protocol": TRAINING_TELEMETRY_PROTOCOL,
+                "history_limit": broker.history_limit,
+            },
+        )
+    )
+
+    try:
+        replay = broker.replay(
+            task_id=task_id,
+            after_cursor=after_cursor,
+            limit=limit,
+        )
+        if replay.gap_detected:
+            await socket.send_json(
+                _build_training_telemetry_control_message(
+                    task_id=task_id,
+                    event_type="training.telemetry.lagging",
+                    cursor=after_cursor,
+                    payload={
+                        "protocol": TRAINING_TELEMETRY_PROTOCOL,
+                        "message": "telemetry cursor is outside retained history",
+                        "snapshot_required": True,
+                    },
+                )
+            )
+        for event in replay.events:
+            if event.cursor is not None:
+                sent_cursors.add(event.cursor)
+            await socket.send_json(_build_service_event_message(event))
+
+        while True:
+            if subscription.consume_overflowed():
+                await socket.send_json(
+                    _build_training_telemetry_control_message(
+                        task_id=task_id,
+                        event_type="training.telemetry.lagging",
+                        cursor=None,
+                        payload={
+                            "protocol": TRAINING_TELEMETRY_PROTOCOL,
+                            "message": "subscriber queue overflowed",
+                            "snapshot_required": True,
+                        },
+                    )
+                )
+                await socket.close(code=1013, reason="subscriber_queue_overflowed")
+                return
+            event = await subscription.receive(timeout_seconds=15.0)
+            if event is None:
+                await socket.send_json(
+                    _build_training_telemetry_control_message(
+                        task_id=task_id,
+                        event_type="training.telemetry.heartbeat",
+                        cursor=None,
+                        payload={"protocol": TRAINING_TELEMETRY_PROTOCOL},
+                    )
+                )
+                continue
+            if event.cursor is not None and event.cursor in sent_cursors:
+                continue
+            if event.cursor is not None:
+                sent_cursors.add(event.cursor)
+            await socket.send_json(_build_service_event_message(event))
     except WebSocketDisconnect:
         return
     finally:
@@ -836,6 +963,27 @@ def _build_service_event_message(event: ServiceEvent) -> dict[str, object]:
     }
 
 
+def _build_training_telemetry_control_message(
+    *,
+    task_id: str,
+    event_type: str,
+    cursor: str | None,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    """构造 training.telemetry.v1 连接、心跳和缺口消息。"""
+
+    return {
+        "stream": TRAINING_TELEMETRY_STREAM,
+        "event_type": event_type,
+        "event_version": "v1",
+        "occurred_at": _now_iso(),
+        "resource_kind": "training-task",
+        "resource_id": task_id,
+        "cursor": cursor,
+        "payload": payload,
+    }
+
+
 def _build_preview_run_event_message(event: WorkflowPreviewRunEvent) -> dict[str, object]:
     """把 WorkflowPreviewRunEvent 构造成 WebSocket v1 消息。
 
@@ -1337,6 +1485,15 @@ def _get_socket_event_bus(socket: WebSocket) -> InMemoryServiceEventBus | None:
         return event_bus
 
     return None
+
+
+def _get_socket_training_telemetry_broker(
+    socket: WebSocket,
+) -> TrainingTelemetryBroker | None:
+    """从应用状态读取训练遥测 broker。"""
+
+    broker = getattr(socket.app.state, "training_telemetry_broker", None)
+    return broker if isinstance(broker, TrainingTelemetryBroker) else None
 
 
 def _get_socket_preview_run_manager(socket: WebSocket) -> WorkflowPreviewRunManager | None:

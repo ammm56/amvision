@@ -6,7 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
+from backend.service.api.rest.v1.routes.training_execution_schemas import (
+    TrainingExecutionPolicyRequest,
+)
 from backend.service.api.rest.v1.routes.training_parameter_schemas import (
     SegmentationTrainingParameters,
     build_segmentation_training_parameters,
@@ -30,11 +32,9 @@ class SegmentationTrainingTaskCreateRequestBody(BaseModel):
     recipe_id: str = Field(default="default", min_length=1, max_length=128)
     model_scale: str = Field(min_length=1, max_length=64)
     output_model_name: str = Field(min_length=1, max_length=128)
-    evaluation_interval: int = Field(default=5, ge=1, le=10_000)
-    max_epochs: int | None = Field(default=None, ge=1, le=10_000)
-    batch_size: int | None = Field(default=None, ge=1, le=4096)
-    input_size: SpatialSizeRequest | None = None
-    precision: Literal["fp16", "fp32"] | None = None
+    execution: TrainingExecutionPolicyRequest = Field(
+        default_factory=TrainingExecutionPolicyRequest
+    )
     parameters: SegmentationTrainingParameters
     display_name: str = Field(default="", max_length=256)
 

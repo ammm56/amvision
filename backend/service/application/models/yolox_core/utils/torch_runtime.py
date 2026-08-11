@@ -14,7 +14,10 @@ def build_yolox_autocast_context(
 ):
     """按当前 precision 构建 YOLOX 自动混合精度上下文。"""
 
-    if precision != "fp16" or not device.startswith("cuda"):
+    if precision not in {"fp16", "bf16"} or not device.startswith("cuda"):
         return nullcontext()
 
-    return torch_module.autocast(device_type="cuda", dtype=torch_module.float16)
+    return torch_module.autocast(
+        device_type="cuda",
+        dtype=(torch_module.float16 if precision == "fp16" else torch_module.bfloat16),
+    )

@@ -20,6 +20,9 @@ from backend.service.application.models.rfdetr_core.training.platform_control im
 from backend.service.application.models.rfdetr_core.factory import (
     resolve_rfdetr_full_core_default_input_size,
 )
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -138,6 +141,7 @@ class RfdetrTrainingExecutionResult:
     test_metrics_payload: dict[str, object] | None = None
 
 
+@training_engine_entrypoint
 def run_rfdetr_training(
     request: RfdetrTrainingExecutionRequest,
 ) -> RfdetrTrainingExecutionResult:

@@ -198,7 +198,7 @@ _TASK_STACKS = {
         YoloV8PoseTrainingRequest,
         YoloV8PoseTrainingExecutionResult,
         YOLO_POSE_DATASET_FORMAT,
-        "val_map50_95",
+        "val_oks_ap50_95",
         ("operator",),
     ),
     "obb": (

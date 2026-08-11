@@ -469,9 +469,10 @@ class SqlAlchemyTaskService:
         elif task_event.event_type == "progress" and task_record.state == "queued":
             state = "running"
 
-        payload_error_message = payload.get("error_message")
-        if isinstance(payload_error_message, str):
-            error_message = payload_error_message
+        if "error_message" in payload:
+            payload_error_message = payload.get("error_message")
+            if payload_error_message is None or isinstance(payload_error_message, str):
+                error_message = payload_error_message
 
         payload_attempt_no = payload.get("attempt_no")
         if isinstance(payload_attempt_no, int):
@@ -483,9 +484,10 @@ class SqlAlchemyTaskService:
         elif state == "running" and started_at is None:
             started_at = task_event.created_at
 
-        payload_finished_at = payload.get("finished_at")
-        if isinstance(payload_finished_at, str):
-            finished_at = payload_finished_at
+        if "finished_at" in payload:
+            payload_finished_at = payload.get("finished_at")
+            if payload_finished_at is None or isinstance(payload_finished_at, str):
+                finished_at = payload_finished_at
         elif state in {"succeeded", "failed", "cancelled"}:
             finished_at = finished_at or task_event.created_at
 

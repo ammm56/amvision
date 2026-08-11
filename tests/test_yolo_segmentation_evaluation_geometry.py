@@ -83,23 +83,20 @@ def test_yolo_segmentation_normalizers_accept_cuda_tensor_outputs(
 
 
 @pytest.mark.parametrize(
-    ("module", "normalize_name", "postprocess_name", "builder_name"),
+    ("module", "postprocess_name", "builder_name"),
     [
         (
             yolov8_segmentation,
-            "normalize_yolov8_segmentation_outputs",
             "build_yolov8_segmentation_postprocess_instances",
             "_build_yolov8_segmentation_prediction_items",
         ),
         (
             yolo11_segmentation,
-            "normalize_yolo11_segmentation_outputs",
             "build_yolo11_segmentation_postprocess_instances",
             "_build_yolo11_segmentation_prediction_items",
         ),
         (
             yolo26_segmentation,
-            "normalize_yolo26_segmentation_outputs",
             "build_yolo26_segmentation_postprocess_instances",
             "_build_yolo26_segmentation_prediction_items",
         ),
@@ -108,7 +105,6 @@ def test_yolo_segmentation_normalizers_accept_cuda_tensor_outputs(
 def test_yolo_segmentation_evaluation_masks_use_height_width_order(
     monkeypatch: pytest.MonkeyPatch,
     module: object,
-    normalize_name: str,
     postprocess_name: str,
     builder_name: str,
 ) -> None:
@@ -119,27 +115,19 @@ def test_yolo_segmentation_evaluation_masks_use_height_width_order(
         class_id=0,
         score=0.9,
         bbox_xyxy=(4.0, 3.0, 18.0, 12.0),
-        segments=[[(4.0, 3.0), (18.0, 3.0), (18.0, 12.0), (4.0, 12.0)]],
+        mask_rle={"size": list(input_size), "counts": "test"},
     )
-
-    def fake_normalize_outputs(
-        *,
-        outputs: object,
-        np_module: object,
-        **_: object,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        return np.zeros((1, 1, 6), dtype=np.float32), np.zeros((1, 1, 2, 2), dtype=np.float32)
 
     def fake_postprocess_instances(**_: object) -> list[object]:
         return [fake_instance]
 
-    monkeypatch.setattr(module, normalize_name, fake_normalize_outputs)
     monkeypatch.setattr(module, postprocess_name, fake_postprocess_instances)
 
     builder_kwargs = {
-        "outputs": object(),
+        "prediction_array": np.zeros((1, 1, 6), dtype=np.float32),
+        "proto_array": np.zeros((1, 1, 2, 2), dtype=np.float32),
         "labels": ("barcode",),
-        "input_size": input_size,
+        "letterbox_transform": object(),
         "score_threshold": 0.01,
         "mask_threshold": 0.5,
         "imports": SimpleNamespace(np=np, cv2=object()),
@@ -150,7 +138,7 @@ def test_yolo_segmentation_evaluation_masks_use_height_width_order(
     _, mask_items, _ = getattr(module, builder_name)(**builder_kwargs)
 
     assert len(mask_items) == 1
-    assert np.asarray(mask_items[0]["mask"]).shape == input_size
+    assert mask_items[0]["segmentation"]["size"] == list(input_size)
 
 
 def test_yolov8_detection_random_affine_filters_heavily_cropped_boxes(
@@ -172,30 +160,32 @@ def test_yolov8_detection_random_affine_filters_heavily_cropped_boxes(
         fake_random_affine,
     )
 
-    _, boxes_xyxy, category_indexes = yolov8_detection_augmentation._apply_random_affine(
-        imports=SimpleNamespace(np=np),
-        image=image,
-        boxes_xyxy=[(0.0, 0.0, 100.0, 100.0)],
-        category_indexes=[0],
-        output_size=(100, 100),
-        augmentation_options=YoloV8DetectionAugmentationOptions(
-            flip_prob=0.0,
-            hsv_h=0.0,
-            hsv_s=0.0,
-            hsv_v=0.0,
-            mosaic_prob=0.0,
-            mixup_prob=0.0,
-            affine_prob=1.0,
-            degrees=0.0,
-            translate=0.0,
-            scale=0.0,
-            shear=0.0,
-            perspective=0.0,
-            close_mosaic_epochs=0,
-            multi_scale=False,
-            multi_scale_range=(1.0, 1.0),
-            multi_scale_stride=32,
-        ),
+    _, boxes_xyxy, category_indexes = (
+        yolov8_detection_augmentation._apply_random_affine(
+            imports=SimpleNamespace(np=np),
+            image=image,
+            boxes_xyxy=[(0.0, 0.0, 100.0, 100.0)],
+            category_indexes=[0],
+            output_size=(100, 100),
+            augmentation_options=YoloV8DetectionAugmentationOptions(
+                flip_prob=0.0,
+                hsv_h=0.0,
+                hsv_s=0.0,
+                hsv_v=0.0,
+                mosaic_prob=0.0,
+                mixup_prob=0.0,
+                affine_prob=1.0,
+                degrees=0.0,
+                translate=0.0,
+                scale=0.0,
+                shear=0.0,
+                perspective=0.0,
+                close_mosaic_epochs=0,
+                multi_scale=False,
+                multi_scale_range=(1.0, 1.0),
+                multi_scale_stride=32,
+            ),
+        )
     )
 
     assert boxes_xyxy == []

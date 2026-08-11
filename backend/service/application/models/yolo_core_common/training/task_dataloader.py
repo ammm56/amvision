@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Sequence
+import os
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 
+import numpy as np
+
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
@@ -15,6 +20,9 @@ from backend.service.application.models.yolo_core_common.training.infinite_datal
     YoloInfiniteDataLoader,
     resolve_yolo_dataloader_batch_size,
     resolve_yolo_dataloader_worker_count,
+)
+from backend.service.application.models.yolo_core_common.training.worker_ipc import (
+    serialize_yolo_worker_value,
 )
 
 
@@ -27,6 +35,84 @@ class YoloTaskDataLoaderPlan:
     prefetch_factor: int
     persistent_workers: bool
     seed: int
+
+
+_UNRESOLVED_AUGMENTATION_OPTIONS = object()
+
+
+class YoloTaskTrainingDataLoaderLifecycle:
+    """跨 epoch 复用训练 DataLoader，只在增强阶段变化时重建。
+
+    Windows ``spawn`` worker 的启动成本和常驻内存都很高。训练循环如果每个
+    epoch 重建 loader，会让 ``persistent_workers`` 完全失效。本生命周期对象
+    以实际增强配置为阶段键；正常训练复用同一批 worker，进入 close-mosaic
+    阶段时重建一次，并在退出时显式回收。
+    """
+
+    def __init__(self, *, max_reuse_epochs: int | None = None) -> None:
+        self._loader: Any | None = None
+        self._augmentation_options: object = _UNRESOLVED_AUGMENTATION_OPTIONS
+        self._resolved_epochs = 0
+        self._max_reuse_epochs = max(
+            0,
+            int(
+                (4 if os.name == "nt" else 0)
+                if max_reuse_epochs is None
+                else max_reuse_epochs
+            ),
+        )
+
+    def resolve(
+        self,
+        *,
+        augmentation_options: object | None,
+        build_loader: Callable[[], Any],
+    ) -> Any:
+        """返回当前阶段 loader；配置变化时关闭旧 loader 后重新创建。"""
+
+        recycle_workers = bool(
+            self._loader is not None
+            and int(getattr(self._loader, "num_workers", 0)) > 0
+            and self._max_reuse_epochs > 0
+            and self._resolved_epochs >= self._max_reuse_epochs
+        )
+        if (
+            self._loader is None
+            or self._augmentation_options != augmentation_options
+            or recycle_workers
+        ):
+            self.close()
+            self._loader = build_loader()
+            self._augmentation_options = augmentation_options
+        self._resolved_epochs += 1
+        return self._loader
+
+    def close(self) -> None:
+        """显式释放当前 loader 及其 persistent workers。"""
+
+        loader = self._loader
+        self._loader = None
+        self._augmentation_options = _UNRESOLVED_AUGMENTATION_OPTIONS
+        self._resolved_epochs = 0
+        if loader is None:
+            return
+        close = getattr(loader, "close", None)
+        if callable(close):
+            close()
+
+    def __enter__(self) -> YoloTaskTrainingDataLoaderLifecycle:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        """异常退出训练循环时也回收 worker。"""
+
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class YoloTaskTrainingDataset:
@@ -63,15 +149,22 @@ class YoloTaskBatchCollator:
                 base_input_size=self.base_input_size,
                 augmentation_options=self.augmentation_options,
             )
-        return self.build_batch(
+        imports = self.load_imports()
+        batch = self.build_batch(
             samples=samples,
             input_size=input_size,
             device="cpu",
             precision="fp32",
-            imports=self.load_imports(),
+            imports=imports,
             training=self.training,
             augmentation_options=self.augmentation_options,
             available_samples=self.available_samples,
+        )
+        if imports.torch.utils.data.get_worker_info() is None:
+            return batch
+        return serialize_yolo_worker_value(
+            value=batch,
+            torch_module=imports.torch,
         )
 
 
@@ -129,6 +222,7 @@ def build_yolo_task_evaluation_dataloader(
     *,
     torch_module: Any,
     samples: Sequence[Any],
+    batch_size: int = 1,
     input_size: tuple[int, int],
     plan: YoloTaskDataLoaderPlan,
     build_batch: Callable[..., Any],
@@ -149,7 +243,7 @@ def build_yolo_task_evaluation_dataloader(
     return build_yolo_task_training_dataloader(
         torch_module=torch_module,
         samples=selected_samples,
-        batch_size=1,
+        batch_size=batch_size,
         input_size=input_size,
         training=False,
         augmentation_options=None,
@@ -159,6 +253,65 @@ def build_yolo_task_evaluation_dataloader(
         load_imports=load_imports,
         resolve_batch_input_size=None,
     )
+
+
+@contextmanager
+def managed_yolo_task_evaluation_dataloader(loader: Any) -> Iterator[Any]:
+    """托管 validator DataLoader，并在正常或异常退出时回收 worker。"""
+
+    try:
+        yield loader
+    finally:
+        close_yolo_dataloader(loader)
+
+
+def close_yolo_dataloader(loader: Any) -> None:
+    """显式关闭支持 ``close`` 的 YOLO DataLoader。"""
+
+    close = getattr(loader, "close", None)
+    if callable(close):
+        close()
+
+
+def iter_yolo_task_evaluation_items(
+    *,
+    targets: Sequence[Any],
+    batched_outputs: Sequence[Any],
+    image_index_start: int,
+) -> Iterator[tuple[int, Any, tuple[Any, ...]]]:
+    """校验 batch 维并逐图切分 validator 输出。
+
+    evaluator 在 GPU 上执行一次批量前向，但现有后处理器以单图输入为契约。
+    此函数保留 batch 维切片，确保预测、target 与连续 ``image_id`` 一一对应。
+    """
+
+    target_items = tuple(targets)
+    batch_size = len(target_items)
+    for output_index, output in enumerate(batched_outputs):
+        shape = getattr(output, "shape", None)
+        if shape is None or len(shape) < 1:
+            raise InvalidRequestError(
+                "YOLO task validator 输出缺少 batch 维",
+                details={"output_index": output_index},
+            )
+        output_batch_size = int(shape[0])
+        if output_batch_size != batch_size:
+            raise InvalidRequestError(
+                "YOLO task validator 输出与 target batch 数量不一致",
+                details={
+                    "output_index": output_index,
+                    "output_batch_size": output_batch_size,
+                    "target_batch_size": batch_size,
+                },
+            )
+    for batch_offset, target in enumerate(target_items):
+        yield (
+            int(image_index_start) + batch_offset,
+            target,
+            tuple(
+                output[batch_offset : batch_offset + 1] for output in batched_outputs
+            ),
+        )
 
 
 def resolve_yolo_task_evaluation_dataloader_plan(
@@ -251,6 +404,10 @@ def pin_yolo_task_value(value: Any) -> Any:
         return value
     if torch.is_tensor(value):
         return value.pin_memory()
+    if isinstance(value, np.ndarray):
+        # worker 以 NumPy 传输 batch，避免 Windows torch multiprocessing
+        # 为每批 Tensor 累积共享内存映射；在主进程 pin 阶段恢复 Tensor。
+        return torch.from_numpy(value).pin_memory()
     if is_dataclass(value) and not isinstance(value, type):
         return replace(
             value,
@@ -277,6 +434,8 @@ def _move_value_to_device(
 ) -> Any:
     """递归把 batch 对象中的 Tensor 移到训练设备。"""
 
+    if isinstance(value, np.ndarray):
+        value = torch_module.from_numpy(value)
     if torch_module.is_tensor(value):
         if value.is_floating_point():
             return move_yolo_tensor_to_training_device(
@@ -396,6 +555,7 @@ def seed_yolo_task_dataloader_worker(worker_id: int) -> None:
 
 __all__ = [
     "YoloTaskDataLoaderPlan",
+    "YoloTaskTrainingDataLoaderLifecycle",
     "build_yolo_task_evaluation_dataloader",
     "build_yolo_task_training_dataloader",
     "load_yolo_task_dataloader_imports",

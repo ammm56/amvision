@@ -9,6 +9,15 @@ from pathlib import Path
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.checkpoint_recovery import (
+    expose_recoverable_latest_checkpoint,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_yolo_task_batch_telemetry,
+)
 from backend.service.application.models.training.yolo11_segmentation_task_control import (
     Yolo11SegmentationTrainingControlState,
     build_yolo11_segmentation_training_control_metadata,
@@ -56,7 +65,9 @@ from backend.service.application.models.training.yolo11_segmentation_training im
     Yolo11SegmentationTrainingEpochProgress,
     Yolo11SegmentationTrainingExecutionRequest,
     Yolo11SegmentationTrainingExecutionResult,
+    Yolo11SegmentationTrainingPausedError,
     Yolo11SegmentationTrainingSavePoint,
+    Yolo11SegmentationTrainingTerminatedError,
 )
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
@@ -290,7 +301,10 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
                 train_metrics_object_key=train_metrics_object_key,
                 progress=progress,
                 dataset_storage=self.dataset_storage,
-                implementation_mode=self._resolve_implementation_mode(resolved_model_type),
+                implementation_mode=self._resolve_implementation_mode(
+                    resolved_model_type
+                ),
+                validation_metrics_object_key=validation_metrics_object_key,
             )
             control_state = self._read_control_state(task_record.task_id)
             if on_control_state_change is not None:
@@ -320,6 +334,18 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
                 )
+
+        def poll_control() -> None:
+            """在训练 batch 与 validation sample 边界响应暂停和终止。"""
+
+            nonlocal control_state
+            control_state = self._read_control_state(task_record.task_id)
+            if on_control_state_change is not None:
+                on_control_state_change(control_state)
+            if control_state.terminate_requested:
+                raise Yolo11SegmentationTrainingTerminatedError()
+            if control_state.pause_requested:
+                raise Yolo11SegmentationTrainingPausedError()
 
         request = Yolo11SegmentationTrainingExecutionRequest(
             dataset_storage=self.dataset_storage,
@@ -352,6 +378,15 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
             ),
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
+            batch_callback=lambda progress: publish_yolo_task_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_record.task_id,
+                attempt_no=task_record.current_attempt_no,
+                task_type=SEGMENTATION_TASK_TYPE,
+                model_type=resolved_model_type,
+                progress=progress,
+            ),
+            control_callback=poll_control,
             savepoint_callback=on_savepoint,
         )
         try:
@@ -411,6 +446,11 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
                 "task_type": SEGMENTATION_TASK_TYPE,
                 "model_type": resolved_model_type,
             }
+            failed_result = expose_recoverable_latest_checkpoint(
+                failed_result=failed_result,
+                latest_checkpoint_path=temporary_latest_checkpoint_path,
+                latest_checkpoint_object_key=f"{output_prefix}/latest-checkpoint.pt",
+            )
             self.task_service.append_task_event(
                 build_yolo11_segmentation_training_failed_event(
                     task_id=task_record.task_id,
@@ -670,19 +710,24 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
             self._read_input_size(getattr(execution_result, "aligned_input_size", None))
             or input_size
         )
+        runtime_config = build_execution_training_config_runtime(
+            execution_result=execution_result,
+            requested_batch_size=payload.get("batch_size"),
+            requested_precision=payload.get("precision"),
+            default_batch_size=1,
+        )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
             "task_type": SEGMENTATION_TASK_TYPE,
             "model_scale": str(payload.get("model_scale") or ""),
-            "batch_size": int(payload.get("batch_size") or 1),
+            **runtime_config,
             "max_epochs": int(payload.get("max_epochs") or 1),
             "evaluation_interval": int(
                 payload.get("evaluation_interval")
                 or YOLO11_SEGMENTATION_DEFAULT_EVALUATION_INTERVAL
             ),
             "input_size": serialize_spatial_size_hw(effective_input_size),
-            "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {
@@ -891,4 +936,3 @@ __all__ = [
     "SqlAlchemyYolo11SegmentationTrainingTaskService",
     "Yolo11SegmentationTrainingTaskRequest",
 ]
-

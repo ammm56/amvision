@@ -8,6 +8,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+)
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
     build_yolo_disabled_warm_start_summary,
@@ -15,6 +28,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    YoloTaskTrainingBatchProgress,
     resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.training.classification_evaluation_report import (
@@ -98,9 +112,11 @@ class Yolo11ClassificationTrainingExecutionRequest:
         ]
         | None
     ) = None
+    batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
     savepoint_callback: (
         Callable[[Yolo11ClassificationTrainingSavePoint], None] | None
     ) = None
+    control_callback: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,6 +142,7 @@ class Yolo11ClassificationTrainingTerminatedError(Exception):
     """YOLO11 classification 训练被显式终止。"""
 
 
+@training_engine_entrypoint
 def run_yolo11_classification_training(
     request: Yolo11ClassificationTrainingExecutionRequest,
 ) -> Yolo11ClassificationTrainingExecutionResult:
@@ -142,7 +159,12 @@ def run_yolo11_classification_training(
         torch_module=imports.torch,
         extra_options=request.extra_options,
     )
-    precision = request.precision
+    precision = resolve_training_amp_runtime(
+        torch_module=imports.torch,
+        device_name=device_name,
+        requested_precision=request.precision,
+        extra_options=request.extra_options,
+    ).precision
     input_size = request.input_size or YOLO11_CLASSIFICATION_DEFAULT_INPUT_SIZE
 
     resolved_manifest = load_yolo11_classification_training_manifest(
@@ -226,6 +248,21 @@ def run_yolo11_classification_training(
         )
 
     model.to(device_name)
+    batch_size = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device_name,
+        input_size=input_size,
+        dataset_size=len(train_annotations),
+        requested_batch_size=request.batch_size,
+        default_batch_size=16,
+        runtime_precision=precision,
+        extra_options=extra,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
     runtime = build_yolo11_classification_training_runtime(
         torch_module=imports.torch,
         model=model,
@@ -290,6 +327,7 @@ def run_yolo11_classification_training(
             batch_size=batch_size,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
+            checkpoint_interval=read_training_checkpoint_interval(extra),
             input_size=input_size,
             precision=precision,
             device_name=device_name,
@@ -308,7 +346,9 @@ def run_yolo11_classification_training(
             ema=ema,
             grad_clip_norm=float(extra.get("grad_clip_norm", 10.0)),
             epoch_callback=request.epoch_callback,
+            batch_callback=request.batch_callback,
             savepoint_callback=request.savepoint_callback,
+            control_callback=request.control_callback,
         )
     except CoreYolo11ClassificationTrainingTerminatedError as exc:
         raise Yolo11ClassificationTrainingTerminatedError() from exc
@@ -363,6 +403,7 @@ def run_yolo11_classification_training(
             include_details=True,
             split_name="test",
             checkpoint_role="best",
+            control_callback=request.control_callback,
         )
     return Yolo11ClassificationTrainingExecutionResult(
         best_metric_value=loop_result.best_metric_value,

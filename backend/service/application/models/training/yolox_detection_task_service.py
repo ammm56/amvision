@@ -54,6 +54,9 @@ from backend.service.application.models.training.yolox_detection_task_types impo
 from backend.service.application.models.training.yolox_detection_task_warm_start import (
     YoloXTrainingTaskWarmStartMixin,
 )
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
+)
 from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
     build_detection_training_config_payload,
@@ -1138,51 +1141,28 @@ class SqlAlchemyYoloXTrainingTaskService(
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
 
         def on_batch_completed(progress: YoloXTrainingBatchProgress) -> None:
-            current_task = self._require_training_task(task_record.task_id)
-            control = read_yolox_training_control(current_task.metadata)
             progress_percent = self._build_progress_percent(
                 epoch=progress.epoch,
                 max_epochs=progress.max_epochs,
                 iteration=progress.iteration,
                 max_iterations=progress.max_iterations,
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_record.task_id,
-                    event_type="progress",
-                    message=(
-                        "yolox training heartbeat "
-                        f"epoch {progress.epoch}/{progress.max_epochs} "
-                        f"iter {progress.iteration}/{progress.max_iterations}"
-                    ),
-                    payload={
-                        "state": "running",
-                        "attempt_no": attempt_no,
-                        "progress": {
-                            "stage": "training",
-                            "granularity": "batch",
-                            "percent": progress_percent,
-                            "epoch": progress.epoch,
-                            "max_epochs": progress.max_epochs,
-                            "iteration": progress.iteration,
-                            "max_iterations": progress.max_iterations,
-                            "global_iteration": progress.global_iteration,
-                            "total_iterations": progress.total_iterations,
-                            "input_size": serialize_spatial_size_hw(
-                                progress.input_size
-                            ),
-                            "learning_rate": progress.learning_rate,
-                            "train_metrics": dict(progress.train_metrics),
-                        },
-                        "metadata": {
-                            "output_object_prefix": output_object_prefix,
-                            "requested_precision": request.precision,
-                            "requested_gpu_count": request.gpu_count,
-                            "requested_evaluation_interval": resolved_evaluation_interval,
-                            YOLOX_TRAINING_CONTROL_METADATA_KEY: control,
-                        },
-                    },
-                )
+            publish_training_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_record.task_id,
+                attempt_no=attempt_no,
+                task_type=DETECTION_TASK_TYPE,
+                model_type="yolox",
+                epoch=progress.epoch,
+                max_epochs=progress.max_epochs,
+                step=progress.iteration,
+                steps_per_epoch=progress.max_iterations,
+                global_step=progress.global_iteration,
+                total_steps=progress.total_iterations,
+                progress_percent=progress_percent,
+                learning_rate=progress.learning_rate,
+                metrics=dict(progress.train_metrics),
+                input_size=progress.input_size,
             )
 
         def on_epoch_completed(

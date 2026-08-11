@@ -216,36 +216,6 @@ class EndToEndObbEvaluationParameters(EndToEndDetectionEvaluationParameters):
     confidence_threshold: float = Field(default=0.01, ge=0.0, le=1.0, multiple_of=0.01)
 
 
-class PoseEvaluationParameters(DetectionEvaluationParameters):
-    """Pose 验证参数。"""
-
-    keypoint_confidence_threshold: float = Field(
-        default=0.25, ge=0.0, le=1.0, multiple_of=0.01
-    )
-
-    def to_execution_options(self) -> dict[str, object]:
-        """映射检测和关键点验证字段。"""
-
-        options = super().to_execution_options()
-        options["keypoint_confidence_threshold"] = self.keypoint_confidence_threshold
-        return options
-
-
-class EndToEndPoseEvaluationParameters(EndToEndDetectionEvaluationParameters):
-    """YOLO26 end-to-end pose 验证参数。"""
-
-    keypoint_confidence_threshold: float = Field(
-        default=0.25, ge=0.0, le=1.0, multiple_of=0.01
-    )
-
-    def to_execution_options(self) -> dict[str, object]:
-        """映射 end-to-end 检测和关键点置信度字段。"""
-
-        options = super().to_execution_options()
-        options["keypoint_confidence_threshold"] = self.keypoint_confidence_threshold
-        return options
-
-
 class YoloMatchingParameters(TrainingParameterGroup):
     """YOLO 主线正样本匹配参数。"""
 
@@ -824,8 +794,8 @@ class YoloPoseTrainingParameters(StrictTrainingParameters):
     )
     loss: YoloPoseLossParameters = Field(default_factory=YoloPoseLossParameters)
     matching: YoloMatchingParameters = Field(default_factory=YoloMatchingParameters)
-    evaluation: PoseEvaluationParameters = Field(
-        default_factory=PoseEvaluationParameters
+    evaluation: DetectionEvaluationParameters = Field(
+        default_factory=DetectionEvaluationParameters
     )
     augmentation: YoloTaskAugmentationParameters = Field(
         default_factory=YoloTaskAugmentationParameters
@@ -838,8 +808,8 @@ class Yolo26PoseTrainingParameters(YoloPoseTrainingParameters):
     loss: Yolo26PoseLossParameters = Field(
         default_factory=Yolo26PoseLossParameters
     )
-    evaluation: EndToEndPoseEvaluationParameters = Field(
-        default_factory=EndToEndPoseEvaluationParameters
+    evaluation: EndToEndDetectionEvaluationParameters = Field(
+        default_factory=EndToEndDetectionEvaluationParameters
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
     scale_yolo_box_from_letterbox,
     scale_yolo_mask_from_letterbox,
+)
+from backend.service.application.models.yolo_core_common.postprocess.segmentation import (
+    crop_binary_mask_to_box,
 )
 from backend.service.application.models.yolo_core_common.postprocess_arrays import (
     to_yolo_numpy_array,
@@ -42,6 +46,7 @@ class Yolo26SegmentationPostprocessInstance:
     class_name: str | None
     segments: tuple[tuple[tuple[float, float], ...], ...]
     mask_area: float
+    mask_rle: dict[str, object] | None = None
 
 
 SegmentationTopKInputArrays = Yolo26SegmentationTopKInputArrays
@@ -98,6 +103,8 @@ def build_yolo26_segmentation_postprocess_instances(
     score_threshold: float,
     mask_threshold: float,
     letterbox_transform: YoloLetterboxTransform,
+    mask_encoder: Callable[[Any], dict[str, object]] | None = None,
+    include_segments: bool = True,
 ) -> tuple[Yolo26SegmentationPostprocessInstance, ...]:
     """把 YOLO26 segmentation 输出转换为实例记录。"""
 
@@ -140,15 +147,26 @@ def build_yolo26_segmentation_postprocess_instances(
         if scaled_bbox is None:
             continue
         x1, y1, x2, y2 = scaled_bbox
+        binary_mask = crop_binary_mask_to_box(
+            binary_mask=binary_mask,
+            box_xyxy=(x1, y1, x2, y2),
+            np_module=np_module,
+        )
         resolved_class_id = int(class_id)
         class_name = (
             labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
         )
-        segments = extract_yolo26_mask_segments(
-            cv2_module=cv2_module, binary_mask=binary_mask
+        segments = (
+            extract_yolo26_mask_segments(
+                cv2_module=cv2_module,
+                binary_mask=binary_mask,
+            )
+            if include_segments
+            else ()
         )
+        mask_rle = mask_encoder(binary_mask) if mask_encoder is not None else None
         mask_area = float(np_module.count_nonzero(binary_mask))
-        if mask_area <= 0.0 or not segments:
+        if mask_area <= 0.0 or (not segments and mask_rle is None):
             continue
         instances.append(
             Yolo26SegmentationPostprocessInstance(
@@ -158,6 +176,7 @@ def build_yolo26_segmentation_postprocess_instances(
                 class_name=class_name,
                 segments=segments,
                 mask_area=round(mask_area, 3),
+                mask_rle=mask_rle,
             )
         )
     instances.sort(key=lambda item: item.score, reverse=True)

@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from contextlib import nullcontext
 from typing import Any
+
+from backend.service.application.models.evaluation.model_mode import evaluating_model
 
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
 )
 
 from backend.service.application.models.evaluation.coco_style_metrics import (
-    compute_coco_style_ap,
-    compute_object_keypoint_similarity,
+    compute_pycocotools_detection_ap,
+    compute_pycocotools_pose_ap,
+    resolve_keypoint_oks_sigmas,
 )
 from backend.service.application.models.evaluation.pose_evaluation import (
     PoseEvaluationRequest,
@@ -20,8 +24,11 @@ from backend.service.application.models.evaluation.pose_evaluation import (
     run_pose_evaluation,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    YoloTaskDataLoaderPlan,
     build_yolo_task_evaluation_dataloader,
+    iter_yolo_task_evaluation_items,
     load_yolo_task_dataloader_imports,
+    managed_yolo_task_evaluation_dataloader,
     move_yolo_task_batch_to_device,
     resolve_yolo_task_evaluation_dataloader_plan,
 )
@@ -31,7 +38,9 @@ from backend.service.application.models.yolo11_core.data import (
 from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_pose_postprocess_instances,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -78,26 +87,41 @@ def evaluate_yolo11_pose_samples(
     precision: str,
     score_threshold: float,
     nms_threshold: float,
-    keypoint_confidence_threshold: float,
     kpt_shape: tuple[int, int],
     imports: Any,
+    batch_size: int = 1,
+    dataloader_plan: YoloTaskDataLoaderPlan | None = None,
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO11 pose 训练期评估。"""
 
-    model.eval()
     gt_items: list[dict[str, object]] = []
     pred_items: list[dict[str, object]] = []
     total_predictions = 0
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
+        batch_size=batch_size,
         input_size=input_size,
-        plan=resolve_yolo_task_evaluation_dataloader_plan(device=device),
+        plan=dataloader_plan
+        or resolve_yolo_task_evaluation_dataloader_plan(device=device),
         build_batch=build_yolo11_pose_training_batch,
         load_imports=load_yolo_task_dataloader_imports,
     )
-    with imports.torch.no_grad():
-        for image_index, batch in enumerate(evaluation_loader):
+    next_image_index = 0
+    letterbox_transform = build_yolo_letterbox_transform(
+        source_width=int(input_size[1]),
+        source_height=int(input_size[0]),
+        input_size=input_size,
+    )
+    with (
+        managed_yolo_task_evaluation_dataloader(evaluation_loader),
+        evaluating_model(model),
+        imports.torch.no_grad(),
+    ):
+        for batch in evaluation_loader:
+            if control_callback is not None:
+                control_callback()
             if batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -109,49 +133,58 @@ def evaluate_yolo11_pose_samples(
             with _yolo11_evaluation_autocast(imports, precision, device):
                 outputs = model(batch.images)
             prediction_array = _yolo11_tensor_to_np(outputs, imports)
-            letterbox_transform = build_yolo_letterbox_transform(
-                source_width=int(input_size[1]),
-                source_height=int(input_size[0]),
-                input_size=input_size,
-            )
-            instances, _ = build_yolo11_pose_postprocess_instances(
-                np_module=imports.np,
-                prediction_array=prediction_array,
-                labels=labels,
-                score_threshold=score_threshold,
-                keypoint_confidence_threshold=keypoint_confidence_threshold,
-                letterbox_transform=letterbox_transform,
-                default_kpt_shape=kpt_shape,
-                nms_threshold=nms_threshold,
-                nms_indices_func=batched_nms_indices,
-            )
-            target = batch.targets[0]
-            _append_yolo11_pose_gt_items(
-                image_index=image_index,
-                target=target,
-                gt_items=gt_items,
-            )
-            total_predictions += len(instances)
-            pred_items.extend(
-                _build_yolo11_pose_prediction_items(
-                    image_index=image_index,
-                    predictions=instances,
+            for image_index, target, output_slices in iter_yolo_task_evaluation_items(
+                targets=batch.targets,
+                batched_outputs=(prediction_array,),
+                image_index_start=next_image_index,
+            ):
+                instances, _ = build_yolo11_pose_postprocess_instances(
+                    np_module=imports.np,
+                    prediction_array=output_slices[0],
+                    labels=labels,
+                    score_threshold=score_threshold,
+                    # 评估必须保留所有坐标；该阈值仅用于推理结果显示。
+                    keypoint_confidence_threshold=0.0,
+                    letterbox_transform=letterbox_transform,
+                    default_kpt_shape=kpt_shape,
+                    nms_threshold=nms_threshold,
+                    nms_indices_func=batched_nms_indices,
                 )
-            )
-    model.train()
-    oks_metrics = compute_coco_style_ap(
+                _append_yolo11_pose_gt_items(
+                    image_index=image_index,
+                    target=target,
+                    gt_items=gt_items,
+                )
+                total_predictions += len(instances)
+                pred_items.extend(
+                    _build_yolo11_pose_prediction_items(
+                        image_index=image_index,
+                        predictions=instances,
+                    )
+                )
+            next_image_index += len(batch.targets)
+    if control_callback is not None:
+        control_callback()
+    category_names = {index: name for index, name in enumerate(labels)}
+    bbox_metrics = compute_pycocotools_detection_ap(
         gt_items=gt_items,
         pred_items=pred_items,
-        category_names={index: name for index, name in enumerate(labels)},
-        similarity_func=lambda pred, gt: compute_object_keypoint_similarity(
-            gt["keypoints"],
-            pred["keypoints"],
-            area=float(gt.get("area", 1.0)),
-        ),
+        category_names=category_names,
+        image_count=next_image_index,
+    )
+    oks_metrics = compute_pycocotools_pose_ap(
+        gt_items=gt_items,
+        pred_items=pred_items,
+        category_names=category_names,
+        image_count=next_image_index,
+        keypoint_count=int(kpt_shape[0]),
+        keypoint_oks_sigmas=resolve_keypoint_oks_sigmas(int(kpt_shape[0])),
     )
     return {
-        "map50": round(oks_metrics.ap50, 6),
-        "map50_95": round(oks_metrics.ap50_95, 6),
+        "map50": round(bbox_metrics.ap50, 6),
+        "map50_95": round(bbox_metrics.ap50_95, 6),
+        "bbox_map50": round(bbox_metrics.ap50, 6),
+        "bbox_map50_95": round(bbox_metrics.ap50_95, 6),
         "oks_ap50": round(oks_metrics.ap50, 6),
         "oks_ap50_95": round(oks_metrics.ap50_95, 6),
         "prediction_count": float(total_predictions),
@@ -177,6 +210,7 @@ def _append_yolo11_pose_gt_items(
                 "image_id": image_index,
                 "category_id": int(class_id),
                 "keypoints": [float(value) for value in keypoints_group[object_index]],
+                "bbox_xyxy": [float(value) for value in box],
                 "area": _yolo11_pose_box_area(box),
             }
         )
@@ -198,6 +232,7 @@ def _build_yolo11_pose_prediction_items(
                 "keypoints": _flatten_yolo11_pose_prediction_keypoints(
                     prediction.keypoints
                 ),
+                "bbox_xyxy": [float(value) for value in prediction.bbox_xyxy],
                 "score": float(prediction.score),
             }
         )

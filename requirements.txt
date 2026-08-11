@@ -64,6 +64,9 @@ watchfiles>=1.2,<2
 # 进程身份校验、重复 backend-service 安全接管与运行资源监控
 psutil>=7.2.2,<8
 
+# NVIDIA GPU utilization/显存遥测；PyTorch torch.cuda.utilization 使用该 NVML binding
+nvidia-ml-py>=12,<14
+
 # 如需通过 PyTorch 官方 CUDA 12.6 源安装：
 # 当前基线为 PyTorch 2.12.1 + CUDA 12.6；平台训练链路当前只支持 CPU 或单 GPU。
 # pip install torch==2.12.1 torchvision==0.27.1 --index-url https://download.pytorch.org/whl/cu126

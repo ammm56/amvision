@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import stat
 import uuid
@@ -260,8 +261,12 @@ class LocalDatasetStorage:
         )
         try:
             # checkpoint 等二进制文件同样必须原子替换，避免进程中断留下半截文件。
-            temporary_path.write_bytes(content)
+            with temporary_path.open("wb") as output_stream:
+                output_stream.write(content)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
             replace_path_with_retry(temporary_path, filesystem_target_path)
+            _sync_directory_after_replace(filesystem_target_path.parent)
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -639,3 +644,15 @@ class LocalDatasetStorage:
                         "max_compression_ratio": self.settings.max_import_compression_ratio,
                     },
                 )
+
+
+def _sync_directory_after_replace(directory: Path) -> None:
+    """在支持目录 fsync 的系统上持久化原子替换后的目录项。"""
+
+    if os.name == "nt":
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

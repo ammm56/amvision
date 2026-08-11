@@ -49,18 +49,28 @@ class YoloInfiniteDataLoader:
 
                 self.iterator = self._get_iterator()
 
+            def close(self) -> None:
+                """显式停止 persistent workers；可重复调用。"""
+
+                iterator = getattr(self, "iterator", None)
+                if iterator is None:
+                    return
+                object.__setattr__(self, "iterator", None)
+                try:
+                    shutdown_workers = getattr(iterator, "_shutdown_workers", None)
+                    if callable(shutdown_workers):
+                        shutdown_workers()
+                finally:
+                    workers = getattr(iterator, "_workers", None) or ()
+                    for worker in workers:
+                        if worker.is_alive():
+                            worker.terminate()
+
             def __del__(self) -> None:
                 """释放 DataLoader worker，避免 Windows 下残留子进程。"""
 
                 try:
-                    iterator = getattr(self, "iterator", None)
-                    workers = getattr(iterator, "_workers", None)
-                    if not workers:
-                        return
-                    for worker in workers:
-                        if worker.is_alive():
-                            worker.terminate()
-                    iterator._shutdown_workers()
+                    self.close()
                 except Exception:
                     pass
 

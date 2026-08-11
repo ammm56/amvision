@@ -8,6 +8,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+)
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
@@ -49,6 +62,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    YoloTaskTrainingBatchProgress,
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
     resolve_yolo_optimizer_base_learning_rate,
@@ -96,6 +110,8 @@ class Yolo26ObbTrainingExecutionRequest:
         ]
         | None
     ) = None
+    batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
+    control_callback: Callable[[], None] | None = None
     savepoint_callback: Callable[[Yolo26ObbTrainingSavePoint], None] | None = None
 
 
@@ -116,6 +132,7 @@ class Yolo26ObbTrainingExecutionResult:
     test_sample_count: int = 0
 
 
+@training_engine_entrypoint
 def run_yolo26_obb_training(
     request: Yolo26ObbTrainingExecutionRequest,
 ) -> Yolo26ObbTrainingExecutionResult:
@@ -132,7 +149,12 @@ def run_yolo26_obb_training(
         torch_module=imports.torch,
         extra_options=request.extra_options,
     )
-    precision = request.precision
+    precision = resolve_training_amp_runtime(
+        torch_module=imports.torch,
+        device_name=device_name,
+        requested_precision=request.precision,
+        extra_options=request.extra_options,
+    ).precision
     input_size = request.input_size or YOLO26_OBB_DEFAULT_INPUT_SIZE
     manifest = load_yolo26_obb_training_manifest(
         dataset_storage=request.dataset_storage,
@@ -202,6 +224,21 @@ def run_yolo26_obb_training(
         )
 
     model.to(device_name)
+    batch_size = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device_name,
+        input_size=input_size,
+        dataset_size=len(manifest.train_annotations),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLO26_OBB_DEFAULT_BATCH_SIZE,
+        runtime_precision=precision,
+        extra_options=extra,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
     optimizer, training_schedule = build_yolo_ultralytics_optimizer(
         torch_module=imports.torch,
         model=model,
@@ -275,6 +312,7 @@ def run_yolo26_obb_training(
         batch_size=batch_size,
         max_epochs=max_epochs,
         evaluation_interval=evaluation_interval,
+        checkpoint_interval=read_training_checkpoint_interval(extra),
         input_size=input_size,
         precision=precision,
         device_name=device_name,
@@ -297,6 +335,8 @@ def run_yolo26_obb_training(
             else b""
         ),
         epoch_callback=request.epoch_callback,
+        batch_callback=request.batch_callback,
+        control_callback=request.control_callback,
         savepoint_callback=request.savepoint_callback,
         dataloader_plan=resolve_yolo_task_dataloader_plan(
             extra_options=extra,
@@ -332,6 +372,8 @@ def run_yolo26_obb_training(
             precision=precision,
             score_threshold=eval_conf,
             imports=imports,
+            batch_size=batch_size,
+            control_callback=request.control_callback,
         )
         test_metrics_payload = build_detection_test_metrics_report(
             available=True,

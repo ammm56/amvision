@@ -58,8 +58,11 @@ def build_yolo11_segmentation_autocast_context(
 ) -> Any:
     """构建 YOLO11 segmentation 训练使用的 autocast context。"""
 
-    if precision == "fp16" and "cuda" in device_name:
-        return torch_module.amp.autocast(resolve_torch_amp_device_type(device_name))
+    if precision in {"fp16", "bf16"} and "cuda" in device_name:
+        return torch_module.amp.autocast(
+            resolve_torch_amp_device_type(device_name),
+            dtype=(torch_module.float16 if precision == "fp16" else torch_module.bfloat16),
+        )
     return nullcontext()
 
 

@@ -21,6 +21,9 @@ from backend.service.application.models.yolox_core.training.trainer import (
     YoloXTrainingEpochProgress,
     YoloXTrainingSavePoint,
 )
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
 
 __all__ = [
     "YOLOX_CORE_DEFAULT_EVALUATION_INTERVAL",
@@ -39,6 +42,7 @@ __all__ = [
 ]
 
 
+@training_engine_entrypoint
 def run_yolox_detection_training(
     request: YoloXDetectionTrainingExecutionRequest,
 ) -> YoloXDetectionTrainingExecutionResult:

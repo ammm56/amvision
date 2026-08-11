@@ -42,7 +42,6 @@ class Yolo11PoseResumeState:
     saved_grad_clip_norm: float
     saved_evaluation_confidence_threshold: float
     saved_evaluation_nms_threshold: float
-    saved_keypoint_confidence_threshold: float
 
 
 def load_yolo11_pose_resume_state(
@@ -69,7 +68,7 @@ def load_yolo11_pose_resume_state(
         metrics_history=checkpoint.get("metrics_history", []),
         validation_history=checkpoint.get("validation_history", []),
         best_metric_value=float(checkpoint.get("best_metric_value", 0)),
-        best_metric_name=str(checkpoint.get("best_metric_name", "val_map50_95")),
+        best_metric_name=str(checkpoint.get("best_metric_name", "val_oks_ap50_95")),
         epoch=int(checkpoint.get("epoch", 0)),
         global_iteration=int(checkpoint.get("global_iteration", 0)),
         saved_batch_size=int(checkpoint.get("saved_batch_size", 0)),
@@ -94,9 +93,6 @@ def load_yolo11_pose_resume_state(
         saved_evaluation_nms_threshold=float(
             checkpoint.get("saved_evaluation_nms_threshold", 0)
         ),
-        saved_keypoint_confidence_threshold=float(
-            checkpoint.get("saved_keypoint_confidence_threshold", 0)
-        ),
     )
 
 
@@ -119,7 +115,6 @@ def validate_yolo11_pose_resume_parameters(
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
     evaluation_nms_threshold: float,
-    keypoint_confidence_threshold: float,
 ) -> None:
     """校验 YOLO11 pose resume 参数是否匹配当前请求。"""
 
@@ -148,13 +143,6 @@ def validate_yolo11_pose_resume_parameters(
         ),
         "evaluation_nms_threshold": (
             abs(state.saved_evaluation_nms_threshold - evaluation_nms_threshold) <= 1e-8
-        ),
-        "keypoint_confidence_threshold": (
-            abs(
-                state.saved_keypoint_confidence_threshold
-                - keypoint_confidence_threshold
-            )
-            <= 1e-8
         ),
     }
     mismatches = [name for name, matched in checks.items() if not matched]
@@ -215,7 +203,6 @@ def build_yolo11_pose_checkpoint_bytes(
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
     evaluation_nms_threshold: float,
-    keypoint_confidence_threshold: float,
     torch_module: Any,
 ) -> bytes:
     """把 YOLO11 pose 训练状态编码为 checkpoint bytes。"""
@@ -249,7 +236,6 @@ def build_yolo11_pose_checkpoint_bytes(
         "saved_grad_clip": grad_clip_norm,
         "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
         "saved_evaluation_nms_threshold": evaluation_nms_threshold,
-        "saved_keypoint_confidence_threshold": keypoint_confidence_threshold,
         "model_type": "yolo11",
         "task_type": "pose",
     }

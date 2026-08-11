@@ -9,6 +9,15 @@ from pathlib import Path
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.checkpoint_recovery import (
+    expose_recoverable_latest_checkpoint,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_yolo_task_batch_telemetry,
+)
 from backend.service.application.models.training.yolo11_classification_task_control import (
     Yolo11ClassificationTrainingControlState,
     build_yolo11_classification_training_control_metadata,
@@ -53,7 +62,9 @@ from backend.service.application.models.training.yolo11_classification_training 
     Yolo11ClassificationTrainingEpochProgress,
     Yolo11ClassificationTrainingExecutionRequest,
     Yolo11ClassificationTrainingExecutionResult,
+    Yolo11ClassificationTrainingPausedError,
     Yolo11ClassificationTrainingSavePoint,
+    Yolo11ClassificationTrainingTerminatedError,
 )
 from backend.service.application.models.training.yolo_classification_training_progress import (
     append_yolo_classification_epoch_progress,
@@ -355,6 +366,18 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
                 ),
             )
 
+        def poll_control() -> None:
+            """在 batch 与 validation batch 边界读取控制状态。"""
+
+            nonlocal control_state
+            control_state = self._read_control_state(task_record.task_id)
+            if on_control_state_change is not None:
+                on_control_state_change(control_state)
+            if control_state.terminate_requested:
+                raise Yolo11ClassificationTrainingTerminatedError()
+            if control_state.pause_requested:
+                raise Yolo11ClassificationTrainingPausedError()
+
         request = Yolo11ClassificationTrainingExecutionRequest(
             dataset_storage=self.dataset_storage,
             manifest_payload=manifest_payload,
@@ -386,7 +409,16 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
             ),
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
+            batch_callback=lambda progress: publish_yolo_task_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_record.task_id,
+                attempt_no=task_record.current_attempt_no,
+                task_type=CLASSIFICATION_TASK_TYPE,
+                model_type=resolved_model_type,
+                progress=progress,
+            ),
             savepoint_callback=on_savepoint,
+            control_callback=poll_control,
         )
         try:
             execution_result = self._run_training_execution(request)
@@ -445,6 +477,11 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
                 "task_type": CLASSIFICATION_TASK_TYPE,
                 "model_type": resolved_model_type,
             }
+            failed_result = expose_recoverable_latest_checkpoint(
+                failed_result=failed_result,
+                latest_checkpoint_path=temporary_latest_checkpoint_path,
+                latest_checkpoint_object_key=f"{output_prefix}/latest-checkpoint.pt",
+            )
             self.task_service.append_task_event(
                 build_yolo11_classification_training_failed_event(
                     task_id=task_record.task_id,
@@ -464,13 +501,10 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
             latest_checkpoint_object_key,
             execution_result.latest_checkpoint_bytes,
         )
-        best_checkpoint_bytes = (
-            execution_result.best_checkpoint_bytes
-            or (
-                temporary_best_checkpoint_path.read_bytes()
-                if temporary_best_checkpoint_path.is_file()
-                else execution_result.latest_checkpoint_bytes
-            )
+        best_checkpoint_bytes = execution_result.best_checkpoint_bytes or (
+            temporary_best_checkpoint_path.read_bytes()
+            if temporary_best_checkpoint_path.is_file()
+            else execution_result.latest_checkpoint_bytes
         )
         self.dataset_storage.write_bytes(
             str(temporary_best_checkpoint_path),
@@ -696,19 +730,24 @@ class SqlAlchemyYolo11ClassificationTrainingTaskService:
         """构建 YOLO11 classification 训练摘要。"""
 
         input_size = self._read_input_size(payload.get("input_size"))
+        runtime_config = build_execution_training_config_runtime(
+            execution_result=execution_result,
+            requested_batch_size=payload.get("batch_size"),
+            requested_precision=payload.get("precision"),
+            default_batch_size=16,
+        )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
             "task_type": CLASSIFICATION_TASK_TYPE,
             "model_scale": str(payload.get("model_scale") or ""),
-            "batch_size": int(payload.get("batch_size") or 16),
+            **runtime_config,
             "max_epochs": int(payload.get("max_epochs") or 30),
             "evaluation_interval": int(
                 payload.get("evaluation_interval")
                 or YOLO11_CLASSIFICATION_DEFAULT_EVALUATION_INTERVAL
             ),
             "input_size": serialize_spatial_size_hw(input_size),
-            "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {
@@ -919,4 +958,3 @@ __all__ = [
     "SqlAlchemyYolo11ClassificationTrainingTaskService",
     "Yolo11ClassificationTrainingTaskRequest",
 ]
-

@@ -13,10 +13,17 @@ def bbox_ciou_matrix(
     boxes2: Any,
     eps: float = 1e-7,
 ) -> Any:
-    """按 Ultralytics bbox_iou(xywh=False, CIoU=True) 计算两两 CIoU。"""
+    """按 Ultralytics bbox_iou(xywh=False, CIoU=True) 计算两两 CIoU。
 
-    box1 = boxes1[:, None, :]
-    box2 = boxes2[None, :, :]
+    CIoU 包含像素坐标差的平方。384 像素的平方已经超过 FP16 最大有限值，
+    因此 autocast 训练时必须先提升到 FP32；否则 convex diagonal 和 center
+    distance 会同时成为 Inf，并通过 ``Inf / Inf`` 污染 TAL 和全部检测损失。
+    该函数刻意返回 FP32，保证 assignment quality 和回归损失继续在稳定精度下
+    计算，同时梯度仍可回传到原始预测张量。
+    """
+
+    box1 = boxes1.float()[:, None, :]
+    box2 = boxes2.float()[None, :, :]
     b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, dim=-1)
     b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, dim=-1)
     width1 = b1_x2 - b1_x1

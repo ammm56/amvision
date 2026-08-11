@@ -12,6 +12,9 @@ from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
 from backend.service.application.errors import ResourceNotFoundError
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.api.rest.v1.routes.training_execution_schemas import (
+    merge_training_execution_options,
+)
 
 from .schemas import DetectionTrainingTaskCreateRequestBody, DetectionTrainingTaskSubmissionResponse
 from .services import _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE, _normalize_detection_training_model_type
@@ -54,13 +57,20 @@ def create_detection_training_task(
             model_scale=body.model_scale,
             output_model_name=body.output_model_name,
             warm_start_model_version_id=body.warm_start_model_version_id,
-            evaluation_interval=body.evaluation_interval,
-            max_epochs=body.max_epochs,
-            batch_size=body.batch_size,
+            evaluation_interval=body.execution.validation.interval_epochs,
+            max_epochs=body.execution.max_epochs,
+            batch_size=body.execution.fixed_batch_size,
             gpu_count=1,
-            precision=body.precision,
-            input_size=body.input_size.hw if body.input_size is not None else None,
-            extra_options=body.parameters.to_execution_options(),
+            precision=body.execution.requested_precision,
+            input_size=(
+                body.execution.input_size.hw
+                if body.execution.input_size is not None
+                else None
+            ),
+            extra_options=merge_training_execution_options(
+                execution=body.execution,
+                model_options=body.parameters.to_execution_options(),
+            ),
         ),
         created_by=principal.principal_id,
         display_name=body.display_name,

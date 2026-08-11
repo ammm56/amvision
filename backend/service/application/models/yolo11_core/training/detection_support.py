@@ -12,6 +12,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device,
 )
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
 
 
 YOLO11_DETECTION_DEFAULT_INPUT_SIZE = (640, 640)
@@ -94,9 +97,12 @@ def resolve_yolo11_detection_runtime(
         torch_module=torch,
         extra_options=extra_options,
     )
-    runtime_precision = (
-        "fp16" if selection.is_cuda and requested_precision == "fp16" else "fp32"
-    )
+    runtime_precision = resolve_training_amp_runtime(
+        torch_module=torch,
+        device_name=selection.device_name,
+        requested_precision=requested_precision,
+        extra_options=extra_options,
+    ).precision
     return (
         selection.device_name,
         selection.gpu_count,

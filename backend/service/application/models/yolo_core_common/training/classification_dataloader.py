@@ -16,6 +16,9 @@ from backend.service.application.models.yolo_core_common.training.infinite_datal
     resolve_yolo_dataloader_batch_size,
     resolve_yolo_dataloader_worker_count,
 )
+from backend.service.application.models.yolo_core_common.training.worker_ipc import (
+    serialize_yolo_worker_value,
+)
 
 
 @dataclass(frozen=True)
@@ -55,15 +58,19 @@ class YoloClassificationBatchCollator:
     def __call__(self, samples: list[Any]) -> Any:
         """在 DataLoader worker 中构建 CPU batch。"""
 
-        return self.build_batch(
+        imports = self.load_imports()
+        batch = self.build_batch(
             samples=samples,
             input_size=self.input_size,
             device="cpu",
             precision="fp32",
-            imports=self.load_imports(),
+            imports=imports,
             training=self.training,
             augmentation_options=self.augmentation_options,
         )
+        if imports.torch.utils.data.get_worker_info() is None:
+            return batch
+        return serialize_yolo_worker_value(value=batch, torch_module=imports.torch)
 
 
 def build_yolo_classification_training_dataloader(
@@ -169,14 +176,20 @@ def move_yolo_classification_batch_to_device(
 ) -> Any:
     """把 DataLoader 产出的 CPU batch 移到训练设备。"""
 
+    images = batch.images
+    targets = batch.targets
+    if not torch_module.is_tensor(images):
+        images = torch_module.as_tensor(images)
+    if not torch_module.is_tensor(targets):
+        targets = torch_module.as_tensor(targets)
     return replace(
         batch,
         images=move_yolo_tensor_to_training_device(
-            batch.images,
+            images,
             device=device,
             runtime_precision=precision,
         ),
-        targets=batch.targets.to(device=device, dtype=torch_module.long),
+        targets=targets.to(device=device, dtype=torch_module.long),
     )
 
 

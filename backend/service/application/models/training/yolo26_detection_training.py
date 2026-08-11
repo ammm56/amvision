@@ -31,6 +31,16 @@ from backend.service.application.models.yolo26_core.data import (
     resolve_yolo26_task_batch_input_size,
     serialize_yolo26_detection_augmentation_options,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+)
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
@@ -92,6 +102,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionLossAccumulator,
     YoloModelEMA,
     YoloUltralyticsTrainingSchedule,
+    close_yolo_dataloader,
     normalize_yolo_detection_loss_metrics,
     resolve_yolo_optimizer_base_learning_rate,
 )
@@ -135,6 +146,7 @@ class _Yolo26LoadedResumeState:
     warm_start_summary: dict[str, object]
 
 
+@training_engine_entrypoint
 def run_yolo26_detection_training(
     request: Yolo26DetectionTrainingExecutionRequest,
 ) -> Yolo26DetectionTrainingExecutionResult:
@@ -159,7 +171,6 @@ def run_yolo26_detection_training(
     test_samples = data_context.test_samples
 
     input_size = resolve_yolo26_detection_input_size(request.input_size)
-    batch_size = max(1, int(request.batch_size or YOLO26_DETECTION_DEFAULT_BATCH_SIZE))
     max_epochs = max(1, int(request.max_epochs or YOLO26_DETECTION_DEFAULT_MAX_EPOCHS))
     evaluation_interval = max(
         1,
@@ -168,6 +179,7 @@ def run_yolo26_detection_training(
         ),
     )
     extra_options = dict(request.extra_options or {})
+    checkpoint_interval = read_training_checkpoint_interval(extra_options)
     device, gpu_count, device_ids, distributed_mode, runtime_precision = (
         resolve_yolo26_detection_runtime(
             imports=imports,
@@ -197,6 +209,24 @@ def run_yolo26_detection_training(
         request=request,
     )
     parameter_count = sum(int(parameter.numel()) for parameter in model.parameters())
+    # 先把 FP32 主权重放入目标设备，再用真实 forward/backward 峰值解析 AutoBatch。
+    model.to(device=device, dtype=imports.torch.float32)
+    batch_resolution = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device,
+        input_size=input_size,
+        dataset_size=len(train_samples),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLO26_DETECTION_DEFAULT_BATCH_SIZE,
+        runtime_precision=runtime_precision,
+        extra_options=extra_options,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    )
+    batch_size = batch_resolution.batch_size
     training_runtime = build_yolo26_detection_training_runtime(
         torch_module=imports.torch,
         model=model,
@@ -252,9 +282,6 @@ def run_yolo26_detection_training(
         )
         warm_start_summary = dict(resume_state.warm_start_summary)
 
-    model.to(device)
-    if runtime_precision == "fp16":
-        model.half()
     if resume_state is not None:
         move_yolo26_optimizer_state_to_device(optimizer=optimizer, device=device)
     ema = YoloModelEMA(
@@ -464,6 +491,7 @@ def run_yolo26_detection_training(
                 if request.savepoint_callback is not None
                 else None
             ),
+            checkpoint_interval=checkpoint_interval,
         )
     except Yolo26DetectionTrainingPausedError as error:
         raise YoloDetectionTrainingPausedError(
@@ -539,9 +567,7 @@ def run_yolo26_detection_training(
             assign_topk=training_options["assign_topk"],
             assign_alpha=training_options["assign_alpha"],
             assign_beta=training_options["assign_beta"],
-            confidence_threshold=training_options[
-                "evaluation_confidence_threshold"
-            ],
+            confidence_threshold=training_options["evaluation_confidence_threshold"],
             dataloader_plan=dataloader_plan,
         )
         test_metrics_payload = build_detection_test_metrics_report(
@@ -821,9 +847,7 @@ def _load_yolo26_resume_checkpoint(
             else None
         ),
         ema_state_dict=(
-            dict(ema_state_dict)
-            if isinstance(ema_state_dict, dict)
-            else None
+            dict(ema_state_dict) if isinstance(ema_state_dict, dict) else None
         ),
         ema_updates=(
             int(raw_ema_updates)
@@ -980,9 +1004,16 @@ def _evaluate_yolo26_detection_model_once(
     """按 Ultralytics validator 语义一次 forward 统计 YOLO26 loss 和 mAP。"""
 
     if not samples:
-        empty_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+        empty_losses = {
+            "loss": 0.0,
+            "class_loss": 0.0,
+            "box_loss": 0.0,
+            "dfl_loss": 0.0,
+        }
         return empty_losses, {"map50": 0.0, "map50_95": 0.0}
-    if annotation_payload is not None and (imports.COCO is None or imports.COCOeval is None):
+    if annotation_payload is not None and (
+        imports.COCO is None or imports.COCOeval is None
+    ):
         raise ServiceConfigurationError(
             "当前环境缺少 pycocotools，无法执行 YOLO26 detection mAP 验证"
         )
@@ -1054,6 +1085,7 @@ def _evaluate_yolo26_detection_model_once(
                         )
                     )
     finally:
+        close_yolo_dataloader(validation_dataloader)
         model.train(previous_training_mode)
 
     losses = serialize_yolo26_spatial_loss_metrics(loss_accumulator.mean())

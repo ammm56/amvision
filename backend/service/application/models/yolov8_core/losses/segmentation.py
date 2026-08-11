@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.losses.segmentation import (
+    compute_yolo_segmentation_mask_loss as compute_yolov8_segmentation_mask_loss,
+    crop_yolo_segmentation_mask_loss as crop_yolov8_segmentation_mask_loss,
+)
+
 from backend.service.application.models.yolov8_core.assigners.detection import (
     yolov8_box_iou_aligned,
 )
@@ -116,109 +121,9 @@ def decode_yolov8_segmentation_training_boxes(
     return boxes * stride.repeat(1, 4)
 
 
-def compute_yolov8_segmentation_mask_loss(
-    *,
-    torch_module: Any,
-    prediction: Any | None,
-    proto: Any | None,
-    foreground_mask: Any,
-    target_masks: Any | None,
-    target_mask_valid: Any | None,
-    matched_gt_indices: Any | None,
-    num_classes: int,
-    target_boxes: Any | None = None,
-) -> Any:
-    """根据 YOLOv8 mask coeff、proto 和 matched GT mask 计算实例 mask loss。"""
-
-    if prediction is None or proto is None or target_masks is None:
-        return foreground_mask.new_zeros(())
-    if target_mask_valid is None or matched_gt_indices is None:
-        return foreground_mask.new_zeros(())
-    if int(target_masks.shape[0]) == 0:
-        return foreground_mask.new_zeros(())
-
-    foreground_mask = foreground_mask.bool()
-    matched_gt_indices = matched_gt_indices.to(
-        device=foreground_mask.device,
-        dtype=torch_module.long,
-    )
-    target_mask_valid = target_mask_valid.to(device=foreground_mask.device).bool()
-    valid_foreground = foreground_mask & target_mask_valid[matched_gt_indices.clamp_min(0)]
-    if int(valid_foreground.sum().item()) == 0:
-        return foreground_mask.new_zeros(())
-
-    coefficient_start = 4 + int(num_classes)
-    mask_coefficients = prediction[valid_foreground, coefficient_start:]
-    if int(mask_coefficients.shape[0]) == 0 or int(mask_coefficients.shape[1]) == 0:
-        return foreground_mask.new_zeros(())
-
-    proto_channels = int(proto.shape[0])
-    if int(mask_coefficients.shape[1]) != proto_channels:
-        return foreground_mask.new_zeros(())
-
-    selected_target_masks = target_masks[matched_gt_indices[valid_foreground]].float().to(
-        device=prediction.device,
-    )
-    target_size = (int(selected_target_masks.shape[-2]), int(selected_target_masks.shape[-1]))
-    if tuple(proto.shape[-2:]) != target_size:
-        proto = torch_module.nn.functional.interpolate(
-            proto.unsqueeze(0),
-            size=target_size,
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(0)
-
-    pred_masks = torch_module.einsum("in,nhw->ihw", mask_coefficients, proto)
-    mask_loss = torch_module.nn.functional.binary_cross_entropy_with_logits(
-        pred_masks,
-        selected_target_masks,
-        reduction="none",
-    )
-    if target_boxes is None:
-        return mask_loss.mean()
-
-    selected_boxes = target_boxes.to(device=prediction.device, dtype=prediction.dtype)[
-        valid_foreground
-    ]
-    cropped_loss = crop_yolov8_segmentation_mask_loss(
-        torch_module=torch_module,
-        mask_loss=mask_loss,
-        boxes_xyxy=selected_boxes,
-        mask_size=target_size,
-    )
-    box_area = (
-        (selected_boxes[:, 2] - selected_boxes[:, 0]).clamp_min(1.0)
-        * (selected_boxes[:, 3] - selected_boxes[:, 1]).clamp_min(1.0)
-    )
-    mask_height, mask_width = target_size
-    normalized_area = box_area / float(mask_height * mask_width)
-    instance_loss = cropped_loss.mean(dim=(1, 2)) / normalized_area.clamp_min(1e-6)
-    return instance_loss.sum() / valid_foreground.sum().clamp_min(1)
-
-
-def crop_yolov8_segmentation_mask_loss(
-    *,
-    torch_module: Any,
-    mask_loss: Any,
-    boxes_xyxy: Any,
-    mask_size: tuple[int, int],
-) -> Any:
-    """按 bbox 裁剪 YOLOv8 segmentation mask loss。"""
-
-    mask_height, mask_width = mask_size
-    rows = torch_module.arange(
-        mask_width,
-        device=mask_loss.device,
-        dtype=boxes_xyxy.dtype,
-    )[None, None, :]
-    cols = torch_module.arange(
-        mask_height,
-        device=mask_loss.device,
-        dtype=boxes_xyxy.dtype,
-    )[None, :, None]
-    x1 = boxes_xyxy[:, 0].view(-1, 1, 1).clamp(0, mask_width)
-    y1 = boxes_xyxy[:, 1].view(-1, 1, 1).clamp(0, mask_height)
-    x2 = boxes_xyxy[:, 2].view(-1, 1, 1).clamp(0, mask_width)
-    y2 = boxes_xyxy[:, 3].view(-1, 1, 1).clamp(0, mask_height)
-    crop_mask = (rows >= x1) & (rows < x2) & (cols >= y1) & (cols < y2)
-    return mask_loss * crop_mask.to(mask_loss.dtype)
+__all__ = [
+    "compute_yolov8_segmentation_detection_loss",
+    "compute_yolov8_segmentation_mask_loss",
+    "crop_yolov8_segmentation_mask_loss",
+    "decode_yolov8_segmentation_training_boxes",
+]

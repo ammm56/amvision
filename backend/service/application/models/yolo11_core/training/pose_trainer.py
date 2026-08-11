@@ -9,16 +9,22 @@ from typing import Any
 from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    resolve_training_checkpoint_decision,
+)
 
 from backend.service.application.models.yolo_core_common.training import (
     YoloTaskDataLoaderPlan,
+    YoloTaskTrainingBatchProgress,
+    YoloTaskTrainingDataLoaderLifecycle,
+    build_yolo_epoch_history_item,
     YoloUltralyticsOptimizerStep,
     YoloUltralyticsTrainingSchedule,
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
-    replace_yolo_task_dataloader_plan_seed,
     resolve_yolo_task_dataloader_plan,
+    should_run_yolo_validation,
 )
 from backend.service.application.models.yolo11_core.data import (
     build_yolo11_pose_training_batch,
@@ -45,6 +51,9 @@ class Yolo11PoseTrainingEpochProgress:
     input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float] | None = None
+    best_metric_value: float | None = None
+    best_metric_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +115,7 @@ def run_yolo11_pose_training_loop(
     batch_size: int,
     max_epochs: int,
     evaluation_interval: int,
+    checkpoint_interval: int = 5,
     input_size: tuple[int, int],
     precision: str,
     device_name: str,
@@ -124,7 +134,6 @@ def run_yolo11_pose_training_loop(
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
     evaluation_nms_threshold: float,
-    keypoint_confidence_threshold: float,
     augmentation_options: Any,
     start_epoch: int,
     global_iteration: int,
@@ -138,7 +147,9 @@ def run_yolo11_pose_training_loop(
         Yolo11PoseTrainingControlCommand | None,
     ]
     | None = None,
+    batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None,
     savepoint_callback: Callable[[Yolo11PoseTrainingSavePoint], None] | None = None,
+    control_callback: Callable[[], None] | None = None,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
 ) -> Yolo11PoseTrainingLoopResult:
     """执行 YOLO11 pose 从 start epoch 到 max epoch 的完整训练循环。"""
@@ -159,23 +170,42 @@ def run_yolo11_pose_training_loop(
         grad_clip_norm=grad_clip_norm,
         initial_iteration=global_iteration,
     )
+    training_loader_lifecycle = YoloTaskTrainingDataLoaderLifecycle()
     for epoch in range(start_epoch, max_epochs):
         model.train()
+        effective_augmentation_options = resolve_yolo11_task_augmentation_for_epoch(
+            augmentation_options=augmentation_options,
+            epoch_index=epoch,
+            max_epochs=max_epochs,
+        )
+        train_dataloader = training_loader_lifecycle.resolve(
+            augmentation_options=effective_augmentation_options,
+            build_loader=lambda: build_yolo_task_training_dataloader(
+                torch_module=imports.torch,
+                samples=train_annotations,
+                batch_size=batch_size,
+                input_size=input_size,
+                training=True,
+                augmentation_options=effective_augmentation_options,
+                plan=resolved_dataloader_plan,
+                shuffle=True,
+                build_batch=build_yolo11_pose_training_batch,
+                load_imports=load_yolo_task_dataloader_imports,
+                resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
+            ),
+        )
         epoch_metrics, global_iteration = _run_yolo11_pose_epoch(
             imports=imports,
             model=model,
             optimizer=optimizer,
             scaler=scaler,
             optimizer_step=optimizer_step,
-            train_annotations=train_annotations,
-            batch_size=batch_size,
-            base_input_size=input_size,
+            train_dataloader=train_dataloader,
             precision=precision,
             device_name=device_name,
             epoch=epoch,
             max_epochs=max_epochs,
             global_iteration=global_iteration,
-            augmentation_options=augmentation_options,
             kpt_shape=kpt_shape,
             class_loss_weight=class_loss_weight,
             box_loss_weight=box_loss_weight,
@@ -186,23 +216,14 @@ def run_yolo11_pose_training_loop(
             assign_beta=assign_beta,
             assign_topk2=assign_topk2,
             autocast_context=autocast_context,
-            dataloader_plan=replace_yolo_task_dataloader_plan_seed(
-                plan=resolved_dataloader_plan,
-                seed=epoch,
-            ),
-        )
-        metrics_history.append({"epoch": epoch, **epoch_metrics})
-        epoch_progress = Yolo11PoseTrainingEpochProgress(
-            epoch=epoch,
-            max_epochs=max_epochs,
+            control_callback=control_callback,
             input_size=input_size,
             learning_rate=float(scheduler.get_last_lr()[0]),
-            train_metrics=epoch_metrics,
+            batch_callback=batch_callback,
         )
-        command = epoch_callback(epoch_progress) if epoch_callback is not None else None
-        if command is not None and command.terminate_training:
-            raise Yolo11PoseTrainingTerminatedError()
-
+        metrics_history.append(
+            build_yolo_epoch_history_item(epoch_index=epoch, metrics=epoch_metrics)
+        )
         validation_metrics = _run_yolo11_pose_validation(
             imports=imports,
             model=ema.model,
@@ -213,67 +234,87 @@ def run_yolo11_pose_training_loop(
             precision=precision,
             evaluation_confidence_threshold=evaluation_confidence_threshold,
             evaluation_nms_threshold=evaluation_nms_threshold,
-            keypoint_confidence_threshold=keypoint_confidence_threshold,
             kpt_shape=kpt_shape,
+            batch_size=batch_size,
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
+            control_callback=control_callback,
         )
         if validation_metrics:
-            validation_history.append({"epoch": epoch, **validation_metrics})
-        current_metric = float(validation_metrics.get("map50_95", 0.0))
-        best_metric_improved = (
-            bool(validation_metrics)
-            and is_better_training_metric(
-                current_value=current_metric,
-                best_value=best_metric_value,
-                direction="maximize",
-                maximum=1.0,
+            validation_history.append(
+                build_yolo_epoch_history_item(
+                    epoch_index=epoch,
+                    metrics=validation_metrics,
+                )
             )
+        current_metric = float(validation_metrics.get("oks_ap50_95", 0.0))
+        best_metric_improved = bool(validation_metrics) and is_better_training_metric(
+            current_value=current_metric,
+            best_value=best_metric_value,
+            direction="maximize",
+            maximum=1.0,
         )
         if best_metric_improved:
             best_metric_value = current_metric
-            best_metric_name = "val_map50_95"
+            best_metric_name = "val_oks_ap50_95"
 
-        scheduler.step()
-        checkpoint_bytes = build_yolo11_pose_checkpoint_bytes(
+        optimizer_step.step_scheduler_if_optimizer_updated(scheduler)
+        epoch_progress = Yolo11PoseTrainingEpochProgress(
             epoch=epoch,
-            global_iteration=global_iteration,
-            model=model,
-            ema_model=ema.model,
-            ema_updates=ema.updates,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            metrics_history=metrics_history,
-            validation_history=validation_history,
+            max_epochs=max_epochs,
+            input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]),
+            train_metrics=epoch_metrics,
+            validation_metrics=validation_metrics or None,
             best_metric_value=best_metric_value,
             best_metric_name=best_metric_name,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            evaluation_interval=evaluation_interval,
-            min_lr_ratio=min_lr_ratio,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            kpt_loss_weight=kpt_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            grad_clip_norm=grad_clip_norm,
-            evaluation_confidence_threshold=evaluation_confidence_threshold,
-            evaluation_nms_threshold=evaluation_nms_threshold,
-            keypoint_confidence_threshold=keypoint_confidence_threshold,
-            torch_module=imports.torch,
         )
-        if best_metric_improved:
+        command = epoch_callback(epoch_progress) if epoch_callback is not None else None
+        checkpoint_decision = resolve_training_checkpoint_decision(
+            completed_epoch=epoch + 1,
+            max_epochs=max_epochs,
+            interval_epochs=checkpoint_interval,
+            best_improved=best_metric_improved,
+            manual_save_requested=bool(command and command.save_checkpoint),
+            pause_requested=bool(command and command.pause_training),
+            terminate_requested=bool(command and command.terminate_training),
+        )
+        if checkpoint_decision.should_serialize:
+            checkpoint_bytes = build_yolo11_pose_checkpoint_bytes(
+                epoch=epoch,
+                global_iteration=global_iteration,
+                model=model,
+                ema_model=ema.model,
+                ema_updates=ema.updates,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                best_metric_value=best_metric_value,
+                best_metric_name=best_metric_name,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
+                evaluation_interval=evaluation_interval,
+                min_lr_ratio=min_lr_ratio,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                kpt_loss_weight=kpt_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                grad_clip_norm=grad_clip_norm,
+                evaluation_confidence_threshold=evaluation_confidence_threshold,
+                evaluation_nms_threshold=evaluation_nms_threshold,
+                torch_module=imports.torch,
+            )
+        if best_metric_improved and checkpoint_decision.should_serialize:
             best_checkpoint_bytes = checkpoint_bytes
-        manual_save_requested = command is not None and command.save_checkpoint
-        if savepoint_callback is not None and (
-            best_metric_improved or manual_save_requested
-        ):
+        if checkpoint_decision.should_serialize and savepoint_callback is not None:
             savepoint_callback(
                 Yolo11PoseTrainingSavePoint(
                     latest_checkpoint_bytes=checkpoint_bytes,
@@ -288,7 +329,10 @@ def run_yolo11_pose_training_loop(
             )
         if command is not None and command.pause_training:
             raise Yolo11PoseTrainingPausedError()
+        if command is not None and command.terminate_training:
+            raise Yolo11PoseTrainingTerminatedError()
 
+    training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
     return Yolo11PoseTrainingLoopResult(
@@ -308,15 +352,12 @@ def _run_yolo11_pose_epoch(
     optimizer: Any,
     scaler: Any | None,
     optimizer_step: YoloUltralyticsOptimizerStep,
-    train_annotations: list[Any],
-    batch_size: int,
-    base_input_size: tuple[int, int],
+    train_dataloader: Any,
     precision: str,
     device_name: str,
     epoch: int,
     max_epochs: int,
     global_iteration: int,
-    augmentation_options: Any,
     kpt_shape: tuple[int, int],
     class_loss_weight: float,
     box_loss_weight: float,
@@ -327,33 +368,19 @@ def _run_yolo11_pose_epoch(
     assign_beta: float,
     assign_topk2: int | None,
     autocast_context: Callable[[], Any],
-    dataloader_plan: YoloTaskDataLoaderPlan,
+    control_callback: Callable[[], None] | None,
+    input_size: tuple[int, int],
+    learning_rate: float,
+    batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None,
 ) -> tuple[dict[str, float], int]:
     """执行 YOLO11 pose 单轮训练。"""
 
     epoch_losses: dict[str, float] = {}
-    iteration_count = 0
     sample_count = 0
-    effective_augmentation_options = resolve_yolo11_task_augmentation_for_epoch(
-        augmentation_options=augmentation_options,
-        epoch_index=epoch,
-        max_epochs=max_epochs,
-    )
-    train_dataloader = build_yolo_task_training_dataloader(
-        torch_module=imports.torch,
-        samples=train_annotations,
-        batch_size=batch_size,
-        input_size=base_input_size,
-        training=True,
-        augmentation_options=effective_augmentation_options,
-        plan=dataloader_plan,
-        shuffle=True,
-        build_batch=build_yolo11_pose_training_batch,
-        load_imports=load_yolo_task_dataloader_imports,
-        resolve_batch_input_size=resolve_yolo11_task_batch_input_size,
-    )
     max_iterations = max(1, len(train_dataloader))
     for iteration, cpu_batch in enumerate(train_dataloader, start=1):
+        if control_callback is not None:
+            control_callback()
         if cpu_batch is None:
             continue
         batch = move_yolo_task_batch_to_device(
@@ -401,17 +428,35 @@ def _run_yolo11_pose_epoch(
             iteration_index=global_iteration,
             is_last_batch=epoch + 1 == max_epochs and iteration == max_iterations,
         )
-        iteration_count += 1
         batch_sample_count = len(batch.targets)
         for key, value in loss_payload.items():
             metric_value = float(value.item())
             if key == "loss":
                 metric_value /= batch_sample_count
             epoch_losses[key] = (
-                epoch_losses.get(key, 0.0)
-                + metric_value * batch_sample_count
+                epoch_losses.get(key, 0.0) + metric_value * batch_sample_count
             )
         sample_count += batch_sample_count
+        if batch_callback is not None:
+            batch_metrics: dict[str, float] = {}
+            for name, value in loss_payload.items():
+                metric_value = float(value.item())
+                if name == "loss":
+                    metric_value /= max(1, batch_sample_count)
+                batch_metrics[name] = round(metric_value, 6)
+            batch_callback(
+                YoloTaskTrainingBatchProgress(
+                    epoch=epoch,
+                    max_epochs=max_epochs,
+                    iteration=iteration,
+                    max_iterations=max_iterations,
+                    global_iteration=global_iteration,
+                    total_iterations=max_epochs * max_iterations,
+                    input_size=input_size,
+                    learning_rate=learning_rate,
+                    train_metrics=batch_metrics,
+                )
+            )
 
     divisor = max(1, sample_count)
     return (
@@ -433,17 +478,21 @@ def _run_yolo11_pose_validation(
     precision: str,
     evaluation_confidence_threshold: float,
     evaluation_nms_threshold: float,
-    keypoint_confidence_threshold: float,
     kpt_shape: tuple[int, int],
+    batch_size: int,
     epoch: int,
     max_epochs: int,
     evaluation_interval: int,
+    control_callback: Callable[[], None] | None,
 ) -> dict[str, float]:
     """执行 YOLO11 pose 训练期 validation。"""
 
-    should_evaluate = (
-        len(val_annotations) > 0 and epoch > 0 and epoch % evaluation_interval == 0
-    ) or epoch == max_epochs - 1
+    should_evaluate = should_run_yolo_validation(
+        epoch_index=epoch,
+        max_epochs=max_epochs,
+        evaluation_interval=evaluation_interval,
+        has_validation_samples=bool(val_annotations),
+    )
     if not should_evaluate:
         return {}
     return evaluate_yolo11_pose_samples(
@@ -455,9 +504,10 @@ def _run_yolo11_pose_validation(
         precision=precision,
         score_threshold=evaluation_confidence_threshold,
         nms_threshold=evaluation_nms_threshold,
-        keypoint_confidence_threshold=keypoint_confidence_threshold,
         kpt_shape=kpt_shape,
         imports=imports,
+        batch_size=batch_size,
+        control_callback=control_callback,
     )
 
 

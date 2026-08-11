@@ -15,6 +15,12 @@ from backend.service.application.models.training.device_selection import (
     SingleTrainingDeviceSelection,
     resolve_single_training_device,
 )
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.training_engine import (
+    record_active_training_batch_resolution,
+)
 from backend.service.application.support.resource_cleanup import (
     release_model_task_resources,
 )
@@ -42,6 +48,9 @@ from backend.service.application.models.rfdetr_core.training.platform_artifacts 
 )
 from backend.service.application.models.rfdetr_core.training.platform_dataset import (
     prepare_roboflow_coco_dataset,
+)
+from backend.service.application.models.rfdetr_core.training.auto_batch import (
+    resolve_auto_batch_config,
 )
 from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
@@ -121,6 +130,12 @@ def run_rfdetr_platform_training(
     resolution = max(aligned_input_size)
     device_selection = _resolve_device_selection(extra_options)
     device_name = device_selection.device_name
+    amp_runtime = resolve_training_amp_runtime(
+        torch_module=torch,
+        device_name=device_name,
+        requested_precision=request.precision,
+        extra_options=extra_options,
+    )
 
     temp_root = request.dataset_storage.root_dir / ".tmp" / "rfdetr-core-training"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -166,7 +181,7 @@ def run_rfdetr_platform_training(
                 device=device_name,
             )
             model_config.resolution = resolution
-            model_config.amp = _precision_enables_amp(request.precision)
+            model_config.amp = amp_runtime.enabled
 
             train_config = _build_train_config(
                 request=request,
@@ -182,6 +197,50 @@ def run_rfdetr_platform_training(
                 _load_rfdetr_lightning_training_components()
             )
             module = RFDETRModelModule(model_config, train_config)
+            batch_mode = str(
+                extra_options.get("batch_mode", "auto")
+            ).strip().lower()
+            if (
+                batch_mode == "auto"
+                and device_selection.is_cuda
+                and resume_checkpoint_path is None
+            ):
+                module.to(device_name)
+                auto_batch = resolve_auto_batch_config(
+                    module,
+                    model_config,
+                    train_config,
+                    safety_margin=float(
+                        extra_options.get("batch_target_memory_fraction", 0.6)
+                    ),
+                    max_micro_batch=int(
+                        extra_options.get("batch_maximum_size") or 128
+                    ),
+                )
+                train_config.batch_size = auto_batch.safe_micro_batch
+                train_config.grad_accum_steps = (
+                    auto_batch.recommended_grad_accum_steps
+                )
+            record_active_training_batch_resolution(
+                batch_size=int(train_config.batch_size),
+                mode=(
+                    "resume"
+                    if resume_checkpoint_path is not None
+                    else (
+                        "auto-cuda-profile"
+                        if batch_mode == "auto" and device_selection.is_cuda
+                        else (
+                            "auto-cpu-fallback"
+                            if batch_mode == "auto"
+                            else "fixed"
+                        )
+                    )
+                ),
+                device_name=device_name,
+                target_memory_fraction=float(
+                    extra_options.get("batch_target_memory_fraction", 0.6)
+                ),
+            )
             data_module = RFDETRDataModule(model_config, train_config)
             control_callback = _build_rfdetr_platform_control_callback(
                 request=request,
@@ -193,6 +252,15 @@ def run_rfdetr_platform_training(
                 accelerator=device_selection.lightning_accelerator,
                 extra_callbacks=(control_callback,) if control_callback is not None else (),
                 num_sanity_val_steps=0,
+                precision=(
+                    "32-true"
+                    if not amp_runtime.enabled
+                    else (
+                        "bf16-mixed"
+                        if amp_runtime.precision == "bf16"
+                        else "16-mixed"
+                    )
+                ),
                 enable_model_summary=False,
             )
             trainer.fit(
@@ -476,7 +544,10 @@ def _build_train_config(
         "multi_scale": _read_bool_option(extra_options, "multi_scale", True),
         "expanded_scales": _read_bool_option(extra_options, "expanded_scales", True),
         "square_resize_div_64": True,
-        "checkpoint_interval": 1,
+        "checkpoint_interval": max(
+            1,
+            int(extra_options.get("checkpoint_interval", 5)),
+        ),
         "run_test": run_test,
         "log_per_class_metrics": True,
         "aug_config": _resolve_rfdetr_aug_config(extra_options),
@@ -555,9 +626,3 @@ def _read_bool_option(
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
-
-
-def _precision_enables_amp(precision: str) -> bool:
-    """判断当前 precision 是否启用 AMP。"""
-
-    return str(precision).strip().lower() in {"fp16", "bf16", "16-mixed", "bf16-mixed"}

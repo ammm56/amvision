@@ -33,11 +33,14 @@ def build_yolov8_obb_prediction(
 
     dfl_distances = dfl_decoder(raw_outputs["boxes"])
     angle = decode_yolov8_obb_angle_logits(angle_logits=raw_outputs["angle"])
-    anchor_points = make_anchors(
+    anchor_points, stride_tensor = make_anchors(
         feature_maps=raw_outputs["feats"],
         strides=strides,
-    )[0]
+    )
     rotated_boxes = dist2rbox(dfl_distances, angle, anchor_points=anchor_points)
+    # dist2rbox 返回 feature-grid 坐标；与 Ultralytics Detect._inference 一致，
+    # 对外预测必须按每个 anchor 的 stride 恢复到输入图像像素坐标。
+    rotated_boxes = rotated_boxes * stride_tensor.transpose(0, 1).unsqueeze(0)
     class_scores = raw_outputs["scores"].sigmoid()
     return torch.cat((rotated_boxes, class_scores, angle), dim=1)
 

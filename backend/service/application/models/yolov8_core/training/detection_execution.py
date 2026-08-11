@@ -26,8 +26,22 @@ from backend.service.domain.models.model_input_spec import (
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device,
 )
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+    resolve_training_checkpoint_decision,
 )
 from backend.service.application.models.evaluation.pycocotools_metrics import (
     YOLO_DETECTION_COCO_MAX_DETECTIONS,
@@ -87,6 +101,8 @@ from backend.service.application.models.yolo_core_common.geometry import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionLossAccumulator,
     YoloModelEMA,
+    build_yolo_completed_epoch_history_item,
+    close_yolo_dataloader,
     normalize_yolo_detection_loss_metrics,
     resolve_yolo_optimizer_base_learning_rate,
 )
@@ -194,7 +210,8 @@ class YoloV8DetectionTrainingExecutionRequest:
     batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None
     epoch_callback: (
         Callable[
-            [YoloV8DetectionTrainingEpochProgress], YoloV8DetectionTrainingControlCommand | None
+            [YoloV8DetectionTrainingEpochProgress],
+            YoloV8DetectionTrainingControlCommand | None,
         ]
         | None
     ) = None
@@ -340,6 +357,7 @@ class YoloV8DetectionTrainingTerminatedError(Exception):
         super().__init__("yolov8 detection training terminated")
 
 
+@training_engine_entrypoint
 def run_yolov8_detection_training(
     request: YoloV8DetectionTrainingExecutionRequest,
 ) -> YoloV8DetectionTrainingExecutionResult:
@@ -369,13 +387,15 @@ def run_yolov8_detection_training(
     test_split = yolov8_data_context.test_split
     test_samples = yolov8_data_context.test_samples
     input_size = _resolve_input_size(request.input_size)
-    batch_size = max(1, int(request.batch_size or YOLOV8_DETECTION_DEFAULT_BATCH_SIZE))
     max_epochs = max(1, int(request.max_epochs or YOLOV8_DETECTION_DEFAULT_MAX_EPOCHS))
     evaluation_interval = max(
         1,
-        int(request.evaluation_interval or YOLOV8_DETECTION_DEFAULT_EVALUATION_INTERVAL),
+        int(
+            request.evaluation_interval or YOLOV8_DETECTION_DEFAULT_EVALUATION_INTERVAL
+        ),
     )
     extra_options = dict(request.extra_options or {})
+    checkpoint_interval = read_training_checkpoint_interval(extra_options)
     device, gpu_count, device_ids, distributed_mode, runtime_precision = (
         _resolve_runtime(
             imports=imports,
@@ -469,6 +489,24 @@ def run_yolov8_detection_training(
         )
 
     parameter_count = sum(int(parameter.numel()) for parameter in model.parameters())
+    # 先把 FP32 主权重放入目标设备，再用真实 forward/backward 峰值解析 AutoBatch。
+    model.to(device=device, dtype=imports.torch.float32)
+    batch_resolution = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device,
+        input_size=input_size,
+        dataset_size=len(train_samples),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLOV8_DETECTION_DEFAULT_BATCH_SIZE,
+        runtime_precision=runtime_precision,
+        extra_options=extra_options,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    )
+    batch_size = batch_resolution.batch_size
     training_runtime = build_yolov8_detection_training_runtime(
         torch_module=imports.torch,
         model=model,
@@ -528,9 +566,6 @@ def run_yolov8_detection_training(
         )
         warm_start_summary = dict(resume_state.warm_start_summary)
 
-    model.to(device)
-    if runtime_precision == "fp16":
-        model.half()
     if resume_state is not None:
         move_yolov8_optimizer_state_to_device(optimizer=optimizer, device=device)
     ema = YoloModelEMA(
@@ -662,8 +697,10 @@ def run_yolov8_detection_training(
             ),
         )
         global_iteration = epoch_result.global_iteration
-        train_metrics = dict(epoch_result.train_metrics)
-        train_metrics["epoch"] = epoch
+        train_metrics = build_yolo_completed_epoch_history_item(
+            completed_epoch=epoch,
+            metrics=epoch_result.train_metrics,
+        )
         metrics_history.append(train_metrics)
 
         validation_ran = should_run_yolov8_detection_validation(
@@ -702,6 +739,10 @@ def run_yolov8_detection_training(
                 nms_threshold=evaluation_nms_threshold,
                 dataloader_plan=dataloader_plan,
             )
+            validation_snapshot = build_yolo_completed_epoch_history_item(
+                completed_epoch=epoch,
+                metrics=validation_snapshot,
+            )
             validation_history.append(validation_snapshot)
             validation_metrics = {
                 "loss": float(validation_snapshot["loss"]),
@@ -721,7 +762,58 @@ def run_yolov8_detection_training(
         improved_best = best_metric_update.improved
         candidate_best_metric_value = best_metric_update.candidate_value
 
-        scheduler.step()
+        if epoch_result.successful_optimizer_steps > 0:
+            scheduler.step()
+        best_metric_value = candidate_best_metric_value
+        control_command = None
+        if request.epoch_callback is not None:
+            control_command = request.epoch_callback(
+                YoloV8DetectionTrainingEpochProgress(
+                    epoch=epoch,
+                    max_epochs=max_epochs,
+                    evaluation_interval=evaluation_interval,
+                    validation_ran=validation_ran,
+                    evaluated_epochs=tuple(evaluated_epochs),
+                    train_metrics=train_metrics,
+                    validation_metrics=validation_metrics,
+                    train_metrics_snapshot={
+                        "history": metrics_history,
+                        "final_metrics": train_metrics,
+                    },
+                    validation_snapshot=validation_snapshot,
+                    current_metric_name=best_metric_name,
+                    current_metric_value=current_metric_value,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=serialize_yolov8_detection_best_metric_value(
+                        has_validation=has_validation,
+                        best_metric_value=best_metric_value,
+                    ),
+                )
+            )
+        control_decision = resolve_yolov8_detection_epoch_control(
+            save_checkpoint_requested=(
+                control_command.save_checkpoint
+                if control_command is not None
+                else False
+            ),
+            pause_training_requested=(
+                control_command.pause_training if control_command is not None else False
+            ),
+            terminate_training_requested=(
+                control_command.terminate_training
+                if control_command is not None
+                else False
+            ),
+        )
+        checkpoint_decision = resolve_training_checkpoint_decision(
+            completed_epoch=epoch,
+            max_epochs=max_epochs,
+            interval_epochs=checkpoint_interval,
+            best_improved=improved_best,
+            manual_save_requested=control_decision.save_checkpoint,
+            pause_requested=control_decision.pause_training,
+            terminate_requested=control_decision.terminate_training,
+        )
         checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
             torch_module=imports.torch,
             model=model,
@@ -765,56 +857,22 @@ def run_yolov8_detection_training(
                 augmentation_options
             ),
             best_metric_name=best_metric_name,
-            candidate_best_metric_value=candidate_best_metric_value,
+            candidate_best_metric_value=best_metric_value,
             previous_best_checkpoint_bytes=best_checkpoint_bytes,
             improved_best=improved_best,
+            serialize_checkpoint=checkpoint_decision.should_serialize,
+            previous_latest_checkpoint_bytes=latest_checkpoint_bytes,
         )
         latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
         best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
         best_metric_value = checkpoint_update.best_metric_value
 
-        control_command = None
-        if request.epoch_callback is not None:
-            control_command = request.epoch_callback(
-                YoloV8DetectionTrainingEpochProgress(
-                    epoch=epoch,
-                    max_epochs=max_epochs,
-                    evaluation_interval=evaluation_interval,
-                    validation_ran=validation_ran,
-                    evaluated_epochs=tuple(evaluated_epochs),
-                    train_metrics=train_metrics,
-                    validation_metrics=validation_metrics,
-                    train_metrics_snapshot={
-                        "history": metrics_history,
-                        "final_metrics": train_metrics,
-                    },
-                    validation_snapshot=validation_snapshot,
-                    current_metric_name=best_metric_name,
-                    current_metric_value=current_metric_value,
-                    best_metric_name=best_metric_name,
-                    best_metric_value=serialize_yolov8_detection_best_metric_value(
-                        has_validation=has_validation,
-                        best_metric_value=best_metric_value,
-                    ),
-                )
-            )
-        control_decision = resolve_yolov8_detection_epoch_control(
-            save_checkpoint_requested=(
-                control_command.save_checkpoint if control_command is not None else False
-            ),
-            pause_training_requested=(
-                control_command.pause_training if control_command is not None else False
-            ),
-            terminate_training_requested=(
-                control_command.terminate_training
-                if control_command is not None
-                else False
-            )
-        )
-        should_write_savepoint = improved_best or control_decision.save_checkpoint
         should_pause_training = control_decision.pause_training
         should_terminate_training = control_decision.terminate_training
-        if should_write_savepoint:
+        if (
+            checkpoint_decision.should_serialize
+            and request.savepoint_callback is not None
+        ):
             savepoint_payload = build_yolov8_detection_training_savepoint_payload(
                 epoch=epoch,
                 latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -830,8 +888,7 @@ def run_yolov8_detection_training(
                 best_metric_name=savepoint_payload.best_metric_name,
                 best_metric_value=savepoint_payload.best_metric_value,
             )
-            if request.savepoint_callback is not None:
-                request.savepoint_callback(savepoint)
+            request.savepoint_callback(savepoint)
         if should_pause_training:
             savepoint_payload = build_yolov8_detection_training_savepoint_payload(
                 epoch=epoch,
@@ -1111,9 +1168,12 @@ def _resolve_runtime(
         torch_module=torch,
         extra_options=extra_options,
     )
-    runtime_precision = (
-        "fp16" if selection.is_cuda and requested_precision == "fp16" else "fp32"
-    )
+    runtime_precision = resolve_training_amp_runtime(
+        torch_module=torch,
+        device_name=selection.device_name,
+        requested_precision=requested_precision,
+        extra_options=extra_options,
+    ).precision
     return (
         selection.device_name,
         selection.gpu_count,
@@ -1259,9 +1319,7 @@ def _load_resume_checkpoint(
             else None
         ),
         ema_state_dict=(
-            dict(ema_state_dict)
-            if isinstance(ema_state_dict, dict)
-            else None
+            dict(ema_state_dict) if isinstance(ema_state_dict, dict) else None
         ),
         ema_updates=(
             int(raw_ema_updates)
@@ -1581,10 +1639,13 @@ def _build_autocast_context(
     """构造训练阶段使用的 autocast 上下文工厂。"""
 
     torch = imports.torch
-    use_fp16 = device.startswith("cuda") and runtime_precision == "fp16"
+    use_amp = device.startswith("cuda") and runtime_precision in {"fp16", "bf16"}
     autocast = getattr(torch, "autocast", None)
-    if use_fp16 and callable(autocast):
-        return lambda: autocast(device_type="cuda", dtype=torch.float16)
+    if use_amp and callable(autocast):
+        return lambda: autocast(
+            device_type="cuda",
+            dtype=(torch.float16 if runtime_precision == "fp16" else torch.bfloat16),
+        )
     return nullcontext
 
 
@@ -1747,7 +1808,12 @@ def _evaluate_detection_model_once(
     """按 Ultralytics validator 语义一次 forward 统计 loss 和 mAP。"""
 
     if not samples:
-        empty_losses = {"loss": 0.0, "class_loss": 0.0, "box_loss": 0.0, "dfl_loss": 0.0}
+        empty_losses = {
+            "loss": 0.0,
+            "class_loss": 0.0,
+            "box_loss": 0.0,
+            "dfl_loss": 0.0,
+        }
         return empty_losses, {"map50": 0.0, "map50_95": 0.0}
     if not is_yolov8_detection_core_model(model):
         raise ServiceConfigurationError(
@@ -1828,6 +1894,7 @@ def _evaluate_detection_model_once(
                         )
                     )
     finally:
+        close_yolo_dataloader(validation_dataloader)
         model.train(previous_training_mode)
 
     losses = loss_accumulator.mean()
@@ -2367,8 +2434,12 @@ def _resolve_detection_batch_input_size(
     scale_min, scale_max = augmentation_options.multi_scale_range
     scale_value = random.uniform(float(scale_min), float(scale_max))
     stride = max(1, int(augmentation_options.multi_scale_stride))
-    height = max(stride, int(round(int(base_input_size[0]) * scale_value / stride)) * stride)
-    width = max(stride, int(round(int(base_input_size[1]) * scale_value / stride)) * stride)
+    height = max(
+        stride, int(round(int(base_input_size[0]) * scale_value / stride)) * stride
+    )
+    width = max(
+        stride, int(round(int(base_input_size[1]) * scale_value / stride)) * stride
+    )
     return (height, width)
 
 
@@ -2401,4 +2472,3 @@ def _clamp_probability(value: float) -> float:
     """把概率值裁剪到 [0, 1]。"""
 
     return max(0.0, min(1.0, float(value)))
-

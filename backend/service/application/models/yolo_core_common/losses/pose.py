@@ -35,16 +35,26 @@ def compute_oks_keypoint_loss(
     area: Any,
     sigmas: Any,
 ) -> Any:
-    """按 OKS 公式计算关键点位置损失。"""
+    """按 OKS 公式计算关键点位置损失。
 
+    坐标平方和 bbox 面积在 256 像素以上就可能超过 FP16 最大有限值。
+    该路径必须固定用 FP32，避免 ``Inf / Inf`` 把 total loss 污染为 NaN。
+    """
+
+    pred_xy_float = pred_keypoints_xy.float()
+    gt_xy_float = gt_keypoints_xy.float()
+    area_float = area.float()
+    sigmas_float = sigmas.float()
     distance_sq = (
-        (pred_keypoints_xy[..., 0] - gt_keypoints_xy[..., 0]).pow(2)
-        + (pred_keypoints_xy[..., 1] - gt_keypoints_xy[..., 1]).pow(2)
+        (pred_xy_float[..., 0] - gt_xy_float[..., 0]).pow(2)
+        + (pred_xy_float[..., 1] - gt_xy_float[..., 1]).pow(2)
     )
     keypoint_mask_float = keypoint_mask.float()
     visible_count = torch_module.sum(keypoint_mask_float, dim=1) + 1e-9
     keypoint_loss_factor = keypoint_mask.shape[1] / visible_count
-    oks_denominator = ((2 * sigmas).pow(2) * (area + 1e-9) * 2).clamp_min(1e-9)
+    oks_denominator = (
+        (2 * sigmas_float).pow(2) * (area_float + 1e-9) * 2
+    ).clamp_min(1e-9)
     error = distance_sq / oks_denominator
     return (
         keypoint_loss_factor.view(-1, 1)
@@ -101,10 +111,11 @@ def build_pose_box_area(
     *,
     gt_boxes: Any,
 ) -> Any:
-    """从 matched gt boxes 构建 OKS 所需面积。"""
+    """从 matched gt boxes 构建 OKS 所需的 FP32 面积。"""
 
-    widths = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp_min(1.0)
-    heights = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp_min(1.0)
+    boxes_float = gt_boxes.float()
+    widths = (boxes_float[:, 2] - boxes_float[:, 0]).clamp_min(1.0)
+    heights = (boxes_float[:, 3] - boxes_float[:, 1]).clamp_min(1.0)
     return (widths * heights).view(-1, 1)
 
 

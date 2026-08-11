@@ -101,7 +101,7 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
     return {
         "detection": YoloModelTaskCase(
             task_type="detection",
-            dataset_dir=dataset_root / "detection" / "medical-pills",
+            dataset_dir=dataset_root / "detection" / "barcodeqrcode",
             export_format="yolo-detection-v1",
             input_size=(256, 384),
             conversion_route="/models/detection/conversion-tasks",
@@ -128,7 +128,7 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "pose": YoloModelTaskCase(
             task_type="pose",
-            dataset_dir=dataset_root / "pose" / "hand-keypoints",
+            dataset_dir=dataset_root / "pose" / "hand-keypoints-clean-v1",
             export_format="yolo-pose-v1",
             input_size=(256, 384),
             conversion_route="/models/pose/conversion-tasks",
@@ -137,11 +137,7 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "obb": YoloModelTaskCase(
             task_type="obb",
-            dataset_dir=None,
-            dataset_archive=(
-                PROJECT_ROOT / "data" / "files" / "postman-assets" / "obb-dota-min.zip"
-            ),
-            import_format="dota",
+            dataset_dir=dataset_root / "obb" / "rotated-components-v1",
             export_format="yolo-obb-v1",
             input_size=(256, 384),
             conversion_route="/models/obb/conversion-tasks",
@@ -267,6 +263,8 @@ def main(argv: list[str] | None = None) -> int:
                         skip_deployment=args.skip_deployment,
                         run_workflow=args.run_workflow,
                         max_images_per_split=args.max_images_per_split,
+                        enable_augmentation=args.enable_augmentation,
+                        evaluation_interval=args.evaluation_interval,
                     )
                 except Exception as error:
                     result["tasks"][case.task_type] = {
@@ -326,6 +324,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument(
+        "--enable-augmentation",
+        action="store_true",
+        help="启用任务 schema 的默认训练增强；smoke 默认关闭以保持确定性",
+    )
+    parser.add_argument("--evaluation-interval", type=int, default=1)
+    parser.add_argument(
         "--training-device",
         default="auto",
         help="训练设备：auto、cpu、cuda 或 cuda:<index>",
@@ -354,7 +358,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="deployment sync 验收后继续用正式 workflow app runtime 调用一次",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.max_epochs < 1 or args.batch_size < 1 or args.evaluation_interval < 1:
+        parser.error("max-epochs、batch-size 和 evaluation-interval 必须大于 0")
+    return args
 
 
 def start_service_processes(
@@ -659,6 +666,20 @@ def run_task_case(
     skip_deployment: bool,
     run_workflow: bool,
     max_images_per_split: int,
+    enable_augmentation: bool = False,
+    evaluation_interval: int = 1,
+    warm_start_model_version_id: str | None = None,
+    training_precision: str = "fp32",
+    training_num_workers: int = 0,
+    training_prefetch_factor: int = 2,
+    batch_mode: str = "fixed",
+    batch_target_memory_fraction: float = 0.6,
+    batch_minimum_size: int = 1,
+    batch_maximum_size: int | None = None,
+    batch_recover_on_oom: bool = True,
+    batch_max_oom_retries: int = 3,
+    checkpoint_interval: int = 5,
+    checkpoint_keep_periodic: int = 2,
 ) -> dict[str, Any]:
     """运行单个 task_type 的完整短链路。"""
 
@@ -745,6 +766,20 @@ def run_task_case(
         max_epochs=max_epochs,
         batch_size=batch_size,
         training_device=training_device,
+        enable_augmentation=enable_augmentation,
+        evaluation_interval=evaluation_interval,
+        warm_start_model_version_id=warm_start_model_version_id,
+        training_precision=training_precision,
+        training_num_workers=training_num_workers,
+        training_prefetch_factor=training_prefetch_factor,
+        batch_mode=batch_mode,
+        batch_target_memory_fraction=batch_target_memory_fraction,
+        batch_minimum_size=batch_minimum_size,
+        batch_maximum_size=batch_maximum_size,
+        batch_recover_on_oom=batch_recover_on_oom,
+        batch_max_oom_retries=batch_max_oom_retries,
+        checkpoint_interval=checkpoint_interval,
+        checkpoint_keep_periodic=checkpoint_keep_periodic,
     )
     training_detail = poll_task(
         client=client,
@@ -830,6 +865,7 @@ def run_task_case(
         "dataset_export_id": dataset_export_id,
         "dataset_export_format": case.export_format,
         "training_task_id": training["task_id"],
+        "warm_start_model_version_id": warm_start_model_version_id,
         "model_version_id": model_version_id,
         "evaluation": summarize_evaluation_payload(evaluation_detail),
         "conversions": conversions,
@@ -1188,8 +1224,38 @@ def submit_training_task(
     max_epochs: int,
     batch_size: int,
     training_device: str,
+    enable_augmentation: bool = False,
+    evaluation_interval: int = 1,
+    warm_start_model_version_id: str | None = None,
+    training_precision: str = "fp32",
+    training_num_workers: int = 0,
+    training_prefetch_factor: int = 2,
+    batch_mode: str = "fixed",
+    batch_target_memory_fraction: float = 0.6,
+    batch_minimum_size: int = 1,
+    batch_maximum_size: int | None = None,
+    batch_recover_on_oom: bool = True,
+    batch_max_oom_retries: int = 3,
+    checkpoint_interval: int = 5,
+    checkpoint_keep_periodic: int = 2,
 ) -> dict[str, Any]:
     """提交训练任务。"""
+
+    amp_by_precision = {
+        "auto": {"mode": "auto", "dtype": "auto"},
+        "fp32": {"mode": "disabled", "dtype": "auto"},
+        "fp16": {"mode": "enabled", "dtype": "fp16"},
+        "bf16": {"mode": "enabled", "dtype": "bf16"},
+    }
+    try:
+        amp_policy = amp_by_precision[training_precision]
+    except KeyError as error:
+        raise ValueError(f"不支持的训练 precision: {training_precision}") from error
+    if batch_mode not in {"auto", "fixed"}:
+        raise ValueError(f"不支持的 batch mode: {batch_mode}")
+    resolved_batch_maximum = batch_maximum_size
+    if batch_mode == "fixed" and resolved_batch_maximum is None:
+        resolved_batch_maximum = batch_size
 
     payload: dict[str, Any] = {
         "project_id": project_id,
@@ -1199,23 +1265,40 @@ def submit_training_task(
         "recipe_id": "default",
         "model_scale": model_scale,
         "output_model_name": output_model_name,
-        "max_epochs": max_epochs,
-        "batch_size": batch_size,
-        "input_size": {
-            "width": int(case.input_size[1]),
-            "height": int(case.input_size[0]),
+        "execution": {
+            "max_epochs": max_epochs,
+            "input_size": {
+                "width": int(case.input_size[1]),
+                "height": int(case.input_size[0]),
+            },
+            "batch": {
+                "mode": batch_mode,
+                "size": batch_size if batch_mode == "fixed" else None,
+                "target_memory_fraction": batch_target_memory_fraction,
+                "minimum_size": batch_minimum_size,
+                "maximum_size": resolved_batch_maximum,
+                "recover_on_oom": batch_recover_on_oom,
+                "max_oom_retries": batch_max_oom_retries,
+            },
+            "amp": amp_policy,
+            "checkpoint": {
+                "interval_epochs": checkpoint_interval,
+                "keep_periodic": checkpoint_keep_periodic,
+            },
+            "validation": {"interval_epochs": int(evaluation_interval)},
         },
-        "precision": "fp32",
         "parameters": {
             "runtime": {
                 "device": training_device,
-                "num_workers": 0,
+                "num_workers": training_num_workers,
+                "prefetch_factor": training_prefetch_factor,
             },
-            "augmentation": {"enabled": False},
+            "augmentation": {"enabled": bool(enable_augmentation)},
         },
         "display_name": f"smoke {model_type} {case.task_type}",
     }
-    payload["evaluation_interval"] = 1
+    if warm_start_model_version_id is not None:
+        payload["warm_start_model_version_id"] = warm_start_model_version_id
     return client.post(
         f"/models/{case.task_type}/training-tasks",
         json=payload,

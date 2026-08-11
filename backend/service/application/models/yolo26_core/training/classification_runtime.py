@@ -116,8 +116,11 @@ def build_yolo26_classification_autocast_context(
 ) -> Callable[[], Any]:
     """构建 YOLO26 classification 训练使用的 autocast context。"""
 
-    if precision == "fp16" and "cuda" in device_name:
-        return lambda: torch_module.amp.autocast(resolve_torch_amp_device_type(device_name))
+    if precision in {"fp16", "bf16"} and "cuda" in device_name:
+        return lambda: torch_module.amp.autocast(
+            resolve_torch_amp_device_type(device_name),
+            dtype=(torch_module.float16 if precision == "fp16" else torch_module.bfloat16),
+        )
     return nullcontext
 
 

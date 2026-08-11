@@ -44,6 +44,9 @@ from backend.service.api.rest.v1.routes.training_parameter_schemas import (
 from backend.service.api.rest.v1.routes.training_parameter_capabilities import (
     TRAINING_PARAMETER_CAPABILITIES_BY_TASK_AND_MODEL,
 )
+from backend.service.api.rest.v1.routes.training_execution_schemas import (
+    TrainingExecutionPolicyRequest,
+)
 
 
 def _base_request(*, model_type: str) -> dict[str, object]:
@@ -211,7 +214,7 @@ def test_short_yolox_training_resolves_only_implicit_schedule_defaults() -> None
     """短训练会固化解析后的默认调度，但无效显式值会被拒绝。"""
 
     payload = _base_request(model_type="yolox")
-    payload["max_epochs"] = 3
+    payload["execution"] = {"max_epochs": 3}
     request = DetectionTrainingTaskCreateRequestBody.model_validate(payload)
     options = request.parameters.to_execution_options()
     assert options["warmup_epochs"] == 2
@@ -220,6 +223,80 @@ def test_short_yolox_training_resolves_only_implicit_schedule_defaults() -> None
     payload["parameters"] = {"optimization": {"warmup_epochs": 3}}
     with pytest.raises(ValidationError, match="warmup_epochs"):
         DetectionTrainingTaskCreateRequestBody.model_validate(payload)
+
+
+def test_training_execution_policy_defaults_to_auto_batch_amp_and_five_epoch_io() -> None:
+    """公共执行策略默认使用 AutoBatch、AMP 和五轮磁盘/验证周期。"""
+
+    execution = TrainingExecutionPolicyRequest()
+
+    assert execution.max_epochs == 100
+    assert execution.batch.mode == "auto"
+    assert execution.batch.size is None
+    assert execution.batch.target_memory_fraction == pytest.approx(0.6)
+    assert execution.batch.recover_on_oom is True
+    assert execution.batch.max_oom_retries == 3
+    assert execution.amp.mode == "auto"
+    assert execution.amp.dtype == "auto"
+    assert execution.checkpoint.interval_epochs == 5
+    assert execution.validation.interval_epochs == 5
+    assert execution.fixed_batch_size is None
+    assert execution.requested_precision is None
+    assert execution.to_execution_options()["checkpoint_interval"] == 5
+    assert execution.to_execution_options()["batch_recover_on_oom"] is True
+    assert execution.to_execution_options()["batch_oom_max_retries"] == 3
+
+
+def test_training_execution_policy_rejects_ambiguous_batch_and_amp_values() -> None:
+    """AutoBatch、固定 batch 和关闭 AMP 的参数组合必须无歧义。"""
+
+    with pytest.raises(ValidationError, match="必须提供 batch.size"):
+        TrainingExecutionPolicyRequest.model_validate(
+            {"batch": {"mode": "fixed"}}
+        )
+    with pytest.raises(ValidationError, match="不能提供 batch.size"):
+        TrainingExecutionPolicyRequest.model_validate(
+            {"batch": {"mode": "auto", "size": 16}}
+        )
+    with pytest.raises(ValidationError, match="maximum_size"):
+        TrainingExecutionPolicyRequest.model_validate(
+            {"batch": {"minimum_size": 32, "maximum_size": 16}}
+        )
+    with pytest.raises(ValidationError, match="amp.dtype"):
+        TrainingExecutionPolicyRequest.model_validate(
+            {"amp": {"mode": "disabled", "dtype": "fp16"}}
+        )
+    with pytest.raises(ValidationError, match="max_oom_retries"):
+        TrainingExecutionPolicyRequest.model_validate(
+            {"batch": {"max_oom_retries": 11}}
+        )
+
+
+@pytest.mark.parametrize(
+    "request_schema",
+    [
+        DetectionTrainingTaskCreateRequestBody,
+        ClassificationTrainingTaskCreateRequestBody,
+        SegmentationTrainingTaskCreateRequestBody,
+        PoseTrainingTaskCreateRequestBody,
+        ObbTrainingTaskCreateRequestBody,
+    ],
+)
+def test_training_requests_reject_removed_top_level_runtime_fields(
+    request_schema: type,
+) -> None:
+    """v1 直接使用 execution，旧 batch/precision/evaluation 字段不再保留。"""
+
+    for field_name, value in (
+        ("batch_size", 16),
+        ("precision", "fp16"),
+        ("evaluation_interval", 5),
+        ("max_epochs", 100),
+    ):
+        payload = _base_request(model_type="yolov8")
+        payload[field_name] = value
+        with pytest.raises(ValidationError, match=field_name):
+            request_schema.model_validate(payload)
 
 
 def test_execution_mapping_uses_runner_keys_and_disables_augmentation() -> None:
@@ -234,7 +311,7 @@ def test_execution_mapping_uses_runner_keys_and_disables_augmentation() -> None:
             },
             "loss": {"keypoint_weight": 9.0},
             "matching": {"topk": 7},
-            "evaluation": {"keypoint_confidence_threshold": 0.3},
+            "evaluation": {"confidence_threshold": 0.003},
             "augmentation": {"enabled": False},
         }
     )
@@ -243,7 +320,8 @@ def test_execution_mapping_uses_runner_keys_and_disables_augmentation() -> None:
     assert options["learning_rate"] == 0.001
     assert options["kpt_loss_weight"] == 9.0
     assert options["assign_topk"] == 7
-    assert options["keypoint_confidence_threshold"] == 0.3
+    assert options["evaluation_confidence_threshold"] == 0.003
+    assert "keypoint_confidence_threshold" not in options
     assert options["disable_augmentation"] is True
     assert options["mosaic_prob"] == 0.0
 

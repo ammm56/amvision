@@ -57,8 +57,11 @@ def build_yolo26_obb_autocast_context(
 ) -> Any:
     """构建 YOLO26 OBB 训练使用的 autocast context。"""
 
-    if precision == "fp16" and "cuda" in device_name:
-        return torch_module.amp.autocast("cuda")
+    if precision in {"fp16", "bf16"} and "cuda" in device_name:
+        return torch_module.amp.autocast(
+            "cuda",
+            dtype=(torch_module.float16 if precision == "fp16" else torch_module.bfloat16),
+        )
     return nullcontext()
 
 

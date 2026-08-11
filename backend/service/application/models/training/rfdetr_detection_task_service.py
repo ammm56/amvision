@@ -21,6 +21,7 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
     build_detection_training_model_version_metadata,
+    build_detection_runtime_summary_payload,
 )
 from backend.service.application.models.training.rfdetr_detection import (
     RFDETR_IMPL_MODE,
@@ -54,6 +55,12 @@ from backend.service.application.models.training.rfdetr_training_warm_start impo
     build_rfdetr_warm_start_source_summary,
     resolve_rfdetr_warm_start_reference,
 )
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -83,6 +90,25 @@ RFDETR_TRAINING_QUEUE_NAME = "rfdetr-trainings"
 RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY = "manual_model_version_registration"
 RFDETR_MANUAL_LATEST_OUTPUT_FILE_TOKEN = "manual-latest"
 RFDETR_TRAINING_CONTROL_METADATA_KEY = "training_control"
+
+
+def _build_rfdetr_runtime_summary(
+    training_config: dict[str, object],
+) -> dict[str, object]:
+    """从已落盘的真实训练配置构建 RF-DETR 运行时摘要。"""
+
+    device = str(training_config.get("device") or "cpu")
+    device_ids: list[int] = []
+    if device.startswith("cuda"):
+        _, separator, suffix = device.partition(":")
+        device_ids = [int(suffix)] if separator and suffix.isdigit() else [0]
+    return build_detection_runtime_summary_payload(
+        device=device,
+        gpu_count=1 if device_ids else 0,
+        device_ids=device_ids,
+        precision=str(training_config.get("precision") or "fp32"),
+        distributed_mode=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -153,7 +179,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
         self._validate_request(request)
         queue_backend = self._require_queue_backend()
         dataset_export = self._resolve_dataset_export(request)
-        task_spec = self._build_task_spec(request=request, dataset_export=dataset_export)
+        task_spec = self._build_task_spec(
+            request=request, dataset_export=dataset_export
+        )
         metadata = {
             "dataset_export_id": dataset_export.dataset_export_id,
             "dataset_export_manifest_key": dataset_export.manifest_object_key,
@@ -363,7 +391,10 @@ class SqlAlchemyRfdetrTrainingTaskService:
         if resume_key is None or not dataset_storage.resolve(resume_key).is_file():
             raise InvalidRequestError(
                 "当前 RF-DETR 训练任务缺少可恢复的 latest checkpoint",
-                details={"task_id": task_id, "latest_checkpoint_object_key": resume_key},
+                details={
+                    "task_id": task_id,
+                    "latest_checkpoint_object_key": resume_key,
+                },
             )
         payload = self._read_task_payload(task_record)
         dataset_export = self._resolve_dataset_export_from_payload(
@@ -489,9 +520,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             validation_metrics_object_key=(
                 f"{output_prefix}/output-files/validation-metrics.json"
             ),
-            test_metrics_object_key=(
-                f"{output_prefix}/output-files/test-metrics.json"
-            ),
+            test_metrics_object_key=(f"{output_prefix}/output-files/test-metrics.json"),
             summary_object_key=f"{output_prefix}/output-files/training-summary.json",
         )
         initial_control = self._read_training_control(task_record)
@@ -529,7 +558,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         )
 
         def on_batch(progress: RfdetrTrainingBatchProgress) -> None:
-            """回写真实 batch 进度，进度值限制在训练阶段范围内。"""
+            """发布真实 batch 遥测，进度值限制在训练阶段范围内。"""
 
             percent = round(
                 min(
@@ -541,31 +570,21 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 ),
                 2,
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_id,
-                    event_type="progress",
-                    message=(
-                        "rfdetr training batch "
-                        f"{progress.iteration}/{progress.max_iterations}"
-                    ),
-                    payload={
-                        "state": "running",
-                        "progress": {
-                            "stage": "training",
-                            "percent": percent,
-                            "epoch": progress.epoch + 1,
-                            "epoch_index": progress.epoch,
-                            "max_epochs": progress.max_epochs,
-                            "iteration": progress.iteration,
-                            "max_iterations": progress.max_iterations,
-                            "global_iteration": progress.global_iteration,
-                            "total_iterations": progress.total_iterations,
-                            "learning_rate": progress.learning_rate,
-                            "train_metrics": dict(progress.train_metrics),
-                        },
-                    },
-                )
+            publish_training_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_id,
+                attempt_no=task_record.current_attempt_no,
+                task_type=self.task_type,
+                model_type=self.model_type,
+                epoch=progress.epoch + 1,
+                max_epochs=progress.max_epochs,
+                step=progress.iteration,
+                steps_per_epoch=progress.max_iterations,
+                global_step=progress.global_iteration,
+                total_steps=progress.total_iterations,
+                progress_percent=percent,
+                learning_rate=progress.learning_rate,
+                metrics=dict(progress.train_metrics),
             )
 
         def on_epoch(
@@ -577,9 +596,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 min(
                     95.0,
                     10.0
-                    + 80.0
-                    * max(0, progress.epoch + 1)
-                    / max(1, progress.max_epochs),
+                    + 80.0 * max(0, progress.epoch + 1) / max(1, progress.max_epochs),
                 ),
                 2,
             )
@@ -605,9 +622,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     },
                 )
             )
-            control = self._read_training_control(
-                self._require_training_task(task_id)
-            )
+            control = self._read_training_control(self._require_training_task(task_id))
             if read_yolo_detection_training_control_flag(
                 control,
                 "terminate_requested",
@@ -977,7 +992,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             )
 
         output_files = self._build_output_files_from_result(task_id, result)
-        category_names = self._resolve_result_category_names(result=result, summary=summary)
+        category_names = self._resolve_result_category_names(
+            result=result, summary=summary
+        )
         if output_files.labels_object_key is not None:
             labels_path = dataset_storage.resolve(output_files.labels_object_key)
             if not labels_path.is_file():
@@ -1079,22 +1096,28 @@ class SqlAlchemyRfdetrTrainingTaskService:
             raise ServiceConfigurationError("提交 RF-DETR 训练任务时缺少 queue backend")
         return self.queue_backend
 
-    def _resolve_dataset_export(self, request: RfdetrTrainingTaskRequest) -> DatasetExport:
+    def _resolve_dataset_export(
+        self, request: RfdetrTrainingTaskRequest
+    ) -> DatasetExport:
         """按 id 或 manifest key 解析训练输入 DatasetExport。"""
 
         export_by_id = None
         if request.dataset_export_id:
             uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
             try:
-                export_by_id = uow.dataset_exports.get_dataset_export(request.dataset_export_id)
+                export_by_id = uow.dataset_exports.get_dataset_export(
+                    request.dataset_export_id
+                )
             finally:
                 uow.close()
         export_by_manifest = None
         if request.dataset_export_manifest_key:
             uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
             try:
-                export_by_manifest = uow.dataset_exports.get_dataset_export_by_manifest_object_key(
-                    request.dataset_export_manifest_key
+                export_by_manifest = (
+                    uow.dataset_exports.get_dataset_export_by_manifest_object_key(
+                        request.dataset_export_manifest_key
+                    )
                 )
             finally:
                 uow.close()
@@ -1187,7 +1210,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
         """返回执行 RF-DETR detection 训练必需的数据集存储。"""
 
         if self.dataset_storage is None:
-            raise ServiceConfigurationError("执行 RF-DETR 训练任务时缺少 dataset storage")
+            raise ServiceConfigurationError(
+                "执行 RF-DETR 训练任务时缺少 dataset storage"
+            )
         return self.dataset_storage
 
     def _read_task_payload(self, task_record: TaskRecord) -> dict[str, object]:
@@ -1209,7 +1234,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
         """按任务 payload 解析 RF-DETR detection 训练输入 DatasetExport。"""
 
         dataset_export_id = self._read_optional_str(payload.get("dataset_export_id"))
-        manifest_key = self._read_optional_str(payload.get("dataset_export_manifest_key"))
+        manifest_key = self._read_optional_str(
+            payload.get("dataset_export_manifest_key")
+        )
         return self._resolve_dataset_export(
             RfdetrTrainingTaskRequest(
                 project_id=project_id,
@@ -1232,13 +1259,18 @@ class SqlAlchemyRfdetrTrainingTaskService:
     ) -> dict[str, object]:
         """构建 RF-DETR detection 训练摘要。"""
 
+        runtime_config = build_execution_training_config_runtime(
+            execution_result=execution_result,
+            requested_batch_size=payload.get("batch_size"),
+            requested_precision=payload.get("precision"),
+            default_batch_size=2,
+        )
         training_config = {
             "recipe_id": str(payload.get("recipe_id") or "default"),
             "model_scale": str(payload.get("model_scale") or "nano"),
             "output_model_name": str(payload.get("output_model_name") or "rfdetr"),
-            "batch_size": int(payload.get("batch_size") or 2),
+            **runtime_config,
             "max_epochs": int(payload.get("max_epochs") or 1),
-            "precision": str(payload.get("precision") or "fp32"),
             "input_size": serialize_spatial_size_hw(
                 execution_result.aligned_input_size
             ),
@@ -1298,13 +1330,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             category_names=execution_result.labels,
             input_size=execution_result.aligned_input_size,
             training_config=dict(summary["training_config"]),
-            runtime_summary={
-                "device": "cpu",
-                "gpu_count": int(payload.get("gpu_count") or 0),
-                "device_ids": [],
-                "precision": str(payload.get("precision") or "fp32"),
-                "distributed_mode": False,
-            },
+            runtime_summary=_build_rfdetr_runtime_summary(
+                dict(summary["training_config"])
+            ),
             warm_start_summary=dict(summary.get("warm_start") or {}),
             registration_kind="best-checkpoint",
             output_files=output_files,
@@ -1359,13 +1387,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         )
         training_config = dict(summary.get("training_config") or {})
         metrics_summary = dict(summary.get("metrics_summary") or {})
-        runtime_summary = {
-            "device": "cpu",
-            "gpu_count": int(payload.get("gpu_count") or 0),
-            "device_ids": [],
-            "precision": str(payload.get("precision") or "fp32"),
-            "distributed_mode": False,
-        }
+        runtime_summary = _build_rfdetr_runtime_summary(training_config)
         model_version_metadata = build_detection_training_model_version_metadata(
             dataset_export_id=dataset_export.dataset_export_id,
             manifest_object_key=dataset_export.manifest_object_key,
@@ -1418,14 +1440,18 @@ class SqlAlchemyRfdetrTrainingTaskService:
     ) -> DetectionTrainingOutputFiles:
         """从任务 result 还原 RF-DETR detection 输出文件键。"""
 
-        output_object_prefix = self._read_optional_str(
-            result.get("output_object_prefix")
-        ) or self._read_optional_str(result.get("output_prefix")) or f"task-runs/{task_id}"
+        output_object_prefix = (
+            self._read_optional_str(result.get("output_object_prefix"))
+            or self._read_optional_str(result.get("output_prefix"))
+            or f"task-runs/{task_id}"
+        )
         checkpoint_object_key = self._read_optional_str(
             result.get("checkpoint_object_key")
         )
         if checkpoint_object_key is None:
-            checkpoint_object_key = f"{output_object_prefix}/output-files/best-checkpoint.pt"
+            checkpoint_object_key = (
+                f"{output_object_prefix}/output-files/best-checkpoint.pt"
+            )
         return DetectionTrainingOutputFiles(
             output_object_prefix=output_object_prefix,
             checkpoint_object_key=checkpoint_object_key,
@@ -1433,11 +1459,15 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 result.get("latest_checkpoint_object_key")
             ),
             labels_object_key=self._read_optional_str(result.get("labels_object_key")),
-            metrics_object_key=self._read_optional_str(result.get("metrics_object_key")),
+            metrics_object_key=self._read_optional_str(
+                result.get("metrics_object_key")
+            ),
             validation_metrics_object_key=self._read_optional_str(
                 result.get("validation_metrics_object_key")
             ),
-            summary_object_key=self._read_optional_str(result.get("summary_object_key")),
+            summary_object_key=self._read_optional_str(
+                result.get("summary_object_key")
+            ),
         )
 
     def _resolve_result_category_names(
@@ -1610,9 +1640,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "output_prefix": output_files.output_object_prefix,
             "output_object_prefix": output_files.output_object_prefix,
             "checkpoint_object_key": checkpoint_object_key,
-            "latest_checkpoint_object_key": (
-                output_files.latest_checkpoint_object_key
-            ),
+            "latest_checkpoint_object_key": (output_files.latest_checkpoint_object_key),
             "labels_object_key": output_files.labels_object_key,
             "metrics_object_key": output_files.metrics_object_key,
             "validation_metrics_object_key": (
@@ -1626,7 +1654,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "summary": summary,
         }
 
-    def _write_labels_text(self, *, labels_object_key: str, labels: tuple[str, ...]) -> None:
+    def _write_labels_text(
+        self, *, labels_object_key: str, labels: tuple[str, ...]
+    ) -> None:
         """写出 RF-DETR detection 标签文本文件。"""
 
         content = "\n".join(labels)
@@ -1674,11 +1704,15 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 result.get("latest_checkpoint_object_key")
             ),
             labels_object_key=self._read_optional_str(result.get("labels_object_key")),
-            metrics_object_key=self._read_optional_str(result.get("metrics_object_key")),
+            metrics_object_key=self._read_optional_str(
+                result.get("metrics_object_key")
+            ),
             validation_metrics_object_key=self._read_optional_str(
                 result.get("validation_metrics_object_key")
             ),
-            summary_object_key=self._read_optional_str(result.get("summary_object_key")),
+            summary_object_key=self._read_optional_str(
+                result.get("summary_object_key")
+            ),
             best_metric_name=self._read_optional_str(result.get("best_metric_name")),
             best_metric_value=self._read_optional_float(
                 result.get("best_metric_value")
@@ -1719,4 +1753,3 @@ class SqlAlchemyRfdetrTrainingTaskService:
         """返回当前 UTC ISO 时间。"""
 
         return datetime.now(timezone.utc).isoformat()
-

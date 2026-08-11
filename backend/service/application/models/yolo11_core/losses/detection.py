@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.losses import (
+    write_assignment_quality_scores,
+)
+
 from backend.service.application.models.yolo11_core.assigners import (
     assign_yolo11_detection_targets,
     yolo11_box_iou_aligned,
@@ -189,7 +193,13 @@ def _compute_yolo11_image_detection_loss(
 
     assigned_gt_indices = assignment["assigned_gt_indices"][foreground_mask]
     quality_scores = assignment["quality_scores"][foreground_mask]
-    target_scores[foreground_mask, gt_classes[assigned_gt_indices]] = quality_scores
+    write_assignment_quality_scores(
+        target_scores=target_scores,
+        foreground_mask=foreground_mask,
+        gt_classes=gt_classes,
+        assigned_gt_indices=assigned_gt_indices,
+        quality_scores=quality_scores,
+    )
 
     foreground_stride = stride_tensor[foreground_mask].view(-1, 1)
     foreground_pred_boxes = image_pred_boxes[foreground_mask]

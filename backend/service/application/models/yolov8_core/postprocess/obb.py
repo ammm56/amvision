@@ -9,7 +9,6 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
     polygon_bounds_xyxy,
-    rotated_iou_xywhr,
     xywhr_to_polygon,
 )
 from backend.service.application.models.yolo_core_common.geometry import (
@@ -17,11 +16,12 @@ from backend.service.application.models.yolo_core_common.geometry import (
     scale_yolo_xywh_from_letterbox,
 )
 from backend.service.application.models.yolo_core_common.postprocess import (
+    class_aware_rotated_nms_indices,
     select_top_scoring_candidate_indices,
 )
 
 
-MAX_YOLOV8_OBB_PRE_NMS_CANDIDATES = 300
+MAX_YOLOV8_OBB_PRE_NMS_CANDIDATES = 30_000
 MAX_YOLOV8_OBB_DETECTIONS = 300
 
 
@@ -115,12 +115,13 @@ def build_yolov8_obb_postprocess_instances(
             boxes_xywh=boxes_xywh,
             angles=angles,
         )
-        keep_indices = _rotated_nms_indices(
+        keep_indices = class_aware_rotated_nms_indices(
             boxes_xywhr=boxes_xywhr,
             scores=best_scores,
             class_ids=best_class_ids,
             nms_threshold=nms_threshold,
             np_module=np_module,
+            max_detections=MAX_YOLOV8_OBB_DETECTIONS,
         )
         if int(keep_indices.size) <= 0:
             continue
@@ -205,43 +206,6 @@ def _build_yolov8_obb_boxes_xywhr(
         for box, angle in zip(boxes_xywh, angles, strict=True)
     ]
     return np_module.asarray(boxes, dtype=np_module.float32)
-
-
-def _rotated_nms_indices(
-    *,
-    np_module: Any,
-    boxes_xywhr: Any,
-    scores: Any,
-    class_ids: Any,
-    nms_threshold: float,
-) -> Any:
-    """按类别对 YOLOv8 OBB rotated IoU 做 NMS。"""
-
-    box_count = int(len(boxes_xywhr))
-    if box_count <= 0:
-        return np_module.asarray([], dtype=np_module.int64)
-
-    order = np_module.argsort(scores)[::-1]
-    suppressed = np_module.zeros(box_count, dtype=bool)
-    keep_indices: list[int] = []
-    for raw_index in order:
-        index = int(raw_index)
-        if bool(suppressed[index]):
-            continue
-        keep_indices.append(index)
-        for raw_compare_index in order:
-            compare_index = int(raw_compare_index)
-            if compare_index == index or bool(suppressed[compare_index]):
-                continue
-            if int(class_ids[compare_index]) != int(class_ids[index]):
-                continue
-            overlap = rotated_iou_xywhr(
-                boxes_xywhr[index].tolist(),
-                boxes_xywhr[compare_index].tolist(),
-            )
-            if overlap > float(nms_threshold):
-                suppressed[compare_index] = True
-    return np_module.asarray(keep_indices, dtype=np_module.int64)
 
 
 def _clip_yolov8_obb_bounds(

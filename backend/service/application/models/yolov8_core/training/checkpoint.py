@@ -172,8 +172,17 @@ def build_yolov8_detection_epoch_checkpoint_update(
     candidate_best_metric_value: float,
     previous_best_checkpoint_bytes: bytes,
     improved_best: bool,
+    serialize_checkpoint: bool = True,
+    previous_latest_checkpoint_bytes: bytes = b"",
 ) -> YoloV8DetectionEpochCheckpointUpdate:
     """构建 YOLOv8 detection 一个 epoch 后的 latest / best checkpoint bytes。"""
+
+    if not serialize_checkpoint:
+        return YoloV8DetectionEpochCheckpointUpdate(
+            latest_checkpoint_bytes=previous_latest_checkpoint_bytes,
+            best_checkpoint_bytes=previous_best_checkpoint_bytes,
+            best_metric_value=candidate_best_metric_value,
+        )
 
     previous_best_checkpoint_state = (
         decode_yolov8_detection_checkpoint_state(

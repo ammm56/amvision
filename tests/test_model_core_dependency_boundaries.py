@@ -15,7 +15,10 @@ PROJECT_MODEL_CODE_DIRS = (*MODEL_RUNTIME_DIRS, REPO_ROOT / "tests")
 DISALLOWED_IMPORT_ROOTS = {"ultralytics", "rfdetr"}
 DISALLOWED_REFERENCE_TREE_NAME = "project" + "src"
 DEVELOPMENT_REFERENCE_AUDIT_FILES = frozenset(
-    {Path("tests/integration/test_yolo_detection_reference_parity.py")}
+    {
+        Path("tests/integration/test_yolo_detection_reference_parity.py"),
+        Path("tests/integration/test_yolo_non_detection_reference_parity.py"),
+    }
 )
 
 
@@ -32,11 +35,15 @@ def test_model_runtime_does_not_import_external_model_packages() -> None:
                 for alias in node.names:
                     root_name = alias.name.split(".", maxsplit=1)[0]
                     if root_name in DISALLOWED_IMPORT_ROOTS:
-                        violations.append(f"{source_path.relative_to(REPO_ROOT)} imports {alias.name}")
+                        violations.append(
+                            f"{source_path.relative_to(REPO_ROOT)} imports {alias.name}"
+                        )
             elif isinstance(node, ast.ImportFrom) and node.module:
                 root_name = node.module.split(".", maxsplit=1)[0]
                 if root_name in DISALLOWED_IMPORT_ROOTS:
-                    violations.append(f"{source_path.relative_to(REPO_ROOT)} imports from {node.module}")
+                    violations.append(
+                        f"{source_path.relative_to(REPO_ROOT)} imports from {node.module}"
+                    )
 
     assert violations == []
 

@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
+)
 from backend.service.application.runtime.tasks.detection_model_runtime import (
     DefaultDetectionModelRuntime,
 )
@@ -322,16 +325,7 @@ def _parse_detection_manifest(
     """解析 detection manifest，返回 (split_name, images, categories)。"""
     splits = manifest.get("splits", [])
 
-    chosen_split: dict[str, object] | None = None
-    for split in splits or []:
-        if not isinstance(split, dict):
-            continue
-        name = str(split.get("name", "")).lower()
-        if name in ("val", "valid", "validation", "test"):
-            chosen_split = split
-            break
-    if chosen_split is None and splits:
-        chosen_split = next((s for s in splits if isinstance(s, dict)), None)
+    chosen_split = select_independent_evaluation_split(splits)
     if chosen_split is None:
         raise InvalidRequestError("detection manifest 不包含可用的 split")
 

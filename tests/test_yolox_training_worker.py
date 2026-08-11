@@ -16,6 +16,7 @@ from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTIO
 from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.events import InMemoryServiceEventBus
 import backend.service.application.models.yolox_core.training.execution as yolox_training_execution_module
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionRequest,
@@ -49,6 +50,9 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
 )
 from backend.service.application.models.training.yolox_detection_task_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
+from backend.service.application.models.training.training_telemetry import (
+    TrainingTelemetryBroker,
+)
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -232,16 +236,23 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         assert any(event.message == "yolox training completed" for event in completed_task.events)
         assert any(event.event_type == "progress" for event in completed_task.events)
 
-        batch_progress_event = next(
-            event
-            for event in completed_task.events
-            if event.event_type == "progress"
+        assert not any(
+            event.event_type == "progress"
             and event.payload["progress"].get("granularity") == "batch"
+            for event in completed_task.events
         )
-        assert batch_progress_event.payload["progress"]["iteration"] == 1
-        assert batch_progress_event.payload["progress"]["max_iterations"] >= 1
-        assert batch_progress_event.payload["progress"]["global_iteration"] >= 1
-        assert batch_progress_event.payload["progress"]["percent"] > 10.0
+        telemetry_broker = session_factory.training_telemetry_broker
+        assert isinstance(telemetry_broker, TrainingTelemetryBroker)
+        batch_progress_event = telemetry_broker.replay(
+            task_id=completed_task.task.task_id,
+            after_cursor=None,
+            limit=100,
+        ).events[-1]
+        assert batch_progress_event.event_type == "training.batch"
+        assert batch_progress_event.payload["step"] == 1
+        assert batch_progress_event.payload["steps_per_epoch"] >= 1
+        assert batch_progress_event.payload["global_step"] >= 1
+        assert batch_progress_event.payload["progress_percent"] > 10.0
 
         progress_event = next(
             event
@@ -787,7 +798,7 @@ def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
     )
     manifest_payload = dataset_storage.read_json(dataset_export.manifest_object_key)
     resume_checkpoint_path = tmp_path / "resume-checkpoint.pth"
-    resume_checkpoint_path.write_bytes(b"fake-resume-checkpoint")
+    torch.save({"batch_size": 1}, resume_checkpoint_path)
     captured: dict[str, object] = {}
 
     def fake_load_resume_checkpoint(**kwargs):
@@ -838,6 +849,12 @@ def _create_worker_runtime(
     database_path = tmp_path / "amvision-yolox-training-worker.db"
     session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
     Base.metadata.create_all(session_factory.engine)
+    service_event_bus = InMemoryServiceEventBus()
+    session_factory.service_event_bus = service_event_bus
+    session_factory.training_telemetry_broker = TrainingTelemetryBroker(
+        event_bus=service_event_bus,
+        min_publish_interval_seconds=0,
+    )
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
     )

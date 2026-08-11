@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.losses import (
+    write_assignment_quality_scores,
+)
+
 from backend.service.application.models.yolo26_core.assigners import (
     assign_yolo26_pose_targets,
     resolve_yolo26_tal_candidate_box_sizes,
@@ -278,7 +282,13 @@ def _compute_yolo26_pose_image_loss(
 
     assigned_indices = assignment["assigned_gt_indices"][foreground_mask]
     quality_scores = assignment["quality_scores"][foreground_mask]
-    target_scores[foreground_mask, gt_classes[assigned_indices]] = quality_scores
+    write_assignment_quality_scores(
+        target_scores=target_scores,
+        foreground_mask=foreground_mask,
+        gt_classes=gt_classes,
+        assigned_gt_indices=assigned_indices,
+        quality_scores=quality_scores,
+    )
     foreground_pred_boxes = image_pred_boxes[foreground_mask]
     foreground_gt_boxes = gt_boxes[assigned_indices]
     foreground_stride = stride_tensor[foreground_mask]
@@ -460,9 +470,11 @@ def _compute_yolo26_pose_keypoint_losses(
         rle_loss = compute_yolo26_rle_loss(
             torch_module=torch_module,
             flow_model=flow_model,
-            pred_keypoints_xy=decoded_keypoints_xy,
+            pred_keypoints_xy=(
+                decoded_keypoints_xy / stride_values.unsqueeze(1)
+            ),
             pred_sigma_logits=foreground_pred_sigmas,
-            gt_keypoints_xy=gt_xy,
+            gt_keypoints_xy=(gt_xy / stride_values.unsqueeze(1)),
             keypoint_mask=keypoint_mask,
             target_weights=build_yolo26_pose_rle_weights(
                 torch_module=torch_module,
@@ -470,7 +482,7 @@ def _compute_yolo26_pose_keypoint_losses(
                 device=foreground_pred_keypoints.device,
                 dtype=foreground_pred_keypoints.dtype,
             ),
-        )
+        ).clamp_min(0.0)
     return keypoint_loss, visibility_loss, rle_loss
 
 
@@ -483,7 +495,7 @@ def _decode_yolo26_pose_keypoints_xy(
     """按 Ultralytics YOLO26 pose 训练规则解码关键点坐标。"""
 
     anchors_xy = anchor_points.unsqueeze(1)
-    return ((pred_xy * 2.0) + anchors_xy - 0.5) * strides.unsqueeze(1)
+    return (pred_xy + anchors_xy) * strides.unsqueeze(1)
 
 
 def compute_yolo26_rle_loss(
@@ -501,16 +513,18 @@ def compute_yolo26_rle_loss(
     if flow_model is None:
         return pred_keypoints_xy.new_zeros(())
 
-    visible_pred_xy = pred_keypoints_xy[keypoint_mask]
-    visible_gt_xy = gt_keypoints_xy[keypoint_mask]
-    visible_sigma = pred_sigma_logits.sigmoid()[keypoint_mask]
+    # RLE 中坐标差和 sigmoid 极值不得在 FP16 中计算。
+    # ``1e-9`` 在 FP16 会下溢为 0，从而把有效样本误判为 Inf。
+    visible_pred_xy = pred_keypoints_xy.float()[keypoint_mask]
+    visible_gt_xy = gt_keypoints_xy.float()[keypoint_mask]
+    visible_sigma = pred_sigma_logits.float().sigmoid()[keypoint_mask]
     if int(visible_pred_xy.shape[0]) <= 0:
         return pred_keypoints_xy.new_zeros(())
 
     expanded_target_weights = target_weights.unsqueeze(0).repeat(
         keypoint_mask.shape[0], 1
     )
-    visible_target_weights = expanded_target_weights[keypoint_mask]
+    visible_target_weights = expanded_target_weights.float()[keypoint_mask]
 
     error = (visible_pred_xy - visible_gt_xy) / (visible_sigma + 1e-9)
     valid_mask = ~(torch_module.isnan(error) | torch_module.isinf(error)).any(dim=-1)
@@ -521,17 +535,17 @@ def compute_yolo26_rle_loss(
     visible_sigma = visible_sigma[valid_mask]
     visible_target_weights = visible_target_weights[valid_mask]
 
-    log_phi = flow_model.log_prob(error.float())
-    visible_sigma_float = visible_sigma.float()
+    log_phi = flow_model.log_prob(error)
+    visible_sigma_float = visible_sigma
     loss = torch_module.log(visible_sigma_float + 1e-9) - log_phi.unsqueeze(1)
     loss = (
         loss
         + torch_module.log(visible_sigma_float * 2.0 + 1e-9)
-        + torch_module.abs(error.float())
+        + torch_module.abs(error)
     )
-    loss = loss * visible_target_weights.unsqueeze(1).float()
+    loss = loss * visible_target_weights.unsqueeze(1)
     loss = loss.sum() / max(int(loss.shape[0]), 1)
-    return loss.to(dtype=pred_keypoints_xy.dtype)
+    return loss
 
 
 def build_yolo26_pose_rle_weights(

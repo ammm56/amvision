@@ -41,7 +41,6 @@ class Yolo26PoseResumeState:
     saved_assign_beta: float
     saved_grad_clip_norm: float
     saved_evaluation_confidence_threshold: float
-    saved_keypoint_confidence_threshold: float
 
 
 def load_yolo26_pose_resume_state(
@@ -68,7 +67,7 @@ def load_yolo26_pose_resume_state(
         metrics_history=checkpoint.get("metrics_history", []),
         validation_history=checkpoint.get("validation_history", []),
         best_metric_value=float(checkpoint.get("best_metric_value", 0)),
-        best_metric_name=str(checkpoint.get("best_metric_name", "val_map50_95")),
+        best_metric_name=str(checkpoint.get("best_metric_name", "val_oks_ap50_95")),
         epoch=int(checkpoint.get("epoch", 0)),
         global_iteration=int(checkpoint.get("global_iteration", 0)),
         saved_batch_size=int(checkpoint.get("saved_batch_size", 0)),
@@ -89,9 +88,6 @@ def load_yolo26_pose_resume_state(
         saved_grad_clip_norm=float(checkpoint.get("saved_grad_clip", 0)),
         saved_evaluation_confidence_threshold=float(
             checkpoint.get("saved_evaluation_confidence_threshold", 0)
-        ),
-        saved_keypoint_confidence_threshold=float(
-            checkpoint.get("saved_keypoint_confidence_threshold", 0)
         ),
     )
 
@@ -114,7 +110,6 @@ def validate_yolo26_pose_resume_parameters(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    keypoint_confidence_threshold: float,
 ) -> None:
     """校验 YOLO26 pose resume 参数是否匹配当前请求。"""
 
@@ -138,13 +133,6 @@ def validate_yolo26_pose_resume_parameters(
             abs(
                 state.saved_evaluation_confidence_threshold
                 - evaluation_confidence_threshold
-            )
-            <= 1e-8
-        ),
-        "keypoint_confidence_threshold": (
-            abs(
-                state.saved_keypoint_confidence_threshold
-                - keypoint_confidence_threshold
             )
             <= 1e-8
         ),
@@ -206,7 +194,6 @@ def build_yolo26_pose_checkpoint_bytes(
     assign_beta: float,
     grad_clip_norm: float,
     evaluation_confidence_threshold: float,
-    keypoint_confidence_threshold: float,
     torch_module: Any,
 ) -> bytes:
     """把 YOLO26 pose 训练状态编码为 checkpoint bytes。"""
@@ -239,7 +226,6 @@ def build_yolo26_pose_checkpoint_bytes(
         "saved_assign_beta": assign_beta,
         "saved_grad_clip": grad_clip_norm,
         "saved_evaluation_confidence_threshold": evaluation_confidence_threshold,
-        "saved_keypoint_confidence_threshold": keypoint_confidence_threshold,
         "model_type": "yolo26",
         "task_type": "pose",
     }

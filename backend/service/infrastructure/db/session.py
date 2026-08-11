@@ -44,6 +44,8 @@ class SessionFactory:
         )
         self._configure_sqlite_connection(settings.url)
         self.service_event_bus: object | None = None
+        self.training_telemetry_broker: object | None = None
+        self.training_telemetry_publisher: object | None = None
         self._session_maker = sessionmaker(
             bind=self.engine,
             autoflush=False,

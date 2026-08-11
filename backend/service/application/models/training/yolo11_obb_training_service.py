@@ -9,6 +9,15 @@ from pathlib import Path
 
 from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.checkpoint_recovery import (
+    expose_recoverable_latest_checkpoint,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_yolo_task_batch_telemetry,
+)
 from backend.service.application.models.training.yolo11_obb_task_control import (
     Yolo11ObbTrainingControlState,
     build_yolo11_obb_training_control_metadata,
@@ -57,7 +66,9 @@ from backend.service.application.models.training.yolo11_obb_training import (
     Yolo11ObbTrainingEpochProgress,
     Yolo11ObbTrainingExecutionRequest,
     Yolo11ObbTrainingExecutionResult,
+    Yolo11ObbTrainingPausedError,
     Yolo11ObbTrainingSavePoint,
+    Yolo11ObbTrainingTerminatedError,
 )
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
@@ -287,7 +298,10 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
                 train_metrics_object_key=train_metrics_object_key,
                 progress=progress,
                 dataset_storage=self.dataset_storage,
-                implementation_mode=self._resolve_implementation_mode(resolved_model_type),
+                implementation_mode=self._resolve_implementation_mode(
+                    resolved_model_type
+                ),
+                validation_metrics_object_key=validation_metrics_object_key,
             )
             control_state = self._read_control_state(task_record.task_id)
             if on_control_state_change is not None:
@@ -317,6 +331,18 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
                     str(temporary_best_checkpoint_path),
                     savepoint.latest_checkpoint_bytes,
                 )
+
+        def poll_control() -> None:
+            """在 batch 与 validation sample 边界读取控制状态。"""
+
+            nonlocal control_state
+            control_state = self._read_control_state(task_record.task_id)
+            if on_control_state_change is not None:
+                on_control_state_change(control_state)
+            if control_state.terminate_requested:
+                raise Yolo11ObbTrainingTerminatedError()
+            if control_state.pause_requested:
+                raise Yolo11ObbTrainingPausedError()
 
         request = Yolo11ObbTrainingExecutionRequest(
             dataset_storage=self.dataset_storage,
@@ -348,7 +374,16 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
             ),
             extra_options=dict(payload.get("extra_options") or {}),
             epoch_callback=on_epoch,
+            batch_callback=lambda progress: publish_yolo_task_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_record.task_id,
+                attempt_no=task_record.current_attempt_no,
+                task_type=OBB_TASK_TYPE,
+                model_type=resolved_model_type,
+                progress=progress,
+            ),
             savepoint_callback=on_savepoint,
+            control_callback=poll_control,
         )
         try:
             execution_result = self._run_obb_training_execution(request)
@@ -407,6 +442,11 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
                 "task_type": OBB_TASK_TYPE,
                 "model_type": resolved_model_type,
             }
+            failed_result = expose_recoverable_latest_checkpoint(
+                failed_result=failed_result,
+                latest_checkpoint_path=temporary_latest_checkpoint_path,
+                latest_checkpoint_object_key=f"{output_prefix}/latest-checkpoint.pt",
+            )
             self.task_service.append_task_event(
                 build_yolo11_obb_training_failed_event(
                     task_id=task_record.task_id,
@@ -662,18 +702,23 @@ class SqlAlchemyYolo11ObbTrainingTaskService:
         """构建 YOLO11 OBB 训练摘要。"""
 
         input_size = self._read_input_size(payload.get("input_size"))
+        runtime_config = build_execution_training_config_runtime(
+            execution_result=execution_result,
+            requested_batch_size=payload.get("batch_size"),
+            requested_precision=payload.get("precision"),
+            default_batch_size=4,
+        )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
             "task_type": OBB_TASK_TYPE,
             "model_scale": str(payload.get("model_scale") or ""),
-            "batch_size": int(payload.get("batch_size") or 4),
+            **runtime_config,
             "max_epochs": int(payload.get("max_epochs") or 50),
             "evaluation_interval": int(
                 payload.get("evaluation_interval") or YOLO11_OBB_DEFAULT_EVAL_INTERVAL
             ),
             "input_size": serialize_spatial_size_hw(input_size),
-            "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {
@@ -878,4 +923,3 @@ __all__ = [
     "SqlAlchemyYolo11ObbTrainingTaskService",
     "Yolo11ObbTrainingTaskRequest",
 ]
-

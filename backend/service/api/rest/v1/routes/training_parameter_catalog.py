@@ -202,9 +202,6 @@ def get_training_numeric_parameter_paths(
         paths = _merge_paths(
             paths,
             {
-                "keypoint_confidence_threshold": (
-                    "evaluation.keypoint_confidence_threshold"
-                ),
                 "class_loss_weight": "loss.class_weight",
                 "box_loss_weight": "loss.box_weight",
                 "kpt_loss_weight": "loss.keypoint_weight",

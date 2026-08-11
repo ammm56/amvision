@@ -244,12 +244,24 @@ def test_rfdetr_detection_platform_maps_matcher_loss_and_recipe_options(
     assert train_config.use_ema is True
     assert train_config.multi_scale is True
     assert train_config.expanded_scales is True
+    assert train_config.checkpoint_interval == 5
     assert namespace.set_cost_class == pytest.approx(1.1)
     assert namespace.set_cost_bbox == pytest.approx(4.2)
     assert namespace.set_cost_giou == pytest.approx(1.7)
     assert namespace.cls_loss_coef == pytest.approx(0.8)
     assert namespace.bbox_loss_coef == pytest.approx(4.5)
     assert namespace.giou_loss_coef == pytest.approx(1.9)
+
+
+def test_rfdetr_platform_uses_requested_checkpoint_interval(tmp_path: Path) -> None:
+    """RF-DETR 不得再把 checkpoint 周期写死为每轮。"""
+
+    train_config = _build_config(
+        tmp_path,
+        task_type=DETECTION_TASK_TYPE,
+        extra_options={"checkpoint_interval": 7},
+    )
+    assert train_config.checkpoint_interval == 7
 
 
 def test_rfdetr_recipe_boolean_strings_and_default_epochs_are_stable(

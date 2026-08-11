@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 import time
 from typing import Any
+
+from backend.service.application.models.evaluation.model_mode import evaluating_model
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
+)
 
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
@@ -15,11 +21,18 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
-    mask_iou,
+    compute_pycocotools_segmentation_ap,
+    encode_binary_mask_to_coco_rle,
+    limit_segmentation_prediction_instances,
+    resize_binary_mask_for_coco_evaluation,
+    resolve_segmentation_primary_metrics,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
+    YoloTaskDataLoaderPlan,
     build_yolo_task_evaluation_dataloader,
+    iter_yolo_task_evaluation_items,
     load_yolo_task_dataloader_imports,
+    managed_yolo_task_evaluation_dataloader,
     move_yolo_task_batch_to_device,
     resolve_yolo_task_evaluation_dataloader_plan,
 )
@@ -33,7 +46,6 @@ from backend.service.application.models.yolo11_core.data import (
 from backend.service.application.models.yolo11_core.postprocess import (
     build_yolo11_segmentation_postprocess_instances,
     normalize_yolo11_segmentation_outputs,
-    postprocess_yolo11_segmentation_prediction_array,
 )
 from backend.service.application.runtime.tasks.segmentation_model_runtime import (
     DefaultSegmentationModelRuntime,
@@ -41,7 +53,9 @@ from backend.service.application.runtime.tasks.segmentation_model_runtime import
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
 from backend.service.application.runtime.support.detection import batched_nms_indices
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -131,7 +145,10 @@ def run_yolo11_segmentation_evaluation(
             dataset_storage.resolve_filesystem_path(image_path) if image_path else None
         )
         if resolved_image_path is None or not resolved_image_path.is_file():
-            continue
+            raise InvalidRequestError(
+                "YOLO11 segmentation 评估样本文件不存在",
+                details={"image_path": str(image_path)},
+            )
 
         prediction_request = SegmentationPredictionRequest(
             score_threshold=request.score_threshold,
@@ -139,10 +156,7 @@ def run_yolo11_segmentation_evaluation(
             save_result_image=False,
             input_image_bytes=resolved_image_path.read_bytes(),
         )
-        try:
-            prediction_result = session.predict(prediction_request)
-        except Exception:
-            continue
+        prediction_result = session.predict(prediction_request)
 
         image_width = int(prediction_result.image_width)
         image_height = int(prediction_result.image_height)
@@ -263,17 +277,7 @@ def _parse_yolo11_segmentation_manifest(
 ) -> tuple[str, list[dict[str, object]], tuple[str, ...]]:
     """解析 YOLO11 segmentation DatasetExport manifest。"""
 
-    splits = manifest.get("splits", [])
-    chosen_split: dict[str, object] | None = None
-    for split in splits or []:
-        if not isinstance(split, dict):
-            continue
-        split_name = str(split.get("name", "")).lower()
-        if split_name in {"val", "valid", "validation", "test"}:
-            chosen_split = split
-            break
-    if chosen_split is None and splits:
-        chosen_split = next((item for item in splits if isinstance(item, dict)), None)
+    chosen_split = select_independent_evaluation_split(manifest.get("splits"))
     if chosen_split is None:
         raise InvalidRequestError("YOLO11 segmentation manifest 不包含可用 split")
 
@@ -515,10 +519,12 @@ def evaluate_yolo11_segmentation_samples(
     evaluation_confidence_threshold: float,
     evaluation_nms_threshold: float,
     imports: Any,
+    batch_size: int = 1,
+    dataloader_plan: YoloTaskDataLoaderPlan | None = None,
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO11 segmentation 训练期评估。"""
 
-    model.eval()
     gt_bbox_items: list[dict[str, object]] = []
     pred_bbox_items: list[dict[str, object]] = []
     gt_mask_items: list[dict[str, object]] = []
@@ -527,13 +533,27 @@ def evaluate_yolo11_segmentation_samples(
     evaluation_loader = build_yolo_task_evaluation_dataloader(
         torch_module=imports.torch,
         samples=samples,
+        batch_size=batch_size,
         input_size=input_size,
-        plan=resolve_yolo_task_evaluation_dataloader_plan(device=device),
+        plan=dataloader_plan
+        or resolve_yolo_task_evaluation_dataloader_plan(device=device),
         build_batch=build_yolo11_segmentation_training_batch,
         load_imports=load_yolo_task_dataloader_imports,
     )
-    with imports.torch.no_grad():
-        for image_index, batch in enumerate(evaluation_loader):
+    next_image_index = 0
+    letterbox_transform = build_yolo_letterbox_transform(
+        source_width=int(input_size[1]),
+        source_height=int(input_size[0]),
+        input_size=input_size,
+    )
+    with (
+        managed_yolo_task_evaluation_dataloader(evaluation_loader),
+        evaluating_model(model),
+        imports.torch.no_grad(),
+    ):
+        for batch in evaluation_loader:
+            if control_callback is not None:
+                control_callback()
             if batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -544,47 +564,56 @@ def evaluate_yolo11_segmentation_samples(
             )
             with _yolo11_segmentation_autocast(imports, precision, device):
                 outputs = model(batch.images)
-            target = batch.targets[0]
-            _append_yolo11_segmentation_gt_items(
-                image_index=image_index,
-                target=target,
-                gt_bbox_items=gt_bbox_items,
-                gt_mask_items=gt_mask_items,
-                imports=imports,
+            prediction_array, proto_array = normalize_yolo11_segmentation_outputs(
+                outputs=outputs,
+                np_module=imports.np,
+                num_classes=len(labels),
             )
-            bbox_items, mask_items, prediction_count = (
-                _build_yolo11_segmentation_prediction_items(
-                    outputs=outputs,
-                    labels=labels,
-                    input_size=input_size,
-                    score_threshold=evaluation_confidence_threshold,
-                    nms_threshold=evaluation_nms_threshold,
-                    mask_threshold=0.5,
-                    imports=imports,
+            for image_index, target, output_slices in iter_yolo_task_evaluation_items(
+                targets=batch.targets,
+                batched_outputs=(prediction_array, proto_array),
+                image_index_start=next_image_index,
+            ):
+                _append_yolo11_segmentation_gt_items(
                     image_index=image_index,
+                    target=target,
+                    gt_bbox_items=gt_bbox_items,
+                    gt_mask_items=gt_mask_items,
+                    imports=imports,
+                    image_size=input_size,
                 )
-            )
-            pred_bbox_items.extend(bbox_items)
-            pred_mask_items.extend(mask_items)
-            total_predictions += prediction_count
-    model.train()
-    bbox_metrics = compute_coco_style_ap(
-        gt_items=gt_bbox_items,
-        pred_items=pred_bbox_items,
+                bbox_items, mask_items, prediction_count = (
+                    _build_yolo11_segmentation_prediction_items(
+                        prediction_array=output_slices[0],
+                        proto_array=output_slices[1],
+                        labels=labels,
+                        letterbox_transform=letterbox_transform,
+                        score_threshold=evaluation_confidence_threshold,
+                        nms_threshold=evaluation_nms_threshold,
+                        mask_threshold=0.5,
+                        imports=imports,
+                        image_index=image_index,
+                    )
+                )
+                pred_bbox_items.extend(bbox_items)
+                pred_mask_items.extend(mask_items)
+                total_predictions += prediction_count
+            next_image_index += len(batch.targets)
+    if control_callback is not None:
+        control_callback()
+    bbox_metrics, mask_metrics = compute_pycocotools_segmentation_ap(
+        gt_bbox_items=gt_bbox_items,
+        pred_bbox_items=pred_bbox_items,
+        gt_mask_items=gt_mask_items,
+        pred_mask_items=pred_mask_items,
         category_names={index: name for index, name in enumerate(labels)},
-        similarity_func=lambda pred, gt: bbox_iou_xyxy(
-            pred["bbox_xyxy"],
-            gt["bbox_xyxy"],
-        ),
+        image_count=max(1, next_image_index),
+        image_size=input_size,
     )
-    mask_metrics = compute_coco_style_ap(
-        gt_items=gt_mask_items,
-        pred_items=pred_mask_items,
-        category_names={index: name for index, name in enumerate(labels)},
-        similarity_func=lambda pred, gt: mask_iou(pred["mask"], gt["mask"]),
-    )
-    primary_metrics = (
-        mask_metrics if gt_mask_items and pred_mask_items else bbox_metrics
+    primary_metrics = resolve_segmentation_primary_metrics(
+        bbox_metrics=bbox_metrics,
+        mask_metrics=mask_metrics,
+        has_ground_truth_masks=bool(gt_mask_items),
     )
     return {
         "map50": round(primary_metrics.ap50, 6),
@@ -604,6 +633,7 @@ def _append_yolo11_segmentation_gt_items(
     gt_bbox_items: list[dict[str, object]],
     gt_mask_items: list[dict[str, object]],
     imports: Any,
+    image_size: tuple[int, int],
 ) -> None:
     """把训练 batch target 转成 COCO-style AP 的 GT 项。"""
 
@@ -641,16 +671,24 @@ def _append_yolo11_segmentation_gt_items(
             {
                 "image_id": image_index,
                 "category_id": int(class_id),
-                "mask": masks[object_index] > 0.5,
+                "segmentation": encode_binary_mask_to_coco_rle(
+                    resize_binary_mask_for_coco_evaluation(
+                        binary_mask=masks[object_index] > 0.5,
+                        image_size=image_size,
+                        cv2_module=imports.cv2,
+                        np_module=imports.np,
+                    )
+                ),
             }
         )
 
 
 def _build_yolo11_segmentation_prediction_items(
     *,
-    outputs: Any,
+    prediction_array: Any,
+    proto_array: Any,
     labels: tuple[str, ...],
-    input_size: tuple[int, int],
+    letterbox_transform: Any,
     score_threshold: float,
     nms_threshold: float,
     mask_threshold: float,
@@ -661,18 +699,8 @@ def _build_yolo11_segmentation_prediction_items(
 
     bbox_items: list[dict[str, object]] = []
     mask_items: list[dict[str, object]] = []
-    try:
-        prediction_array, proto_array = normalize_yolo11_segmentation_outputs(
-            outputs=outputs,
-            np_module=imports.np,
-            num_classes=len(labels),
-        )
-        letterbox_transform = build_yolo_letterbox_transform(
-            source_width=int(input_size[1]),
-            source_height=int(input_size[0]),
-            input_size=input_size,
-        )
-        instances = build_yolo11_segmentation_postprocess_instances(
+    instances = limit_segmentation_prediction_instances(
+        build_yolo11_segmentation_postprocess_instances(
             cv2_module=imports.cv2,
             np_module=imports.np,
             prediction_array=prediction_array,
@@ -683,64 +711,30 @@ def _build_yolo11_segmentation_prediction_items(
             mask_threshold=mask_threshold,
             letterbox_transform=letterbox_transform,
             nms_indices_func=batched_nms_indices,
+            mask_encoder=encode_binary_mask_to_coco_rle,
+            include_segments=False,
         )
-        for instance in instances:
-            bbox_items.append(
-                {
-                    "image_id": image_index,
-                    "category_id": int(instance.class_id),
-                    "bbox_xyxy": list(instance.bbox_xyxy),
-                    "score": float(instance.score),
-                }
-            )
-            mask = _build_yolo11_segmentation_instance_mask(
-                segments=instance.segments,
-                width=int(input_size[1]),
-                height=int(input_size[0]),
-            )
-            if mask is not None:
-                mask_items.append(
-                    {
-                        "image_id": image_index,
-                        "category_id": int(instance.class_id),
-                        "mask": mask,
-                        "score": float(instance.score),
-                    }
-                )
-        return bbox_items, mask_items, len(instances)
-    except Exception:
-        prediction_array = _yolo11_segmentation_tensor_to_np(
-            outputs[0] if isinstance(outputs, tuple) else outputs,
-            imports,
-        )
-    if prediction_array.ndim < 3:
-        return bbox_items, mask_items, 0
-    postprocess_results = postprocess_yolo11_segmentation_prediction_array(
-        prediction_array=prediction_array,
-        np_module=imports.np,
-        num_classes=len(labels),
-        score_threshold=score_threshold,
-        nms_threshold=nms_threshold,
-        nms_indices_func=batched_nms_indices,
     )
-    prediction = postprocess_results[0] if postprocess_results else None
-    if prediction is None or int(prediction.scores.shape[0]) == 0:
-        return bbox_items, mask_items, 0
-    for box, score, class_id in zip(
-        prediction.boxes_xyxy,
-        prediction.scores,
-        prediction.class_ids,
-        strict=True,
-    ):
+    for instance in instances:
         bbox_items.append(
             {
                 "image_id": image_index,
-                "category_id": int(class_id),
-                "bbox_xyxy": [float(value) for value in box],
-                "score": float(score),
+                "category_id": int(instance.class_id),
+                "bbox_xyxy": list(instance.bbox_xyxy),
+                "score": float(instance.score),
             }
         )
-    return bbox_items, mask_items, int(prediction.scores.shape[0])
+        mask_rle = instance.mask_rle
+        if mask_rle is not None:
+            mask_items.append(
+                {
+                    "image_id": image_index,
+                    "category_id": int(instance.class_id),
+                    "segmentation": mask_rle,
+                    "score": float(instance.score),
+                }
+            )
+    return bbox_items, mask_items, len(instances)
 
 
 def _yolo11_segmentation_autocast(imports: Any, precision: str, device: str):

@@ -4,49 +4,12 @@ from backend.service.application.models.training.detection_training_rules import
     DetectionTrainingOutputFiles,
 )
 from backend.service.application.models.training.yolo_detection_task_events import (
-    build_yolo_detection_training_batch_progress_event,
     build_yolo_detection_training_epoch_progress_event,
     build_yolo_detection_training_paused_event,
 )
 from backend.service.application.models.training.yolo_detection_training_control import (
-    YoloDetectionTrainingBatchProgress,
     YoloDetectionTrainingEpochProgress,
 )
-
-
-def test_batch_progress_does_not_replace_completed_epoch_metrics() -> None:
-    """单 batch loss 必须写入独立字段，避免被误读成 epoch 聚合指标。"""
-
-    event = build_yolo_detection_training_batch_progress_event(
-        task_id="task-1",
-        model_type="yolo26",
-        attempt_no=1,
-        progress=YoloDetectionTrainingBatchProgress(
-            epoch=3,
-            max_epochs=10,
-            iteration=4,
-            max_iterations=20,
-            global_iteration=44,
-            total_iterations=200,
-            input_size=(640, 640),
-            learning_rate=0.001,
-            train_metrics={"loss": 2.5, "box_loss": 0.0},
-        ),
-        percent=22.0,
-        output_files=DetectionTrainingOutputFiles(
-            output_object_prefix="task-runs/task-1",
-            checkpoint_object_key="task-runs/task-1/best.pt",
-        ),
-        requested_precision="fp32",
-        requested_gpu_count=1,
-        requested_evaluation_interval=5,
-        control_metadata_key="training_control",
-        control={},
-    )
-
-    progress_payload = event.payload["progress"]
-    assert progress_payload["batch_metrics"] == {"loss": 2.5, "box_loss": 0.0}
-    assert "train_metrics" not in progress_payload
 
 
 def test_paused_event_preserves_actual_training_percent() -> None:

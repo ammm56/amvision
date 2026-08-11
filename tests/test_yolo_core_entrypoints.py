@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import math
 import random
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +39,7 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11SegmentationEvaluationRequest,
     evaluate_yolo11_obb_samples,
     evaluate_yolo11_pose_samples,
+    evaluate_yolo11_segmentation_samples,
     run_yolo11_detection_evaluation,
     run_yolo11_obb_evaluation,
     run_yolo11_pose_evaluation,
@@ -107,6 +109,7 @@ from backend.service.application.models.yolo26_core.training import (
     restore_yolo26_obb_training_state,
     restore_yolo26_pose_training_state,
     restore_yolo26_segmentation_training_state,
+    run_yolo26_detection_training_loop,
     run_yolo26_classification_training_loop,
     run_yolo26_obb_training_loop,
     run_yolo26_pose_training_loop,
@@ -117,6 +120,7 @@ from backend.service.application.models.yolo26_core.training import (
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
 )
+from backend.service.application.models.evaluation.model_mode import evaluating_model
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
 )
@@ -145,6 +149,10 @@ from backend.service.application.models.yolov8_core.export import (
 )
 from backend.service.application.models.yolov8_core.training.segmentation_execution import (
     run_yolov8_segmentation_training,
+)
+from backend.service.application.models.yolov8_core.training import (
+    run_yolov8_classification_training,
+    run_yolov8_detection_training,
 )
 from backend.service.application.models.yolov8_core.assigners import (
     assign_yolov8_segmentation_targets,
@@ -446,6 +454,9 @@ from backend.service.application.models.yolo26_core.evaluation import (
     Yolo26ObbEvaluationRequest,
     Yolo26PoseEvaluationRequest,
     Yolo26SegmentationEvaluationRequest,
+    evaluate_yolo26_obb_samples,
+    evaluate_yolo26_pose_samples,
+    evaluate_yolo26_segmentation_samples,
 )
 from backend.service.application.models.yolov8_core.losses import (
     compute_yolov8_segmentation_detection_loss,
@@ -1474,6 +1485,48 @@ def test_yolo26_segmentation_training_helpers_are_in_core() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "anchor_builder",
+    (
+        build_yolo11_segmentation_anchors_from_features,
+        build_yolo26_segmentation_anchors_from_features,
+    ),
+)
+def test_segmentation_anchors_use_grid_centers_without_preapplying_stride(
+    anchor_builder,
+) -> None:
+    """验证 segmentation 与 detection 共用 grid-space anchor 语义。"""
+
+    feature_maps = [torch.zeros((1, 8, 1, 2), dtype=torch.float32)]
+    anchor_points, stride_tensor = anchor_builder(
+        feature_maps=feature_maps,
+        strides=(8,),
+        device_name="cpu",
+        torch_module=torch,
+    )
+
+    torch.testing.assert_close(
+        anchor_points,
+        torch.tensor([[0.5, 0.5], [1.5, 0.5]], dtype=torch.float32),
+    )
+    torch.testing.assert_close(
+        stride_tensor,
+        torch.tensor([[8.0], [8.0]], dtype=torch.float32),
+    )
+
+
+def test_evaluating_model_restores_mode_after_failure() -> None:
+    """验证评估异常不会把训练模型永久留在 eval mode。"""
+
+    model = torch.nn.Linear(2, 1)
+    model.train()
+    with pytest.raises(RuntimeError, match="evaluation failed"):
+        with evaluating_model(model):
+            assert model.training is False
+            raise RuntimeError("evaluation failed")
+    assert model.training is True
+
+
 def test_yolo26_pose_training_service_uses_model_specific_runner() -> None:
     """验证 YOLO26 pose 训练不再由 primary service 兜底执行。"""
 
@@ -1852,10 +1905,71 @@ def test_yolo_classification_training_loop_updates_model_weights(
 ) -> None:
     """验证 YOLO classification 主循环包含真实反向传播和参数更新。"""
 
-    source = inspect.getsource(training_loop)
+    module = inspect.getmodule(training_loop)
+    assert module is not None
+    source = inspect.getsource(module)
 
     assert "optimizer_step.backward_and_step(" in source
-    assert "scheduler.step()" in source
+    assert "optimizer_step.step_scheduler_if_optimizer_updated(scheduler)" in source
+
+
+@pytest.mark.parametrize(
+    "training_loop",
+    (
+        run_yolov8_pose_training,
+        run_yolov8_obb_training,
+        run_yolo11_pose_training_loop,
+        run_yolo11_obb_training_loop,
+        run_yolo26_pose_training_loop,
+        run_yolo26_obb_training_loop,
+        run_yolo11_classification_training_loop,
+        run_yolo26_classification_training_loop,
+    ),
+)
+def test_yolo_remaining_task_training_loops_poll_control_inside_batch_loop(
+    training_loop: object,
+) -> None:
+    """验证非 detection 训练不会只在 epoch 边界响应暂停和终止。"""
+
+    module = inspect.getmodule(training_loop)
+    assert module is not None
+    source = inspect.getsource(module)
+
+    assert "control_callback" in source
+    assert "control_callback()" in source
+
+
+@pytest.mark.parametrize(
+    "training_loop",
+    (
+        run_yolov8_detection_training,
+        run_yolov8_classification_training,
+        run_yolov8_segmentation_training,
+        run_yolov8_pose_training,
+        run_yolov8_obb_training,
+        run_yolo11_detection_training_loop,
+        run_yolo11_classification_training_loop,
+        run_yolo11_segmentation_training,
+        run_yolo11_pose_training_loop,
+        run_yolo11_obb_training_loop,
+        run_yolo26_detection_training_loop,
+        run_yolo26_classification_training_loop,
+        run_yolo26_segmentation_training,
+        run_yolo26_pose_training_loop,
+        run_yolo26_obb_training_loop,
+    ),
+)
+def test_yolo_training_loops_persist_latest_checkpoint_after_every_epoch(
+    training_loop: object,
+) -> None:
+    """验证 latest checkpoint 落盘不依赖 best 改善或手动保存。"""
+
+    source = inspect.getsource(training_loop)
+
+    assert "savepoint_callback" in source
+    assert "best_metric_improved or manual_save_requested" not in source
+    assert "is_best or manual_save_requested" not in source
+    assert "improved_best or control_decision.save_checkpoint" not in source
 
 
 @pytest.mark.parametrize(
@@ -2088,20 +2202,20 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
     )
     pose_metrics = evaluate_yolo11_pose_samples(
         model=_StaticYoloV8PoseModel(),
-        samples=[pose_sample],
+        samples=[pose_sample] * 3,
         labels=("person",),
         input_size=(16, 16),
         device="cpu",
         precision="fp32",
         score_threshold=0.1,
         nms_threshold=0.65,
-        keypoint_confidence_threshold=0.2,
         kpt_shape=(17, 3),
         imports=imports,
+        batch_size=2,
     )
     obb_metrics = evaluate_yolo11_obb_samples(
         model=_StaticYoloV8ObbModel(),
-        samples=[obb_sample],
+        samples=[obb_sample] * 3,
         labels=("part",),
         input_size=(16, 16),
         device="cpu",
@@ -2109,6 +2223,7 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
         score_threshold=0.1,
         nms_threshold=0.65,
         imports=imports,
+        batch_size=2,
     )
     pose_prediction = torch.zeros(1, 1, 4 + 1 + 17 * 3)
     pose_prediction[:, 0, 4] = 0.95
@@ -2149,6 +2264,8 @@ def test_yolo11_pose_and_obb_core_data_eval_and_inference_entries(
 
     assert pose_batch is not None
     assert obb_batch is not None
+    assert pose_metrics["prediction_count"] == 3.0
+    assert obb_metrics["prediction_count"] == 3.0
     assert tuple(pose_batch.images.shape) == (1, 3, 16, 16)
     assert tuple(obb_batch.images.shape) == (1, 3, 16, 16)
     assert pose_metrics["map50"] == 1.0
@@ -2903,6 +3020,106 @@ def test_yolov8_segmentation_mask_loss_crops_bbox_and_resizes_proto() -> None:
     assert proto.grad is not None
 
 
+def test_yolo_segmentation_mask_loss_scales_input_boxes_to_mask_space() -> None:
+    """验证输入图 bbox 会先映射到下采样 mask 坐标再参与裁剪。"""
+
+    prediction = torch.tensor(
+        [[0.0, 0.0, 32.0, 32.0, 0.0, 1.0]],
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    proto = torch.zeros((1, 8, 8), dtype=torch.float32, requires_grad=True)
+    loss = compute_yolov8_segmentation_mask_loss(
+        torch_module=torch,
+        prediction=prediction,
+        proto=proto,
+        foreground_mask=torch.tensor([True]),
+        target_masks=torch.ones((1, 8, 8), dtype=torch.float32),
+        target_mask_valid=torch.tensor([True]),
+        matched_gt_indices=torch.tensor([0]),
+        num_classes=1,
+        target_boxes=torch.tensor(
+            [[16.0, 0.0, 32.0, 32.0]],
+            dtype=torch.float32,
+        ),
+        image_size=(32, 32),
+    )
+
+    assert float(loss.item()) == pytest.approx(math.log(2.0), rel=1e-6)
+
+
+def test_yolo26_semantic_loss_uses_smallest_instance_in_overlap() -> None:
+    """验证 Segment26 semantic target 的重叠区域遵循最小实例优先规则。"""
+
+    from backend.service.application.models.yolo_core_common.losses.segmentation import (
+        compute_yolo26_semantic_segmentation_loss,
+    )
+
+    masks = torch.zeros((2, 4, 4), dtype=torch.float32)
+    masks[0] = 1.0
+    masks[1, 1:3, 1:3] = 1.0
+    targets = [
+        {
+            "masks": masks,
+            "class_ids": [0, 1],
+            "mask_valid": torch.tensor([True, True]),
+        }
+    ]
+    correct_logits = torch.full((1, 2, 4, 4), -8.0, requires_grad=True)
+    with torch.no_grad():
+        correct_logits[:, 0] = 8.0
+        correct_logits[:, 0, 1:3, 1:3] = -8.0
+        correct_logits[:, 1, 1:3, 1:3] = 8.0
+    wrong_logits = correct_logits.detach().clone()
+    wrong_logits[:, :, 1:3, 1:3] = wrong_logits[:, [1, 0], 1:3, 1:3]
+
+    correct_loss = compute_yolo26_semantic_segmentation_loss(
+        torch_module=torch,
+        pred_semantic=correct_logits,
+        targets_list=targets,
+        num_classes=2,
+    )
+    wrong_loss = compute_yolo26_semantic_segmentation_loss(
+        torch_module=torch,
+        pred_semantic=wrong_logits,
+        targets_list=targets,
+        num_classes=2,
+    )
+
+    assert float(correct_loss.item()) < float(wrong_loss.item())
+    correct_loss.backward()
+    assert correct_logits.grad is not None
+
+
+def test_yolo26_semantic_loss_supports_mixed_empty_and_nonempty_images() -> None:
+    """空图 1x1 占位与非空 mask 混合时必须先统一空间尺寸再 stack。"""
+
+    from backend.service.application.models.yolo_core_common.losses.segmentation import (
+        compute_yolo26_semantic_segmentation_loss,
+    )
+
+    prediction = torch.zeros((2, 1, 96, 96), requires_grad=True)
+    targets = [
+        {"masks": None, "class_ids": [], "mask_valid": None},
+        {
+            "masks": torch.ones((1, 96, 96), dtype=torch.float32),
+            "class_ids": [0],
+            "mask_valid": torch.tensor([True]),
+        },
+    ]
+
+    loss = compute_yolo26_semantic_segmentation_loss(
+        torch_module=torch,
+        pred_semantic=prediction,
+        targets_list=targets,
+        num_classes=1,
+    )
+
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert prediction.grad is not None
+
+
 def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
     tmp_path: Path,
 ) -> None:
@@ -2935,18 +3152,20 @@ def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
     assert int(batch.targets[0]["masks"].sum().item()) > 0
 
     model = _StaticYoloV8SegmentationModel()
-    metrics = evaluate_yolov8_segmentation_samples(
-        model=model,
-        samples=[sample],
-        labels=("defect", "normal"),
-        input_size=(16, 16),
-        device="cpu",
-        precision="fp32",
-        evaluation_confidence_threshold=0.01,
-        evaluation_nms_threshold=0.65,
-        imports=imports,
-    )
-    assert metrics["map50"] > 0.0
+    # segmentation 输出契约损坏时必须明确失败，不能静默降级成 bbox-only
+    # 指标，否则训练会掩盖 proto/mask head 的实现故障。
+    with pytest.raises(InvalidRequestError, match="prediction/proto"):
+        evaluate_yolov8_segmentation_samples(
+            model=model,
+            samples=[sample],
+            labels=("defect", "normal"),
+            input_size=(16, 16),
+            device="cpu",
+            precision="fp32",
+            evaluation_confidence_threshold=0.01,
+            evaluation_nms_threshold=0.65,
+            imports=imports,
+        )
 
     prediction_array = np.asarray(
         [[[1.0, 1.0, 12.0, 12.0, 8.0, -8.0, 1.0, 0.0, 0.0, 0.0]]],
@@ -3030,6 +3249,25 @@ def test_yolov8_classification_core_loss_postprocess_and_export_entries() -> Non
     assert runtime_logits is not None
     assert resolve_yolov8_classification_export_output_names() == ("probabilities",)
     assert normalized_outputs[0].shape == torch.Size([1, 3])
+
+
+def test_yolo_classification_eval_tuple_preserves_logits_probability_contract() -> None:
+    """验证 Classify 评估输出按官方 ``(probabilities, logits)`` 解析。"""
+
+    logits = torch.tensor([[2.0, -1.0, 0.25]], requires_grad=True)
+    probabilities = logits.softmax(dim=1)
+    targets = torch.tensor([2], dtype=torch.long)
+    loss, normalized_probabilities = compute_yolov8_classification_loss(
+        torch_module=torch,
+        outputs=(probabilities, logits),
+        targets=targets,
+    )
+
+    torch.testing.assert_close(
+        loss,
+        torch.nn.functional.cross_entropy(logits, targets),
+    )
+    torch.testing.assert_close(normalized_probabilities, probabilities)
 
 
 def test_yolov8_pose_and_obb_core_postprocess_and_export_entries() -> None:
@@ -3160,6 +3398,41 @@ def test_yolov8_obb_postprocess_uses_class_aware_rotated_nms() -> None:
     assert [item.score for item in instances] == [0.95, 0.9]
 
 
+@pytest.mark.parametrize(
+    "postprocess_builder",
+    [
+        build_yolov8_obb_postprocess_instances,
+        build_yolo11_obb_postprocess_instances,
+    ],
+)
+def test_obb_postprocess_does_not_drop_valid_candidate_before_rotated_nms(
+    postprocess_builder: object,
+) -> None:
+    """候选数超过 300 时，NMS 后仍应保留低分但不重叠的真实目标。"""
+
+    np = pytest.importorskip("numpy")
+    overlapping = [
+        [8.0, 8.0, 8.0, 8.0, 0.99 - index * 0.0005, 0.0] for index in range(300)
+    ]
+    prediction_array = np.asarray(
+        [[*overlapping, [24.0, 24.0, 6.0, 6.0, 0.5, 0.0]]],
+        dtype=np.float32,
+    )
+
+    instances = postprocess_builder(
+        np_module=np,
+        prediction_array=prediction_array,
+        labels=("part",),
+        score_threshold=0.1,
+        letterbox_transform=_identity_yolo_letterbox(32),
+        nms_threshold=0.5,
+        nms_indices_func=batched_nms_indices,
+    )
+
+    assert len(instances) == 2
+    assert instances[1].bbox_xywhr[:2] == (24.0, 24.0)
+
+
 def test_yolov8_classification_core_data_eval_and_preview_entries(
     tmp_path: Path,
 ) -> None:
@@ -3182,6 +3455,7 @@ def test_yolov8_classification_core_data_eval_and_preview_entries(
         precision="fp32",
         imports=imports,
     )
+    control_calls: list[None] = []
     metrics = evaluate_yolov8_classification_samples(
         model=_StaticYoloV8ClassificationModel(),
         samples=[sample],
@@ -3191,6 +3465,7 @@ def test_yolov8_classification_core_data_eval_and_preview_entries(
         device="cpu",
         precision="fp32",
         imports=imports,
+        control_callback=lambda: control_calls.append(None),
     )
     preview_bytes = render_yolov8_detection_preview_image(
         cv2_module=cv2,
@@ -3209,6 +3484,7 @@ def test_yolov8_classification_core_data_eval_and_preview_entries(
     assert tuple(batch.images.shape) == (1, 3, 16, 16)
     assert int(batch.targets[0].item()) == 1
     assert metrics["top1_accuracy"] == 1.0
+    assert len(control_calls) >= 2
     assert preview_bytes.startswith(b"\xff\xd8")
 
 
@@ -3240,22 +3516,23 @@ def test_yolov8_pose_core_data_and_eval_entries(tmp_path: Path) -> None:
     )
     metrics = evaluate_yolov8_pose_samples(
         model=_StaticYoloV8PoseModel(),
-        samples=[sample],
+        samples=[sample] * 3,
         labels=("person",),
         input_size=(16, 16),
         device="cpu",
         precision="fp32",
         score_threshold=0.1,
         nms_threshold=0.65,
-        keypoint_confidence_threshold=0.2,
         kpt_shape=(17, 3),
         imports=imports,
+        batch_size=2,
     )
 
     assert batch is not None
     assert tuple(batch.images.shape) == (1, 3, 16, 16)
     assert len(batch.targets[0].boxes_xyxy) == 1
     assert metrics["map50"] == 1.0
+    assert metrics["prediction_count"] == 3.0
 
 
 def test_yolov8_obb_core_data_and_eval_entries(tmp_path: Path) -> None:
@@ -3284,7 +3561,7 @@ def test_yolov8_obb_core_data_and_eval_entries(tmp_path: Path) -> None:
     )
     metrics = evaluate_yolov8_obb_samples(
         model=_StaticYoloV8ObbModel(),
-        samples=[sample],
+        samples=[sample] * 3,
         labels=("part",),
         input_size=(16, 16),
         device="cpu",
@@ -3292,12 +3569,118 @@ def test_yolov8_obb_core_data_and_eval_entries(tmp_path: Path) -> None:
         score_threshold=0.1,
         nms_threshold=0.65,
         imports=imports,
+        batch_size=2,
     )
 
     assert batch is not None
     assert tuple(batch.images.shape) == (1, 3, 16, 16)
     assert len(batch.targets[0].boxes_xywhr) == 1
     assert metrics["map50"] == 1.0
+    assert metrics["prediction_count"] == 3.0
+
+
+def test_yolo26_pose_and_obb_evaluators_batch_predictions_by_image(
+    tmp_path: Path,
+) -> None:
+    """验证 YOLO26 pose/OBB 批量前向不会把多图预测合并到同一 image_id。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image_path = tmp_path / "yolo26-task.jpg"
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
+    )
+    imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
+    keypoints = [value for _ in range(17) for value in (6.0, 6.0, 2.0)]
+    pose_sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywh=[[4.0, 4.0, 8.0, 8.0]],
+        class_ids=[0],
+        keypoints=[keypoints],
+    )
+    obb_sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywhr=[[8.0, 8.0, 8.0, 8.0, 0.0]],
+        class_ids=[0],
+    )
+
+    pose_metrics = evaluate_yolo26_pose_samples(
+        model=_StaticYolo26PoseModel(),
+        samples=[pose_sample] * 3,
+        labels=("person",),
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        score_threshold=0.1,
+        kpt_shape=(17, 3),
+        imports=imports,
+        batch_size=2,
+    )
+    obb_metrics = evaluate_yolo26_obb_samples(
+        model=_StaticYoloV8ObbModel(),
+        samples=[obb_sample] * 3,
+        labels=("part",),
+        input_size=(16, 16),
+        device="cpu",
+        precision="fp32",
+        score_threshold=0.1,
+        imports=imports,
+        batch_size=2,
+    )
+
+    assert pose_metrics["map50"] == 1.0
+    assert pose_metrics["prediction_count"] == 3.0
+    assert obb_metrics["map50"] == 1.0
+    assert obb_metrics["prediction_count"] == 3.0
+
+
+def test_segmentation_evaluators_batch_predictions_and_proto_by_image(
+    tmp_path: Path,
+) -> None:
+    """验证三代 segmentation evaluator 同步切分 prediction/proto 与 target。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image_path = tmp_path / "segmentation-batch.jpg"
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    image[2:10, 2:10] = 255
+    assert cv2.imwrite(str(image_path), image) is True
+    sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywh=[[2.0, 2.0, 8.0, 8.0]],
+        class_ids=[0],
+        segmentations=[[2.0, 2.0, 10.0, 2.0, 10.0, 10.0, 2.0, 10.0]],
+    )
+    imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
+    shared_options = {
+        "samples": [sample] * 3,
+        "labels": ("defect", "normal"),
+        "input_size": (16, 16),
+        "device": "cpu",
+        "precision": "fp32",
+        "evaluation_confidence_threshold": 0.01,
+        "imports": imports,
+        "batch_size": 2,
+    }
+
+    yolov8_metrics = evaluate_yolov8_segmentation_samples(
+        model=_StaticYoloV8SegmentationBatchModel(),
+        evaluation_nms_threshold=0.65,
+        **shared_options,
+    )
+    yolo11_metrics = evaluate_yolo11_segmentation_samples(
+        model=_StaticYoloV8SegmentationBatchModel(),
+        evaluation_nms_threshold=0.65,
+        **shared_options,
+    )
+    yolo26_metrics = evaluate_yolo26_segmentation_samples(
+        model=_StaticYolo26SegmentationBatchModel(),
+        **shared_options,
+    )
+
+    assert yolov8_metrics["prediction_count"] == 3.0
+    assert yolo11_metrics["prediction_count"] == 3.0
+    assert yolo26_metrics["prediction_count"] == 3.0
 
 
 def test_yolov8_obb_core_data_filters_tiny_rboxes(tmp_path: Path) -> None:
@@ -3573,9 +3956,9 @@ def test_yolo_task_mosaic_builds_segmentation_pose_and_obb_targets(
     )
     for segmentation_builder, pose_builder, obb_builder, options_class in builders:
         augmentation_options = options_class(
-                hsv_h=0.0,
-                hsv_s=0.0,
-                hsv_v=0.0,
+            hsv_h=0.0,
+            hsv_s=0.0,
+            hsv_v=0.0,
             flip_prob=0.0,
             mosaic_prob=1.0,
             affine_prob=0.0,
@@ -3849,6 +4232,34 @@ class _StaticYoloV8SegmentationModel(torch.nn.Module):
         )
 
 
+class _StaticYoloV8SegmentationBatchModel(torch.nn.Module):
+    """返回 batch 对齐的 YOLOv8/YOLO11 segmentation 双输出。"""
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """返回 xywh prediction 和每图独立 proto。"""
+
+        batch_size = int(images.shape[0])
+        prediction = images.new_tensor(
+            [[[6.0, 6.0, 8.0, 8.0, 8.0, -8.0, 1.0, 0.0, 0.0, 0.0]]]
+        ).expand(batch_size, -1, -1)
+        proto = images.new_ones((batch_size, 4, 16, 16))
+        return prediction, proto
+
+
+class _StaticYolo26SegmentationBatchModel(torch.nn.Module):
+    """返回 batch 对齐的 YOLO26 end-to-end segmentation 双输出。"""
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """返回 xyxy prediction 和每图独立 proto。"""
+
+        batch_size = int(images.shape[0])
+        prediction = images.new_tensor(
+            [[[2.0, 2.0, 10.0, 10.0, 0.95, 0.001, 1.0, 0.0, 0.0, 0.0]]]
+        ).expand(batch_size, -1, -1)
+        proto = images.new_ones((batch_size, 4, 16, 16))
+        return prediction, proto
+
+
 class _StaticYoloV8ClassificationModel(torch.nn.Module):
     """返回固定 YOLOv8 classification logits 的测试模型。"""
 
@@ -3874,6 +4285,22 @@ class _StaticYoloV8PoseModel(torch.nn.Module):
         return prediction
 
 
+class _StaticYolo26PoseModel(torch.nn.Module):
+    """返回固定 YOLO26 end-to-end pose 输出的测试模型。"""
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """按输入 batch 返回一张框和一组关键点。"""
+
+        batch_size = int(images.shape[0])
+        prediction = images.new_zeros((batch_size, 1, 4 + 1 + 17 * 3))
+        prediction[:, 0, :4] = images.new_tensor([4.0, 4.0, 12.0, 12.0])
+        prediction[:, 0, 4] = 0.95
+        prediction[:, 0, 5:] = images.new_tensor(
+            [value for _ in range(17) for value in (6.0, 6.0, 0.9)]
+        )
+        return prediction
+
+
 class _StaticYoloV8ObbModel(torch.nn.Module):
     """返回固定 YOLOv8 OBB 输出的测试模型。"""
 
@@ -3886,6 +4313,7 @@ class _StaticYoloV8ObbModel(torch.nn.Module):
         prediction[:, 0, 4] = 0.95
         prediction[:, 0, 5] = 0.0
         return prediction
+
 
 @pytest.mark.parametrize("model_type", ("yolo11", "yolo26"))
 def test_segmentation_runtime_backends_pass_registered_input_size(
@@ -3929,7 +4357,10 @@ def test_segmentation_runtime_backends_pass_registered_input_size(
             keyword for keyword in calls[0].keywords if keyword.arg == "input_size"
         ]
         assert len(input_size_keywords) == 1, source_path
-        assert ast.unparse(input_size_keywords[0].value) == "self.runtime_target.input_size"
+        assert (
+            ast.unparse(input_size_keywords[0].value)
+            == "self.runtime_target.input_size"
+        )
         result_calls = [
             node
             for node in ast.walk(syntax_tree)

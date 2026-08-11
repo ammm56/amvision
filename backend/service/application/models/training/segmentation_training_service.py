@@ -11,7 +11,11 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
+from backend.service.application.models.training.checkpoint_recovery import (
+    expose_recoverable_latest_checkpoint,
+)
 from backend.service.application.models.training.rfdetr_segmentation import (
+    RfdetrSegmentationTrainingBatchProgress,
     RfdetrSegmentationTrainingExecutionRequest,
     RfdetrSegmentationTrainingExecutionResult,
     RfdetrSegmentationTrainingSavePoint,
@@ -22,6 +26,13 @@ from backend.service.application.models.training.rfdetr_segmentation import (
 from backend.service.application.models.training.rfdetr_training_warm_start import (
     build_rfdetr_warm_start_source_summary,
     resolve_rfdetr_warm_start_reference,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
+    publish_yolo_task_batch_telemetry,
 )
 from backend.service.application.models.training.segmentation_training_control import (
     SegmentationTrainingControlState,
@@ -317,6 +328,39 @@ class SqlAlchemySegmentationTrainingService:
             )
         )
 
+        def on_rfdetr_batch(
+            progress: RfdetrSegmentationTrainingBatchProgress,
+        ) -> None:
+            """把 RF-DETR segmentation batch 发布到易失遥测流。"""
+
+            percent = round(
+                min(
+                    90.0,
+                    5.0
+                    + 85.0
+                    * max(0, progress.global_iteration)
+                    / max(1, progress.total_iterations),
+                ),
+                2,
+            )
+            publish_training_batch_telemetry(
+                session_factory=self.session_factory,
+                task_id=task_record.task_id,
+                attempt_no=task_record.current_attempt_no,
+                task_type=SEGMENTATION_TASK_TYPE,
+                model_type=resolved_model_type,
+                epoch=progress.epoch + 1,
+                max_epochs=progress.max_epochs,
+                step=progress.iteration,
+                steps_per_epoch=progress.max_iterations,
+                global_step=progress.global_iteration,
+                total_steps=progress.total_iterations,
+                progress_percent=percent,
+                learning_rate=progress.learning_rate,
+                metrics=dict(progress.train_metrics),
+                input_size=progress.input_size,
+            )
+
         def on_epoch(
             progress: YoloV8SegmentationTrainingEpochProgress,
         ) -> YoloV8SegmentationTrainingControlCommand | None:
@@ -334,6 +378,7 @@ class SqlAlchemySegmentationTrainingService:
                 implementation_mode=self._resolve_implementation_mode(
                     resolved_model_type
                 ),
+                validation_metrics_object_key=validation_metrics_object_key,
             )
             control_state = self._read_control_state(task_record.task_id)
             if control_state.terminate_requested:
@@ -380,6 +425,15 @@ class SqlAlchemySegmentationTrainingService:
                     savepoint.latest_checkpoint_bytes,
                 )
 
+        def poll_yolo_control() -> None:
+            """在训练 batch 与 validation sample 边界响应暂停和终止。"""
+
+            control_state = self._read_control_state(task_record.task_id)
+            if control_state.terminate_requested:
+                raise YoloV8SegmentationTrainingTerminatedError()
+            if control_state.pause_requested:
+                raise YoloV8SegmentationTrainingPausedError()
+
         try:
             if resolved_model_type == "rfdetr":
                 execution_result = run_rfdetr_segmentation_training(
@@ -399,6 +453,7 @@ class SqlAlchemySegmentationTrainingService:
                         ),
                         warm_start_source_summary=warm_start_source_summary,
                         extra_options=dict(payload.get("extra_options") or {}),
+                        batch_callback=on_rfdetr_batch,
                         epoch_callback=on_epoch,
                         savepoint_callback=on_savepoint,
                     )
@@ -431,6 +486,15 @@ class SqlAlchemySegmentationTrainingService:
                     ),
                     extra_options=dict(payload.get("extra_options") or {}),
                     epoch_callback=on_epoch,
+                    batch_callback=lambda progress: publish_yolo_task_batch_telemetry(
+                        session_factory=self.session_factory,
+                        task_id=task_record.task_id,
+                        attempt_no=task_record.current_attempt_no,
+                        task_type=SEGMENTATION_TASK_TYPE,
+                        model_type=resolved_model_type,
+                        progress=progress,
+                    ),
+                    control_callback=poll_yolo_control,
                     savepoint_callback=on_savepoint,
                 )
                 execution_result = self._run_yolo_segmentation_training_execution(
@@ -491,6 +555,11 @@ class SqlAlchemySegmentationTrainingService:
                 "task_type": SEGMENTATION_TASK_TYPE,
                 "model_type": resolved_model_type,
             }
+            failed_result = expose_recoverable_latest_checkpoint(
+                failed_result=failed_result,
+                latest_checkpoint_path=temporary_latest_checkpoint_path,
+                latest_checkpoint_object_key=f"{output_prefix}/latest-checkpoint.pt",
+            )
             self.task_service.append_task_event(
                 build_segmentation_training_failed_event(
                     task_id=task_record.task_id,
@@ -817,19 +886,24 @@ class SqlAlchemySegmentationTrainingService:
             if aligned_input_size is not None
             else input_size
         )
+        runtime_config = build_execution_training_config_runtime(
+            execution_result=execution_result,
+            requested_batch_size=payload.get("batch_size"),
+            requested_precision=payload.get("precision"),
+            default_batch_size=1,
+        )
         training_config = {
             "recipe_id": self._read_optional_str(payload.get("recipe_id")) or "default",
             "model_type": model_type,
             "task_type": SEGMENTATION_TASK_TYPE,
             "model_scale": str(payload.get("model_scale") or ""),
-            "batch_size": int(payload.get("batch_size") or 1),
+            **runtime_config,
             "max_epochs": int(payload.get("max_epochs") or 1),
             "evaluation_interval": int(
                 payload.get("evaluation_interval")
                 or SEGMENTATION_TRAINING_DEFAULT_EVALUATION_INTERVAL
             ),
             "input_size": serialize_spatial_size_hw(effective_input_size),
-            "precision": str(payload.get("precision") or "fp32"),
             "extra_options": dict(payload.get("extra_options") or {}),
         }
         metrics_summary = {

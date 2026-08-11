@@ -92,12 +92,19 @@ def build_yolov8_autocast_context(
 ) -> Any:
     """构建 YOLOv8 detection 训练使用的 autocast context。"""
 
-    if not device.startswith("cuda") or runtime_precision != "fp16":
+    if not device.startswith("cuda") or runtime_precision not in {"fp16", "bf16"}:
         return nullcontext
+    autocast_dtype = (
+        torch_module.float16
+        if runtime_precision == "fp16"
+        else torch_module.bfloat16
+    )
     amp_module = getattr(torch_module, "amp", None)
     autocast = getattr(amp_module, "autocast", None) if amp_module is not None else None
     if callable(autocast):
-        return lambda: autocast("cuda", enabled=True)
+        return lambda: autocast("cuda", dtype=autocast_dtype, enabled=True)
+    if runtime_precision == "bf16":
+        raise RuntimeError("当前 PyTorch 版本不支持 BF16 autocast")
     return lambda: torch_module.cuda.amp.autocast(enabled=True)
 
 

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from backend.service.application.models.training.metric_policy import (
+    serialize_training_metric,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
@@ -94,7 +97,10 @@ def build_yolo_classification_train_metrics_payload(
     payload = dict(progress.train_metrics_snapshot)
     payload["implementation_mode"] = implementation_mode
     payload["best_metric_name"] = progress.best_metric_name
-    payload["best_metric_value"] = progress.best_metric_value
+    payload["best_metric_value"] = serialize_training_metric(
+        progress.best_metric_value,
+        maximum=1.0,
+    )
     return payload
 
 
@@ -106,9 +112,15 @@ def build_yolo_classification_validation_metrics_payload(
 
     payload = dict(progress.validation_metrics_snapshot)
     payload["best_metric_name"] = progress.best_metric_name
-    payload["best_metric_value"] = progress.best_metric_value
+    payload["best_metric_value"] = serialize_training_metric(
+        progress.best_metric_value,
+        maximum=1.0,
+    )
     payload["current_metric_name"] = progress.current_metric_name
-    payload["current_metric_value"] = progress.current_metric_value
+    payload["current_metric_value"] = serialize_training_metric(
+        progress.current_metric_value,
+        maximum=1.0,
+    )
     return payload
 
 
@@ -130,6 +142,14 @@ def build_yolo_classification_epoch_progress_event(
         current_epoch=current_epoch,
         max_epochs=progress.max_epochs,
     )
+    current_metric_value = serialize_training_metric(
+        progress.current_metric_value,
+        maximum=1.0,
+    )
+    best_metric_value = serialize_training_metric(
+        progress.best_metric_value,
+        maximum=1.0,
+    )
     progress_payload: dict[str, object] = {
         "stage": "running",
         "task_type": CLASSIFICATION_TASK_TYPE,
@@ -145,9 +165,9 @@ def build_yolo_classification_epoch_progress_event(
         "train_metrics": dict(progress.train_metrics),
         "validation_metrics": dict(progress.validation_metrics),
         "current_metric_name": progress.current_metric_name,
-        "current_metric_value": progress.current_metric_value,
+        "current_metric_value": current_metric_value,
         "best_metric_name": progress.best_metric_name,
-        "best_metric_value": progress.best_metric_value,
+        "best_metric_value": best_metric_value,
     }
     return AppendTaskEventRequest(
         task_id=task_id,
@@ -163,7 +183,7 @@ def build_yolo_classification_epoch_progress_event(
                 "metrics_object_key": train_metrics_object_key,
                 "validation_metrics_object_key": validation_metrics_object_key,
                 "best_metric_name": progress.best_metric_name,
-                "best_metric_value": progress.best_metric_value,
+                "best_metric_value": best_metric_value,
             },
         },
     )
@@ -246,7 +266,10 @@ def build_yolo_classification_savepoint_summary(
         "output_object_prefix": output_prefix,
         "latest_checkpoint_epoch": savepoint.epoch,
         "best_metric_name": savepoint.best_metric_name,
-        "best_metric_value": savepoint.best_metric_value,
+        "best_metric_value": serialize_training_metric(
+            savepoint.best_metric_value,
+            maximum=1.0,
+        ),
         "train_metrics": dict(savepoint.train_metrics),
         "validation_metrics": dict(savepoint.validation_metrics),
         "output_files": build_yolo_classification_output_files_summary(

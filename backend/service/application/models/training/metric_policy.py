@@ -35,6 +35,27 @@ def is_valid_training_metric(
     return maximum is None or resolved_value <= maximum
 
 
+def serialize_training_metric(
+    value: object,
+    *,
+    minimum: float = 0.0,
+    maximum: float | None = None,
+) -> float | None:
+    """把内部指标状态转换为公开 API/文件可用的有限数值。
+
+    训练器可以用负数或无穷值表示“尚未评估”，但这些内部状态不能泄漏到
+    task progress、metrics JSON 或前端，也不能被误解为真实模型指标。
+    """
+
+    if not is_valid_training_metric(
+        value,
+        minimum=minimum,
+        maximum=maximum,
+    ):
+        return None
+    return float(value)
+
+
 def resolve_best_metric_decision(
     *,
     current_value: object,
@@ -108,4 +129,5 @@ __all__ = [
     "is_better_training_metric",
     "is_valid_training_metric",
     "resolve_best_metric_decision",
+    "serialize_training_metric",
 ]

@@ -8,6 +8,9 @@ from pathlib import Path
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
 from backend.queue import LocalFileQueueBackend
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.application.models.training.training_telemetry_mmap import (
+    TrainingTelemetryMmapPublisher,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.settings import BackendWorkerSettings, get_backend_worker_settings
 
@@ -29,6 +32,7 @@ class BackendWorkerRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    training_telemetry_publisher: TrainingTelemetryMmapPublisher | None
 
 
 class PrepareBackendWorkerWorkspaceStep:
@@ -123,6 +127,21 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
             else settings.resolve_workspace_dir()
         )
         session_factory = SessionFactory(settings.to_database_settings())
+        training_telemetry_publisher = (
+            TrainingTelemetryMmapPublisher(
+                root_dir=settings.training_telemetry.root_dir,
+                slot_count=settings.training_telemetry.slot_count,
+                payload_capacity_bytes=(
+                    settings.training_telemetry.payload_capacity_bytes
+                ),
+                min_publish_interval_seconds=(
+                    settings.training_telemetry.min_publish_interval_seconds
+                ),
+            )
+            if settings.training_telemetry.enabled
+            else None
+        )
+        session_factory.training_telemetry_publisher = training_telemetry_publisher
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
         return BackendWorkerRuntime(
@@ -131,6 +150,7 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            training_telemetry_publisher=training_telemetry_publisher,
         )
 
     def _build_steps(self) -> tuple[BootstrapStep[BackendWorkerRuntime], ...]:

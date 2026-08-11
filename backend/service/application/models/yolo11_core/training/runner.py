@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -10,11 +11,15 @@ from typing import Any
 from backend.service.application.models.yolo_core_common.data.tensor_transfer import (
     move_yolo_tensor_to_training_device,
 )
+from backend.service.application.models.training.training_engine import (
+    record_active_training_batch_stage_metrics,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionLossAccumulator,
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
     normalize_yolo_detection_loss_metrics,
+    YoloTrainingNumericalError,
 )
 from backend.service.application.models.yolo11_core.training.pytorch_dataloader import (
     Yolo11DetectionDataLoaderBatch,
@@ -42,6 +47,8 @@ class Yolo11DetectionTrainingEpochResult:
 
     global_iteration: int
     train_metrics: dict[str, float]
+    successful_optimizer_steps: int
+    skipped_optimizer_steps: int
 
 
 def run_yolo11_detection_training_epoch(
@@ -87,6 +94,8 @@ def run_yolo11_detection_training_epoch(
     model.train()
     optimizer.zero_grad(set_to_none=True)
     last_optimizer_step_iteration = 0
+    successful_optimizer_steps = 0
+    skipped_optimizer_steps = 0
 
     for iteration, sample_batch in enumerate(batch_iterator, start=1):
         global_iteration += 1
@@ -110,6 +119,7 @@ def run_yolo11_detection_training_epoch(
             images=images,
             fallback=input_size,
         )
+        forward_started_at = time.perf_counter()
         with autocast_context():
             raw_outputs = unwrap_outputs(model(images))
             loss_components = compute_loss(
@@ -118,6 +128,11 @@ def run_yolo11_detection_training_epoch(
                 batch_targets=batch_targets,
             )
             loss = loss_components["loss"]
+        if not bool(torch_module.isfinite(loss.detach()).item()):
+            raise YoloTrainingNumericalError(
+                f"YOLO11 detection loss 非有限 (global_iteration={global_iteration})"
+            )
+        backward_started_at = time.perf_counter()
         scaler.scale(loss).backward()
         should_step = (
             iteration - last_optimizer_step_iteration >= current_accumulate
@@ -125,14 +140,42 @@ def run_yolo11_detection_training_epoch(
         )
         if should_step:
             scaler.unscale_(optimizer)
-            if grad_clip_norm > 0:
-                torch_module.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+            gradient_norm = torch_module.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                grad_clip_norm if grad_clip_norm > 0 else float("inf"),
+                error_if_nonfinite=False,
+            )
+            gradients_are_finite = bool(torch_module.isfinite(gradient_norm).item())
+            scale_reader = getattr(scaler, "get_scale", None)
+            scale_before = float(scale_reader()) if callable(scale_reader) else None
             scaler.step(optimizer)
             scaler.update()
-            if ema is not None:
+            scale_after = float(scale_reader()) if callable(scale_reader) else None
+            step_succeeded = gradients_are_finite and (
+                scale_before is None or scale_after is None or scale_after >= scale_before
+            )
+            if step_succeeded:
+                successful_optimizer_steps += 1
+            else:
+                skipped_optimizer_steps += 1
+            if ema is not None and step_succeeded:
                 ema.update(model)
             optimizer.zero_grad(set_to_none=True)
             last_optimizer_step_iteration = iteration
+        completed_at = time.perf_counter()
+        record_active_training_batch_stage_metrics(
+            {
+                "forward_loss_host_time_ms": (
+                    backward_started_at - forward_started_at
+                ) * 1000.0,
+                "backward_optimizer_host_time_ms": (
+                    completed_at - backward_started_at
+                ) * 1000.0,
+                "batch_compute_host_time_ms": (
+                    completed_at - forward_started_at
+                ) * 1000.0,
+            }
+        )
 
         reported_metrics = normalize_yolo_detection_loss_metrics(
             loss_components=loss_components,
@@ -161,6 +204,8 @@ def run_yolo11_detection_training_epoch(
     return Yolo11DetectionTrainingEpochResult(
         global_iteration=global_iteration,
         train_metrics=epoch_losses.mean(),
+        successful_optimizer_steps=successful_optimizer_steps,
+        skipped_optimizer_steps=skipped_optimizer_steps,
     )
 
 

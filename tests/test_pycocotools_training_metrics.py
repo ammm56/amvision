@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import redirect_stdout
 import io
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,10 @@ from backend.service.application.models.evaluation.pycocotools_metrics import (
 )
 from backend.service.application.models.training.metric_policy import (
     resolve_best_metric_decision,
+    serialize_training_metric,
+)
+from backend.service.application.models.training.yolo_classification_training_progress import (
+    build_yolo_classification_epoch_progress_event,
 )
 from backend.service.application.models.yolo_core_common.training import (
     normalize_yolo_detection_loss_metrics,
@@ -85,6 +90,70 @@ def _build_two_category_ground_truth():
         "categories": [
             {"id": 1, "name": "detected"},
             {"id": 2, "name": "missed"},
+        ],
+    }
+    with redirect_stdout(io.StringIO()):
+        ground_truth.createIndex()
+    return ground_truth
+
+
+def _build_segmentation_ground_truth():
+    """构建真实 polygon segmentation COCO 数据集。"""
+
+    coco_class = pytest.importorskip("pycocotools.coco").COCO
+    ground_truth = coco_class()
+    ground_truth.dataset = {
+        "info": {"description": "amvision segmentation regression"},
+        "images": [
+            {"id": 1, "file_name": "image.jpg", "width": 32, "height": 32}
+        ],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "bbox": [4.0, 4.0, 16.0, 16.0],
+                "segmentation": [[4.0, 4.0, 20.0, 4.0, 20.0, 20.0, 4.0, 20.0]],
+                "area": 256.0,
+                "iscrowd": 0,
+            }
+        ],
+        "categories": [{"id": 1, "name": "part"}],
+    }
+    with redirect_stdout(io.StringIO()):
+        ground_truth.createIndex()
+    return ground_truth
+
+
+def _build_keypoint_ground_truth():
+    """构建非 COCO-17 拓扑的真实 keypoints COCO 数据集。"""
+
+    coco_class = pytest.importorskip("pycocotools.coco").COCO
+    ground_truth = coco_class()
+    ground_truth.dataset = {
+        "info": {"description": "amvision keypoint regression"},
+        "images": [
+            {"id": 1, "file_name": "image.jpg", "width": 32, "height": 32}
+        ],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "bbox": [4.0, 4.0, 20.0, 20.0],
+                "area": 400.0,
+                "iscrowd": 0,
+                "num_keypoints": 2,
+                "keypoints": [10.0, 10.0, 2.0, 20.0, 20.0, 2.0],
+            }
+        ],
+        "categories": [
+            {
+                "id": 1,
+                "name": "hand",
+                "keypoints": ["root", "tip"],
+                "skeleton": [[1, 2]],
+            }
         ],
     }
     with redirect_stdout(io.StringIO()):
@@ -172,6 +241,54 @@ def test_shared_coco_evaluator_reports_zero_per_category_without_detections() ->
     assert [item.map50_95 for item in metrics.per_category] == [0.0, 0.0]
 
 
+def test_shared_coco_evaluator_runs_real_segmentation_metrics() -> None:
+    """segmentation AP 必须来自真实 pycocotools mask IoU。"""
+
+    cocoeval_class = pytest.importorskip("pycocotools.cocoeval").COCOeval
+    metrics = evaluate_pycocotools_average_precision(
+        ground_truth=_build_segmentation_ground_truth(),
+        detections=[
+            {
+                "image_id": 1,
+                "category_id": 1,
+                "bbox": [4.0, 4.0, 16.0, 16.0],
+                "segmentation": [[4.0, 4.0, 20.0, 4.0, 20.0, 20.0, 4.0, 20.0]],
+                "score": 0.99,
+            }
+        ],
+        cocoeval_class=cocoeval_class,
+        iou_type="segm",
+        max_detections=300,
+    )
+
+    assert metrics.map50 == pytest.approx(1.0)
+    assert metrics.map50_95 == pytest.approx(1.0)
+
+
+def test_shared_coco_evaluator_runs_real_non_coco_keypoint_metrics() -> None:
+    """非 17 点 pose AP 必须显式设置等长 OKS sigma 后由 pycocotools 计算。"""
+
+    cocoeval_class = pytest.importorskip("pycocotools.cocoeval").COCOeval
+    metrics = evaluate_pycocotools_average_precision(
+        ground_truth=_build_keypoint_ground_truth(),
+        detections=[
+            {
+                "image_id": 1,
+                "category_id": 1,
+                "keypoints": [10.0, 10.0, 1.0, 20.0, 20.0, 1.0],
+                "score": 0.99,
+            }
+        ],
+        cocoeval_class=cocoeval_class,
+        iou_type="keypoints",
+        max_detections=300,
+        keypoint_oks_sigmas=(0.5, 0.5),
+    )
+
+    assert metrics.map50 == pytest.approx(1.0)
+    assert metrics.map50_95 == pytest.approx(1.0)
+
+
 @pytest.mark.parametrize("batch_sample_count", [1, 2, 8, 16])
 def test_detection_reported_total_loss_is_batch_size_invariant(
     batch_sample_count: int,
@@ -216,6 +333,49 @@ def test_invalid_quality_metric_never_replaces_best_checkpoint(
     assert decision.improved is False
     assert decision.candidate_value == pytest.approx(0.4)
     assert math.isfinite(decision.candidate_value)
+
+
+@pytest.mark.parametrize(
+    "invalid_value",
+    [-1.0, float("nan"), float("inf"), float("-inf"), None],
+)
+def test_invalid_metric_is_not_serialized_as_public_value(
+    invalid_value: object,
+) -> None:
+    assert serialize_training_metric(invalid_value, maximum=1.0) is None
+
+
+def test_classification_progress_hides_internal_best_metric_sentinel() -> None:
+    progress = SimpleNamespace(
+        epoch=0,
+        max_epochs=200,
+        evaluation_interval=5,
+        validation_ran=False,
+        input_size=(224, 224),
+        learning_rate=0.001,
+        train_metrics={"loss": 0.7, "accuracy": 0.5},
+        validation_metrics={},
+        train_metrics_snapshot={},
+        validation_metrics_snapshot={},
+        current_metric_name="val_top1_accuracy",
+        current_metric_value=None,
+        best_metric_name="val_top1_accuracy",
+        best_metric_value=-1.0,
+    )
+
+    event = build_yolo_classification_epoch_progress_event(
+        task_id="task-1",
+        model_label="YOLO11 classification",
+        model_type="yolo11",
+        attempt_no=0,
+        output_prefix="task-runs/task-1",
+        train_metrics_object_key="train-metrics.json",
+        validation_metrics_object_key="validation-metrics.json",
+        progress=progress,
+    )
+
+    assert event.payload["progress"]["best_metric_value"] is None
+    assert event.payload["result"]["best_metric_value"] is None
 
 
 def test_equal_metric_preserves_historical_best_checkpoint() -> None:

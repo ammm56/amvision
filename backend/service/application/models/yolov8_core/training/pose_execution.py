@@ -21,11 +21,27 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.device_selection import (
     resolve_single_training_device_name,
 )
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
+from backend.service.application.models.training.training_engine import (
+    training_engine_entrypoint,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+    resolve_training_checkpoint_decision,
+)
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
 from backend.service.application.models.yolo_core_common.training import (
     YoloModelEMA,
+    YoloTaskTrainingDataLoaderLifecycle,
+    build_yolo_epoch_history_item,
     YoloUltralyticsOptimizerStep,
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
@@ -33,8 +49,11 @@ from backend.service.application.models.yolo_core_common.training import (
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
     resolve_yolo_optimizer_base_learning_rate,
-    replace_yolo_task_dataloader_plan_seed,
     resolve_yolo_task_dataloader_plan,
+    should_run_yolo_validation,
+)
+from backend.service.application.models.yolo_core_common.training.pose_topology import (
+    prepare_pose_augmentation_options,
 )
 from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
@@ -102,6 +121,9 @@ class YoloV8PoseTrainingEpochProgress:
     input_size: tuple[int, int]
     learning_rate: float
     train_metrics: dict[str, float]
+    validation_metrics: dict[str, float] | None = None
+    best_metric_value: float | None = None
+    best_metric_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +180,8 @@ class YoloV8PoseTrainingExecutionRequest:
     previous_best_checkpoint_path: Path | None = None
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable | None = None
+    batch_callback: Callable[[YoloV8PoseTrainingBatchProgress], None] | None = None
+    control_callback: Callable[[], None] | None = None
     savepoint_callback: Callable | None = None
 
 
@@ -176,6 +200,7 @@ class YoloV8PoseTrainingExecutionResult:
     test_sample_count: int = 0
 
 
+@training_engine_entrypoint
 def run_yolov8_pose_training(
     request: YoloV8PoseTrainingExecutionRequest,
 ) -> YoloV8PoseTrainingExecutionResult:
@@ -196,9 +221,14 @@ def run_yolov8_pose_training(
         extra_options=request.extra_options,
     )
 
-    precision = request.precision
+    precision = resolve_training_amp_runtime(
+        torch_module=torch,
+        device_name=device,
+        requested_precision=request.precision,
+        extra_options=request.extra_options,
+    ).precision
     input_size = request.input_size or _POSE_DEF_INPUT_SIZE
-    use_amp = precision == "fp16" and device.startswith("cuda")
+    use_amp = precision in {"fp16", "bf16"} and device.startswith("cuda")
 
     labels, train_anns, val_anns, test_anns = _load_pose_manifest(
         request.dataset_storage, request.manifest_payload
@@ -235,11 +265,30 @@ def run_yolov8_pose_training(
             load_result=load_result,
             source_summary=request.warm_start_source_summary,
         )
-    extra = dict(request.extra_options or {})
+    extra = prepare_pose_augmentation_options(
+        extra_options=request.extra_options,
+        manifest_payload=request.manifest_payload,
+        keypoint_shape=kpt_shape,
+    )
     lr = float(extra.get("learning_rate", 1e-2))
     weight_decay = float(extra.get("weight_decay", 5e-4))
     min_lr = float(extra.get("min_lr_ratio", _POSE_DEF_MIN_LR))
     bs = max(1, int(extra.get("batch_size", request.batch_size)))
+    bs = resolve_training_batch_size(
+        torch_module=torch,
+        model=model,
+        device_name=device,
+        input_size=input_size,
+        dataset_size=len(train_anns),
+        requested_batch_size=request.batch_size,
+        default_batch_size=_POSE_DEF_BS,
+        runtime_precision=precision,
+        extra_options=extra,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
     max_epochs = max(1, int(extra.get("max_epochs", request.max_epochs)))
     cls_w = float(extra.get("class_loss_weight", _POSE_DEF_CLS_W))
     box_w = float(extra.get("box_loss_weight", _POSE_DEF_BOX_W))
@@ -271,7 +320,11 @@ def run_yolov8_pose_training(
         final_lr_ratio=min_lr,
         cosine_schedule=training_schedule.cosine_schedule,
     )
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if use_amp else None
+    scaler = (
+        torch.amp.GradScaler("cuda", enabled=True)
+        if precision == "fp16" and device.startswith("cuda")
+        else None
+    )
 
     # 恢复训练
     start_epoch = 0
@@ -298,9 +351,9 @@ def run_yolov8_pose_training(
         resume_payload.get("best_metric_value", -1.0) if resume_payload else -1.0
     )
     best_metric_name = str(
-        resume_payload.get("best_metric_name", "val_map50_95")
+        resume_payload.get("best_metric_name", "val_oks_ap50_95")
         if resume_payload
-        else "val_map50_95"
+        else "val_oks_ap50_95"
     )
     ckpt_bytes = b""
     best_checkpoint_bytes = (
@@ -333,35 +386,40 @@ def run_yolov8_pose_training(
         device=device,
     )
 
+    training_loader_lifecycle = YoloTaskTrainingDataLoaderLifecycle()
     for epoch in range(start_epoch, max_epochs):
         model.train()
         epoch_losses: dict[str, float] = {}
         epoch_iters = 0
         epoch_samples = 0
-        effective_yolov8_augmentation_options = resolve_yolov8_task_augmentation_for_epoch(
-            augmentation_options=yolov8_augmentation_options,
-            epoch_index=epoch,
-            max_epochs=max_epochs,
+        effective_yolov8_augmentation_options = (
+            resolve_yolov8_task_augmentation_for_epoch(
+                augmentation_options=yolov8_augmentation_options,
+                epoch_index=epoch,
+                max_epochs=max_epochs,
+            )
         )
 
-        train_dataloader = build_yolo_task_training_dataloader(
-            torch_module=torch,
-            samples=train_anns,
-            batch_size=bs,
-            input_size=input_size,
-            training=True,
+        train_dataloader = training_loader_lifecycle.resolve(
             augmentation_options=effective_yolov8_augmentation_options,
-            plan=replace_yolo_task_dataloader_plan_seed(
+            build_loader=lambda: build_yolo_task_training_dataloader(
+                torch_module=torch,
+                samples=train_anns,
+                batch_size=bs,
+                input_size=input_size,
+                training=True,
+                augmentation_options=effective_yolov8_augmentation_options,
                 plan=dataloader_plan,
-                seed=epoch,
+                shuffle=True,
+                build_batch=build_yolov8_pose_training_batch,
+                load_imports=load_yolo_task_dataloader_imports,
+                resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
             ),
-            shuffle=True,
-            build_batch=build_yolov8_pose_training_batch,
-            load_imports=load_yolo_task_dataloader_imports,
-            resolve_batch_input_size=resolve_yolov8_task_batch_input_size,
         )
         max_iterations = max(1, len(train_dataloader))
         for iteration, cpu_batch in enumerate(train_dataloader, start=1):
+            if request.control_callback is not None:
+                request.control_callback()
             if cpu_batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -382,7 +440,11 @@ def run_yolov8_pose_training(
             )
 
             autocast_ctx = (
-                torch.amp.autocast("cuda", enabled=use_amp)
+                torch.amp.autocast(
+                    "cuda",
+                    dtype=(torch.float16 if precision == "fp16" else torch.bfloat16),
+                    enabled=True,
+                )
                 if use_amp
                 else nullcontext()
             )
@@ -415,9 +477,7 @@ def run_yolov8_pose_training(
             optimizer_step.backward_and_step(
                 loss=total_loss,
                 iteration_index=global_iteration,
-                is_last_batch=(
-                    epoch + 1 == max_epochs and iteration == max_iterations
-                ),
+                is_last_batch=(epoch + 1 == max_epochs and iteration == max_iterations),
             )
 
             batch_sample_count = len(targets)
@@ -426,11 +486,30 @@ def run_yolov8_pose_training(
                 if k == "loss":
                     metric_value /= batch_sample_count
                 epoch_losses[k] = (
-                    epoch_losses.get(k, 0.0)
-                    + metric_value * batch_sample_count
+                    epoch_losses.get(k, 0.0) + metric_value * batch_sample_count
                 )
             epoch_iters += 1
             epoch_samples += batch_sample_count
+            if request.batch_callback is not None:
+                batch_metrics: dict[str, float] = {}
+                for name, value in loss_dict.items():
+                    metric_value = float(value.item())
+                    if name == "loss":
+                        metric_value /= max(1, batch_sample_count)
+                    batch_metrics[name] = round(metric_value, 6)
+                request.batch_callback(
+                    YoloV8PoseTrainingBatchProgress(
+                        epoch=epoch,
+                        max_epochs=max_epochs,
+                        iteration=iteration,
+                        max_iterations=max_iterations,
+                        global_iteration=global_iteration,
+                        total_iterations=max_epochs * max_iterations,
+                        input_size=input_size,
+                        learning_rate=float(scheduler.get_last_lr()[0]),
+                        train_metrics=batch_metrics,
+                    )
+                )
 
         if epoch_samples > 0:
             avg_metrics = {
@@ -439,26 +518,16 @@ def run_yolov8_pose_training(
         else:
             avg_metrics = {"loss": 0.0}
 
-        metrics_history.append({"epoch": epoch, **avg_metrics})
-
-        ep_progress = YoloV8PoseTrainingEpochProgress(
-            epoch=epoch,
-            max_epochs=max_epochs,
-            input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
-            train_metrics=avg_metrics,
+        metrics_history.append(
+            build_yolo_epoch_history_item(epoch_index=epoch, metrics=avg_metrics)
         )
-        cmd = request.epoch_callback(ep_progress) if request.epoch_callback else None
-        if cmd and cmd.terminate_training:
-            raise YoloV8PoseTrainingTerminatedError()
 
         val_metrics: dict[str, float] = {}
-        should_evaluate = (
-            len(val_anns) > 0
-            and (
-                (epoch > 0 and epoch % request.evaluation_interval == 0)
-                or epoch == max_epochs - 1
-            )
+        should_evaluate = should_run_yolo_validation(
+            epoch_index=epoch,
+            max_epochs=max_epochs,
+            evaluation_interval=request.evaluation_interval,
+            has_validation_samples=bool(val_anns),
         )
         if should_evaluate:
             val_metrics = evaluate_yolov8_pose_samples(
@@ -472,14 +541,15 @@ def run_yolov8_pose_training(
                     extra.get("evaluation_confidence_threshold", 0.001)
                 ),
                 nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
-                keypoint_confidence_threshold=float(
-                    extra.get("keypoint_confidence_threshold", 0.25)
-                ),
                 kpt_shape=kpt_shape,
                 imports=_build_yolo_training_imports(cv2, np, torch),
+                batch_size=bs,
+                control_callback=request.control_callback,
             )
-            validation_history.append({"epoch": epoch, **val_metrics})
-            current_metric = float(val_metrics.get("map50_95", 0.0))
+            validation_history.append(
+                build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
+            )
+            current_metric = float(val_metrics.get("oks_ap50_95", 0.0))
             best_metric_improved = is_better_training_metric(
                 current_value=current_metric,
                 best_value=best_metric_value,
@@ -488,38 +558,62 @@ def run_yolov8_pose_training(
             )
             if best_metric_improved:
                 best_metric_value = current_metric
-                best_metric_name = "val_map50_95"
+                best_metric_name = "val_oks_ap50_95"
         else:
             best_metric_improved = False
 
-        scheduler.step()
-        # 保存 checkpoint
-        buf = io.BytesIO()
-        torch.save(
-            {
-                "epoch": epoch + 1,
-                "global_iteration": global_iteration,
-                "model_state_dict": model.state_dict(),
-                "ema_state_dict": ema.state_dict(),
-                "ema_updates": ema.updates,
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-                "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
-                "metrics_history": metrics_history,
-                "validation_history": validation_history,
-                "best_metric_value": best_metric_value,
-                "best_metric_name": best_metric_name,
-            },
-            buf,
+        optimizer_step.step_scheduler_if_optimizer_updated(scheduler)
+        ep_progress = YoloV8PoseTrainingEpochProgress(
+            epoch=epoch,
+            max_epochs=max_epochs,
+            input_size=input_size,
+            learning_rate=float(scheduler.get_last_lr()[0]),
+            train_metrics=avg_metrics,
+            validation_metrics=val_metrics or None,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
         )
-        ckpt_bytes = buf.getvalue()
-        if best_metric_improved:
+        cmd = request.epoch_callback(ep_progress) if request.epoch_callback else None
+        checkpoint_decision = resolve_training_checkpoint_decision(
+            completed_epoch=epoch + 1,
+            max_epochs=max_epochs,
+            interval_epochs=read_training_checkpoint_interval(extra),
+            best_improved=best_metric_improved,
+            manual_save_requested=bool(cmd and cmd.save_checkpoint),
+            pause_requested=bool(cmd and cmd.pause_training),
+            terminate_requested=bool(cmd and cmd.terminate_training),
+        )
+        if checkpoint_decision.should_serialize:
+            buf = io.BytesIO()
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "global_iteration": global_iteration,
+                    "model_state_dict": model.state_dict(),
+                    "ema_state_dict": ema.state_dict(),
+                    "ema_updates": ema.updates,
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "scaler_state_dict": scaler.state_dict()
+                    if scaler is not None
+                    else None,
+                    "metrics_history": metrics_history,
+                    "validation_history": validation_history,
+                    "best_metric_value": best_metric_value,
+                    "best_metric_name": best_metric_name,
+                    "batch_size": bs,
+                    "max_epochs": max_epochs,
+                    "evaluation_interval": request.evaluation_interval,
+                    "input_size": input_size,
+                    "precision": precision,
+                },
+                buf,
+            )
+            ckpt_bytes = buf.getvalue()
+        if best_metric_improved and checkpoint_decision.should_serialize:
             best_checkpoint_bytes = ckpt_bytes
 
-        manual_save_requested = bool(cmd and cmd.save_checkpoint)
-        if request.savepoint_callback and (
-            best_metric_improved or manual_save_requested
-        ):
+        if checkpoint_decision.should_serialize and request.savepoint_callback:
             request.savepoint_callback(
                 YoloV8PoseTrainingSavePoint(
                     latest_checkpoint_bytes=ckpt_bytes,
@@ -535,7 +629,10 @@ def run_yolov8_pose_training(
 
         if cmd and cmd.pause_training:
             raise YoloV8PoseTrainingPausedError()
+        if cmd and cmd.terminate_training:
+            raise YoloV8PoseTrainingTerminatedError()
 
+    training_loader_lifecycle.close()
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = ckpt_bytes
     test_metrics_payload = build_detection_test_metrics_report(
@@ -567,11 +664,10 @@ def run_yolov8_pose_training(
             precision=precision,
             score_threshold=float(extra.get("evaluation_confidence_threshold", 0.001)),
             nms_threshold=float(extra.get("evaluation_nms_threshold", 0.7)),
-            keypoint_confidence_threshold=float(
-                extra.get("keypoint_confidence_threshold", 0.25)
-            ),
             kpt_shape=kpt_shape,
             imports=_build_yolo_training_imports(cv2, np, torch),
+            batch_size=bs,
+            control_callback=request.control_callback,
         )
         test_metrics_payload = build_detection_test_metrics_report(
             available=True,

@@ -13,6 +13,9 @@ from backend.service.application.models.training.detection_training_rules import
 from backend.service.application.models.training.yolo_detection_training_execution import (
     YoloDetectionTrainingExecutionResult,
 )
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
@@ -46,6 +49,20 @@ def build_yolo_detection_training_summary(
         precision=request.precision,
         input_size=request.input_size,
         extra_options=request.extra_options,
+    )
+    training_config.update(
+        {
+            "requested_batch_size": request.batch_size,
+            "requested_gpu_count": request.gpu_count,
+            "requested_precision": request.precision,
+            "gpu_count": execution_result.gpu_count,
+            **build_execution_training_config_runtime(
+                execution_result=execution_result,
+                requested_batch_size=request.batch_size,
+                requested_precision=request.precision,
+                default_batch_size=execution_result.batch_size,
+            ),
+        }
     )
     validation_metrics_payload = (
         dict(execution_result.validation_metrics_payload)

@@ -25,7 +25,9 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
 )
 import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
 from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
+)
 from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingEpochProgress,
     YoloDetectionTrainingPausedError,
@@ -42,8 +44,12 @@ from backend.service.application.models.yolox_core.training import (
     build_yolox_checkpoint_state as _build_checkpoint_state,
     load_yolox_resume_checkpoint,
 )
-from backend.service.application.models.registry.model_service import SqlAlchemyModelService
-from backend.service.application.models.training.yolox_detection_task_service import YOLOX_TRAINING_QUEUE_NAME
+from backend.service.application.models.registry.model_service import (
+    SqlAlchemyModelService,
+)
+from backend.service.application.models.training.yolox_detection_task_service import (
+    YOLOX_TRAINING_QUEUE_NAME,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -53,11 +59,21 @@ from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.yolox_file_types import YOLOX_CHECKPOINT_FILE
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.training.yolo26_training_queue_worker import Yolo26TrainingQueueWorker
-from backend.workers.training.yolo11_training_queue_worker import Yolo11TrainingQueueWorker
-from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
-from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.workers.training.yolo26_training_queue_worker import (
+    Yolo26TrainingQueueWorker,
+)
+from backend.workers.training.yolo11_training_queue_worker import (
+    Yolo11TrainingQueueWorker,
+)
+from backend.workers.training.yolov8_training_queue_worker import (
+    YoloV8TrainingQueueWorker,
+)
+from backend.workers.training.yolox_training_queue_worker import (
+    YoloXTrainingQueueWorker,
+)
 from tests.api_test_support import (
     build_test_headers,
     build_test_jpeg_bytes,
@@ -65,10 +81,39 @@ from tests.api_test_support import (
 )
 
 
+def _training_execution(
+    *,
+    max_epochs: int = 100,
+    batch_size: int | None = None,
+    precision: str | None = None,
+    input_size: dict[str, int] | None = None,
+    evaluation_interval: int = 5,
+) -> dict[str, object]:
+    """构造当前 v1 训练执行策略请求，避免测试重新引入已删除的顶层参数。"""
+
+    amp: dict[str, str] = {"mode": "auto", "dtype": "auto"}
+    if precision == "fp32":
+        amp = {"mode": "disabled", "dtype": "auto"}
+    elif precision is not None:
+        amp = {"mode": "enabled", "dtype": precision}
+    return {
+        "max_epochs": max_epochs,
+        "input_size": input_size,
+        "batch": {
+            "mode": "fixed" if batch_size is not None else "auto",
+            "size": batch_size,
+        },
+        "amp": amp,
+        "validation": {"interval_epochs": evaluation_interval},
+    }
+
+
 def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) -> None:
     """验证训练创建接口可以直接接收 dataset_export_id。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -89,8 +134,10 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bolt",
-                    "evaluation_interval": 3,
-                    "precision": "fp16",
+                    "execution": _training_execution(
+                        evaluation_interval=3,
+                        precision="fp16",
+                    ),
                 },
             )
 
@@ -98,19 +145,34 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         payload = response.json()
         assert payload["status"] == "queued"
         assert payload["dataset_export_id"] == dataset_export.dataset_export_id
-        assert payload["dataset_export_manifest_key"] == dataset_export.manifest_object_key
+        assert (
+            payload["dataset_export_manifest_key"] == dataset_export.manifest_object_key
+        )
         assert payload["queue_name"] == YOLOX_TRAINING_QUEUE_NAME
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            payload["task_id"], include_events=True
+        )
         assert task_detail.task.task_kind == "yolox-training"
-        assert task_detail.task.task_spec["dataset_export_id"] == dataset_export.dataset_export_id
-        assert task_detail.task.task_spec["dataset_export_manifest_key"] == dataset_export.manifest_object_key
-        assert task_detail.task.task_spec["manifest_object_key"] == dataset_export.manifest_object_key
+        assert (
+            task_detail.task.task_spec["dataset_export_id"]
+            == dataset_export.dataset_export_id
+        )
+        assert (
+            task_detail.task.task_spec["dataset_export_manifest_key"]
+            == dataset_export.manifest_object_key
+        )
+        assert (
+            task_detail.task.task_spec["manifest_object_key"]
+            == dataset_export.manifest_object_key
+        )
         assert task_detail.task.task_spec["gpu_count"] == 1
         assert task_detail.task.task_spec["precision"] == "fp16"
         assert task_detail.task.task_spec["evaluation_interval"] == 3
         assert task_detail.task.state == "queued"
-        assert any(event.message == "yolox training queued" for event in task_detail.events)
+        assert any(
+            event.message == "yolox training queued" for event in task_detail.events
+        )
 
         queue_task = queue_backend.get_task(
             queue_name=YOLOX_TRAINING_QUEUE_NAME,
@@ -125,7 +187,9 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
 def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None:
     """验证训练创建接口可以通过 manifest_object_key 反查 DatasetExport。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -152,19 +216,27 @@ def test_create_yolox_training_task_accepts_manifest_key(tmp_path: Path) -> None
         assert response.status_code == 202
         payload = response.json()
         assert payload["dataset_export_id"] == dataset_export.dataset_export_id
-        assert payload["dataset_export_manifest_key"] == dataset_export.manifest_object_key
+        assert (
+            payload["dataset_export_manifest_key"] == dataset_export.manifest_object_key
+        )
         assert payload["dataset_version_id"] == dataset_export.dataset_version_id
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            payload["task_id"], include_events=True
+        )
         assert task_detail.task.task_spec["evaluation_interval"] == 5
     finally:
         session_factory.engine.dispose()
 
 
-def test_detection_training_create_openapi_exposes_isolated_parameter_groups(tmp_path: Path) -> None:
+def test_detection_training_create_openapi_exposes_isolated_parameter_groups(
+    tmp_path: Path,
+) -> None:
     """验证 detection 训练创建接口按模型族公开严格参数分组。"""
 
-    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.get("/openapi.json")
@@ -203,7 +275,9 @@ def test_detection_training_create_openapi_exposes_isolated_parameter_groups(tmp
 def test_create_yolox_training_task_rejects_multi_gpu_count(tmp_path: Path) -> None:
     """验证训练创建接口会明确拒绝当前不支持的多 GPU 请求。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -225,7 +299,7 @@ def test_create_yolox_training_task_rejects_multi_gpu_count(tmp_path: Path) -> N
                     "model_scale": "s",
                     "output_model_name": "yolox-s-gpu4",
                     "gpu_count": 2,
-                    "precision": "fp16",
+                    "execution": _training_execution(precision="fp16"),
                 },
             )
 
@@ -239,7 +313,9 @@ def test_create_yolox_training_task_rejects_multi_gpu_count(tmp_path: Path) -> N
 def test_create_yolox_training_task_rejects_fp8_precision(tmp_path: Path) -> None:
     """验证训练创建接口会在提交阶段拒绝当前未支持的 fp8 precision。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -260,7 +336,7 @@ def test_create_yolox_training_task_rejects_fp8_precision(tmp_path: Path) -> Non
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-fp8",
-                    "precision": "fp8",
+                    "execution": _training_execution(precision="fp8"),
                 },
             )
 
@@ -272,10 +348,14 @@ def test_create_yolox_training_task_rejects_fp8_precision(tmp_path: Path) -> Non
         session_factory.engine.dispose()
 
 
-def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Path) -> None:
+def test_create_yolox_training_task_rejects_non_positive_input_size(
+    tmp_path: Path,
+) -> None:
     """验证训练创建接口会拒绝非正数 input_size。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -297,7 +377,9 @@ def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Pa
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-bad-input-size",
-                    "input_size": {"width": 640, "height": 0},
+                    "execution": _training_execution(
+                        input_size={"width": 640, "height": 0},
+                    ),
                 },
             )
 
@@ -305,7 +387,7 @@ def test_create_yolox_training_task_rejects_non_positive_input_size(tmp_path: Pa
         payload = response.json()
         assert payload["error"]["code"] == "request_validation_failed"
         validation_error = payload["error"]["details"]["errors"][0]
-        assert validation_error["loc"][-2:] == ["input_size", "height"]
+        assert validation_error["loc"][-3:] == ["execution", "input_size", "height"]
         assert validation_error["type"] == "greater_than"
     finally:
         session_factory.engine.dispose()
@@ -316,7 +398,9 @@ def test_create_yolox_training_task_rejects_mismatched_export_id_and_manifest_ke
 ) -> None:
     """验证当 dataset_export_id 与 manifest_object_key 不属于同一资源时接口会拒绝。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export_a = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -352,7 +436,10 @@ def test_create_yolox_training_task_rejects_mismatched_export_id_and_manifest_ke
         assert response.status_code == 400
         payload = response.json()
         assert payload["error"]["code"] == "invalid_request"
-        assert payload["error"]["message"] == "dataset_export_id 与 dataset_export_manifest_key 不属于同一个 DatasetExport"
+        assert (
+            payload["error"]["message"]
+            == "dataset_export_id 与 dataset_export_manifest_key 不属于同一个 DatasetExport"
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -360,7 +447,9 @@ def test_create_yolox_training_task_rejects_mismatched_export_id_and_manifest_ke
 def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) -> None:
     """验证训练任务列表接口可以按 DatasetExport 边界筛选。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export_a = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -389,7 +478,7 @@ def test_list_yolox_training_tasks_filters_by_dataset_export_id(tmp_path: Path) 
                     "recipe_id": "yolox-default",
                     "model_scale": "s",
                     "output_model_name": "yolox-s-a",
-                    "precision": "fp16",
+                    "execution": _training_execution(precision="fp16"),
                 },
             )
             create_b = client.post(
@@ -435,7 +524,9 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
 ) -> None:
     """验证训练任务列表会把已完成任务的 model_version_id 提升到顶层字段。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -457,19 +548,24 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-list-model-version",
-                    "max_epochs": 1,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=1,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
 
         assert create_response.status_code == 202
-        assert _run_yolox_training_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         with client:
             list_response = client.get(
@@ -490,15 +586,22 @@ def test_list_yolox_training_tasks_returns_top_level_model_version_id_when_compl
         assert payload[0]["model_version_id"]
         assert payload[0]["evaluation_interval"] == 5
         assert payload[0]["precision"] == "fp32"
-        assert payload[0]["model_version_id"] == payload[0]["training_summary"]["model_version_id"]
+        assert (
+            payload[0]["model_version_id"]
+            == payload[0]["training_summary"]["model_version_id"]
+        )
     finally:
         session_factory.engine.dispose()
 
 
-def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path) -> None:
+def test_get_yolox_training_task_detail_returns_completed_result(
+    tmp_path: Path,
+) -> None:
     """验证训练任务详情接口会返回完成态结果和事件流。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -519,20 +622,25 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-detail",
-                    "max_epochs": 1,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=1,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
 
         assert create_response.status_code == 202
         task_id = create_response.json()["task_id"]
-        assert _run_yolox_training_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         with client:
             detail_response = client.get(
@@ -550,32 +658,51 @@ def test_get_yolox_training_task_detail_returns_completed_result(tmp_path: Path)
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
         assert payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
         assert payload["latest_checkpoint_model_version_id"] is None
-        assert payload["validation_metrics_object_key"].endswith("/validation-metrics.json")
+        assert payload["validation_metrics_object_key"].endswith(
+            "/validation-metrics.json"
+        )
         assert payload["summary_object_key"].endswith("/training-summary.json")
         assert payload["evaluation_interval"] == 5
         assert payload["precision"] == "fp32"
-        assert payload["training_summary"]["implementation_mode"] == "yolox-detection-core"
+        assert (
+            payload["training_summary"]["implementation_mode"] == "yolox-detection-core"
+        )
         assert payload["training_summary"]["precision"] == "fp32"
         assert payload["training_summary"]["validation"]["enabled"] is True
         assert payload["training_summary"]["validation"]["evaluation_interval"] == 5
         assert "map50" in payload["training_summary"]["validation"]["final_metrics"]
         assert "map50_95" in payload["training_summary"]["validation"]["final_metrics"]
-        assert payload["task_spec"]["manifest_object_key"] == dataset_export.manifest_object_key
+        assert (
+            payload["task_spec"]["manifest_object_key"]
+            == dataset_export.manifest_object_key
+        )
         assert payload["training_summary"]["model_version_id"]
-        assert payload["model_version_id"] == payload["training_summary"]["model_version_id"]
+        assert (
+            payload["model_version_id"]
+            == payload["training_summary"]["model_version_id"]
+        )
         assert "reference_code_root" not in payload["metadata"]
         assert "reference_code_root" not in payload["training_summary"]
         assert "reference_code_root" not in payload["result"].get("summary", {})
-        assert any(event["message"] == "yolox training started" for event in payload["events"])
-        assert any(event["message"] == "yolox training completed" for event in payload["events"])
+        assert any(
+            event["message"] == "yolox training started" for event in payload["events"]
+        )
+        assert any(
+            event["message"] == "yolox training completed"
+            for event in payload["events"]
+        )
     finally:
         session_factory.engine.dispose()
 
 
-def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_path: Path) -> None:
+def test_get_yolox_training_validation_metrics_returns_completed_snapshot(
+    tmp_path: Path,
+) -> None:
     """验证可通过 HTTP 直接读取完成态训练的 validation snapshot。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -597,20 +724,25 @@ def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_pa
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-validation-metrics",
-                    "max_epochs": 1,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=1,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
 
         assert create_response.status_code == 202
         task_id = create_response.json()["task_id"]
-        assert _run_yolox_training_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         with client:
             validation_metrics_response = client.get(
@@ -634,10 +766,14 @@ def test_get_yolox_training_validation_metrics_returns_completed_snapshot(tmp_pa
         session_factory.engine.dispose()
 
 
-def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: Path) -> None:
+def test_get_yolox_training_train_metrics_returns_completed_snapshot(
+    tmp_path: Path,
+) -> None:
     """验证可通过 HTTP 直接读取完成态训练的 train metrics 快照。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -659,20 +795,25 @@ def test_get_yolox_training_train_metrics_returns_completed_snapshot(tmp_path: P
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-train-metrics",
-                    "max_epochs": 1,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=1,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
 
         assert create_response.status_code == 202
         task_id = create_response.json()["task_id"]
-        assert _run_yolox_training_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         with client:
             train_metrics_response = client.get(
@@ -697,7 +838,9 @@ def test_get_yolox_training_validation_metrics_returns_pending_before_snapshot_e
 ) -> None:
     """验证 validation-metrics 在快照尚未生成时也返回 pending。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -741,10 +884,14 @@ def test_get_yolox_training_validation_metrics_returns_pending_before_snapshot_e
         session_factory.engine.dispose()
 
 
-def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_path: Path) -> None:
+def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(
+    tmp_path: Path,
+) -> None:
     """验证 running 阶段也会把 output_object_prefix 提升到顶层响应。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -766,7 +913,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-running-prefix",
-                    "precision": "fp16",
+                    "execution": _training_execution(precision="fp16"),
                 },
             )
 
@@ -789,9 +936,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
                 "best_metric_value": 0.41,
                 "final_metrics": {"epoch": 5, "map50": 0.62, "map50_95": 0.41},
                 "evaluated_epochs": [5],
-                "epoch_history": [
-                    {"epoch": 5, "map50": 0.62, "map50_95": 0.41}
-                ],
+                "epoch_history": [{"epoch": 5, "map50": 0.62, "map50_95": 0.41}],
             },
         )
         SqlAlchemyTaskService(session_factory).append_task_event(
@@ -864,7 +1009,9 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
         assert validation_metrics_payload["object_key"] == validation_metrics_object_key
         assert validation_metrics_payload["payload"]["evaluated_epochs"] == [5]
         assert validation_metrics_payload["payload"]["final_metrics"]["map50"] == 0.62
-        assert validation_metrics_payload["payload"]["final_metrics"]["map50_95"] == 0.41
+        assert (
+            validation_metrics_payload["payload"]["final_metrics"]["map50_95"] == 0.41
+        )
 
         with client:
             train_metrics_response = client.get(
@@ -882,10 +1029,14 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(tmp_
         session_factory.engine.dispose()
 
 
-def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Path) -> None:
+def test_get_yolox_training_output_files_returns_completed_entries(
+    tmp_path: Path,
+) -> None:
     """验证 output-files 资源组会统一公开训练输出文件状态和可读内容。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -907,20 +1058,25 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-output-files",
-                    "max_epochs": 1,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=1,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
 
         assert create_response.status_code == 202
         task_id = create_response.json()["task_id"]
-        assert _run_yolox_training_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_yolox_training_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         with client:
             output_files_response = client.get(
@@ -932,8 +1088,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
         output_files_payload = output_files_response.json()
         assert len(output_files_payload) == 7
         output_files_by_name = {
-            item["file_name"]: item
-            for item in output_files_payload
+            item["file_name"]: item for item in output_files_payload
         }
         assert output_files_by_name["summary"]["file_status"] == "ready"
         assert output_files_by_name["labels"]["file_kind"] == "text"
@@ -958,7 +1113,9 @@ def test_get_yolox_training_output_files_returns_completed_entries(tmp_path: Pat
         assert summary_response.status_code == 200
         summary_payload = summary_response.json()
         assert summary_payload["file_status"] == "ready"
-        assert summary_payload["payload"]["implementation_mode"] == "yolox-detection-core"
+        assert (
+            summary_payload["payload"]["implementation_mode"] == "yolox-detection-core"
+        )
 
         assert labels_response.status_code == 200
         labels_payload = labels_response.json()
@@ -982,7 +1139,9 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
 ) -> None:
     """验证 pause 会先保存 latest checkpoint，resume 会基于该 checkpoint 继续训练。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1000,7 +1159,9 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
         run_count += 1
         if run_count == 1:
             first_control = request.epoch_callback(
-                _build_fake_epoch_progress(epoch=1, max_epochs=4, best_metric_value=0.21)
+                _build_fake_epoch_progress(
+                    epoch=1, max_epochs=4, best_metric_value=0.21
+                )
             )
             assert first_control is not None
             assert first_control.save_checkpoint is False
@@ -1012,23 +1173,32 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             running_train_metrics_payload = running_train_metrics_response.json()
             assert running_train_metrics_payload["file_status"] == "ready"
             assert running_train_metrics_payload["task_state"] == "running"
-            assert running_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
+            assert (
+                running_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
+            )
             running_validation_metrics_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
             assert running_validation_metrics_response.status_code == 200
-            running_validation_metrics_payload = running_validation_metrics_response.json()
+            running_validation_metrics_payload = (
+                running_validation_metrics_response.json()
+            )
             assert running_validation_metrics_payload["file_status"] == "ready"
             assert running_validation_metrics_payload["task_state"] == "running"
-            assert running_validation_metrics_payload["payload"]["final_metrics"]["epoch"] == 1
+            assert (
+                running_validation_metrics_payload["payload"]["final_metrics"]["epoch"]
+                == 1
+            )
             pause_response = client.post(
                 f"/api/v1/models/detection/training-tasks/{task_id}/pause",
                 headers=_build_training_headers(),
             )
             assert pause_response.status_code == 200
             second_control = request.epoch_callback(
-                _build_fake_epoch_progress(epoch=2, max_epochs=4, best_metric_value=0.34)
+                _build_fake_epoch_progress(
+                    epoch=2, max_epochs=4, best_metric_value=0.34
+                )
             )
             assert second_control is not None
             assert second_control.save_checkpoint is True
@@ -1042,7 +1212,9 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
         assert request.resume_checkpoint_path.is_file()
         return _build_fake_execution_result(max_epochs=4, best_metric_value=0.48)
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1056,20 +1228,25 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-pause-resume",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1079,15 +1256,35 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
             assert paused_payload["state"] == "paused"
-            assert paused_payload["available_actions"] == ["resume", "terminate", "delete"]
+            assert paused_payload["available_actions"] == [
+                "resume",
+                "terminate",
+                "delete",
+            ]
             assert paused_payload["model_version_id"]
-            assert paused_payload["latest_checkpoint_model_version_id"] == paused_payload["model_version_id"]
-            assert paused_payload["metadata"]["training_control"]["last_save_epoch"] == 2
-            assert paused_payload["latest_checkpoint_object_key"].endswith("/latest_ckpt.pth")
-            assert dataset_storage.resolve(paused_payload["latest_checkpoint_object_key"]).is_file()
+            assert (
+                paused_payload["latest_checkpoint_model_version_id"]
+                == paused_payload["model_version_id"]
+            )
+            assert (
+                paused_payload["metadata"]["training_control"]["last_save_epoch"] == 2
+            )
+            assert paused_payload["latest_checkpoint_object_key"].endswith(
+                "/latest_ckpt.pth"
+            )
+            assert dataset_storage.resolve(
+                paused_payload["latest_checkpoint_object_key"]
+            ).is_file()
             assert paused_payload["labels_object_key"].endswith("/labels.txt")
-            assert dataset_storage.resolve(paused_payload["labels_object_key"]).is_file()
-            assert dataset_storage.resolve(paused_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+            assert dataset_storage.resolve(
+                paused_payload["labels_object_key"]
+            ).is_file()
+            assert (
+                dataset_storage.resolve(paused_payload["labels_object_key"]).read_text(
+                    encoding="utf-8"
+                )
+                == "bolt\n"
+            )
             paused_validation_session_response = client.post(
                 "/api/v1/models/detection/validation-sessions",
                 headers=build_test_headers(scopes="models:read"),
@@ -1111,21 +1308,31 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             paused_train_metrics_payload = paused_train_metrics_response.json()
             assert paused_train_metrics_payload["file_status"] == "ready"
             assert paused_train_metrics_payload["task_state"] == "paused"
-            assert paused_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
+            assert (
+                paused_train_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
+            )
             paused_validation_metrics_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}/validation-metrics",
                 headers=_build_training_headers(),
             )
             assert paused_validation_metrics_response.status_code == 200
-            paused_validation_metrics_payload = paused_validation_metrics_response.json()
+            paused_validation_metrics_payload = (
+                paused_validation_metrics_response.json()
+            )
             assert paused_validation_metrics_payload["file_status"] == "ready"
             assert paused_validation_metrics_payload["task_state"] == "paused"
-            assert paused_validation_metrics_payload["payload"]["final_metrics"]["epoch"] == 2
+            assert (
+                paused_validation_metrics_payload["payload"]["final_metrics"]["epoch"]
+                == 2
+            )
             assert any(
                 event["message"] == "yolox training checkpoint saved"
                 for event in paused_payload["events"]
             )
-            assert any(event["message"] == "yolox training paused" for event in paused_payload["events"])
+            assert any(
+                event["message"] == "yolox training paused"
+                for event in paused_payload["events"]
+            )
 
             resume_response = client.post(
                 f"/api/v1/models/detection/training-tasks/{task_id}/resume",
@@ -1134,11 +1341,14 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
             assert resume_response.status_code == 200
             assert resume_response.json()["status"] == "queued"
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             final_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1151,7 +1361,10 @@ def test_pause_and_resume_yolox_training_task_reuses_latest_checkpoint(
         assert final_payload["state"] == "succeeded"
         assert final_payload["available_actions"] == ["delete"]
         assert run_count == 2
-        assert any(event["message"] == "yolox training resumed" for event in final_payload["events"])
+        assert any(
+            event["message"] == "yolox training resumed"
+            for event in final_payload["events"]
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -1162,7 +1375,9 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
 ) -> None:
     """验证可以把 paused 任务的 latest checkpoint 手动登记为新的 ModelVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1185,7 +1400,9 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
             savepoint=_build_fake_savepoint(epoch=2, best_metric_value=0.34),
         )
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1199,20 +1416,25 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-register-latest",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1220,8 +1442,14 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
             )
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
-            assert paused_payload["available_actions"] == ["resume", "terminate", "delete"]
-            latest_checkpoint_object_key = paused_payload["latest_checkpoint_object_key"]
+            assert paused_payload["available_actions"] == [
+                "resume",
+                "terminate",
+                "delete",
+            ]
+            latest_checkpoint_object_key = paused_payload[
+                "latest_checkpoint_object_key"
+            ]
             auto_model_version_id = paused_payload["latest_checkpoint_model_version_id"]
             assert auto_model_version_id == paused_payload["model_version_id"]
             labels_path = dataset_storage.resolve(paused_payload["labels_object_key"])
@@ -1246,19 +1474,30 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         assert payload["model_version_id"]
         assert first_payload["model_version_id"] == auto_model_version_id
         assert payload["model_version_id"] == first_payload["model_version_id"]
-        assert payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
-        assert payload["training_summary"]["model_version_id"] == payload["model_version_id"]
+        assert (
+            payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        )
+        assert (
+            payload["training_summary"]["model_version_id"]
+            == payload["model_version_id"]
+        )
         assert (
             payload["training_summary"]["latest_checkpoint_model_version_id"]
             == payload["latest_checkpoint_model_version_id"]
         )
         assert payload["latest_checkpoint_object_key"] == latest_checkpoint_object_key
         assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
-        assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert (
+            dataset_storage.resolve(payload["labels_object_key"]).read_text(
+                encoding="utf-8"
+            )
+            == "bolt\n"
+        )
         assert payload["checkpoint_object_key"].endswith("/best_ckpt.pth")
         assert len(payload["events"]) == 1
         assert any(
-            event["message"] == "yolox training latest checkpoint registered as model version"
+            event["message"]
+            == "yolox training latest checkpoint registered as model version"
             for event in payload["events"]
         )
         with client:
@@ -1285,13 +1524,17 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
         session = session_factory.create_session()
         unit_of_work = SqlAlchemyUnitOfWork(session)
         try:
-            task_versions = unit_of_work.models.list_model_versions(model_version.model_id)
+            task_versions = unit_of_work.models.list_model_versions(
+                model_version.model_id
+            )
         finally:
             session.close()
         assert len(task_versions) == 1
         checkpoint_files = [
             model_file
-            for model_file in model_service.list_model_files(model_version_id=model_version.model_version_id)
+            for model_file in model_service.list_model_files(
+                model_version_id=model_version.model_version_id
+            )
             if model_file.file_type == YOLOX_CHECKPOINT_FILE
         ]
         assert len(checkpoint_files) == 1
@@ -1303,9 +1546,24 @@ def test_register_latest_checkpoint_model_version_for_paused_task(
 @pytest.mark.parametrize(
     ("model_type", "service_cls", "worker_cls", "checkpoint_file_type"),
     [
-        ("yolov8", SqlAlchemyYoloV8TrainingTaskService, YoloV8TrainingQueueWorker, "yolov8-checkpoint"),
-        ("yolo11", SqlAlchemyYolo11TrainingTaskService, Yolo11TrainingQueueWorker, "yolo11-checkpoint"),
-        ("yolo26", SqlAlchemyYolo26TrainingTaskService, Yolo26TrainingQueueWorker, "yolo26-checkpoint"),
+        (
+            "yolov8",
+            SqlAlchemyYoloV8TrainingTaskService,
+            YoloV8TrainingQueueWorker,
+            "yolov8-checkpoint",
+        ),
+        (
+            "yolo11",
+            SqlAlchemyYolo11TrainingTaskService,
+            Yolo11TrainingQueueWorker,
+            "yolo11-checkpoint",
+        ),
+        (
+            "yolo26",
+            SqlAlchemyYolo26TrainingTaskService,
+            Yolo26TrainingQueueWorker,
+            "yolo26-checkpoint",
+        ),
     ],
 )
 def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused_task(
@@ -1318,7 +1576,9 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
 ) -> None:
     """验证普通 YOLO detection paused 任务都可以手动登记 latest checkpoint。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1359,21 +1619,26 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
                     "recipe_id": "default",
                     "model_scale": "nano",
                     "output_model_name": f"{model_type}-n-register-latest",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolo_detection_training_worker_once(
-                worker_cls=worker_cls,
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolo_detection_training_worker_once(
+                    worker_cls=worker_cls,
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1383,7 +1648,9 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
             paused_payload = paused_detail_response.json()
             assert paused_payload["state"] == "paused"
             assert paused_payload["model_type"] == model_type
-            latest_checkpoint_object_key = paused_payload["latest_checkpoint_object_key"]
+            latest_checkpoint_object_key = paused_payload[
+                "latest_checkpoint_object_key"
+            ]
             labels_path = dataset_storage.resolve(paused_payload["labels_object_key"])
             assert labels_path.is_file()
             labels_path.unlink()
@@ -1404,17 +1671,28 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
         assert payload["state"] == "paused"
         assert payload["model_type"] == model_type
         assert payload["model_version_id"] == first_payload["model_version_id"]
-        assert payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
-        assert payload["training_summary"]["model_version_id"] == payload["model_version_id"]
+        assert (
+            payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        )
+        assert (
+            payload["training_summary"]["model_version_id"]
+            == payload["model_version_id"]
+        )
         assert (
             payload["training_summary"]["latest_checkpoint_model_version_id"]
             == payload["latest_checkpoint_model_version_id"]
         )
         assert payload["latest_checkpoint_object_key"] == latest_checkpoint_object_key
         assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
-        assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert (
+            dataset_storage.resolve(payload["labels_object_key"]).read_text(
+                encoding="utf-8"
+            )
+            == "bolt\n"
+        )
         assert any(
-            event["message"] == f"{model_type} training latest checkpoint registered as model version"
+            event["message"]
+            == f"{model_type} training latest checkpoint registered as model version"
             for event in payload["events"]
         )
 
@@ -1424,7 +1702,9 @@ def test_register_latest_checkpoint_model_version_supports_yolo_detection_paused
         assert model_version.training_task_id == task_id
         checkpoint_files = [
             model_file
-            for model_file in model_service.list_model_files(model_version_id=model_version.model_version_id)
+            for model_file in model_service.list_model_files(
+                model_version_id=model_version.model_version_id
+            )
             if model_file.file_type == checkpoint_file_type
         ]
         assert len(checkpoint_files) == 1
@@ -1438,7 +1718,9 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
 ) -> None:
     """验证 RF-DETR detection 任务也可以通过通用 detection 入口登记 latest checkpoint。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1454,7 +1736,9 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
     latest_checkpoint_object_key = f"{output_prefix}/output-files/latest-checkpoint.pt"
     labels_object_key = f"{output_prefix}/output-files/labels.txt"
     metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
-    validation_metrics_object_key = f"{output_prefix}/output-files/validation-metrics.json"
+    validation_metrics_object_key = (
+        f"{output_prefix}/output-files/validation-metrics.json"
+    )
     summary_object_key = f"{output_prefix}/output-files/training-summary.json"
     dataset_storage.write_bytes(checkpoint_object_key, b"rfdetr-best")
     dataset_storage.write_bytes(latest_checkpoint_object_key, b"rfdetr-latest")
@@ -1583,12 +1867,20 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
         assert payload["model_type"] == "rfdetr"
         assert payload["state"] == "succeeded"
         assert payload["model_version_id"] == first_payload["model_version_id"]
-        assert payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        assert (
+            payload["latest_checkpoint_model_version_id"] == payload["model_version_id"]
+        )
         assert payload["latest_checkpoint_object_key"] == latest_checkpoint_object_key
         assert dataset_storage.resolve(payload["labels_object_key"]).is_file()
-        assert dataset_storage.resolve(payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert (
+            dataset_storage.resolve(payload["labels_object_key"]).read_text(
+                encoding="utf-8"
+            )
+            == "bolt\n"
+        )
         assert any(
-            event["message"] == "rfdetr training latest checkpoint registered as model version"
+            event["message"]
+            == "rfdetr training latest checkpoint registered as model version"
             for event in payload["events"]
         )
         model_service = SqlAlchemyModelService(session_factory=session_factory)
@@ -1613,7 +1905,9 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
 ) -> None:
     """验证手动登记 latest checkpoint 时，如果文件缺失会直接被拒绝。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1636,7 +1930,9 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
             savepoint=_build_fake_savepoint(epoch=2, best_metric_value=0.34),
         )
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1650,20 +1946,25 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-register-latest-missing",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1685,7 +1986,10 @@ def test_register_latest_checkpoint_model_version_rejects_missing_latest_checkpo
         assert register_response.status_code == 400
         payload = register_response.json()
         assert payload["error"]["code"] == "invalid_request"
-        assert payload["error"]["message"] == "当前训练任务的 latest checkpoint 文件不存在，不能登记 ModelVersion"
+        assert (
+            payload["error"]["message"]
+            == "当前训练任务的 latest checkpoint 文件不存在，不能登记 ModelVersion"
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -1696,7 +2000,9 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
 ) -> None:
     """验证完成态 best ModelVersion 与自动登记的 latest ModelVersion 保持不同 id。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1727,7 +2033,9 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
         assert request.resume_checkpoint_path.is_file()
         return _build_fake_execution_result(max_epochs=4, best_metric_value=0.48)
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1741,20 +2049,25 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-manual-latest-vs-best",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1762,7 +2075,9 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             )
             assert paused_detail_response.status_code == 200
             paused_payload = paused_detail_response.json()
-            manual_model_version_id = paused_payload["latest_checkpoint_model_version_id"]
+            manual_model_version_id = paused_payload[
+                "latest_checkpoint_model_version_id"
+            ]
             assert manual_model_version_id == paused_payload["model_version_id"]
 
             resume_response = client.post(
@@ -1772,11 +2087,14 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
             assert resume_response.status_code == 200
             assert resume_response.json()["status"] == "queued"
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -1790,7 +2108,10 @@ def test_completed_training_keeps_best_model_version_distinct_from_auto_latest_c
         assert payload["model_version_id"]
         assert payload["model_version_id"] != manual_model_version_id
         assert payload["latest_checkpoint_model_version_id"] == manual_model_version_id
-        assert payload["training_summary"]["model_version_id"] == payload["model_version_id"]
+        assert (
+            payload["training_summary"]["model_version_id"]
+            == payload["model_version_id"]
+        )
         assert (
             payload["training_summary"]["latest_checkpoint_model_version_id"]
             == manual_model_version_id
@@ -1806,7 +2127,9 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
 ) -> None:
     """验证当 latest checkpoint 文件缺失时，resume 接口会直接拒绝。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1835,7 +2158,9 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
 
         raise AssertionError("latest checkpoint 缺失时不应继续进入 resume 执行")
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1849,20 +2174,25 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-resume-duplicate",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             first_resume_response = client.post(
                 f"/api/v1/models/detection/training-tasks/{task_id}/resume",
@@ -1883,7 +2213,10 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
         assert second_resume_response.status_code == 400
         second_resume_payload = second_resume_response.json()
         assert second_resume_payload["error"]["code"] == "invalid_request"
-        assert second_resume_payload["error"]["message"] == "当前训练任务不处于 paused 状态，不能继续训练"
+        assert (
+            second_resume_payload["error"]["message"]
+            == "当前训练任务不处于 paused 状态，不能继续训练"
+        )
         assert detail_response.status_code == 200
         detail_payload = detail_response.json()
         assert detail_payload["state"] == "queued"
@@ -1898,7 +2231,9 @@ def test_terminate_and_delete_yolox_training_task(
 ) -> None:
     """验证 running 训练可以 terminate，随后可直接 delete。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1931,7 +2266,9 @@ def test_terminate_and_delete_yolox_training_task(
         assert second_control.save_checkpoint is False
         raise YoloXTrainingTerminatedError()
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -1945,10 +2282,12 @@ def test_terminate_and_delete_yolox_training_task(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-terminate-delete",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
@@ -1975,7 +2314,9 @@ def test_terminate_and_delete_yolox_training_task(
             assert terminate_response.status_code == 200
             terminate_payload = terminate_response.json()
             assert terminate_payload["state"] == "running"
-            assert terminate_payload["control_status"]["status"] == "terminate_requested"
+            assert (
+                terminate_payload["control_status"]["status"] == "terminate_requested"
+            )
             assert terminate_payload["control_status"]["pending_action"] == "terminate"
             assert terminate_payload["available_actions"] == []
 
@@ -2022,7 +2363,9 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
 ) -> None:
     """验证 resume 后如果 latest checkpoint 损坏，任务会在 worker 执行阶段失败。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2078,7 +2421,9 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
         )
         raise AssertionError("损坏的 resume checkpoint 应当先在读取阶段失败")
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -2092,21 +2437,26 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-resume-corrupted-checkpoint",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "evaluation_interval": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                        evaluation_interval=1,
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             paused_detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -2126,11 +2476,14 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
             assert resume_response.status_code == 200
             assert resume_response.json()["status"] == "queued"
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -2143,8 +2496,12 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
         assert payload["state"] == "failed"
         assert payload["error_message"] == "resume checkpoint 读取失败"
         assert run_count == 2
-        assert any(event["message"] == "yolox training resumed" for event in payload["events"])
-        assert any(event["message"] == "yolox training failed" for event in payload["events"])
+        assert any(
+            event["message"] == "yolox training resumed" for event in payload["events"]
+        )
+        assert any(
+            event["message"] == "yolox training failed" for event in payload["events"]
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -2155,7 +2512,9 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
 ) -> None:
     """验证 resume 后如果 latest checkpoint 的 validation 配置不一致，任务会进入 failed。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2211,7 +2570,9 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
         )
         raise AssertionError("resume checkpoint 应当先因 validation 配置不一致而失败")
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -2225,21 +2586,26 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-resume-validation-mismatch",
-                    "max_epochs": 4,
-                    "batch_size": 1,
-                    "evaluation_interval": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=4,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                        evaluation_interval=1,
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             resume_response = client.post(
                 f"/api/v1/models/detection/training-tasks/{task_id}/resume",
@@ -2248,11 +2614,14 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
             assert resume_response.status_code == 200
             assert resume_response.json()["status"] == "queued"
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
@@ -2263,10 +2632,17 @@ def test_resume_yolox_training_task_fails_when_validation_configuration_mismatch
         assert detail_response.status_code == 200
         payload = detail_response.json()
         assert payload["state"] == "failed"
-        assert payload["error_message"] == "resume checkpoint 的 evaluation_interval 与当前任务不一致"
+        assert (
+            payload["error_message"]
+            == "resume checkpoint 的 evaluation_interval 与当前任务不一致"
+        )
         assert run_count == 2
-        assert any(event["message"] == "yolox training resumed" for event in payload["events"])
-        assert any(event["message"] == "yolox training failed" for event in payload["events"])
+        assert any(
+            event["message"] == "yolox training resumed" for event in payload["events"]
+        )
+        assert any(
+            event["message"] == "yolox training failed" for event in payload["events"]
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -2277,7 +2653,9 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
 ) -> None:
     """验证手动保存接口会在训练继续执行前生成一次 checkpoint saved 事件。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_export = _seed_completed_dataset_export(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2312,7 +2690,9 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert second_control.save_checkpoint is True
         assert second_control.pause_training is False
         assert request.savepoint_callback is not None
-        request.savepoint_callback(_build_fake_savepoint(epoch=2, best_metric_value=0.28))
+        request.savepoint_callback(
+            _build_fake_savepoint(epoch=2, best_metric_value=0.28)
+        )
         running_detail_response = client.get(
             f"/api/v1/models/detection/training-tasks/{task_id}",
             headers=_build_training_headers(),
@@ -2322,10 +2702,18 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert running_payload["state"] == "running"
         assert running_payload["available_actions"] == ["save", "pause", "terminate"]
         assert running_payload["model_version_id"]
-        assert running_payload["latest_checkpoint_model_version_id"] == running_payload["model_version_id"]
+        assert (
+            running_payload["latest_checkpoint_model_version_id"]
+            == running_payload["model_version_id"]
+        )
         assert running_payload["labels_object_key"].endswith("/labels.txt")
         assert dataset_storage.resolve(running_payload["labels_object_key"]).is_file()
-        assert dataset_storage.resolve(running_payload["labels_object_key"]).read_text(encoding="utf-8") == "bolt\n"
+        assert (
+            dataset_storage.resolve(running_payload["labels_object_key"]).read_text(
+                encoding="utf-8"
+            )
+            == "bolt\n"
+        )
         running_validation_session_response = client.post(
             "/api/v1/models/detection/validation-sessions",
             headers=build_test_headers(scopes="models:read"),
@@ -2349,7 +2737,9 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
         assert third_control.save_checkpoint is False
         return _build_fake_execution_result(max_epochs=3, best_metric_value=0.42)
 
-    monkeypatch.setattr(yolox_training_service_module, "run_yolox_detection_training", fake_run)
+    monkeypatch.setattr(
+        yolox_training_service_module, "run_yolox_detection_training", fake_run
+    )
 
     try:
         with client:
@@ -2363,33 +2753,44 @@ def test_request_yolox_training_save_creates_manual_checkpoint_event(
                     "recipe_id": "yolox-default",
                     "model_scale": "nano",
                     "output_model_name": "yolox-s-manual-save",
-                    "max_epochs": 3,
-                    "batch_size": 1,
-                    "precision": "fp32",
-                    "input_size": {"width": 64, "height": 64},
+                    "execution": _training_execution(
+                        max_epochs=3,
+                        batch_size=1,
+                        precision="fp32",
+                        input_size={"width": 64, "height": 64},
+                    ),
                 },
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
 
-            assert _run_yolox_training_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_yolox_training_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             detail_response = client.get(
                 f"/api/v1/models/detection/training-tasks/{task_id}",
                 headers=_build_training_headers(),
-                    params={"include_events": True},
+                params={"include_events": True},
             )
 
         assert detail_response.status_code == 200
         payload = detail_response.json()
         assert payload["state"] == "succeeded"
         assert payload["metadata"]["training_control"]["last_save_epoch"] == 2
-        assert any(event["message"] == "yolox training save requested" for event in payload["events"])
-        assert any(event["message"] == "yolox training checkpoint saved" for event in payload["events"])
+        assert any(
+            event["message"] == "yolox training save requested"
+            for event in payload["events"]
+        )
+        assert any(
+            event["message"] == "yolox training checkpoint saved"
+            for event in payload["events"]
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -2409,7 +2810,10 @@ def _build_fake_epoch_progress(
         validation_ran=True,
         evaluated_epochs=tuple(range(1, epoch + 1)),
         train_metrics={"total_loss": max(0.05, 0.8 - (0.1 * epoch)), "lr": 0.001},
-        validation_metrics={"map50": best_metric_value + 0.1, "map50_95": best_metric_value},
+        validation_metrics={
+            "map50": best_metric_value + 0.1,
+            "map50_95": best_metric_value,
+        },
         train_metrics_snapshot={
             "implementation_mode": "yolox-detection-core",
             "device": "cpu",
@@ -2478,7 +2882,9 @@ def _build_fake_epoch_progress(
     )
 
 
-def _build_fake_savepoint(*, epoch: int, best_metric_value: float) -> YoloXTrainingSavePoint:
+def _build_fake_savepoint(
+    *, epoch: int, best_metric_value: float
+) -> YoloXTrainingSavePoint:
     """构建用于训练控制测试的最小 savepoint。"""
 
     return YoloXTrainingSavePoint(
@@ -2801,7 +3207,12 @@ def _create_test_client(
         tmp_path,
         database_name="amvision-training-api.db",
     )
-    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
+    return (
+        context.client,
+        context.session_factory,
+        context.dataset_storage,
+        context.queue_backend,
+    )
 
 
 def _seed_completed_dataset_export(
@@ -2856,7 +3267,7 @@ def _seed_completed_dataset_export(
                     "image_root": f"{export_path}/images/val",
                     "annotation_file": f"{export_path}/annotations/instances_val.json",
                     "sample_count": 1,
-                }
+                },
             ],
             "metadata": {"source_dataset_id": "dataset-1"},
         },
@@ -2935,7 +3346,9 @@ def _build_training_headers() -> dict[str, str]:
 def _build_training_model_write_headers() -> dict[str, str]:
     """构建具备训练控制和模型写入 scope 的测试请求头。"""
 
-    return build_test_headers(scopes="datasets:read,tasks:read,tasks:write,models:write")
+    return build_test_headers(
+        scopes="datasets:read,tasks:read,tasks:write,models:write"
+    )
 
 
 def _run_yolox_training_worker_once(
@@ -2971,5 +3384,3 @@ def _run_yolo_detection_training_worker_once(
         worker_id=f"test-{worker_cls.__name__}",
     )
     return worker.run_once()
-
-

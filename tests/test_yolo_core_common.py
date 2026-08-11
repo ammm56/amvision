@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from types import SimpleNamespace
+
 import numpy as np
 import cv2
 import pytest
 import torch
 
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common import (
     Conv,
     DistributionFocalLossDecoder,
@@ -72,9 +77,39 @@ from backend.service.application.models.yolo_core_common.targets import (
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     YoloTaskDataLoaderPlan,
+    YoloTaskTrainingDataLoaderLifecycle,
     build_yolo_task_evaluation_dataloader,
+    iter_yolo_task_evaluation_items,
+    managed_yolo_task_evaluation_dataloader,
+    move_yolo_task_batch_to_device,
 )
-from backend.service.application.models.yolo26_core.tasks import OBB26, Pose26, Segment26
+from backend.service.application.models.yolo_core_common.training.classification_dataloader import (
+    YoloClassificationBatchCollator,
+)
+from backend.service.application.models.yolo_core_common.training.worker_ipc import (
+    serialize_yolo_worker_value,
+)
+from backend.service.application.models.yolo_core_common.training.validation_schedule import (
+    should_run_yolo_validation,
+)
+from backend.service.application.models.yolo_core_common.training.metrics_history import (
+    build_yolo_completed_epoch_history_item,
+    build_yolo_epoch_history_item,
+)
+from backend.service.application.models.yolo26_core.tasks import (
+    OBB26,
+    Pose26,
+    Segment26,
+)
+from backend.service.application.models.yolov8_core.training.epoch import (
+    should_run_yolov8_detection_validation,
+)
+from backend.service.application.models.yolo11_core.training.epoch import (
+    should_run_yolo11_detection_validation,
+)
+from backend.service.application.models.yolo26_core.training.epoch import (
+    should_run_yolo26_detection_validation,
+)
 
 
 def test_yolo26_heads_live_in_yolo26_core() -> None:
@@ -85,6 +120,250 @@ def test_yolo26_heads_live_in_yolo26_core() -> None:
     assert OBB26.__module__.endswith("yolo26_core.nn.tasks.obb")
     assert not hasattr(Pose26, "_decode_keypoints_pose26")
     assert not hasattr(OBB26, "_decode_angle_logits")
+
+
+def test_yolo_epoch_history_separates_public_epoch_from_internal_index() -> None:
+    """验证公开轮次从 1 开始且保留明确的内部索引。"""
+
+    assert build_yolo_epoch_history_item(
+        epoch_index=0,
+        metrics={"loss": 1.25},
+    ) == {"loss": 1.25, "epoch": 1, "epoch_index": 0}
+
+
+def test_yolo_epoch_history_rejects_negative_index() -> None:
+    """验证非法的负 epoch index 不会进入训练报告。"""
+
+    with pytest.raises(ValueError, match="epoch_index"):
+        build_yolo_epoch_history_item(epoch_index=-1, metrics={"loss": 1.25})
+
+
+def test_yolo_completed_epoch_history_normalizes_one_based_loop_epoch() -> None:
+    """一基 detection 循环不得把首轮序列化成公开第 2 轮。"""
+
+    assert build_yolo_completed_epoch_history_item(
+        completed_epoch=1,
+        metrics={"loss": 1.25},
+    ) == {"loss": 1.25, "epoch": 1, "epoch_index": 0}
+    with pytest.raises(ValueError, match="completed_epoch"):
+        build_yolo_completed_epoch_history_item(
+            completed_epoch=0,
+            metrics={"loss": 1.25},
+        )
+
+
+def test_classification_worker_collator_uses_numpy_ipc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 classification worker 不再直接跨进程发送 Tensor。"""
+
+    @dataclass(frozen=True)
+    class _Batch:
+        images: object
+        targets: object
+
+    monkeypatch.setattr(torch.utils.data, "get_worker_info", lambda: object())
+    collator = YoloClassificationBatchCollator(
+        input_size=(32, 32),
+        training=True,
+        augmentation_options=None,
+        build_batch=lambda **_kwargs: _Batch(
+            images=torch.ones((1, 3, 32, 32)),
+            targets=torch.tensor([0]),
+        ),
+        load_imports=lambda: SimpleNamespace(torch=torch),
+    )
+
+    batch = collator([object()])
+
+    assert isinstance(batch.images, np.ndarray)
+    assert isinstance(batch.targets, np.ndarray)
+
+
+@pytest.mark.parametrize(
+    "schedule",
+    (
+        should_run_yolov8_detection_validation,
+        should_run_yolo11_detection_validation,
+        should_run_yolo26_detection_validation,
+    ),
+)
+def test_detection_validation_wrappers_use_completed_epoch_schedule(
+    schedule: Callable[..., bool],
+) -> None:
+    """验证 detection 三族不再按零基轮次错后一轮执行验证。"""
+
+    assert not schedule(
+        epoch=18,
+        max_epochs=200,
+        evaluation_interval=20,
+        validation_sample_count=1,
+    )
+    assert schedule(
+        epoch=19,
+        max_epochs=200,
+        evaluation_interval=20,
+        validation_sample_count=1,
+    )
+    assert not schedule(
+        epoch=20,
+        max_epochs=200,
+        evaluation_interval=20,
+        validation_sample_count=1,
+    )
+    assert schedule(
+        epoch=199,
+        max_epochs=200,
+        evaluation_interval=30,
+        validation_sample_count=1,
+    )
+
+
+def test_task_dataloader_lifecycle_reuses_workers_until_augmentation_phase_changes() -> (
+    None
+):
+    """验证跨 epoch 复用 loader，并在 close-mosaic 阶段只重建一次。"""
+
+    class _FakeLoader:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    created: list[_FakeLoader] = []
+
+    def build_loader() -> _FakeLoader:
+        loader = _FakeLoader()
+        created.append(loader)
+        return loader
+
+    lifecycle = YoloTaskTrainingDataLoaderLifecycle()
+    first = lifecycle.resolve(
+        augmentation_options=("mosaic", 1.0),
+        build_loader=build_loader,
+    )
+    reused = lifecycle.resolve(
+        augmentation_options=("mosaic", 1.0),
+        build_loader=build_loader,
+    )
+    closed_phase = lifecycle.resolve(
+        augmentation_options=("mosaic", 0.0),
+        build_loader=build_loader,
+    )
+    lifecycle.close()
+    lifecycle.close()
+
+    assert first is reused
+    assert closed_phase is not first
+    assert len(created) == 2
+    assert created[0].close_count == 1
+    assert created[1].close_count == 1
+
+
+def test_task_dataloader_worker_tensor_transport_round_trips_through_numpy() -> None:
+    """Windows worker batch 不保留 torch shared-memory 映射，主进程可无损恢复。"""
+
+    source = {
+        "images": torch.arange(12, dtype=torch.float32).reshape(1, 3, 2, 2),
+        "labels": torch.tensor([2], dtype=torch.int64),
+    }
+
+    transported = serialize_yolo_worker_value(
+        value=source,
+        torch_module=torch,
+    )
+    restored = move_yolo_task_batch_to_device(
+        batch=transported,
+        device="cpu",
+        precision="fp32",
+        torch_module=torch,
+    )
+
+    assert isinstance(transported["images"], np.ndarray)
+    assert isinstance(transported["labels"], np.ndarray)
+    assert torch.equal(restored["images"], source["images"])
+    assert torch.equal(restored["labels"], source["labels"])
+
+
+def test_task_dataloader_lifecycle_recycles_windows_style_workers() -> None:
+    """worker 到达复用上限后必须受控回收，限制 Windows IPC 内存高水位。"""
+
+    class _FakeWorkerLoader:
+        num_workers = 2
+
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    created: list[_FakeWorkerLoader] = []
+
+    def build_loader() -> _FakeWorkerLoader:
+        loader = _FakeWorkerLoader()
+        created.append(loader)
+        return loader
+
+    lifecycle = YoloTaskTrainingDataLoaderLifecycle(max_reuse_epochs=2)
+    first = lifecycle.resolve(augmentation_options=None, build_loader=build_loader)
+    second = lifecycle.resolve(augmentation_options=None, build_loader=build_loader)
+    third = lifecycle.resolve(augmentation_options=None, build_loader=build_loader)
+    lifecycle.close()
+
+    assert first is second
+    assert third is not first
+    assert [loader.close_count for loader in created] == [1, 1]
+
+
+def test_common_validation_schedule_uses_completed_one_based_epochs() -> None:
+    """evaluation_interval=20 必须在页面第 20/40 轮触发，而不是第 21/41 轮。"""
+
+    assert (
+        should_run_yolo_validation(
+            epoch_index=18,
+            max_epochs=200,
+            evaluation_interval=20,
+            has_validation_samples=True,
+        )
+        is False
+    )
+    assert (
+        should_run_yolo_validation(
+            epoch_index=19,
+            max_epochs=200,
+            evaluation_interval=20,
+            has_validation_samples=True,
+        )
+        is True
+    )
+    assert (
+        should_run_yolo_validation(
+            epoch_index=39,
+            max_epochs=200,
+            evaluation_interval=20,
+            has_validation_samples=True,
+        )
+        is True
+    )
+    assert (
+        should_run_yolo_validation(
+            epoch_index=199,
+            max_epochs=200,
+            evaluation_interval=999,
+            has_validation_samples=True,
+        )
+        is True
+    )
+    assert (
+        should_run_yolo_validation(
+            epoch_index=199,
+            max_epochs=200,
+            evaluation_interval=20,
+            has_validation_samples=False,
+        )
+        is False
+    )
 
 
 def test_common_conv_preserves_spatial_shape_with_same_padding() -> None:
@@ -232,8 +511,13 @@ def test_common_detection_assigner_target_and_dfl_loss() -> None:
 
     assert assignment["foreground_mask"].tolist() == [True, False]
     assert assignment["assigned_gt_indices"].tolist() == [0, -1]
-    assert torch.isclose(assignment["quality_scores"][0], torch.tensor(1.0)).item() is True
-    assert torch.allclose(box_iou_aligned(torch_module=torch, boxes1=gt_boxes, boxes2=gt_boxes), torch.ones(1))
+    assert (
+        torch.isclose(assignment["quality_scores"][0], torch.tensor(1.0)).item() is True
+    )
+    assert torch.allclose(
+        box_iou_aligned(torch_module=torch, boxes1=gt_boxes, boxes2=gt_boxes),
+        torch.ones(1),
+    )
     assert target_distances.tolist() == [[1.0, 1.0, 1.0, 1.0]]
     assert dfl_loss.shape == (1,)
     assert torch.isfinite(dfl_loss).all().item() is True
@@ -379,6 +663,64 @@ def test_common_pose_losses_compute_keypoint_and_visibility() -> None:
     assert torch.allclose(pose26_xy, torch.tensor([[[6.0, 10.0], [6.0, 10.0]]]))
 
 
+def test_common_pose_oks_loss_keeps_large_fp16_coordinates_finite() -> None:
+    """验证大图坐标和面积不会在 FP16 OKS 路径中形成 Inf/Inf。"""
+
+    pred_xy = torch.full((1, 21, 2), 384.0, dtype=torch.float16)
+    gt_xy = torch.zeros_like(pred_xy)
+    keypoint_mask = torch.ones((1, 21), dtype=torch.bool)
+    area = build_pose_box_area(
+        gt_boxes=torch.tensor([[0.0, 0.0, 384.0, 384.0]], dtype=torch.float16)
+    )
+    sigmas = build_pose_oks_sigmas(
+        torch_module=torch,
+        num_keypoints=21,
+        device=pred_xy.device,
+        dtype=pred_xy.dtype,
+    )
+
+    loss = compute_oks_keypoint_loss(
+        torch_module=torch,
+        pred_keypoints_xy=pred_xy,
+        gt_keypoints_xy=gt_xy,
+        keypoint_mask=keypoint_mask,
+        area=area,
+        sigmas=sigmas,
+    )
+
+    assert area.dtype == torch.float32
+    assert area.item() == 384.0 * 384.0
+    assert loss.dtype == torch.float32
+    assert torch.isfinite(loss).item() is True
+
+
+def test_common_bbox_ciou_keeps_large_fp16_coordinates_finite() -> None:
+    """验证原图像素坐标平方不会在 FP16 CIoU 路径中溢出。"""
+
+    from backend.service.application.models.yolo_core_common.losses.box import (
+        bbox_ciou_matrix,
+    )
+
+    boxes1 = torch.tensor(
+        [[0.0, 0.0, 384.0, 384.0]],
+        dtype=torch.float16,
+    )
+    boxes2 = torch.tensor(
+        [[8.0, 12.0, 376.0, 372.0]],
+        dtype=torch.float16,
+    )
+
+    ciou = bbox_ciou_matrix(
+        torch_module=torch,
+        boxes1=boxes1,
+        boxes2=boxes2,
+    )
+
+    assert ciou.dtype == torch.float32
+    assert torch.isfinite(ciou).all()
+    assert float(ciou.item()) > 0.0
+
+
 def test_yolo26_pose_rle_loss_lives_in_yolo26_core() -> None:
     """验证 YOLO26 pose RLE loss 留在 yolo26_core 边界内。"""
 
@@ -405,6 +747,26 @@ def test_yolo26_pose_rle_loss_lives_in_yolo26_core() -> None:
     )
 
     assert torch.isfinite(rle_loss).item() is True
+
+
+def test_yolo26_pose_rle_loss_promotes_extreme_fp16_sigma_to_fp32() -> None:
+    """验证 FP16 sigmoid 下溢前先提升精度，不丢弃有效 RLE 样本。"""
+
+    pred_xy = torch.full((1, 1, 2), 100.0, dtype=torch.float16)
+    gt_xy = torch.zeros_like(pred_xy)
+    rle_loss = compute_yolo26_rle_loss(
+        torch_module=torch,
+        flow_model=_DummyPoseFlowModel(),
+        pred_keypoints_xy=pred_xy,
+        pred_sigma_logits=torch.full((1, 1, 2), -20.0, dtype=torch.float16),
+        gt_keypoints_xy=gt_xy,
+        keypoint_mask=torch.ones((1, 1), dtype=torch.bool),
+        target_weights=torch.ones(1, dtype=torch.float16),
+    )
+
+    assert rle_loss.dtype == torch.float32
+    assert torch.isfinite(rle_loss).item() is True
+    assert rle_loss.item() > 0.0
 
 
 def test_common_pose_target_normalizes_list_and_tensor_keypoints() -> None:
@@ -534,6 +896,33 @@ def test_common_obb_loss_and_target_helpers_work_independently() -> None:
     assert torch.allclose(decoded_rboxes, torch.tensor([[[2.0, 3.0, 2.0, 2.0, 0.0]]]))
     assert torch.allclose(angle_loss, torch.zeros(()))
     assert xyxy.tolist() == [[8.0, 9.0, 12.0, 11.0]]
+
+
+def test_common_obb_losses_keep_large_fp16_geometry_finite() -> None:
+    """验证大旋转框及极端长宽比不会在 FP16 损失中溢出。"""
+
+    rboxes = torch.tensor(
+        [[192.0, 192.0, 384.0, 320.0, 0.25]],
+        dtype=torch.float16,
+    )
+    probiou = probiou_aligned(
+        torch_module=torch,
+        obb1=rboxes,
+        obb2=rboxes.clone(),
+    )
+    angle_loss = compute_obb_angle_loss(
+        torch_module=torch,
+        pred_angle=torch.tensor([[0.25]], dtype=torch.float16),
+        gt_angle=torch.tensor([[0.2]], dtype=torch.float16),
+        gt_wh=torch.tensor([[384.0, 0.001]], dtype=torch.float16),
+        target_scores=torch.ones(1, dtype=torch.float16),
+    )
+
+    assert probiou.dtype == torch.float32
+    assert torch.isfinite(probiou).all()
+    assert float(probiou.item()) > 0.999
+    assert angle_loss.dtype == torch.float32
+    assert torch.isfinite(angle_loss).item() is True
 
 
 def test_common_detection_tensor_nms_inputs_filter_candidates() -> None:
@@ -807,6 +1196,66 @@ def test_task_evaluation_dataloader_uses_full_validation_split_by_default() -> N
 
     assert len(full_loader.dataset) == 12
     assert len(quick_loader.dataset) == 8
+    full_loader.close()
+    quick_loader.close()
+
+
+def test_task_evaluation_dataloader_batches_full_split_and_tail() -> None:
+    """验证 validator 使用显式 batch，并完整保留最后一个不足批次。"""
+
+    plan = YoloTaskDataLoaderPlan(
+        num_workers=0,
+        pin_memory=False,
+        prefetch_factor=2,
+        persistent_workers=False,
+        seed=0,
+    )
+    loader = build_yolo_task_evaluation_dataloader(
+        torch_module=torch,
+        samples=tuple(range(12)),
+        batch_size=5,
+        input_size=(64, 64),
+        plan=plan,
+        build_batch=lambda **kwargs: tuple(kwargs["samples"]),
+        load_imports=lambda: SimpleNamespace(torch=torch),
+    )
+
+    with managed_yolo_task_evaluation_dataloader(loader):
+        assert [len(batch) for batch in loader] == [5, 5, 2]
+
+
+def test_task_evaluation_items_keep_targets_outputs_and_image_ids_aligned() -> None:
+    """验证批量前向输出按图切分，且跨 batch 的 image_id 连续。"""
+
+    prediction = np.arange(3 * 4, dtype=np.float32).reshape(3, 4)
+    proto = np.arange(3 * 2 * 2, dtype=np.float32).reshape(3, 2, 2)
+    items = list(
+        iter_yolo_task_evaluation_items(
+            targets=("first", "second", "tail"),
+            batched_outputs=(prediction, proto),
+            image_index_start=7,
+        )
+    )
+
+    assert [item[0] for item in items] == [7, 8, 9]
+    assert [item[1] for item in items] == ["first", "second", "tail"]
+    assert all(item[2][0].shape == (1, 4) for item in items)
+    assert all(item[2][1].shape == (1, 2, 2) for item in items)
+    assert np.array_equal(items[1][2][0], prediction[1:2])
+    assert np.array_equal(items[2][2][1], proto[2:3])
+
+
+def test_task_evaluation_items_reject_mismatched_batch_dimensions() -> None:
+    """验证输出 batch 维不一致时明确失败，禁止静默污染指标。"""
+
+    with pytest.raises(InvalidRequestError, match="输出与 target batch 数量不一致"):
+        list(
+            iter_yolo_task_evaluation_items(
+                targets=("first", "second"),
+                batched_outputs=(np.zeros((1, 4), dtype=np.float32),),
+                image_index_start=0,
+            )
+        )
 
 
 def test_common_rotated_bbox_decode_preserves_axis_aligned_width_height() -> None:

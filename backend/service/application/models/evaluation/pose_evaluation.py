@@ -8,9 +8,12 @@ from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.evaluation.coco_style_metrics import (
-    compute_coco_style_ap,
-    compute_object_keypoint_similarity,
-    default_coco_keypoint_sigmas,
+    compute_pycocotools_detection_ap,
+    compute_pycocotools_pose_ap,
+    resolve_keypoint_oks_sigmas,
+)
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
 )
 from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_pose_split,
@@ -39,18 +42,6 @@ class PoseEvaluationRequest:
     runtime_target: RuntimeTargetSnapshot
     manifest_payload: dict[str, object]
     score_threshold: float = 0.01
-    oks_thresholds: tuple[float, ...] = (
-        0.5,
-        0.55,
-        0.6,
-        0.65,
-        0.7,
-        0.75,
-        0.8,
-        0.85,
-        0.9,
-        0.95,
-    )
     extra_options: dict[str, object] = field(default_factory=dict)
 
 
@@ -59,6 +50,8 @@ class PoseEvaluationResult:
     """Pose 评估结果。"""
 
     sample_count: int
+    bbox_map50: float
+    bbox_map50_95: float
     oks_ap50: float
     oks_ap50_95: float
     duration_seconds: float
@@ -133,9 +126,8 @@ def _run_pose_evaluation_with_session(
         image_bytes = resolved.read_bytes()
         pred_request = PosePredictionRequest(
             score_threshold=score_threshold,
-            keypoint_confidence_threshold=_resolve_keypoint_confidence_threshold(
-                request.extra_options,
-            ),
+            # COCO OKS 使用所有预测坐标；显示阈值不能改写评估几何。
+            keypoint_confidence_threshold=0.0,
             save_result_image=False,
             input_image_bytes=image_bytes,
         )
@@ -156,6 +148,7 @@ def _run_pose_evaluation_with_session(
                         "category_id": gt_ann.get("category_id", 0),
                         "keypoints": kpts,
                         "num_keypoints": gt_ann.get("num_keypoints", len(kpts) // 3),
+                        "bbox_xyxy": _resolve_pose_annotation_bbox_xyxy(gt_ann),
                         "area": _resolve_pose_annotation_area(gt_ann),
                     },
                 )
@@ -167,6 +160,7 @@ def _run_pose_evaluation_with_session(
                     "image_id": image_index,
                     "category_id": det.class_id,
                     "keypoints": _flatten_pose_keypoints(det.keypoints),
+                    "bbox_xyxy": [float(value) for value in det.bbox_xyxy],
                     "score": det.score,
                 }
             )
@@ -175,18 +169,27 @@ def _run_pose_evaluation_with_session(
         int(cat.get("id", 0)): str(cat.get("name", cat.get("id", 0)))
         for cat in categories
     }
-    oks_sigmas = _resolve_oks_sigmas(request.extra_options)
-    oks_metrics = compute_coco_style_ap(
+    keypoint_count = max(
+        (len(item.get("keypoints", ())) // 3 for item in all_gts),
+        default=0,
+    )
+    oks_sigmas = _resolve_oks_sigmas(
+        request.extra_options,
+        num_keypoints=keypoint_count,
+    )
+    bbox_metrics = compute_pycocotools_detection_ap(
         gt_items=all_gts,
         pred_items=all_preds,
         category_names=category_names,
-        iou_thresholds=request.oks_thresholds,
-        similarity_func=lambda pred, gt: _compute_oks(
-            gt["keypoints"],
-            pred["keypoints"],
-            area=float(gt.get("area", 1.0)),
-            sigmas=oks_sigmas,
-        ),
+        image_count=len(samples),
+    )
+    oks_metrics = compute_pycocotools_pose_ap(
+        gt_items=all_gts,
+        pred_items=all_preds,
+        category_names=category_names,
+        image_count=len(samples),
+        keypoint_count=keypoint_count,
+        keypoint_oks_sigmas=oks_sigmas,
     )
 
     finished_at = datetime.now(timezone.utc)
@@ -196,6 +199,8 @@ def _run_pose_evaluation_with_session(
     report_key = f"{output_prefix}/reports/pose_evaluation.json"
     report = {
         "sample_count": processed_count,
+        "bbox_map50": bbox_metrics.ap50,
+        "bbox_map50_95": bbox_metrics.ap50_95,
         "oks_ap50": oks_metrics.ap50,
         "oks_ap50_95": oks_metrics.ap50_95,
         "duration_seconds": duration,
@@ -207,6 +212,8 @@ def _run_pose_evaluation_with_session(
 
     return PoseEvaluationResult(
         sample_count=processed_count,
+        bbox_map50=bbox_metrics.ap50,
+        bbox_map50_95=bbox_metrics.ap50_95,
         oks_ap50=oks_metrics.ap50,
         oks_ap50_95=oks_metrics.ap50_95,
         duration_seconds=duration,
@@ -224,18 +231,7 @@ def _parse_pose_manifest(
     """解析 pose export manifest。"""
 
     splits = manifest.get("splits", [])
-    chosen_split: dict[str, object] | None = None
-    for split in splits or []:
-        if not isinstance(split, dict):
-            continue
-        name = str(split.get("name", "")).lower()
-        if name in ("val", "valid", "validation", "test"):
-            chosen_split = split
-            break
-    if chosen_split is None and splits:
-        chosen_split = next(
-            (split for split in splits if isinstance(split, dict)), None
-        )
+    chosen_split = select_independent_evaluation_split(splits)
     if chosen_split is None:
         raise InvalidRequestError("pose manifest 不包含可用的 split")
 
@@ -347,15 +343,6 @@ def _normalize_pose_categories(categories_payload: object) -> list[dict[str, Any
     return categories
 
 
-def _resolve_keypoint_confidence_threshold(extra_options: dict[str, object]) -> float:
-    """解析 pose 评估的 keypoint confidence 阈值。"""
-
-    value = extra_options.get("keypoint_confidence_threshold")
-    if value is None:
-        return 0.25
-    return float(value)
-
-
 def _iter_pose_prediction_instances(result: object):
     """返回当前 runtime contract 下的 pose instance 列表。"""
 
@@ -395,27 +382,50 @@ def _resolve_pose_annotation_area(annotation: dict[str, object]) -> float:
     return 1.0
 
 
-def _resolve_oks_sigmas(extra_options: dict[str, object]) -> tuple[float, ...]:
-    """解析 OKS sigma 配置，默认使用 COCO person 17 点 sigma。"""
+def _resolve_pose_annotation_bbox_xyxy(
+    annotation: dict[str, object],
+) -> list[float]:
+    """把 COCO xywh bbox 转为共享 pose evaluator 使用的 xyxy。"""
+
+    bbox = annotation.get("bbox")
+    if isinstance(bbox, list) and len(bbox) >= 4:
+        x, y, width, height = (float(value) for value in bbox[:4])
+        return [x, y, x + max(width, 0.0), y + max(height, 0.0)]
+    keypoints = annotation.get("keypoints")
+    if isinstance(keypoints, list):
+        visible = [
+            (float(keypoints[index]), float(keypoints[index + 1]))
+            for index in range(0, len(keypoints) - 2, 3)
+            if float(keypoints[index + 2]) > 0.0
+        ]
+        if visible:
+            xs = [point[0] for point in visible]
+            ys = [point[1] for point in visible]
+            return [min(xs), min(ys), max(xs), max(ys)]
+    raise InvalidRequestError("pose 标注缺少有效 bbox 和可见关键点")
+
+
+def _resolve_oks_sigmas(
+    extra_options: dict[str, object],
+    *,
+    num_keypoints: int,
+) -> tuple[float, ...]:
+    """解析 OKS sigma，并校验它与当前 pose 拓扑严格一致。"""
 
     raw_sigmas = extra_options.get("oks_sigmas")
     if isinstance(raw_sigmas, list) and raw_sigmas:
-        return tuple(float(value) for value in raw_sigmas)
-    return default_coco_keypoint_sigmas()
-
-
-def _compute_oks(
-    gt_kpts: list[float],
-    pred_kpts: list[float],
-    *,
-    area: float,
-    sigmas: tuple[float, ...],
-) -> float:
-    """计算 Object Keypoint Similarity。"""
-
-    return compute_object_keypoint_similarity(
-        gt_kpts,
-        pred_kpts,
-        area=area,
-        sigmas=sigmas,
-    )
+        sigmas = tuple(float(value) for value in raw_sigmas)
+        if len(sigmas) != int(num_keypoints):
+            raise InvalidRequestError(
+                "pose oks_sigmas 数量与关键点拓扑不一致",
+                details={
+                    "num_keypoints": int(num_keypoints),
+                    "sigma_count": len(sigmas),
+                },
+            )
+        if any(value <= 0.0 for value in sigmas):
+            raise InvalidRequestError("pose oks_sigmas 必须全部大于 0")
+        return sigmas
+    if int(num_keypoints) < 1:
+        raise InvalidRequestError("pose 评估数据不包含有效关键点")
+    return resolve_keypoint_oks_sigmas(int(num_keypoints))

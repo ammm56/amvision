@@ -6,7 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.service.api.rest.v1.routes.model_input_schemas import SpatialSizeRequest
+from backend.service.api.rest.v1.routes.training_execution_schemas import (
+    TrainingExecutionPolicyRequest,
+)
 from backend.service.api.rest.v1.routes.training_parameter_schemas import (
     DetectionTrainingParameters,
     build_detection_training_parameters,
@@ -40,11 +42,9 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     warm_start_model_version_id: str | None = Field(
         default=None, min_length=1, max_length=256
     )
-    evaluation_interval: int = Field(default=5, ge=1, le=10_000)
-    max_epochs: int | None = Field(default=None, ge=1, le=10_000)
-    batch_size: int | None = Field(default=None, ge=1, le=4096)
-    precision: Literal["fp16", "fp32"] | None = None
-    input_size: SpatialSizeRequest | None = None
+    execution: TrainingExecutionPolicyRequest = Field(
+        default_factory=TrainingExecutionPolicyRequest
+    )
     parameters: DetectionTrainingParameters
     display_name: str = Field(default="", max_length=256)
 
@@ -68,10 +68,10 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
     def validate_epoch_schedule(self) -> "DetectionTrainingTaskCreateRequestBody":
         """解析短训练的 YOLOX 默认调度，并拒绝无效的显式调度。"""
 
-        if self.model_type == "yolox" and self.max_epochs is not None:
+        if self.model_type == "yolox":
             optimization = self.parameters.optimization
             explicit_fields = optimization.model_fields_set
-            available_epochs = max(0, self.max_epochs - 1)
+            available_epochs = max(0, self.execution.max_epochs - 1)
             if "warmup_epochs" in explicit_fields:
                 if optimization.warmup_epochs > available_epochs:
                     raise ValueError("YOLOX warmup_epochs 必须小于 max_epochs")
@@ -79,7 +79,10 @@ class DetectionTrainingTaskCreateRequestBody(BaseModel):
                 optimization.warmup_epochs = min(
                     optimization.warmup_epochs, available_epochs
                 )
-            remaining_epochs = max(0, self.max_epochs - optimization.warmup_epochs - 1)
+            remaining_epochs = max(
+                0,
+                self.execution.max_epochs - optimization.warmup_epochs - 1,
+            )
             if "no_aug_epochs" in explicit_fields:
                 if optimization.no_aug_epochs > remaining_epochs:
                     raise ValueError(

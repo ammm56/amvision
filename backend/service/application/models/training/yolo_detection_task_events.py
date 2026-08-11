@@ -6,12 +6,10 @@ from backend.service.application.models.training.detection_training_rules import
     DetectionTrainingOutputFiles,
 )
 from backend.service.application.models.training.yolo_detection_training_control import (
-    YoloDetectionTrainingBatchProgress,
     YoloDetectionTrainingEpochProgress,
 )
 from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
-from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 
 
 def build_yolo_detection_training_queue_failed_event(
@@ -399,74 +397,6 @@ def build_yolo_detection_training_failed_event(
             finished_at=finished_at,
             progress={"stage": "failed", "batch_metrics": {}, "percent": 100.0},
         ),
-    )
-
-
-def build_yolo_detection_training_batch_progress_event(
-    *,
-    task_id: str,
-    model_type: str,
-    attempt_no: int,
-    progress: YoloDetectionTrainingBatchProgress,
-    percent: float,
-    output_files: DetectionTrainingOutputFiles,
-    requested_precision: str | None,
-    requested_gpu_count: int | None,
-    requested_evaluation_interval: int,
-    control_metadata_key: str,
-    control: dict[str, object],
-) -> AppendTaskEventRequest:
-    """构造 batch 粒度训练进度事件。
-
-    - task_id：任务 id。
-    - model_type：模型类型。
-    - attempt_no：训练尝试次数。
-    - progress：batch 进度对象。
-    - percent：训练进度百分比。
-    - output_files：训练输出文件路径集合。
-    - requested_precision：请求的 precision。
-    - requested_gpu_count：请求的 GPU 数量。
-    - requested_evaluation_interval：请求的验证间隔。
-    - control_metadata_key：训练控制字段名。
-    - control：训练控制状态。
-    """
-
-    return AppendTaskEventRequest(
-        task_id=task_id,
-        event_type="progress",
-        message=(
-            f"{model_type} training heartbeat "
-            f"epoch {progress.epoch}/{progress.max_epochs} "
-            f"iter {progress.iteration}/{progress.max_iterations}"
-        ),
-        payload={
-            "state": "running",
-            "attempt_no": attempt_no,
-            "progress": {
-                "stage": "training",
-                "granularity": "batch",
-                "epoch": progress.epoch,
-                "max_epochs": progress.max_epochs,
-                "iteration": progress.iteration,
-                "max_iterations": progress.max_iterations,
-                "global_iteration": progress.global_iteration,
-                "total_iterations": progress.total_iterations,
-                "input_size": serialize_spatial_size_hw(progress.input_size),
-                "learning_rate": progress.learning_rate,
-                # batch loss 天然会随样本和正样本数量波动，不能覆盖上一轮已经
-                # 聚合完成的 train_metrics，否则详情页刷新时会把单 batch
-                # 快照误呈现成 epoch 训练趋势。
-                "batch_metrics": dict(progress.train_metrics),
-                "percent": percent,
-            },
-            "metadata": {
-                "output_object_prefix": output_files.output_object_prefix,
-                "requested_precision": requested_precision,
-                "requested_gpu_count": requested_gpu_count,
-                "requested_evaluation_interval": requested_evaluation_interval,
-                control_metadata_key: control,
-            },
-        },
     )
 
 

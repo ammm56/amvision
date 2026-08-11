@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.service.application.models.yolo_core_common.losses import (
+    write_assignment_quality_scores,
+)
+
 from backend.service.application.models.yolo_core_common.decode import (
     OBB_ANGLE_DECODE_MODE_SIGMOID_MINUS_QUARTER_PI,
     decode_obb_angle_logits,
@@ -148,13 +152,20 @@ def compute_yolo26_obb_loss(
     }
 
 
-def yolo26_probiou_aligned(torch_module: Any, obb1: Any, obb2: Any) -> Any:
+def yolo26_probiou_aligned(
+    torch_module: Any,
+    obb1: Any,
+    obb2: Any,
+    *,
+    floor: float = 0.0,
+) -> Any:
     """计算 YOLO26 OBB 一一对应旋转框 probiou。"""
 
     return probiou_aligned(
         torch_module=torch_module,
         obb1=obb1,
         obb2=obb2,
+        floor=floor,
     )
 
 
@@ -241,7 +252,13 @@ def _compute_yolo26_obb_image_loss(
 
     assigned_indices = assignment["assigned_gt_indices"][foreground_mask]
     quality_scores = assignment["quality_scores"][foreground_mask]
-    target_scores[foreground_mask, gt_classes[assigned_indices]] = quality_scores
+    write_assignment_quality_scores(
+        target_scores=target_scores,
+        foreground_mask=foreground_mask,
+        gt_classes=gt_classes,
+        assigned_gt_indices=assigned_indices,
+        quality_scores=quality_scores,
+    )
     foreground_pred_rboxes_grid = image_pred_rboxes_grid[foreground_mask]
     foreground_gt_rboxes_pixel = gt_rboxes[assigned_indices]
     foreground_stride = stride_tensor[foreground_mask]
@@ -253,6 +270,7 @@ def _compute_yolo26_obb_image_loss(
         torch_module=torch_module,
         obb1=foreground_pred_rboxes_grid,
         obb2=foreground_gt_rboxes_grid,
+        floor=0.01,
     ).clamp(0.0, 1.0)
     box_loss = ((1.0 - iou_values) * quality_scores).sum()
     dfl_loss = _compute_yolo26_obb_dfl_loss(
@@ -286,7 +304,7 @@ def _compute_yolo26_obb_image_loss(
         "class_loss": class_loss,
         "box_loss": box_loss,
         "dfl_loss": dfl_loss,
-        "angle_loss": angle_loss * quality_scores.sum(),
+        "angle_loss": angle_loss,
         "target_score": quality_scores.sum(),
     }
 

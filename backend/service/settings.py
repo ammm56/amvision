@@ -519,6 +519,17 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
     )
 
 
+class BackendServiceTrainingTelemetryConfig(BaseModel):
+    """描述独立训练 worker 的本机 mmap 遥测通道。"""
+
+    enabled: bool = True
+    root_dir: str = "./data/runtime/training-telemetry"
+    slot_count: int = Field(default=512, gt=0)
+    payload_capacity_bytes: int = Field(default=16 * 1024, ge=1024)
+    poll_interval_seconds: float = Field(default=0.1, gt=0)
+    scan_interval_seconds: float = Field(default=1.0, gt=0)
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -582,6 +593,9 @@ class BackendServiceSettings(BaseSettings):
     )
     inference_daemon: BackendServiceInferenceDaemonConfig = Field(
         default_factory=BackendServiceInferenceDaemonConfig
+    )
+    training_telemetry: BackendServiceTrainingTelemetryConfig = Field(
+        default_factory=BackendServiceTrainingTelemetryConfig
     )
 
     @classmethod

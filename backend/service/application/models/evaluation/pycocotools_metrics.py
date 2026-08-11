@@ -39,6 +39,7 @@ def evaluate_pycocotools_average_precision(
     cocoeval_class: Any,
     iou_type: str = "bbox",
     max_detections: int = YOLO_DETECTION_COCO_MAX_DETECTIONS,
+    keypoint_oks_sigmas: tuple[float, ...] | None = None,
 ) -> PycocotoolsAveragePrecision:
     """运行 COCOeval 并显式从 precision 张量提取 AP。
 
@@ -62,6 +63,11 @@ def evaluate_pycocotools_average_precision(
     with redirect_stdout(io.StringIO()):
         coco_detections = ground_truth.loadRes(detections)
         evaluator = cocoeval_class(ground_truth, coco_detections, iou_type)
+        if iou_type == "keypoints" and keypoint_oks_sigmas is not None:
+            _configure_keypoint_oks_sigmas(
+                evaluator=evaluator,
+                sigmas=keypoint_oks_sigmas,
+            )
         evaluator.params.maxDets = [resolved_max_detections]
         evaluator.evaluate()
         evaluator.accumulate()
@@ -70,6 +76,23 @@ def evaluate_pycocotools_average_precision(
         evaluator=evaluator,
         max_detections=resolved_max_detections,
     )
+
+
+def _configure_keypoint_oks_sigmas(
+    *,
+    evaluator: Any,
+    sigmas: tuple[float, ...],
+) -> None:
+    """为非 COCO-17 关键点拓扑设置显式、有限且等长的 OKS sigma。"""
+
+    import numpy as np
+
+    resolved = np.asarray(sigmas, dtype=float)
+    if resolved.ndim != 1 or resolved.size < 1:
+        raise ValueError("keypoint_oks_sigmas 必须是一维非空数组")
+    if not np.all(np.isfinite(resolved)) or np.any(resolved <= 0.0):
+        raise ValueError("keypoint_oks_sigmas 必须全部是有限正数")
+    evaluator.params.kpt_oks_sigmas = resolved
 
 
 def extract_pycocotools_average_precision(

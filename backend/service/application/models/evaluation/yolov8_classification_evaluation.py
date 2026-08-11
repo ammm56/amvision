@@ -10,6 +10,9 @@ import time
 from dataclasses import dataclass, field
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
+)
 from backend.service.application.runtime.tasks.classification_model_runtime import (
     DefaultClassificationModelRuntime,
 )
@@ -224,19 +227,7 @@ def _parse_classification_manifest(
         str(c.get("name", c.get("id", ""))) for c in categories if isinstance(c, dict)
     )
 
-    chosen_split: dict[str, object] | None = None
-    for split in splits or []:
-        if not isinstance(split, dict):
-            continue
-        name = str(split.get("name", "")).lower()
-        if name in ("val", "valid", "validation", "test"):
-            chosen_split = split
-            break
-    if chosen_split is None and splits:
-        for split in splits:
-            if isinstance(split, dict):
-                chosen_split = split
-                break
+    chosen_split = select_independent_evaluation_split(splits)
     if chosen_split is None:
         raise InvalidRequestError("classification manifest 不包含可用的 split")
 

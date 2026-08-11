@@ -28,6 +28,8 @@ class PoseEvaluationSummaryResponse(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     error_message: str | None = None
+    bbox_map50: float | None = None
+    bbox_map50_95: float | None = None
     oks_ap50: float | None = None
     oks_ap50_95: float | None = None
     sample_count: int | None = None
@@ -53,6 +55,8 @@ def build_pose_evaluation_summary_response(task: object) -> PoseEvaluationSummar
         started_at=task.started_at,
         finished_at=task.finished_at,
         error_message=task.error_message,
+        bbox_map50=result.get("bbox_map50"),
+        bbox_map50_95=result.get("bbox_map50_95"),
         oks_ap50=result.get("oks_ap50"),
         oks_ap50_95=result.get("oks_ap50_95"),
         sample_count=result.get("sample_count"),

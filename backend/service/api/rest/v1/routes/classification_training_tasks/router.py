@@ -236,12 +236,14 @@ def resume_classification_training_task(
     task_id: str,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> TrainingTaskSubmissionResponse:
-    """继续 paused 的 classification 训练任务。"""
+    """从完整 latest checkpoint 继续 classification 训练任务。"""
 
     return resume_training_task(
         session_factory=session_factory,
+        dataset_storage=dataset_storage,
         queue_backend=queue_backend,
         task_id=task_id,
     )

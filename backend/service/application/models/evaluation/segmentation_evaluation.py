@@ -14,6 +14,9 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     bbox_iou_xyxy,
     compute_coco_style_ap,
 )
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
+)
 from backend.service.application.models.support.yolo_dataset_manifest_support import (
     build_coco_payload_from_yolo_segmentation_split,
     normalize_yolo_category_names,
@@ -280,16 +283,7 @@ def _parse_segmentation_manifest(
 ) -> tuple[str, list[dict[str, object]], tuple[str, ...]]:
     """解析 segmentation manifest。"""
     splits = manifest.get("splits", [])
-    chosen_split: dict[str, object] | None = None
-    for split in splits or []:
-        if not isinstance(split, dict):
-            continue
-        name = str(split.get("name", "")).lower()
-        if name in ("val", "valid", "validation", "test"):
-            chosen_split = split
-            break
-    if chosen_split is None and splits:
-        chosen_split = next((s for s in splits if isinstance(s, dict)), None)
+    chosen_split = select_independent_evaluation_split(splits)
     if chosen_split is None:
         raise InvalidRequestError("segmentation manifest 不包含可用的 split")
 

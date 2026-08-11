@@ -13,6 +13,9 @@ from backend.service.application.models.evaluation.coco_style_metrics import (
     polygon_iou,
     xywhr_to_polygon,
 )
+from backend.service.application.models.evaluation.manifest_splits import (
+    select_independent_evaluation_split,
+)
 from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionRequest,
 )
@@ -114,24 +117,34 @@ def _run_obb_evaluation_with_session(
 
     started_at = datetime.now(timezone.utc)
 
-    # 按 image_id 分组 GT
-    gt_by_image: dict[int, list[dict]] = {}
-    for ann in annotations:
-        img_id = ann["image_id"]
-        gt_by_image.setdefault(img_id, []).append(ann)
-
     gt_items: list[dict[str, object]] = []
     for annotation in annotations:
         gt_item = _build_obb_gt_item(annotation)
         if gt_item is not None:
             gt_items.append(gt_item)
+    if not images:
+        raise InvalidRequestError("OBB 评估 split 不包含图片")
+    if not categories:
+        raise InvalidRequestError("OBB 评估 split 不包含类别")
+    if not gt_items:
+        raise InvalidRequestError("OBB 评估 split 不包含有效旋转框标注")
+    unknown_image_ids = sorted(
+        {
+            int(item["image_id"])
+            for item in gt_items
+            if int(item["image_id"]) not in images
+        }
+    )
+    if unknown_image_ids:
+        raise InvalidRequestError(
+            "OBB 标注引用了未声明图片",
+            details={"image_ids": unknown_image_ids},
+        )
     all_preds: list[dict] = []
     processed_count = 0
 
-    for img_id, gt_anns in gt_by_image.items():
-        img_info = images.get(img_id)
-        if not img_info:
-            continue
+    # 必须包含没有 GT 的背景图片，否则这些图片上的误检不会计入 AP。
+    for img_id, img_info in sorted(images.items()):
         image_path = img_info.get("file_name", "")
         resolved = dataset_storage.resolve_filesystem_path(image_path)
         if not resolved or not resolved.is_file():
@@ -244,7 +257,8 @@ def _parse_obb_manifest_payload(
     categories_by_id: dict[int, dict] = {}
     next_image_id = 1
     next_annotation_id = 1
-    for split in split_entries:
+    selected_split = _select_obb_evaluation_split(split_entries)
+    for split in (selected_split,):
         if not isinstance(split, dict):
             continue
         image_root = str(split.get("image_root", ""))
@@ -300,6 +314,17 @@ def _parse_obb_manifest_payload(
     return images, annotations, categories
 
 
+def _select_obb_evaluation_split(
+    split_entries: list[object],
+) -> dict[str, object]:
+    """按 test、val、首个可用 split 的顺序选择唯一评估 split。"""
+
+    selected = select_independent_evaluation_split(split_entries)
+    if selected is None:
+        raise InvalidRequestError("OBB manifest 不包含可用 split")
+    return selected
+
+
 def _iter_obb_prediction_instances(result: object):
     """返回当前 runtime contract 下的 OBB instance 列表。"""
 
@@ -325,16 +350,17 @@ def _build_obb_prediction_bbox(instance: object) -> list[float]:
             max(0.0, y2 - y1),
             float(getattr(instance, "angle", 0.0) or 0.0),
         ]
-    return [0.0, 0.0, 0.0, 0.0, 0.0]
+    raise InvalidRequestError("OBB runtime prediction 缺少 xywhr 或 bbox_xyxy")
 
 
 def _build_obb_gt_item(annotation: dict) -> dict[str, object] | None:
     """把 OBB annotation 归一化为 COCO-style AP 使用的 GT 项。"""
 
+    rbox = _normalize_obb_bbox(annotation.get("rbox"))
     polygon = _normalize_obb_polygon(
         annotation.get("poly") or annotation.get("polygon")
     )
-    bbox = _normalize_obb_bbox(annotation.get("bbox"))
+    bbox = rbox or _normalize_obb_bbox(annotation.get("bbox"))
     if polygon is None and bbox is not None:
         polygon = _bbox_to_polygon(bbox)
     if polygon is None and bbox is None:

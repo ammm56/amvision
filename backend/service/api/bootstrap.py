@@ -59,6 +59,12 @@ from backend.service.application.models.catalog.pretrained_catalog import (
 from backend.service.application.models.catalog.yolo_model_pretrained_catalog import (
     YoloModelPretrainedCatalogSeeder,
 )
+from backend.service.application.models.training.training_telemetry import (
+    TrainingTelemetryBroker,
+)
+from backend.service.application.models.training.training_telemetry_mmap import (
+    TrainingTelemetryMmapReceiver,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeRuntimeRegistry,
 )
@@ -142,6 +148,7 @@ class BackendServiceRuntime:
     - dataset_storage：本地数据集文件存储服务。
     - queue_backend：本地任务队列后端。
     - service_event_bus：服务内统一事件总线。
+    - training_telemetry_broker：训练高频遥测的有界 replay broker。
     - node_pack_loader：节点包目录加载器。
     - node_catalog_registry：统一节点目录注册表。
     - workflow_node_runtime_registry_loader：workflow 节点运行时注册表加载器。
@@ -164,6 +171,8 @@ class BackendServiceRuntime:
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
     service_event_bus: InMemoryServiceEventBus
+    training_telemetry_broker: TrainingTelemetryBroker
+    training_telemetry_receiver: TrainingTelemetryMmapReceiver | None
     node_pack_loader: NodePackLoader
     node_catalog_registry: NodeCatalogRegistry
     workflow_node_runtime_registry_loader: WorkflowNodeRuntimeRegistryLoader
@@ -369,7 +378,26 @@ class BackendServiceBootstrap(
         )
         async_inference_service_id = _resolve_async_inference_service_id(settings)
         service_event_bus = InMemoryServiceEventBus()
+        training_telemetry_broker = TrainingTelemetryBroker(
+            event_bus=service_event_bus
+        )
+        training_telemetry_receiver = (
+            TrainingTelemetryMmapReceiver(
+                root_dir=settings.training_telemetry.root_dir,
+                broker=training_telemetry_broker,
+                poll_interval_seconds=(
+                    settings.training_telemetry.poll_interval_seconds
+                ),
+                scan_interval_seconds=(
+                    settings.training_telemetry.scan_interval_seconds
+                ),
+                replay_limit=settings.training_telemetry.slot_count,
+            )
+            if settings.training_telemetry.enabled
+            else None
+        )
         session_factory.service_event_bus = service_event_bus
+        session_factory.training_telemetry_broker = training_telemetry_broker
         dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
             settings.to_dataset_storage_settings()
         )
@@ -670,6 +698,8 @@ class BackendServiceBootstrap(
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
             service_event_bus=service_event_bus,
+            training_telemetry_broker=training_telemetry_broker,
+            training_telemetry_receiver=training_telemetry_receiver,
             node_pack_loader=node_pack_loader,
             node_catalog_registry=node_catalog_registry,
             workflow_node_runtime_registry_loader=workflow_node_runtime_registry_loader,
@@ -736,6 +766,9 @@ class BackendServiceBootstrap(
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
         application.state.service_event_bus = runtime.service_event_bus
+        application.state.training_telemetry_broker = (
+            runtime.training_telemetry_broker
+        )
         application.state.node_pack_loader = runtime.node_pack_loader
         application.state.node_catalog_registry = runtime.node_catalog_registry
         application.state.workflow_node_runtime_registry_loader = (
@@ -811,6 +844,9 @@ class BackendServiceBootstrap(
         application.state.background_task_manager_host = (
             runtime.background_task_manager_host
         )
+        application.state.training_telemetry_receiver = (
+            runtime.training_telemetry_receiver
+        )
 
     def start_runtime(self, runtime: BackendServiceRuntime) -> None:
         """启动 backend-service 托管的长生命周期资源。
@@ -829,6 +865,8 @@ class BackendServiceBootstrap(
             session_factory=runtime.session_factory,
             trigger_source_supervisor=runtime.trigger_source_supervisor,
         ).start_enabled_trigger_sources()
+        if runtime.training_telemetry_receiver is not None:
+            runtime.training_telemetry_receiver.start()
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.start()
 
@@ -841,6 +879,8 @@ class BackendServiceBootstrap(
 
         if runtime.background_task_manager_host is not None:
             runtime.background_task_manager_host.stop()
+        if runtime.training_telemetry_receiver is not None:
+            runtime.training_telemetry_receiver.stop()
         runtime.trigger_source_supervisor.stop_all()
         runtime.deployment_runtime_reconciler.stop()
         runtime.workflow_preview_run_manager.stop()

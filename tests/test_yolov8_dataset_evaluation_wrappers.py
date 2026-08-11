@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from backend.service.application.models.evaluation import obb_evaluation as obb_module
 from backend.service.application.models.evaluation import pose_evaluation as pose_module
 from backend.service.application.models.evaluation import (
@@ -202,6 +204,7 @@ def test_pose_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> N
                 detections=[
                     SimpleNamespace(
                         class_id=0,
+                        bbox_xyxy=(1.0, 1.0, 2.0, 2.0),
                         keypoints=[1.0, 1.0, 2.0, 2.0, 2.0, 2.0],
                         score=0.9,
                     ),
@@ -238,8 +241,10 @@ def test_pose_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> N
     assert calls == {"load_session": 1, "predict": 1}
     assert result.sample_count == 1
     assert result.report_payload["sample_count"] == 1
-    assert result.oks_ap50 == 1.0
-    assert result.oks_ap50_95 == 1.0
+    assert result.bbox_map50 == pytest.approx(1.0)
+    assert result.bbox_map50_95 == pytest.approx(1.0)
+    assert result.oks_ap50 == pytest.approx(1.0)
+    assert result.oks_ap50_95 == pytest.approx(1.0)
     assert result.predictions_payload[0]["score"] == 0.9
 
 
@@ -380,3 +385,70 @@ def test_obb_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> No
     assert result.map50 == 1.0
     assert result.map50_95 == 1.0
     assert result.predictions_payload[0]["score"] == 0.8
+
+
+def test_obb_evaluation_includes_background_images_in_false_positive_count(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """没有 GT 的图片也必须推理，否则 OBB AP 会忽略背景误检。"""
+
+    (tmp_path / "positive.jpg").write_bytes(b"positive")
+    (tmp_path / "background.jpg").write_bytes(b"background")
+    calls: list[bytes] = []
+
+    class FakeRuntime:
+        def load_session(self, *, dataset_storage, runtime_target):
+            return FakeSession()
+
+    class FakeSession:
+        def predict(self, request):
+            calls.append(request.input_image_bytes)
+            score = 0.8 if request.input_image_bytes == b"positive" else 0.9
+            bbox = [10.0, 10.0, 4.0, 2.0, 0.0]
+            return SimpleNamespace(
+                detections=[SimpleNamespace(class_id=0, bbox=bbox, score=score)]
+            )
+
+    monkeypatch.setattr(
+        "backend.service.application.runtime.tasks.obb_model_runtime.DefaultObbModelRuntime",
+        FakeRuntime,
+    )
+    result = obb_module.run_obb_evaluation(
+        obb_module.ObbEvaluationRequest(
+            dataset_storage=_FakeDatasetStorage(tmp_path),
+            runtime_target=SimpleNamespace(model_version_id="mv-obb-bg"),
+            manifest_payload={
+                "images": [
+                    {"id": 1, "file_name": "positive.jpg"},
+                    {"id": 2, "file_name": "background.jpg"},
+                ],
+                "annotations": [
+                    {
+                        "image_id": 1,
+                        "category_id": 0,
+                        "rbox": [10.0, 10.0, 4.0, 2.0, 0.0],
+                    }
+                ],
+                "categories": [{"id": 0, "name": "part"}],
+            },
+        )
+    )
+
+    assert calls == [b"positive", b"background"]
+    assert result.sample_count == 2
+    assert result.map50 == pytest.approx(0.5)
+
+
+def test_obb_evaluation_selects_one_test_split_instead_of_merging_training_data() -> None:
+    """数据集级 OBB evaluation 不能把 train/val/test 合并后计算 AP。"""
+
+    selected = obb_module._select_obb_evaluation_split(
+        [
+            {"name": "train", "annotation_file": "train.json"},
+            {"name": "val", "annotation_file": "val.json"},
+            {"name": "test", "annotation_file": "test.json"},
+        ]
+    )
+
+    assert selected["name"] == "test"

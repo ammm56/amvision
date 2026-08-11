@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from backend.service.domain.models.yolo_model_profiles import YOLO_MODEL_SCALES
 from tests.integration.yolo_model_full_chain_smoke import (
     DEFAULT_PROJECT_ID,
     DEFAULT_TOKEN,
@@ -103,6 +104,10 @@ def main(argv: list[str] | None = None) -> int:
         model_types=set(args.models),
         task_types=set(args.tasks),
     )
+    dataset_dir_override = resolve_dataset_dir_override(
+        dataset_dir=args.dataset_dir,
+        selected_cases=selected_cases,
+    )
     is_full_scope = (
         len(selected_cases) == len(SUPPORTED_MODEL_TASK_PAIRS)
         and tuple(args.target_formats) == REQUIRED_CONVERSION_FORMATS
@@ -117,6 +122,30 @@ def main(argv: list[str] | None = None) -> int:
         "selected_case_count": len(selected_cases),
         "required_conversion_formats": list(REQUIRED_CONVERSION_FORMATS),
         "selected_conversion_formats": list(args.target_formats),
+        "benchmark_options": {
+            "model_scale": args.model_scale or None,
+            "input_size": list(args.input_size) if args.input_size else None,
+            "enable_augmentation": args.enable_augmentation,
+            "evaluation_interval": args.evaluation_interval,
+            "max_epochs": args.max_epochs,
+            "batch_mode": args.batch_mode,
+            "batch_size": args.batch_size,
+            "batch_target_memory_fraction": args.batch_target_memory_fraction,
+            "batch_minimum_size": args.batch_minimum_size,
+            "batch_maximum_size": args.batch_maximum_size,
+            "batch_recover_on_oom": args.batch_recover_on_oom,
+            "batch_max_oom_retries": args.batch_max_oom_retries,
+            "checkpoint_interval": args.checkpoint_interval,
+            "checkpoint_keep_periodic": args.checkpoint_keep_periodic,
+            "max_images_per_split": args.max_images_per_split,
+            "use_pretrained_warm_start": args.use_pretrained_warm_start,
+            "training_precision": args.training_precision,
+            "training_num_workers": args.training_num_workers,
+            "training_prefetch_factor": args.training_prefetch_factor,
+            "dataset_dir": (
+                str(dataset_dir_override) if dataset_dir_override is not None else None
+            ),
+        },
         "cases": {},
         "processes": {},
     }
@@ -145,14 +174,26 @@ def main(argv: list[str] | None = None) -> int:
         for matrix_case in selected_cases:
             case_run_dir = run_dir / matrix_case.case_id
             case_run_dir.mkdir(parents=True, exist_ok=True)
+            task_case = matrix_case.task_case
+            if dataset_dir_override is not None:
+                task_case = replace(
+                    task_case,
+                    dataset_dir=dataset_dir_override,
+                    dataset_archive=None,
+                )
+            if args.input_size is not None:
+                task_case = replace(
+                    task_case,
+                    input_size=(int(args.input_size[0]), int(args.input_size[1])),
+                )
             try:
                 case_result = run_task_case(
                     client=client,
-                    case=matrix_case.task_case,
+                    case=task_case,
                     run_dir=case_run_dir,
                     project_id=args.project_id,
                     model_type=matrix_case.model_type,
-                    model_scale=matrix_case.model_scale,
+                    model_scale=args.model_scale or matrix_case.model_scale,
                     target_formats=tuple(args.target_formats),
                     max_epochs=args.max_epochs,
                     batch_size=args.batch_size,
@@ -161,6 +202,30 @@ def main(argv: list[str] | None = None) -> int:
                     skip_deployment=args.skip_deployment,
                     run_workflow=args.run_workflow,
                     max_images_per_split=args.max_images_per_split,
+                    enable_augmentation=args.enable_augmentation,
+                    evaluation_interval=args.evaluation_interval,
+                    warm_start_model_version_id=(
+                        resolve_pretrained_warm_start_model_version_id(
+                            model_type=matrix_case.model_type,
+                            task_type=matrix_case.task_case.task_type,
+                            model_scale=args.model_scale or matrix_case.model_scale,
+                        )
+                        if args.use_pretrained_warm_start
+                        else None
+                    ),
+                    training_precision=args.training_precision,
+                    training_num_workers=args.training_num_workers,
+                    training_prefetch_factor=args.training_prefetch_factor,
+                    batch_mode=args.batch_mode,
+                    batch_target_memory_fraction=(
+                        args.batch_target_memory_fraction
+                    ),
+                    batch_minimum_size=args.batch_minimum_size,
+                    batch_maximum_size=args.batch_maximum_size,
+                    batch_recover_on_oom=args.batch_recover_on_oom,
+                    batch_max_oom_retries=args.batch_max_oom_retries,
+                    checkpoint_interval=args.checkpoint_interval,
+                    checkpoint_keep_periodic=args.checkpoint_keep_periodic,
                 )
                 validate_case_result(
                     case_result,
@@ -213,6 +278,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--token", default=DEFAULT_TOKEN)
     parser.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
     parser.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=None,
+        help=(
+            "覆盖所选单一 task 的默认数据集目录；相对路径按仓库根目录解析，"
+            "可同时供该 task 的多个 model family 使用"
+        ),
+    )
+    parser.add_argument(
         "--models",
         nargs="+",
         choices=ALL_MODEL_TYPES,
@@ -231,8 +305,51 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=REQUIRED_CONVERSION_FORMATS,
     )
     parser.add_argument("--max-epochs", type=int, default=1)
+    parser.add_argument(
+        "--batch-mode",
+        choices=("auto", "fixed"),
+        default="auto",
+    )
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--batch-target-memory-fraction", type=float, default=0.6)
+    parser.add_argument("--batch-minimum-size", type=int, default=1)
+    parser.add_argument("--batch-maximum-size", type=int, default=None)
+    parser.add_argument(
+        "--batch-recover-on-oom",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--batch-max-oom-retries", type=int, default=3)
+    parser.add_argument("--checkpoint-interval", type=int, default=5)
+    parser.add_argument("--checkpoint-keep-periodic", type=int, default=2)
+    parser.add_argument(
+        "--model-scale",
+        choices=YOLO_MODEL_SCALES,
+        default=None,
+        help="覆盖矩阵默认 model scale；省略时保持各 case 默认值",
+    )
+    parser.add_argument(
+        "--input-size",
+        nargs=2,
+        type=int,
+        metavar=("HEIGHT", "WIDTH"),
+        default=None,
+    )
+    parser.add_argument("--enable-augmentation", action="store_true")
+    parser.add_argument(
+        "--use-pretrained-warm-start",
+        action="store_true",
+        help="使用本地 catalog 中与 family/task/scale 完全匹配的预训练版本",
+    )
+    parser.add_argument("--evaluation-interval", type=int, default=1)
     parser.add_argument("--training-device", default="auto")
+    parser.add_argument(
+        "--training-precision",
+        choices=("auto", "fp32", "fp16", "bf16"),
+        default="auto",
+    )
+    parser.add_argument("--training-num-workers", type=int, default=0)
+    parser.add_argument("--training-prefetch-factor", type=int, default=2)
     parser.add_argument("--max-images-per-split", type=int, default=4)
     parser.add_argument("--task-timeout-seconds", type=float, default=1800.0)
     parser.add_argument("--http-timeout-seconds", type=float, default=120.0)
@@ -246,13 +363,76 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-deployment", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args(argv)
-    if args.max_epochs < 1 or args.batch_size < 1:
-        parser.error("max-epochs 和 batch-size 必须大于 0")
+    if (
+        args.max_epochs < 1
+        or args.batch_size < 1
+        or args.batch_minimum_size < 1
+        or (
+            args.batch_maximum_size is not None
+            and args.batch_maximum_size < args.batch_minimum_size
+        )
+        or not 0.1 <= args.batch_target_memory_fraction <= 0.95
+        or not 0 <= args.batch_max_oom_retries <= 10
+        or args.checkpoint_interval < 1
+        or args.checkpoint_keep_periodic < 1
+        or args.evaluation_interval < 1
+        or args.training_num_workers < 0
+        or args.training_prefetch_factor < 1
+    ):
+        parser.error(
+            "训练、batch、checkpoint、evaluation 和 prefetch 参数不在有效范围"
+        )
+    if args.input_size is not None and any(value < 32 for value in args.input_size):
+        parser.error("input-size 的高和宽必须大于等于 32")
     if args.max_images_per_split < 0:
         parser.error("max-images-per-split 不能小于 0")
     if len(set(args.target_formats)) != len(args.target_formats):
         parser.error("target-formats 不能重复")
     return args
+
+
+def resolve_dataset_dir_override(
+    *,
+    dataset_dir: Path | None,
+    selected_cases: tuple[ModelTaskMatrixCase, ...],
+) -> Path | None:
+    """解析真实矩阵的数据集覆盖并拒绝跨 task 误用。"""
+
+    if dataset_dir is None:
+        return None
+    selected_task_types = {
+        matrix_case.task_case.task_type for matrix_case in selected_cases
+    }
+    if len(selected_task_types) != 1:
+        raise ValueError("--dataset-dir 只能用于只选择一个 task 类型的矩阵")
+    resolved = dataset_dir if dataset_dir.is_absolute() else PROJECT_ROOT / dataset_dir
+    resolved = resolved.resolve()
+    if not resolved.is_dir():
+        raise ValueError(f"--dataset-dir 目录不存在：{resolved}")
+    return resolved
+
+
+def resolve_pretrained_warm_start_model_version_id(
+    *,
+    model_type: str,
+    task_type: str,
+    model_scale: str,
+) -> str:
+    """生成平台本地预训练 catalog 的稳定 ModelVersion id。
+
+    当前精度矩阵只允许 YOLOv8/YOLO11/YOLO26 使用此快捷入口，避免把
+    YOLOX、RF-DETR 的不同 catalog 命名和加载规则错误混入同一契约。
+    """
+
+    if model_type not in YOLO_MAIN_MODEL_TYPES:
+        raise ValueError(
+            "--use-pretrained-warm-start 仅支持 yolov8、yolo11、yolo26"
+        )
+    if task_type not in {"detection", "classification", "segmentation", "pose", "obb"}:
+        raise ValueError(f"不支持预训练 warm-start 的任务类型: {task_type}")
+    if model_scale not in YOLO_MODEL_SCALES:
+        raise ValueError(f"不支持预训练 warm-start 的 model scale: {model_scale}")
+    return f"mv-pretrained-{model_type}-{task_type}-{model_scale}"
 
 
 def select_matrix_cases(

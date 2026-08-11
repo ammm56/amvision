@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from backend.service.application.errors import InvalidRequestError
@@ -32,6 +33,32 @@ class SegmentationPostprocessInstance:
     class_name: str | None
     segments: tuple[tuple[tuple[float, float], ...], ...]
     mask_area: float
+
+
+def crop_binary_mask_to_box(
+    *,
+    binary_mask: Any,
+    box_xyxy: tuple[float, float, float, float],
+    np_module: Any,
+) -> Any:
+    """把实例二值 mask 限制在对应预测框内。"""
+
+    mask = np_module.asarray(binary_mask)
+    if mask.ndim != 2:
+        raise InvalidRequestError(
+            "segmentation binary mask 必须为二维数组",
+            details={"shape": list(mask.shape)},
+        )
+    height, width = int(mask.shape[0]), int(mask.shape[1])
+    x1, y1, x2, y2 = box_xyxy
+    left = max(0, min(width, int(math.ceil(float(x1)))))
+    top = max(0, min(height, int(math.ceil(float(y1)))))
+    right = max(0, min(width, int(math.ceil(float(x2)))))
+    bottom = max(0, min(height, int(math.ceil(float(y2)))))
+    cropped = np_module.zeros_like(mask)
+    if right > left and bottom > top:
+        cropped[top:bottom, left:right] = mask[top:bottom, left:right]
+    return cropped
 
 
 def normalize_segmentation_outputs(
@@ -125,6 +152,11 @@ def build_segmentation_postprocess_instances(
         y2 = float(max(0.0, min(float(scaled_bbox[3]), float(image_height))))
         resolved_class_id = int(class_id)
         class_name = labels[resolved_class_id] if 0 <= resolved_class_id < len(labels) else None
+        binary_mask = crop_binary_mask_to_box(
+            binary_mask=binary_mask,
+            box_xyxy=(x1, y1, x2, y2),
+            np_module=np_module,
+        )
         segments = extract_mask_segments(cv2_module=cv2_module, binary_mask=binary_mask)
         mask_area = float(np_module.count_nonzero(binary_mask))
         instances.append(

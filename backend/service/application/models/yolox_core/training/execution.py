@@ -48,6 +48,16 @@ from backend.service.application.models.yolox_core.evaluators import (
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
 )
+from backend.service.application.models.training.amp_policy import (
+    resolve_training_amp_runtime,
+)
+from backend.service.application.models.training.batch_policy import (
+    read_resume_checkpoint_batch_size,
+    resolve_training_batch_size,
+)
+from backend.service.application.models.training.checkpoint_policy import (
+    read_training_checkpoint_interval,
+)
 from backend.service.application.models.yolox_core.models.build import (
     build_yolox_detection_model,
 )
@@ -140,10 +150,13 @@ class YoloXDetectionTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[["YoloXTrainingBatchProgress"], None] | None = None
-    epoch_callback: Callable[
-        ["YoloXTrainingEpochProgress"],
-        "YoloXTrainingControlCommand | None",
-    ] | None = None
+    epoch_callback: (
+        Callable[
+            ["YoloXTrainingEpochProgress"],
+            "YoloXTrainingControlCommand | None",
+        ]
+        | None
+    ) = None
     savepoint_callback: Callable[["YoloXTrainingSavePoint"], None] | None = None
 
 
@@ -265,7 +278,9 @@ def run_yolox_detection_training_execution(
 
     imports = require_yolox_core_dependencies()
     manifest_payload = dict(request.manifest_payload)
-    resolved_splits = _resolve_yolox_detection_splits(request.dataset_storage, manifest_payload)
+    resolved_splits = _resolve_yolox_detection_splits(
+        request.dataset_storage, manifest_payload
+    )
     train_split = _resolve_train_split(resolved_splits)
     input_size = _resolve_input_size(request.input_size)
     current_input_size = input_size
@@ -444,7 +459,9 @@ def run_yolox_detection_training_execution(
             train_dataset,
             batch_sampler=train_batch_sampler,
             pin_memory=runtime.device.startswith("cuda"),
-            worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+            worker_init_fn=(
+                imports.worker_init_reset_seed if num_workers > 0 else None
+            ),
             **loader_worker_options,
         )
     else:
@@ -454,7 +471,9 @@ def run_yolox_detection_training_execution(
             shuffle=True,
             pin_memory=runtime.device.startswith("cuda"),
             drop_last=False,
-            worker_init_fn=(imports.worker_init_reset_seed if num_workers > 0 else None),
+            worker_init_fn=(
+                imports.worker_init_reset_seed if num_workers > 0 else None
+            ),
             **loader_worker_options,
         )
     if len(train_loader) == 0:
@@ -483,9 +502,7 @@ def run_yolox_detection_training_execution(
             max_labels=max_labels,
         )
         if validation_dataset.category_names != train_base_dataset.category_names:
-            raise InvalidRequestError(
-                "YOLOX detection 训练集与验证集类别定义不一致"
-            )
+            raise InvalidRequestError("YOLOX detection 训练集与验证集类别定义不一致")
         validation_loader = imports.torch.utils.data.DataLoader(
             validation_dataset,
             batch_size=batch_size,
@@ -494,7 +511,9 @@ def run_yolox_detection_training_execution(
             drop_last=False,
             **loader_worker_options,
         )
-    validation_split_name = validation_split.name if validation_split is not None else None
+    validation_split_name = (
+        validation_split.name if validation_split is not None else None
+    )
     test_dataset: _YoloXDetectionDataset | None = None
     test_loader = None
     if test_split is not None:
@@ -507,9 +526,7 @@ def run_yolox_detection_training_execution(
             max_labels=max_labels,
         )
         if test_dataset.category_names != train_base_dataset.category_names:
-            raise InvalidRequestError(
-                "YOLOX detection 训练集与测试集类别定义不一致"
-            )
+            raise InvalidRequestError("YOLOX detection 训练集与测试集类别定义不一致")
         test_loader = imports.torch.utils.data.DataLoader(
             test_dataset,
             batch_size=batch_size,
@@ -525,7 +542,10 @@ def run_yolox_detection_training_execution(
         model_scale=request.model_scale,
         num_classes=len(train_category_names),
     )
-    if request.resume_checkpoint_path is None and request.warm_start_checkpoint_path is not None:
+    if (
+        request.resume_checkpoint_path is None
+        and request.warm_start_checkpoint_path is not None
+    ):
         warm_start_summary = load_yolox_warm_start_checkpoint(
             torch_module=imports.torch,
             model=base_model,
@@ -533,7 +553,72 @@ def run_yolox_detection_training_execution(
             source_summary=dict(request.warm_start_source_summary or {}),
         )
     base_model.to(runtime.device)
-    optimizer = _build_optimizer(torch_module=imports.torch, model=base_model, batch_size=batch_size)
+    resolved_batch_size = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=base_model,
+        device_name=runtime.device,
+        input_size=input_size,
+        dataset_size=len(train_dataset),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLOX_CORE_DEFAULT_BATCH_SIZE,
+        runtime_precision=precision,
+        extra_options=extra_options,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
+    if resolved_batch_size != batch_size:
+        batch_size = resolved_batch_size
+        if use_augmentation_data_pipeline:
+            train_batch_sampler = imports.YoloBatchSampler(
+                imports.InfiniteSampler(len(train_dataset), seed=random_seed),
+                batch_size,
+                False,
+                mosaic=mosaic_augmentation_enabled,
+                input_dimension=input_size,
+            )
+            train_loader = imports.torch.utils.data.DataLoader(
+                train_dataset,
+                batch_sampler=train_batch_sampler,
+                pin_memory=runtime.device.startswith("cuda"),
+                worker_init_fn=(
+                    imports.worker_init_reset_seed if num_workers > 0 else None
+                ),
+                **loader_worker_options,
+            )
+        else:
+            train_loader = imports.torch.utils.data.DataLoader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                pin_memory=runtime.device.startswith("cuda"),
+                drop_last=False,
+                worker_init_fn=(
+                    imports.worker_init_reset_seed if num_workers > 0 else None
+                ),
+                **loader_worker_options,
+            )
+        validation_loader = imports.torch.utils.data.DataLoader(
+            validation_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            pin_memory=runtime.device.startswith("cuda"),
+            drop_last=False,
+            **loader_worker_options,
+        )
+        if test_dataset is not None:
+            test_loader = imports.torch.utils.data.DataLoader(
+                test_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                pin_memory=runtime.device.startswith("cuda"),
+                drop_last=False,
+                **loader_worker_options,
+            )
+    optimizer = _build_optimizer(
+        torch_module=imports.torch, model=base_model, batch_size=batch_size
+    )
     if request.resume_checkpoint_path is not None:
         resume_state = _load_resume_checkpoint(
             torch_module=imports.torch,
@@ -547,7 +632,9 @@ def run_yolox_detection_training_execution(
             expected_validation_split_name=validation_split_name,
             expected_evaluation_interval=evaluation_interval,
             expected_evaluation_confidence_threshold=(
-                evaluation_confidence_threshold if validation_loader is not None else None
+                evaluation_confidence_threshold
+                if validation_loader is not None
+                else None
             ),
             expected_evaluation_nms_threshold=(
                 evaluation_nms_threshold if validation_loader is not None else None
@@ -586,7 +673,13 @@ def run_yolox_detection_training_execution(
     def _release_current_training_objects() -> None:
         """释放本次训练中的大对象引用。"""
 
-        nonlocal base_model, grad_scaler, model_ema, optimizer, scheduler, training_model
+        nonlocal \
+            base_model, \
+            grad_scaler, \
+            model_ema, \
+            optimizer, \
+            scheduler, \
+            training_model
         nonlocal train_base_dataset, train_dataset, train_loader, validation_dataset
         nonlocal test_dataset, test_loader, validation_loader
         model_ema = None
@@ -609,17 +702,25 @@ def run_yolox_detection_training_execution(
 
     total_sample_count = sum(split.sample_count for split in resolved_splits)
     train_sample_count = len(train_base_dataset)
-    validation_sample_count = len(validation_dataset) if validation_dataset is not None else 0
+    validation_sample_count = (
+        len(validation_dataset) if validation_dataset is not None else 0
+    )
     test_sample_count = len(test_dataset) if test_dataset is not None else 0
     epoch_history: list[dict[str, object]] = []
     validation_epoch_history: list[dict[str, object]] = []
-    best_metric_name = "val_map50_95" if validation_loader is not None else "train_total_loss"
-    best_metric_value: float | None = None if validation_loader is not None else float("inf")
+    best_metric_name = (
+        "val_map50_95" if validation_loader is not None else "train_total_loss"
+    )
+    best_metric_value: float | None = (
+        None if validation_loader is not None else float("inf")
+    )
     best_checkpoint_state: dict[str, object] | None = None
     start_epoch = 0
     if resume_state is not None:
         epoch_history = [dict(item) for item in resume_state.epoch_history]
-        validation_epoch_history = [dict(item) for item in resume_state.validation_history]
+        validation_epoch_history = [
+            dict(item) for item in resume_state.validation_history
+        ]
         best_metric_name = resume_state.best_metric_name or best_metric_name
         best_metric_value = resume_state.best_metric_value
         best_checkpoint_state = (
@@ -657,7 +758,9 @@ def run_yolox_detection_training_execution(
                 num_classes=len(train_category_names),
                 category_ids=validation_dataset.category_ids,
                 category_names=train_category_names,
-                annotation_file=_get_yolox_detection_evaluation_annotation_file(validation_dataset),
+                annotation_file=_get_yolox_detection_evaluation_annotation_file(
+                    validation_dataset
+                ),
                 score_threshold=evaluation_confidence_threshold,
                 nms_threshold=evaluation_nms_threshold,
             )
@@ -678,7 +781,9 @@ def run_yolox_detection_training_execution(
                 nms_threshold=evaluation_nms_threshold,
             )
         else:
-            raise TypeError(f"不支持的 YOLOX validation dataset 类型: {type(validation_dataset)!r}")
+            raise TypeError(
+                f"不支持的 YOLOX validation dataset 类型: {type(validation_dataset)!r}"
+            )
         validation_metrics.update(
             {
                 "map50": detection_metrics.map50,
@@ -718,6 +823,7 @@ def run_yolox_detection_training_execution(
                 batch_size=batch_size,
                 max_epochs=max_epochs,
                 evaluation_interval=evaluation_interval,
+                checkpoint_interval=read_training_checkpoint_interval(extra_options),
                 train_split_name=train_split.name,
                 validation_split_name=validation_split_name,
                 validation_sample_count=validation_sample_count,
@@ -835,9 +941,7 @@ def run_yolox_detection_training_execution(
             )
         else:
             _release_current_training_objects()
-            raise TypeError(
-                f"不支持的 YOLOX test dataset 类型: {type(test_dataset)!r}"
-            )
+            raise TypeError(f"不支持的 YOLOX test dataset 类型: {type(test_dataset)!r}")
         test_metrics.update(
             {
                 "map50": test_detection_metrics.map50,
@@ -877,8 +981,12 @@ def run_yolox_detection_training_execution(
         device_ids=runtime.device_ids,
         distributed_mode=runtime.distributed_mode,
         precision=precision,
-        validation_split_name=validation_split.name if validation_split is not None else None,
-        validation_sample_count=len(validation_dataset) if validation_dataset is not None else 0,
+        validation_split_name=validation_split.name
+        if validation_split is not None
+        else None,
+        validation_sample_count=len(validation_dataset)
+        if validation_dataset is not None
+        else 0,
         test_split_name=test_split.name if test_split is not None else None,
         test_sample_count=test_sample_count,
         parameter_count=int(parameter_count),
@@ -990,7 +1098,9 @@ def _resolve_training_runtime(
         )
 
     available_gpu_count = int(imports.torch.cuda.device_count())
-    gpu_count = requested_gpu_count or _read_int_option(extra_options, "gpu_count", default=1)
+    gpu_count = requested_gpu_count or _read_int_option(
+        extra_options, "gpu_count", default=1
+    )
     if gpu_count < 1:
         raise InvalidRequestError("gpu_count 必须大于 0")
     if gpu_count > 1:
@@ -1044,22 +1154,24 @@ def _resolve_precision(
 ) -> str:
     """解析当前训练应使用的 precision。"""
 
-    precision = requested_precision or _read_str_option(extra_options, "precision") or "fp32"
-    if precision not in {"fp8", "fp16", "fp32"}:
+    legacy_precision = requested_precision or _read_str_option(
+        extra_options, "precision"
+    )
+    if legacy_precision == "fp8":
         raise InvalidRequestError(
-            "precision 必须是 fp8、fp16 或 fp32",
-            details={"precision": precision},
+            "当前 YOLOX core 训练暂不支持 fp8，当前可用值为 fp16 或 fp32"
         )
-    if precision == "fp8":
-        raise InvalidRequestError("当前 YOLOX core 训练暂不支持 fp8，当前可用值为 fp16 或 fp32")
-    if precision == "fp16" and not device.startswith("cuda"):
-        raise InvalidRequestError("fp16 训练需要 CUDA 环境")
-    if precision == "fp16" and not hasattr(imports.torch, "autocast"):
-        raise ServiceConfigurationError("当前 torch 版本缺少 autocast，无法执行 fp16 训练")
-    return precision
+    return resolve_training_amp_runtime(
+        torch_module=imports.torch,
+        device_name=device,
+        requested_precision=legacy_precision,
+        extra_options=extra_options,
+    ).precision
 
 
-def _read_bool_option(extra_options: dict[str, object], key: str, *, default: bool) -> bool:
+def _read_bool_option(
+    extra_options: dict[str, object], key: str, *, default: bool
+) -> bool:
     """从 extra_options 中读取可选布尔值。"""
 
     value = extra_options.get(key)
@@ -1092,7 +1204,9 @@ def _read_float_pair_option(
     return default
 
 
-def _read_float_option(extra_options: dict[str, object], key: str, *, default: float) -> float:
+def _read_float_option(
+    extra_options: dict[str, object], key: str, *, default: float
+) -> float:
     """从 extra_options 中读取可选浮点数。"""
 
     value = extra_options.get(key)
@@ -1101,7 +1215,9 @@ def _read_float_option(extra_options: dict[str, object], key: str, *, default: f
     return default
 
 
-def _read_int_option(extra_options: dict[str, object], key: str, *, default: int) -> int:
+def _read_int_option(
+    extra_options: dict[str, object], key: str, *, default: int
+) -> int:
     """从 extra_options 中读取可选整数。"""
 
     value = extra_options.get(key)
@@ -1117,5 +1233,3 @@ def _read_str_option(extra_options: dict[str, object], key: str) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
-
-

@@ -18,19 +18,36 @@ from tests.integration.model_task_e2e_matrix import (
     SUPPORTED_MODEL_TASK_PAIRS,
     build_model_task_matrix,
     parse_args,
+    resolve_pretrained_warm_start_model_version_id,
+    resolve_dataset_dir_override,
     select_matrix_cases,
     validate_case_result,
 )
 from tests.integration.yolo_model_full_chain_smoke import (
     ManagedProcess,
+    build_default_task_cases,
     build_e2e_process_environment,
     collect_generated_working_directory_artifacts,
     extract_sample_image_from_archive,
     snapshot_working_directory_artifacts,
     start_process,
     stop_managed_processes,
+    submit_training_task,
     validate_task_case_source,
 )
+
+
+class _RecordingApiClient:
+    """记录 E2E helper 发出的 API 请求。"""
+
+    def __init__(self) -> None:
+        self.path = ""
+        self.payload: dict[str, object] = {}
+
+    def post(self, path: str, *, json: dict[str, object]) -> dict[str, object]:
+        self.path = path
+        self.payload = json
+        return {"task_id": "task-1"}
 
 
 def test_e2e_process_environment_isolates_database_queue_and_ipc(
@@ -111,10 +128,17 @@ def test_e2e_matrix_matches_all_public_training_combinations() -> None:
 
 
 def test_e2e_matrix_uses_existing_sources_and_model_native_exports() -> None:
+    default_cases = build_default_task_cases()
+    assert default_cases["detection"].dataset_dir is not None
+    assert default_cases["detection"].dataset_dir.name == "barcodeqrcode"
+    assert default_cases["pose"].dataset_dir is not None
+    assert default_cases["pose"].dataset_dir.name == "hand-keypoints-clean-v1"
+    assert default_cases["obb"].dataset_dir is not None
+    assert default_cases["obb"].dataset_dir.name == "rotated-components-v1"
     for item in build_model_task_matrix():
         validate_task_case_source(item.task_case)
         if item.task_case.task_type == "obb":
-            assert item.task_case.import_format == "dota"
+            assert item.task_case.import_format is None
         if item.model_type in {"yolox", "rfdetr"}:
             assert item.task_case.export_format.startswith("coco-")
         elif item.task_case.task_type == "classification":
@@ -134,6 +158,237 @@ def test_e2e_matrix_defaults_to_three_conversions_and_full_scope() -> None:
     assert len(selected) == 18
     assert args.skip_deployment is False
     assert args.training_device == "auto"
+    assert args.enable_augmentation is False
+    assert args.evaluation_interval == 1
+    assert args.model_scale is None
+    assert args.input_size is None
+    assert args.use_pretrained_warm_start is False
+    assert args.training_precision == "auto"
+    assert args.batch_mode == "auto"
+    assert args.batch_target_memory_fraction == 0.6
+    assert args.batch_minimum_size == 1
+    assert args.batch_maximum_size is None
+    assert args.batch_recover_on_oom is True
+    assert args.batch_max_oom_retries == 3
+    assert args.checkpoint_interval == 5
+    assert args.checkpoint_keep_periodic == 2
+    assert args.training_num_workers == 0
+    assert args.training_prefetch_factor == 2
+    assert args.dataset_dir is None
+
+
+def test_e2e_matrix_accepts_explicit_accuracy_benchmark_options() -> None:
+    """真实准确率基准不得被 smoke 的禁用增强和 nano 默认值锁死。"""
+
+    args = parse_args(
+        [
+            "--models",
+            "yolov8",
+            "yolo11",
+            "yolo26",
+            "--tasks",
+            "segmentation",
+            "--model-scale",
+            "m",
+            "--input-size",
+            "640",
+            "640",
+            "--enable-augmentation",
+            "--evaluation-interval",
+            "5",
+            "--use-pretrained-warm-start",
+            "--training-precision",
+            "fp16",
+            "--training-num-workers",
+            "8",
+            "--training-prefetch-factor",
+            "4",
+            "--batch-target-memory-fraction",
+            "0.75",
+            "--batch-minimum-size",
+            "2",
+            "--batch-maximum-size",
+            "32",
+            "--batch-max-oom-retries",
+            "4",
+            "--checkpoint-interval",
+            "10",
+            "--checkpoint-keep-periodic",
+            "3",
+        ]
+    )
+
+    assert args.model_scale == "m"
+    assert args.input_size == [640, 640]
+    assert args.enable_augmentation is True
+    assert args.evaluation_interval == 5
+    assert args.use_pretrained_warm_start is True
+    assert args.training_precision == "fp16"
+    assert args.training_num_workers == 8
+    assert args.training_prefetch_factor == 4
+    assert args.batch_target_memory_fraction == 0.75
+    assert args.batch_minimum_size == 2
+    assert args.batch_maximum_size == 32
+    assert args.batch_max_oom_retries == 4
+    assert args.checkpoint_interval == 10
+    assert args.checkpoint_keep_periodic == 3
+
+
+def test_e2e_matrix_resolves_single_task_dataset_override(tmp_path: Path) -> None:
+    """精度矩阵可让多个 model family 共用一个显式全量数据集。"""
+
+    selected = select_matrix_cases(
+        model_types={"yolov8", "yolo11", "yolo26"},
+        task_types={"pose"},
+    )
+
+    assert resolve_dataset_dir_override(
+        dataset_dir=tmp_path,
+        selected_cases=selected,
+    ) == tmp_path.resolve()
+
+
+def test_e2e_matrix_rejects_dataset_override_for_multiple_tasks(
+    tmp_path: Path,
+) -> None:
+    """同一目录不得被静默解释成多个不兼容 task 的数据源。"""
+
+    selected = select_matrix_cases(
+        model_types={"yolov8"},
+        task_types={"pose", "segmentation"},
+    )
+
+    with pytest.raises(ValueError, match="一个 task"):
+        resolve_dataset_dir_override(
+            dataset_dir=tmp_path,
+            selected_cases=selected,
+        )
+
+
+def test_e2e_matrix_rejects_missing_dataset_override(tmp_path: Path) -> None:
+    selected = select_matrix_cases(
+        model_types={"yolov8"},
+        task_types={"pose"},
+    )
+
+    with pytest.raises(ValueError, match="目录不存在"):
+        resolve_dataset_dir_override(
+            dataset_dir=tmp_path / "missing",
+            selected_cases=selected,
+        )
+
+
+def test_e2e_matrix_resolves_only_supported_yolo_pretrained_versions() -> None:
+    assert resolve_pretrained_warm_start_model_version_id(
+        model_type="yolo11",
+        task_type="segmentation",
+        model_scale="m",
+    ) == "mv-pretrained-yolo11-segmentation-m"
+
+    with pytest.raises(ValueError, match="仅支持"):
+        resolve_pretrained_warm_start_model_version_id(
+            model_type="rfdetr",
+            task_type="segmentation",
+            model_scale="m",
+        )
+
+
+def test_e2e_training_submission_forwards_performance_and_warm_start_options() -> None:
+    client = _RecordingApiClient()
+
+    submit_training_task(
+        client=client,
+        case=build_default_task_cases()["segmentation"],
+        project_id="project-1",
+        model_type="yolov8",
+        model_scale="m",
+        dataset_export_id="dataset-export-1",
+        manifest_key="manifest.json",
+        output_model_name="model-1",
+        max_epochs=200,
+        batch_size=16,
+        training_device="cuda:0",
+        enable_augmentation=True,
+        evaluation_interval=5,
+        warm_start_model_version_id="mv-pretrained-yolov8-segmentation-m",
+        training_precision="fp16",
+        training_num_workers=8,
+        training_prefetch_factor=4,
+    )
+
+    assert client.path == "/models/segmentation/training-tasks"
+    assert client.payload["execution"] == {
+        "max_epochs": 200,
+        "input_size": {"width": 384, "height": 256},
+        "batch": {
+            "mode": "fixed",
+            "size": 16,
+            "target_memory_fraction": 0.6,
+            "minimum_size": 1,
+            "maximum_size": 16,
+            "recover_on_oom": True,
+            "max_oom_retries": 3,
+        },
+        "amp": {"mode": "enabled", "dtype": "fp16"},
+        "checkpoint": {"interval_epochs": 5, "keep_periodic": 2},
+        "validation": {"interval_epochs": 5},
+    }
+    assert client.payload["warm_start_model_version_id"] == (
+        "mv-pretrained-yolov8-segmentation-m"
+    )
+    assert client.payload["parameters"] == {
+        "runtime": {
+            "device": "cuda:0",
+            "num_workers": 8,
+            "prefetch_factor": 4,
+        },
+        "augmentation": {"enabled": True},
+    }
+
+
+def test_e2e_training_submission_supports_auto_batch_oom_and_amp() -> None:
+    """真实矩阵必须能走自动 batch、OOM 恢复和自动 AMP 正式 schema。"""
+
+    client = _RecordingApiClient()
+
+    submit_training_task(
+        client=client,
+        case=build_default_task_cases()["pose"],
+        project_id="project-1",
+        model_type="yolo11",
+        model_scale="m",
+        dataset_export_id="dataset-export-1",
+        manifest_key="manifest.json",
+        output_model_name="model-1",
+        max_epochs=100,
+        batch_size=1,
+        training_device="cuda:0",
+        training_precision="auto",
+        batch_mode="auto",
+        batch_target_memory_fraction=0.75,
+        batch_minimum_size=2,
+        batch_maximum_size=32,
+        batch_recover_on_oom=True,
+        batch_max_oom_retries=4,
+        checkpoint_interval=5,
+        checkpoint_keep_periodic=3,
+    )
+
+    execution = client.payload["execution"]
+    assert execution["batch"] == {
+        "mode": "auto",
+        "size": None,
+        "target_memory_fraction": 0.75,
+        "minimum_size": 2,
+        "maximum_size": 32,
+        "recover_on_oom": True,
+        "max_oom_retries": 4,
+    }
+    assert execution["amp"] == {"mode": "auto", "dtype": "auto"}
+    assert execution["checkpoint"] == {
+        "interval_epochs": 5,
+        "keep_periodic": 3,
+    }
 
 
 def test_e2e_matrix_result_gate_requires_build_and_both_runtime_modes() -> None:

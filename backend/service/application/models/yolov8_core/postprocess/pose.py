@@ -14,6 +14,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
 )
 
 
+MAX_YOLOV8_POSE_DETECTIONS = 300
+
+
 @dataclass(frozen=True)
 class YoloV8PosePostprocessKeypoint:
     """YOLOv8 pose 单个关键点后处理结果。"""
@@ -135,7 +138,7 @@ def build_yolov8_pose_postprocess_instances(
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
-    return tuple(results), default_kpt_shape
+    return tuple(results[:MAX_YOLOV8_POSE_DETECTIONS]), default_kpt_shape
 
 
 def _convert_yolov8_pose_xywh_to_xyxy(

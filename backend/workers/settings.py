@@ -226,6 +226,16 @@ class BackendWorkerTaskManagerConfig(BaseModel):
         return tuple(normalized_items)
 
 
+class BackendWorkerTrainingTelemetryConfig(BaseModel):
+    """描述 worker 写入本机 mmap 训练遥测 ring 的参数。"""
+
+    enabled: bool = True
+    root_dir: str = "./data/runtime/training-telemetry"
+    slot_count: int = Field(default=512, gt=0)
+    payload_capacity_bytes: int = Field(default=16 * 1024, ge=1024)
+    min_publish_interval_seconds: float = Field(default=0.1, ge=0)
+
+
 class BackendWorkerSettings(BaseSettings):
     """描述 backend-worker 启动阶段使用的统一配置。
 
@@ -256,6 +266,9 @@ class BackendWorkerSettings(BaseSettings):
     queue: BackendWorkerQueueConfig = Field(default_factory=BackendWorkerQueueConfig)
     task_manager: BackendWorkerTaskManagerConfig = Field(
         default_factory=BackendWorkerTaskManagerConfig
+    )
+    training_telemetry: BackendWorkerTrainingTelemetryConfig = Field(
+        default_factory=BackendWorkerTrainingTelemetryConfig
     )
     async_inference_gateway_request_timeout_seconds: float = Field(
         default=30.0,

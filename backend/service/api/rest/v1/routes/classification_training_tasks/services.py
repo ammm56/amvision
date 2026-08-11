@@ -23,6 +23,9 @@ from backend.service.application.models.training.yolo26_classification_training_
     Yolo26ClassificationTrainingTaskRequest,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
+from backend.service.api.rest.v1.routes.training_execution_schemas import (
+    merge_training_execution_options,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -74,12 +77,19 @@ def submit_classification_training_task(
             dataset_export_id=body.dataset_export_id,
             dataset_export_manifest_key=body.dataset_export_manifest_key,
             warm_start_model_version_id=body.warm_start_model_version_id,
-            evaluation_interval=body.evaluation_interval,
-            max_epochs=body.max_epochs,
-            batch_size=body.batch_size,
-            input_size=body.input_size.hw if body.input_size is not None else None,
-            precision=body.precision,
-            extra_options=body.parameters.to_execution_options(),
+            evaluation_interval=body.execution.validation.interval_epochs,
+            max_epochs=body.execution.max_epochs,
+            batch_size=body.execution.fixed_batch_size,
+            input_size=(
+                body.execution.input_size.hw
+                if body.execution.input_size is not None
+                else None
+            ),
+            precision=body.execution.requested_precision,
+            extra_options=merge_training_execution_options(
+                execution=body.execution,
+                model_options=body.parameters.to_execution_options(),
+            ),
             display_name=body.display_name,
             model_type=model_type,
         ),

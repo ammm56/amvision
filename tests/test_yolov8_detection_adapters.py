@@ -654,6 +654,41 @@ def test_yolov8_detection_training_epoch_runner_accepts_dataloader_batches() -> 
     assert torch.equal(model.weight.detach(), initial_weight) is False
 
 
+def test_yolov8_detection_amp_skip_does_not_update_ema_or_scheduler_state() -> None:
+    """GradScaler overflow 跳步后 detection 必须保留 EMA 与成功 step 计数。"""
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    scaler = _SkippingGradScaler()
+    ema = _CountingEma()
+    initial_weight = model.weight.detach().clone()
+
+    result = run_yolov8_detection_training_epoch(
+        torch_module=torch,
+        model=model,
+        samples=(1.0,),
+        batch_size=1,
+        input_size=(1, 1),
+        epoch=1,
+        max_epochs=1,
+        global_iteration=0,
+        total_iterations=1,
+        optimizer=optimizer,
+        scaler=scaler,
+        autocast_context=nullcontext,
+        build_batch=_build_linear_training_batch,
+        unwrap_outputs=lambda output: {"prediction": output},
+        compute_loss=_compute_linear_training_loss,
+        grad_clip_norm=10.0,
+        ema=ema,
+    )
+
+    assert result.successful_optimizer_steps == 0
+    assert result.skipped_optimizer_steps == 1
+    assert ema.update_count == 0
+    assert torch.equal(model.weight.detach(), initial_weight)
+
+
 def test_yolov8_training_task_service_rejects_unsupported_model_scale(tmp_path: Path) -> None:
     """验证 YOLOv8 detection 训练入口会拒绝不支持的模型 scale。"""
 
@@ -704,6 +739,33 @@ class _NoopGradScaler:
         """加载空的 scaler 状态。"""
 
         del state_dict
+
+
+class _SkippingGradScaler(_NoopGradScaler):
+    """模拟真实 GradScaler 因 overflow 跳过 optimizer.step。"""
+
+    def __init__(self) -> None:
+        self.scale_value = 2.0
+
+    def get_scale(self) -> float:
+        return self.scale_value
+
+    def step(self, optimizer: torch.optim.Optimizer) -> None:
+        del optimizer
+
+    def update(self) -> None:
+        self.scale_value = 1.0
+
+
+class _CountingEma:
+    """记录 EMA 更新次数。"""
+
+    def __init__(self) -> None:
+        self.update_count = 0
+
+    def update(self, model: torch.nn.Module) -> None:
+        del model
+        self.update_count += 1
 
 
 class _DetectionDataImports:

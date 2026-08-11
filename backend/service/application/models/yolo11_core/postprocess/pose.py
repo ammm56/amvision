@@ -14,6 +14,9 @@ from backend.service.application.models.yolo_core_common.geometry import (
 )
 
 
+MAX_YOLO11_POSE_DETECTIONS = 300
+
+
 @dataclass(frozen=True)
 class Yolo11PosePostprocessKeypoint:
     """YOLO11 pose 单个关键点后处理结果。"""
@@ -137,7 +140,7 @@ def build_yolo11_pose_postprocess_instances(
                 )
             )
     results.sort(key=lambda item: item.score, reverse=True)
-    return tuple(results), default_kpt_shape
+    return tuple(results[:MAX_YOLO11_POSE_DETECTIONS]), default_kpt_shape
 
 
 def _convert_yolo11_pose_xywh_to_xyxy(
