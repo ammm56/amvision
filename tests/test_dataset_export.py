@@ -835,6 +835,7 @@ def test_export_dataset_generates_yolo_pose_layout(tmp_path: Path) -> None:
         dataset_id="dataset-yolo-pose-1",
         project_id="project-1",
         task_type="pose",
+        metadata={"keypoint_flip_indices": [1, 0]},
         categories=(DatasetCategory(category_id=5, name="hand"),),
         samples=(
             DatasetSample(
@@ -882,6 +883,7 @@ def test_export_dataset_generates_yolo_pose_layout(tmp_path: Path) -> None:
     )
     assert manifest_payload["format_id"] == YOLO_POSE_DATASET_FORMAT
     assert manifest_payload["metadata"]["kpt_shape"] == [2, 3]
+    assert manifest_payload["metadata"]["keypoint_flip_indices"] == [1, 0]
     assert dataset_storage.resolve(
         f"{export_result.export_path}/images/train/hand-1.jpg"
     ).is_file()

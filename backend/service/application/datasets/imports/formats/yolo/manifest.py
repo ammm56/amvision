@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.domain.datasets.pose_topology import normalize_pose_flip_indices
 
 
 class YoloManifestMixin:
@@ -331,3 +332,29 @@ class YoloManifestMixin:
                 details={"kpt_shape": raw_pose_shape},
             )
         return (keypoint_count, point_dimensions)
+
+    def _read_yolo_pose_flip_indices(
+        self,
+        config_payload: dict[str, object],
+        *,
+        pose_shape: tuple[int, int] | None,
+    ) -> tuple[int, ...] | None:
+        """读取并严格校验 YOLO pose 配置中的 flip_idx。"""
+
+        raw_indices = config_payload.get("flip_idx")
+        if raw_indices is None:
+            return None
+        if pose_shape is None:
+            raise InvalidRequestError(
+                "YOLO pose 声明 flip_idx 时必须同时声明 kpt_shape"
+            )
+        try:
+            return normalize_pose_flip_indices(
+                raw_indices,
+                keypoint_count=pose_shape[0],
+            )
+        except ValueError as error:
+            raise InvalidRequestError(
+                "YOLO pose flip_idx 无效",
+                details={"reason": str(error)},
+            ) from error

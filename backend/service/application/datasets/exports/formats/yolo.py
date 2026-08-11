@@ -33,6 +33,7 @@ from backend.service.domain.datasets.dataset_version import (
     PoseAnnotation,
 )
 from backend.service.domain.datasets.coordinates import PixelBox
+from backend.service.domain.datasets.pose_topology import normalize_pose_flip_indices
 
 if TYPE_CHECKING:
     from backend.service.application.datasets.exports.contracts import (
@@ -96,6 +97,10 @@ class YoloExportMixin:
             )
         elif request.format_id == YOLO_POSE_DATASET_FORMAT:
             pose_keypoint_shape = _resolve_pose_keypoint_shape(split_samples)
+            keypoint_flip_indices = normalize_pose_flip_indices(
+                dataset_version.metadata.get("keypoint_flip_indices"),
+                keypoint_count=pose_keypoint_shape[0],
+            )
             manifest = YoloPoseExportManifest(
                 format_id=request.format_id,
                 dataset_version_id=request.dataset_version_id,
@@ -104,6 +109,11 @@ class YoloExportMixin:
                 metadata={
                     **metadata,
                     "kpt_shape": [pose_keypoint_shape[0], pose_keypoint_shape[1]],
+                    "keypoint_flip_indices": (
+                        list(keypoint_flip_indices)
+                        if keypoint_flip_indices is not None
+                        else None
+                    ),
                 },
             )
         else:

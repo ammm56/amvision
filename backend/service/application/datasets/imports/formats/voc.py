@@ -132,15 +132,22 @@ class VocDatasetImportParserMixin:
 
     @staticmethod
     def _is_voc_shard_root(candidate: Path) -> bool:
-        """判断目录是否同时包含 VOC 图片、标注和 split 根。"""
+        """判断目录是否包含 detection 或 instance segmentation VOC 签名。"""
 
         annotations_dir = candidate / "Annotations"
-        return (
+        detection_layout = (
             annotations_dir.is_dir()
             and (candidate / "JPEGImages").is_dir()
             and (candidate / "ImageSets" / "Main").is_dir()
             and any(annotations_dir.glob("*.xml"))
         )
+        segmentation_layout = (
+            (candidate / "JPEGImages").is_dir()
+            and (candidate / "SegmentationClass").is_dir()
+            and (candidate / "SegmentationObject").is_dir()
+            and (candidate / "ImageSets" / "Segmentation").is_dir()
+        )
+        return detection_layout or segmentation_layout
 
     def _parse_voc_detection(
         self,
@@ -384,7 +391,12 @@ class VocDatasetImportParserMixin:
             xml_root = ElementTree.fromstring(
                 self._read_import_text(xml_path, file_kind="label")
             )
-        except (ElementTree.ParseError, OSError, UnicodeError, InvalidRequestError) as error:
+        except (
+            ElementTree.ParseError,
+            OSError,
+            UnicodeError,
+            InvalidRequestError,
+        ) as error:
             issues.add(
                 DatasetIssue(
                     code="VOC_XML_INVALID",
@@ -743,10 +755,11 @@ class VocDatasetImportParserMixin:
         dataset_root: Path,
         shard: VocDatasetShard,
         issues: DatasetIssueCollector,
+        image_set_name: str = "Main",
     ) -> VocSplitResolution:
         """解析 train/val/test/trainval，保持 train/val/test 互斥。"""
 
-        image_sets_dir = shard.root / "ImageSets" / "Main"
+        image_sets_dir = shard.root / "ImageSets" / image_set_name
         split_members: dict[str, set[str]] = {}
         manifest_files: list[Path] = []
         for split_name in ("train", "val", "test", "trainval"):
@@ -764,7 +777,7 @@ class VocDatasetImportParserMixin:
                 DatasetIssue(
                     code="VOC_SPLIT_FILE_MISSING",
                     severity="error",
-                    message="VOC ImageSets/Main 缺少可用 split 文件",
+                    message=f"VOC ImageSets/{image_set_name} 缺少可用 split 文件",
                     file=self._relative_path(dataset_root, image_sets_dir),
                     expected=["train.txt", "val.txt", "trainval.txt", "test.txt"],
                 )
@@ -872,7 +885,11 @@ class VocDatasetImportParserMixin:
             sample_name = line.strip()
             if not sample_name:
                 continue
-            if len(sample_name.split()) != 1 or "/" in sample_name or "\\" in sample_name:
+            if (
+                len(sample_name.split()) != 1
+                or "/" in sample_name
+                or "\\" in sample_name
+            ):
                 issues.add(
                     DatasetIssue(
                         code="VOC_SPLIT_LINE_INVALID",

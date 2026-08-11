@@ -29,6 +29,10 @@ from backend.contracts.datasets.exports.voc_detection_export import (
     VocDetectionAnnotationPayload,
     VocDetectionExportManifest,
 )
+from backend.contracts.datasets.exports.voc_instance_segmentation_export import (
+    VocInstanceSegmentationAnnotationPayload,
+    VocInstanceSegmentationExportManifest,
+)
 from backend.contracts.datasets.exports.yolo_export import (
     YoloDetectionExportManifest,
     YoloInstanceSegmentationExportManifest,
@@ -40,6 +44,7 @@ from backend.contracts.datasets.exports.yolo_export import (
 DatasetExportFormatManifest = (
     CocoDetectionExportManifest
     | VocDetectionExportManifest
+    | VocInstanceSegmentationExportManifest
     | ImageNetClassificationExportManifest
     | DotaObbExportManifest
     | YoloDetectionExportManifest
@@ -52,6 +57,7 @@ DatasetExportFormatManifest = (
 DatasetExportAnnotationPayload = (
     CocoDetectionAnnotationPayload
     | VocDetectionAnnotationPayload
+    | VocInstanceSegmentationAnnotationPayload
     | ImageNetClassificationAnnotationPayload
     | DotaObbAnnotationPayload
 )

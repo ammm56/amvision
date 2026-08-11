@@ -66,6 +66,14 @@ class YoloDatasetImportParserMixin(
             raise InvalidRequestError("YOLO 数据集缺少可用的图片 split")
 
         pose_shape = self._read_yolo_pose_shape(config_payload)
+        pose_flip_indices = (
+            self._read_yolo_pose_flip_indices(
+                config_payload,
+                pose_shape=pose_shape,
+            )
+            if task_type == "pose"
+            else None
+        )
         raw_rows: list[dict[str, object]] = []
         observed_class_ids: set[int] = set()
         image_refs: list[str] = []
@@ -310,6 +318,11 @@ class YoloDatasetImportParserMixin(
                 "annotation_root": annotation_root,
                 "split_names": list(self._collect_split_names(parsed_samples)),
                 "split_counts": split_counts,
+                **(
+                    {"keypoint_flip_indices": list(pose_flip_indices)}
+                    if pose_flip_indices is not None
+                    else {}
+                ),
             },
             validation_report={
                 "status": "ok",

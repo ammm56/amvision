@@ -23,6 +23,7 @@ DatasetFormatTaskType = Literal[
 DatasetExportFormatId = Literal[
     "coco-detection-v1",
     "voc-detection-v1",
+    "voc-instance-seg-v1",
     "yolo-detection-v1",
     "coco-instance-seg-v1",
     "yolo-instance-seg-v1",
@@ -36,6 +37,9 @@ DatasetExportFormatId = Literal[
 
 COCO_DETECTION_DATASET_FORMAT: Final[DatasetExportFormatId] = "coco-detection-v1"
 VOC_DETECTION_DATASET_FORMAT: Final[DatasetExportFormatId] = "voc-detection-v1"
+VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT: Final[DatasetExportFormatId] = (
+    "voc-instance-seg-v1"
+)
 YOLO_DETECTION_DATASET_FORMAT: Final[DatasetExportFormatId] = "yolo-detection-v1"
 COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT: Final[DatasetExportFormatId] = (
     "coco-instance-seg-v1"
@@ -97,6 +101,15 @@ DATASET_FORMAT_SPECIFICATIONS: Final[tuple[DatasetFormatSpecification, ...]] = (
         coordinate_convention="zero-based-exclusive-default;official-one-based-inclusive-explicit",
         class_index_base=None,
         split_convention="ImageSets/Main",
+    ),
+    DatasetFormatSpecification(
+        format_id=VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        family="voc",
+        task_type="segmentation",
+        annotation_kind="indexed-instance-mask-and-class-mask",
+        coordinate_convention="zero-based-pixel-mask",
+        class_index_base=None,
+        split_convention="ImageSets/Segmentation",
     ),
     DatasetFormatSpecification(
         format_id=YOLO_DETECTION_DATASET_FORMAT,

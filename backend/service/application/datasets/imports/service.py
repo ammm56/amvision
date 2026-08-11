@@ -24,17 +24,30 @@ from backend.service.application.datasets.imports.contracts import (
 from backend.service.application.datasets.imports.annotation_semantics import (
     attach_annotation_semantics_audit,
 )
-from backend.service.application.datasets.imports.formats.coco import CocoDatasetImportParserMixin
+from backend.service.application.datasets.imports.formats.coco import (
+    CocoDatasetImportParserMixin,
+)
 from backend.service.application.datasets.imports.formats.detection import (
     DatasetImportFormatDetectorMixin,
 )
-from backend.service.application.datasets.imports.formats.dota import DotaDatasetImportParserMixin
+from backend.service.application.datasets.imports.formats.dota import (
+    DotaDatasetImportParserMixin,
+)
 from backend.service.application.datasets.imports.formats.imagenet import (
     ImageNetDatasetImportParserMixin,
 )
-from backend.service.application.datasets.imports.formats.voc import VocDatasetImportParserMixin
-from backend.service.application.datasets.imports.formats.yolo import YoloDatasetImportParserMixin
-from backend.service.application.datasets.imports.support import DatasetImportSupportMixin
+from backend.service.application.datasets.imports.formats.voc import (
+    VocDatasetImportParserMixin,
+)
+from backend.service.application.datasets.imports.formats.voc_segmentation import (
+    VocInstanceSegmentationImportParserMixin,
+)
+from backend.service.application.datasets.imports.formats.yolo import (
+    YoloDatasetImportParserMixin,
+)
+from backend.service.application.datasets.imports.support import (
+    DatasetImportSupportMixin,
+)
 from backend.service.application.datasets.imports.version_writer import (
     DatasetImportVersionWriterMixin,
 )
@@ -72,6 +85,7 @@ class SqlAlchemyDatasetImportService(
     DatasetImportFormatDetectorMixin,
     CocoDatasetImportParserMixin,
     VocDatasetImportParserMixin,
+    VocInstanceSegmentationImportParserMixin,
     YoloDatasetImportParserMixin,
     ImageNetDatasetImportParserMixin,
     DotaDatasetImportParserMixin,
@@ -142,7 +156,9 @@ class SqlAlchemyDatasetImportService(
             package_file=package_file,
         )
         try:
-            self._validate_persisted_package(import_layout=import_layout, package_size=package_size)
+            self._validate_persisted_package(
+                import_layout=import_layout, package_size=package_size
+            )
         except ServiceError:
             self.dataset_storage.delete_tree(import_layout.import_path)
             raise
@@ -248,8 +264,13 @@ class SqlAlchemyDatasetImportService(
         current_import = self._get_dataset_import(dataset_import_id)
         import_layout = self._build_import_layout(current_import)
 
-        if current_import.status == "completed" and current_import.dataset_version_id is not None:
-            dataset_version = self._get_dataset_version(current_import.dataset_version_id)
+        if (
+            current_import.status == "completed"
+            and current_import.dataset_version_id is not None
+        ):
+            dataset_version = self._get_dataset_version(
+                current_import.dataset_version_id
+            )
             return DatasetImportResult(
                 dataset_import=current_import,
                 dataset_version=dataset_version,
@@ -273,7 +294,9 @@ class SqlAlchemyDatasetImportService(
         dataset_version_id = self._next_id("dataset-version")
         version_layout: DatasetVersionLayout | None = None
         try:
-            self.dataset_storage.extract_zip(import_layout.package_path, import_layout.extracted_path)
+            self.dataset_storage.extract_zip(
+                import_layout.package_path, import_layout.extracted_path
+            )
             current_import = replace(current_import, status="extracted")
             self._save_dataset_import(current_import)
             self._append_dataset_import_task_event(
@@ -328,7 +351,10 @@ class SqlAlchemyDatasetImportService(
                 dataset_id=request.dataset_id,
                 project_id=request.project_id,
                 categories=parsed_content.categories,
-                samples=tuple(parsed_sample.sample for parsed_sample in version_scoped_content.samples),
+                samples=tuple(
+                    parsed_sample.sample
+                    for parsed_sample in version_scoped_content.samples
+                ),
                 task_type=parsed_content.task_type,
                 metadata={
                     "source_import_id": dataset_import_id,
@@ -347,6 +373,9 @@ class SqlAlchemyDatasetImportService(
                     "pose_category_schemas": parsed_content.detected_profile.get(
                         "pose_category_schemas",
                         {},
+                    ),
+                    "keypoint_flip_indices": parsed_content.detected_profile.get(
+                        "keypoint_flip_indices"
                     ),
                 },
             )
@@ -400,7 +429,9 @@ class SqlAlchemyDatasetImportService(
                         "dataset_version_id": dataset_version_id,
                         "sample_count": len(parsed_content.samples),
                         "category_count": len(parsed_content.categories),
-                        "split_names": list(self._collect_split_names(parsed_content.samples)),
+                        "split_names": list(
+                            self._collect_split_names(parsed_content.samples)
+                        ),
                     },
                 },
             )
@@ -462,7 +493,9 @@ class SqlAlchemyDatasetImportService(
                 "当前导入接口只支持 detection、segmentation、pose、classification、obb",
                 details={
                     "task_type": request.task_type,
-                    "implemented_task_types": list(IMPLEMENTED_DATASET_IMPORT_TASK_TYPES),
+                    "implemented_task_types": list(
+                        IMPLEMENTED_DATASET_IMPORT_TASK_TYPES
+                    ),
                 },
             )
         if request.split_strategy not in (None, "auto", "train", "val", "test"):
@@ -470,8 +503,13 @@ class SqlAlchemyDatasetImportService(
                 "split_strategy 只支持 auto、train、val、test",
                 details={"split_strategy": request.split_strategy},
             )
-        supported_format_types = IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE[request.task_type]
-        if request.format_type is not None and request.format_type not in supported_format_types:
+        supported_format_types = IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE[
+            request.task_type
+        ]
+        if (
+            request.format_type is not None
+            and request.format_type not in supported_format_types
+        ):
             raise InvalidRequestError(
                 "指定 task_type 不支持当前 format_type",
                 details={
@@ -517,14 +555,19 @@ class SqlAlchemyDatasetImportService(
             )
         if request.package_bytes is None:
             raise InvalidRequestError("上传 zip 文件不能为空")
-        if len(request.package_bytes) > self.dataset_storage.settings.max_import_package_bytes:
+        if (
+            len(request.package_bytes)
+            > self.dataset_storage.settings.max_import_package_bytes
+        ):
             raise InvalidRequestError(
                 "上传的数据集压缩包超过大小限制",
                 details={
                     "max_bytes": self.dataset_storage.settings.max_import_package_bytes,
                 },
             )
-        self.dataset_storage.write_bytes(import_layout.package_path, request.package_bytes)
+        self.dataset_storage.write_bytes(
+            import_layout.package_path, request.package_bytes
+        )
         return len(request.package_bytes)
 
     def _validate_persisted_package(
@@ -572,7 +615,9 @@ class SqlAlchemyDatasetImportService(
         """
 
         with self._open_unit_of_work() as unit_of_work:
-            dataset_import = unit_of_work.dataset_imports.get_dataset_import(dataset_import_id)
+            dataset_import = unit_of_work.dataset_imports.get_dataset_import(
+                dataset_import_id
+            )
 
         if dataset_import is None:
             raise ResourceNotFoundError(
@@ -593,7 +638,9 @@ class SqlAlchemyDatasetImportService(
         """
 
         with self._open_unit_of_work() as unit_of_work:
-            dataset_version = unit_of_work.datasets.get_dataset_version(dataset_version_id)
+            dataset_version = unit_of_work.datasets.get_dataset_version(
+                dataset_version_id
+            )
 
         if dataset_version is None:
             raise ResourceNotFoundError(
@@ -603,7 +650,9 @@ class SqlAlchemyDatasetImportService(
 
         return dataset_version
 
-    def _build_import_layout(self, dataset_import: DatasetImport) -> DatasetImportLayout:
+    def _build_import_layout(
+        self, dataset_import: DatasetImport
+    ) -> DatasetImportLayout:
         """根据已保存的 DatasetImport 还原导入目录布局。
 
         参数：
@@ -654,9 +703,13 @@ class SqlAlchemyDatasetImportService(
         class_map_payload = payload.get("class_map", {})
         metadata_payload = payload.get("metadata", {})
         if not isinstance(class_map_payload, dict):
-            raise InvalidRequestError("upload-request.json 中的 class_map 必须是 JSON 对象")
+            raise InvalidRequestError(
+                "upload-request.json 中的 class_map 必须是 JSON 对象"
+            )
         if not isinstance(metadata_payload, dict):
-            raise InvalidRequestError("upload-request.json 中的 metadata 必须是 JSON 对象")
+            raise InvalidRequestError(
+                "upload-request.json 中的 metadata 必须是 JSON 对象"
+            )
 
         format_type = payload.get("format_type")
         if format_type is not None:
@@ -676,7 +729,9 @@ class SqlAlchemyDatasetImportService(
             format_type=format_type,
             task_type=str(payload.get("task_type") or dataset_import.task_type),
             split_strategy=split_strategy,
-            class_map={str(key): str(value) for key, value in class_map_payload.items()},
+            class_map={
+                str(key): str(value) for key, value in class_map_payload.items()
+            },
             metadata={str(key): value for key, value in metadata_payload.items()},
         )
 
@@ -711,7 +766,11 @@ class SqlAlchemyDatasetImportService(
         """
 
         present_splits = {sample.split for sample in dataset_version.samples}
-        return tuple(split_name for split_name in ("train", "val", "test") if split_name in present_splits)
+        return tuple(
+            split_name
+            for split_name in ("train", "val", "test")
+            if split_name in present_splits
+        )
 
     def _parse_dataset_content(
         self,
@@ -750,11 +809,18 @@ class SqlAlchemyDatasetImportService(
                 requested_class_map=request.class_map,
             )
         elif format_type == "voc":
-            parsed_content = self._parse_voc_detection(
-                dataset_root=dataset_root,
-                split_strategy=request.split_strategy,
-                requested_class_map=request.class_map,
-            )
+            if request.task_type == "segmentation":
+                parsed_content = self._parse_voc_instance_segmentation(
+                    dataset_root=dataset_root,
+                    split_strategy=request.split_strategy,
+                    requested_class_map=request.class_map,
+                )
+            else:
+                parsed_content = self._parse_voc_detection(
+                    dataset_root=dataset_root,
+                    split_strategy=request.split_strategy,
+                    requested_class_map=request.class_map,
+                )
         elif format_type == "yolo":
             parsed_content = self._parse_yolo_dataset(
                 task_type=request.task_type,
@@ -852,7 +918,9 @@ class SqlAlchemyDatasetImportService(
                 "details": error.details,
             },
         }
-        self.dataset_storage.write_json(import_layout.validation_report_path, failure_report)
+        self.dataset_storage.write_json(
+            import_layout.validation_report_path, failure_report
+        )
         self.dataset_storage.write_text(
             import_layout.import_log_path,
             f"dataset_import_id={initial_import.dataset_import_id}\nstatus=failed\nmessage={error.message}\n",
@@ -1020,5 +1088,3 @@ class SqlAlchemyDatasetImportService(
             raise
         finally:
             unit_of_work.close()
-
-

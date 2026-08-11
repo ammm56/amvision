@@ -17,6 +17,7 @@ from backend.contracts.datasets.exports.coco_keypoints_export import (
 from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_OBB_DATASET_FORMAT,
@@ -32,10 +33,15 @@ from backend.service.application.datasets.exports.formats.imagenet import (
 )
 from backend.service.application.datasets.exports.formats.voc import VocExportMixin
 from backend.service.application.datasets.exports.formats.yolo import YoloExportMixin
-from backend.service.domain.datasets.dataset_version import DatasetSample, DatasetVersion
+from backend.service.domain.datasets.dataset_version import (
+    DatasetSample,
+    DatasetVersion,
+)
 
 if TYPE_CHECKING:
-    from backend.service.application.datasets.exports.contracts import DatasetExportResult
+    from backend.service.application.datasets.exports.contracts import (
+        DatasetExportResult,
+    )
 
 
 class DatasetExportFileWriterMixin(
@@ -77,7 +83,10 @@ class DatasetExportFileWriterMixin(
             )
             return
 
-        if export_result.format_id == VOC_DETECTION_DATASET_FORMAT:
+        if export_result.format_id in {
+            VOC_DETECTION_DATASET_FORMAT,
+            VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        }:
             self._write_voc_export_files(
                 dataset_version=dataset_version,
                 split_samples=split_samples,

@@ -28,9 +28,9 @@ class YoloObbAnnotationMixin:
         """解析一行 YOLO OBB 标注。"""
 
         parts = line.split()
-        if len(parts) < 9:
+        if len(parts) != 9:
             raise InvalidRequestError(
-                "YOLO OBB 标注行至少需要 class_id 和 8 个四角点坐标",
+                "YOLO OBB 标注行必须恰好包含 class_id 和 8 个四角点坐标",
                 details={
                     "label_file": self._relative_path_from_any(
                         label_file,
@@ -38,6 +38,8 @@ class YoloObbAnnotationMixin:
                         label_file.parent,
                     ),
                     "line_index": line_index,
+                    "expected_token_count": 9,
+                    "actual_token_count": len(parts),
                 },
             )
         class_id = self._normalize_yolo_class_id(
@@ -65,9 +67,5 @@ class YoloObbAnnotationMixin:
             "bbox_xywh": _build_bbox_from_polygon(polygon_xy),
             "polygon_xy": polygon_xy,
             "area": _compute_polygon_area(polygon_xy),
-            "metadata": {
-                "extra_values": parts[9:],
-            }
-            if len(parts) > 9
-            else {},
+            "metadata": {},
         }

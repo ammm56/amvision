@@ -1214,6 +1214,7 @@ def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) ->
         assert annotation.keypoints is not None
         assert annotation.num_keypoints == 2
         assert annotation.keypoints[:6] == [10.0, 16.0, 2.0, 40.0, 48.0, 1.0]
+        assert dataset_version.metadata["keypoint_flip_indices"] == [1, 0]
         assert dataset_import.validation_report["task_type"] == "pose"
     finally:
         session_factory.engine.dispose()
@@ -1266,6 +1267,50 @@ def test_import_dataset_zip_creates_yolo_obb_dataset_version(tmp_path: Path) -> 
         assert round(annotation.bbox_xywh[2], 4) == 30.0
         assert round(annotation.bbox_xywh[3], 4) == 20.0
         assert dataset_import.validation_report["task_type"] == "obb"
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_import_dataset_zip_rejects_yolo_obb_extra_tokens(tmp_path: Path) -> None:
+    """YOLO OBB v1 必须严格为 class id 加四个角点，不能静默保留额外 token。"""
+
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/datasets/imports",
+                headers=_build_dataset_write_headers(),
+                data={
+                    "project_id": "project-1",
+                    "dataset_id": "dataset-yolo-obb-extra",
+                    "format_type": "yolo",
+                    "task_type": "obb",
+                },
+                files={
+                    "package": (
+                        "yolo-obb-extra.zip",
+                        _build_yolo_obb_zip_bytes(extra_tokens=" confidence"),
+                        "application/zip",
+                    ),
+                },
+            )
+
+        assert response.status_code == 202
+        assert _run_import_worker_once(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+            queue_backend=queue_backend,
+        ) is True
+        dataset_import, dataset_version = _load_dataset_objects(
+            session_factory=session_factory,
+            dataset_import_id=response.json()["dataset_import_id"],
+        )
+        assert dataset_import is not None
+        assert dataset_import.status == "failed"
+        assert "必须恰好包含 class_id 和 8 个四角点坐标" in (
+            dataset_import.error_message or ""
+        )
+        assert dataset_version is None
     finally:
         session_factory.engine.dispose()
 
@@ -2299,6 +2344,7 @@ def _build_yolo_pose_zip_bytes() -> bytes:
                     "names:",
                     "  0: person",
                     "kpt_shape: [2, 3]",
+                    "flip_idx: [1, 0]",
                 )
             ),
         )
@@ -2310,7 +2356,7 @@ def _build_yolo_pose_zip_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def _build_yolo_obb_zip_bytes() -> bytes:
+def _build_yolo_obb_zip_bytes(*, extra_tokens: str = "") -> bytes:
     """构建一个最小 YOLO OBB zip 数据集。"""
 
     buffer = io.BytesIO()
@@ -2330,7 +2376,11 @@ def _build_yolo_obb_zip_bytes() -> bytes:
         zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
         zip_file.writestr(
             "dataset-root/labels/train/train-1.txt",
-            "0 0.100000 0.125000 0.400000 0.125000 0.400000 0.375000 0.100000 0.375000\n",
+            (
+                "0 0.100000 0.125000 0.400000 0.125000 "
+                "0.400000 0.375000 0.100000 0.375000"
+                f"{extra_tokens}\n"
+            ),
         )
     return buffer.getvalue()
 

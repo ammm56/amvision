@@ -17,6 +17,7 @@ from backend.contracts.datasets.exports.coco_keypoints_export import (
 from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
+    VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_DETECTION_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
     YOLO_OBB_DATASET_FORMAT,
@@ -112,7 +113,10 @@ class DatasetExportPayloadBuilderMixin(
                 metadata=metadata,
                 export_prefix=export_prefix,
             )
-        if request.format_id == VOC_DETECTION_DATASET_FORMAT:
+        if request.format_id in {
+            VOC_DETECTION_DATASET_FORMAT,
+            VOC_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+        }:
             return self._build_voc_format_payloads(
                 request=request,
                 dataset_version=dataset_version,
@@ -177,8 +181,12 @@ class DatasetExportPayloadBuilderMixin(
             if split_samples.get(split_name)
         )
 
-    def _build_class_map(self, categories: tuple[DatasetCategory, ...]) -> dict[str, str]:
+    def _build_class_map(
+        self, categories: tuple[DatasetCategory, ...]
+    ) -> dict[str, str]:
         """构建导出要写入的 class map。"""
 
         ordered_categories = sorted(categories, key=lambda item: item.category_id)
-        return {str(category.category_id): category.name for category in ordered_categories}
+        return {
+            str(category.category_id): category.name for category in ordered_categories
+        }

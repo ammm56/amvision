@@ -358,6 +358,34 @@ def test_pose_evaluation_manifest_supports_yolo_export(tmp_path: Path) -> None:
     assert samples[0]["annotations"][0]["keypoints"] == [10.0, 5.0, 2.0, 70.0, 25.0, 1.0]
 
 
+def test_pose_evaluation_prefers_independent_test_split(tmp_path: Path) -> None:
+    """独立评估必须优先使用 test，不能因 manifest 顺序退回 val。"""
+
+    storage = _seed_yolo_pose_storage(tmp_path)
+    split_name, samples, _ = _parse_pose_manifest(
+        {
+            "format_id": YOLO_POSE_DATASET_FORMAT,
+            "category_names": ["person"],
+            "splits": [
+                {
+                    "name": "val",
+                    "image_root": "exports/sample/images/val",
+                    "label_root": "exports/sample/labels/val",
+                },
+                {
+                    "name": "test",
+                    "image_root": "exports/sample/images/val",
+                    "label_root": "exports/sample/labels/val",
+                },
+            ],
+        },
+        storage,
+    )
+
+    assert split_name == "test"
+    assert len(samples) == 1
+
+
 def _seed_yolo_segmentation_storage(tmp_path: Path) -> LocalDatasetStorage:
     """写入最小 YOLO segmentation 样本目录。"""
 
