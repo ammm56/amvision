@@ -265,3 +265,8 @@ docs/api/postman/assets/*.zip
 
 # .NET SDK Console 的本地/私有调试图片
 sdks/dotnet/apps/AMVision.Console/Resources/Img/
+
+# 设计界面图片
+docs/design/frontend/generated/
+
+
