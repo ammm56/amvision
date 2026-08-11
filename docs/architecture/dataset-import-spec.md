@@ -1140,14 +1140,16 @@ COCO segmentation 标准导入目录、polygon/RLE segmentation、类别映射�
 
 YOLO segmentation 标准导入目录、polygon 标注行、类别配置、图片格式限制和不符合规范的结构见 [yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)。
 
+VOC instance segmentation 的 indexed mask、XML 辅助关系、结构化校验和往返导出规则见 [voc-instance-segmentation-dataset-format.md](voc-instance-segmentation-dataset-format.md)。
+
 | 项目 | 内容 |
 | --- | --- |
 | 任务类型 | segmentation |
-| 当前已实现导入格式 | COCO instance segmentation, YOLO instance segmentation |
+| 当前已实现导入格式 | COCO instance segmentation, Pascal VOC instance segmentation, YOLO instance segmentation |
 | 后续可补充导入格式 | LabelMe polygon json, CVAT polygon export, Supervisely instance export |
-| 当前已实现导出格式 | COCO instance segmentation, YOLO instance segmentation |
+| 当前已实现导出格式 | COCO instance segmentation, Pascal VOC instance segmentation, YOLO instance segmentation |
 | 后续可补充导出格式 | polygon manifest, mask package manifest |
-| 常见模型/后端 | YOLOv8 seg, YOLOv11 seg, Mask-oriented pipelines |
+| 常见模型/后端 | YOLOv8/11/26 segmentation, RF-DETR segmentation, mask-oriented pipelines |
 | 说明 | polygon 与 mask 可以放在同一套通用格式里，但导出时要按目标训练后端选择一种主表示 |
 
 ### semantic segmentation

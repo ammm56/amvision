@@ -26,11 +26,11 @@
 
 - 以 YOLOX detection 为第一套参考实现的训练 -> 人工验证 -> 数据集级评估 -> 转换 -> DeploymentInstance 发布 -> 同步 / 异步推理接口闭环已经打通；YOLOv8/YOLO11/YOLO26 与 RF-DETR 也已经并入统一模型平台主链。
 - 当前模型平台已经不仅覆盖 detection：YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation，平台基础模型目录 seeder 也已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr`。
-- 数据集导入导出支持当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota-obb-v1`；`DatasetVersion` 注解与持久化当前统一使用 `segmentation`。
+- 数据集导入导出支持当前也已从 detection-only 收平到多任务：导入已覆盖 `COCO / VOC / YOLO / ImageNet classification / DOTA OBB`，导出已覆盖 `coco/voc/yolo detection`、`coco/voc/yolo segmentation`、`coco/yolo pose`、`imagenet-classification-v1` 和 `dota/yolo OBB`；VOC instance segmentation 使用 `voc-instance-seg-v1`，以 indexed mask 为事实来源并统一为 compressed COCO RLE。
 - 正式发布配置中 backend-service 只承担 REST / WebSocket 控制面；独立 inference daemon 持有 deployment process supervisor、async inference gateway 和数据库期望状态恢复协调器。全部任务队列消费者继续由独立 worker profile 持有。
 - 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
-- 当前公开 WebSocket 已覆盖 auth、system、tasks、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 八类资源流；统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
+- 当前公开 WebSocket 已覆盖 auth、system、tasks、training.telemetry、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 九类资源流；训练 batch 数据通过独立 worker mmap ring 进入有界 broker，不写 TaskEvent 表。统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。
 - `YOLOE / SAM3` 当前已经不是骨架：两者都已接通 project-native custom node runtime，不依赖 `projectsrc/` 或已安装官方包执行推理；其中 `YOLOE` 已覆盖 `prompt-free / text-prompt / visual-prompt` 三条节点链，`SAM3` 已覆盖 `interactive-segment / semantic-segment / video-interactive-segment / video-semantic-segment` 四条节点链。
@@ -111,7 +111,7 @@
 - REST v1 路由汇总位于 `backend/service/api/rest/v1/router.py`，当前已经挂载 auth、system、projects、workflows、workflow runtime、datasets、dataset-exports、models、五类训练任务控制面、五类 validation session 控制面、五类 conversion 控制面、统一 deployment 与 inference 控制面、evaluation 和 tasks；公开入口当前已经统一收口到 `/api/v1/models/{task_type}/...` 这条主线，不再把历史 `yolox-*` 路由名当成平台总览描述。
 - conversion 公开接口当前已经补齐 detection 与 non-detection 的 create/list/detail/result：detection 仍保留按目标格式拆分的创建入口，classification / segmentation / pose / obb 则统一使用 `source_model_version_id + target_formats` 创建，并在 list/detail/result 中按显式 `task_type` 过滤，避免 YOLOv8 / YOLO11 / YOLO26 共享 task_kind 时串单。
 - REST v1 列表分页辅助函数位于 `backend/service/api/rest/v1/pagination.py`，当前用于 projects、workflow templates、template versions、applications、execution-policies、preview-runs、app-runtimes 和 trigger-sources。
-- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
+- WebSocket 路由位于 `backend/service/api/ws/router.py`，当前已经公开 auth、system、tasks、training telemetry、workflow preview-runs、workflow runs、workflow app-runtimes、deployments 和 projects 聚合流入口。
 
 ### custom node 扩展面
 

@@ -10,28 +10,30 @@
 - 原始类别 5 `none` 的框覆盖未穿 vest 人员的躯干区域，应在该数据副本中规范为 `no_vest`。
 - 原始类别 6 `Person` 仅存在命名风格问题，规范为 `person`。
 - 原始 `image886` 的右侧人员同时存在 `vest` 和 `none` 框，归一为 `vest / no_vest` 后 IoU 为 `0.623870`，属于同一区域互斥语义冲突。图像显示该人员穿着蓝色工作背带服，保留 `vest` 框并删除原 `none` 框。
+- `labels/train` 中另有 10 个文件名带 `(1)` 的 orphan label；它们与去掉 `(1)` 后的正常 label 逐字节相同、没有对应图像，共重复 93 个标注。修正版删除这些重复副本，不改变任何图像的唯一标注。
 - 其余正负类别对没有 IoU 大于等于 `0.5` 的冲突。多人同图造成的正负类别共现不是冲突。
 - 已生成修正后的开发验证对象：Dataset id `construction-ppe-audited-20260808`、DatasetVersion id `dataset-version-5c35edabee35`、COCO DatasetExport id `dataset-export-bbf181fccdd4`。旧导出 `dataset-export-cfbdcbebe070` 保留为问题复现证据，不再作为后续精度基线。
 
 ## 标注统计
 
-修正前共有 11 个类别、11,614 个标注：
+修正后共有 11 个类别、11,520 个与图像一一配对的有效标注：
 
 | 类别 | 标注数 |
 | --- | ---: |
-| helmet | 1,750 |
-| gloves | 1,461 |
-| vest | 1,632 |
-| boots | 1,613 |
-| goggles | 526 |
-| none | 800 |
-| Person | 2,265 |
+| helmet | 1,734 |
+| gloves | 1,445 |
+| vest | 1,618 |
+| boots | 1,597 |
+| goggles | 518 |
+| no_vest | 796 |
+| person | 2,245 |
 | no_helmet | 485 |
 | no_goggle | 411 |
 | no_gloves | 556 |
 | no_boots | 115 |
 
-修正后 `no_vest` 为 799 个标注，总标注数为 11,613。
+独立审计结果保存于 `.tmp/construction-ppe-audit-20260810.json`：1,416 张图片、
+1,416 个 label 文件、11,520 个标注，结构、数值、类别范围和 split 独立性均通过。
 
 ## 正负类别检查
 

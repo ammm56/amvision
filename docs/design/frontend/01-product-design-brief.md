@@ -166,4 +166,3 @@ flowchart LR
 - 所有表格必须有筛选、排序、状态、空状态和分页意识。
 - 所有任务页必须考虑 queued、running、succeeded、failed、cancelled 状态。
 - 所有运行实例页必须考虑 stopped、starting、healthy、degraded、failed 状态。
-

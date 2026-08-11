@@ -64,6 +64,13 @@
 - 主要内容：COCO instance segmentation json
 - 适用模型：实例分割训练后端
 
+### voc-instance-seg-v1
+
+- task type：segmentation
+- 目录布局：manifest.json、JPEGImages/、Annotations/、SegmentationClass/、SegmentationObject/、ImageSets/Segmentation/
+- 主要内容：VOC indexed class/object mask 与辅助 XML
+- 适用范围：VOC 工具链、VOC2012 往返核验和外部互操作
+
 ### coco-keypoints-v1
 
 - task type：pose
@@ -91,7 +98,7 @@
 | --- | --- | --- | --- | --- |
 | YOLOX | detection | coco-detection-v1 | voc-detection-v1 | 默认优先 COCO detection；VOC detection 也已接入训练与评估 |
 | YOLOv8/11/26 | detection | yolo-detection-v1 | coco-detection-v1 | 默认优先原生 YOLO 目录格式 |
-| YOLOv8/11/26 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 | 默认优先原生 YOLO segmentation 格式 |
+| YOLOv8/11/26 | segmentation | yolo-instance-seg-v1 | coco-instance-seg-v1 / voc-instance-seg-v1 | 默认优先原生 YOLO segmentation；VOC 用于 indexed mask 互操作 |
 | YOLOv8/11/26 | pose | yolo-pose-v1 | coco-keypoints-v1 | 默认优先原生 YOLO pose 格式 |
 | YOLOv8/11/26 | classification | imagenet-classification-v1 | backend-specific classification manifest | 当前导出为 ImageNet 风格目录，同时保留 split annotation json |
 | YOLOv8/11/26 | obb | yolo-obb-v1 | dota-obb-v1 | 默认使用 YOLO 归一化四角点标签，DOTA 用于外部 DOTA 工具链 |
@@ -110,6 +117,7 @@
   - voc-detection-v1
   - yolo-detection-v1
   - coco-instance-seg-v1
+  - voc-instance-seg-v1
   - yolo-instance-seg-v1
   - coco-keypoints-v1
   - yolo-pose-v1

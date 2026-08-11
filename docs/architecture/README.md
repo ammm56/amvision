@@ -20,6 +20,7 @@
 - [docs/architecture/yolo-detection-dataset-import-format.md](yolo-detection-dataset-import-format.md)：YOLO 矩形边界框目标检测数据集的标准导入目录、标签行、类别配置和图片格式限制
 - [docs/architecture/coco-segmentation-dataset-import-format.md](coco-segmentation-dataset-import-format.md)：COCO 实例分割数据集的标准导入目录、polygon/RLE 标注、类别映射和图片格式限制
 - [docs/architecture/yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)：YOLO 实例分割数据集的标准导入目录、polygon 标注行、类别配置和图片格式限制
+- [docs/architecture/voc-instance-segmentation-dataset-format.md](voc-instance-segmentation-dataset-format.md)：VOC indexed mask 实例分割目录、mask/XML 权威关系、RLE 统一化、往返导出和 VOC2012 全量审计
 - [docs/architecture/coco-pose-dataset-import-format.md](coco-pose-dataset-import-format.md)：COCO Keypoints 姿态估计数据集的标准导入目录、JSON 字段、关键点可见性和图片格式限制
 - [docs/architecture/yolo-pose-dataset-import-format.md](yolo-pose-dataset-import-format.md)：YOLO 姿态估计数据集的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制
 - [docs/architecture/dota-obb-dataset-import-format.md](dota-obb-dataset-import-format.md)：DOTA OBB 旋转框数据集的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制

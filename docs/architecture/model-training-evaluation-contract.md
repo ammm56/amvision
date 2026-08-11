@@ -44,6 +44,10 @@ checkpoint、数据 split、评估产物和恢复训练规则。模型实现可�
 `best-checkpoint` 不能在训练结束时用 latest checkpoint 复制生成。暂停、恢复
 和中断后，已有 best 指标与 best checkpoint 必须继续有效。
 
+best 指标必须是业务范围内的有限数。负数、NaN 和 Inf 不得参与比较；相同
+指标不得反复覆盖历史 best checkpoint。恢复任务携带的历史 best 损坏时，
+后续第一个有效 validation 指标可以重新建立 best。
+
 ## 评估顺序
 
 训练执行顺序固定为：
@@ -56,6 +60,21 @@ checkpoint、数据 split、评估产物和恢复训练规则。模型实现可�
 6. 写入训练指标、验证指标、测试指标和训练摘要。
 
 test 结果不得反向影响 best checkpoint、学习率或训练轮数。
+
+训练、validation 和 test 的长循环必须在 batch 或 sample 边界轮询暂停、终止
+状态，不能只在 epoch 结束时响应。epoch progress 在当轮 validation 和 best
+判定完成后回写；有 validation 时同时更新 `validation-metrics.json`，不得先把
+只包含 train loss 的中间状态伪装成完整 epoch 结果。
+
+`evaluation_interval` 按页面展示的一基完成轮数解释。例如配置 20 时，在完成
+第 20、40、60 轮后运行 validation，不得直接用零基 `epoch_index % 20` 导致
+第 21、41、61 轮才评估。最后一轮始终评估一次，但没有 validation 样本时不得
+伪造验证结果。
+
+训练循环内部统一使用从 0 开始的 `epoch_index`，API、进度事件和指标文件中的
+`epoch` 统一表示从 1 开始的已完成轮数。`epoch_history` 每项必须同时写出这两个
+字段，不能把内部索引直接暴露为 `epoch`。因此第一轮固定记录为
+`{"epoch": 1, "epoch_index": 0}`。
 
 ## 输出文件
 
@@ -86,6 +105,41 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 混淆矩阵。若后续增加统一阈值下的检测混淆矩阵，必须在报告中记录阈值和匹配
 规则。
 
+- segmentation 同时报告 bbox AP 和 mask AP；只要 validation 有实例 mask，
+  best checkpoint 必须使用 mask AP，模型没有产生 mask 时按 0 处理，不能回退
+  到 bbox AP。
+- pose 使用与实际关键点数量等长的 OKS sigma。COCO person 17 点使用官方
+  sigma，其他拓扑使用显式配置或 `1 / num_keypoints` 等权值。训练与数据集级
+  评估都使用真实 pycocotools keypoints evaluator。关键点置信度阈值只控制
+  推理结果显示，不能把低置信坐标清零后再计算 OKS。
+- OBB 使用旋转框 IoU，平台统一 `xywhr` 的角度单位为弧度，禁止按数值大小猜测
+  角度单位，也不能用水平框 IoU 代替。数据集级评估只读取一个独立 test split；
+  缺 test 时才读取 validation。没有 GT 的背景图片仍必须推理并计入误检。
+- bbox、segmentation 和 keypoints 的 COCO 指标必须有真实 pycocotools 回归；
+  AP50 和 AP50-95 从同一个目标 `maxDets` precision 切片读取，不直接依赖
+  `COCOeval.stats` 的固定 `maxDets=100` 摘要位置。
+- segmentation 训练期评估逐图生成实例 mask 后必须立即压缩为 COCO RLE。
+  split 级状态只保留 bbox 和 compressed RLE，不得保留
+  `image_count × maxDets × H × W` 的 dense mask。
+- segmentation 的 proto mask 解码后必须按预测 bbox 裁切。`mask_ratio` 生成的
+  低分辨率 GT mask 必须用最近邻恢复到 COCO image 的 `H×W` 后再编码 RLE；
+  预测 mask 直接编码 RLE，不允许经过会丢失孔洞的 contour polygon 往返转换。
+
+## 数值稳定性
+
+- total loss 和 FP32 gradient 出现 NaN 或 Inf 时立即失败，不能继续更新或写出
+  被污染的 checkpoint。
+- FP16 forward 可以使用 autocast，但 assigner、IoU/DFL/BCE、mask 和 semantic
+  loss 的数值敏感计算使用 FP32。
+- 原始像素坐标的 CIoU、旋转框 ProbIoU/angle quality、pose OKS 面积与 YOLO26
+  RLE residual 必须先提升到 FP32。即使输入宽高不超过 FP16 上限，平方距离和
+  面积仍可能溢出，不能依赖最终 `nan_to_num` 掩盖污染。
+- `GradScaler` 因 overflow 跳过 optimizer step 时，所有任务都不更新 EMA；当轮
+  没有任何成功 optimizer step 时不推进 epoch scheduler。训练摘要记录成功
+  optimizer step 和 AMP 跳过次数。
+- 任一有训练样本的 segmentation epoch 没有成功 optimizer step 时必须失败，
+  不能只根据不同 batch 的 loss 波动宣称模型正在收敛。
+
 ## 数据与增强约束
 
 - COCO annotations 必须按 `image_id` 聚合。同一图片的多个实例必须作为一个
@@ -93,6 +147,13 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 - 未知 `category_id` 必须报错，不能静默映射到类别 0。
 - 关闭分类增强时使用确定性 resize/crop，不允许保留随机裁剪。
 - validation 和 test 不使用训练随机增强。
+- pose 水平翻转必须使用数据集 manifest 中与关键点数量一致的
+  `keypoint_flip_indices`。映射必须是完整排列且满足对合规则。非 COCO 17 点的
+  自定义拓扑缺少映射时，启用翻转必须拒绝训练，不得只记录参数却静默不执行。
+- Windows `spawn` DataLoader 的增强 worker 可以跨 epoch 复用，但 batch Tensor
+  不能长期累积共享内存映射。非 detection YOLO 任务使用 NumPy IPC 载荷，
+  在主进程恢复和 pin Tensor；Windows worker 每 4 个 epoch 受控回收一次，
+  增强阶段变化时立即重建，训练正常结束、暂停、终止和异常退出均显式清理。
 
 ## RF-DETR 边界
 
@@ -113,3 +174,7 @@ dataloader。
 - test 报告来自 best checkpoint。
 - 缺少 test 时报告明确 unavailable。
 - API、任务详情页和输出文件列表可读取 `test-metrics.json`。
+- 暂停和终止在 batch/validation sample 边界可响应。
+- 大 validation split 的 mask 状态使用 compressed RLE，内存不随 dense mask
+  总像素数无界增长。
+- AMP overflow 不更新 EMA 或错误推进 scheduler。

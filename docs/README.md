@@ -22,15 +22,18 @@
 - [docs/architecture/yolo-detection-dataset-import-format.md](architecture/yolo-detection-dataset-import-format.md) 固定 YOLO 矩形边界框目标检测数据集的标准导入目录、标签行、类别配置和图片格式限制
 - [docs/architecture/coco-segmentation-dataset-import-format.md](architecture/coco-segmentation-dataset-import-format.md) 固定 COCO 实例分割数据集的标准导入目录、polygon/RLE 标注、类别映射和图片格式限制
 - [docs/architecture/yolo-segmentation-dataset-import-format.md](architecture/yolo-segmentation-dataset-import-format.md) 固定 YOLO 实例分割数据集的标准导入目录、polygon 标注行、类别配置和图片格式限制
+- [docs/architecture/voc-instance-segmentation-dataset-format.md](architecture/voc-instance-segmentation-dataset-format.md) 固定 VOC indexed mask 实例分割的目录、mask/XML 权威关系、RLE 统一化、往返导出和 VOC2012 全量审计
 - [docs/architecture/coco-pose-dataset-import-format.md](architecture/coco-pose-dataset-import-format.md) 固定 COCO Keypoints 姿态估计数据集的标准导入目录、JSON 字段、关键点可见性和图片格式限制
 - [docs/architecture/yolo-pose-dataset-import-format.md](architecture/yolo-pose-dataset-import-format.md) 固定 YOLO 姿态估计数据集的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制
 - [docs/architecture/dota-obb-dataset-import-format.md](architecture/dota-obb-dataset-import-format.md) 固定 DOTA OBB 旋转框数据集的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制
 - [docs/architecture/training-parameter-support.md](architecture/training-parameter-support.md) 汇总训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
 - [docs/architecture/model-training-input-size-rules.md](architecture/model-training-input-size-rules.md) 汇总 YOLOX / RF-DETR / YOLOv8 / YOLO11 / YOLO26 的训练输入尺寸规则、常用尺寸和前端训练页面展示约束
 - [docs/architecture/model-training-evaluation-contract.md](architecture/model-training-evaluation-contract.md) 固定所有模型训练任务的 warm start、resume、best/latest checkpoint、validation/test 隔离和评估输出契约
+- [docs/architecture/training-runtime-telemetry-and-reference-validation-plan.md](architecture/training-runtime-telemetry-and-reference-validation-plan.md) 固定共享训练引擎、AutoBatch/AMP、checkpoint 周期、实时训练指标、VOC2012 实例分割和参考实现真实训练验收方案
 - [docs/architecture/model-task-naming-boundaries.md](architecture/model-task-naming-boundaries.md) 固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
 - [docs/architecture/model-core-implementation-plan.md](architecture/model-core-implementation-plan.md) 固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 在本项目中的完整 core 实现边界，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
 - [docs/architecture/model-implementation-audit.md](architecture/model-implementation-audit.md) 记录模型×任务公开矩阵、参考源码版本、证据等级和万级数据集惰性加载结论
+- [docs/development/development-dataset-audit.md](development/development-dataset-audit.md) 记录开发数据集只读审计命令、工业验收规则和当前数据问题
 - [docs/architecture/code-structure-cleanup-plan.md](architecture/code-structure-cleanup-plan.md) 固定模型 core / runtime 之外的代码结构收口顺序和目标目录
 - [docs/architecture/model-workflow-boundaries.md](architecture/model-workflow-boundaries.md) 汇总模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
 - [docs/architecture/model-deployment-runtime-policy.md](architecture/model-deployment-runtime-policy.md) 固定模型发布的平台部署策略、OpenVINO CPU / GPU / NPU 和 TensorRT 参数边界、硬件迁移与实施顺序
@@ -54,6 +57,8 @@
 - [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md) 汇总浏览器前端 Web UI 的本地启动、默认用户、自动进入、登录页和退出规则
 - [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md) 汇总浏览器前端 Web UI 真实编码前的准备检查、剩余缺口和开工顺序
 - [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md) 汇总浏览器前端 Web UI 的节点映射、业务页面流程、workflow app 调用和事件通信规则
+- [docs/design/frontend/README.md](design/frontend/README.md) 汇总面向 OpenAI Image 2 和 Google Stitch 的前端设计总纲、信息架构、逐页规格、提示词和设计交付流程
+- [docs/design/frontend/08-vue-implementation-handoff.md](design/frontend/08-vue-implementation-handoff.md) 映射 30 个设计页面到 Vue 路由、页面组件、权限、后端资源、实时状态和实现顺序
 - [docs/api/README.md](api/README.md) 汇总 REST API、WebSocket、ZeroMQ 和公开接口文档
 - [docs/api/workflow-sdks.md](api/workflow-sdks.md) 汇总 Workflow 外部调用方 SDK 的目录、流程和语言实现边界
 - [docs/api/model-deployment-sdks.md](api/model-deployment-sdks.md) 汇总模型 DeploymentInstance 现场调用 SDK 的边界、config key 调用方式和后续 .NET 实现清单

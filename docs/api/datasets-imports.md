@@ -479,7 +479,7 @@ Construction-PPE 的原始类别 5 为 `none`、类别 6 为 `Person`。在已�
 - 当前任务类型支持 detection、classification、segmentation、pose、obb。
 - 当前自动识别和解析覆盖：
   - COCO：detection、segmentation、pose
-  - Pascal VOC：detection
+  - Pascal VOC：detection、segmentation
   - YOLO：detection、segmentation、pose、obb
   - ImageNet 风格目录：classification
   - DOTA 风格目录：obb
@@ -494,6 +494,7 @@ Construction-PPE 的原始类别 5 为 `none`、类别 6 为 `Person`。在已�
 - COCO segmentation 的标准导入目录、polygon/RLE segmentation、类别映射和图片格式限制见 [docs/architecture/coco-segmentation-dataset-import-format.md](../architecture/coco-segmentation-dataset-import-format.md)。
 - COCO pose 的标准导入目录、keypoints 字段、num_keypoints、类别和骨架定义、图片格式限制见 [docs/architecture/coco-pose-dataset-import-format.md](../architecture/coco-pose-dataset-import-format.md)。
 - VOC detection 的标准导入目录、XML 字段、split 文件和图片格式限制见 [docs/architecture/voc-detection-dataset-import-format.md](../architecture/voc-detection-dataset-import-format.md)。
+- VOC instance segmentation 的 indexed mask、XML 辅助关系、结构化校验和 VOC2012 审计规则见 [docs/architecture/voc-instance-segmentation-dataset-format.md](../architecture/voc-instance-segmentation-dataset-format.md)。
 - YOLO detection 的标准导入目录、标签行、类别配置和图片格式限制见 [docs/architecture/yolo-detection-dataset-import-format.md](../architecture/yolo-detection-dataset-import-format.md)。
 - YOLO segmentation 的标准导入目录、polygon 标注行、类别配置和图片格式限制见 [docs/architecture/yolo-segmentation-dataset-import-format.md](../architecture/yolo-segmentation-dataset-import-format.md)。
 - YOLO pose 的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制见 [docs/architecture/yolo-pose-dataset-import-format.md](../architecture/yolo-pose-dataset-import-format.md)。

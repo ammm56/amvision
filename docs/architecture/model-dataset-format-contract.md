@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `classification` | `imagenet` | `imagenet-classification-v1` |
 | `detection` | `coco / voc / yolo` | `yolo-detection-v1 / coco-detection-v1 / voc-detection-v1` |
-| `segmentation` | `coco / yolo` | `yolo-instance-seg-v1 / coco-instance-seg-v1` |
+| `segmentation` | `coco / voc / yolo` | `yolo-instance-seg-v1 / coco-instance-seg-v1 / voc-instance-seg-v1` |
 | `pose` | `coco / yolo` | `yolo-pose-v1 / coco-keypoints-v1` |
 | `obb` | `dota / yolo` | `yolo-obb-v1 / dota-obb-v1` |
 
@@ -43,7 +43,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `classification` | 支持 | `imagenet` | `imagenet-classification-v1` | - | 每个样本必须且只能有一条 classification 标注。 |
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | YOLO 原生目录为默认训练格式。 |
-| `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | YOLO 导出不接受 RLE 或多 polygon 无损表达不了的样本。 |
+| `segmentation` | 支持 | `coco / voc / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1 / voc-instance-seg-v1` | VOC indexed mask 先统一为 RLE；YOLO 导出拒绝无法无损表达的 RLE、孔洞或多 polygon 样本。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | YOLO pose 导出要求全部标注关键点数量一致。 |
 | `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | OBB 内部统一用像素四角点，YOLO 导出使用归一化四角点。 |
 
@@ -53,7 +53,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `classification` | 支持 | `imagenet` | `imagenet-classification-v1` | - | 与 YOLOv8 classification 共用数据边界。 |
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | 与 YOLOv8 detection 共用导入导出格式。 |
-| `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
+| `segmentation` | 支持 | `coco / voc / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1 / voc-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | 与 YOLOv8 pose 共用格式规则。 |
 | `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | 与 YOLOv8 OBB 共用格式规则。 |
 
@@ -63,7 +63,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `classification` | 支持 | `imagenet` | `imagenet-classification-v1` | - | 与 YOLOv8 classification 共用数据边界。 |
 | `detection` | 支持 | `coco / voc / yolo` | `yolo-detection-v1` | `coco-detection-v1` | 与 YOLOv8 detection 共用导入导出格式。 |
-| `segmentation` | 支持 | `coco / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
+| `segmentation` | 支持 | `coco / voc / yolo` | `yolo-instance-seg-v1` | `coco-instance-seg-v1 / voc-instance-seg-v1` | 与 YOLOv8 segmentation 共用格式规则。 |
 | `pose` | 支持 | `coco / yolo` | `yolo-pose-v1` | `coco-keypoints-v1` | 与 YOLOv8 pose 共用格式规则。 |
 | `obb` | 支持 | `dota / yolo` | `yolo-obb-v1` | `dota-obb-v1` | 与 YOLOv8 OBB 共用格式规则。 |
 
@@ -73,7 +73,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `classification` | 不支持 | - | - | - | 不作为 RF-DETR 公开能力。 |
 | `detection` | 支持 | `coco / voc / yolo` | `coco-detection-v1` | - | 训练和评估当前只接受 COCO detection 导出。 |
-| `segmentation` | 支持 | `coco / yolo` | `coco-instance-seg-v1` | - | 当前只接受 COCO instance segmentation 导出。 |
+| `segmentation` | 支持 | `coco / voc / yolo` | `coco-instance-seg-v1` | - | VOC indexed mask 先进入统一 DatasetVersion；RF-DETR 训练当前只接受 COCO instance segmentation 导出。 |
 | `pose` | 不支持 | - | - | - | RF-DETR keypoint 分支未进入平台公开 pose 主链。 |
 | `obb` | 不支持 | - | - | - | 不作为 RF-DETR 公开能力。 |
 
@@ -143,7 +143,7 @@ COCO segmentation 标准导入图片只支持 `.jpg / .jpeg / .png / .bmp`。`.w
 
 COCO pose 标准导入图片只支持 `.jpg / .jpeg / .png / .bmp`。`.webp / .tif / .tiff` 不属于当前 COCO pose 标准导入格式。
 
-### Pascal VOC 导入
+### Pascal VOC detection 导入
 
 适用任务：`detection`。
 
@@ -176,6 +176,15 @@ XML 最小字段：
 
 VOC detection 标准导入图片只支持 `.jpg / .jpeg / .png / .bmp`。`.webp / .tif / .tiff` 不属于当前 VOC detection 标准导入格式。
 
+### Pascal VOC instance segmentation 导入
+
+适用任务：`segmentation`。
+
+标准目录、`SegmentationObject`/`SegmentationClass` indexed mask 语义、XML 辅助关系、
+结构化错误和警告以及 VOC2012 全量审计结果见
+[voc-instance-segmentation-dataset-format.md](voc-instance-segmentation-dataset-format.md)。
+canonical segmentation 固定为 compressed COCO RLE；bbox 和 area 从实例 mask 计算。
+
 ### YOLO 导入
 
 适用任务：`detection / segmentation / pose / obb`。
@@ -207,6 +216,9 @@ dataset-root/
 - `train / val / test`：字符串路径、图片文件路径、图片列表 `.txt`，或字符串数组。
 - `names`：类别名列表或 `{id: name}` 字典。
 - `kpt_shape`：pose 可选字段，格式为 `[keypoint_count, 2|3]`。
+- `flip_idx`：pose 可选字段，长度必须与 `kpt_shape[0]` 一致，
+  必须是 `0..keypoint_count-1` 的完整排列，并且满足两次水平翻转恢复原顺序。
+  该字段属于关键点拓扑，不是训练器私有参数。
 
 未提供可用 `data.yaml` 时，导入器会尝试按 `images/{split}` 和 `labels/{split}` 扫描。缺失 label 的图片会按空标注导入，并在 validation_report 写 warning。
 
@@ -215,7 +227,7 @@ dataset-root/
 - detection：`class_id cx cy w h`
 - segmentation：`class_id x1 y1 x2 y2 x3 y3 ...`
 - pose：`class_id cx cy w h kpt_x kpt_y [visibility] ...`
-- obb：`class_id x1 y1 x2 y2 x3 y3 x4 y4 [extra...]`
+- obb：`class_id x1 y1 x2 y2 x3 y3 x4 y4`，必须恰好为四个归一化角点，不接受额外 token
 
 YOLO 标签坐标全部按 0 到 1 的归一化坐标读取。导入后转换为像素坐标写入 DatasetVersion。
 
@@ -345,6 +357,11 @@ class_index cx cy w h kpt_x kpt_y visibility ...
 ```
 
 `manifest.json.metadata.kpt_shape` 写入 `[keypoint_count, 3]`。全部 pose 标注必须使用一致关键点数量。
+源数据集声明 `flip_idx` 时，导入后持久化为
+`DatasetVersion.metadata.keypoint_flip_indices`，导出后写入
+`manifest.json.metadata.keypoint_flip_indices`。训练器必须从该 manifest 读取水平翻转重排规则。
+自定义非 COCO 17 点拓扑在未声明映射时不得启用水平翻转；必须补充
+`flip_idx` 或显式将 `flip_prob` 设为 `0`，不允许静默跳过增强。
 
 ### `yolo-obb-v1`
 
@@ -407,6 +424,15 @@ export-root/
 ```
 
 保留 COCO polygon 或 RLE segmentation。RLE size 必须等于 `[height, width]`。
+
+### `voc-instance-seg-v1`
+
+任务：`segmentation`。
+
+目录包含 `JPEGImages`、`Annotations`、`SegmentationClass`、`SegmentationObject` 和
+`ImageSets/Segmentation`。class/object mask 均为 indexed PNG；重叠实例或单图超过
+254 个实例时明确拒绝导出。完整规则见
+[voc-instance-segmentation-dataset-format.md](voc-instance-segmentation-dataset-format.md)。
 
 ### `coco-keypoints-v1`
 
