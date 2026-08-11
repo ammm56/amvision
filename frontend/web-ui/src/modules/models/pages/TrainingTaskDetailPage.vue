@@ -166,7 +166,36 @@
           </dl>
           <span v-else class="training-muted-value">-</span>
         </article>
+        <article v-if="runtimeMetricEntries.length > 0" class="training-metric-panel">
+          <div>
+            <h3>{{ t('trainingDetail.runtimeMetricsTitle') }}</h3>
+            <p class="training-metric-hint">{{ t('trainingDetail.runtimeMetricsHint') }}</p>
+          </div>
+          <dl class="training-metric-list">
+            <template v-for="metric in runtimeMetricEntries" :key="metric.name">
+              <dt>{{ metric.name }}</dt>
+              <dd>{{ metric.value }}</dd>
+            </template>
+          </dl>
+        </article>
       </div>
+      <div class="training-chart-heading">
+        <div>
+          <h3>{{ t('trainingDetail.charts.title') }}</h3>
+          <p>{{ t('trainingDetail.charts.description') }}</p>
+        </div>
+        <StatusBadge :tone="trainingStreamConnected ? 'success' : 'neutral'">
+          {{ trainingStreamConnected ? t('trainingDetail.charts.live') : t('trainingDetail.charts.snapshot') }}
+        </StatusBadge>
+      </div>
+      <TrainingMetricsCharts
+        v-if="taskType"
+        :task-type="taskType"
+        :train-history="trainMetricHistory"
+        :validation-history="validationMetricHistory"
+        :learning-rate-history="learningRateHistory"
+        :runtime-history="runtimeHistory"
+      />
     </section>
 
     <section v-if="task" class="resource-section">
@@ -226,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Activity, ArrowLeft, Pause, Play, RefreshCw, Save, Square, Trash2, UploadCloud } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -254,6 +283,29 @@ import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import TaskProgress from '@/modules/tasks/components/TaskProgress.vue'
 import TaskStateBadge from '@/modules/tasks/components/TaskStateBadge.vue'
+import { useTaskEvents } from '@/modules/tasks/composables/useTaskEvents'
+import type { TaskEvent } from '@/shared/contracts'
+import {
+  useTrainingTelemetry,
+  type TrainingTelemetryPayload,
+} from '../composables/useTrainingTelemetry'
+import {
+  appendTrainingMetricPoint,
+  appendTrainingRuntimePoint,
+  appendTrainingScalarPoint,
+  buildLearningRatePointFromProgress,
+  buildMetricPointFromProgress,
+  buildRuntimePoint,
+  readPersistedLearningRateHistory,
+  readPersistedMetricHistory,
+  type TrainingMetricPoint,
+  type TrainingRuntimePoint,
+  type TrainingScalarPoint,
+} from '../training-metric-history'
+
+const TrainingMetricsCharts = defineAsyncComponent(
+  () => import('../components/TrainingMetricsCharts.vue'),
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -267,6 +319,13 @@ const actionRunning = ref<string | null>(null)
 const deleteDialogOpen = ref(false)
 const errorMessage = ref<string | null>(null)
 const trainingMetricsPayload = ref<Record<string, unknown>>({})
+const validationMetricsPayload = ref<Record<string, unknown>>({})
+const trainMetricHistory = ref<TrainingMetricPoint[]>([])
+const validationMetricHistory = ref<TrainingMetricPoint[]>([])
+const learningRateHistory = ref<TrainingScalarPoint[]>([])
+const runtimeHistory = ref<TrainingRuntimePoint[]>([])
+const latestTaskEventCursor = ref<string | null>(null)
+let snapshotRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
 const taskType = computed<ModelTaskType | null>(() => {
@@ -324,15 +383,10 @@ const completedEpochMetrics = computed(() => {
 const trainMetricEntries = computed(() => buildMetricEntries(completedEpochMetrics.value))
 const batchMetricEntries = computed(() => {
   const explicitBatchMetrics = readRecord(progressSnapshot.value.batch_metrics)
-  if (Object.keys(explicitBatchMetrics).length > 0) {
-    return buildMetricEntries(explicitBatchMetrics)
-  }
-  // 兼容修复前仍在运行的进程：旧 batch 事件把单批指标放在 train_metrics。
-  return progressSnapshot.value.granularity === 'batch'
-    ? buildMetricEntries(progressSnapshot.value.train_metrics)
-    : []
+  return buildMetricEntries(explicitBatchMetrics)
 })
 const validationMetricEntries = computed(() => buildMetricEntries(progressSnapshot.value.validation_metrics))
+const runtimeMetricEntries = computed(() => buildRuntimeMetricEntries(progressSnapshot.value.runtime))
 const selectedOutputContent = computed(() => {
   const outputFile = selectedOutputFile.value
   if (!outputFile) return ''
@@ -340,9 +394,29 @@ const selectedOutputContent = computed(() => {
   if (Object.keys(outputFile.payload).length > 0) return JSON.stringify(outputFile.payload, null, 2)
   return outputFile.object_key || ''
 })
+const taskEvents = useTaskEvents(
+  () => taskId.value,
+  handleTaskEvent,
+  () => latestTaskEventCursor.value,
+)
+const trainingTelemetry = useTrainingTelemetry(
+  () => taskId.value,
+  handleTrainingTelemetry,
+  scheduleSnapshotRefresh,
+)
+const trainingStreamConnected = computed(() => (
+  trainingTelemetry.streamState.value?.connected === true
+))
 
-onMounted(() => {
-  void refreshPage()
+onMounted(async () => {
+  await refreshPage()
+})
+
+onBeforeUnmount(() => {
+  if (snapshotRefreshTimer !== null) {
+    window.clearTimeout(snapshotRefreshTimer)
+    snapshotRefreshTimer = null
+  }
 })
 
 function statusTone(status: string | null | undefined): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
@@ -376,15 +450,25 @@ async function refreshPage(): Promise<void> {
       listModelTrainingOutputFiles(currentTaskType, taskId.value),
     ])
     task.value = taskDetail
+    latestTaskEventCursor.value = buildLatestTaskEventCursor(taskDetail.events)
     outputFiles.value = files
     const metricsFile = files.find((file) => file.file_name === 'train-metrics')
-    trainingMetricsPayload.value = metricsFile
-      ? (await getModelTrainingOutputFileDetail(
-          currentTaskType,
-          taskId.value,
-          metricsFile.file_name,
-        )).payload
-      : {}
+    const validationMetricsFile = files.find((file) => file.file_name === 'validation-metrics')
+    const [trainMetricsDetail, validationMetricsDetail] = await Promise.all([
+      metricsFile
+        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, metricsFile.file_name)
+        : Promise.resolve(null),
+      validationMetricsFile
+        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, validationMetricsFile.file_name)
+        : Promise.resolve(null),
+    ])
+    trainingMetricsPayload.value = trainMetricsDetail?.payload ?? {}
+    validationMetricsPayload.value = validationMetricsDetail?.payload ?? {}
+    mergePersistedHistories()
+    appendProgressHistory(taskDetail.progress)
+    taskDetail.events.forEach((event) => {
+      appendProgressHistory(readRecord(event.payload).progress)
+    })
     const selectedFileName = selectedOutputFile.value?.file_name
     const nextFileName = files.some((file) => file.file_name === selectedFileName)
       ? selectedFileName
@@ -393,6 +477,7 @@ async function refreshPage(): Promise<void> {
     if (nextFileName) {
       await selectOutputFile(nextFileName)
     }
+    syncTaskEventSubscription()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('trainingDetail.messages.loadFailed')
   } finally {
@@ -420,6 +505,174 @@ async function runAction(action: ModelTrainingTaskActionName): Promise<void> {
   } finally {
     actionRunning.value = null
   }
+}
+
+function handleTaskEvent(event: TaskEvent): void {
+  const data = readRecord(event.payload)
+  const progress = readRecord(data.progress)
+  const shouldApplySnapshot = shouldApplyTaskEventSnapshot(data, progress)
+  if (task.value && Object.keys(data).length > 0 && shouldApplySnapshot) {
+    const nextState = typeof data.state === 'string' ? data.state : task.value.state
+    const nextBestMetricName = typeof progress.best_metric_name === 'string'
+      ? progress.best_metric_name
+      : task.value.best_metric_name
+    const nextBestMetricValue = readNumber(progress.best_metric_value) ?? task.value.best_metric_value
+    task.value = {
+      ...task.value,
+      state: nextState,
+      progress: { ...task.value.progress, ...progress },
+      result: { ...task.value.result, ...readRecord(data.result) },
+      metadata: { ...task.value.metadata, ...readRecord(data.metadata) },
+      best_metric_name: nextBestMetricName,
+      best_metric_value: nextBestMetricValue,
+    }
+  }
+  appendProgressHistory(progress)
+  if (event.event_type === 'result' || event.event_type === 'status') {
+    scheduleSnapshotRefresh()
+  }
+  if (shouldApplySnapshot && !isActiveTrainingState(task.value?.state)) {
+    taskEvents.stop()
+    trainingTelemetry.stop()
+  }
+}
+
+function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
+  const currentTask = task.value
+  if (currentTask === null || payload.task_id !== currentTask.task_id) return
+  if (payload.attempt_no < currentTask.current_attempt_no) return
+  const currentEpoch = readNumber(currentTask.progress.epoch)
+  if (currentEpoch !== null && payload.epoch !== null && payload.epoch !== undefined) {
+    if (payload.epoch < currentEpoch) return
+  }
+  const nextProgress: Record<string, unknown> = {
+    ...currentTask.progress,
+    stage: payload.stage,
+    granularity: payload.granularity,
+  }
+  assignTelemetryValue(nextProgress, 'percent', payload.progress_percent)
+  assignTelemetryValue(nextProgress, 'epoch', payload.epoch)
+  assignTelemetryValue(nextProgress, 'epoch_index', payload.epoch_index)
+  assignTelemetryValue(nextProgress, 'max_epochs', payload.max_epochs)
+  assignTelemetryValue(nextProgress, 'iteration', payload.step)
+  assignTelemetryValue(nextProgress, 'max_iterations', payload.steps_per_epoch)
+  assignTelemetryValue(nextProgress, 'global_iteration', payload.global_step)
+  assignTelemetryValue(nextProgress, 'total_iterations', payload.total_steps)
+  assignTelemetryValue(nextProgress, 'input_size', payload.input_size)
+  assignTelemetryValue(nextProgress, 'learning_rate', payload.learning_rate)
+  if (payload.granularity === 'batch') nextProgress.batch_metrics = payload.metrics
+  if (Object.keys(payload.runtime).length > 0) nextProgress.runtime = payload.runtime
+  runtimeHistory.value = appendTrainingRuntimePoint(
+    runtimeHistory.value,
+    buildRuntimePoint(payload.global_step, payload.timestamp, payload.runtime),
+  )
+  task.value = {
+    ...currentTask,
+    current_attempt_no: Math.max(currentTask.current_attempt_no, payload.attempt_no),
+    progress: nextProgress,
+  }
+}
+
+function assignTelemetryValue(
+  target: Record<string, unknown>,
+  name: string,
+  value: unknown,
+): void {
+  if (value !== null && value !== undefined) target[name] = value
+}
+
+function shouldApplyTaskEventSnapshot(
+  data: Record<string, unknown>,
+  incomingProgress: Record<string, unknown>,
+): boolean {
+  const currentTask = task.value
+  if (currentTask === null) return true
+  const incomingAttempt = readNumber(data.attempt_no)
+  if (incomingAttempt !== null && incomingAttempt < currentTask.current_attempt_no) {
+    return false
+  }
+  const incomingState = typeof data.state === 'string' ? data.state : null
+  if (!isActiveTrainingState(currentTask.state) && isActiveTrainingState(incomingState)) {
+    return false
+  }
+  const currentProgress = currentTask.progress
+  const currentGlobalStep = readNumber(
+    currentProgress.global_step ?? currentProgress.global_iteration,
+  )
+  const incomingGlobalStep = readNumber(
+    incomingProgress.global_step ?? incomingProgress.global_iteration,
+  )
+  if (
+    currentGlobalStep !== null
+    && incomingGlobalStep !== null
+    && incomingGlobalStep < currentGlobalStep
+  ) {
+    return false
+  }
+  const currentEpoch = readNumber(currentProgress.epoch)
+  const incomingEpoch = readNumber(incomingProgress.epoch)
+  return currentEpoch === null || incomingEpoch === null || incomingEpoch >= currentEpoch
+}
+
+function buildLatestTaskEventCursor(
+  events: ModelTrainingTaskDetail['events'],
+): string | null {
+  const latestEvent = [...events].sort((left, right) => (
+    left.created_at.localeCompare(right.created_at)
+    || left.event_id.localeCompare(right.event_id)
+  )).at(-1)
+  return latestEvent ? `${latestEvent.created_at}|${latestEvent.event_id}` : null
+}
+
+function isActiveTrainingState(state: string | null | undefined): boolean {
+  return state === 'queued' || state === 'running'
+}
+
+function syncTaskEventSubscription(): void {
+  if (isActiveTrainingState(task.value?.state)) {
+    taskEvents.start()
+    trainingTelemetry.start()
+    return
+  }
+  taskEvents.stop()
+  trainingTelemetry.stop()
+}
+
+function appendProgressHistory(value: unknown): void {
+  const progress = readRecord(value)
+  if (Object.keys(progress).length === 0) return
+  trainMetricHistory.value = appendTrainingMetricPoint(
+    trainMetricHistory.value,
+    buildMetricPointFromProgress(progress, 'train_metrics'),
+  )
+  validationMetricHistory.value = appendTrainingMetricPoint(
+    validationMetricHistory.value,
+    buildMetricPointFromProgress(progress, 'validation_metrics'),
+  )
+  learningRateHistory.value = appendTrainingScalarPoint(
+    learningRateHistory.value,
+    buildLearningRatePointFromProgress(progress),
+  )
+}
+
+function mergePersistedHistories(): void {
+  readPersistedMetricHistory(trainingMetricsPayload.value).forEach((point) => {
+    trainMetricHistory.value = appendTrainingMetricPoint(trainMetricHistory.value, point)
+  })
+  readPersistedMetricHistory(validationMetricsPayload.value).forEach((point) => {
+    validationMetricHistory.value = appendTrainingMetricPoint(validationMetricHistory.value, point)
+  })
+  readPersistedLearningRateHistory(trainingMetricsPayload.value).forEach((point) => {
+    learningRateHistory.value = appendTrainingScalarPoint(learningRateHistory.value, point)
+  })
+}
+
+function scheduleSnapshotRefresh(): void {
+  if (snapshotRefreshTimer !== null) return
+  snapshotRefreshTimer = window.setTimeout(() => {
+    snapshotRefreshTimer = null
+    void refreshPage()
+  }, 300)
 }
 
 function openDeleteDialog(): void {
@@ -488,6 +741,44 @@ function buildMetricEntries(value: unknown): Array<{ name: string; value: string
     .map(([name, metricValue]) => ({ name, value: formatMetricValue(metricValue) }))
 }
 
+function buildRuntimeMetricEntries(value: unknown): Array<{ name: string; value: string }> {
+  const runtime = readRecord(value)
+  const orderedNames = [
+    'device',
+    'batch_size',
+    'batch_resolution_mode',
+    'oom_recovery_count',
+    'samples_per_second',
+    'steps_per_second',
+    'step_time_ms',
+    'forward_loss_host_time_ms',
+    'backward_optimizer_host_time_ms',
+    'batch_compute_host_time_ms',
+    'epoch_elapsed_seconds',
+    'elapsed_seconds',
+    'estimated_remaining_seconds',
+    'gpu_utilization_percent',
+    'gpu_memory_used_percent',
+    'gpu_memory_allocated_bytes',
+    'gpu_memory_reserved_bytes',
+  ]
+  return orderedNames.flatMap((name) => {
+    const runtimeValue = runtime[name]
+    if (runtimeValue === null || runtimeValue === undefined) return []
+    return [{ name, value: formatRuntimeValue(name, runtimeValue) }]
+  })
+}
+
+function formatRuntimeValue(name: string, value: unknown): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return formatPlainValue(value)
+  if (name.endsWith('_bytes')) return `${(value / (1024 ** 3)).toFixed(3)} GiB`
+  if (name.endsWith('_percent')) return `${Number(value.toFixed(2))}%`
+  if (name === 'step_time_ms' || name.endsWith('_time_ms')) return `${Number(value.toFixed(2))} ms`
+  if (name.endsWith('_seconds')) return `${Number(value.toFixed(1))} s`
+  if (name.endsWith('_per_second')) return Number(value.toFixed(2)).toString()
+  return formatMetricValue(value)
+}
+
 function readRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
@@ -545,6 +836,30 @@ function formatPlainValue(value: unknown): string {
   margin: 0;
   color: var(--am-text);
   font-size: 13px;
+}
+
+.training-chart-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.training-chart-heading h3,
+.training-chart-heading p {
+  margin: 0;
+}
+
+.training-chart-heading h3 {
+  color: var(--am-text);
+  font-size: 14px;
+}
+
+.training-chart-heading p {
+  margin-top: 4px;
+  color: var(--am-text-muted);
+  font-size: 12px;
 }
 
 .training-metric-hint {

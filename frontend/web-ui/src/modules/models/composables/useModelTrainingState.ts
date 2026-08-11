@@ -42,9 +42,18 @@ export function useModelTrainingState(options: {
   trainingTaskSupportsWarmStart: ComputedRef<boolean>
   evaluationInterval: Ref<number>
   maxEpochs: Ref<number>
+  batchMode: Ref<'auto' | 'fixed'>
   batchSize: Ref<number>
+  batchTargetMemoryFraction: Ref<number>
+  batchMinimumSize: Ref<number>
+  batchMaximumSize: Ref<number | undefined>
+  batchRecoverOnOom: Ref<boolean>
+  batchMaxOomRetries: Ref<number>
   trainingDevice: Ref<string>
-  precision: Ref<string>
+  ampMode: Ref<'auto' | 'enabled' | 'disabled'>
+  ampDtype: Ref<'auto' | 'fp16' | 'bf16'>
+  checkpointInterval: Ref<number>
+  checkpointKeepPeriodic: Ref<number>
   inputWidth: Ref<number>
   inputHeight: Ref<number>
   trainingDisplayName: Ref<string>
@@ -146,10 +155,19 @@ export function useModelTrainingState(options: {
         warmStartModelVersionId: options.trainingTaskSupportsWarmStart.value
           ? options.warmStartModelVersionId.value.trim()
           : '',
-        evaluationInterval: options.evaluationInterval.value,
         maxEpochs: options.maxEpochs.value,
+        batchMode: options.batchMode.value,
         batchSize: options.batchSize.value,
-        precision: options.precision.value,
+        batchTargetMemoryFraction: options.batchTargetMemoryFraction.value,
+        batchMinimumSize: options.batchMinimumSize.value,
+        batchMaximumSize: options.batchMaximumSize.value,
+        batchRecoverOnOom: options.batchRecoverOnOom.value,
+        batchMaxOomRetries: options.batchMaxOomRetries.value,
+        ampMode: options.ampMode.value,
+        ampDtype: options.ampDtype.value,
+        checkpointInterval: options.checkpointInterval.value,
+        checkpointKeepPeriodic: options.checkpointKeepPeriodic.value,
+        evaluationInterval: options.evaluationInterval.value,
         inputWidth: alignedInputSize.width,
         inputHeight: alignedInputSize.height,
         displayName: options.trainingDisplayName.value.trim(),

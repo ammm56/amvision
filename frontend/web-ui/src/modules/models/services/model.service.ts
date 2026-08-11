@@ -218,10 +218,19 @@ export interface ModelTrainingTaskCreateInput {
   modelScale: string
   outputModelName: string
   warmStartModelVersionId?: string
-  evaluationInterval?: number
   maxEpochs?: number
+  batchMode: 'auto' | 'fixed'
   batchSize?: number
-  precision?: string
+  batchTargetMemoryFraction?: number
+  batchMinimumSize?: number
+  batchMaximumSize?: number
+  batchRecoverOnOom?: boolean
+  batchMaxOomRetries?: number
+  ampMode: 'auto' | 'enabled' | 'disabled'
+  ampDtype: 'auto' | 'fp16' | 'bf16'
+  checkpointInterval?: number
+  checkpointKeepPeriodic?: number
+  evaluationInterval?: number
   inputWidth?: number
   inputHeight?: number
   displayName?: string
@@ -379,13 +388,32 @@ export async function createModelTrainingTask(input: ModelTrainingTaskCreateInpu
     model_scale: input.modelScale,
     output_model_name: input.outputModelName,
     warm_start_model_version_id: input.warmStartModelVersionId || null,
-    evaluation_interval: input.evaluationInterval,
-    max_epochs: input.maxEpochs,
-    batch_size: input.batchSize,
-    precision: input.precision || null,
-    input_size: input.inputWidth && input.inputHeight
-      ? { width: input.inputWidth, height: input.inputHeight }
-      : null,
+    execution: {
+      max_epochs: input.maxEpochs,
+      input_size: input.inputWidth && input.inputHeight
+        ? { width: input.inputWidth, height: input.inputHeight }
+        : null,
+      batch: {
+        mode: input.batchMode,
+        size: input.batchMode === 'fixed' ? input.batchSize : null,
+        target_memory_fraction: input.batchTargetMemoryFraction,
+        minimum_size: input.batchMinimumSize,
+        maximum_size: input.batchMaximumSize ?? null,
+        recover_on_oom: input.batchRecoverOnOom,
+        max_oom_retries: input.batchMaxOomRetries,
+      },
+      amp: {
+        mode: input.ampMode,
+        dtype: input.ampDtype,
+      },
+      checkpoint: {
+        interval_epochs: input.checkpointInterval,
+        keep_periodic: input.checkpointKeepPeriodic,
+      },
+      validation: {
+        interval_epochs: input.evaluationInterval,
+      },
+    },
     parameters: input.parameters ?? {},
     display_name: input.displayName ?? '',
   }

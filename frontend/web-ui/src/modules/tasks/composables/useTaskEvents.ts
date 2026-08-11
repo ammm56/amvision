@@ -4,12 +4,17 @@ import { useSessionStore } from '@/app/stores/session.store'
 import { ResourceStreamClient } from '@/shared/ws/resource-stream-client'
 import type { ResourceStreamState, TaskEvent, WebSocketEnvelope } from '@/shared/contracts'
 
-export function useTaskEvents(getTaskId: () => string, onTaskEvent: (event: TaskEvent) => void) {
+export function useTaskEvents(
+  getTaskId: () => string,
+  onTaskEvent: (event: TaskEvent) => void,
+  getAfterCursor: () => string | null = () => null,
+) {
   const sessionStore = useSessionStore()
   const streamState = ref<ResourceStreamState | null>(null)
   let client: ResourceStreamClient | null = null
 
   function start(): void {
+    if (client !== null) return
     if (!sessionStore.isAuthenticated || !sessionStore.websocketQueryTokenEnabled) {
       return
     }
@@ -18,7 +23,7 @@ export function useTaskEvents(getTaskId: () => string, onTaskEvent: (event: Task
       stream: 'tasks.events',
       path: '/tasks/events',
       resourceId: taskId,
-      query: { task_id: taskId },
+      query: { task_id: taskId, after_cursor: getAfterCursor() },
       getAccessToken: () => sessionStore.accessToken,
       queryTokenEnabled: () => sessionStore.websocketQueryTokenEnabled,
       onMessage: (message: WebSocketEnvelope) => {

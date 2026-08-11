@@ -475,7 +475,6 @@ const poseFields: TrainingParameterField[] = [
   numberField('weight_decay', '权重衰减', { min: 0, max: 1, step: 0.0001, defaultValue: yoloTaskDefaultWeightDecay }),
   numberField('min_lr_ratio', '最小学习率比例', { min: 0, max: 1, step: 0.0001, defaultValue: '0.01' }),
   ...ordinaryYoloEvaluationThresholdFields,
-  numberField('keypoint_confidence_threshold', '关键点置信度阈值', { min: 0, max: 1, step: 0.01, defaultValue: '0.25' }),
   numberField('class_loss_weight', '分类损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '0.5' }),
   numberField('box_loss_weight', '框回归损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '7.5' }),
   numberField('dfl_loss_weight', 'DFL 损失权重', { min: 0, max: 1000, step: 0.1, defaultValue: '1.5' }),
@@ -962,7 +961,6 @@ function buildFlatTrainingParameterValues(
       'min_lr_ratio',
       'evaluation_confidence_threshold',
       'evaluation_nms_threshold',
-      'keypoint_confidence_threshold',
       'class_loss_weight',
       'box_loss_weight',
       regressionLossWeightKey,
@@ -1184,7 +1182,6 @@ export function buildTrainingParameters(
     nms_threshold: supportsNmsThreshold
       ? flat.evaluation_nms_threshold
       : undefined,
-    keypoint_confidence_threshold: flat.keypoint_confidence_threshold,
   })
 
   if (taskType === 'obb') {

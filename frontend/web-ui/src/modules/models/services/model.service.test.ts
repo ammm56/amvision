@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { apiRequest } from '@/shared/api/http-client'
-import { listTrainingParameterSchemas } from './model.service'
+import { createModelTrainingTask, listTrainingParameterSchemas } from './model.service'
 
 vi.mock('@/shared/api/http-client', () => ({ apiRequest: vi.fn() }))
 
@@ -90,5 +90,80 @@ describe('model training parameter schema service', () => {
       protocol_version: 1,
       items: [item],
     })
+  })
+})
+
+describe('model training execution policy service', () => {
+  beforeEach(() => {
+    apiRequestMock.mockReset()
+    apiRequestMock.mockResolvedValue({ task_id: 'task-1' })
+  })
+
+  it('serializes AutoBatch, AMP, checkpoint and validation as one execution policy', async () => {
+    await createModelTrainingTask({
+      taskType: 'pose',
+      projectId: 'project-1',
+      modelType: 'yolo11',
+      modelScale: 'n',
+      outputModelName: 'hand-pose',
+      maxEpochs: 200,
+      batchMode: 'auto',
+      batchSize: 32,
+      batchTargetMemoryFraction: 0.6,
+      batchMinimumSize: 1,
+      batchRecoverOnOom: true,
+      batchMaxOomRetries: 3,
+      ampMode: 'auto',
+      ampDtype: 'auto',
+      checkpointInterval: 5,
+      checkpointKeepPeriodic: 2,
+      evaluationInterval: 5,
+      inputWidth: 640,
+      inputHeight: 640,
+    })
+
+    expect(apiRequestMock).toHaveBeenCalledWith('/models/pose/training-tasks', {
+      method: 'POST',
+      body: expect.objectContaining({
+        execution: {
+          max_epochs: 200,
+          input_size: { width: 640, height: 640 },
+          batch: {
+            mode: 'auto',
+            size: null,
+            target_memory_fraction: 0.6,
+            minimum_size: 1,
+            maximum_size: null,
+            recover_on_oom: true,
+            max_oom_retries: 3,
+          },
+          amp: { mode: 'auto', dtype: 'auto' },
+          checkpoint: { interval_epochs: 5, keep_periodic: 2 },
+          validation: { interval_epochs: 5 },
+        },
+      }),
+    })
+    const body = apiRequestMock.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('batch_size')
+    expect(body).not.toHaveProperty('precision')
+    expect(body).not.toHaveProperty('evaluation_interval')
+  })
+
+  it('only sends a concrete batch size for fixed mode', async () => {
+    await createModelTrainingTask({
+      taskType: 'detection',
+      projectId: 'project-1',
+      modelType: 'yolov8',
+      modelScale: 's',
+      outputModelName: 'fixed-batch',
+      batchMode: 'fixed',
+      batchSize: 8,
+      ampMode: 'disabled',
+      ampDtype: 'auto',
+    })
+
+    const body = apiRequestMock.mock.calls[0]?.[1]?.body as Record<string, any>
+    expect(body.execution.batch.size).toBe(8)
+    expect(body.execution.amp).toEqual({ mode: 'disabled', dtype: 'auto' })
   })
 })

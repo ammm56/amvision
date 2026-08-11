@@ -84,10 +84,19 @@ export function useTrainingParameters(options: {
   const outputModelName = ref('')
   const lastSuggestedOutputModelName = ref('')
   const maxEpochs = ref(100)
-  const batchSize = ref(1)
+  const batchMode = ref<'auto' | 'fixed'>('auto')
+  const batchSize = ref(16)
+  const batchTargetMemoryFraction = ref(0.6)
+  const batchMinimumSize = ref(1)
+  const batchMaximumSize = ref<number | undefined>(undefined)
+  const batchRecoverOnOom = ref(true)
+  const batchMaxOomRetries = ref(3)
   const trainingDevice = ref('')
   const evaluationInterval = ref(5)
-  const precision = ref('fp32')
+  const ampMode = ref<'auto' | 'enabled' | 'disabled'>('auto')
+  const ampDtype = ref<'auto' | 'fp16' | 'bf16'>('auto')
+  const checkpointInterval = ref(5)
+  const checkpointKeepPeriodic = ref(2)
   const inputWidth = ref(640)
   const inputHeight = ref(640)
   const trainingDisplayName = ref('')
@@ -153,8 +162,18 @@ export function useTrainingParameters(options: {
     lastSuggestedOutputModelName.value = ''
   }
 
-  function setPrecision(value: SelectValue): void {
-    precision.value = selectValueToString(value) === 'fp16' ? 'fp16' : 'fp32'
+  function setBatchMode(value: SelectValue): void {
+    batchMode.value = selectValueToString(value) === 'fixed' ? 'fixed' : 'auto'
+  }
+
+  function setAmpMode(value: SelectValue): void {
+    const normalized = selectValueToString(value)
+    ampMode.value = normalized === 'enabled' || normalized === 'disabled' ? normalized : 'auto'
+  }
+
+  function setAmpDtype(value: SelectValue): void {
+    const normalized = selectValueToString(value)
+    ampDtype.value = normalized === 'fp16' || normalized === 'bf16' ? normalized : 'auto'
   }
 
   function setTrainingDevice(value: SelectValue): void {
@@ -222,10 +241,19 @@ export function useTrainingParameters(options: {
   return {
     outputModelName,
     maxEpochs,
+    batchMode,
     batchSize,
+    batchTargetMemoryFraction,
+    batchMinimumSize,
+    batchMaximumSize,
+    batchRecoverOnOom,
+    batchMaxOomRetries,
     trainingDevice,
     evaluationInterval,
-    precision,
+    ampMode,
+    ampDtype,
+    checkpointInterval,
+    checkpointKeepPeriodic,
     inputWidth,
     inputHeight,
     trainingDisplayName,
@@ -236,7 +264,9 @@ export function useTrainingParameters(options: {
     trainingAugmentationParameterFields,
     trainingSupportsAugmentationToggle,
     trainingModelParameterSectionTitle,
-    setPrecision,
+    setBatchMode,
+    setAmpMode,
+    setAmpDtype,
     setTrainingDevice,
     setTrainingModelParameterValue,
     syncSuggestedOutputModelName,

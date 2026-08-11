@@ -112,12 +112,62 @@
             <input :value="maxEpochs" type="number" min="1" step="1" @input="emitNumber('update:maxEpochs', $event)" />
           </label>
           <label class="field">
+            <span>{{ t('modelOps.fields.batchMode') }}</span>
+            <SelectField
+              :model-value="batchMode"
+              :options="batchModeOptions"
+              @update:model-value="$emit('update:batchMode', normalizeSelectValue($event) === 'fixed' ? 'fixed' : 'auto')"
+            />
+          </label>
+          <label v-if="batchMode === 'fixed'" class="field">
             <span>{{ t('modelOps.fields.batchSize') }}</span>
             <input :value="batchSize" type="number" min="1" step="1" @input="emitNumber('update:batchSize', $event)" />
           </label>
+          <label v-else class="field">
+            <span>{{ t('modelOps.fields.batchTargetMemoryFraction') }}</span>
+            <input
+              :value="batchTargetMemoryFraction"
+              type="number"
+              min="0.1"
+              max="0.95"
+              step="0.05"
+              @input="emitNumber('update:batchTargetMemoryFraction', $event)"
+            />
+          </label>
+          <label v-if="batchMode === 'auto'" class="field training-runtime-switch">
+            <span>{{ t('modelOps.fields.batchRecoverOnOom') }}</span>
+            <input
+              type="checkbox"
+              :checked="batchRecoverOnOom"
+              @change="emitBoolean('update:batchRecoverOnOom', $event)"
+            />
+          </label>
+          <label v-if="batchMode === 'auto' && batchRecoverOnOom" class="field">
+            <span>{{ t('modelOps.fields.batchMaxOomRetries') }}</span>
+            <input
+              :value="batchMaxOomRetries"
+              type="number"
+              min="0"
+              max="10"
+              step="1"
+              @input="emitNumber('update:batchMaxOomRetries', $event)"
+            />
+          </label>
           <label class="field">
-            <span>{{ t('modelOps.fields.precision') }}</span>
-            <SelectField :model-value="precision" :options="precisionOptions" @update:model-value="$emit('update:precision', normalizeSelectValue($event) === 'fp16' ? 'fp16' : 'fp32')" />
+            <span>{{ t('modelOps.fields.ampMode') }}</span>
+            <SelectField
+              :model-value="ampMode"
+              :options="ampModeOptions"
+              @update:model-value="$emit('update:ampMode', normalizeSelectValue($event))"
+            />
+          </label>
+          <label v-if="ampMode !== 'disabled'" class="field">
+            <span>{{ t('modelOps.fields.ampDtype') }}</span>
+            <SelectField
+              :model-value="ampDtype"
+              :options="ampDtypeOptions"
+              @update:model-value="$emit('update:ampDtype', normalizeSelectValue($event))"
+            />
           </label>
           <label class="field">
             <span>{{ t('modelOps.fields.inputWidth') }}</span>
@@ -130,6 +180,10 @@
           <label class="field">
             <span>{{ t('modelOps.fields.evaluationInterval') }}</span>
             <input :value="evaluationInterval" type="number" min="1" step="1" @input="emitNumber('update:evaluationInterval', $event)" />
+          </label>
+          <label class="field">
+            <span>{{ t('modelOps.fields.checkpointInterval') }}</span>
+            <input :value="checkpointInterval" type="number" min="1" step="1" @input="emitNumber('update:checkpointInterval', $event)" />
           </label>
           <label class="field">
             <span>{{ t('modelOps.trainingParameters.device') }}</span>
@@ -309,13 +363,18 @@ type SelectValue = string | number | boolean | null
 type UpdateNumberEvent =
   | 'update:maxEpochs'
   | 'update:batchSize'
+  | 'update:batchTargetMemoryFraction'
+  | 'update:batchMaxOomRetries'
   | 'update:evaluationInterval'
+  | 'update:checkpointInterval'
   | 'update:inputWidth'
   | 'update:inputHeight'
 type UpdateStringEvent =
   | 'update:outputModelName'
   | 'update:trainingDisplayName'
-type UpdateBooleanEvent = 'update:trainingAugmentationEnabled'
+type UpdateBooleanEvent =
+  | 'update:trainingAugmentationEnabled'
+  | 'update:batchRecoverOnOom'
 
 const props = defineProps<{
   selectedTaskType: ModelTaskType
@@ -327,10 +386,16 @@ const props = defineProps<{
   trainingDeviceOptions: TrainingParameterFieldOption[]
   outputModelName: string
   maxEpochs: number
+  batchMode: 'auto' | 'fixed'
   batchSize: number
+  batchTargetMemoryFraction: number
+  batchRecoverOnOom: boolean
+  batchMaxOomRetries: number
   trainingDevice: string
   evaluationInterval: number
-  precision: string
+  ampMode: 'auto' | 'enabled' | 'disabled'
+  ampDtype: 'auto' | 'fp16' | 'bf16'
+  checkpointInterval: number
   inputWidth: number
   inputHeight: number
   trainingDisplayName: string
@@ -342,7 +407,9 @@ const props = defineProps<{
   trainingSupportsAugmentationToggle: boolean
   trainingModelParameterValues: TrainingParameterValues
   trainingModelParameterSectionTitle: string
-  precisionOptions: Array<{ label: string; value: string }>
+  batchModeOptions: Array<{ label: string; value: string }>
+  ampModeOptions: Array<{ label: string; value: string }>
+  ampDtypeOptions: Array<{ label: string; value: string }>
   canWriteTasks: boolean
   trainingSubmitting: boolean
   lastTrainingSubmission: ModelTrainingTaskSubmissionResponse | null
@@ -355,10 +422,16 @@ const emit = defineEmits<{
   'clear-training-warm-start': []
   'update:outputModelName': [value: string]
   'update:maxEpochs': [value: number]
+  'update:batchMode': [value: 'auto' | 'fixed']
   'update:batchSize': [value: number]
+  'update:batchTargetMemoryFraction': [value: number]
+  'update:batchRecoverOnOom': [value: boolean]
+  'update:batchMaxOomRetries': [value: number]
   'update:trainingDevice': [value: string]
   'update:evaluationInterval': [value: number]
-  'update:precision': [value: string]
+  'update:ampMode': [value: string]
+  'update:ampDtype': [value: string]
+  'update:checkpointInterval': [value: number]
   'update:inputWidth': [value: number]
   'update:inputHeight': [value: number]
   'update:trainingDisplayName': [value: string]
@@ -450,8 +523,20 @@ function emitNumber(eventName: UpdateNumberEvent, event: Event): void {
     emit('update:batchSize', normalizedValue)
     return
   }
+  if (eventName === 'update:batchTargetMemoryFraction') {
+    emit('update:batchTargetMemoryFraction', normalizedValue)
+    return
+  }
+  if (eventName === 'update:batchMaxOomRetries') {
+    emit('update:batchMaxOomRetries', normalizedValue)
+    return
+  }
   if (eventName === 'update:evaluationInterval') {
     emit('update:evaluationInterval', normalizedValue)
+    return
+  }
+  if (eventName === 'update:checkpointInterval') {
+    emit('update:checkpointInterval', normalizedValue)
     return
   }
   if (eventName === 'update:inputWidth') {
@@ -464,7 +549,11 @@ function emitNumber(eventName: UpdateNumberEvent, event: Event): void {
 function emitBoolean(eventName: UpdateBooleanEvent, event: Event): void {
   const input = event.target
   const value = input instanceof HTMLInputElement && input.checked
-  emit(eventName, value)
+  if (eventName === 'update:batchRecoverOnOom') {
+    emit('update:batchRecoverOnOom', value)
+    return
+  }
+  emit('update:trainingAugmentationEnabled', value)
 }
 
 function emitModelParameterValue(key: string, event: Event): void {
@@ -549,6 +638,21 @@ function normalizeModelParameterNumber(
   width: 16px;
   height: 16px;
   accent-color: var(--am-action-primary);
+}
+
+.training-runtime-switch {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.training-runtime-switch input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  max-height: 18px;
+  margin: 0;
+  accent-color: var(--am-action-primary);
+  cursor: pointer;
 }
 
 .training-inline-summary {

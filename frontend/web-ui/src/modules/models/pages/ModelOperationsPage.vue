@@ -22,10 +22,16 @@
         :training-device-options="trainingDeviceOptions"
         :output-model-name="outputModelName"
         :max-epochs="maxEpochs"
+        :batch-mode="batchMode"
         :batch-size="batchSize"
+        :batch-target-memory-fraction="batchTargetMemoryFraction"
+        :batch-recover-on-oom="batchRecoverOnOom"
+        :batch-max-oom-retries="batchMaxOomRetries"
         :training-device="trainingDevice"
         :evaluation-interval="evaluationInterval"
-        :precision="precision"
+        :amp-mode="ampMode"
+        :amp-dtype="ampDtype"
+        :checkpoint-interval="checkpointInterval"
         :input-width="inputWidth"
         :input-height="inputHeight"
         :training-display-name="trainingDisplayName"
@@ -37,7 +43,9 @@
         :training-supports-augmentation-toggle="trainingSupportsAugmentationToggle"
         :training-model-parameter-values="trainingModelParameterValues"
         :training-model-parameter-section-title="trainingModelParameterSectionTitle"
-        :precision-options="precisionOptions"
+        :batch-mode-options="batchModeOptions"
+        :amp-mode-options="ampModeOptions"
+        :amp-dtype-options="ampDtypeOptions"
         :can-write-tasks="canWriteTasks"
         :training-submitting="trainingSubmitting"
         :last-training-submission="lastTrainingSubmission"
@@ -47,10 +55,16 @@
         @clear-training-warm-start="clearTrainingWarmStart"
         @update:output-model-name="outputModelName = $event"
         @update:max-epochs="maxEpochs = $event"
+        @update:batch-mode="setBatchMode"
         @update:batch-size="batchSize = $event"
+        @update:batch-target-memory-fraction="batchTargetMemoryFraction = $event"
+        @update:batch-recover-on-oom="batchRecoverOnOom = $event"
+        @update:batch-max-oom-retries="batchMaxOomRetries = $event"
         @update:training-device="setTrainingDevice"
         @update:evaluation-interval="evaluationInterval = $event"
-        @update:precision="setPrecision"
+        @update:amp-mode="setAmpMode"
+        @update:amp-dtype="setAmpDtype"
+        @update:checkpoint-interval="checkpointInterval = $event"
         @update:input-width="inputWidth = $event"
         @update:input-height="inputHeight = $event"
         @update:training-display-name="trainingDisplayName = $event"
@@ -211,10 +225,20 @@ const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const { t } = useI18n()
 
-const precisionOptions = [
-  { label: 'fp32', value: 'fp32' },
+const batchModeOptions = computed(() => [
+  { label: t('modelOps.trainingParameters.autoBatch'), value: 'auto' },
+  { label: t('modelOps.trainingParameters.fixedBatch'), value: 'fixed' },
+])
+const ampModeOptions = computed(() => [
+  { label: t('modelOps.trainingParameters.ampAuto'), value: 'auto' },
+  { label: t('modelOps.trainingParameters.enabled'), value: 'enabled' },
+  { label: t('modelOps.trainingParameters.disabled'), value: 'disabled' },
+])
+const ampDtypeOptions = computed(() => [
+  { label: t('modelOps.trainingParameters.ampDtypeAuto'), value: 'auto' },
   { label: 'fp16', value: 'fp16' },
-]
+  { label: 'bf16', value: 'bf16' },
+])
 
 const defaultTaskTypeOptions: Array<{ label: ModelTaskType; value: ModelTaskType }> = [
   { label: 'detection', value: 'detection' },
@@ -363,10 +387,19 @@ const currentTrainingParameterSchema = computed<TrainingParameterSchemaItem | nu
 const {
   outputModelName,
   maxEpochs,
+  batchMode,
   batchSize,
+  batchTargetMemoryFraction,
+  batchMinimumSize,
+  batchMaximumSize,
+  batchRecoverOnOom,
+  batchMaxOomRetries,
   trainingDevice,
   evaluationInterval,
-  precision,
+  ampMode,
+  ampDtype,
+  checkpointInterval,
+  checkpointKeepPeriodic,
   inputWidth,
   inputHeight,
   trainingDisplayName,
@@ -377,7 +410,9 @@ const {
   trainingAugmentationParameterFields,
   trainingSupportsAugmentationToggle,
   trainingModelParameterSectionTitle,
-  setPrecision,
+  setBatchMode,
+  setAmpMode,
+  setAmpDtype,
   setTrainingDevice,
   setTrainingModelParameterValue,
   syncSuggestedOutputModelName,
@@ -415,9 +450,18 @@ const {
   trainingTaskSupportsWarmStart,
   evaluationInterval,
   maxEpochs,
+  batchMode,
   batchSize,
+  batchTargetMemoryFraction,
+  batchMinimumSize,
+  batchMaximumSize,
+  batchRecoverOnOom,
+  batchMaxOomRetries,
   trainingDevice,
-  precision,
+  ampMode,
+  ampDtype,
+  checkpointInterval,
+  checkpointKeepPeriodic,
   inputWidth,
   inputHeight,
   trainingDisplayName,

@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { i18n } from '@/platform/i18n'
 import TrainingTaskDetailPage from './TrainingTaskDetailPage.vue'
@@ -8,6 +8,16 @@ import {
   getModelTrainingTaskDetail,
   listModelTrainingOutputFiles,
 } from '../services/model.service'
+
+const taskEventStreamMock = vi.hoisted(() => ({
+  handler: null as ((event: Record<string, unknown>) => void) | null,
+  start: vi.fn(),
+}))
+
+const trainingTelemetryStreamMock = vi.hoisted(() => ({
+  handler: null as ((payload: Record<string, unknown>) => void) | null,
+  start: vi.fn(),
+}))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -33,7 +43,44 @@ vi.mock('../services/model.service', () => ({
   requestModelTrainingTaskAction: vi.fn(),
 }))
 
+vi.mock('@/modules/tasks/composables/useTaskEvents', async () => {
+  const { ref } = await import('vue')
+  return {
+    useTaskEvents: (_getTaskId: () => string, handler: (event: Record<string, unknown>) => void) => {
+      taskEventStreamMock.handler = handler
+      return {
+      streamState: ref(null),
+      start: taskEventStreamMock.start,
+      stop: vi.fn(),
+      }
+    },
+  }
+})
+
+vi.mock('../composables/useTrainingTelemetry', async () => {
+  const { ref } = await import('vue')
+  return {
+    useTrainingTelemetry: (
+      _getTaskId: () => string,
+      handler: (payload: Record<string, unknown>) => void,
+    ) => {
+      trainingTelemetryStreamMock.handler = handler
+      return {
+        streamState: ref(null),
+        start: trainingTelemetryStreamMock.start,
+        stop: vi.fn(),
+      }
+    },
+  }
+})
+
 describe('TrainingTaskDetailPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    taskEventStreamMock.handler = null
+    trainingTelemetryStreamMock.handler = null
+  })
+
   it('renders non-detection progress, metrics, and output files', async () => {
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
       task_id: 'task-classification-1',
@@ -220,5 +267,73 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('1.25')
     expect(wrapper.text()).toContain('2.75')
     expect(wrapper.text()).not.toContain('9.9')
+  })
+
+  it('applies dedicated batch telemetry without requiring a manual page refresh', async () => {
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
+      task_id: 'task-classification-1',
+      task_type: 'classification',
+      model_type: 'yolo11',
+      display_name: 'live classifier',
+      project_id: 'project-1',
+      created_at: '2026-07-10T02:00:00Z',
+      state: 'running',
+      current_attempt_no: 1,
+      progress: { stage: 'running', epoch: 1, max_epochs: 4, percent: 25 },
+      result: {},
+      metadata: {},
+      best_metric_name: null,
+      best_metric_value: null,
+      training_summary: {},
+      available_actions: [],
+      control_status: { status: 'idle', resume_count: 0 },
+      task_spec: {},
+      events: [],
+    })
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([])
+
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(taskEventStreamMock.start).toHaveBeenCalled()
+    expect(trainingTelemetryStreamMock.start).toHaveBeenCalled()
+
+    trainingTelemetryStreamMock.handler?.({
+      protocol: 'training.telemetry.v1',
+      task_id: 'task-classification-1',
+      attempt_no: 1,
+      sequence: 3,
+      timestamp: '2026-07-10T02:01:00Z',
+      task_type: 'classification',
+      model_type: 'yolo11',
+      stage: 'training',
+      granularity: 'batch',
+      epoch: 3,
+      epoch_index: 2,
+      max_epochs: 4,
+      step: 8,
+      steps_per_epoch: 12,
+      global_step: 32,
+      total_steps: 48,
+      progress_percent: 68,
+      learning_rate: 0.0005,
+      metrics: { loss: 0.875 },
+      runtime: {
+        batch_size: 8,
+        samples_per_second: 42.5,
+        step_time_ms: 188.2,
+        gpu_utilization_percent: 73,
+        gpu_memory_allocated_bytes: 2147483648,
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('3 / 4')
+    expect(wrapper.text()).toContain('68.0%')
+    expect(wrapper.text()).toContain('0.875')
+    expect(wrapper.text()).toContain('训练运行时')
+    expect(wrapper.text()).toContain('42.5')
+    expect(wrapper.text()).toContain('73%')
+    expect(wrapper.text()).toContain('2.000 GiB')
+    expect(getModelTrainingTaskDetail).toHaveBeenCalledTimes(1)
   })
 })
