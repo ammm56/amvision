@@ -18,6 +18,9 @@ from backend.service.infrastructure.filesystem.atomic_files import (
 )
 
 
+_CLAIM_TRANSITION_RECOVERY_GRACE_SECONDS = 30.0
+
+
 @dataclass(frozen=True)
 class QueueMessage:
     """描述一条队列消息。
@@ -284,6 +287,16 @@ class LocalFileQueueBackend:
                 try:
                     queue_task = self._read_task(task_path)
                 except PersistenceOperationError:
+                    continue
+                # claim 使用 pending -> leased 的原子 rename 取得唯一所有权，
+                # 随后才写入 worker_id / leased_at。另一个进程可能恰好在这段
+                # 极短窗口扫描到仍是 queued 的 leased 文件；不能把它立即恢复
+                # 到 pending，否则两个 worker 会同时执行同一任务。只有过了
+                # 宽限期仍没有完整 lease，才按领取进程中途崩溃处理。
+                if queue_task.leased_at is None and not self._is_file_expired(
+                    task_path,
+                    retention_seconds=_CLAIM_TRANSITION_RECOVERY_GRACE_SECONDS,
+                ):
                     continue
                 if not self._is_lease_expired(queue_task, timeout_seconds=timeout_seconds):
                     continue

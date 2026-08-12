@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
+from functools import partial
 import time
 from typing import Any
 
@@ -15,6 +16,9 @@ from backend.service.application.models.evaluation.manifest_splits import (
 
 from backend.service.application.models.yolo_core_common.geometry import (
     build_yolo_letterbox_transform,
+)
+from backend.service.application.models.yolo_core_common.targets.segmentation import (
+    unpack_yolo_segmentation_evaluation_masks,
 )
 
 from backend.service.application.errors import InvalidRequestError
@@ -523,6 +527,7 @@ def evaluate_yolo26_segmentation_samples(
     batch_size: int = 1,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
     control_callback: Callable[[], None] | None = None,
+    scaleup: bool = False,
 ) -> dict[str, float]:
     """对少量验证样本执行 YOLO26 segmentation 训练期评估。"""
 
@@ -538,7 +543,10 @@ def evaluate_yolo26_segmentation_samples(
         input_size=input_size,
         plan=dataloader_plan
         or resolve_yolo_task_evaluation_dataloader_plan(device=device),
-        build_batch=build_yolo26_segmentation_training_batch,
+        build_batch=partial(
+            build_yolo26_segmentation_training_batch,
+            scaleup=bool(scaleup),
+        ),
         load_imports=load_yolo_task_dataloader_imports,
     )
     next_image_index = 0
@@ -640,11 +648,12 @@ def _append_yolo26_segmentation_gt_items(
 
     boxes = list(target.get("boxes", []))
     class_ids = list(target.get("class_ids", []))
-    masks = (
-        _yolo26_segmentation_tensor_to_np(target.get("masks"), imports)
-        if target.get("masks") is not None
-        else None
+    masks = unpack_yolo_segmentation_evaluation_masks(
+        target.get("evaluation_masks_packed"),
+        np_module=imports.np,
     )
+    if masks is None and target.get("masks") is not None:
+        masks = _yolo26_segmentation_tensor_to_np(target.get("masks"), imports)
     mask_valid = (
         _yolo26_segmentation_tensor_to_np(target.get("mask_valid"), imports).astype(
             bool

@@ -551,6 +551,7 @@ def _build_train_config(
         "run_test": run_test,
         "log_per_class_metrics": True,
         "aug_config": _resolve_rfdetr_aug_config(extra_options),
+        "scale_jitter": _read_bool_option(extra_options, "scale_jitter", True),
         "augmentation_backend": _resolve_rfdetr_augmentation_backend(extra_options),
     }
     if request.task_type == SEGMENTATION_TASK_TYPE:

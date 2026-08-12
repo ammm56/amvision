@@ -107,7 +107,9 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 
 - segmentation 同时报告 bbox AP 和 mask AP；只要 validation 有实例 mask，
   best checkpoint 必须使用 mask AP，模型没有产生 mask 时按 0 处理，不能回退
-  到 bbox AP。
+  到 bbox AP。独立评估响应使用 `bbox_map50`、`bbox_map50_95`、`mask_map50`
+  和 `mask_map50_95` 明确区分两类指标；v1 中的 `map50`、`map50_95` 只作为
+  bbox 指标兼容别名，训练收尾与端到端验收不得依赖这个别名推断指标语义。
 - pose 使用与实际关键点数量等长的 OKS sigma。COCO person 17 点使用官方
   sigma，其他拓扑使用显式配置或 `1 / num_keypoints` 等权值。训练与数据集级
   评估都使用真实 pycocotools keypoints evaluator。关键点置信度阈值只控制
@@ -121,9 +123,14 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 - segmentation 训练期评估逐图生成实例 mask 后必须立即压缩为 COCO RLE。
   split 级状态只保留 bbox 和 compressed RLE，不得保留
   `image_count × maxDets × H × W` 的 dense mask。
-- segmentation 的 proto mask 解码后必须按预测 bbox 裁切。`mask_ratio` 生成的
-  低分辨率 GT mask 必须用最近邻恢复到 COCO image 的 `H×W` 后再编码 RLE；
-  预测 mask 直接编码 RLE，不允许经过会丢失孔洞的 contour polygon 往返转换。
+- segmentation 的 proto mask 解码后必须按预测 bbox 裁切。训练 loss 使用
+  `mask_ratio` 下采样 target；COCO AP 则必须使用 letterbox/增强完成后、下采样前的
+  完整分辨率 GT mask，不能把低分辨率 loss target 最近邻放大后冒充原始 GT。
+  完整 GT 在 DataLoader IPC 中使用 bit packing 传输，不能搬到 GPU；预测 mask 直接
+  编码 RLE，不允许经过会丢失孔洞的 contour polygon 往返转换。
+- YOLO segmentation 的 polygon 栅格化遵循参考实现的 `float -> int32` 截断规则；
+  proto 和 mask coefficient 组合后的 raw logits 必须先插值、恢复原图，再按等价
+  logit threshold 二值化，不能先 sigmoid 再插值改变细边界。
 
 ## 数值稳定性
 
@@ -139,6 +146,11 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
   optimizer step 和 AMP 跳过次数。
 - 任一有训练样本的 segmentation epoch 没有成功 optimizer step 时必须失败，
   不能只根据不同 batch 的 loss 波动宣称模型正在收敛。
+- `optimizer=auto` 的迭代量按 `ceil(dataset_size / max(batch, nbs)) × epochs`
+  计算。MuSGD 只正交化 2D/4D 参数，最终 task head 的 `cv3/one2one_cv3`
+  以及指定 segmentation 参数使用三倍学习率；Muon、SGD momentum 和
+  Newton–Schulz 必须按 param group 批量更新。训练进度与摘要展示基础学习率，
+  不得把首个三倍学习率分组误报为全局学习率。
 
 ## 数据与增强约束
 
@@ -147,13 +159,18 @@ test 结果不得反向影响 best checkpoint、学习率或训练轮数。
 - 未知 `category_id` 必须报错，不能静默映射到类别 0。
 - 关闭分类增强时使用确定性 resize/crop，不允许保留随机裁剪。
 - validation 和 test 不使用训练随机增强。
+- 训练期 validation 使用不放大的 letterbox（`scaleup=false`）维持稳定的 best
+  checkpoint 选择；训练收尾的独立 test 必须重新加载 best checkpoint，并使用
+  与生产推理一致的 letterbox（`scaleup=true`）。YOLO 检测类任务的收尾 test
+  与独立评估统一使用 `score_threshold=0.001`；segmentation 的二值 mask 阈值
+  固定记录为 `0.5`。这些阈值和预处理策略必须进入报告，不能由验收脚本另行覆盖。
 - pose 水平翻转必须使用数据集 manifest 中与关键点数量一致的
   `keypoint_flip_indices`。映射必须是完整排列且满足对合规则。非 COCO 17 点的
   自定义拓扑缺少映射时，启用翻转必须拒绝训练，不得只记录参数却静默不执行。
 - Windows `spawn` DataLoader 的增强 worker 可以跨 epoch 复用，但 batch Tensor
   不能长期累积共享内存映射。非 detection YOLO 任务使用 NumPy IPC 载荷，
-  在主进程恢复和 pin Tensor；Windows worker 每 4 个 epoch 受控回收一次，
-  增强阶段变化时立即重建，训练正常结束、暂停、终止和异常退出均显式清理。
+  在主进程恢复和 pin Tensor；同一增强阶段不按固定 epoch 周期回收 worker，
+  仅在增强阶段变化、训练正常结束、暂停、终止和异常退出时显式清理。
 
 ## RF-DETR 边界
 
@@ -178,3 +195,6 @@ dataloader。
 - 大 validation split 的 mask 状态使用 compressed RLE，内存不随 dense mask
   总像素数无界增长。
 - AMP overflow 不更新 EMA 或错误推进 scheduler。
+- 端到端矩阵按任务显式配对指标：segmentation 的 bbox 指标只与 bbox 指标比较，
+  mask 指标只与 mask 指标比较；在相同 checkpoint、split、score threshold 和
+  生产预处理下，训练收尾 test 与独立评估的对应 AP 绝对差不得超过 `0.05`。

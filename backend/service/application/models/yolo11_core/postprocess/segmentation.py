@@ -10,10 +10,10 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.geometry import (
     YoloLetterboxTransform,
     scale_yolo_box_from_letterbox,
-    scale_yolo_mask_from_letterbox,
 )
 from backend.service.application.models.yolo_core_common.postprocess.segmentation import (
     crop_binary_mask_to_box,
+    decode_yolo_segmentation_masks_from_logits,
 )
 from backend.service.application.models.yolo_core_common.postprocess_arrays import (
     to_yolo_numpy_array,
@@ -324,32 +324,14 @@ def decode_yolo11_segmentation_masks(
 ) -> list[Any]:
     """根据 YOLO11 proto 与 mask coeff 解码实例 mask。"""
 
-    proto_features = proto.reshape(int(proto.shape[0]), -1)
-    mask_logits = mask_coefficients @ proto_features
-    mask_logits = mask_logits.reshape(
-        int(mask_coefficients.shape[0]),
-        int(proto.shape[1]),
-        int(proto.shape[2]),
+    return decode_yolo_segmentation_masks_from_logits(
+        cv2_module=cv2_module,
+        np_module=np_module,
+        proto=proto,
+        mask_coefficients=mask_coefficients,
+        letterbox_transform=letterbox_transform,
+        mask_threshold=mask_threshold,
     )
-    masks: list[Any] = []
-    for mask_logit in mask_logits:
-        mask_logit = np_module.clip(mask_logit, -60.0, 60.0)
-        probability_mask = 1.0 / (1.0 + np_module.exp(-mask_logit))
-        resized_mask = cv2_module.resize(
-            probability_mask,
-            (letterbox_transform.target_width, letterbox_transform.target_height),
-            interpolation=cv2_module.INTER_LINEAR,
-        )
-        restored_mask = scale_yolo_mask_from_letterbox(
-            mask=resized_mask,
-            transform=letterbox_transform,
-            cv2_module=cv2_module,
-            np_module=np_module,
-            interpolation="bilinear",
-        )
-        binary_mask = (restored_mask >= mask_threshold).astype(np_module.uint8)
-        masks.append(binary_mask)
-    return masks
 
 
 def extract_yolo11_mask_segments(

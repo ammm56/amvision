@@ -181,6 +181,12 @@ mmap ring，backend-service 接收后再进入进程内有界 broker；内嵌 wo
 validation 快照仍持久化到指标文件。mmap ring 使用 generation、sequence 与 CRC
 拒绝跨进程 torn payload，不为每个 batch 写 SQLite 或创建普通事件文件。
 
+publisher 是 worker 进程级 runtime 资源，不绑定数据库 `SessionFactory` 生命周期。
+worker 启动时立即创建就绪 ring 并登记进程级 publisher；训练执行器即使重建数据库
+会话工厂也继续使用同一 publisher。会话级 publisher 只保留为显式测试注入点。
+publisher 缺失或序列化失败时，每个任务最多写一条诊断日志，禁止静默丢弃且禁止按
+batch 刷屏。service receiver 与 WebSocket 可以在首个 batch 前确认 producer 已就绪。
+
 公共字段至少包括：
 
 - `task_id / attempt_id / sequence / timestamp`
@@ -242,10 +248,12 @@ VOC2012/
 7. COCO instance export 保持无损；YOLO polygon export 只有在轮廓往返面积和 IoU
    达到阈值时允许，否则明确拒绝该样本或整个导出，禁止静默丢孔洞。
 
-原始 VOC2012 没有带标注的 test。平台开发基准以确定性 hash 将官方 val 再划分为
-validation/test，并记录派生规则；官方 train 不参与最终 test。
+原始 VOC2012 没有带标注的 test。平台开发基准保留 1,464 张官方 train，使用命名空间
+`amvision-voc2012-segmentation-val-test-v1` 对官方 val 样本 id 计算 SHA-256，按
+digest 和样本 id 稳定排序后等分为 725 张 validation 和 724 张 test。派生规则及
+原始 1,449 张 `official-val.txt` 均写入开发副本；官方 train 不参与最终 test。
 
-## 当前实现状态（2026-08-10）
+## 当前实现状态（2026-08-11）
 
 已经完成的 v1 基础能力：
 
@@ -262,13 +270,24 @@ validation/test，并记录派生规则；官方 train 不参与最终 test。
   `tasks.events` 合并持久化 epoch/validation，通过 `training.telemetry.v1` 合并瞬时
   batch 指标，并用异步加载的 ECharts 展示训练、验证和 learning rate 历史；初始
   和断线缺口仍以 REST snapshot 补齐，不需要进入独立图表页面或手动刷新。
+- `tasks.events` 的 API 进程内 EventBus 只作为低延迟快路径；WebSocket 同时按
+  `created_at|event_id` 游标追读 TaskEvent 数据库，保证独立 worker 写入的 epoch、
+  validation、暂停和结束事件能够跨进程到达页面。前端允许上一轮完成事件晚于下一轮
+  batch 遥测到达，只更新已完成轮次指标，不回退当前 epoch。
 - YOLOX、YOLOv8/11/26 detection、三代 YOLO 的 classification/segmentation/pose/OBB
   以及 RF-DETR detection/segmentation 均已接入 batch 遥测。YOLOv8 OBB 历史上把
   batch progress 错送到 epoch callback 的路径已删除，batch 不再写 TaskEvent 或
   epoch 指标文件。
 - 标准独立 worker 已通过每 worker 有界 mmap ring 接入 backend-service broker；
   producer 正常退出和异常退出均可由 receiver 回收，Windows 进程存活检查使用只读
-  Win32 handle，不发送 signal。
+  Win32 handle，不发送 signal。worker 替换时，旧 mmap 遇到 Windows 句柄延迟释放
+  会进入仅清理、不重放的重试集合；单个 producer 的读取或清理异常不会终止 receiver
+  线程，新 worker ring 可由同一 service 进程自动发现并继续实时转发。
+- YOLO 非 detection DataLoader 在 Windows 不再固定每 4 个 epoch 回收；同一增强
+  阶段常驻 worker，阶段变化、训练结束和中断时才调用 PyTorch shutdown，并完成
+  terminate/kill、join 和 `Process.close()`。退出回调可继续安全查询已关闭进程，
+  不产生 `Process object is closed`。worker IPC 数组使用独立 NumPy 内存，禁止
+  以 Tensor 作为 ndarray `base`；真实大 batch 两轮复测不再按 batch 线性增长。
 - runtime 遥测已包含实际 batch 与解析模式、OOM 恢复次数、全程/epoch/batch 耗时、
   step/s、近似 sample/s、ETA、CUDA allocated/reserved/peak/free/total memory 和 GPU
   utilization。YOLOX 和三代 YOLO 的训练主循环还记录 forward+loss、
@@ -284,15 +303,38 @@ validation/test，并记录派生规则；官方 train 不参与最终 test。
   后处理与 COCO/OKS/rotated evaluator。output 首维与 target 数不一致时立即失败；
   classification 和 detection evaluator 同样显式关闭 DataLoader，防止 persistent
   worker 在周期验证中泄漏。
+- 三代 YOLO segmentation 的 `mask_ratio=4` target 使用与参考实现相同的逐实例
+  OpenCV resize，不再使用改变采样中心的 `mask[:, ::4, ::4]`。官方 crack-seg 的
+  量化结果和真实训练中 bbox/mask AP 分离共同作为该修复的回归依据；旧实验不得作为
+  精度验收结果，必须从随机初始化重新训练。
+- 三代 YOLO segmentation 训练期 COCO AP 已与 loss target 解耦：DataLoader 额外以
+  bit-packed 形式携带完整分辨率 GT mask，评估时无损恢复并直接编码 RLE；不得把
+  160×160 target 最近邻放大到 640×640 后计算 AP。crack-seg 全量 val 量化中，旧
+  target 与完整 polygon GT 的实例 IoU 均值仅约 0.69，足以系统性压低 AP75-95。
+  polygon 坐标取整和 logits-first mask decode 也已统一到参考实现。
+- 三代 YOLO segmentation 已改为共享的全 batch loss terms：class/box/DFL 按整个
+  batch 的 `target_scores_sum` 统一归一化，mask 按整个 batch 的 foreground 数统一
+  归一化，再乘实际 batch size。空标注图继续贡献背景 BCE；YOLO26 semantic loss
+  也恢复 batch-size 缩放。逐图归一化的旧实验只能作为故障对照，必须重新训练。
 - 姿态训练期指标已拆为 bbox `map50/map50_95` 与关键点
   `oks_ap50/oks_ap50_95`；best checkpoint 明确按有效 `val_oks_ap50_95` 比较，
   数据集级评估报告也同时输出 bbox AP 和 OKS AP。
 - best 比较会拒绝负数、NaN 和 Inf，平值不覆盖；暂停、终止、手动保存、周期、
-  best 改善和最终轮均进入统一 checkpoint 决策。
+  best 改善和最终轮均进入统一 checkpoint 决策。YOLO 非 detection 的终止在 batch
+  边界即时响应；暂停在 batch 边界被观测后留到当前 epoch 边界序列化 checkpoint，
+  禁止先抛 paused 异常再生成没有 latest checkpoint 的不可恢复任务。
+- YOLO 非 detection 与 segmentation/RF-DETR 的 latest、best 已直接写入公开
+  `output-files` object key；任务根目录临时副本和暂停/收尾阶段的大文件读回复制已删除。
+  周期历史仍由统一 retention 按配置保存和回收，输出文件页面从首个 savepoint 起即可
+  看到可恢复 checkpoint。
+- RF-DETR `HungarianMatcher` 已按 1.8.3 reference 使用实际配置的 `focal_alpha`
+  计算匹配代价，并在 `num_queries` 不能被 `group_detr` 整除时立即失败，避免高级
+  参数被固定 0.25 覆盖或 Group DETR 静默丢弃查询。
 - `voc-instance-seg-v1` 已完成导入、导出和格式注册；canonical annotation 使用
   compressed COCO RLE，VOC 往返测试保持实例像素、类别和 split 一致。
 - VOC2012 官方 segmentation split 已完成 2,913 个样本、6,934 个 mask 实例的全量
-  审计，开发副本已补齐 XML 和审计 manifest；22 条官方 XML/mask 差异作为警告保留。
+  审计；开发副本已补齐 XML，并把官方 val 确定性派生为 725 张 validation 与 724 张
+  独立 test。22 条官方 XML/mask 差异作为警告保留，mask 始终是实例事实来源。
 - 真实隔离门禁 `gate-yolov8-auto-batch-20260810` 已完成 CUDA AutoBatch、AMP、训练、
   独立评估、ONNX/OpenVINO/TensorRT、三产物独立加载和 sync/async 推理；4 张训练样本
   自动解析实际 batch=4。门禁同时发现并修复 detection 一基循环被二次加一的问题，
@@ -307,8 +349,9 @@ validation/test，并记录派生规则；官方 train 不参与最终 test。
 
 尚未完成、不得标记为工业验收通过的部分：
 
-- TrainingEngine 的 adapter 边界仍需继续收敛；checkpoint 仍需完成以 artifact 引用
-  代替大块 bytes、fsync/原子 replace、best 历史和 periodic 保留回收。
+- TrainingEngine 的 adapter 边界仍需继续收敛；checkpoint 已完成公开路径单份写入和
+  periodic 有界保留，仍需以 artifact 引用代替 execution 层大块 bytes，并补齐
+  flush/fsync、原子 replace 和前一个 best 的历史保留。
 - runtime 已有总体、epoch、batch 以及 YOLO 主循环的 forward/backward host 分段；
   data loading、独立 optimizer 阶段、RF-DETR Lightning 内部细分和 CPU/进程内存
   尚未完成。

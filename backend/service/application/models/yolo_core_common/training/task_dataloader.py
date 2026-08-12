@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import os
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass, replace
@@ -53,13 +52,14 @@ class YoloTaskTrainingDataLoaderLifecycle:
         self._loader: Any | None = None
         self._augmentation_options: object = _UNRESOLVED_AUGMENTATION_OPTIONS
         self._resolved_epochs = 0
+        # 默认不按 epoch 周期重建 worker。Windows ``spawn`` 一次需要重新导入
+        # torch、OpenCV 和模型数据代码，固定每 4 轮回收会在 200 轮训练中制造
+        # 数十分钟纯停顿。NumPy IPC 已避免逐 batch 累积 torch shared-memory
+        # 映射，close 路径也会显式释放 Process 句柄；因此只在增强阶段变化、
+        # 训练结束或调用方明确设置复用上限时回收。
         self._max_reuse_epochs = max(
             0,
-            int(
-                (4 if os.name == "nt" else 0)
-                if max_reuse_epochs is None
-                else max_reuse_epochs
-            ),
+            int(0 if max_reuse_epochs is None else max_reuse_epochs),
         )
 
     def resolve(

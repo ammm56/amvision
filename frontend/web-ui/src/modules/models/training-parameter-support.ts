@@ -361,6 +361,10 @@ const rfdetrAugmentationFields: TrainingParameterField[] = withTrainingParameter
   selectField('rfdetr_augmentation_preset', 'RF-DETR 增强预设', rfdetrAugmentationPresetOptions, {
     defaultValue: 'default',
   }),
+  selectField('scale_jitter', '启用尺度抖动裁剪', boolOptions, {
+    valueKind: 'bool',
+    defaultValue: 'true',
+  }),
   selectField('augmentation_backend', '增强执行后端', rfdetrAugmentationBackendOptions, {
     defaultValue: 'cpu',
   }),
@@ -779,6 +783,7 @@ function buildFlatTrainingParameterValues(
 
   const assignRfdetrAugmentationValues = (): void => {
     assignValue('rfdetr_augmentation_preset')
+    assignValue('scale_jitter')
     assignValue('augmentation_backend')
   }
 
@@ -1128,6 +1133,7 @@ export function buildTrainingParameters(
       augmentation: compactTrainingGroup({
         enabled: augmentationEnabled,
         preset: flat.rfdetr_augmentation_preset,
+        scale_jitter: flat.scale_jitter,
         backend: flat.augmentation_backend,
       }),
       advanced: compactTrainingGroup({

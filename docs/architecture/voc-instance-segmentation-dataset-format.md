@@ -90,14 +90,21 @@ python -m backend.maintenance.voc_instance_segmentation_dataset
 python -m backend.maintenance.voc_instance_segmentation_dataset --apply
 ```
 
-第一条命令只核对源文件和目标文件；第二条命令补齐 XML 并写入
-`amvision-voc-instance-segmentation.json` 全量报告。维护命令不会修改官方源目录，
-已有目标文件必须与官方源逐字节一致，否则停止。
+第一条命令只核对源文件和目标文件并预览 split；第二条命令补齐 XML、生成独立
+test split 并写入 `amvision-voc-instance-segmentation.json` 全量报告。维护命令不会
+修改官方源目录。图片、mask 和 XML 必须与官方源逐字节一致，否则停止；开发副本的
+split 清单是唯一允许派生的内容。
+
+官方 train 保持不变。官方 val 使用命名空间
+`amvision-voc2012-segmentation-val-test-v1` 对样本 id 计算 SHA-256，按 digest 和样本
+id 稳定排序后等分：前 50% 为 test，其余为 validation。`official-val.txt` 保留原始
+官方 val，报告记录算法、命名空间、比例和计数。train、validation、test 三者互斥，
+官方 train 不参与 test；重复执行得到相同清单。
 
 2026-08-10 全量结果：
 
 - 2,913 张图片
-- train 1,464，val 1,449
+- train 1,464，validation 725，独立 test 724
 - 6,934 个 mask 实例
 - 20 个类别
 - 22 条 XML/mask 对照警告，涉及官方数据中 8 张图片

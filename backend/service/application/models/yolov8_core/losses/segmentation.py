@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from backend.service.application.models.yolo_core_common.losses.segmentation import (
+    YoloSegmentationDetectionLossTerms,
     compute_yolo_segmentation_mask_loss as compute_yolov8_segmentation_mask_loss,
     crop_yolo_segmentation_mask_loss as crop_yolov8_segmentation_mask_loss,
+    finalize_yolo_segmentation_detection_loss_terms,
 )
 
 from backend.service.application.models.yolov8_core.assigners.detection import (
@@ -34,27 +36,76 @@ def compute_yolov8_segmentation_detection_loss(
 ) -> tuple[Any, Any, Any]:
     """计算 YOLOv8 segmentation head 的分类、bbox 和 DFL 损失。"""
 
+    terms = compute_yolov8_segmentation_detection_loss_terms(
+        torch_module=torch_module,
+        prediction=prediction,
+        assignment=assignment,
+        anchor_points=anchor_points,
+        stride_tensor=stride_tensor,
+        dfl_weight=dfl_weight,
+        num_classes=num_classes,
+        distance_logits=distance_logits,
+        reg_max=reg_max,
+    )
+    return finalize_yolo_segmentation_detection_loss_terms(
+        torch_module=torch_module,
+        terms=[terms],
+        batch_size=1,
+    )
+
+
+def compute_yolov8_segmentation_detection_loss_terms(
+    *,
+    torch_module: Any,
+    prediction: Any,
+    assignment: Any | None,
+    anchor_points: Any,
+    stride_tensor: Any,
+    dfl_weight: float,
+    num_classes: int,
+    distance_logits: Any | None = None,
+    reg_max: int | None = None,
+) -> YoloSegmentationDetectionLossTerms:
+    """返回单图未归一化 loss，供全 batch 统一归一化。"""
+
     _ = dfl_weight
-    foreground_mask = assignment.fg_mask.to(prediction.device).bool()
+    foreground_mask = (
+        assignment.fg_mask.to(prediction.device).bool()
+        if assignment is not None
+        else torch_module.zeros(
+            int(prediction.shape[0]),
+            dtype=torch_module.bool,
+            device=prediction.device,
+        )
+    )
     foreground_count = int(foreground_mask.sum().item())
     zero_loss = prediction.new_zeros(())
 
     class_scores = prediction[:, 4 : 4 + int(num_classes)]
     class_targets = torch_module.zeros_like(class_scores, device=prediction.device)
-    target_scores = assignment.box_scores.to(device=prediction.device, dtype=prediction.dtype)
+    target_scores = (
+        assignment.box_scores.to(device=prediction.device, dtype=prediction.dtype)
+        if assignment is not None
+        else prediction.new_zeros((int(prediction.shape[0]),))
+    )
     if foreground_count > 0:
         class_targets[
             foreground_mask,
             assignment.class_ids.to(prediction.device)[foreground_mask],
         ] = target_scores[foreground_mask]
-    target_score_sum = target_scores.sum().clamp_min(1.0)
+    target_score_sum = target_scores.sum()
     class_loss_full = torch_module.nn.BCEWithLogitsLoss(reduction="none")(
         class_scores,
         class_targets,
     )
-    class_loss = class_loss_full.sum() / target_score_sum
+    class_loss_sum = class_loss_full.sum()
     if foreground_count <= 0:
-        return class_loss, zero_loss, zero_loss
+        return YoloSegmentationDetectionLossTerms(
+            class_loss_sum,
+            zero_loss,
+            zero_loss,
+            target_score_sum,
+        )
 
     pred_boxes = decode_yolov8_segmentation_training_boxes(
         torch_module=torch_module,
@@ -70,12 +121,12 @@ def compute_yolov8_segmentation_detection_loss(
         boxes2=target_boxes[foreground_mask] / foreground_stride,
     )
     foreground_scores = target_scores[foreground_mask]
-    box_loss = (
-        ((1.0 - iou) * foreground_scores).sum() / target_score_sum
+    box_loss_sum = (
+        ((1.0 - iou) * foreground_scores).sum()
         if int(iou.numel()) > 0
         else zero_loss
     )
-    dfl_loss = prediction.new_zeros(())
+    dfl_loss_sum = prediction.new_zeros(())
     if distance_logits is not None and reg_max is not None:
         target_distances = yolov8_bbox_xyxy_to_distances(
             torch_module=torch_module,
@@ -91,7 +142,7 @@ def compute_yolov8_segmentation_detection_loss(
                 logits=foreground_distance_logits,
                 target=target_distances,
             )
-            dfl_loss = (raw_dfl_loss * foreground_scores).sum() / target_score_sum
+            dfl_loss_sum = (raw_dfl_loss * foreground_scores).sum()
         else:
             foreground_distance_logits = distance_logits[foreground_mask].view(-1, 4)
             raw_dfl_loss = torch_module.nn.functional.smooth_l1_loss(
@@ -99,8 +150,13 @@ def compute_yolov8_segmentation_detection_loss(
                 target_distances,
                 reduction="none",
             )
-            dfl_loss = (raw_dfl_loss.mean(dim=1) * foreground_scores).sum() / target_score_sum
-    return class_loss, box_loss, dfl_loss
+            dfl_loss_sum = (raw_dfl_loss.mean(dim=1) * foreground_scores).sum()
+    return YoloSegmentationDetectionLossTerms(
+        class_loss_sum,
+        box_loss_sum,
+        dfl_loss_sum,
+        target_score_sum,
+    )
 
 
 def decode_yolov8_segmentation_training_boxes(
@@ -123,6 +179,7 @@ def decode_yolov8_segmentation_training_boxes(
 
 __all__ = [
     "compute_yolov8_segmentation_detection_loss",
+    "compute_yolov8_segmentation_detection_loss_terms",
     "compute_yolov8_segmentation_mask_loss",
     "crop_yolov8_segmentation_mask_loss",
     "decode_yolov8_segmentation_training_boxes",

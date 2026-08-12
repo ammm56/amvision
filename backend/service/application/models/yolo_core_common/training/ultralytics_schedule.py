@@ -8,7 +8,6 @@ weight decay 缩放和 nominal batch size 规则。模型结构、loss、target 
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,7 +89,7 @@ def build_yolo_ultralytics_optimizer(
     )
     iterations = max(
         1,
-        round(
+        math.ceil(
             max(1, int(train_sample_count))
             / float(max(resolved_batch_size, resolved_nominal_batch_size))
         ),
@@ -222,7 +221,7 @@ def apply_yolo_ultralytics_warmup(
 ) -> int:
     """按 Ultralytics warmup 规则更新当前 batch 的 lr、momentum 和累积步数。"""
 
-    if schedule.warmup_iterations < 0 or int(iteration_index) > schedule.warmup_iterations:
+    if schedule.warmup_iterations < 0 or int(iteration_index) >= schedule.warmup_iterations:
         return int(schedule.accumulate)
     current_position = max(0.0, float(iteration_index))
     warmup_iterations = max(1.0, float(schedule.warmup_iterations))
@@ -275,7 +274,7 @@ def _resolve_yolo_optimizer_auto(
     if requested_name == "auto":
         lr_fit = round(0.002 * 5.0 / float(4 + max(1, int(num_classes))), 6)
         if int(iterations) > 10000:
-            return "MuSGD", 0.01, 0.9, warmup_bias_lr
+            return "MuSGD", 0.01, 0.9, 0.0
         return "AdamW", lr_fit, 0.9, 0.0
     supported_names = {
         "adam": "Adam",
@@ -315,7 +314,7 @@ def _build_yolo_optimizer_param_groups(
             if not getattr(parameter, "requires_grad", False):
                 continue
             full_name = f"{module_name}.{param_name}" if module_name else param_name
-            if optimizer_name == "MuSGD" and parameter.ndim >= 2:
+            if optimizer_name == "MuSGD" and parameter.ndim in {2, 4}:
                 muon_params.append((full_name, parameter))
             elif "bias" in full_name:
                 bias_params.append((full_name, parameter))
@@ -357,6 +356,7 @@ def _build_yolo_optimizer_param_groups(
             base_options=base_options,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
+            boosted_parameter_ids=_resolve_musgd_boosted_parameter_ids(model),
         )
     return groups
 
@@ -367,10 +367,10 @@ def _split_musgd_finetune_groups(
     base_options: dict[str, object],
     learning_rate: float,
     weight_decay: float,
+    boosted_parameter_ids: frozenset[int],
 ) -> list[dict[str, object]]:
     """按参考规则为 MuSGD 特定检测头参数使用三倍学习率。"""
 
-    boost_pattern = re.compile(r"(?=.*23)(?=.*cv3)|proto\.semseg")
     group_names = ("weight", "bn", "bias", "muon")
     group_decays = (float(weight_decay), 0.0, 0.0, float(weight_decay))
     result: list[dict[str, object]] = []
@@ -380,12 +380,16 @@ def _split_musgd_finetune_groups(
         boosted = [
             parameter
             for name, parameter in named_parameters
-            if boost_pattern.search(name)
+            if id(parameter) in boosted_parameter_ids
+            or "proto.semseg" in name
+            or "SemanticSegment" in name
         ]
         regular = [
             parameter
             for name, parameter in named_parameters
-            if not boost_pattern.search(name)
+            if id(parameter) not in boosted_parameter_ids
+            and "proto.semseg" not in name
+            and "SemanticSegment" not in name
         ]
         for parameters, lr_multiplier in ((boosted, 3.0), (regular, 1.0)):
             group = {
@@ -400,6 +404,40 @@ def _split_musgd_finetune_groups(
                 group["use_muon"] = True
             result.append(group)
     return result
+
+
+def _resolve_musgd_boosted_parameter_ids(model: Any) -> frozenset[int]:
+    """按最终 task head 对象身份解析 MuSGD 三倍学习率参数。
+
+    参考实现只提升最终 head 的 ``cv3`` / ``one2one_cv3``，不能根据层号或
+    参数名猜测；不同 scale 和 task 的最终层索引并不固定。
+    """
+
+    target = model
+    visited: set[int] = set()
+    while hasattr(target, "module") and id(target) not in visited:
+        visited.add(id(target))
+        candidate = getattr(target, "module")
+        if candidate is target:
+            break
+        target = candidate
+    target = getattr(target, "student_model", target)
+    layers = getattr(target, "model", None)
+    if layers is None:
+        children = tuple(target.children()) if hasattr(target, "children") else ()
+        head = children[-1] if children else None
+    else:
+        try:
+            head = layers[-1]
+        except (IndexError, KeyError, TypeError):
+            head = None
+    boosted: set[int] = set()
+    for attribute_name in ("cv3", "one2one_cv3"):
+        module = getattr(head, attribute_name, None) if head is not None else None
+        if module is None or not hasattr(module, "parameters"):
+            continue
+        boosted.update(id(parameter) for parameter in module.parameters())
+    return frozenset(boosted)
 
 
 def _build_yolo_optimizer_group_options(

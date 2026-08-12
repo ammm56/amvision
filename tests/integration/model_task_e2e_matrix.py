@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,7 @@ from tests.integration.yolo_model_full_chain_smoke import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MATRIX_ROOT = PROJECT_ROOT / ".tmp" / "model-task-e2e-matrix"
+MAX_TRAINING_TEST_EVALUATION_METRIC_DELTA = 0.05
 ALL_MODEL_TYPES = ("yolox", *YOLO_MAIN_MODEL_TYPES, "rfdetr")
 ALL_TASK_TYPES = ("detection", "classification", "segmentation", "pose", "obb")
 SUPPORTED_MODEL_TASK_PAIRS = (
@@ -217,9 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                     training_num_workers=args.training_num_workers,
                     training_prefetch_factor=args.training_prefetch_factor,
                     batch_mode=args.batch_mode,
-                    batch_target_memory_fraction=(
-                        args.batch_target_memory_fraction
-                    ),
+                    batch_target_memory_fraction=(args.batch_target_memory_fraction),
                     batch_minimum_size=args.batch_minimum_size,
                     batch_maximum_size=args.batch_maximum_size,
                     batch_recover_on_oom=args.batch_recover_on_oom,
@@ -379,9 +379,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         or args.training_num_workers < 0
         or args.training_prefetch_factor < 1
     ):
-        parser.error(
-            "训练、batch、checkpoint、evaluation 和 prefetch 参数不在有效范围"
-        )
+        parser.error("训练、batch、checkpoint、evaluation 和 prefetch 参数不在有效范围")
     if args.input_size is not None and any(value < 32 for value in args.input_size):
         parser.error("input-size 的高和宽必须大于等于 32")
     if args.max_images_per_split < 0:
@@ -425,9 +423,7 @@ def resolve_pretrained_warm_start_model_version_id(
     """
 
     if model_type not in YOLO_MAIN_MODEL_TYPES:
-        raise ValueError(
-            "--use-pretrained-warm-start 仅支持 yolov8、yolo11、yolo26"
-        )
+        raise ValueError("--use-pretrained-warm-start 仅支持 yolov8、yolo11、yolo26")
     if task_type not in {"detection", "classification", "segmentation", "pose", "obb"}:
         raise ValueError(f"不支持预训练 warm-start 的任务类型: {task_type}")
     if model_scale not in YOLO_MODEL_SCALES:
@@ -478,30 +474,56 @@ def validate_case_result(
     sample_count = evaluation.get("sample_count")
     if not isinstance(sample_count, int) or sample_count <= 0:
         raise RuntimeError("evaluation 没有处理有效样本")
-    required_metrics_by_task = {
-        "detection": ("map50", "map50_95"),
-        "classification": ("top1_accuracy", "top5_accuracy"),
-        "segmentation": (
-            "map50",
-            "map50_95",
-            "mask_map50",
-            "mask_map50_95",
+    metric_pairs_by_task = {
+        "detection": (("map50", "map50"), ("map50_95", "map50_95")),
+        "classification": (
+            ("top1_accuracy", "top1_accuracy"),
+            ("top5_accuracy", "top5_accuracy"),
         ),
-        "pose": ("oks_ap50", "oks_ap50_95"),
-        "obb": ("map50", "map50_95"),
+        "segmentation": (
+            ("bbox_map50", "bbox_map50"),
+            ("bbox_map50_95", "bbox_map50_95"),
+            ("mask_map50", "mask_map50"),
+            ("mask_map50_95", "mask_map50_95"),
+        ),
+        "pose": (("oks_ap50", "oks_ap50"), ("oks_ap50_95", "oks_ap50_95")),
+        "obb": (("map50", "map50"), ("map50_95", "map50_95")),
     }
-    required_metrics = required_metrics_by_task.get(task_type)
-    if required_metrics is None:
+    metric_pairs = metric_pairs_by_task.get(task_type)
+    if metric_pairs is None:
         raise RuntimeError(f"未知 evaluation task_type：{task_type}")
     missing_metrics = [
-        metric_name
-        for metric_name in required_metrics
-        if not isinstance(evaluation.get(metric_name), int | float)
+        evaluation_metric_name
+        for evaluation_metric_name, _ in metric_pairs
+        if not isinstance(evaluation.get(evaluation_metric_name), int | float)
     ]
     if missing_metrics:
         raise RuntimeError(
             f"{task_type} evaluation 缺少指标：{', '.join(missing_metrics)}"
         )
+    training_test_metrics = result.get("training_test_metrics")
+    if not isinstance(training_test_metrics, dict):
+        raise RuntimeError("端到端结果缺少训练收尾 test 指标")
+    for evaluation_metric_name, training_metric_name in metric_pairs:
+        evaluation_value = float(evaluation[evaluation_metric_name])
+        training_test_value = training_test_metrics.get(training_metric_name)
+        if not isinstance(training_test_value, int | float):
+            raise RuntimeError(f"训练收尾 test 缺少指标：{training_metric_name}")
+        training_test_value = float(training_test_value)
+        if (
+            not math.isfinite(evaluation_value)
+            or not math.isfinite(training_test_value)
+            or not 0.0 <= evaluation_value <= 1.0
+            or not 0.0 <= training_test_value <= 1.0
+        ):
+            raise RuntimeError(f"{evaluation_metric_name} 包含非有限值或超出 0..1")
+        metric_delta = abs(evaluation_value - training_test_value)
+        if metric_delta > MAX_TRAINING_TEST_EVALUATION_METRIC_DELTA:
+            raise RuntimeError(
+                "训练收尾 test 与独立 evaluation 指标不一致："
+                f"metric={evaluation_metric_name}, test={training_test_value:.6f}, "
+                f"evaluation={evaluation_value:.6f}, delta={metric_delta:.6f}"
+            )
     conversions = result.get("conversions")
     if not isinstance(conversions, dict):
         raise RuntimeError("端到端结果缺少 conversions")

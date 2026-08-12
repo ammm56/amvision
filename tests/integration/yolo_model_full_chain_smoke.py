@@ -36,6 +36,8 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 API_PREFIX = "/api/v1"
 DEFAULT_TOKEN = "amvision-default-user-token"
+YOLO_EVALUATION_SCORE_THRESHOLD = 0.001
+GENERIC_EVALUATION_SCORE_THRESHOLD = 0.01
 DEFAULT_PROJECT_ID = "project-1"
 DEFAULT_MODEL_TYPE = "yolov8"
 DEFAULT_MODEL_SCALE = "nano"
@@ -128,7 +130,7 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "pose": YoloModelTaskCase(
             task_type="pose",
-            dataset_dir=dataset_root / "pose" / "hand-keypoints-clean-v1",
+            dataset_dir=dataset_root / "pose" / "hand-keypoints",
             export_format="yolo-pose-v1",
             input_size=(256, 384),
             conversion_route="/models/pose/conversion-tasks",
@@ -867,8 +869,30 @@ def run_task_case(
         "training_task_id": training["task_id"],
         "warm_start_model_version_id": warm_start_model_version_id,
         "model_version_id": model_version_id,
+        "training_test_metrics": load_training_test_metrics(training_detail),
         "evaluation": summarize_evaluation_payload(evaluation_detail),
         "conversions": conversions,
+    }
+
+
+def load_training_test_metrics(training_detail: dict[str, Any]) -> dict[str, float]:
+    """从训练任务登记的独立 test 报告读取指标。"""
+
+    object_key = find_string(training_detail, ("test_metrics_object_key",))
+    if object_key is None:
+        raise RuntimeError("训练任务没有登记 test_metrics_object_key")
+    storage_root = (PROJECT_ROOT / "data" / "files").resolve()
+    report_path = (storage_root / PurePosixPath(object_key)).resolve()
+    if not report_path.is_relative_to(storage_root) or not report_path.is_file():
+        raise RuntimeError(f"训练 test 指标文件不存在：{object_key}")
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    metrics = payload.get("metrics") if isinstance(payload, dict) else None
+    if not isinstance(metrics, dict):
+        raise RuntimeError("训练 test 指标文件缺少 metrics")
+    return {
+        str(name): float(value)
+        for name, value in metrics.items()
+        if isinstance(value, int | float)
     }
 
 
@@ -1317,6 +1341,12 @@ def submit_evaluation_task(
 ) -> dict[str, Any]:
     """提交独立 evaluation task。"""
 
+    score_threshold = (
+        YOLO_EVALUATION_SCORE_THRESHOLD
+        if model_type in YOLO_MAIN_MODEL_TYPES
+        else GENERIC_EVALUATION_SCORE_THRESHOLD
+    )
+
     payload: dict[str, Any] = {
         "project_id": project_id,
         "model_version_id": model_version_id,
@@ -1328,14 +1358,14 @@ def submit_evaluation_task(
     }
     if case.task_type == "detection":
         payload["model_type"] = model_type
-        payload["score_threshold"] = 0.01
+        payload["score_threshold"] = score_threshold
     elif case.task_type == "classification":
         payload["top_k"] = 5
     elif case.task_type == "segmentation":
-        payload["score_threshold"] = 0.01
+        payload["score_threshold"] = score_threshold
         payload["mask_threshold"] = 0.5
     elif case.task_type in {"pose", "obb"}:
-        payload["score_threshold"] = 0.01
+        payload["score_threshold"] = score_threshold
     return client.post(
         f"/models/{case.task_type}/evaluation-tasks",
         json=payload,
@@ -1954,6 +1984,8 @@ def summarize_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "top5_accuracy",
         "map50",
         "map50_95",
+        "bbox_map50",
+        "bbox_map50_95",
         "mask_map50",
         "mask_map50_95",
         "oks_ap50",

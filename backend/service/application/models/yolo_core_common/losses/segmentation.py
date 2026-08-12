@@ -2,10 +2,77 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 
-def compute_yolo_segmentation_mask_loss(
+@dataclass(frozen=True)
+class YoloSegmentationDetectionLossTerms:
+    """保存一张图片尚未按 batch 归一化的 detection loss 分子。"""
+
+    class_loss_sum: Any
+    box_loss_sum: Any
+    dfl_loss_sum: Any
+    target_score_sum: Any
+
+
+@dataclass(frozen=True)
+class YoloSegmentationMaskLossTerms:
+    """保存一张图片尚未按 batch 归一化的 mask loss 分子。"""
+
+    mask_loss_sum: Any
+    foreground_count: int
+
+
+def finalize_yolo_segmentation_detection_loss_terms(
+    *,
+    torch_module: Any,
+    terms: list[YoloSegmentationDetectionLossTerms],
+    batch_size: int,
+) -> tuple[Any, Any, Any]:
+    """按 Ultralytics 全 batch target score 口径完成 detection loss。"""
+
+    if not terms:
+        raise ValueError("segmentation detection loss terms 不能为空")
+    class_loss_sum = torch_module.stack(
+        [item.class_loss_sum.reshape(()) for item in terms]
+    ).sum()
+    box_loss_sum = torch_module.stack(
+        [item.box_loss_sum.reshape(()) for item in terms]
+    ).sum()
+    dfl_loss_sum = torch_module.stack(
+        [item.dfl_loss_sum.reshape(()) for item in terms]
+    ).sum()
+    target_score_sum = torch_module.stack(
+        [item.target_score_sum.reshape(()) for item in terms]
+    ).sum()
+    normalizer = target_score_sum.clamp_min(1.0)
+    scale = max(1, int(batch_size))
+    return (
+        class_loss_sum / normalizer * scale,
+        box_loss_sum / normalizer * scale,
+        dfl_loss_sum / normalizer * scale,
+    )
+
+
+def finalize_yolo_segmentation_mask_loss_terms(
+    *,
+    torch_module: Any,
+    terms: list[YoloSegmentationMaskLossTerms],
+    batch_size: int,
+) -> Any:
+    """按 Ultralytics 全 batch foreground 口径完成实例 mask loss。"""
+
+    if not terms:
+        raise ValueError("segmentation mask loss terms 不能为空")
+    mask_loss_sum = torch_module.stack(
+        [item.mask_loss_sum.reshape(()) for item in terms]
+    ).sum()
+    foreground_count = sum(max(0, int(item.foreground_count)) for item in terms)
+    return mask_loss_sum / max(1, foreground_count) * max(1, int(batch_size))
+
+
+def compute_yolo_segmentation_mask_loss_terms(
     *,
     torch_module: Any,
     prediction: Any | None,
@@ -17,20 +84,25 @@ def compute_yolo_segmentation_mask_loss(
     num_classes: int,
     target_boxes: Any | None = None,
     image_size: tuple[int, int] | None = None,
-) -> Any:
-    """按 Ultralytics 坐标规则计算单张图片的实例 mask loss。
+) -> YoloSegmentationMaskLossTerms:
+    """按 Ultralytics 坐标规则计算单张图片未归一化的 mask loss。
 
     ``target_boxes`` 使用输入图片像素坐标，``target_masks`` 通常按
     ``mask_ratio=4`` 下采样。裁剪前必须先把 bbox 映射到 mask 空间，面积
     则按输入图归一化；二者不能混用同一组原始像素值。
     """
 
+    zero_loss = _zero_segmentation_mask_loss(
+        foreground_mask=foreground_mask,
+        prediction=prediction,
+        proto=proto,
+    )
     if prediction is None or proto is None or target_masks is None:
-        return foreground_mask.new_zeros(())
+        return YoloSegmentationMaskLossTerms(zero_loss, 0)
     if target_mask_valid is None or matched_gt_indices is None:
-        return foreground_mask.new_zeros(())
+        return YoloSegmentationMaskLossTerms(zero_loss, 0)
     if int(target_masks.shape[0]) == 0:
-        return foreground_mask.new_zeros(())
+        return YoloSegmentationMaskLossTerms(zero_loss, 0)
 
     foreground_mask = foreground_mask.bool()
     matched_gt_indices = matched_gt_indices.to(
@@ -43,7 +115,7 @@ def compute_yolo_segmentation_mask_loss(
     )
     valid_count = int(valid_foreground.sum().item())
     if valid_count == 0:
-        return foreground_mask.new_zeros(())
+        return YoloSegmentationMaskLossTerms(zero_loss, 0)
 
     coefficient_start = 4 + int(num_classes)
     mask_coefficients = prediction[valid_foreground, coefficient_start:]
@@ -77,7 +149,10 @@ def compute_yolo_segmentation_mask_loss(
         reduction="none",
     )
     if target_boxes is None:
-        return mask_loss.mean()
+        return YoloSegmentationMaskLossTerms(
+            mask_loss.mean(dim=(1, 2)).sum(),
+            valid_count,
+        )
 
     selected_boxes = target_boxes.to(
         device=prediction.device,
@@ -112,7 +187,53 @@ def compute_yolo_segmentation_mask_loss(
     )
     normalized_area = (normalized_width * normalized_height).clamp_min(1e-6)
     instance_loss = cropped_loss.mean(dim=(1, 2)) / normalized_area
-    return instance_loss.sum() / valid_foreground.sum().clamp_min(1)
+    return YoloSegmentationMaskLossTerms(instance_loss.sum(), valid_count)
+
+
+def compute_yolo_segmentation_mask_loss(
+    *,
+    torch_module: Any,
+    prediction: Any | None,
+    proto: Any | None,
+    foreground_mask: Any,
+    target_masks: Any | None,
+    target_mask_valid: Any | None,
+    matched_gt_indices: Any | None,
+    num_classes: int,
+    target_boxes: Any | None = None,
+    image_size: tuple[int, int] | None = None,
+) -> Any:
+    """兼容单图入口，按该图 foreground 数量返回平均 mask loss。"""
+
+    terms = compute_yolo_segmentation_mask_loss_terms(
+        torch_module=torch_module,
+        prediction=prediction,
+        proto=proto,
+        foreground_mask=foreground_mask,
+        target_masks=target_masks,
+        target_mask_valid=target_mask_valid,
+        matched_gt_indices=matched_gt_indices,
+        num_classes=num_classes,
+        target_boxes=target_boxes,
+        image_size=image_size,
+    )
+    return terms.mask_loss_sum / max(1, terms.foreground_count)
+
+
+def _zero_segmentation_mask_loss(
+    *,
+    foreground_mask: Any,
+    prediction: Any | None,
+    proto: Any | None,
+) -> Any:
+    """构建保留 mask head 计算图的零 loss。"""
+
+    zero_loss = foreground_mask.new_zeros(())
+    if prediction is not None:
+        zero_loss = zero_loss + prediction.sum() * 0.0
+    if proto is not None:
+        zero_loss = zero_loss + proto.sum() * 0.0
+    return zero_loss
 
 
 def crop_yolo_segmentation_mask_loss(
@@ -419,11 +540,16 @@ def compute_segmentation_mask_loss(
 
 
 __all__ = [
+    "YoloSegmentationDetectionLossTerms",
+    "YoloSegmentationMaskLossTerms",
     "compute_segmentation_detection_loss",
     "compute_segmentation_mask_loss",
     "compute_yolo26_semantic_segmentation_loss",
     "compute_yolo_segmentation_mask_loss",
+    "compute_yolo_segmentation_mask_loss_terms",
     "crop_yolo_segmentation_mask_loss",
     "decode_segmentation_training_boxes",
+    "finalize_yolo_segmentation_detection_loss_terms",
+    "finalize_yolo_segmentation_mask_loss_terms",
     "segmentation_bbox_iou_aligned",
 ]

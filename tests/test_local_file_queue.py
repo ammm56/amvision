@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from threading import Event, Thread
 from time import time
 
 import pytest
@@ -68,6 +69,7 @@ def test_local_file_queue_recovers_leased_task_without_lease_timestamp(tmp_path:
     leased_path = tmp_path / "queue" / "jobs" / "leased" / f"{queued_task.task_id}.json"
     leased_path.parent.mkdir(parents=True, exist_ok=True)
     pending_path.replace(leased_path)
+    _age_path_tree(leased_path, seconds=60.0)
 
     recovered_count = queue_backend.recover_expired_leases(queue_name="jobs")
     reclaimed_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
@@ -76,6 +78,55 @@ def test_local_file_queue_recovers_leased_task_without_lease_timestamp(tmp_path:
     assert reclaimed_task is not None
     assert reclaimed_task.task_id == queued_task.task_id
     assert reclaimed_task.attempt_count == 1
+
+
+def test_local_file_queue_does_not_recover_inflight_claim_from_another_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """claim 写入 lease 的过渡窗口不得被另一个 backend 恢复并重复执行。"""
+
+    settings = LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    first_backend = LocalFileQueueBackend(settings)
+    second_backend = LocalFileQueueBackend(settings)
+    queued_task = first_backend.enqueue(
+        queue_name="jobs",
+        payload={"task_id": "task-1"},
+    )
+    entered_transition = Event()
+    release_transition = Event()
+    original_overwrite = first_backend._overwrite_task_file
+
+    def overwrite_after_pause(task_path: Path, queue_task: object) -> None:
+        if task_path.parent.name == "leased":
+            entered_transition.set()
+            assert release_transition.wait(timeout=5.0)
+        original_overwrite(task_path, queue_task)
+
+    monkeypatch.setattr(first_backend, "_overwrite_task_file", overwrite_after_pause)
+    first_result: list[object] = []
+
+    def claim_first() -> None:
+        first_result.append(
+            first_backend.claim_next(queue_name="jobs", worker_id="worker-a")
+        )
+
+    claim_thread = Thread(target=claim_first, daemon=True)
+    claim_thread.start()
+    assert entered_transition.wait(timeout=5.0)
+
+    second_claim = second_backend.claim_next(
+        queue_name="jobs",
+        worker_id="worker-b",
+    )
+    release_transition.set()
+    claim_thread.join(timeout=5.0)
+
+    assert not claim_thread.is_alive()
+    assert len(first_result) == 1
+    assert first_result[0] is not None
+    assert first_result[0].task_id == queued_task.task_id
+    assert second_claim is None
 
 
 def test_local_file_queue_rejects_stale_lease_completion_after_recovery(tmp_path: Path) -> None:

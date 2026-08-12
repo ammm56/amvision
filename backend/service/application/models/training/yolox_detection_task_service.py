@@ -54,6 +54,9 @@ from backend.service.application.models.training.yolox_detection_task_types impo
 from backend.service.application.models.training.yolox_detection_task_warm_start import (
     YoloXTrainingTaskWarmStartMixin,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    build_training_periodic_checkpoint_retention,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
 )
@@ -1139,6 +1142,11 @@ class SqlAlchemyYoloXTrainingTaskService(
         test_metrics_object_key = output_keys.test_metrics_object_key
         summary_object_key = output_keys.summary_object_key
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(request)
+        periodic_checkpoint_retention = build_training_periodic_checkpoint_retention(
+            storage=dataset_storage,
+            output_prefix=output_object_prefix,
+            extra_options=dict(request.extra_options),
+        )
 
         def on_batch_completed(progress: YoloXTrainingBatchProgress) -> None:
             progress_percent = self._build_progress_percent(
@@ -1249,6 +1257,10 @@ class SqlAlchemyYoloXTrainingTaskService(
                 output_keys=output_keys,
                 savepoint=savepoint,
                 category_names=category_names,
+            )
+            periodic_checkpoint_retention.persist(
+                epoch=savepoint.epoch,
+                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
             )
             updated_control = mark_yolox_training_control_saved(
                 control=control,

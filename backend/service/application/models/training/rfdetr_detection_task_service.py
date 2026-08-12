@@ -23,6 +23,9 @@ from backend.service.application.models.training.detection_training_rules import
     build_detection_training_model_version_metadata,
     build_detection_runtime_summary_payload,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    build_training_periodic_checkpoint_retention,
+)
 from backend.service.application.models.training.rfdetr_detection import (
     RFDETR_IMPL_MODE,
     RfdetrTrainingBatchProgress,
@@ -523,6 +526,12 @@ class SqlAlchemyRfdetrTrainingTaskService:
             test_metrics_object_key=(f"{output_prefix}/output-files/test-metrics.json"),
             summary_object_key=f"{output_prefix}/output-files/training-summary.json",
         )
+        extra_options = dict(payload.get("extra_options") or {})
+        periodic_checkpoint_retention = build_training_periodic_checkpoint_retention(
+            storage=dataset_storage,
+            output_prefix=output_prefix,
+            extra_options=extra_options,
+        )
         initial_control = self._read_training_control(task_record)
         resume_checkpoint_object_key = (
             resolve_yolo_detection_resume_checkpoint_object_key(
@@ -663,6 +672,10 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     output_files.checkpoint_object_key,
                     savepoint.best_checkpoint_bytes,
                 )
+            periodic_checkpoint_retention.persist(
+                epoch=savepoint.epoch + 1,
+                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+            )
             if output_files.metrics_object_key is not None:
                 dataset_storage.write_json(
                     output_files.metrics_object_key,
@@ -686,7 +699,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             control = mark_yolo_detection_training_control_saved(
                 control=self._read_training_control(current_task),
                 saved_at=self._now_iso(),
-                saved_epoch=savepoint.epoch,
+                saved_epoch=savepoint.epoch + 1,
             )
             partial_result = self._build_interrupted_task_result(
                 task_record=current_task,
@@ -772,7 +785,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         if warm_start_reference is not None
                         else None
                     ),
-                    extra_options=dict(payload.get("extra_options") or {}),
+                    extra_options=extra_options,
                     batch_callback=on_batch,
                     epoch_callback=on_epoch,
                     savepoint_callback=on_savepoint,

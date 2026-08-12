@@ -86,6 +86,7 @@ export interface PoseInferencePayload extends TaskInferenceCommonPayload {
 }
 
 export interface ObbInferenceItem extends TaskInferenceBoxItem {
+  bbox_xywhr: [number, number, number, number, number]
   angle?: number | null
 }
 

@@ -112,11 +112,25 @@ class TaskRepository(Protocol):
 
         ...
 
-    def list_task_events(self, task_id: str) -> tuple[TaskEvent, ...]:
+    def list_task_events(
+        self,
+        task_id: str,
+        *,
+        event_type: str | None = None,
+        after_created_at: str | None = None,
+        after_cursor: str | None = None,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[TaskEvent, ...]:
         """按 TaskRecord id 列出事件记录。
 
         参数：
         - task_id：所属任务 id。
+        - event_type：可选事件类型。
+        - after_created_at：可选时间游标。
+        - after_cursor：可选 ``created_at|event_id`` 复合游标。
+        - offset：结果偏移量。
+        - limit：最大返回数量；None 表示不限制。
 
         返回：
         - 当前任务下的 TaskEvent 列表。

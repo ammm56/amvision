@@ -19,6 +19,9 @@ from backend.service.application.models.yolo11_core.assigners import (
     assign_yolo11_detection_targets,
     assign_yolo11_obb_targets,
 )
+from backend.service.application.models.yolo11_core.losses import (
+    compute_yolo11_segmentation_detection_loss_terms,
+)
 from backend.service.application.models.yolo26_core import (
     build_yolo26_model,
     load_yolo26_state_dict,
@@ -29,6 +32,12 @@ from backend.service.application.models.yolo26_core.assigners import (
 )
 from backend.service.application.models.yolo26_core.losses import (
     compute_yolo26_detection_loss,
+    compute_yolo26_segmentation_detection_loss_terms,
+)
+from backend.service.application.models.yolo_core_common.losses import (
+    YoloSegmentationMaskLossTerms,
+    finalize_yolo_segmentation_detection_loss_terms,
+    finalize_yolo_segmentation_mask_loss_terms,
 )
 from backend.service.application.models.yolo_core_common.weights import (
     YOLO_WARM_START_MINIMUM_LOADABLE_RATIO,
@@ -44,6 +53,9 @@ from backend.service.application.models.yolov8_core.assigners import (
 )
 from backend.service.application.models.yolov8_core.decode import (
     decode_yolov8_pose_keypoints_xy,
+)
+from backend.service.application.models.yolov8_core.losses import (
+    compute_yolov8_segmentation_detection_loss_terms,
 )
 from backend.service.application.models.yolov8_core.targets import (
     yolov8_decode_distances_to_rboxes,
@@ -859,3 +871,86 @@ def test_detection_loss_matches_copied_reference_equations(
             atol=3e-6,
             rtol=1e-5,
         )
+
+
+@pytest.mark.parametrize(
+    "terms_function",
+    (
+        compute_yolov8_segmentation_detection_loss_terms,
+        compute_yolo11_segmentation_detection_loss_terms,
+        compute_yolo26_segmentation_detection_loss_terms,
+    ),
+)
+def test_segmentation_detection_loss_uses_full_batch_normalizer_and_empty_images(
+    terms_function: Callable[..., Any],
+) -> None:
+    """验证三个 family 按全 batch target score 归一化且保留空图 BCE。"""
+
+    prediction = torch.tensor(
+        (
+            (1.0, 1.0, 1.0, 1.0, 0.0),
+            (1.0, 1.0, 1.0, 1.0, 0.0),
+        ),
+        requires_grad=True,
+    )
+    anchor_points = torch.tensor(((1.0, 1.0), (3.0, 3.0)))
+    stride_tensor = torch.ones((2, 1))
+    assignment = SimpleNamespace(
+        fg_mask=torch.tensor((True, True)),
+        class_ids=torch.tensor((0, 0), dtype=torch.long),
+        box_scores=torch.tensor((0.75, 0.50)),
+        box_targets=torch.tensor(
+            ((0.0, 0.0, 2.0, 2.0), (2.0, 2.0, 4.0, 4.0))
+        ),
+    )
+    common_kwargs = {
+        "torch_module": torch,
+        "anchor_points": anchor_points,
+        "stride_tensor": stride_tensor,
+        "dfl_weight": 1.5,
+        "num_classes": 1,
+        "distance_logits": None,
+        "reg_max": None,
+    }
+    terms = [
+        terms_function(
+            prediction=prediction,
+            assignment=assignment,
+            **common_kwargs,
+        ),
+        terms_function(
+            prediction=prediction,
+            assignment=None,
+            **common_kwargs,
+        ),
+    ]
+    class_loss, box_loss, dfl_loss = (
+        finalize_yolo_segmentation_detection_loss_terms(
+            torch_module=torch,
+            terms=terms,
+            batch_size=2,
+        )
+    )
+    expected_class_loss = torch.tensor(4.0 * math.log(2.0) / 1.25 * 2.0)
+
+    assert torch.allclose(class_loss, expected_class_loss, atol=1e-6)
+    assert float(box_loss.item()) == pytest.approx(0.0, abs=1e-6)
+    assert float(dfl_loss.item()) == pytest.approx(0.0, abs=1e-6)
+    class_loss.backward()
+    assert prediction.grad is not None
+
+
+def test_segmentation_mask_loss_uses_full_batch_foreground_normalizer() -> None:
+    """验证 mask loss 不是逐图平均后相加。"""
+
+    loss = finalize_yolo_segmentation_mask_loss_terms(
+        torch_module=torch,
+        terms=[
+            YoloSegmentationMaskLossTerms(torch.tensor(2.0), 1),
+            YoloSegmentationMaskLossTerms(torch.tensor(9.0), 3),
+        ],
+        batch_size=2,
+    )
+
+    assert float(loss.item()) == pytest.approx(5.5)
+    assert float(loss.item()) != pytest.approx(5.0)

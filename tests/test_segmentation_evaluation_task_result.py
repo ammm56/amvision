@@ -20,6 +20,8 @@ def test_segmentation_evaluation_task_payload_preserves_all_metrics_and_files() 
         report_object_key="task-runs/evaluation/task-1/report.json",
         predictions_object_key="task-runs/evaluation/task-1/predictions.json",
         result_package_object_key="task-runs/evaluation/task-1/result.zip",
+        bbox_map50=0.71,
+        bbox_map50_95=0.52,
         map50=0.71,
         map50_95=0.52,
         mask_map50=0.68,
@@ -32,6 +34,8 @@ def test_segmentation_evaluation_task_payload_preserves_all_metrics_and_files() 
 
     assert payload["map50"] == 0.71
     assert payload["map50_95"] == 0.52
+    assert payload["bbox_map50"] == 0.71
+    assert payload["bbox_map50_95"] == 0.52
     assert payload["mask_map50"] == 0.68
     assert payload["mask_map50_95"] == 0.47
     assert payload["predictions_object_key"].endswith("predictions.json")

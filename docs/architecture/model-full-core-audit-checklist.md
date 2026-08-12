@@ -123,6 +123,11 @@
 ## 2026-07-26 普通 YOLO full-core 修复复核
 
 - `YOLOv8 / YOLO11 / YOLO26` 五类任务统一采用参数分组 optimizer、3 epoch warmup、nominal batch size 64 梯度累积、按有效 batch 缩放 weight decay、默认 linear scheduler 和 ModelEMA；`cos_lr=true` 时才切换 cosine。
+- `optimizer=auto` 的长训练按参考迭代量边界选择 MuSGD。当前实现已对齐
+  2D/4D Muon 参数、最终 task head 对象身份的三倍学习率分组、批量 momentum、
+  Newton–Schulz 与混合 SGD 更新；Auto 模式 warmup bias learning rate 为 0。
+  WebSocket 进度、epoch 指标和训练摘要统一展示基础学习率，不展示首个 boosted
+  参数组的三倍学习率。
 - classification 默认训练配方使用 `optimizer=auto`、`lr0=0.01`、`weight_decay=0.0005`、RandAugment 和 `erasing=0.4`。训练和部署输入统一执行 ImageNet Normalize，旧的直接拉伸和仅 `/255` 路径不再使用。
 - segmentation 修正 batch 大于 1 时的重复 loss 缩放；pose AP 使用仅由 GT visibility 决定 mask 的 COCO OKS；OBB 共享解码同时应用中心偏移 `/2` 和 anchor stride。
 - detection 独立评估把模型零基 class index 映射到 manifest 的真实 category id；普通 NMS 与 COCO 评估统一使用 `max_det=300`。

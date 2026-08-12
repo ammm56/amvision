@@ -19,6 +19,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsTrainingSchedule,
     apply_yolo_ultralytics_warmup,
     normalize_yolo_detection_loss_metrics,
+    resolve_yolo_optimizer_base_learning_rate,
     YoloTrainingNumericalError,
 )
 from backend.service.application.models.yolo11_core.training.pytorch_dataloader import (
@@ -196,7 +197,14 @@ def run_yolo11_detection_training_epoch(
                     global_iteration=global_iteration,
                     total_iterations=total_iterations,
                     input_size=progress_input_size,
-                    learning_rate=float(optimizer.param_groups[0]["lr"]),
+                    learning_rate=(
+                        resolve_yolo_optimizer_base_learning_rate(
+                            optimizer=optimizer,
+                            initial_learning_rate=training_schedule.initial_lr,
+                        )
+                        if training_schedule is not None
+                        else float(optimizer.param_groups[0]["lr"])
+                    ),
                     train_metrics=dict(reported_metrics),
                 )
             )

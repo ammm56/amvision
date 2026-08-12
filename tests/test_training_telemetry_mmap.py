@@ -5,10 +5,13 @@ from __future__ import annotations
 import multiprocessing
 from types import SimpleNamespace
 
+import pytest
+
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.models.training.training_telemetry import (
     TrainingTelemetryBroker,
     TrainingTelemetryPoint,
+    configure_process_training_telemetry_publisher,
     publish_training_batch_telemetry,
 )
 from backend.service.application.models.training.training_telemetry_mmap import (
@@ -83,6 +86,25 @@ def test_training_telemetry_mmap_ring_replays_new_points(tmp_path) -> None:
         publisher.close()
 
 
+def test_training_telemetry_mmap_publisher_start_creates_ready_ring(tmp_path) -> None:
+    """验证 worker 启动阶段即可暴露 producer，而不是等首个 batch 才创建。"""
+
+    publisher = TrainingTelemetryMmapPublisher(root_dir=tmp_path)
+    try:
+        publisher.start()
+        assert publisher.path.is_file()
+        reader = TrainingTelemetryMmapReader(publisher.path)
+        try:
+            ready = reader.read_after(session_id=None, sequence=0, limit=10)
+            assert ready.published_sequence == 0
+            assert ready.producer_closed is False
+            assert ready.payloads == ()
+        finally:
+            reader.close()
+    finally:
+        publisher.close()
+
+
 def test_training_telemetry_mmap_receiver_forwards_worker_payload(tmp_path) -> None:
     """验证独立 worker 的 mmap 点会进入 service broker，而不写 TaskEvent。"""
 
@@ -106,6 +128,67 @@ def test_training_telemetry_mmap_receiver_forwards_worker_payload(tmp_path) -> N
     finally:
         receiver.stop()
         publisher.close()
+
+
+def test_training_telemetry_receiver_survives_worker_replacement_and_locked_cleanup(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Windows 旧 ring 瞬时占用不会杀死 receiver 或阻断新 worker。"""
+
+    broker = TrainingTelemetryBroker(
+        event_bus=InMemoryServiceEventBus(),
+        min_publish_interval_seconds=0,
+    )
+    first_publisher = TrainingTelemetryMmapPublisher(
+        root_dir=tmp_path,
+        min_publish_interval_seconds=0,
+    )
+    receiver = TrainingTelemetryMmapReceiver(root_dir=tmp_path, broker=broker)
+    try:
+        first_publisher.publish(_point(step=1, loss=1.0))
+        assert receiver.poll_once() == 1
+        first_path = first_publisher.path
+        first_publisher.close()
+
+        original_unlink = type(first_path).unlink
+        blocked_once = False
+
+        def _unlink_with_transient_windows_lock(
+            path,
+            *args,
+            **kwargs,
+        ) -> None:
+            nonlocal blocked_once
+            if path == first_path and not blocked_once:
+                blocked_once = True
+                raise PermissionError("simulated Windows sharing violation")
+            original_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(type(first_path), "unlink", _unlink_with_transient_windows_lock)
+        assert receiver.poll_once() == 0
+        assert blocked_once is True
+        assert first_path.exists()
+
+        second_publisher = TrainingTelemetryMmapPublisher(
+            root_dir=tmp_path,
+            min_publish_interval_seconds=0,
+        )
+        try:
+            second_publisher.publish(_point(step=2, loss=0.5))
+            assert receiver.poll_once() == 1
+            assert first_path.exists() is False
+            replay = broker.replay(
+                task_id="task-mmap-1",
+                after_cursor=None,
+                limit=10,
+            )
+            assert [event.payload["step"] for event in replay.events] == [1, 2]
+        finally:
+            second_publisher.close()
+    finally:
+        receiver.stop()
+        first_publisher.close()
 
 
 def test_publish_bridge_uses_worker_publisher_without_local_broker() -> None:
@@ -139,6 +222,40 @@ def test_publish_bridge_uses_worker_publisher_without_local_broker() -> None:
     assert len(published) == 1
     assert published[0].task_id == "task-worker-1"
     assert published[0].metrics == {"loss": 1.25}
+
+
+def test_publish_bridge_uses_process_publisher_after_session_factory_rebuild() -> None:
+    """验证执行器重建数据库工厂后仍使用 worker 进程级遥测资源。"""
+
+    published: list[TrainingTelemetryPoint] = []
+    publisher = SimpleNamespace(publish=published.append)
+    rebuilt_session_factory = SimpleNamespace(
+        training_telemetry_broker=None,
+        training_telemetry_publisher=None,
+    )
+    configure_process_training_telemetry_publisher(publisher)
+    try:
+        publish_training_batch_telemetry(
+            session_factory=rebuilt_session_factory,
+            task_id="task-worker-rebuilt-session",
+            attempt_no=1,
+            task_type="segmentation",
+            model_type="yolo11",
+            epoch=1,
+            max_epochs=2,
+            step=1,
+            steps_per_epoch=3,
+            global_step=1,
+            total_steps=6,
+            progress_percent=12.0,
+            learning_rate=0.001,
+            metrics={"loss": 0.75},
+        )
+    finally:
+        configure_process_training_telemetry_publisher(None)
+
+    assert len(published) == 1
+    assert published[0].task_id == "task-worker-rebuilt-session"
 
 
 def test_training_telemetry_mmap_crosses_spawn_process_boundary(tmp_path) -> None:

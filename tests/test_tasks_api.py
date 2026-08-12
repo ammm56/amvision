@@ -300,6 +300,107 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
+def test_task_events_websocket_polls_events_written_by_another_process(
+    tmp_path: Path,
+) -> None:
+    """验证独立 worker 进程写库但不共享 EventBus 时仍能实时收到事件。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    independent_session_factory = SessionFactory(session_factory.settings)
+    api_service = SqlAlchemyTaskService(session_factory)
+    worker_service = SqlAlchemyTaskService(independent_session_factory)
+    assert worker_service.service_event_bus is None
+    try:
+        with client:
+            created_task = api_service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="segmentation-training",
+                    display_name="worker process training",
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                )
+            )
+
+            with client.websocket_connect(
+                f"/ws/v1/tasks/events?task_id={created_task.task_id}",
+                headers=_build_task_read_headers(),
+            ) as websocket:
+                assert websocket.receive_json()["event_type"] == "tasks.connected"
+                assert websocket.receive_json()["event_type"] == "status"
+
+                worker_service.append_task_event(
+                    AppendTaskEventRequest(
+                        task_id=created_task.task_id,
+                        event_type="progress",
+                        message="epoch 1/200",
+                        payload={
+                            "progress": {
+                                "epoch": 1,
+                                "max_epochs": 200,
+                                "train_metrics": {"loss": 1.25},
+                            }
+                        },
+                    )
+                )
+
+                streamed_event = websocket.receive_json()
+
+        assert streamed_event["event_type"] == "progress"
+        assert streamed_event["payload"]["data"]["progress"]["epoch"] == 1
+        assert streamed_event["payload"]["data"]["progress"]["train_metrics"] == {
+            "loss": 1.25
+        }
+    finally:
+        independent_session_factory.engine.dispose()
+        session_factory.engine.dispose()
+
+
+def test_task_events_websocket_drains_all_persisted_event_pages(tmp_path: Path) -> None:
+    """验证历史事件超过单页 limit 时按游标完整排空，不跳过中间事件。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    service = SqlAlchemyTaskService(session_factory)
+    try:
+        with client:
+            created_task = service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="training",
+                    display_name="paged task events",
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                )
+            )
+            for epoch in range(1, 26):
+                service.append_task_event(
+                    AppendTaskEventRequest(
+                        task_id=created_task.task_id,
+                        event_type="progress",
+                        message=f"epoch {epoch}/25",
+                        payload={"progress": {"epoch": epoch, "max_epochs": 25}},
+                    )
+                )
+
+            with client.websocket_connect(
+                f"/ws/v1/tasks/events?task_id={created_task.task_id}&limit=10",
+                headers=_build_task_read_headers(),
+            ) as websocket:
+                assert websocket.receive_json()["event_type"] == "tasks.connected"
+                replayed_events = [websocket.receive_json() for _ in range(26)]
+
+        assert replayed_events[0]["event_type"] == "status"
+        progress_events = [
+            event for event in replayed_events if event["event_type"] == "progress"
+        ]
+        replayed_epochs = [
+            event["payload"]["data"]["progress"]["epoch"]
+            for event in progress_events
+        ]
+        assert len(replayed_epochs) == 25
+        assert sorted(replayed_epochs) == list(range(1, 26))
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory]:
     """创建绑定临时 SQLite 的 tasks API 测试客户端。"""
 

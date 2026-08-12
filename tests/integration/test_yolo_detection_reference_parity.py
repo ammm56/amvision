@@ -239,6 +239,96 @@ def test_detection_core_forward_and_loss_match_reference(family_index: int) -> N
         )
 
 
+@pytest.mark.skipif(
+    not REFERENCE_ROOT.is_dir(),
+    reason="开发参考仓库 projectsrc/ultralytics 不存在",
+)
+def test_musgd_parameter_and_state_updates_match_reference() -> None:
+    """验证共享 MuSGD 的批量混合更新和 reference 数值逐步一致。"""
+
+    torch = pytest.importorskip("torch")
+    from backend.service.application.models.yolo_core_common.training.musgd import (
+        create_musgd_optimizer,
+    )
+
+    sys.path.insert(0, str(REFERENCE_ROOT))
+    try:
+        from ultralytics.optim import MuSGD as ReferenceMuSGD
+    finally:
+        sys.path.remove(str(REFERENCE_ROOT))
+
+    initial_matrix = torch.tensor(
+        [[0.1, -0.2, 0.3, -0.4], [0.5, -0.6, 0.7, -0.8]],
+        dtype=torch.float32,
+    )
+    initial_vector = torch.tensor([0.2, -0.3], dtype=torch.float32)
+    project_matrix = torch.nn.Parameter(initial_matrix.clone())
+    project_vector = torch.nn.Parameter(initial_vector.clone())
+    reference_matrix = torch.nn.Parameter(initial_matrix.clone())
+    reference_vector = torch.nn.Parameter(initial_vector.clone())
+
+    def _groups(matrix, vector):
+        return [
+            {
+                "params": [matrix],
+                "lr": 0.01,
+                "momentum": 0.9,
+                "weight_decay": 5e-4,
+                "nesterov": True,
+                "use_muon": True,
+            },
+            {
+                "params": [vector],
+                "lr": 0.01,
+                "momentum": 0.9,
+                "weight_decay": 0.0,
+                "nesterov": True,
+                "use_muon": False,
+            },
+        ]
+
+    project_optimizer = create_musgd_optimizer(
+        torch_module=torch,
+        param_groups=_groups(project_matrix, project_vector),
+    )
+    reference_optimizer = ReferenceMuSGD(
+        _groups(reference_matrix, reference_vector),
+        muon=0.2,
+        sgd=1.0,
+    )
+    for step in range(3):
+        matrix_gradient = torch.tensor(
+            [[0.2, -0.1, 0.4, -0.3], [-0.5, 0.6, -0.7, 0.8]],
+            dtype=torch.float32,
+        ) * float(step + 1)
+        vector_gradient = torch.tensor([0.3, -0.4], dtype=torch.float32) * float(
+            step + 1
+        )
+        project_matrix.grad = matrix_gradient.clone()
+        reference_matrix.grad = matrix_gradient.clone()
+        project_vector.grad = vector_gradient.clone()
+        reference_vector.grad = vector_gradient.clone()
+        project_optimizer.step()
+        reference_optimizer.step()
+
+        torch.testing.assert_close(project_matrix, reference_matrix, rtol=0, atol=0)
+        torch.testing.assert_close(project_vector, reference_vector, rtol=0, atol=0)
+        for project_parameter, reference_parameter in (
+            (project_matrix, reference_matrix),
+            (project_vector, reference_vector),
+        ):
+            project_state = project_optimizer.state[project_parameter]
+            reference_state = reference_optimizer.state[reference_parameter]
+            assert project_state.keys() == reference_state.keys()
+            for state_name in project_state:
+                torch.testing.assert_close(
+                    project_state[state_name],
+                    reference_state[state_name],
+                    rtol=0,
+                    atol=0,
+                )
+
+
 def _assert_raw_outputs_close(
     *,
     torch_module: Any,

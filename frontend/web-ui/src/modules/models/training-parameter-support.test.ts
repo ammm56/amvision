@@ -202,6 +202,7 @@ describe('training parameter augmentation support', () => {
     for (const taskType of ['detection', 'segmentation'] as const) {
       expect(augmentationFieldKeys(taskType, 'rfdetr')).toEqual([
         'rfdetr_augmentation_preset',
+        'scale_jitter',
         'augmentation_backend',
       ])
       expect(fieldKeys(taskType, 'rfdetr')).toContain('learning_rate')
@@ -342,11 +343,12 @@ describe('training parameter augmentation support', () => {
     const values = {
       ...defaultValues('detection', 'rfdetr'),
       rfdetr_augmentation_preset: 'industrial',
+      scale_jitter: 'false',
       augmentation_backend: 'auto',
     }
 
     expect(buildTrainingParameters('detection', 'rfdetr', values)).toMatchObject({
-      augmentation: { preset: 'industrial', backend: 'auto' },
+      augmentation: { preset: 'industrial', scale_jitter: false, backend: 'auto' },
     })
   })
 

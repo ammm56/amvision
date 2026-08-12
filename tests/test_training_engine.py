@@ -10,6 +10,7 @@ from typing import Any, Callable
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training import training_engine as engine_module
 from backend.service.application.models.training.training_engine import (
     build_execution_training_config_runtime,
     read_active_training_runtime,
@@ -219,3 +220,33 @@ def test_training_engine_persists_resolved_batch_and_amp_in_result() -> None:
         "device": "cuda:0",
         "oom_recovery_count": 0,
     }
+
+
+@pytest.mark.parametrize("should_fail", [False, True])
+def test_training_engine_releases_runtime_resources_after_every_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    should_fail: bool,
+) -> None:
+    """成功或异常退出都必须清理常驻 worker 的训练高水位资源。"""
+
+    release_count = 0
+
+    def release() -> None:
+        nonlocal release_count
+        release_count += 1
+
+    monkeypatch.setattr(engine_module, "release_training_runtime_resources", release)
+
+    @training_engine_entrypoint
+    def execute(_request: _Request) -> _Result:
+        if should_fail:
+            raise RuntimeError("training stopped")
+        return _Result(metrics_payload={})
+
+    if should_fail:
+        with pytest.raises(RuntimeError, match="training stopped"):
+            execute(_Request(extra_options={"batch_mode": "fixed"}))
+    else:
+        execute(_Request(extra_options={"batch_mode": "fixed"}))
+
+    assert release_count == 1

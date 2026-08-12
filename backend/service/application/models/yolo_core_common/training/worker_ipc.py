@@ -15,7 +15,12 @@ def serialize_yolo_worker_value(*, value: Any, torch_module: Any) -> Any:
     """
 
     if torch_module.is_tensor(value):
-        return value.detach().cpu().numpy()
+        # ``Tensor.numpy()`` 返回的 ndarray 仍以 Tensor 作为 ``base``。Windows
+        # DataLoader 的 multiprocessing.Queue 在后台序列化该数组时，历史 batch
+        # 的 Tensor storage 会在 worker 内按 batch 阶梯式滞留；大 batch 训练
+        # 两轮即可占用数十 GiB。这里必须返回独立拥有内存的 C-contiguous 数组，
+        # 让当前 Tensor 在 collate 返回后立即释放，后续 IPC 只持有 NumPy 内存。
+        return value.detach().cpu().numpy().copy(order="C")
     if is_dataclass(value) and not isinstance(value, type):
         return replace(
             value,

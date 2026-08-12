@@ -2,9 +2,47 @@
 
 from __future__ import annotations
 
+import gc
 import os
 from collections.abc import Iterator
 from typing import Any
+
+
+_WORKER_JOIN_TIMEOUT_SECONDS = 1.0
+
+
+def _close_yolo_dataloader_worker_processes(workers: tuple[Any, ...]) -> None:
+    """终止残留 worker，并释放父进程持有的 Windows Process 句柄。"""
+
+    for worker in workers:
+        try:
+            if worker.is_alive():
+                worker.terminate()
+            worker.join(timeout=_WORKER_JOIN_TIMEOUT_SECONDS)
+            if worker.is_alive():
+                kill = getattr(worker, "kill", None)
+                if callable(kill):
+                    kill()
+                    worker.join(timeout=_WORKER_JOIN_TIMEOUT_SECONDS)
+            if not worker.is_alive():
+                close = getattr(worker, "close", None)
+                if callable(close):
+                    close()
+                    # PyTorch 在 persistent_workers + pin_memory 时会把同一
+                    # Process 注册到 atexit。multiprocessing.Process.close()
+                    # 已释放 OS handle，但会把 ``_closed`` 设为 True；PyTorch
+                    # 的退出回调随后调用 is_alive() 会因此抛 ValueError。
+                    # ``_popen is None`` 已能让 is_alive() 正确返回 False，故只
+                    # 恢复可查询状态，不重新创建或保留任何进程句柄。
+                    if (
+                        bool(getattr(worker, "_closed", False))
+                        and getattr(worker, "_popen", None) is None
+                    ):
+                        worker._closed = False
+        except (OSError, ValueError):
+            # 退出清理不能覆盖训练本身的异常；Process.close 对已关闭句柄也可能
+            # 抛 ValueError，因此这里保持幂等。
+            continue
 
 
 class YoloInfiniteDataLoader:
@@ -56,15 +94,20 @@ class YoloInfiniteDataLoader:
                 if iterator is None:
                     return
                 object.__setattr__(self, "iterator", None)
+                workers = tuple(getattr(iterator, "_workers", None) or ())
                 try:
                     shutdown_workers = getattr(iterator, "_shutdown_workers", None)
                     if callable(shutdown_workers):
                         shutdown_workers()
                 finally:
-                    workers = getattr(iterator, "_workers", None) or ()
-                    for worker in workers:
-                        if worker.is_alive():
-                            worker.terminate()
+                    _close_yolo_dataloader_worker_processes(workers)
+                    # Windows multiprocessing 的 Event / Queue 句柄依赖对象
+                    # finalizer 释放。训练阶段切换时 iterator 可能形成引用环，
+                    # 等待自动 GC 会让多轮训练出现阶梯式句柄增长，因此在低频
+                    # close 边界主动完成一次回收。
+                    if os.name == "nt":
+                        del iterator
+                        gc.collect()
 
             def __del__(self) -> None:
                 """释放 DataLoader worker，避免 Windows 下残留子进程。"""

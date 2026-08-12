@@ -626,6 +626,7 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
                 instances=(
                     ObbPredictionInstance(
                         bbox_xyxy=(6.0, 6.0, 24.0, 24.0),
+                        bbox_xywhr=(15.0, 15.0, 18.0, 18.0, 12.5),
                         score=0.88,
                         class_id=0,
                         class_name=primary_label,

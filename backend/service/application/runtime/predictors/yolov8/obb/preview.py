@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.service.application.models.yolov8_core.postprocess import (
-    render_yolov8_detection_preview_image,
+from backend.service.application.runtime.predictors.obb_preview import (
+    render_obb_preview_image,
 )
 
 
@@ -20,7 +20,7 @@ def render_yolov8_obb_preview_image_if_requested(
 
     if not save_result_image:
         return None
-    return render_yolov8_detection_preview_image(
+    return render_obb_preview_image(
         cv2_module=cv2_module,
         image=image,
         instances=instances,

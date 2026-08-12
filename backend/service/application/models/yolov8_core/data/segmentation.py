@@ -23,6 +23,7 @@ from backend.service.application.models.yolo_core_common.training.task_dataloade
 )
 from backend.service.application.models.yolo_core_common.targets.segmentation import (
     downsample_yolo_segmentation_masks,
+    pack_yolo_segmentation_evaluation_masks,
 )
 from backend.service.application.models.yolov8_core.data.augmentation import (
     YoloV8TaskAugmentationOptions,
@@ -65,6 +66,7 @@ def build_yolov8_segmentation_training_batch(
     precision: str,
     imports: Any,
     training: bool,
+    scaleup: bool | None = None,
     augmentation_options: YoloV8TaskAugmentationOptions | None = None,
     available_samples: Sequence[Any] | None = None,
 ) -> YoloV8SegmentationTrainingBatch | None:
@@ -82,10 +84,12 @@ def build_yolov8_segmentation_training_batch(
     images: list[Any] = []
     targets: list[dict[str, Any]] = []
     target_height, target_width = input_size
+    resolved_scaleup = bool(training) if scaleup is None else bool(scaleup)
     resolved_available_samples = tuple(available_samples or samples)
     for sample in samples:
         prepared = _prepare_yolov8_segmentation_sample_with_mix(
             training=training,
+            scaleup=resolved_scaleup,
             imports=imports,
             primary_sample=sample,
             available_samples=resolved_available_samples,
@@ -108,6 +112,7 @@ def build_yolov8_segmentation_training_batch(
             imports=imports,
             target=target,
             device=device,
+            preserve_evaluation_masks=not training,
         )
 
         tensor = (
@@ -131,6 +136,7 @@ def build_yolov8_segmentation_training_batch(
 def _prepare_yolov8_segmentation_sample_with_mix(
     *,
     training: bool,
+    scaleup: bool,
     imports: Any,
     primary_sample: Any,
     available_samples: Sequence[Any],
@@ -159,7 +165,7 @@ def _prepare_yolov8_segmentation_sample_with_mix(
             sample=primary_sample,
             output_size=(target_width, target_height),
             scale_gain=1.0,
-            scaleup=training,
+            scaleup=scaleup,
         )
     if prepared is None:
         return None
@@ -642,6 +648,7 @@ def _finalize_yolov8_segmentation_target(
     imports: Any,
     target: dict[str, Any],
     device: str,
+    preserve_evaluation_masks: bool = False,
 ) -> dict[str, Any]:
     """把 segmentation target 的 Numpy mask 转为 torch tensor。"""
 
@@ -649,7 +656,18 @@ def _finalize_yolov8_segmentation_target(
     masks = finalized.pop("masks_array", None)
     mask_valid = finalized.pop("mask_valid_array", None)
     if masks is not None:
-        masks = downsample_yolo_segmentation_masks(masks)
+        if preserve_evaluation_masks:
+            finalized["evaluation_masks_packed"] = (
+                pack_yolo_segmentation_evaluation_masks(
+                    masks,
+                    np_module=imports.np,
+                )
+            )
+        masks = downsample_yolo_segmentation_masks(
+            masks,
+            cv2_module=imports.cv2,
+            np_module=imports.np,
+        )
         finalized["masks"] = move_yolo_tensor_to_training_device(
             imports.torch.from_numpy(masks),
             device=device,

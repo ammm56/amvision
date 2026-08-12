@@ -50,12 +50,16 @@ YOLOv8、YOLO11、YOLO26、通用 classification/segmentation/pose/OBB Dataset�
 DataLoader 使用有限 batch 和有限 prefetch，不会把全部图片一次载入内存：
 
 - 通用 YOLO 任务默认 `num_workers=2`、`prefetch_factor=2`。非 detection 任务在
-  同一增强阶段跨 epoch 复用 worker；Windows 每 4 个 epoch 受控回收，防止
-  `spawn` IPC/进程堆 working set 随长训练无界抬升。
+  同一增强阶段跨 epoch 复用 worker；Windows 不再按固定 epoch 周期重建
+  `spawn` worker，只在增强阶段变化、训练结束、暂停/终止、异常退出或调用方
+  显式设置复用上限时回收，避免 200 轮训练累积数十分钟启动停顿。
 - 非 detection worker 只并行执行图片读取和增强，batch 以 NumPy IPC 载荷返回，
   由训练主进程显式恢复为 Tensor、pin 并传入设备；classification 不再对 NumPy
-  载荷直接调用 Tensor API。结束、暂停、终止、异常和周期 validation 路径均关闭
-  iterator，`num_workers=0` 时不会调用不存在的 multiprocessing shutdown 方法。
+  载荷直接调用 Tensor API。IPC 数组必须拥有独立 C-contiguous 内存，禁止保留
+  `Tensor.numpy()` 的 Tensor `base`；真实 `batch=79`、640×640 segmentation 两轮
+  复测中，两个 worker 从旧实现的 17–18.5 GiB 线性增长收敛为 0.8–1.57 GiB
+  稳定高水位。结束、暂停、终止、异常和周期 validation 路径均关闭 iterator，
+  `num_workers=0` 时不会调用不存在的 multiprocessing shutdown 方法。
 - spatial task 的 validation 使用最终训练 batch 做 GPU 前向，并按 batch 首维逐图
   切分 prediction、proto 和 target；切分过程保持 batch 维，连续分配全局 image id，
   首维不匹配时明确报错。COCO/OKS/rotated 关联仍按单图执行，避免跨图匹配。
@@ -115,6 +119,15 @@ AutoBatch=46、FP16 AMP、batched pose validation、独立 test 和 ONNX 转换�
 - segmentation 训练 evaluator 使用 compressed COCO RLE 和真实 pycocotools，
   不在完整 split 上保存 dense instance mask；GT mask 恢复到 COCO image 尺寸，
   prediction mask 在 bbox crop 后直接编码 RLE。
+- YOLOv8/11/26 segmentation 训练 target 与 Ultralytics `polygon2mask` 保持同一
+  `fillPoly -> cv2.resize(INTER_LINEAR)` 规则。禁止用固定步长切片代替 mask resize；
+  在官方 crack-seg 的 640→160 量化中，旧切片与参考 target 的实例平均 IoU 只有
+  0.703，且少保留约 6.1% 裂纹像素，足以使 bbox 与 mask AP 明显分离。
+- 三代 YOLO segmentation loss 必须先汇总整个 batch 的 class/box/DFL 分子与
+  `target_scores_sum`，mask loss 必须先汇总整个 batch 的 foreground 分子与数量，
+  最后统一归一化并乘实际 batch size。禁止逐图归一化后再相加；后者会低估多实例图，
+  并容易漏掉空标注图片的背景 BCE。YOLO26 semantic loss 同样按参考 criterion 乘
+  batch size 后再参与 one-to-many/one-to-one 分支组合。
 - pose 训练和数据集级评估分别使用真实 pycocotools bbox AP 与 keypoints AP；
   推理显示用的 keypoint confidence threshold 不参与 OKS 几何。
 - OBB evaluator 的 `xywhr` angle 固定为弧度，只评估 test 或 validation 中的

@@ -3199,6 +3199,77 @@ def test_yolov8_segmentation_core_data_eval_postprocess_and_export_entries(
     assert exported_proto.shape == torch.Size([1])
 
 
+def test_yolo_segmentation_test_batch_can_match_runtime_scaleup(
+    tmp_path: Path,
+) -> None:
+    """三代 segmentation 收尾 test 必须可采用生产 runtime 的 scaleup 语义。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image_path = tmp_path / "scaleup.jpg"
+    assert (
+        cv2.imwrite(
+            str(image_path),
+            np.full((8, 16, 3), 255, dtype=np.uint8),
+        )
+        is True
+    )
+    imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
+    sample = SimpleNamespace(
+        image_path=str(image_path),
+        boxes_xywh=[[4.0, 2.0, 8.0, 4.0]],
+        class_ids=[0],
+        segmentations=[[4.0, 2.0, 12.0, 2.0, 12.0, 6.0, 4.0, 6.0]],
+    )
+
+    for builder in (
+        build_yolov8_segmentation_training_batch,
+        build_yolo11_segmentation_training_batch,
+        build_yolo26_segmentation_training_batch,
+    ):
+        validation_batch = builder(
+            training=False,
+            scaleup=False,
+            samples=[sample],
+            input_size=(32, 32),
+            device="cpu",
+            precision="fp32",
+            imports=imports,
+        )
+        runtime_parity_batch = builder(
+            training=False,
+            scaleup=True,
+            samples=[sample],
+            input_size=(32, 32),
+            device="cpu",
+            precision="fp32",
+            imports=imports,
+        )
+
+        assert validation_batch is not None
+        assert runtime_parity_batch is not None
+        assert validation_batch.targets[0]["boxes"] == [[12.0, 14.0, 20.0, 18.0]]
+        assert runtime_parity_batch.targets[0]["boxes"] == [[8.0, 12.0, 24.0, 20.0]]
+        from backend.service.application.models.yolo_core_common.targets.segmentation import (
+            unpack_yolo_segmentation_evaluation_masks,
+        )
+
+        validation_masks = unpack_yolo_segmentation_evaluation_masks(
+            validation_batch.targets[0]["evaluation_masks_packed"],
+            np_module=np,
+        )
+        runtime_masks = unpack_yolo_segmentation_evaluation_masks(
+            runtime_parity_batch.targets[0]["evaluation_masks_packed"],
+            np_module=np,
+        )
+        assert validation_masks is not None
+        assert runtime_masks is not None
+        assert validation_masks.shape == (1, 32, 32)
+        assert runtime_masks.shape == (1, 32, 32)
+        assert validation_batch.targets[0]["masks"].shape == (1, 8, 8)
+        assert runtime_parity_batch.targets[0]["masks"].shape == (1, 8, 8)
+
+
 def test_yolov8_classification_core_loss_postprocess_and_export_entries() -> None:
     """验证 YOLOv8 classification loss、postprocess 和 export 都有 core 入口。"""
 

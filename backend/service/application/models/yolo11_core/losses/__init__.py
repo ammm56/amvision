@@ -19,6 +19,7 @@ from backend.service.application.models.yolo11_core.losses.classification import
 )
 from backend.service.application.models.yolo11_core.losses.segmentation import (
     compute_yolo11_segmentation_detection_loss,
+    compute_yolo11_segmentation_detection_loss_terms,
     compute_yolo11_segmentation_mask_loss,
     decode_yolo11_segmentation_training_boxes,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "compute_yolo11_obb_loss",
     "compute_yolo11_pose_loss",
     "compute_yolo11_segmentation_detection_loss",
+    "compute_yolo11_segmentation_detection_loss_terms",
     "compute_yolo11_segmentation_mask_loss",
     "decode_yolo11_segmentation_training_boxes",
     "normalize_yolo11_classification_training_outputs",

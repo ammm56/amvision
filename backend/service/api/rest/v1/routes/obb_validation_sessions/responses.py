@@ -18,6 +18,7 @@ class ObbValidationInstanceResponse(BaseModel):
     """OBB 实例结果。"""
 
     bbox_xyxy: tuple[float, float, float, float]
+    bbox_xywhr: tuple[float, float, float, float, float]
     score: float
     class_id: int
     class_name: str | None = None
@@ -164,6 +165,7 @@ def build_obb_validation_prediction_response(
         instances=[
             ObbValidationInstanceResponse(
                 bbox_xyxy=instance.bbox_xyxy,
+                bbox_xywhr=instance.bbox_xywhr,
                 score=instance.score,
                 class_id=instance.class_id,
                 class_name=instance.class_name,

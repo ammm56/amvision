@@ -326,6 +326,7 @@ const learningRateHistory = ref<TrainingScalarPoint[]>([])
 const runtimeHistory = ref<TrainingRuntimePoint[]>([])
 const latestTaskEventCursor = ref<string | null>(null)
 let snapshotRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
+let outputFilesRefreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const taskId = computed(() => String(route.params.taskId ?? ''))
 const taskType = computed<ModelTaskType | null>(() => {
@@ -416,6 +417,10 @@ onBeforeUnmount(() => {
   if (snapshotRefreshTimer !== null) {
     window.clearTimeout(snapshotRefreshTimer)
     snapshotRefreshTimer = null
+  }
+  if (outputFilesRefreshTimer !== null) {
+    window.clearTimeout(outputFilesRefreshTimer)
+    outputFilesRefreshTimer = null
   }
 })
 
@@ -511,6 +516,8 @@ function handleTaskEvent(event: TaskEvent): void {
   const data = readRecord(event.payload)
   const progress = readRecord(data.progress)
   const shouldApplySnapshot = shouldApplyTaskEventSnapshot(data, progress)
+  const shouldApplyCompletedEpoch = shouldApplySnapshot
+    || shouldApplyRecentCompletedEpochMetrics(progress)
   if (task.value && Object.keys(data).length > 0 && shouldApplySnapshot) {
     const nextState = typeof data.state === 'string' ? data.state : task.value.state
     const nextBestMetricName = typeof progress.best_metric_name === 'string'
@@ -527,6 +534,19 @@ function handleTaskEvent(event: TaskEvent): void {
       best_metric_value: nextBestMetricValue,
     }
   }
+  if (task.value && shouldApplyCompletedEpoch) {
+    const nextBestMetricName = typeof progress.best_metric_name === 'string'
+      ? progress.best_metric_name
+      : task.value.best_metric_name
+    const nextBestMetricValue = readNumber(progress.best_metric_value)
+      ?? task.value.best_metric_value
+    task.value = {
+      ...task.value,
+      best_metric_name: nextBestMetricName,
+      best_metric_value: nextBestMetricValue,
+    }
+    mergeCompletedEpochMetricPayloads(progress)
+  }
   appendProgressHistory(progress)
   if (event.event_type === 'result' || event.event_type === 'status') {
     scheduleSnapshotRefresh()
@@ -534,6 +554,48 @@ function handleTaskEvent(event: TaskEvent): void {
   if (shouldApplySnapshot && !isActiveTrainingState(task.value?.state)) {
     taskEvents.stop()
     trainingTelemetry.stop()
+  }
+}
+
+function shouldApplyRecentCompletedEpochMetrics(
+  incomingProgress: Record<string, unknown>,
+): boolean {
+  const trainMetrics = readRecord(incomingProgress.train_metrics)
+  const validationMetrics = readRecord(incomingProgress.validation_metrics)
+  if (Object.keys(trainMetrics).length === 0 && Object.keys(validationMetrics).length === 0) {
+    return false
+  }
+  const incomingEpoch = readNumber(incomingProgress.epoch)
+  if (incomingEpoch === null) return false
+  const persistedEpoch = Math.max(
+    readNumber(trainingMetricsPayload.value.epoch) ?? -1,
+    readNumber(validationMetricsPayload.value.epoch) ?? -1,
+  )
+  if (incomingEpoch <= persistedEpoch) return false
+  const currentEpoch = readNumber(task.value?.progress.epoch)
+  return currentEpoch === null || incomingEpoch >= currentEpoch - 1
+}
+
+function mergeCompletedEpochMetricPayloads(progress: Record<string, unknown>): void {
+  const trainMetrics = readRecord(progress.train_metrics)
+  if (Object.keys(trainMetrics).length > 0) {
+    trainingMetricsPayload.value = {
+      ...trainingMetricsPayload.value,
+      epoch: readNumber(progress.epoch) ?? trainingMetricsPayload.value.epoch,
+      epoch_index: readNumber(progress.epoch_index) ?? trainingMetricsPayload.value.epoch_index,
+      max_epochs: readNumber(progress.max_epochs) ?? trainingMetricsPayload.value.max_epochs,
+      final_metrics: trainMetrics,
+    }
+  }
+  const validationMetrics = readRecord(progress.validation_metrics)
+  if (Object.keys(validationMetrics).length > 0) {
+    validationMetricsPayload.value = {
+      ...validationMetricsPayload.value,
+      epoch: readNumber(progress.epoch) ?? validationMetricsPayload.value.epoch,
+      epoch_index: readNumber(progress.epoch_index) ?? validationMetricsPayload.value.epoch_index,
+      max_epochs: readNumber(progress.max_epochs) ?? validationMetricsPayload.value.max_epochs,
+      final_metrics: validationMetrics,
+    }
   }
 }
 
@@ -570,6 +632,13 @@ function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
     ...currentTask,
     current_attempt_no: Math.max(currentTask.current_attempt_no, payload.attempt_no),
     progress: nextProgress,
+  }
+  if (
+    payload.epoch !== null
+    && payload.epoch !== undefined
+    && (currentEpoch === null || payload.epoch > currentEpoch)
+  ) {
+    scheduleOutputFilesRefresh()
   }
 }
 
@@ -673,6 +742,33 @@ function scheduleSnapshotRefresh(): void {
     snapshotRefreshTimer = null
     void refreshPage()
   }, 300)
+}
+
+function scheduleOutputFilesRefresh(): void {
+  if (outputFilesRefreshTimer !== null) return
+  outputFilesRefreshTimer = window.setTimeout(() => {
+    outputFilesRefreshTimer = null
+    void refreshOutputFiles()
+  }, 300)
+}
+
+async function refreshOutputFiles(): Promise<void> {
+  if (!taskType.value) return
+  const currentTaskType = taskType.value
+  try {
+    const files = await listModelTrainingOutputFiles(currentTaskType, taskId.value)
+    outputFiles.value = files
+    const selectedFileName = selectedOutputFile.value?.file_name
+    if (selectedFileName && files.some((file) => file.file_name === selectedFileName)) {
+      selectedOutputFile.value = await getModelTrainingOutputFileDetail(
+        currentTaskType,
+        taskId.value,
+        selectedFileName,
+      )
+    }
+  } catch {
+    // 后台状态同步失败不覆盖页面已有数据，后续 epoch 或手动刷新会再次获取。
+  }
 }
 
 function openDeleteDialog(): void {

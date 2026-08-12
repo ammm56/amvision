@@ -465,7 +465,10 @@ def run_yolov8_obb_training(
                         global_iteration=global_iteration,
                         total_iterations=max_epochs * max_iterations,
                         input_size=input_size,
-                        learning_rate=float(scheduler.get_last_lr()[0]),
+                        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                            optimizer=optimizer,
+                            initial_learning_rate=training_schedule.initial_lr,
+                        ),
                         train_metrics=batch_metrics,
                     )
                 )
@@ -526,7 +529,10 @@ def run_yolov8_obb_training(
             epoch=epoch,
             max_epochs=max_epochs,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             train_metrics=avg_metrics,
             validation_metrics=val_metrics or None,
             best_metric_value=best_metric_value,
@@ -581,7 +587,10 @@ def run_yolov8_obb_training(
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
-                    learning_rate=float(scheduler.get_last_lr()[0]),
+                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                        optimizer=optimizer,
+                        initial_learning_rate=training_schedule.initial_lr,
+                    ),
                     is_best=best_metric_improved,
                 )
             )
@@ -592,6 +601,9 @@ def run_yolov8_obb_training(
             raise YoloV8ObbTrainingTerminatedError()
 
     training_loader_lifecycle.close()
+    optimizer_step.require_successful_optimizer_step(
+        task_name=f"{request.model_type.upper()} OBB",
+    )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = ckpt_bytes
     test_metrics_payload = build_detection_test_metrics_report(

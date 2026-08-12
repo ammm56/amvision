@@ -32,6 +32,7 @@ from backend.service.application.models.yolo11_core.training.savepoint import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloUltralyticsTrainingSchedule,
     build_yolo_completed_epoch_history_item,
+    require_yolo_successful_optimizer_step,
 )
 from backend.service.application.models.training.checkpoint_policy import (
     resolve_training_checkpoint_decision,
@@ -157,6 +158,8 @@ def run_yolo11_detection_training_loop(
     latest_checkpoint_bytes = b""
     best_checkpoint_bytes = previous_best_checkpoint_bytes
     current_best_metric_value = float(best_metric_value)
+    successful_optimizer_steps = 0
+    skipped_optimizer_steps = 0
 
     for epoch in range(int(resume_epoch) + 1, int(max_epochs) + 1):
         epoch_result = run_yolo11_detection_training_epoch(
@@ -188,6 +191,8 @@ def run_yolo11_detection_training_loop(
             batch_callback=batch_callback,
         )
         global_iteration = epoch_result.global_iteration
+        successful_optimizer_steps += epoch_result.successful_optimizer_steps
+        skipped_optimizer_steps += epoch_result.skipped_optimizer_steps
         train_metrics = build_yolo_completed_epoch_history_item(
             completed_epoch=epoch,
             metrics=epoch_result.train_metrics,
@@ -318,6 +323,11 @@ def run_yolo11_detection_training_loop(
         if control_decision.terminate_training:
             raise Yolo11DetectionTrainingTerminatedError()
 
+    require_yolo_successful_optimizer_step(
+        successful_optimizer_steps=successful_optimizer_steps,
+        skipped_optimizer_steps=skipped_optimizer_steps,
+        task_name="YOLO11 detection",
+    )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
     return Yolo11DetectionTrainingLoopResult(

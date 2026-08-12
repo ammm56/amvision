@@ -11,9 +11,15 @@ from backend.service.application.models.evaluation import pose_evaluation as pos
 from backend.service.application.models.evaluation import (
     segmentation_evaluation as segmentation_module,
 )
-from backend.service.application.models.yolov8_core.evaluation import obb as yolov8_obb_module
-from backend.service.application.models.yolov8_core.evaluation import pose as yolov8_pose_module
-from backend.service.application.models.yolov8_core.evaluation import segmentation as yolov8_segmentation_module
+from backend.service.application.models.yolov8_core.evaluation import (
+    obb as yolov8_obb_module,
+)
+from backend.service.application.models.yolov8_core.evaluation import (
+    pose as yolov8_pose_module,
+)
+from backend.service.application.models.yolov8_core.evaluation import (
+    segmentation as yolov8_segmentation_module,
+)
 
 
 class _FakeDatasetStorage:
@@ -38,7 +44,9 @@ class _FakeDatasetStorage:
         target.write_text("{}", encoding="utf-8")
 
 
-def test_yolov8_segmentation_dataset_evaluation_runs_inside_yolov8_core(monkeypatch, tmp_path) -> None:
+def test_yolov8_segmentation_dataset_evaluation_runs_inside_yolov8_core(
+    monkeypatch, tmp_path
+) -> None:
     """验证 YOLOv8 segmentation 数据集级入口不再回调旧 primary evaluator。"""
 
     image_path = tmp_path / "images" / "a.jpg"
@@ -76,12 +84,16 @@ def test_yolov8_segmentation_dataset_evaluation_runs_inside_yolov8_core(monkeypa
                 ],
             )
 
-    monkeypatch.setattr(yolov8_segmentation_module, "DefaultSegmentationModelRuntime", FakeRuntime)
+    monkeypatch.setattr(
+        yolov8_segmentation_module, "DefaultSegmentationModelRuntime", FakeRuntime
+    )
 
     result = yolov8_segmentation_module.run_yolov8_segmentation_evaluation(
         yolov8_segmentation_module.YoloV8SegmentationEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
-            runtime_target=SimpleNamespace(model_version_id="mv-seg", model_type="yolov8"),
+            runtime_target=SimpleNamespace(
+                model_version_id="mv-seg", model_type="yolov8"
+            ),
             manifest_payload={
                 "categories": [{"id": 0, "name": "part"}],
                 "splits": [
@@ -124,7 +136,9 @@ def test_yolov8_segmentation_dataset_evaluation_runs_inside_yolov8_core(monkeypa
     assert result.report_payload["model_type"] == "yolov8"
 
 
-def test_yolov8_pose_dataset_evaluation_delegates_to_platform_evaluator(monkeypatch) -> None:
+def test_yolov8_pose_dataset_evaluation_delegates_to_platform_evaluator(
+    monkeypatch,
+) -> None:
     """验证 YOLOv8 pose 数据集级入口会构造正式评估请求。"""
 
     captured = {}
@@ -153,7 +167,9 @@ def test_yolov8_pose_dataset_evaluation_delegates_to_platform_evaluator(monkeypa
     assert captured["request"].extra_options == {"limit": 3}
 
 
-def test_yolov8_obb_dataset_evaluation_delegates_to_platform_evaluator(monkeypatch) -> None:
+def test_yolov8_obb_dataset_evaluation_delegates_to_platform_evaluator(
+    monkeypatch,
+) -> None:
     """验证 YOLOv8 OBB 数据集级入口会构造正式评估请求。"""
 
     captured = {}
@@ -216,7 +232,9 @@ def test_pose_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> N
     result = pose_module.run_pose_evaluation(
         pose_module.PoseEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
-            runtime_target=SimpleNamespace(model_version_id="mv-pose", model_type="yolov8"),
+            runtime_target=SimpleNamespace(
+                model_version_id="mv-pose", model_type="yolov8"
+            ),
             manifest_payload={
                 "categories": [{"id": 0, "name": "person"}],
                 "splits": [
@@ -248,7 +266,9 @@ def test_pose_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> N
     assert result.predictions_payload[0]["score"] == 0.9
 
 
-def test_segmentation_evaluation_computes_bbox_and_mask_ap(monkeypatch, tmp_path) -> None:
+def test_segmentation_evaluation_computes_bbox_and_mask_ap(
+    monkeypatch, tmp_path
+) -> None:
     """验证 segmentation 评估同时计算 bbox AP 和 mask AP。"""
 
     image_path = tmp_path / "images" / "a.jpg"
@@ -284,12 +304,16 @@ def test_segmentation_evaluation_computes_bbox_and_mask_ap(monkeypatch, tmp_path
                 ],
             )
 
-    monkeypatch.setattr(segmentation_module, "DefaultSegmentationModelRuntime", FakeRuntime)
+    monkeypatch.setattr(
+        segmentation_module, "DefaultSegmentationModelRuntime", FakeRuntime
+    )
 
     result = segmentation_module.run_segmentation_evaluation(
         segmentation_module.SegmentationEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
-            runtime_target=SimpleNamespace(model_version_id="mv-seg", model_type="yolov8"),
+            runtime_target=SimpleNamespace(
+                model_version_id="mv-seg", model_type="yolov8"
+            ),
             manifest_payload={
                 "categories": [{"id": 0, "name": "part"}],
                 "splits": [
@@ -350,7 +374,7 @@ def test_obb_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> No
                 detections=[
                     SimpleNamespace(
                         class_id=0,
-                        bbox=[10.0, 10.0, 4.0, 2.0, 0.0],
+                        bbox_xywhr=[10.0, 10.0, 4.0, 2.0, 0.0],
                         score=0.8,
                     ),
                 ],
@@ -364,7 +388,9 @@ def test_obb_evaluation_uses_loaded_runtime_session(monkeypatch, tmp_path) -> No
     result = obb_module.run_obb_evaluation(
         obb_module.ObbEvaluationRequest(
             dataset_storage=_FakeDatasetStorage(tmp_path),
-            runtime_target=SimpleNamespace(model_version_id="mv-obb", model_type="yolov8"),
+            runtime_target=SimpleNamespace(
+                model_version_id="mv-obb", model_type="yolov8"
+            ),
             manifest_payload={
                 "images": [{"id": 1, "file_name": "a.jpg"}],
                 "annotations": [
@@ -405,9 +431,15 @@ def test_obb_evaluation_includes_background_images_in_false_positive_count(
         def predict(self, request):
             calls.append(request.input_image_bytes)
             score = 0.8 if request.input_image_bytes == b"positive" else 0.9
-            bbox = [10.0, 10.0, 4.0, 2.0, 0.0]
+            bbox_xywhr = [10.0, 10.0, 4.0, 2.0, 0.0]
             return SimpleNamespace(
-                detections=[SimpleNamespace(class_id=0, bbox=bbox, score=score)]
+                detections=[
+                    SimpleNamespace(
+                        class_id=0,
+                        bbox_xywhr=bbox_xywhr,
+                        score=score,
+                    )
+                ]
             )
 
     monkeypatch.setattr(
@@ -440,7 +472,9 @@ def test_obb_evaluation_includes_background_images_in_false_positive_count(
     assert result.map50 == pytest.approx(0.5)
 
 
-def test_obb_evaluation_selects_one_test_split_instead_of_merging_training_data() -> None:
+def test_obb_evaluation_selects_one_test_split_instead_of_merging_training_data() -> (
+    None
+):
     """数据集级 OBB evaluation 不能把 train/val/test 合并后计算 AP。"""
 
     selected = obb_module._select_obb_evaluation_split(

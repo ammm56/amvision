@@ -11,6 +11,10 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.yolo_core_common.decode import (
     decode_segmentation_masks,
 )
+from backend.service.application.models.yolo_core_common.geometry import (
+    YoloLetterboxTransform,
+    scale_yolo_mask_from_letterbox,
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,68 @@ class SegmentationPostprocessInstance:
     class_name: str | None
     segments: tuple[tuple[tuple[float, float], ...], ...]
     mask_area: float
+
+
+def decode_yolo_segmentation_masks_from_logits(
+    *,
+    cv2_module: Any,
+    np_module: Any,
+    proto: Any,
+    mask_coefficients: Any,
+    letterbox_transform: YoloLetterboxTransform,
+    mask_threshold: float,
+) -> list[Any]:
+    """按三代 YOLO 共用规则从 proto logits 解码实例 masks。
+
+    插值必须作用于 raw logits，并在恢复到原图尺寸后才执行阈值化。
+    ``sigmoid -> resize`` 与 ``resize logits -> sigmoid`` 不等价，前者会改变
+    细目标边界。实现与 Ultralytics ``process_mask(..., upsample=True)`` 的
+    logits-first 语义一致，同时逐实例处理以限制长期推理的峰值内存。
+    """
+
+    threshold = float(mask_threshold)
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("mask_threshold 必须位于 [0, 1]")
+    if threshold <= 0.0:
+        logit_threshold = float("-inf")
+    elif threshold >= 1.0:
+        logit_threshold = float("inf")
+    else:
+        logit_threshold = math.log(threshold / (1.0 - threshold))
+
+    proto_array = np_module.asarray(proto, dtype=np_module.float32)
+    coefficients = np_module.asarray(mask_coefficients, dtype=np_module.float32)
+    if proto_array.ndim != 3:
+        raise ValueError("segmentation proto 必须是 [C,H,W] 三维数组")
+    if coefficients.ndim != 2:
+        raise ValueError("segmentation mask coefficients 必须是 [N,C] 二维数组")
+    if int(coefficients.shape[1]) != int(proto_array.shape[0]):
+        raise ValueError("segmentation mask coefficients 与 proto 通道数不一致")
+
+    proto_features = proto_array.reshape(int(proto_array.shape[0]), -1)
+    mask_logits = (coefficients @ proto_features).reshape(
+        int(coefficients.shape[0]),
+        int(proto_array.shape[1]),
+        int(proto_array.shape[2]),
+    )
+    masks: list[Any] = []
+    for mask_logit in mask_logits:
+        resized_logits = cv2_module.resize(
+            mask_logit,
+            (letterbox_transform.target_width, letterbox_transform.target_height),
+            interpolation=cv2_module.INTER_LINEAR,
+        )
+        restored_logits = scale_yolo_mask_from_letterbox(
+            mask=resized_logits,
+            transform=letterbox_transform,
+            cv2_module=cv2_module,
+            np_module=np_module,
+            interpolation="bilinear",
+        )
+        masks.append(
+            (restored_logits > logit_threshold).astype(np_module.uint8, copy=False)
+        )
+    return masks
 
 
 def crop_binary_mask_to_box(

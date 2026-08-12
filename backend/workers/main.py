@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from backend.service.application.models.training.training_telemetry import (
+    configure_process_training_telemetry_publisher,
+)
 from backend.workers.bootstrap import BackendWorkerBootstrap, BackendWorkerRuntime
 from backend.workers.consumer_registry import (
     BackgroundTaskConsumerResources,
@@ -64,6 +67,11 @@ def run_worker_forever() -> None:
         )
     )
     try:
+        if runtime.training_telemetry_publisher is not None:
+            runtime.training_telemetry_publisher.start()
+        configure_process_training_telemetry_publisher(
+            runtime.training_telemetry_publisher
+        )
         heartbeat.start()
         task_manager = build_background_task_manager(runtime)
         print(
@@ -71,12 +79,15 @@ def run_worker_forever() -> None:
             f"app_name={runtime.settings.app.app_name!r} "
             f"workspace={runtime.workspace_dir} "
             f"queue_root={runtime.queue_backend.root_dir} "
+            "training_telemetry="
+            f"{getattr(runtime.training_telemetry_publisher, 'path', 'disabled')} "
             f"enabled_consumer_kinds={list(runtime.settings.task_manager.enabled_consumer_kinds)!r}",
             flush=True,
         )
         task_manager.run_forever()
     finally:
         heartbeat.stop()
+        configure_process_training_telemetry_publisher(None)
         if runtime.training_telemetry_publisher is not None:
             runtime.training_telemetry_publisher.close()
         runtime.session_factory.engine.dispose()

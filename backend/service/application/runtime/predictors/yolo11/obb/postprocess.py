@@ -43,6 +43,7 @@ def build_yolo11_obb_runtime_instances(
     return tuple(
         ObbPredictionInstance(
             bbox_xyxy=instance.bbox_xyxy,
+            bbox_xywhr=instance.bbox_xywhr,
             score=instance.score,
             class_id=instance.class_id,
             class_name=instance.class_name,

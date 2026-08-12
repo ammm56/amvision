@@ -23,6 +23,7 @@ from backend.service.application.models.yolo_core_common.training import (
     build_yolo_task_training_dataloader,
     load_yolo_task_dataloader_imports,
     move_yolo_task_batch_to_device,
+    resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_task_dataloader_plan,
     should_run_yolo_validation,
 )
@@ -201,7 +202,10 @@ def run_yolo11_obb_training_loop(
             autocast_context=autocast_context,
             control_callback=control_callback,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             batch_callback=batch_callback,
         )
         metrics_history.append(
@@ -246,7 +250,10 @@ def run_yolo11_obb_training_loop(
             epoch=epoch,
             max_epochs=max_epochs,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             train_metrics=epoch_metrics,
             validation_metrics=validation_metrics or None,
             best_metric_value=best_metric_value,
@@ -297,7 +304,10 @@ def run_yolo11_obb_training_loop(
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
-                    learning_rate=float(scheduler.get_last_lr()[0]),
+                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                        optimizer=optimizer,
+                        initial_learning_rate=training_schedule.initial_lr,
+                    ),
                     is_best=best_metric_improved,
                 )
             )

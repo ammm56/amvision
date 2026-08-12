@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from types import SimpleNamespace
 import weakref
 
@@ -40,6 +41,7 @@ from backend.service.application.models.yolo_core_common.training import (
     build_yolo_ultralytics_optimizer,
     compute_yolo_ultralytics_lr_factor,
     resolve_yolo_optimizer_base_learning_rate,
+    require_yolo_successful_optimizer_step,
 )
 from backend.service.application.models.yolo_core_common.postprocess import (
     crop_binary_mask_to_box,
@@ -49,13 +51,16 @@ from backend.service.application.models.yolo_core_common.weights import (
 )
 from backend.service.application.models.yolo11_core.postprocess.segmentation import (
     build_yolo11_segmentation_postprocess_instances,
+    decode_yolo11_segmentation_masks,
     postprocess_yolo11_segmentation_prediction_array,
 )
 from backend.service.application.models.yolo26_core.postprocess.segmentation import (
     build_yolo26_segmentation_postprocess_instances,
+    decode_yolo26_segmentation_masks,
 )
 from backend.service.application.models.yolov8_core.postprocess.segmentation import (
     build_yolov8_segmentation_postprocess_instances,
+    decode_yolov8_segmentation_masks,
     postprocess_yolov8_segmentation_prediction_array,
 )
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
@@ -257,6 +262,92 @@ def test_optimizer_rejects_non_finite_loss_before_backward(invalid_loss: float) 
     assert all(parameter.grad is None for parameter in model.parameters())
 
 
+def test_optimizer_flushes_final_partial_accumulation_window() -> None:
+    """batch 数小于 accumulate 时，训练末批仍必须完成一次参数更新。"""
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=16,
+        train_sample_count=64,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    assert schedule.accumulate == 4
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=None,
+        schedule=schedule,
+        ema=None,
+        grad_clip_norm=10.0,
+    )
+    original = model.weight.detach().clone()
+
+    for iteration in range(1, 3):
+        optimizer_step.prepare_batch(
+            iteration_index=iteration,
+            epoch=1,
+            batch_size=16,
+        )
+        did_step = optimizer_step.backward_and_step(
+            loss=model(torch.ones((1, 2))).square().mean(),
+            iteration_index=iteration,
+            is_last_batch=iteration == 2,
+        )
+        assert did_step is (iteration == 2)
+
+    optimizer_step.require_successful_optimizer_step(task_name="YOLO smoke")
+    assert optimizer_step.successful_optimizer_steps == 1
+    assert optimizer_step.skipped_optimizer_steps == 0
+    assert not torch.equal(model.weight.detach(), original)
+
+
+def test_zero_optimizer_update_is_a_training_failure() -> None:
+    """完整训练没有任何有效参数更新时不得继续注册、评估或转换。"""
+
+    with pytest.raises(YoloTrainingNumericalError, match="没有任何成功"):
+        require_yolo_successful_optimizer_step(
+            successful_optimizer_steps=0,
+            skipped_optimizer_steps=4,
+            task_name="YOLOv8 segmentation",
+        )
+    require_yolo_successful_optimizer_step(
+        successful_optimizer_steps=1,
+        skipped_optimizer_steps=4,
+        task_name="YOLOv8 segmentation",
+    )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "backend/service/application/models/yolov8_core/training/detection_execution.py",
+        "backend/service/application/models/yolov8_core/training/classification_execution.py",
+        "backend/service/application/models/yolov8_core/training/segmentation_execution.py",
+        "backend/service/application/models/yolov8_core/training/pose_execution.py",
+        "backend/service/application/models/yolov8_core/training/obb_execution.py",
+        "backend/service/application/models/yolo11_core/training/trainer.py",
+        "backend/service/application/models/training/yolo11_segmentation_training.py",
+        "backend/service/application/models/yolo26_core/training/trainer.py",
+        "backend/service/application/models/training/yolo26_segmentation_training.py",
+    ],
+)
+def test_yolo_task_entrypoints_reject_zero_optimizer_updates(
+    relative_path: str,
+) -> None:
+    """所有共享 YOLO 任务入口都必须执行零更新成功门禁。"""
+
+    source = Path(relative_path).read_text(encoding="utf-8")
+    assert (
+        "require_successful_optimizer_step" in source
+        or "require_yolo_successful_optimizer_step" in source
+    )
+
+
 def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
     """GradScaler 跳过 overflow step 时不得伪装成一次有效模型更新。"""
 
@@ -323,6 +414,74 @@ def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
     assert scheduler_calls == []
 
 
+def test_amp_overflow_allows_scale_recovery_until_minimum_scale() -> None:
+    """持续下降的 loss scale 可恢复；低于 1 仍 overflow 才终止。"""
+
+    class _AlwaysOverflowGradScaler:
+        def __init__(self) -> None:
+            self.scale_value = 65536.0
+
+        def scale(self, loss):
+            return loss
+
+        def unscale_(self, _optimizer) -> None:
+            return None
+
+        def step(self, _optimizer) -> None:
+            return None
+
+        def update(self) -> None:
+            self.scale_value /= 2.0
+
+        def get_scale(self) -> float:
+            return self.scale_value
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=1,
+        train_sample_count=8,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=_AlwaysOverflowGradScaler(),
+        schedule=schedule,
+        ema=None,
+        grad_clip_norm=10.0,
+    )
+
+    for iteration in range(1, 17):
+        assert (
+            optimizer_step.backward_and_step(
+                loss=model(torch.ones((1, 2))).square().mean(),
+                iteration_index=iteration,
+                is_last_batch=True,
+            )
+            is False
+        )
+
+    with pytest.raises(
+        YoloTrainingNumericalError,
+        match="GradScaler 已无法恢复",
+    ):
+        optimizer_step.backward_and_step(
+            loss=model(torch.ones((1, 2))).square().mean(),
+            iteration_index=17,
+            is_last_batch=True,
+        )
+
+    assert optimizer_step.successful_optimizer_steps == 0
+    assert optimizer_step.skipped_optimizer_steps == 17
+    assert optimizer_step.consecutive_skipped_optimizer_steps == 17
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+
 def test_auto_optimizer_resolves_adamw_or_musgd_and_restores_state() -> None:
     """验证 Auto 边界、MuSGD 参数分组和 checkpoint 恢复。"""
 
@@ -337,6 +496,18 @@ def test_auto_optimizer_resolves_adamw_or_musgd_and_restores_state() -> None:
     )
     assert small_schedule.optimizer_name == "AdamW"
     assert small_schedule.initial_lr == pytest.approx(0.001667)
+    assert small_schedule.warmup_bias_lr == pytest.approx(0.0)
+
+    _, ceil_boundary_schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=nn.Linear(4, 2),
+        num_classes=2,
+        batch_size=64,
+        train_sample_count=65,
+        max_epochs=5_001,
+    )
+    assert ceil_boundary_schedule.optimizer_name == "MuSGD"
+    assert ceil_boundary_schedule.warmup_bias_lr == pytest.approx(0.0)
 
     model = nn.Linear(4, 2)
     optimizer, schedule = build_yolo_ultralytics_optimizer(
@@ -369,14 +540,32 @@ def test_auto_optimizer_resolves_adamw_or_musgd_and_restores_state() -> None:
     assert restored.state_dict()["state"]
 
 
-def test_musgd_uses_reference_finetune_learning_rate_groups() -> None:
-    """验证检测头和语义原型参数按参考规则使用三倍学习率。"""
+class _MuSGDHead(nn.Module):
+    """提供需要 MuSGD 三倍学习率的最终 YOLO head 属性。"""
 
-    blocks = [nn.Identity() for _ in range(23)]
-    detection_head = nn.Module()
-    detection_head.cv3 = nn.Linear(4, 2)
-    blocks.append(detection_head)
-    model = nn.Sequential(*blocks)
+    def __init__(self) -> None:
+        super().__init__()
+        self.cv3 = nn.Linear(4, 2)
+        self.one2one_cv3 = nn.Linear(4, 2)
+
+
+class _MuSGDGroupingModel(nn.Module):
+    """覆盖最终 head、同名早期层和 segmentation 特殊参数名。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = nn.ModuleList([_MuSGDHead(), _MuSGDHead()])
+        self.proto = nn.Module()
+        self.proto.semseg = nn.Linear(4, 2)
+        self.SemanticSegment = nn.Linear(4, 2)
+        self.three_dimensional = nn.Parameter(torch.ones((2, 2, 2)))
+        self.four_dimensional = nn.Parameter(torch.ones((2, 2, 2, 2)))
+
+
+def test_musgd_uses_reference_finetune_learning_rate_groups() -> None:
+    """三倍学习率只命中最终 head 及参考实现指定的 segmentation 参数。"""
+
+    model = _MuSGDGroupingModel()
     optimizer, _ = build_yolo_ultralytics_optimizer(
         torch_module=torch,
         model=model,
@@ -385,18 +574,109 @@ def test_musgd_uses_reference_finetune_learning_rate_groups() -> None:
         train_sample_count=20_000,
         max_epochs=40,
     )
-    boosted_muon_groups = [
-        group
+    boosted_parameters = {
+        id(parameter)
         for group in optimizer.param_groups
-        if group["param_group"] == "muon" and group["lr"] == pytest.approx(0.03)
-    ]
-    assert len(boosted_muon_groups) == 1
-    assert len(boosted_muon_groups[0]["params"]) == 1
-    assert boosted_muon_groups[0]["params"][0] is detection_head.cv3.weight
+        if group["lr"] == pytest.approx(0.03)
+        for parameter in group["params"]
+    }
+    final_head = model.model[-1]
+    expected_boosted = {
+        id(parameter)
+        for module in (
+            final_head.cv3,
+            final_head.one2one_cv3,
+            model.proto.semseg,
+            model.SemanticSegment,
+        )
+        for parameter in module.parameters()
+    }
+    assert boosted_parameters == expected_boosted
+    assert id(model.model[0].cv3.weight) not in boosted_parameters
+
+    muon_parameters = {
+        id(parameter)
+        for group in optimizer.param_groups
+        if bool(group.get("use_muon"))
+        for parameter in group["params"]
+    }
+    assert id(model.four_dimensional) in muon_parameters
+    assert id(model.three_dimensional) not in muon_parameters
+    assert optimizer.param_groups[0]["lr"] == pytest.approx(0.03)
     assert resolve_yolo_optimizer_base_learning_rate(
         optimizer=optimizer,
         initial_learning_rate=0.01,
     ) == pytest.approx(0.01)
+
+
+def test_musgd_one_step_matches_reference_hybrid_update() -> None:
+    """MuSGD 一步参数值和 momentum state 必须匹配参考混合更新。"""
+
+    model = nn.Linear(4, 2, bias=False)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=2,
+        batch_size=16,
+        train_sample_count=20_000,
+        max_epochs=40,
+        optimizer_name="MuSGD",
+        learning_rate=0.01,
+        momentum=0.9,
+        weight_decay=5e-4,
+    )
+    original = model.weight.detach().clone()
+    gradient = torch.tensor(
+        [[0.2, -0.1, 0.4, -0.3], [-0.5, 0.6, -0.7, 0.8]],
+        dtype=model.weight.dtype,
+    )
+    model.weight.grad = gradient.clone()
+
+    muon_momentum = gradient * 0.1
+    muon_input = gradient * 0.1 + muon_momentum * 0.9
+    orthogonalized = muon_input.bfloat16()
+    orthogonalized /= orthogonalized.norm() + 1e-7
+    for _ in range(5):
+        gram = orthogonalized @ orthogonalized.T
+        correction = torch.baddbmm(
+            gram.unsqueeze(0),
+            gram.unsqueeze(0),
+            gram.unsqueeze(0),
+            beta=-4.7750,
+            alpha=2.0315,
+        )[0]
+        orthogonalized = torch.baddbmm(
+            orthogonalized.unsqueeze(0),
+            correction.unsqueeze(0),
+            orthogonalized.unsqueeze(0),
+            beta=3.4445,
+        )[0]
+    after_muon = original - 0.01 * 0.2 * orthogonalized.to(original.dtype)
+    scaled_decay = schedule.scaled_weight_decay
+    sgd_gradient = gradient + scaled_decay * after_muon
+    expected = after_muon - 0.01 * (sgd_gradient + 0.9 * sgd_gradient)
+
+    optimizer.step()
+
+    assert torch.allclose(model.weight, expected, atol=2e-6, rtol=2e-6)
+    state = optimizer.state[model.weight]
+    assert torch.allclose(state["momentum_buffer"], muon_momentum)
+    assert torch.allclose(state["momentum_buffer_SGD"], sgd_gradient)
+
+
+def test_yolo_progress_never_reports_boosted_group_as_base_learning_rate() -> None:
+    """共享训练页面不得把 MuSGD 首个三倍学习率分组显示为基础学习率。"""
+
+    model_sources = Path("backend/service/application/models")
+    offenders: list[str] = []
+    for source_path in model_sources.rglob("*.py"):
+        source = source_path.read_text(encoding="utf-8")
+        if "get_last_lr()[0]" in source or (
+            '"latest_learning_rate": float(optimizer.param_groups[0]["lr"])'
+            in source
+        ):
+            offenders.append(source_path.as_posix())
+    assert offenders == []
 
 
 class _AttributeBlock(nn.Module):
@@ -544,6 +824,50 @@ def test_segmentation_binary_mask_is_cropped_with_ultralytics_pixel_rules() -> N
     assert np.all(cropped[1:3, 2:5] == 1)
     assert np.count_nonzero(cropped[:, :2]) == 0
     assert np.count_nonzero(cropped[3:, :]) == 0
+
+
+@pytest.mark.parametrize(
+    "decode_func",
+    [
+        decode_yolov8_segmentation_masks,
+        decode_yolo11_segmentation_masks,
+        decode_yolo26_segmentation_masks,
+    ],
+)
+def test_segmentation_decode_interpolates_logits_before_threshold(
+    decode_func: object,
+) -> None:
+    """验证三代 YOLO 共享 logits-first 解码，避免细边界被 sigmoid 插值改变。"""
+
+    transform = build_yolo_letterbox_transform(
+        source_width=8,
+        source_height=1,
+        input_size=(1, 8),
+    )
+    proto = np.asarray([[[-4.0, 0.5]]], dtype=np.float32)
+    coefficients = np.ones((1, 1), dtype=np.float32)
+    expected_logits = cv2.resize(proto[0], (8, 1), interpolation=cv2.INTER_LINEAR)
+    expected = (expected_logits > 0.0).astype(np.uint8)
+    legacy = (
+        cv2.resize(
+            1.0 / (1.0 + np.exp(-proto[0])),
+            (8, 1),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        >= 0.5
+    ).astype(np.uint8)
+
+    masks = decode_func(
+        cv2_module=cv2,
+        np_module=np,
+        proto=proto,
+        mask_coefficients=coefficients,
+        letterbox_transform=transform,
+        mask_threshold=0.5,
+    )
+
+    assert np.array_equal(masks[0], expected)
+    assert not np.array_equal(expected, legacy)
 
 
 def test_segmentation_evaluation_can_encode_cropped_masks_without_polygons() -> None:

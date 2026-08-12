@@ -40,7 +40,6 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloTaskTrainingBatchProgress,
     YoloTaskTrainingDataLoaderLifecycle,
     build_yolo_epoch_history_item,
-    YoloTrainingNumericalError,
     YoloUltralyticsOptimizerStep,
     build_yolo_ultralytics_optimizer,
     build_yolo_ultralytics_scheduler,
@@ -66,12 +65,14 @@ from backend.service.application.models.yolo26_core.evaluation import (
 )
 from backend.service.application.models.yolo26_core.losses import (
     combine_yolo26_end2end_loss_payloads,
-    compute_yolo26_segmentation_detection_loss,
-    compute_yolo26_segmentation_mask_loss,
+    compute_yolo26_segmentation_detection_loss_terms,
     resolve_yolo26_end2end_loss_weights,
 )
 from backend.service.application.models.yolo_core_common.losses.segmentation import (
     compute_yolo26_semantic_segmentation_loss,
+    compute_yolo_segmentation_mask_loss_terms,
+    finalize_yolo_segmentation_detection_loss_terms,
+    finalize_yolo_segmentation_mask_loss_terms,
 )
 from backend.service.application.models.yolo26_core.training.segmentation_anchors import (
     build_yolo26_segmentation_anchors_from_features,
@@ -484,7 +485,10 @@ def run_yolo26_segmentation_training(
             mask_loss_weight=mask_loss_weight,
             control_callback=request.control_callback,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             batch_callback=request.batch_callback,
         )
         metrics_history.append(
@@ -524,7 +528,10 @@ def run_yolo26_segmentation_training(
             epoch=epoch,
             max_epochs=max_epochs,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             train_metrics=train_metrics,
             validation_metrics=val_metrics or None,
             best_metric_value=(best_metric_value if best_metric_value >= 0.0 else None),
@@ -590,7 +597,10 @@ def run_yolo26_segmentation_training(
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
-                    learning_rate=float(scheduler.get_last_lr()[0]),
+                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                        optimizer=optimizer,
+                        initial_learning_rate=training_schedule.initial_lr,
+                    ),
                     is_best=best_metric_improved,
                 )
             )
@@ -600,6 +610,9 @@ def run_yolo26_segmentation_training(
             raise Yolo26SegmentationTrainingTerminatedError()
 
     training_loader_lifecycle.close()
+    optimizer_step.require_successful_optimizer_step(
+        task_name="YOLO26 segmentation",
+    )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
     test_metrics_payload = build_detection_test_metrics_report(
@@ -635,6 +648,7 @@ def run_yolo26_segmentation_training(
             imports=imports,
             batch_size=batch_size,
             control_callback=request.control_callback,
+            scaleup=True,
         )
         test_metrics_payload = build_detection_test_metrics_report(
             available=True,
@@ -712,7 +726,6 @@ def _run_yolo26_segmentation_epoch(
     mask_loss_sum = 0.0
     semantic_loss_sum = 0.0
     sample_count = 0
-    successful_steps_before_epoch = optimizer_step.successful_optimizer_steps
     max_iterations = max(1, len(train_dataloader))
     for iteration, cpu_batch in enumerate(train_dataloader, start=1):
         if control_callback is not None:
@@ -780,7 +793,7 @@ def _run_yolo26_segmentation_epoch(
             "reported_semantic_loss", loss_payload["semantic_loss"]
         )
         batch_sample_count = len(batch.targets)
-        # 两个 end-to-end 分支均为逐图归一化后的 batch sum，组合后直接反传。
+        # 两个 end-to-end 分支均按全 batch 归一化并乘 B，组合后直接反传。
         optimization_loss = optimization_total_loss
         if not optimization_loss.requires_grad:
             optimization_loss = loss_payload["fallback_tensor"].sum() * 0.0
@@ -838,16 +851,6 @@ def _run_yolo26_segmentation_epoch(
                     ),
                 )
             )
-
-    if (
-        sample_count > 0
-        and optimizer_step.successful_optimizer_steps == successful_steps_before_epoch
-    ):
-        raise YoloTrainingNumericalError(
-            "YOLO26 segmentation 当前 epoch 没有任何成功的 optimizer step "
-            f"(epoch={epoch + 1}, amp_skipped_steps="
-            f"{optimizer_step.skipped_optimizer_steps})"
-        )
 
     divisor = max(1, sample_count)
     return (
@@ -999,16 +1002,15 @@ def _compute_yolo26_segmentation_training_loss(
         prediction_parts.append(raw_mask_coefficients.permute(0, 2, 1).contiguous())
     predictions = imports.torch.cat(prediction_parts, dim=-1)
     distance_logits = raw_boxes.permute(0, 2, 1).contiguous()
-    class_loss = imports.torch.zeros(1, device=device)
-    box_loss = imports.torch.zeros(1, device=device)
-    dfl_loss = imports.torch.zeros(1, device=device)
-    mask_loss = imports.torch.zeros(1, device=device)
+    detection_loss_terms = []
+    mask_loss_terms = []
+    batch_size = len(targets_list)
     semantic_loss = compute_yolo26_semantic_segmentation_loss(
         torch_module=imports.torch,
         pred_semantic=pred_semantic,
         targets_list=targets_list,
         num_classes=num_classes,
-    )
+    ) * max(1, batch_size)
     for batch_index, targets in enumerate(targets_list):
         assignment = assign_yolo26_segmentation_targets(
             torch_module=imports.torch,
@@ -1022,10 +1024,8 @@ def _compute_yolo26_segmentation_training_loss(
             num_classes=num_classes,
             topk2=assign_topk2,
         )
-        if assignment is None:
-            continue
-        current_class_loss, current_box_loss, current_dfl_loss = (
-            compute_yolo26_segmentation_detection_loss(
+        detection_loss_terms.append(
+            compute_yolo26_segmentation_detection_loss_terms(
                 torch_module=imports.torch,
                 prediction=predictions[batch_index],
                 assignment=assignment,
@@ -1037,22 +1037,54 @@ def _compute_yolo26_segmentation_training_loss(
                 reg_max=int(getattr(segment_head, "reg_max", 1)),
             )
         )
-        class_loss += current_class_loss
-        box_loss += current_box_loss
-        dfl_loss += current_dfl_loss
         if proto is not None and raw_mask_coefficients is not None:
-            mask_loss += compute_yolo26_segmentation_mask_loss(
-                torch_module=imports.torch,
-                prediction=predictions[batch_index],
-                proto=proto[batch_index],
-                foreground_mask=assignment.fg_mask.to(device),
-                target_masks=assignment.mask_targets,
-                target_mask_valid=assignment.mask_valid,
-                matched_gt_indices=assignment.matched_gt_indices,
-                num_classes=num_classes,
-                target_boxes=assignment.box_targets,
-                image_size=image_size,
+            foreground_mask = (
+                assignment.fg_mask.to(device)
+                if assignment is not None
+                else imports.torch.zeros(
+                    int(predictions[batch_index].shape[0]),
+                    dtype=imports.torch.bool,
+                    device=device,
+                )
             )
+            mask_loss_terms.append(
+                compute_yolo_segmentation_mask_loss_terms(
+                    torch_module=imports.torch,
+                    prediction=predictions[batch_index],
+                    proto=proto[batch_index],
+                    foreground_mask=foreground_mask,
+                    target_masks=(
+                        assignment.mask_targets if assignment is not None else None
+                    ),
+                    target_mask_valid=(
+                        assignment.mask_valid if assignment is not None else None
+                    ),
+                    matched_gt_indices=(
+                        assignment.matched_gt_indices
+                        if assignment is not None
+                        else None
+                    ),
+                    num_classes=num_classes,
+                    target_boxes=(
+                        assignment.box_targets if assignment is not None else None
+                    ),
+                    image_size=image_size,
+                )
+            )
+    class_loss, box_loss, dfl_loss = finalize_yolo_segmentation_detection_loss_terms(
+        torch_module=imports.torch,
+        terms=detection_loss_terms,
+        batch_size=batch_size,
+    )
+    mask_loss = (
+        finalize_yolo_segmentation_mask_loss_terms(
+            torch_module=imports.torch,
+            terms=mask_loss_terms,
+            batch_size=batch_size,
+        )
+        if mask_loss_terms
+        else raw_scores.sum() * 0.0
+    )
     return {
         "class_loss": class_loss,
         "box_loss": box_loss,

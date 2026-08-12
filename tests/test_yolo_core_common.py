@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
+import gc
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -95,6 +98,10 @@ from backend.service.application.models.yolo_core_common.training.validation_sch
 from backend.service.application.models.yolo_core_common.training.metrics_history import (
     build_yolo_completed_epoch_history_item,
     build_yolo_epoch_history_item,
+)
+from backend.service.application.models.yolo_core_common.training.infinite_dataloader import (
+    YoloInfiniteDataLoader,
+    _close_yolo_dataloader_worker_processes,
 )
 from backend.service.application.models.yolo26_core.tasks import (
     OBB26,
@@ -282,6 +289,8 @@ def test_task_dataloader_worker_tensor_transport_round_trips_through_numpy() -> 
 
     assert isinstance(transported["images"], np.ndarray)
     assert isinstance(transported["labels"], np.ndarray)
+    assert transported["images"].base is None
+    assert transported["labels"].base is None
     assert torch.equal(restored["images"], source["images"])
     assert torch.equal(restored["labels"], source["labels"])
 
@@ -314,6 +323,154 @@ def test_task_dataloader_lifecycle_recycles_windows_style_workers() -> None:
     assert first is second
     assert third is not first
     assert [loader.close_count for loader in created] == [1, 1]
+
+
+def test_task_dataloader_lifecycle_default_does_not_recycle_workers_by_epoch() -> None:
+    """默认跨 epoch 常驻 worker，避免 Windows spawn 周期停顿。"""
+
+    class _FakeWorkerLoader:
+        num_workers = 2
+
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    created: list[_FakeWorkerLoader] = []
+
+    def build_loader() -> _FakeWorkerLoader:
+        loader = _FakeWorkerLoader()
+        created.append(loader)
+        return loader
+
+    lifecycle = YoloTaskTrainingDataLoaderLifecycle()
+    resolved = [
+        lifecycle.resolve(augmentation_options=None, build_loader=build_loader)
+        for _ in range(5)
+    ]
+    lifecycle.close()
+
+    assert all(loader is resolved[0] for loader in resolved)
+    assert len(created) == 1
+    assert created[0].close_count == 1
+
+
+def test_infinite_dataloader_close_releases_worker_process_handles() -> None:
+    """回收 worker 后必须 join 并关闭父进程 Process 句柄。"""
+
+    class _FakeWorker:
+        def __init__(self, *, terminate_sticks: bool) -> None:
+            self.alive = True
+            self.terminate_sticks = terminate_sticks
+            self.terminate_count = 0
+            self.kill_count = 0
+            self.join_count = 0
+            self.close_count = 0
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def terminate(self) -> None:
+            self.terminate_count += 1
+            if not self.terminate_sticks:
+                self.alive = False
+
+        def kill(self) -> None:
+            self.kill_count += 1
+            self.alive = False
+
+        def join(self, *, timeout: float) -> None:
+            assert timeout > 0
+            self.join_count += 1
+
+        def close(self) -> None:
+            assert self.alive is False
+            self.close_count += 1
+
+    normal_worker = _FakeWorker(terminate_sticks=False)
+    stuck_worker = _FakeWorker(terminate_sticks=True)
+
+    _close_yolo_dataloader_worker_processes((normal_worker, stuck_worker))
+
+    assert (normal_worker.terminate_count, normal_worker.kill_count) == (1, 0)
+    assert (normal_worker.join_count, normal_worker.close_count) == (1, 1)
+    assert (stuck_worker.terminate_count, stuck_worker.kill_count) == (1, 1)
+    assert (stuck_worker.join_count, stuck_worker.close_count) == (2, 1)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="只验证 Windows spawn Process 句柄释放")
+def test_infinite_dataloader_closes_real_windows_worker_handles() -> None:
+    """真实 DataLoader worker 退出后，父进程 Process 对象必须进入 closed 状态。"""
+
+    dataset = torch.utils.data.TensorDataset(torch.arange(8, dtype=torch.float32))
+    loader = YoloInfiniteDataLoader(
+        dataset,
+        torch_module=torch,
+        batch_size=2,
+        num_workers=2,
+        persistent_workers=True,
+    )
+    next(iter(loader))
+    workers = tuple(loader.iterator._workers)
+
+    loader.close()
+
+    assert len(workers) == 2
+    assert all(getattr(worker, "_popen", object()) is None for worker in workers)
+    assert all(worker.is_alive() is False for worker in workers)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="只验证 Windows spawn 句柄高水位")
+def test_infinite_dataloader_repeated_close_does_not_leak_windows_handles() -> None:
+    """重复创建并关闭 DataLoader 后，父进程句柄数不得阶梯增长。"""
+
+    def read_handle_count() -> int:
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.GetProcessHandleCount.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_ulong),
+        )
+        kernel32.GetProcessHandleCount.restype = ctypes.c_int
+        count = ctypes.c_ulong()
+        success = kernel32.GetProcessHandleCount(
+            kernel32.GetCurrentProcess(),
+            ctypes.byref(count),
+        )
+        assert success
+        return int(count.value)
+
+    dataset = torch.utils.data.TensorDataset(torch.arange(8, dtype=torch.float32))
+
+    # 先完成一次 multiprocessing 的惰性初始化，再记录稳定基线。
+    warmup = YoloInfiniteDataLoader(
+        dataset,
+        torch_module=torch,
+        batch_size=2,
+        num_workers=2,
+        persistent_workers=True,
+    )
+    next(iter(warmup))
+    warmup.close()
+    del warmup
+    gc.collect()
+    baseline = read_handle_count()
+
+    for _ in range(3):
+        loader = YoloInfiniteDataLoader(
+            dataset,
+            torch_module=torch,
+            batch_size=2,
+            num_workers=2,
+            persistent_workers=True,
+        )
+        next(iter(loader))
+        loader.close()
+        del loader
+        gc.collect()
+
+    assert read_handle_count() <= baseline + 2
 
 
 def test_common_validation_schedule_uses_completed_one_based_epochs() -> None:
@@ -1160,9 +1317,78 @@ def test_common_segmentation_target_decodes_compressed_coco_rle() -> None:
 
     assert np.array_equal(decoded, source_mask)
     full_masks = np.zeros((100, 640, 640), dtype=np.uint8)
-    reduced_masks = downsample_yolo_segmentation_masks(full_masks)
+    reduced_masks = downsample_yolo_segmentation_masks(
+        full_masks,
+        cv2_module=cv2,
+        np_module=np,
+    )
     assert reduced_masks.shape == (100, 160, 160)
     assert reduced_masks.nbytes == full_masks.nbytes // 16
+
+
+def test_common_segmentation_mask_downsample_matches_ultralytics_resize() -> None:
+    """细目标 mask 必须逐实例匹配 Ultralytics OpenCV resize，而不是步长抽样。"""
+
+    from backend.service.application.models.yolo_core_common.targets.segmentation import (
+        downsample_yolo_segmentation_masks,
+    )
+
+    full_mask = np.zeros((1, 16, 16), dtype=np.uint8)
+    cv2.line(full_mask[0], (1, 15), (14, 0), color=1, thickness=2)
+    expected = cv2.resize(full_mask[0], (4, 4), interpolation=cv2.INTER_LINEAR)
+    stride_sample = full_mask[:, ::4, ::4]
+
+    reduced = downsample_yolo_segmentation_masks(
+        full_mask,
+        cv2_module=cv2,
+        np_module=np,
+    )
+
+    assert np.array_equal(reduced[0], expected)
+    assert not np.array_equal(reduced, stride_sample)
+
+
+def test_common_segmentation_evaluation_masks_preserve_full_resolution() -> None:
+    """验证 COCO AP 可无损恢复完整 mask，且不把 dense mask 跨进程传输。"""
+
+    from backend.service.application.models.yolo_core_common.targets.segmentation import (
+        pack_yolo_segmentation_evaluation_masks,
+        unpack_yolo_segmentation_evaluation_masks,
+    )
+
+    masks = np.zeros((2, 17, 19), dtype=np.uint8)
+    masks[0, 2:15, 7] = 1
+    masks[1, 5:9, 3:14] = 1
+
+    packed = pack_yolo_segmentation_evaluation_masks(masks, np_module=np)
+    restored = unpack_yolo_segmentation_evaluation_masks(packed, np_module=np)
+
+    assert restored is not None
+    assert np.array_equal(restored, masks)
+    assert all(isinstance(item["bits"], bytes) for item in packed)
+    assert sum(len(item["bits"]) for item in packed) < masks.nbytes
+
+
+def test_common_segmentation_polygon_rasterization_matches_reference_truncation() -> None:
+    """验证 polygon 坐标按参考实现直接转 int32，而不是四舍五入。"""
+
+    mask, valid = rasterize_segmentation_polygons(
+        cv2_module=cv2,
+        np_module=np,
+        polygons=[[1.9, 1.9, 5.9, 1.9, 5.9, 5.9, 1.9, 5.9]],
+        output_size=(8, 8),
+        resize_scale=1.0,
+        pad_xy=(0, 0),
+    )
+
+    expected = np.zeros((8, 8), dtype=np.uint8)
+    cv2.fillPoly(
+        expected,
+        [np.asarray([[1, 1], [5, 1], [5, 5], [1, 5]], dtype=np.int32)],
+        1,
+    )
+    assert valid is True
+    assert np.array_equal(mask, expected)
 
 
 def test_task_evaluation_dataloader_uses_full_validation_split_by_default() -> None:

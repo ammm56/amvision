@@ -634,6 +634,7 @@ class RfdetrAugmentationParameters(TrainingParameterGroup):
     preset: Literal["default", "conservative", "aggressive", "aerial", "industrial"] = (
         "default"
     )
+    scale_jitter: bool = True
     backend: Literal["cpu", "auto", "gpu"] = "cpu"
 
     def to_execution_options(self) -> dict[str, object]:
@@ -642,6 +643,7 @@ class RfdetrAugmentationParameters(TrainingParameterGroup):
         return {
             "disable_augmentation": not self.enabled,
             "rfdetr_augmentation_preset": self.preset,
+            "scale_jitter": self.scale_jitter,
             "augmentation_backend": self.backend,
         }
 

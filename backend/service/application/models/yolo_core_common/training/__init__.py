@@ -15,6 +15,7 @@ from backend.service.application.models.yolo_core_common.training.ema import (
 from backend.service.application.models.yolo_core_common.training.optimizer_step import (
     YoloTrainingNumericalError,
     YoloUltralyticsOptimizerStep,
+    require_yolo_successful_optimizer_step,
 )
 from backend.service.application.models.yolo_core_common.training.infinite_dataloader import (
     YoloInfiniteDataLoader,
@@ -104,4 +105,5 @@ __all__ = [
     "serialize_yolo_worker_value",
     "resolve_yolo_optimizer_base_learning_rate",
     "resolve_yolo_ultralytics_accumulate",
+    "require_yolo_successful_optimizer_step",
 ]

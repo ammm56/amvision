@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -258,21 +258,52 @@ class SqlAlchemyTaskRepository:
 
         return self._to_task_event_domain(record)
 
-    def list_task_events(self, task_id: str) -> tuple[TaskEvent, ...]:
+    def list_task_events(
+        self,
+        task_id: str,
+        *,
+        event_type: str | None = None,
+        after_created_at: str | None = None,
+        after_cursor: str | None = None,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[TaskEvent, ...]:
         """按 TaskRecord id 列出事件记录。
 
         参数：
         - task_id：所属任务 id。
+        - event_type：可选事件类型。
+        - after_created_at：可选时间游标。
+        - after_cursor：可选 ``created_at|event_id`` 复合游标。
+        - offset：结果偏移量。
+        - limit：最大返回数量；None 表示不限制。
 
         返回：
         - 当前任务下的 TaskEvent 列表。
         """
 
-        statement = (
-            select(TaskEventEntity)
-            .where(TaskEventEntity.task_id == task_id)
-            .order_by(TaskEventEntity.created_at, TaskEventEntity.event_id)
-        )
+        statement = select(TaskEventEntity).where(TaskEventEntity.task_id == task_id)
+        if event_type is not None:
+            statement = statement.where(TaskEventEntity.event_type == event_type)
+        if after_created_at is not None:
+            statement = statement.where(TaskEventEntity.created_at > after_created_at)
+        if after_cursor is not None and after_cursor.strip():
+            cursor_created_at, _, cursor_event_id = after_cursor.partition("|")
+            statement = statement.where(
+                or_(
+                    TaskEventEntity.created_at > cursor_created_at,
+                    and_(
+                        TaskEventEntity.created_at == cursor_created_at,
+                        TaskEventEntity.event_id > cursor_event_id,
+                    ),
+                )
+            )
+        statement = statement.order_by(
+            TaskEventEntity.created_at,
+            TaskEventEntity.event_id,
+        ).offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
         try:
             records = self.session.execute(statement).scalars().all()
         except SQLAlchemyError as error:

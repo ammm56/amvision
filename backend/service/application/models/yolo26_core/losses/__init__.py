@@ -25,6 +25,7 @@ from backend.service.application.models.yolo26_core.losses.pose import (
 )
 from backend.service.application.models.yolo26_core.losses.segmentation import (
     compute_yolo26_segmentation_detection_loss,
+    compute_yolo26_segmentation_detection_loss_terms,
     compute_yolo26_segmentation_mask_loss,
     crop_yolo26_segmentation_mask_loss,
     decode_yolo26_segmentation_training_boxes,
@@ -39,6 +40,7 @@ __all__ = [
     "compute_yolo26_pose_loss",
     "compute_yolo26_rle_loss",
     "compute_yolo26_segmentation_detection_loss",
+    "compute_yolo26_segmentation_detection_loss_terms",
     "compute_yolo26_segmentation_mask_loss",
     "crop_yolo26_segmentation_mask_loss",
     "decode_yolo26_segmentation_training_boxes",

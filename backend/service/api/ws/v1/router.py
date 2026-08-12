@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from time import monotonic
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -52,6 +53,9 @@ from backend.service.settings import BackendServiceSettings
 
 
 ws_v1_router = APIRouter(prefix="/ws/v1")
+
+TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS = 1.0
+TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS = 15.0
 
 
 @ws_v1_router.websocket("/system/events")
@@ -219,21 +223,18 @@ async def subscribe_task_events(socket: WebSocket) -> None:
         }
     )
 
+    current_cursor = after_cursor
+    last_heartbeat_at = monotonic()
     try:
-        events = service.list_task_events(
-            TaskEventQueryFilters(
-                task_id=task_id,
-                event_type=event_type,
-                limit=limit,
-            )
+        current_cursor, _ = await _send_persisted_task_events(
+            socket=socket,
+            service=service,
+            task_id=task_id,
+            event_type=event_type,
+            after_cursor=current_cursor,
+            limit=limit,
+            sent_event_ids=sent_event_ids,
         )
-        for event in events:
-            if event.event_id in sent_event_ids:
-                continue
-            if not _event_after_cursor(event, after_cursor):
-                continue
-            sent_event_ids.add(event.event_id)
-            await socket.send_json(_build_task_event_message(event))
 
         while True:
             if subscription.consume_overflowed():
@@ -241,19 +242,24 @@ async def subscribe_task_events(socket: WebSocket) -> None:
                 await socket.close(code=1013, reason="subscriber_queue_overflowed")
                 return
 
-            service_event = await subscription.receive(timeout_seconds=15.0)
-            if service_event is None:
+            service_event = await subscription.receive(
+                timeout_seconds=TASK_EVENT_DATABASE_POLL_INTERVAL_SECONDS
+            )
+            current_cursor, persisted_event_count = await _send_persisted_task_events(
+                socket=socket,
+                service=service,
+                task_id=task_id,
+                event_type=event_type,
+                after_cursor=current_cursor,
+                limit=limit,
+                sent_event_ids=sent_event_ids,
+            )
+            now = monotonic()
+            if service_event is not None or persisted_event_count > 0:
+                last_heartbeat_at = now
+            elif now - last_heartbeat_at >= TASK_EVENT_HEARTBEAT_INTERVAL_SECONDS:
                 await socket.send_json(_build_heartbeat_message(task_id))
-                continue
-
-            event_id = str(service_event.payload.get("event_id", "")).strip()
-            if event_id and event_id in sent_event_ids:
-                continue
-            if not _service_event_after_cursor(service_event, after_cursor):
-                continue
-            if event_id:
-                sent_event_ids.add(event_id)
-            await socket.send_json(_build_service_event_message(service_event))
+                last_heartbeat_at = now
     except WebSocketDisconnect:
         return
     finally:
@@ -380,6 +386,41 @@ async def subscribe_training_telemetry(socket: WebSocket) -> None:
         return
     finally:
         subscription.close()
+
+
+async def _send_persisted_task_events(
+    *,
+    socket: WebSocket,
+    service: SqlAlchemyTaskService,
+    task_id: str,
+    event_type: str | None,
+    after_cursor: str | None,
+    limit: int,
+    sent_event_ids: set[str],
+) -> tuple[str | None, int]:
+    """从数据库补发 worker 等其他进程写入的 TaskEvent。"""
+
+    current_cursor = after_cursor
+    sent_count = 0
+    while True:
+        events = service.list_task_events(
+            TaskEventQueryFilters(
+                task_id=task_id,
+                event_type=event_type,
+                after_cursor=current_cursor,
+                limit=limit,
+            )
+        )
+        for event in events:
+            current_cursor = _build_event_cursor(event)
+            if event.event_id in sent_event_ids:
+                continue
+            sent_event_ids.add(event.event_id)
+            await socket.send_json(_build_task_event_message(event))
+            sent_count += 1
+        if len(events) < limit:
+            break
+    return current_cursor, sent_count
 
 
 @ws_v1_router.websocket("/workflows/preview-runs/events")
@@ -1356,44 +1397,6 @@ def _build_event_cursor(event: TaskEvent) -> str:
     """
 
     return f"{event.created_at}|{event.event_id}"
-
-
-def _event_after_cursor(event: TaskEvent, after_cursor: str | None) -> bool:
-    """判断任务事件是否晚于指定游标。
-
-    参数：
-    - event：当前任务事件。
-    - after_cursor：订阅方传入的最近处理游标。
-
-    返回：
-    - 当事件应继续发送时返回 True。
-    """
-
-    if after_cursor is None or not after_cursor.strip():
-        return True
-
-    after_created_at, _, after_event_id = after_cursor.partition("|")
-    event_identity = (event.created_at, event.event_id)
-    cursor_identity = (after_created_at, after_event_id)
-    return event_identity > cursor_identity
-
-
-def _service_event_after_cursor(event: ServiceEvent, after_cursor: str | None) -> bool:
-    """判断服务内事件是否晚于指定游标。
-
-    参数：
-    - event：当前服务内事件。
-    - after_cursor：订阅方传入的最近处理游标。
-
-    返回：
-    - 当事件应继续发送时返回 True。
-    """
-
-    if after_cursor is None or not after_cursor.strip():
-        return True
-    if event.cursor is None or not event.cursor.strip():
-        return True
-    return event.cursor > after_cursor
 
 
 def _auth_service_event_matches(

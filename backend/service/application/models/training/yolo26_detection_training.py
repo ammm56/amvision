@@ -1449,7 +1449,10 @@ def _build_yolo26_metrics_payload(
             "warmup_iterations": training_schedule.warmup_iterations,
             "warmup_momentum": training_schedule.warmup_momentum,
             "warmup_bias_lr": training_schedule.warmup_bias_lr,
-            "latest_learning_rate": float(optimizer.param_groups[0]["lr"]),
+            "latest_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
         },
         "evaluation": {
             "split_name": validation_split_name,

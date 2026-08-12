@@ -10,6 +10,7 @@ def serialize_yolov8_obb_instance(instance: Any) -> dict[str, object]:
 
     return {
         "bbox_xyxy": list(instance.bbox_xyxy),
+        "bbox_xywhr": list(instance.bbox_xywhr),
         "score": instance.score,
         "class_id": instance.class_id,
         "class_name": instance.class_name,

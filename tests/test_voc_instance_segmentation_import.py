@@ -282,6 +282,59 @@ def test_voc_instance_segmentation_preparation_is_safe_and_idempotent(
     assert repeated.verified_existing_file_count == 4
 
 
+def test_voc_instance_segmentation_preparation_derives_independent_test_split(
+    tmp_path: Path,
+) -> None:
+    """验证官方 val 被稳定拆为互斥 val/test，且官方 train 不进入 test。"""
+
+    source_root = tmp_path / "source" / "VOC2012"
+    target_root = tmp_path / "target" / "voc2012"
+    _write_voc_segmentation_sample(source_root)
+    val_stems = ("sample-2", "sample-3", "sample-4", "sample-5")
+    for stem in val_stems:
+        _clone_voc_segmentation_sample(source_root, stem=stem)
+    split_root = source_root / "ImageSets" / "Segmentation"
+    split_root.joinpath("val.txt").write_text(
+        "".join(f"{stem}\n" for stem in val_stems),
+        encoding="utf-8",
+    )
+    split_root.joinpath("trainval.txt").write_text(
+        "sample-1\n" + "".join(f"{stem}\n" for stem in val_stems),
+        encoding="utf-8",
+    )
+    for relative_path in (
+        "JPEGImages",
+        "SegmentationClass",
+        "SegmentationObject",
+        "ImageSets",
+    ):
+        shutil.copytree(source_root / relative_path, target_root / relative_path)
+
+    result = prepare_voc_instance_segmentation_dataset(
+        source_root=source_root,
+        target_root=target_root,
+        apply=True,
+    )
+
+    target_splits = target_root / "ImageSets" / "Segmentation"
+    train = _read_split_members(target_splits / "train.txt")
+    validation = _read_split_members(target_splits / "val.txt")
+    test = _read_split_members(target_splits / "test.txt")
+    official_val = _read_split_members(target_splits / "official-val.txt")
+    trainval = _read_split_members(target_splits / "trainval.txt")
+    assert train == {"sample-1"}
+    assert len(validation) == 2
+    assert len(test) == 2
+    assert validation.isdisjoint(test)
+    assert validation | test == set(val_stems)
+    assert official_val == set(val_stems)
+    assert train.isdisjoint(test)
+    assert trainval == train | validation
+    assert result.split_counts == {"train": 1, "val": 2, "test": 2}
+    assert result.split_derivation is not None
+    assert result.split_derivation["official_train_used_for_test"] is False
+
+
 def _build_service(
     tmp_path: Path,
 ) -> tuple[SqlAlchemyDatasetImportService, SessionFactory]:
@@ -365,3 +418,34 @@ def _write_voc_segmentation_sample(dataset_root: Path) -> None:
 """,
         encoding="utf-8",
     )
+
+
+def _clone_voc_segmentation_sample(dataset_root: Path, *, stem: str) -> None:
+    """复制最小样本并修正 XML 文件名，供 split 派生测试使用。"""
+
+    for relative_directory, suffix in (
+        ("JPEGImages", ".jpg"),
+        ("SegmentationClass", ".png"),
+        ("SegmentationObject", ".png"),
+    ):
+        shutil.copy2(
+            dataset_root / relative_directory / f"sample-1{suffix}",
+            dataset_root / relative_directory / f"{stem}{suffix}",
+        )
+    xml_payload = (
+        dataset_root / "Annotations" / "sample-1.xml"
+    ).read_text(encoding="utf-8")
+    (dataset_root / "Annotations" / f"{stem}.xml").write_text(
+        xml_payload.replace("sample-1.jpg", f"{stem}.jpg"),
+        encoding="utf-8",
+    )
+
+
+def _read_split_members(path: Path) -> set[str]:
+    """读取测试目录中的 split 清单。"""
+
+    return {
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }

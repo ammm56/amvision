@@ -30,6 +30,7 @@ from backend.service.application.models.yolo_core_common.training import (
     load_yolo_classification_dataloader_imports,
     move_yolo_classification_batch_to_device,
     replace_yolo_classification_dataloader_plan_seed,
+    resolve_yolo_optimizer_base_learning_rate,
     resolve_yolo_classification_dataloader_plan,
     should_run_yolo_validation,
 )
@@ -240,7 +241,10 @@ def run_yolo26_classification_training_loop(
                         global_iteration=global_iteration,
                         total_iterations=max_epochs * max_iterations,
                         input_size=input_size,
-                        learning_rate=float(scheduler.get_last_lr()[0]),
+                        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                            optimizer=optimizer,
+                            initial_learning_rate=training_schedule.initial_lr,
+                        ),
                         train_metrics={
                             "loss": round(float(loss.item()), 6),
                             "accuracy": round(
@@ -310,7 +314,10 @@ def run_yolo26_classification_training_loop(
             evaluation_interval=evaluation_interval,
             validation_ran=should_evaluate,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             train_metrics=dict(metrics_history[-1]),
             validation_metrics=(
                 dict(validation_history[-1]) if val_metrics else {}
@@ -375,7 +382,10 @@ def run_yolo26_classification_training_loop(
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
-                    learning_rate=float(scheduler.get_last_lr()[0]),
+                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                        optimizer=optimizer,
+                        initial_learning_rate=training_schedule.initial_lr,
+                    ),
                     is_best=best_metric_improved,
                 )
             )

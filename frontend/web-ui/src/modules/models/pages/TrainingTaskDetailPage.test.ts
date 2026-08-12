@@ -269,7 +269,7 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).not.toContain('9.9')
   })
 
-  it('applies dedicated batch telemetry without requiring a manual page refresh', async () => {
+  it('applies batch telemetry and refreshes output files at the next epoch boundary', async () => {
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
       task_id: 'task-classification-1',
       task_type: 'classification',
@@ -290,7 +290,32 @@ describe('TrainingTaskDetailPage', () => {
       task_spec: {},
       events: [],
     })
-    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([])
+    const pendingMetricsFile = {
+      file_name: 'train-metrics',
+      file_kind: 'json' as const,
+      file_status: 'pending',
+      task_state: 'running',
+      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      size_bytes: null,
+      updated_at: null,
+    }
+    vi.mocked(listModelTrainingOutputFiles)
+      .mockResolvedValueOnce([pendingMetricsFile])
+      .mockResolvedValue([{
+        ...pendingMetricsFile,
+        file_status: 'ready',
+        size_bytes: 256,
+        updated_at: '2026-07-10T02:02:00Z',
+      }])
+    vi.mocked(getModelTrainingOutputFileDetail).mockResolvedValue({
+      ...pendingMetricsFile,
+      file_status: 'ready',
+      size_bytes: 256,
+      updated_at: '2026-07-10T02:02:00Z',
+      payload: { final_metrics: { loss: 0.875 } },
+      text_content: null,
+      lines: [],
+    })
 
     const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
     await flushPromises()
@@ -334,6 +359,109 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('42.5')
     expect(wrapper.text()).toContain('73%')
     expect(wrapper.text()).toContain('2.000 GiB')
+    expect(getModelTrainingTaskDetail).toHaveBeenCalledTimes(1)
+    await new Promise((resolve) => window.setTimeout(resolve, 350))
+    await flushPromises()
+    expect(listModelTrainingOutputFiles).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('ready')
+  })
+
+  it('applies completed epoch metrics from task events over an older output snapshot', async () => {
+    vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({
+      task_id: 'task-classification-1',
+      task_type: 'classification',
+      model_type: 'yolo11',
+      display_name: 'live classifier',
+      project_id: 'project-1',
+      created_at: '2026-07-10T02:00:00Z',
+      state: 'running',
+      current_attempt_no: 1,
+      progress: { stage: 'running', epoch: 1, max_epochs: 4, percent: 25 },
+      result: {},
+      metadata: {},
+      best_metric_name: null,
+      best_metric_value: null,
+      training_summary: {},
+      available_actions: [],
+      control_status: { status: 'idle', resume_count: 0 },
+      task_spec: {},
+      events: [],
+    })
+    vi.mocked(listModelTrainingOutputFiles).mockResolvedValue([{
+      file_name: 'train-metrics',
+      file_kind: 'json',
+      file_status: 'ready',
+      task_state: 'running',
+      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      size_bytes: 128,
+      updated_at: '2026-07-10T02:01:00Z',
+    }])
+    vi.mocked(getModelTrainingOutputFileDetail).mockResolvedValue({
+      file_name: 'train-metrics',
+      file_kind: 'json',
+      file_status: 'ready',
+      task_state: 'running',
+      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+      size_bytes: 128,
+      updated_at: '2026-07-10T02:01:00Z',
+      payload: { epoch: 1, final_metrics: { loss: 1.25 } },
+      text_content: null,
+      lines: [],
+    })
+
+    const wrapper = mount(TrainingTaskDetailPage, { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('1.25')
+
+    trainingTelemetryStreamMock.handler?.({
+      protocol: 'training.telemetry.v1',
+      task_id: 'task-classification-1',
+      attempt_no: 1,
+      sequence: 3,
+      timestamp: '2026-07-10T02:01:59Z',
+      task_type: 'classification',
+      model_type: 'yolo11',
+      stage: 'training',
+      granularity: 'batch',
+      epoch: 3,
+      epoch_index: 2,
+      max_epochs: 4,
+      step: 1,
+      steps_per_epoch: 12,
+      global_step: 25,
+      total_steps: 48,
+      progress_percent: 52,
+      learning_rate: 0.0005,
+      metrics: { loss: 0.625 },
+      runtime: {},
+    })
+    taskEventStreamMock.handler?.({
+      event_id: 'event-epoch-2',
+      task_id: 'task-classification-1',
+      event_type: 'progress',
+      created_at: '2026-07-10T02:02:00Z',
+      message: 'epoch 2/4',
+      payload: {
+        attempt_no: 1,
+        state: 'running',
+        progress: {
+          epoch: 2,
+          epoch_index: 1,
+          max_epochs: 4,
+          train_metrics: { loss: 0.5, accuracy: 0.75 },
+        },
+      },
+    })
+    await flushPromises()
+
+    const completedMetricsPanel = wrapper.findAll('.training-metric-panel').find(
+      (panel) => panel.text().includes('已完成轮次训练指标'),
+    )
+    expect(completedMetricsPanel).toBeDefined()
+    expect(wrapper.text()).toContain('0.5')
+    expect(wrapper.text()).toContain('0.75')
+    expect(wrapper.text()).toContain('3 / 4')
+    expect(completedMetricsPanel?.text()).not.toContain('1.25')
     expect(getModelTrainingTaskDetail).toHaveBeenCalledTimes(1)
   })
 })

@@ -34,7 +34,15 @@ class ObbPredictionRequest:
 
 @dataclass(frozen=True)
 class ObbPredictionInstance:
+    """描述一个旋转框实例。
+
+    ``bbox_xywhr`` 是旋转框的规范几何表示，顺序为中心点 x/y、宽、高、
+    弧度角。``bbox_xyxy`` 仅用于快速裁剪和轴对齐显示，不能结合
+    ``angle`` 反推旋转框，否则会把外接矩形再次旋转。
+    """
+
     bbox_xyxy: tuple[float, float, float, float]
+    bbox_xywhr: tuple[float, float, float, float, float]
     score: float
     class_id: int
     class_name: str | None = None

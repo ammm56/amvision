@@ -264,6 +264,26 @@ def test_rfdetr_platform_uses_requested_checkpoint_interval(tmp_path: Path) -> N
     assert train_config.checkpoint_interval == 7
 
 
+def test_rfdetr_platform_exposes_scale_jitter_as_an_independent_option(
+    tmp_path: Path,
+) -> None:
+    """尺度抖动裁剪必须可独立关闭，且默认行为与 RF-DETR 参考实现一致。"""
+
+    default_config = _build_config(
+        tmp_path,
+        task_type=DETECTION_TASK_TYPE,
+        extra_options={},
+    )
+    disabled_config = _build_config(
+        tmp_path,
+        task_type=DETECTION_TASK_TYPE,
+        extra_options={"scale_jitter": False},
+    )
+
+    assert default_config.scale_jitter is True
+    assert disabled_config.scale_jitter is False
+
+
 def test_rfdetr_recipe_boolean_strings_and_default_epochs_are_stable(
     tmp_path: Path,
 ) -> None:

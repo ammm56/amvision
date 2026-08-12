@@ -141,6 +141,10 @@ RF-DETR 支持 `learning_rate`、`weight_decay`、`lr_scheduler=step | cosine`�
 
 `augmentation.enabled=false` 会生成确定性执行配置，Mosaic、MixUp、随机仿射、HSV、翻转和多尺度训练全部关闭。
 
+### RF-DETR detection / segmentation
+
+RF-DETR 的增强预设、`scale_jitter`、`multi_scale` 和增强执行后端分别建模。`scale_jitter=true` 与参考实现一致，在直接 resize 与 resize→crop→resize 之间随机选择；关闭时只保留直接 resize。该开关不替代 `multi_scale`：前者控制随机裁剪分支，后者控制候选训练分辨率。`augmentation.enabled=false` 关闭颜色和几何增强预设，`scale_jitter` 仍按自己的显式值执行，避免一个总开关悄悄覆盖独立参数。
+
 ## 验证指标与 best checkpoint
 
 YOLOX、YOLOv8、YOLO11 和 YOLO26 detection 统一从真实 `pycocotools.COCOeval.eval["precision"]` 提取 AP。AP50 和 AP50-95 必须使用同一个显式 `maxDets` 切片，不能读取把 `maxDets=100` 写死的 `stats[0] / stats[1]`。无检测结果按 0 处理；有评估结果但 precision 张量缺失或无有效单元时直接报错，不能把 `-1` 当成质量指标。

@@ -132,7 +132,7 @@ def test_e2e_matrix_uses_existing_sources_and_model_native_exports() -> None:
     assert default_cases["detection"].dataset_dir is not None
     assert default_cases["detection"].dataset_dir.name == "barcodeqrcode"
     assert default_cases["pose"].dataset_dir is not None
-    assert default_cases["pose"].dataset_dir.name == "hand-keypoints-clean-v1"
+    assert default_cases["pose"].dataset_dir.name == "hand-keypoints"
     assert default_cases["obb"].dataset_dir is not None
     assert default_cases["obb"].dataset_dir.name == "rotated-components-v1"
     for item in build_model_task_matrix():
@@ -242,10 +242,13 @@ def test_e2e_matrix_resolves_single_task_dataset_override(tmp_path: Path) -> Non
         task_types={"pose"},
     )
 
-    assert resolve_dataset_dir_override(
-        dataset_dir=tmp_path,
-        selected_cases=selected,
-    ) == tmp_path.resolve()
+    assert (
+        resolve_dataset_dir_override(
+            dataset_dir=tmp_path,
+            selected_cases=selected,
+        )
+        == tmp_path.resolve()
+    )
 
 
 def test_e2e_matrix_rejects_dataset_override_for_multiple_tasks(
@@ -279,11 +282,14 @@ def test_e2e_matrix_rejects_missing_dataset_override(tmp_path: Path) -> None:
 
 
 def test_e2e_matrix_resolves_only_supported_yolo_pretrained_versions() -> None:
-    assert resolve_pretrained_warm_start_model_version_id(
-        model_type="yolo11",
-        task_type="segmentation",
-        model_scale="m",
-    ) == "mv-pretrained-yolo11-segmentation-m"
+    assert (
+        resolve_pretrained_warm_start_model_version_id(
+            model_type="yolo11",
+            task_type="segmentation",
+            model_scale="m",
+        )
+        == "mv-pretrained-yolo11-segmentation-m"
+    )
 
     with pytest.raises(ValueError, match="仅支持"):
         resolve_pretrained_warm_start_model_version_id(
@@ -404,6 +410,7 @@ def test_e2e_matrix_result_gate_requires_build_and_both_runtime_modes() -> None:
             "map50": 0.0,
             "map50_95": 0.0,
         },
+        "training_test_metrics": {"map50": 0.0, "map50_95": 0.0},
         "conversions": {
             target: {
                 "model_build_id": f"build-{target}",
@@ -466,6 +473,74 @@ def test_e2e_matrix_result_gate_requires_task_specific_evaluation_metrics() -> N
             require_deployment=False,
             require_workflow=False,
         )
+
+
+def test_e2e_matrix_rejects_training_test_and_evaluation_drift() -> None:
+    """训练内 test 与登记模型独立评估显著背离时必须阻断矩阵。"""
+
+    inconsistent = {
+        "status": "succeeded",
+        "dataset_version_id": "dataset-version-1",
+        "dataset_export_id": "dataset-export-1",
+        "training_task_id": "training-task-1",
+        "model_version_id": "model-version-1",
+        "training_test_metrics": {"map50": 1.0, "map50_95": 0.98},
+        "evaluation": {
+            "state": "succeeded",
+            "sample_count": 200,
+            "map50": 0.37,
+            "map50_95": 0.09,
+        },
+        "conversions": {},
+    }
+
+    with pytest.raises(RuntimeError, match="指标不一致"):
+        validate_case_result(
+            inconsistent,
+            task_type="obb",
+            target_formats=(),
+            require_deployment=False,
+            require_workflow=False,
+        )
+
+
+def test_e2e_matrix_compares_segmentation_bbox_and_mask_metrics_explicitly() -> None:
+    """segmentation 的 bbox 指标不得与训练报告中的 mask 主指标别名比较。"""
+
+    complete = {
+        "status": "succeeded",
+        "dataset_version_id": "dataset-version-1",
+        "dataset_export_id": "dataset-export-1",
+        "training_task_id": "training-task-1",
+        "model_version_id": "model-version-1",
+        "training_test_metrics": {
+            "map50": 0.55,
+            "map50_95": 0.20,
+            "bbox_map50": 0.80,
+            "bbox_map50_95": 0.60,
+            "mask_map50": 0.55,
+            "mask_map50_95": 0.20,
+        },
+        "evaluation": {
+            "state": "succeeded",
+            "sample_count": 20,
+            "map50": 0.80,
+            "map50_95": 0.60,
+            "bbox_map50": 0.80,
+            "bbox_map50_95": 0.60,
+            "mask_map50": 0.55,
+            "mask_map50_95": 0.20,
+        },
+        "conversions": {},
+    }
+
+    validate_case_result(
+        complete,
+        task_type="segmentation",
+        target_formats=(),
+        require_deployment=False,
+        require_workflow=False,
+    )
 
 
 def test_archive_sample_extraction_rejects_traversal_and_is_bounded(

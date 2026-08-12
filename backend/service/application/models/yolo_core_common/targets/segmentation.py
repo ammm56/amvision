@@ -7,17 +7,108 @@ from typing import Any
 YOLO_SEGMENTATION_MASK_RATIO = 4
 
 
+def pack_yolo_segmentation_evaluation_masks(
+    masks: Any,
+    *,
+    np_module: Any,
+) -> tuple[dict[str, object], ...]:
+    """压缩保存验证用的完整分辨率 binary masks。
+
+    loss target 需要按 ``mask_ratio`` 下采样，但 COCO AP 必须使用原始输入
+    画布上的完整 mask。这里用 ``packbits`` 避免验证 DataLoader 为每个实例
+    跨进程传输 H×W dense array，也避免这些只供 CPU 评估的数据被搬到 GPU。
+    """
+
+    array = np_module.asarray(masks)
+    if array.ndim != 3:
+        raise ValueError("segmentation evaluation masks 必须是 [N,H,W] 三维数组")
+    height, width = int(array.shape[-2]), int(array.shape[-1])
+    return tuple(
+        {
+            "height": height,
+            "width": width,
+            "bits": np_module.packbits(
+                np_module.asarray(mask > 0, dtype=np_module.uint8).reshape(-1),
+                bitorder="little",
+            ).tobytes(),
+        }
+        for mask in array
+    )
+
+
+def unpack_yolo_segmentation_evaluation_masks(
+    packed_masks: object,
+    *,
+    np_module: Any,
+) -> Any | None:
+    """恢复验证 DataLoader 中压缩保存的完整分辨率 masks。"""
+
+    if not isinstance(packed_masks, (list, tuple)):
+        return None
+    restored: list[Any] = []
+    expected_shape: tuple[int, int] | None = None
+    for item in packed_masks:
+        if not isinstance(item, dict):
+            return None
+        height = int(item.get("height", 0))
+        width = int(item.get("width", 0))
+        bits = item.get("bits")
+        if height < 1 or width < 1 or not isinstance(bits, bytes):
+            return None
+        shape = (height, width)
+        if expected_shape is None:
+            expected_shape = shape
+        elif shape != expected_shape:
+            raise ValueError("同一样本的 evaluation masks 尺寸必须一致")
+        unpacked = np_module.unpackbits(
+            np_module.frombuffer(bits, dtype=np_module.uint8),
+            count=height * width,
+            bitorder="little",
+        )
+        restored.append(unpacked.reshape(height, width).astype(np_module.uint8))
+    if restored:
+        return np_module.stack(restored, axis=0)
+    if expected_shape is not None:
+        return np_module.empty((0, *expected_shape), dtype=np_module.uint8)
+    return None
+
+
 def downsample_yolo_segmentation_masks(
     masks: Any,
     *,
+    cv2_module: Any,
+    np_module: Any,
     mask_ratio: int = YOLO_SEGMENTATION_MASK_RATIO,
 ) -> Any:
-    """按 Ultralytics 默认 mask_ratio 下采样实例 mask，降低 batch 内存。"""
+    """按 Ultralytics ``polygon2mask`` 规则缩小实例 mask。"""
 
     ratio = max(1, int(mask_ratio))
-    if ratio == 1:
-        return masks
-    return masks[:, ::ratio, ::ratio].copy()
+    if getattr(masks, "ndim", None) != 3:
+        raise ValueError("segmentation masks 必须是 [N,H,W] 三维数组")
+    source_height = int(masks.shape[-2])
+    source_width = int(masks.shape[-1])
+    target_height = max(1, source_height // ratio)
+    target_width = max(1, source_width // ratio)
+    instance_count = int(masks.shape[0])
+    if instance_count == 0:
+        return np_module.empty(
+            (0, target_height, target_width),
+            dtype=masks.dtype,
+        )
+    # 参考实现先按完整分辨率 fillPoly，再逐实例调用 cv2.resize。不能用
+    # ``masks[:, ::ratio, ::ratio]`` 代替：后者改变采样中心，会让细裂纹和
+    # 小目标的训练 target 平均产生明显的像素偏差。
+    return np_module.stack(
+        [
+            cv2_module.resize(
+                mask,
+                (target_width, target_height),
+                interpolation=cv2_module.INTER_LINEAR,
+            )
+            for mask in masks
+        ],
+        axis=0,
+    )
 
 
 def select_yolo_object_segmentation(
@@ -89,7 +180,10 @@ def rasterize_yolo_segmentation(
         points[:, 1] = points[:, 1] * float(resize_scale) + float(pad_y)
         points[:, 0] = np_module.clip(points[:, 0], 0, output_width - 1)
         points[:, 1] = np_module.clip(points[:, 1], 0, output_height - 1)
-        int_points = np_module.round(points).astype(np_module.int32)
+        # 与 Ultralytics polygon2mask 保持一致：浮点 polygon 直接转换为
+        # int32（向零截断），不能先 round。细长实例在 mask_ratio=4 时，
+        # 一像素取整差异会被放大为明显的边界监督偏移。
+        int_points = points.astype(np_module.int32)
         if int_points.shape[0] >= 3:
             cv2_module.fillPoly(mask, [int_points], 1)
             valid = True
@@ -241,8 +335,10 @@ __all__ = [
     "YOLO_SEGMENTATION_MASK_RATIO",
     "decode_coco_rle_mask",
     "downsample_yolo_segmentation_masks",
+    "pack_yolo_segmentation_evaluation_masks",
     "rasterize_segmentation_polygons",
     "rasterize_yolo_segmentation",
     "select_object_segmentation_polygons",
     "select_yolo_object_segmentation",
+    "unpack_yolo_segmentation_evaluation_masks",
 ]

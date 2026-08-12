@@ -28,6 +28,8 @@ class SegmentationEvaluationSummaryResponse(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     error_message: str | None = None
+    bbox_map50: float | None = None
+    bbox_map50_95: float | None = None
     map50: float | None = None
     map50_95: float | None = None
     mask_map50: float | None = None
@@ -42,7 +44,9 @@ class SegmentationEvaluationDetailResponse(SegmentationEvaluationSummaryResponse
     result: dict[str, object] = Field(default_factory=dict)
 
 
-def build_segmentation_evaluation_summary_response(task: object) -> SegmentationEvaluationSummaryResponse:
+def build_segmentation_evaluation_summary_response(
+    task: object,
+) -> SegmentationEvaluationSummaryResponse:
     """把任务记录转换成 segmentation evaluation 摘要响应。"""
 
     result = dict(task.result) if task.result else {}
@@ -55,6 +59,8 @@ def build_segmentation_evaluation_summary_response(task: object) -> Segmentation
         started_at=task.started_at,
         finished_at=task.finished_at,
         error_message=task.error_message,
+        bbox_map50=result.get("bbox_map50", result.get("map50")),
+        bbox_map50_95=result.get("bbox_map50_95", result.get("map50_95")),
         map50=result.get("map50"),
         map50_95=result.get("map50_95"),
         mask_map50=result.get("mask_map50"),
@@ -63,7 +69,9 @@ def build_segmentation_evaluation_summary_response(task: object) -> Segmentation
     )
 
 
-def build_segmentation_evaluation_detail_response(task: object) -> SegmentationEvaluationDetailResponse:
+def build_segmentation_evaluation_detail_response(
+    task: object,
+) -> SegmentationEvaluationDetailResponse:
     """把任务记录转换成 segmentation evaluation 详情响应。"""
 
     summary = build_segmentation_evaluation_summary_response(task)

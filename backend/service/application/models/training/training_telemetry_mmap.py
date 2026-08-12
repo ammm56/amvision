@@ -9,6 +9,7 @@ from time import monotonic
 from uuid import uuid4
 import hashlib
 import json
+import logging
 import math
 import mmap
 import os
@@ -27,6 +28,8 @@ _FILE_HEADER = struct.Struct("<8sIIII32sQ")
 _SLOT_HEADER = struct.Struct("<QQII40x")
 _CLOSED_SEQUENCE_FLAG = 1 << 63
 _SEQUENCE_VALUE_MASK = _CLOSED_SEQUENCE_FLAG - 1
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -94,15 +97,7 @@ class TrainingTelemetryMmapPublisher:
                 and now - last < self.min_publish_interval_seconds
             ):
                 return False
-            writer = self._writer
-            if writer is None:
-                writer = _TrainingTelemetryMmapWriter(
-                    path=self.path,
-                    session_id=self.session_id,
-                    slot_count=self.slot_count,
-                    payload_capacity_bytes=self.payload_capacity_bytes,
-                )
-                self._writer = writer
+            writer = self._require_writer_locked()
             payload = _serialize_transport_point(point)
             encoded = json.dumps(
                 payload,
@@ -116,6 +111,12 @@ class TrainingTelemetryMmapPublisher:
             self._last_publish_monotonic[point.task_id] = now
         return True
 
+    def start(self) -> None:
+        """创建就绪 ring，使 service 可在首个 batch 前发现 worker producer。"""
+
+        with self._lock:
+            self._require_writer_locked()
+
     def close(self) -> None:
         """关闭当前进程持有的全部 mmap view。"""
 
@@ -125,6 +126,20 @@ class TrainingTelemetryMmapPublisher:
             self._last_publish_monotonic.clear()
         if writer is not None:
             writer.close()
+
+    def _require_writer_locked(self) -> _TrainingTelemetryMmapWriter:
+        """在已持有 publisher lock 时返回唯一 writer。"""
+
+        writer = self._writer
+        if writer is None:
+            writer = _TrainingTelemetryMmapWriter(
+                path=self.path,
+                session_id=self.session_id,
+                slot_count=self.slot_count,
+                payload_capacity_bytes=self.payload_capacity_bytes,
+            )
+            self._writer = writer
+        return writer
 
 
 class TrainingTelemetryMmapReader:
@@ -272,6 +287,7 @@ class TrainingTelemetryMmapReceiver:
         self.replay_limit = max(1, replay_limit)
         self._readers: dict[Path, TrainingTelemetryMmapReader] = {}
         self._cursors: dict[Path, tuple[str | None, int]] = {}
+        self._pending_cleanup_paths: set[Path] = set()
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -307,6 +323,7 @@ class TrainingTelemetryMmapReceiver:
             reader.close()
         self._readers.clear()
         self._cursors.clear()
+        self._pending_cleanup_paths.clear()
 
     def poll_once(self) -> int:
         """扫描并转发一次，返回成功发布的点数。"""
@@ -318,8 +335,9 @@ class TrainingTelemetryMmapReceiver:
         """发现尚未打开的 task ring。"""
 
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self._retry_pending_cleanup()
         for path in self.root_dir.glob("worker-*.mmap"):
-            if path in self._readers:
+            if path in self._readers or path in self._pending_cleanup_paths:
                 continue
             try:
                 self._readers[path] = TrainingTelemetryMmapReader(path)
@@ -340,9 +358,7 @@ class TrainingTelemetryMmapReceiver:
                     limit=self.replay_limit,
                 )
             except (OSError, ValueError):
-                reader.close()
-                self._readers.pop(path, None)
-                self._cursors.pop(path, None)
+                self._discard_reader(path=path, reader=reader)
                 continue
             self._cursors[path] = (
                 result.session_id,
@@ -358,22 +374,70 @@ class TrainingTelemetryMmapReceiver:
                     continue
                 published_count += 1
             if result.producer_closed or not _is_mmap_producer_running(path):
-                reader.close()
-                self._readers.pop(path, None)
-                self._cursors.pop(path, None)
-                path.unlink(missing_ok=True)
+                self._discard_reader(
+                    path=path,
+                    reader=reader,
+                    remove_file=True,
+                )
         return published_count
+
+    def _discard_reader(
+        self,
+        *,
+        path: Path,
+        reader: TrainingTelemetryMmapReader,
+        remove_file: bool = False,
+    ) -> None:
+        """隔离单个失效 producer；Windows 句柄延迟释放时稍后重试删除。"""
+
+        self._readers.pop(path, None)
+        self._cursors.pop(path, None)
+        try:
+            reader.close()
+        except (BufferError, OSError):
+            logger.warning(
+                "关闭训练遥测 mmap reader 失败，后续扫描会重试：path=%s",
+                path,
+                exc_info=True,
+            )
+            return
+        if not remove_file:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            # Windows 在 producer 刚退出时仍可能短暂持有文件句柄。reader 已从
+            # 当前集合移除；后续只重试文件清理，禁止再次转发旧 payload。
+            self._pending_cleanup_paths.add(path)
+            logger.info(
+                "训练遥测 mmap 暂时无法清理，后续扫描会重试：path=%s",
+                path,
+            )
+
+    def _retry_pending_cleanup(self) -> None:
+        """重试已退休 producer 文件，且禁止把旧 payload 重放到 broker。"""
+
+        for path in tuple(self._pending_cleanup_paths):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                continue
+            self._pending_cleanup_paths.discard(path)
 
     def _run_loop(self) -> None:
         """按低延迟间隔读取已发现文件，并定期发现新任务文件。"""
 
         next_scan = 0.0
         while not self._stop_event.is_set():
-            now = monotonic()
-            if now >= next_scan:
-                self._discover_readers()
-                next_scan = now + self.scan_interval_seconds
-            self._poll_readers()
+            try:
+                now = monotonic()
+                if now >= next_scan:
+                    self._discover_readers()
+                    next_scan = now + self.scan_interval_seconds
+                self._poll_readers()
+            except Exception:  # noqa: BLE001 - 后台接收线程必须自愈并继续服务
+                logger.exception("训练遥测 mmap receiver 轮询失败，将自动重试")
+                next_scan = 0.0
             self._stop_event.wait(self.poll_interval_seconds)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import logging
 import math
 import threading
 import time
@@ -24,6 +25,12 @@ TRAINING_TELEMETRY_PROTOCOL = "training.telemetry.v1"
 TRAINING_TELEMETRY_STREAM = "training.telemetry"
 TrainingTelemetryGranularity = Literal["batch", "epoch", "validation", "runtime"]
 _RUNTIME_METRICS_SAMPLER = TrainingRuntimeMetricsSampler()
+logger = logging.getLogger(__name__)
+
+_PROCESS_PUBLISHER_LOCK = threading.Lock()
+_PROCESS_TRAINING_TELEMETRY_PUBLISHER: object | None = None
+_PUBLISH_WARNING_TASKS: OrderedDict[str, None] = OrderedDict()
+_MAX_PUBLISH_WARNING_TASKS = 256
 
 
 class YoloTaskBatchProgressLike(Protocol):
@@ -229,6 +236,26 @@ class TrainingTelemetryBroker:
                 self._last_publish_monotonic.pop(key, None)
 
 
+def configure_process_training_telemetry_publisher(publisher: object | None) -> None:
+    """配置当前 worker 进程共享的训练遥测 publisher。
+
+    训练遥测是 worker 进程级资源，不属于数据库会话生命周期。保留
+    ``SessionFactory.training_telemetry_publisher`` 仅用于显式依赖注入和测试；
+    实际 worker 即使在子执行器中重建 ``SessionFactory``，也必须继续发布遥测。
+    """
+
+    global _PROCESS_TRAINING_TELEMETRY_PUBLISHER
+    with _PROCESS_PUBLISHER_LOCK:
+        _PROCESS_TRAINING_TELEMETRY_PUBLISHER = publisher
+
+
+def get_process_training_telemetry_publisher() -> object | None:
+    """返回当前 worker 进程共享的训练遥测 publisher。"""
+
+    with _PROCESS_PUBLISHER_LOCK:
+        return _PROCESS_TRAINING_TELEMETRY_PUBLISHER
+
+
 def publish_training_batch_telemetry(
     *,
     session_factory: object,
@@ -297,13 +324,45 @@ def publish_training_batch_telemetry(
         except (OSError, TypeError, ValueError):
             return None
     publisher = getattr(session_factory, "training_telemetry_publisher", None)
+    if not callable(getattr(publisher, "publish", None)):
+        publisher = get_process_training_telemetry_publisher()
     publish = getattr(publisher, "publish", None)
     if callable(publish):
         try:
             publish(point)
-        except (OSError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError) as error:
+            _warn_training_telemetry_publish_once(task_id=task_id, error=error)
             return None
+    else:
+        _warn_training_telemetry_publish_once(task_id=task_id, error=None)
     return None
+
+
+def _warn_training_telemetry_publish_once(
+    *,
+    task_id: str,
+    error: BaseException | None,
+) -> None:
+    """每个活跃任务最多记录一次旁路故障，避免按 batch 刷屏。"""
+
+    with _PROCESS_PUBLISHER_LOCK:
+        if task_id in _PUBLISH_WARNING_TASKS:
+            return
+        _PUBLISH_WARNING_TASKS[task_id] = None
+        while len(_PUBLISH_WARNING_TASKS) > _MAX_PUBLISH_WARNING_TASKS:
+            _PUBLISH_WARNING_TASKS.popitem(last=False)
+    if error is None:
+        logger.warning(
+            "training telemetry publisher is not configured task_id=%s",
+            task_id,
+        )
+        return
+    logger.warning(
+        "training telemetry publish failed task_id=%s error=%s",
+        task_id,
+        error,
+        exc_info=error,
+    )
 
 
 def publish_yolo_task_batch_telemetry(
@@ -459,5 +518,7 @@ __all__ = [
     "TrainingTelemetryGranularity",
     "TrainingTelemetryPoint",
     "TrainingTelemetryReplay",
+    "configure_process_training_telemetry_publisher",
+    "get_process_training_telemetry_publisher",
     "publish_training_batch_telemetry",
 ]

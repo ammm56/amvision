@@ -25,11 +25,18 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.application.models.rfdetr_core.datasets.coco import (
+    _build_train_resize_config,
     convert_coco_poly_to_mask,
 )
 from backend.service.application.models.rfdetr_core.segmentation import (
     RfdetrSegmentationPostProcess,
     mask_logits_to_xyxy,
+)
+from backend.service.application.models.rfdetr_core.models import (
+    matcher as rfdetr_matcher_module,
+)
+from backend.service.application.models.rfdetr_core.models.matcher import (
+    HungarianMatcher,
 )
 from backend.service.application.models.rfdetr_core.training.platform_control import (
     RfdetrPlatformTrainingControlCommand,
@@ -45,6 +52,77 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+
+
+def test_rfdetr_matcher_uses_configured_focal_alpha(monkeypatch) -> None:
+    """matcher 必须使用构造参数中的 focal_alpha，不能回退到固定 0.25。"""
+
+    captured_costs: list[np.ndarray] = []
+
+    def capture_assignment(cost_matrix):
+        captured_costs.append(np.asarray(cost_matrix).copy())
+        return np.asarray([0]), np.asarray([0])
+
+    monkeypatch.setattr(
+        rfdetr_matcher_module,
+        "linear_sum_assignment",
+        capture_assignment,
+    )
+    focal_alpha = 0.75
+    matcher = HungarianMatcher(
+        cost_class=1.0,
+        cost_bbox=0.0,
+        cost_giou=0.0,
+        focal_alpha=focal_alpha,
+    )
+    target_logit = torch.tensor(-0.4)
+    matcher(
+        {
+            "pred_logits": torch.tensor([[[0.2, float(target_logit)]]]),
+            "pred_boxes": torch.tensor([[[0.5, 0.5, 0.2, 0.2]]]),
+        },
+        [
+            {
+                "labels": torch.tensor([1]),
+                "boxes": torch.tensor([[0.5, 0.5, 0.2, 0.2]]),
+            }
+        ],
+    )
+
+    probability = target_logit.sigmoid()
+    expected = (
+        focal_alpha
+        * ((1 - probability) ** 2)
+        * (-torch.nn.functional.logsigmoid(target_logit))
+        - (1 - focal_alpha)
+        * (probability**2)
+        * (-torch.nn.functional.logsigmoid(-target_logit))
+    )
+    assert len(captured_costs) == 1
+    assert float(captured_costs[0][0, 0]) == pytest.approx(float(expected))
+
+
+def test_rfdetr_matcher_rejects_non_divisible_group_queries() -> None:
+    """Group DETR 查询数不能被组数整除时必须明确失败，避免静默丢查询。"""
+
+    matcher = HungarianMatcher(cost_class=1.0, cost_bbox=0.0, cost_giou=0.0)
+    with pytest.raises(ValueError, match=r"num_queries \(3\) must be divisible"):
+        matcher(
+            {
+                "pred_logits": torch.zeros((1, 3, 1)),
+                "pred_boxes": torch.tensor(
+                    [[[0.5, 0.5, 0.2, 0.2]]] * 3,
+                    dtype=torch.float32,
+                ),
+            },
+            [
+                {
+                    "labels": torch.tensor([0]),
+                    "boxes": torch.tensor([[0.5, 0.5, 0.2, 0.2]]),
+                }
+            ],
+            group_detr=2,
+        )
 
 
 def test_rfdetr_runtime_mask_threshold_controls_decode_result() -> None:
@@ -136,6 +214,27 @@ def test_rfdetr_coco_mask_decode_supports_polygon_and_both_rle_forms() -> None:
     assert torch.equal(decoded[0], torch.from_numpy(expected))
     assert torch.equal(decoded[1], torch.from_numpy(expected))
     assert int(decoded[2].sum()) > 0
+
+
+def test_rfdetr_scale_jitter_controls_resize_crop_branch() -> None:
+    """关闭 scale jitter 后只能保留直接 resize，不能继续随机裁剪。"""
+
+    enabled = _build_train_resize_config(
+        [384],
+        square=True,
+        scale_jitter=True,
+    )
+    disabled = _build_train_resize_config(
+        [384],
+        square=True,
+        scale_jitter=False,
+    )
+
+    assert "OneOf" in enabled[0]
+    assert enabled[0]["OneOf"]["transforms"][1]["Sequential"]["transforms"]
+    assert disabled == [
+        {"OneOf": {"transforms": [{"Resize": {"height": 384, "width": 384}}]}}
+    ]
 
 
 def test_rfdetr_lightning_callback_emits_batch_and_pauses_with_checkpoint(
@@ -259,6 +358,10 @@ def test_rfdetr_detection_task_pause_reaches_epoch_loop_and_persists_resume_stat
             max_epochs=3,
             batch_size=1,
             input_size=(384, 384),
+            extra_options={
+                "checkpoint_interval": 1,
+                "checkpoint_keep_periodic": 2,
+            },
         )
     )
 
@@ -323,6 +426,9 @@ def test_rfdetr_detection_task_pause_reaches_epoch_loop_and_persists_resume_stat
     assert result.latest_checkpoint_object_key is not None
     assert storage.resolve(result.latest_checkpoint_object_key).read_bytes() == b"resume-state"
     assert storage.resolve(result.checkpoint_object_key).read_bytes() == b"best-state"
+    assert storage.resolve(
+        f"task-runs/{submission.task_id}/output-files/checkpoints/epoch-000001.pt"
+    ).read_bytes() == b"resume-state"
 
 
 def _encode_uncompressed_coco_rle(mask: np.ndarray) -> list[int]:

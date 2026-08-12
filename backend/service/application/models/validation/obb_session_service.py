@@ -503,6 +503,7 @@ def _build_runtime_target_from_session(
 def _serialize_instance(inst: ObbPredictionInstance) -> dict[str, object]:
     return {
         "bbox_xyxy": list(inst.bbox_xyxy),
+        "bbox_xywhr": list(inst.bbox_xywhr),
         "score": inst.score,
         "class_id": inst.class_id,
         "class_name": inst.class_name,

@@ -15,8 +15,35 @@ from backend.service.application.models.yolo_core_common.training.ultralytics_sc
 )
 
 
+_MIN_RECOVERABLE_AMP_SCALE = 1.0
+_MAX_STALLED_AMP_SKIPPED_STEPS = 8
+
+
 class YoloTrainingNumericalError(RuntimeError):
     """表示 loss 或 FP32 gradient 已出现 NaN/Inf，训练必须立即失败。"""
+
+
+def require_yolo_successful_optimizer_step(
+    *,
+    successful_optimizer_steps: int,
+    skipped_optimizer_steps: int,
+    task_name: str,
+) -> None:
+    """拒绝没有发生任何参数更新却被登记为成功的训练结果。
+
+    ``GradScaler`` 可以在 overflow 时跳过 optimizer step，这是正常的恢复机制；
+    但一次完整训练如果始终没有成功 step，产出的 checkpoint 仍是初始权重，
+    后续评估、注册和转换都没有业务意义，必须以数值错误结束。
+    """
+
+    successful_count = max(0, int(successful_optimizer_steps))
+    if successful_count > 0:
+        return
+    raise YoloTrainingNumericalError(
+        f"{str(task_name).strip() or 'YOLO'} 训练没有任何成功的 optimizer step "
+        f"(successful_optimizer_steps={successful_count}, "
+        f"amp_skipped_optimizer_steps={max(0, int(skipped_optimizer_steps))})"
+    )
 
 
 class YoloUltralyticsOptimizerStep:
@@ -101,6 +128,8 @@ class YoloUltralyticsOptimizerStep:
         if self.scaler is not None:
             self.scaler.unscale_(self.optimizer)
         optimizer_step_succeeded = True
+        amp_scale_before: float | None = None
+        amp_scale_after: float | None = None
         if self.scaler is not None:
             gradient_norm = self.torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
@@ -125,17 +154,40 @@ class YoloUltralyticsOptimizerStep:
             self.scaler.step(self.optimizer)
             self.scaler.update()
             scale_after_step = float(self.scaler.get_scale())
+            amp_scale_before = scale_before_step
+            amp_scale_after = scale_after_step
             optimizer_step_succeeded = (
                 gradients_are_finite and scale_after_step >= scale_before_step
             )
         else:
             self.optimizer.step()
+        consecutive_overflow_error: YoloTrainingNumericalError | None = None
         if optimizer_step_succeeded:
             self.successful_optimizer_steps += 1
             self.consecutive_skipped_optimizer_steps = 0
         else:
             self.skipped_optimizer_steps += 1
             self.consecutive_skipped_optimizer_steps += 1
+            scale_below_recoverable_minimum = bool(
+                amp_scale_after is not None
+                and amp_scale_after < _MIN_RECOVERABLE_AMP_SCALE
+            )
+            scale_reduction_stalled = bool(
+                amp_scale_before is not None
+                and amp_scale_after is not None
+                and amp_scale_after >= amp_scale_before
+                and self.consecutive_skipped_optimizer_steps
+                >= _MAX_STALLED_AMP_SKIPPED_STEPS
+            )
+            if scale_below_recoverable_minimum or scale_reduction_stalled:
+                consecutive_overflow_error = YoloTrainingNumericalError(
+                    "YOLO AMP 连续产生非有限 gradient，GradScaler 已无法恢复 "
+                    f"(global_iteration={int(iteration_index)}, "
+                    f"consecutive_skipped_steps="
+                    f"{self.consecutive_skipped_optimizer_steps}, "
+                    f"scale_before={amp_scale_before}, "
+                    f"scale_after={amp_scale_after})"
+                )
         if self.ema is not None and optimizer_step_succeeded:
             self.ema.update(self.model)
         self.optimizer.zero_grad(set_to_none=True)
@@ -144,6 +196,8 @@ class YoloUltralyticsOptimizerStep:
             forward_started_at=forward_started_at,
             backward_started_at=backward_started_at,
         )
+        if consecutive_overflow_error is not None:
+            raise consecutive_overflow_error
         return optimizer_step_succeeded
 
     def _record_stage_metrics(
@@ -191,6 +245,15 @@ class YoloUltralyticsOptimizerStep:
         self.last_scheduler_optimizer_step_count = self.successful_optimizer_steps
         return True
 
+    def require_successful_optimizer_step(self, *, task_name: str) -> None:
+        """在训练结果落盘和模型注册前确认至少完成过一次参数更新。"""
+
+        require_yolo_successful_optimizer_step(
+            successful_optimizer_steps=self.successful_optimizer_steps,
+            skipped_optimizer_steps=self.skipped_optimizer_steps,
+            task_name=task_name,
+        )
+
     def _ensure_finite_scalar_loss(
         self,
         loss: Any,
@@ -212,4 +275,8 @@ class YoloUltralyticsOptimizerStep:
             )
 
 
-__all__ = ["YoloTrainingNumericalError", "YoloUltralyticsOptimizerStep"]
+__all__ = [
+    "YoloTrainingNumericalError",
+    "YoloUltralyticsOptimizerStep",
+    "require_yolo_successful_optimizer_step",
+]

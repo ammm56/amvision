@@ -14,6 +14,9 @@ from backend.service.application.errors import (
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    build_training_periodic_checkpoint_retention,
+)
 from backend.service.application.models.training.rfdetr_segmentation import (
     RfdetrSegmentationTrainingBatchProgress,
     RfdetrSegmentationTrainingExecutionRequest,
@@ -269,16 +272,20 @@ class SqlAlchemySegmentationTrainingService:
 
         input_size = self._read_input_size(payload.get("input_size"))
         output_prefix = f"task-runs/{task_record.task_id}"
-        temporary_latest_checkpoint_path = self.dataset_storage.resolve(
-            f"{output_prefix}/latest-checkpoint.pt"
-        )
-        temporary_best_checkpoint_path = self.dataset_storage.resolve(
-            f"{output_prefix}/best-checkpoint.pt"
+        extra_options = dict(payload.get("extra_options") or {})
+        periodic_checkpoint_retention = build_training_periodic_checkpoint_retention(
+            storage=self.dataset_storage,
+            output_prefix=output_prefix,
+            extra_options=extra_options,
         )
         latest_checkpoint_object_key = (
             f"{output_prefix}/output-files/latest-checkpoint.pt"
         )
         checkpoint_object_key = f"{output_prefix}/output-files/best-checkpoint.pt"
+        latest_checkpoint_path = self.dataset_storage.resolve(
+            latest_checkpoint_object_key
+        )
+        best_checkpoint_path = self.dataset_storage.resolve(checkpoint_object_key)
         train_metrics_object_key = f"{output_prefix}/output-files/train-metrics.json"
         validation_metrics_object_key = (
             f"{output_prefix}/output-files/validation-metrics.json"
@@ -403,7 +410,7 @@ class SqlAlchemySegmentationTrainingService:
             ),
         ) -> None:
             self.dataset_storage.write_bytes(
-                str(temporary_latest_checkpoint_path),
+                latest_checkpoint_object_key,
                 savepoint.latest_checkpoint_bytes,
             )
             rfdetr_best_checkpoint_bytes = (
@@ -413,7 +420,7 @@ class SqlAlchemySegmentationTrainingService:
             )
             if rfdetr_best_checkpoint_bytes:
                 self.dataset_storage.write_bytes(
-                    str(temporary_best_checkpoint_path),
+                    checkpoint_object_key,
                     rfdetr_best_checkpoint_bytes,
                 )
             elif (
@@ -421,18 +428,24 @@ class SqlAlchemySegmentationTrainingService:
                 and savepoint.is_best
             ):
                 self.dataset_storage.write_bytes(
-                    str(temporary_best_checkpoint_path),
+                    checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
+            periodic_checkpoint_retention.persist(
+                epoch=(
+                    savepoint.epoch + 1
+                    if isinstance(savepoint, RfdetrSegmentationTrainingSavePoint)
+                    else savepoint.epoch
+                ),
+                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+            )
 
         def poll_yolo_control() -> None:
-            """在训练 batch 与 validation sample 边界响应暂停和终止。"""
+            """batch 边界立即终止；暂停留到 epoch 边界保存 checkpoint。"""
 
             control_state = self._read_control_state(task_record.task_id)
             if control_state.terminate_requested:
                 raise YoloV8SegmentationTrainingTerminatedError()
-            if control_state.pause_requested:
-                raise YoloV8SegmentationTrainingPausedError()
 
         try:
             if resolved_model_type == "rfdetr":
@@ -452,7 +465,7 @@ class SqlAlchemySegmentationTrainingService:
                             else None
                         ),
                         warm_start_source_summary=warm_start_source_summary,
-                        extra_options=dict(payload.get("extra_options") or {}),
+                        extra_options=extra_options,
                         batch_callback=on_rfdetr_batch,
                         epoch_callback=on_epoch,
                         savepoint_callback=on_savepoint,
@@ -480,11 +493,11 @@ class SqlAlchemySegmentationTrainingService:
                     warm_start_source_summary=(warm_start_source_summary),
                     resume_checkpoint_path=resume_checkpoint_path,
                     previous_best_checkpoint_path=(
-                        temporary_best_checkpoint_path
-                        if temporary_best_checkpoint_path.is_file()
+                        best_checkpoint_path
+                        if best_checkpoint_path.is_file()
                         else None
                     ),
-                    extra_options=dict(payload.get("extra_options") or {}),
+                    extra_options=extra_options,
                     epoch_callback=on_epoch,
                     batch_callback=lambda progress: publish_yolo_task_batch_telemetry(
                         session_factory=self.session_factory,
@@ -557,8 +570,8 @@ class SqlAlchemySegmentationTrainingService:
             }
             failed_result = expose_recoverable_latest_checkpoint(
                 failed_result=failed_result,
-                latest_checkpoint_path=temporary_latest_checkpoint_path,
-                latest_checkpoint_object_key=f"{output_prefix}/latest-checkpoint.pt",
+                latest_checkpoint_path=latest_checkpoint_path,
+                latest_checkpoint_object_key=latest_checkpoint_object_key,
             )
             self.task_service.append_task_event(
                 build_segmentation_training_failed_event(
@@ -571,34 +584,29 @@ class SqlAlchemySegmentationTrainingService:
             )
             raise
 
-        self.dataset_storage.write_bytes(
-            str(temporary_latest_checkpoint_path),
-            execution_result.latest_checkpoint_bytes,
-        )
-        self.dataset_storage.write_bytes(
-            latest_checkpoint_object_key,
-            execution_result.latest_checkpoint_bytes,
-        )
-        result_best_checkpoint_bytes = getattr(
-            execution_result, "best_checkpoint_bytes", None
-        )
-        best_checkpoint_bytes = (
-            result_best_checkpoint_bytes
-            if isinstance(result_best_checkpoint_bytes, bytes)
-            and result_best_checkpoint_bytes
-            else execution_result.latest_checkpoint_bytes
-        )
-        if (
-            not isinstance(execution_result, RfdetrSegmentationTrainingExecutionResult)
-            and temporary_best_checkpoint_path.is_file()
-        ):
-            best_checkpoint_bytes = temporary_best_checkpoint_path.read_bytes()
-        else:
+        if not latest_checkpoint_path.is_file():
             self.dataset_storage.write_bytes(
-                str(temporary_best_checkpoint_path),
+                latest_checkpoint_object_key,
+                execution_result.latest_checkpoint_bytes,
+            )
+        preserve_saved_best_checkpoint = (
+            not isinstance(execution_result, RfdetrSegmentationTrainingExecutionResult)
+            and best_checkpoint_path.is_file()
+        )
+        if not preserve_saved_best_checkpoint:
+            result_best_checkpoint_bytes = getattr(
+                execution_result, "best_checkpoint_bytes", None
+            )
+            best_checkpoint_bytes = (
+                result_best_checkpoint_bytes
+                if isinstance(result_best_checkpoint_bytes, bytes)
+                and result_best_checkpoint_bytes
+                else execution_result.latest_checkpoint_bytes
+            )
+            self.dataset_storage.write_bytes(
+                checkpoint_object_key,
                 best_checkpoint_bytes,
             )
-        self.dataset_storage.write_bytes(checkpoint_object_key, best_checkpoint_bytes)
         self.dataset_storage.write_json(
             train_metrics_object_key,
             execution_result.metrics_payload,
@@ -977,24 +985,6 @@ class SqlAlchemySegmentationTrainingService:
     ) -> dict[str, object]:
         """构建 paused 或 cancelled 状态下的任务结果。"""
 
-        if self.dataset_storage.resolve(
-            f"{output_prefix}/latest-checkpoint.pt"
-        ).is_file():
-            self.dataset_storage.write_bytes(
-                latest_checkpoint_object_key,
-                self.dataset_storage.resolve(
-                    f"{output_prefix}/latest-checkpoint.pt"
-                ).read_bytes(),
-            )
-        if self.dataset_storage.resolve(
-            f"{output_prefix}/best-checkpoint.pt"
-        ).is_file():
-            self.dataset_storage.write_bytes(
-                checkpoint_object_key,
-                self.dataset_storage.resolve(
-                    f"{output_prefix}/best-checkpoint.pt"
-                ).read_bytes(),
-            )
         return {
             "status": status,
             "task_id": task_record.task_id,

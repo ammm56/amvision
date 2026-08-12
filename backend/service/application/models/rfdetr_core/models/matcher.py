@@ -95,7 +95,6 @@ class HungarianMatcher(nn.Module):
         bs, num_queries = outputs["pred_logits"].shape[:2]
 
         flat_pred_logits = outputs["pred_logits"].flatten(0, 1)
-        out_prob = flat_pred_logits.sigmoid()
         out_bbox = outputs["pred_boxes"].flatten(0, 1)
 
         tgt_ids = torch.cat([v["labels"] for v in targets])
@@ -106,12 +105,16 @@ class HungarianMatcher(nn.Module):
         giou = generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox))
         cost_giou = -giou
 
-        alpha = 0.25
+        alpha = self.focal_alpha
         gamma = 2.0
 
-        neg_cost_class = (1 - alpha) * (out_prob**gamma) * (-F.logsigmoid(-flat_pred_logits))
-        pos_cost_class = alpha * ((1 - out_prob) ** gamma) * (-F.logsigmoid(flat_pred_logits))
-        cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
+        # 只计算目标类别对应的列，保持与 RF-DETR reference 相同的 focal
+        # matching cost，同时避免在大类别集合上物化无用矩阵。
+        tgt_logits = flat_pred_logits[:, tgt_ids]
+        tgt_prob = tgt_logits.sigmoid()
+        neg_cost_class = (1 - alpha) * (tgt_prob**gamma) * (-F.logsigmoid(-tgt_logits))
+        pos_cost_class = alpha * ((1 - tgt_prob) ** gamma) * (-F.logsigmoid(tgt_logits))
+        cost_class = pos_cost_class - neg_cost_class
 
         cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
 
@@ -172,6 +175,10 @@ class HungarianMatcher(nn.Module):
 
         sizes = [len(v["boxes"]) for v in targets]
         indices = []
+        if num_queries % group_detr != 0:
+            raise ValueError(
+                f"num_queries ({num_queries}) must be divisible by group_detr ({group_detr})"
+            )
         g_num_queries = num_queries // group_detr
         cost_matrix_list = cost_matrix.split(g_num_queries, dim=1)
         for g_i in range(group_detr):

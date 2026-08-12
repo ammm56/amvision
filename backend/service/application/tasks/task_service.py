@@ -106,6 +106,7 @@ class TaskEventQueryFilters:
     - task_id：所属任务 id。
     - event_type：事件类型。
     - after_created_at：只返回晚于该时间的事件。
+    - after_cursor：只返回晚于 ``created_at|event_id`` 游标的事件。
     - offset：结果偏移量。
     - limit：最大返回数量。
     """
@@ -113,6 +114,7 @@ class TaskEventQueryFilters:
     task_id: str
     event_type: TaskEventType | None = None
     after_created_at: str | None = None
+    after_cursor: str | None = None
     offset: int = 0
     limit: int = 100
 
@@ -236,11 +238,14 @@ class SqlAlchemyTaskService:
             raise InvalidRequestError("limit 必须大于 0")
 
         with self._open_unit_of_work() as unit_of_work:
-            events = unit_of_work.tasks.list_task_events(filters.task_id)
-
-        matched_events = [event for event in events if self._event_matches_filters(event, filters)]
-        matched_events.sort(key=lambda event: (event.created_at, event.event_id))
-        return tuple(matched_events[filters.offset : filters.offset + filters.limit])
+            return unit_of_work.tasks.list_task_events(
+                filters.task_id,
+                event_type=filters.event_type,
+                after_created_at=filters.after_created_at,
+                after_cursor=filters.after_cursor,
+                offset=filters.offset,
+                limit=filters.limit,
+            )
 
     def append_task_event(self, request: AppendTaskEventRequest) -> TaskDetail:
         """为指定任务追加一条事件，并同步更新任务快照。
@@ -409,16 +414,6 @@ class SqlAlchemyTaskService:
                 source_import_id = task_record.metadata.get("source_import_id")
             if source_import_id != filters.source_import_id:
                 return False
-
-        return True
-
-    def _event_matches_filters(self, task_event: TaskEvent, filters: TaskEventQueryFilters) -> bool:
-        """判断事件是否满足筛选条件。"""
-
-        if filters.event_type is not None and task_event.event_type != filters.event_type:
-            return False
-        if filters.after_created_at is not None and task_event.created_at <= filters.after_created_at:
-            return False
 
         return True
 

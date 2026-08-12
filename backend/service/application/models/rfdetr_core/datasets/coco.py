@@ -198,6 +198,7 @@ def _build_train_resize_config(
     *,
     square: bool,
     max_size: Optional[int] = None,
+    scale_jitter: bool = True,
 ) -> List[Dict[str, Any]]:
     """执行 `_build_train_resize_config`。
     
@@ -205,6 +206,7 @@ def _build_train_resize_config(
     - `scales`：传入的 `scales` 参数。
     - `square`：传入的 `square` 参数。
     - `max_size`：传入的 `max_size` 参数。
+    - `scale_jitter`：是否启用 resize→crop→resize 尺度抖动分支。
     
     返回：
     - 当前函数的执行结果。
@@ -252,6 +254,8 @@ def _build_train_resize_config(
             }
         }
 
+    if not scale_jitter:
+        return [option_a]
     return [{"OneOf": {"transforms": [option_a, option_b]}}]
 
 
@@ -264,6 +268,7 @@ def make_coco_transforms(
     patch_size: int = 16,
     num_windows: int = 4,
     aug_config: Optional[Dict[str, Dict[str, Any]]] = None,
+    scale_jitter: bool = True,
     gpu_postprocess: bool = False,
 ) -> Compose:
     """执行 `make_coco_transforms`。
@@ -277,6 +282,7 @@ def make_coco_transforms(
     - `patch_size`：传入的 `patch_size` 参数。
     - `num_windows`：传入的 `num_windows` 参数。
     - `aug_config`：传入的 `aug_config` 参数。
+    - `scale_jitter`：是否启用 resize→crop→resize 尺度抖动分支。
     - `gpu_postprocess`：传入的 `gpu_postprocess` 参数。
     
     返回：
@@ -296,7 +302,12 @@ def make_coco_transforms(
     if image_set == "train":
         resolved_aug_config = aug_config if aug_config is not None else AUG_CONFIG
         resize_wrappers = AlbumentationsWrapper.from_config(
-            _build_train_resize_config(scales, square=False, max_size=1333)
+            _build_train_resize_config(
+                scales,
+                square=False,
+                max_size=1333,
+                scale_jitter=scale_jitter,
+            )
         )
         pipeline = [*resize_wrappers]
         if not gpu_postprocess:
@@ -331,6 +342,7 @@ def make_coco_transforms_square_div_64(
     patch_size: int = 16,
     num_windows: int = 4,
     aug_config: Optional[Dict[str, Dict[str, Any]]] = None,
+    scale_jitter: bool = True,
     gpu_postprocess: bool = False,
 ) -> Compose:
     """执行 `make_coco_transforms_square_div_64`。
@@ -344,6 +356,7 @@ def make_coco_transforms_square_div_64(
     - `patch_size`：传入的 `patch_size` 参数。
     - `num_windows`：传入的 `num_windows` 参数。
     - `aug_config`：传入的 `aug_config` 参数。
+    - `scale_jitter`：是否启用 resize→crop→resize 尺度抖动分支。
     - `gpu_postprocess`：传入的 `gpu_postprocess` 参数。
     
     返回：
@@ -362,7 +375,13 @@ def make_coco_transforms_square_div_64(
 
     if image_set == "train":
         resolved_aug_config = aug_config if aug_config is not None else AUG_CONFIG
-        resize_wrappers = AlbumentationsWrapper.from_config(_build_train_resize_config(scales, square=True))
+        resize_wrappers = AlbumentationsWrapper.from_config(
+            _build_train_resize_config(
+                scales,
+                square=True,
+                scale_jitter=scale_jitter,
+            )
+        )
         pipeline = [*resize_wrappers]
         if not gpu_postprocess:
             aug_wrappers = AlbumentationsWrapper.from_config(resolved_aug_config)
@@ -397,6 +416,7 @@ def build_coco(image_set: str, args: Any, resolution: int) -> CocoDetection:
     square_resize_div_64 = getattr(args, "square_resize_div_64", False)
     include_masks = getattr(args, "segmentation_head", False)
     aug_config = getattr(args, "aug_config", None)
+    scale_jitter = getattr(args, "scale_jitter", True)
     augmentation_backend = getattr(args, "augmentation_backend", "cpu")
     resolved_augmentation_backend = _resolve_runtime_augmentation_backend(augmentation_backend)
     if resolved_augmentation_backend != augmentation_backend and resolved_augmentation_backend == "cpu":
@@ -420,6 +440,7 @@ def build_coco(image_set: str, args: Any, resolution: int) -> CocoDetection:
                 patch_size=args.patch_size,
                 num_windows=args.num_windows,
                 aug_config=aug_config,
+                scale_jitter=scale_jitter,
                 gpu_postprocess=gpu_postprocess,
             ),
             include_masks=include_masks,
@@ -438,6 +459,7 @@ def build_coco(image_set: str, args: Any, resolution: int) -> CocoDetection:
                 patch_size=args.patch_size,
                 num_windows=args.num_windows,
                 aug_config=aug_config,
+                scale_jitter=scale_jitter,
                 gpu_postprocess=gpu_postprocess,
             ),
             include_masks=include_masks,
@@ -490,6 +512,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
     patch_size = getattr(args, "patch_size", 16)
     num_windows = getattr(args, "num_windows", 4)
     aug_config = getattr(args, "aug_config", None)
+    scale_jitter = getattr(args, "scale_jitter", True)
     resolved_augmentation_backend = _resolve_runtime_augmentation_backend(getattr(args, "augmentation_backend", "cpu"))
     gpu_postprocess = resolved_augmentation_backend != "cpu"
 
@@ -507,6 +530,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
                 patch_size=patch_size,
                 num_windows=num_windows,
                 aug_config=aug_config,
+                scale_jitter=scale_jitter,
                 gpu_postprocess=gpu_postprocess,
             ),
             include_masks=include_masks,
@@ -526,6 +550,7 @@ def build_roboflow_from_coco(image_set: str, args: Any, resolution: int) -> Coco
                 patch_size=patch_size,
                 num_windows=num_windows,
                 aug_config=aug_config,
+                scale_jitter=scale_jitter,
                 gpu_postprocess=gpu_postprocess,
             ),
             include_masks=include_masks,

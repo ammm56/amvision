@@ -94,6 +94,8 @@ class SegmentationEvaluationTaskResult:
     report_object_key: str
     predictions_object_key: str
     result_package_object_key: str | None
+    bbox_map50: float
+    bbox_map50_95: float
     map50: float
     map50_95: float
     mask_map50: float
@@ -112,6 +114,8 @@ class SegmentationEvaluationTaskResult:
             "report_object_key": self.report_object_key,
             "predictions_object_key": self.predictions_object_key,
             "result_package_object_key": self.result_package_object_key,
+            "bbox_map50": self.bbox_map50,
+            "bbox_map50_95": self.bbox_map50_95,
             "map50": self.map50,
             "map50_95": self.map50_95,
             "mask_map50": self.mask_map50,
@@ -309,6 +313,8 @@ class SqlAlchemySegmentationEvaluationService:
             report_object_key=report_key,
             predictions_object_key=predictions_key,
             result_package_object_key=package_key,
+            bbox_map50=eval_result.map50,
+            bbox_map50_95=eval_result.map50_95,
             map50=eval_result.map50,
             map50_95=eval_result.map50_95,
             mask_map50=eval_result.mask_map50,
@@ -318,6 +324,8 @@ class SqlAlchemySegmentationEvaluationService:
                 "model_type": runtime_target.model_type,
                 "split_name": eval_result.split_name,
                 "sample_count": eval_result.sample_count,
+                "bbox_map50": eval_result.map50,
+                "bbox_map50_95": eval_result.map50_95,
                 "map50": eval_result.map50,
                 "map50_95": eval_result.map50_95,
                 "mask_map50": eval_result.mask_map50,
@@ -462,6 +470,10 @@ class SqlAlchemySegmentationEvaluationService:
             report_object_key=report_key,
             predictions_object_key=str(result.get("predictions_object_key", "")),
             result_package_object_key=result.get("result_package_object_key"),
+            bbox_map50=float(result.get("bbox_map50", result.get("map50", 0.0))),
+            bbox_map50_95=float(
+                result.get("bbox_map50_95", result.get("map50_95", 0.0))
+            ),
             map50=float(result.get("map50", 0.0)),
             map50_95=float(result.get("map50_95", 0.0)),
             mask_map50=float(result.get("mask_map50", 0.0)),
@@ -550,7 +562,9 @@ def _resolve_segmentation_score_threshold(
     """按模型类型解析 segmentation 评估置信度阈值。"""
 
     if model_type in {"yolov8", "yolo11", "yolo26"}:
-        return _resolve_optional_float(value, _YOLO_SEGMENTATION_DEFAULT_SCORE_THRESHOLD)
+        return _resolve_optional_float(
+            value, _YOLO_SEGMENTATION_DEFAULT_SCORE_THRESHOLD
+        )
     return _resolve_optional_float(value, _GENERIC_SEGMENTATION_DEFAULT_SCORE_THRESHOLD)
 
 

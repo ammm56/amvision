@@ -15,6 +15,10 @@ from backend.service.application.errors import (
 from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
+from backend.service.application.models.training.checkpoint_policy import (
+    TrainingPeriodicCheckpointRetention,
+    build_training_periodic_checkpoint_retention,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
 )
@@ -810,6 +814,11 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         output_object_prefix = self._build_output_object_prefix(task_id)
         output_files = build_yolo_detection_training_output_files(output_object_prefix)
         require_complete_yolo_detection_training_output_files(output_files)
+        periodic_checkpoint_retention = build_training_periodic_checkpoint_retention(
+            storage=dataset_storage,
+            output_prefix=output_object_prefix,
+            extra_options=dict(request.extra_options),
+        )
 
         self.task_service.append_task_event(
             build_yolo_detection_training_started_event(
@@ -878,6 +887,9 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                             dataset_export=dataset_export,
                             output_files=output_files,
                             savepoint=savepoint,
+                            periodic_checkpoint_retention=(
+                                periodic_checkpoint_retention
+                            ),
                         )
                     ),
                 )
@@ -1228,6 +1240,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         dataset_export: DatasetExport,
         output_files: DetectionTrainingOutputFiles,
         savepoint: YoloDetectionTrainingSavePoint,
+        periodic_checkpoint_retention: TrainingPeriodicCheckpointRetention,
     ) -> None:
         """在 savepoint 落盘后刷新 latest checkpoint 与控制状态。"""
 
@@ -1238,6 +1251,10 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             category_names=self._read_manifest_category_names(
                 dataset_export.manifest_object_key
             ),
+        )
+        periodic_checkpoint_retention.persist(
+            epoch=savepoint.epoch,
+            checkpoint_bytes=savepoint.latest_checkpoint_bytes,
         )
         task_record = self._require_training_task(task_id)
         control = read_yolo_detection_training_control(

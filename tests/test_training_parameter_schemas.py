@@ -343,6 +343,18 @@ def test_rfdetr_step_scheduler_does_not_emit_unused_minimum_lr() -> None:
     assert "min_lr_ratio" not in options
 
 
+def test_rfdetr_scale_jitter_is_explicit_and_defaults_to_reference_behavior() -> None:
+    """公开参数必须能独立控制 RF-DETR resize-crop 尺度抖动。"""
+
+    default_options = RfdetrDetectionTrainingParameters().to_execution_options()
+    disabled_options = RfdetrDetectionTrainingParameters.model_validate(
+        {"augmentation": {"scale_jitter": False}}
+    ).to_execution_options()
+
+    assert default_options["scale_jitter"] is True
+    assert disabled_options["scale_jitter"] is False
+
+
 def test_training_parameter_catalog_exposes_all_supported_task_model_pairs() -> None:
     """参数目录必须覆盖支持矩阵中的全部 18 个训练组合。"""
 

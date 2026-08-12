@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from functools import wraps
 import gc
 import math
+import os
 from typing import Any, Callable, ParamSpec, TypeVar, cast
 
 from backend.service.application.errors import InvalidRequestError
@@ -147,6 +148,7 @@ class TrainingEngine:
                 current_request = self._build_retry_request(next_maximum)
             finally:
                 _ACTIVE_TRAINING_ENGINE.reset(token)
+                release_training_runtime_resources()
 
     def record_batch_resolution(
         self,
@@ -449,6 +451,42 @@ def _release_cuda_after_oom() -> None:
         return
 
 
+def release_training_runtime_resources() -> None:
+    """在每个训练尝试结束后释放 CUDA、IPC 和 Python 高水位资源。
+
+    训练 worker 是常驻进程。模型、optimizer、DataLoader 或异常 traceback 即使
+    已离开业务作用域，也需要显式触发回收；Windows 额外清理当前进程 working
+    set，避免多次训练把已释放但仍驻留的页长期计入物理内存。
+    """
+
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+            if callable(ipc_collect):
+                ipc_collect()
+    except (ImportError, RuntimeError):
+        pass
+    gc.collect()
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        get_current_process.argtypes = []
+        get_current_process.restype = ctypes.c_void_p
+        empty_working_set = ctypes.windll.psapi.EmptyWorkingSet
+        empty_working_set.argtypes = [ctypes.c_void_p]
+        empty_working_set.restype = ctypes.c_bool
+        empty_working_set(get_current_process())
+    except (AttributeError, OSError, TypeError, ValueError):
+        return
+
+
 def _read_bool_option(
     options: dict[str, object],
     key: str,
@@ -492,6 +530,7 @@ __all__ = [
     "TrainingOomRecoveryRecord",
     "build_execution_training_config_runtime",
     "read_active_training_runtime",
+    "release_training_runtime_resources",
     "record_active_training_amp_resolution",
     "record_active_training_batch_stage_metrics",
     "record_active_training_batch_resolution",

@@ -184,6 +184,10 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
     assert runtime_target.model_type == "yolo11"
     assert runtime_target.task_type == "classification"
     assert runtime_target.labels == ("bolt", "nut")
+    _assert_canonical_checkpoint_layout(
+        dataset_storage=dataset_storage,
+        task_id=submission["task_id"],
+    )
 
 
 def test_segmentation_training_registers_model_version_and_preserves_model_type(
@@ -287,6 +291,10 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
     assert runtime_target.model_type == "yolov8"
     assert runtime_target.task_type == "segmentation"
     assert runtime_target.labels == ("part-a", "part-b", "part-c")
+    _assert_canonical_checkpoint_layout(
+        dataset_storage=dataset_storage,
+        task_id=submission["task_id"],
+    )
 
 
 def test_pose_training_registers_model_version_and_preserves_model_type(
@@ -390,6 +398,10 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
     assert runtime_target.model_type == "yolov8"
     assert runtime_target.task_type == "pose"
     assert runtime_target.labels == ("worker",)
+    _assert_canonical_checkpoint_layout(
+        dataset_storage=dataset_storage,
+        task_id=submission["task_id"],
+    )
 
 
 def test_obb_training_registers_model_version_and_preserves_model_type(
@@ -493,6 +505,32 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
     assert runtime_target.model_type == "yolo26"
     assert runtime_target.task_type == "obb"
     assert runtime_target.labels == ("plate", "label")
+    _assert_canonical_checkpoint_layout(
+        dataset_storage=dataset_storage,
+        task_id=submission["task_id"],
+    )
+
+
+def _assert_canonical_checkpoint_layout(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    task_id: str,
+) -> None:
+    """确认 checkpoint 只写入公开 output-files 路径，不生成根目录副本。"""
+
+    output_prefix = f"task-runs/{task_id}"
+    assert dataset_storage.resolve(
+        f"{output_prefix}/output-files/latest-checkpoint.pt"
+    ).is_file()
+    assert dataset_storage.resolve(
+        f"{output_prefix}/output-files/best-checkpoint.pt"
+    ).is_file()
+    assert not dataset_storage.resolve(
+        f"{output_prefix}/latest-checkpoint.pt"
+    ).exists()
+    assert not dataset_storage.resolve(
+        f"{output_prefix}/best-checkpoint.pt"
+    ).exists()
 
 
 def _create_session_factory() -> SessionFactory:

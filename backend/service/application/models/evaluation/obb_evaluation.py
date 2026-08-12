@@ -337,20 +337,10 @@ def _iter_obb_prediction_instances(result: object):
 def _build_obb_prediction_bbox(instance: object) -> list[float]:
     """把 OBB prediction instance 归一化为 xywhr。"""
 
-    bbox = getattr(instance, "bbox", None)
-    if isinstance(bbox, (list, tuple)) and len(bbox) >= 5:
-        return [float(value) for value in bbox[:5]]
-    bbox_xyxy = getattr(instance, "bbox_xyxy", None)
-    if isinstance(bbox_xyxy, (list, tuple)) and len(bbox_xyxy) >= 4:
-        x1, y1, x2, y2 = (float(value) for value in bbox_xyxy[:4])
-        return [
-            (x1 + x2) / 2.0,
-            (y1 + y2) / 2.0,
-            max(0.0, x2 - x1),
-            max(0.0, y2 - y1),
-            float(getattr(instance, "angle", 0.0) or 0.0),
-        ]
-    raise InvalidRequestError("OBB runtime prediction 缺少 xywhr 或 bbox_xyxy")
+    bbox_xywhr = getattr(instance, "bbox_xywhr", None)
+    if isinstance(bbox_xywhr, (list, tuple)) and len(bbox_xywhr) >= 5:
+        return [float(value) for value in bbox_xywhr[:5]]
+    raise InvalidRequestError("OBB runtime prediction 缺少规范 bbox_xywhr")
 
 
 def _build_obb_gt_item(annotation: dict) -> dict[str, object] | None:

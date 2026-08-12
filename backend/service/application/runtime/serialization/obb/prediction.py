@@ -14,6 +14,7 @@ def serialize_obb_instance(instance: ObbPredictionInstance) -> dict[str, object]
 
     return {
         "bbox_xyxy": list(instance.bbox_xyxy),
+        "bbox_xywhr": list(instance.bbox_xywhr),
         "score": instance.score,
         "class_id": instance.class_id,
         "class_name": instance.class_name,
@@ -29,9 +30,19 @@ def deserialize_obb_instance(payload: object) -> ObbPredictionInstance | None:
     bbox = payload.get("bbox_xyxy")
     if not isinstance(bbox, list | tuple) or len(bbox) != 4:
         return None
+    bbox_xywhr = payload.get("bbox_xywhr")
+    if not isinstance(bbox_xywhr, list | tuple) or len(bbox_xywhr) != 5:
+        return None
     angle = payload.get("angle")
     return ObbPredictionInstance(
         bbox_xyxy=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+        bbox_xywhr=(
+            float(bbox_xywhr[0]),
+            float(bbox_xywhr[1]),
+            float(bbox_xywhr[2]),
+            float(bbox_xywhr[3]),
+            float(bbox_xywhr[4]),
+        ),
         score=float(payload.get("score") or 0.0),
         class_id=int(payload.get("class_id") or 0),
         class_name=(

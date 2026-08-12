@@ -104,6 +104,7 @@ from backend.service.application.models.yolo_core_common.training import (
     build_yolo_completed_epoch_history_item,
     close_yolo_dataloader,
     normalize_yolo_detection_loss_metrics,
+    require_yolo_successful_optimizer_step,
     resolve_yolo_optimizer_base_learning_rate,
 )
 from backend.service.application.models.yolov8_core import (
@@ -619,6 +620,8 @@ def run_yolov8_detection_training(
         else b""
     )
     resume_epoch = resume_state.resume_epoch if resume_state is not None else 0
+    successful_optimizer_steps = 0
+    skipped_optimizer_steps = 0
 
     for epoch in range(resume_epoch + 1, max_epochs + 1):
         training_dataloader = build_yolov8_detection_training_dataloader(
@@ -697,6 +700,8 @@ def run_yolov8_detection_training(
             ),
         )
         global_iteration = epoch_result.global_iteration
+        successful_optimizer_steps += epoch_result.successful_optimizer_steps
+        skipped_optimizer_steps += epoch_result.skipped_optimizer_steps
         train_metrics = build_yolo_completed_epoch_history_item(
             completed_epoch=epoch,
             metrics=epoch_result.train_metrics,
@@ -910,6 +915,11 @@ def run_yolov8_detection_training(
         if should_terminate_training:
             raise YoloV8DetectionTrainingTerminatedError()
 
+    require_yolo_successful_optimizer_step(
+        successful_optimizer_steps=successful_optimizer_steps,
+        skipped_optimizer_steps=skipped_optimizer_steps,
+        task_name="YOLOv8 detection",
+    )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = latest_checkpoint_bytes
     if validation_split is not None and best_metric_value == float("-inf"):
@@ -1032,6 +1042,8 @@ def run_yolov8_detection_training(
         "best_metric_value": round(best_metric_value, 6),
         "epoch_history": metrics_history,
         "final_metrics": metrics_history[-1] if metrics_history else {},
+        "optimizer_step_count": successful_optimizer_steps,
+        "amp_skipped_optimizer_step_count": skipped_optimizer_steps,
         "parameter_count": parameter_count,
         "warm_start": warm_start_summary,
         "optimizer": {
@@ -1056,7 +1068,10 @@ def run_yolov8_detection_training(
             "warmup_iterations": training_runtime.schedule.warmup_iterations,
             "warmup_momentum": training_runtime.schedule.warmup_momentum,
             "warmup_bias_lr": training_runtime.schedule.warmup_bias_lr,
-            "latest_learning_rate": float(optimizer.param_groups[0]["lr"]),
+            "latest_learning_rate": resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
         },
         "evaluation": {
             "split_name": validation_split_name,

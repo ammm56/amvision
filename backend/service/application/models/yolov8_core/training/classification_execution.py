@@ -492,7 +492,10 @@ def run_yolov8_classification_training(
                         global_iteration=global_iteration,
                         total_iterations=max_epochs * max_iterations,
                         input_size=input_size,
-                        learning_rate=float(scheduler.get_last_lr()[0]),
+                        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                            optimizer=optimizer,
+                            initial_learning_rate=training_schedule.initial_lr,
+                        ),
                         train_metrics={
                             "loss": round(float(loss.item()), 6),
                             "accuracy": round(
@@ -559,7 +562,10 @@ def run_yolov8_classification_training(
             evaluation_interval=evaluation_interval,
             validation_ran=should_evaluate,
             input_size=input_size,
-            learning_rate=float(scheduler.get_last_lr()[0]),
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
             train_metrics=dict(metrics_history[-1]),
             validation_metrics=(
                 dict(validation_history[-1]) if val_metrics else {}
@@ -625,7 +631,10 @@ def run_yolov8_classification_training(
                     best_metric_value=best_metric_value,
                     best_metric_name=best_metric_name,
                     epoch=epoch + 1,
-                    learning_rate=float(scheduler.get_last_lr()[0]),
+                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                        optimizer=optimizer,
+                        initial_learning_rate=training_schedule.initial_lr,
+                    ),
                     is_best=is_best,
                 )
             )
@@ -641,6 +650,9 @@ def run_yolov8_classification_training(
     ):
         best_checkpoint_bytes = request.previous_best_checkpoint_path.read_bytes()
     training_loader_lifecycle.close()
+    optimizer_step.require_successful_optimizer_step(
+        task_name=f"{request.model_type.upper()} classification",
+    )
     if not best_checkpoint_bytes:
         best_checkpoint_bytes = checkpoint_bytes
     test_metrics_payload = build_unavailable_test_metrics_report(

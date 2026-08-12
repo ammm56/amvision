@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from backend.service.application.models.yolo_core_common.losses.obb_loss import compute_obb_loss
@@ -12,6 +13,10 @@ from backend.service.application.models.yolo_core_common.model_builders import b
 from backend.service.application.models.yolo_core_common.geometry import build_yolo_letterbox_transform
 from backend.service.application.runtime.predictors.yolov8.obb.postprocess import (
     build_yolov8_obb_runtime_instances,
+)
+from backend.service.application.runtime.serialization.obb.prediction import (
+    deserialize_obb_instance,
+    serialize_obb_instance,
 )
 
 
@@ -90,8 +95,43 @@ def test_obb_prediction_array_postprocess():
     assert isinstance(instances, tuple)
     for inst in instances:
         assert len(inst.bbox_xyxy) == 4
+        assert len(inst.bbox_xywhr) == 5
         assert 0.0 <= inst.score <= 1.0
         assert inst.angle is not None
+
+
+def test_obb_runtime_keeps_canonical_rotated_box_geometry() -> None:
+    """外接 xyxy 不得覆盖模型解码得到的规范 xywhr。"""
+
+    prediction = np.array(
+        [[[128.0, 128.0, 100.0, 20.0, 0.9, np.pi / 4.0]]],
+        dtype=np.float32,
+    )
+    instances = build_yolov8_obb_runtime_instances(
+        np_module=np,
+        prediction_array=prediction,
+        labels=("component",),
+        score_threshold=0.3,
+        letterbox_transform=build_yolo_letterbox_transform(
+            source_width=256,
+            source_height=256,
+            input_size=(256, 256),
+        ),
+    )
+
+    assert len(instances) == 1
+    instance = instances[0]
+    assert instance.bbox_xywhr == pytest.approx(
+        (128.0, 128.0, 100.0, 20.0, np.pi / 4.0),
+        abs=1e-4,
+    )
+    assert instance.bbox_xyxy[2] - instance.bbox_xyxy[0] == pytest.approx(
+        84.8528,
+        abs=1e-3,
+    )
+    restored = deserialize_obb_instance(serialize_obb_instance(instance))
+    assert restored is not None
+    assert restored.bbox_xywhr == instance.bbox_xywhr
 
 
 def test_obb_runtime_contracts_importable():
