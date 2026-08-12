@@ -36,6 +36,8 @@ class Yolo11ClassificationTaskExecutionRequest(Protocol):
     previous_best_checkpoint_path: Path | None
     extra_options: dict[str, object] | None
     epoch_callback: Any
+    batch_callback: Any
+    control_callback: Any
     savepoint_callback: Any
 
 
@@ -69,6 +71,8 @@ def run_yolo11_classification_training_from_task_request(
             previous_best_checkpoint_path=request.previous_best_checkpoint_path,
             extra_options=request.extra_options,
             epoch_callback=_build_yolo11_epoch_callback(request),
+            batch_callback=request.batch_callback,
+            control_callback=request.control_callback,
             savepoint_callback=_build_yolo11_savepoint_callback(request),
         )
     )
