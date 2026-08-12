@@ -98,7 +98,12 @@ def test_visual_prompt_detect_returns_detection_payload_and_summary(
             )
 
     def _fake_get_or_create_session(
-        *, model_series: str, model_scale: str, device: str, precision: str
+        *,
+        model_series: str,
+        model_scale: str,
+        device: str,
+        precision: str,
+        request=None,
     ):
         captured["session_kwargs"] = {
             "model_series": model_series,

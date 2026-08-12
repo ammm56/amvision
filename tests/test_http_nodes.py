@@ -32,7 +32,7 @@ def test_http_request_builds_request_from_result_and_request_context(
             request=request,
         )
 
-    monkeypatch.setattr(http_runtime.httpx, "request", _fake_request)
+    monkeypatch.setattr(http_runtime, "execute_bounded_http_request", _fake_request)
 
     output = http_request.handle_node(
         WorkflowNodeExecutionRequest(
@@ -162,7 +162,7 @@ def test_http_request_sends_value_input_as_default_json_body(
             request=request,
         )
 
-    monkeypatch.setattr(http_runtime.httpx, "request", _fake_request)
+    monkeypatch.setattr(http_runtime, "execute_bounded_http_request", _fake_request)
 
     output = http_request.handle_node(
         WorkflowNodeExecutionRequest(
@@ -205,7 +205,7 @@ def test_http_request_supports_skip_and_null_mapping_policy(
             request=request,
         )
 
-    monkeypatch.setattr(http_runtime.httpx, "request", _fake_request)
+    monkeypatch.setattr(http_runtime, "execute_bounded_http_request", _fake_request)
 
     output = http_request.handle_node(
         WorkflowNodeExecutionRequest(

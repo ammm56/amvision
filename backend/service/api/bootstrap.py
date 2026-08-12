@@ -892,6 +892,7 @@ class BackendServiceBootstrap(
             if model_session_manager is not None:
                 model_session_manager.close_all()
         finally:
+            runtime.workflow_service_node_runtime_context.close()
             storage_image_cache = (
                 runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
             )

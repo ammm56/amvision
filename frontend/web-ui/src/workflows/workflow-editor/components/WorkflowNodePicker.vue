@@ -66,6 +66,22 @@
       </nav>
 
       <section class="workflow-node-picker__nodes" :aria-label="t('workflowEditor.nodePicker.resultAria')">
+        <div v-if="barcodeDecodeDefinitions.length > 0" class="workflow-node-picker__barcode-family">
+          <strong>{{ readNodeCategoryLabel('barcode.decode') }}</strong>
+          <span>Format preset</span>
+          <select v-model="selectedBarcodeNodeTypeId" @keydown.enter.stop>
+            <option
+              v-for="definition in barcodeDecodeDefinitions"
+              :key="definition.node_type_id"
+              :value="definition.node_type_id"
+            >
+              {{ readDefinitionDisplayName(definition) }}
+            </option>
+          </select>
+          <button type="button" @click="selectBarcodeDefinition">
+            {{ t('workflowEditor.nodePicker.addNode') }}
+          </button>
+        </div>
         <button
           v-for="definition in visibleNodes"
           :key="definition.node_type_id"
@@ -78,7 +94,7 @@
           <p v-if="readDefinitionDescription(definition)">{{ readDefinitionDescription(definition) }}</p>
           <small>{{ definition.node_type_id }}</small>
         </button>
-        <div v-if="visibleNodes.length === 0" class="workflow-node-picker__empty">
+        <div v-if="visibleNodes.length === 0 && barcodeDecodeDefinitions.length === 0" class="workflow-node-picker__empty">
           {{ t('workflowEditor.nodePicker.empty') }}
         </div>
       </section>
@@ -150,6 +166,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const searchQuery = ref('')
 const activeSourceId = ref('')
 const activeCategoryId = ref('')
+const selectedBarcodeNodeTypeId = ref('')
 const { t, locale } = useI18n()
 const currentLocale = computed(() => (typeof locale.value === 'string' ? locale.value : 'en-US') as SupportedLocale)
 const nodePickerWidth = 860
@@ -261,11 +278,17 @@ const categoryRows = computed<CategoryRow[]>(() => {
 
 const selectedCategory = computed(() => categoryGroups.value.find((category) => category.id === activeCategoryId.value) ?? categoryGroups.value[0] ?? null)
 
+const barcodeDecodeDefinitions = computed(() => {
+  if (searchQuery.value || selectedCategory.value?.id !== 'barcode.decode') return []
+  return selectedCategory.value.definitions
+})
+
 const visibleNodes = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   const baseDefinitions = query ? (selectedSource.value?.definitions ?? []) : (selectedCategory.value?.definitions ?? [])
+  if (!query && selectedCategory.value?.id === 'barcode.decode') return []
   if (!query) return baseDefinitions
-  return baseDefinitions.filter((definition) => buildSearchText(definition).includes(query)).slice(0, 80)
+  return baseDefinitions.filter((definition) => buildSearchText(definition).includes(query))
 })
 
 watch(sourceGroups, (groups) => {
@@ -277,6 +300,12 @@ watch(sourceGroups, (groups) => {
 watch(categoryGroups, (groups) => {
   if (!groups.some((group) => group.id === activeCategoryId.value)) {
     activeCategoryId.value = groups[0]?.id ?? ''
+  }
+}, { immediate: true })
+
+watch(barcodeDecodeDefinitions, (definitions) => {
+  if (!definitions.some((definition) => definition.node_type_id === selectedBarcodeNodeTypeId.value)) {
+    selectedBarcodeNodeTypeId.value = definitions[0]?.node_type_id ?? ''
   }
 }, { immediate: true })
 
@@ -296,6 +325,10 @@ function selectSource(sourceId: string): void {
 }
 
 function selectFirstVisibleNode(): void {
+  if (barcodeDecodeDefinitions.value.length > 0) {
+    selectBarcodeDefinition()
+    return
+  }
   const definition = visibleNodes.value[0]
   if (definition) emit('select', definition)
 }
@@ -331,6 +364,13 @@ function readDefinitionDisplayName(definition: NodeDefinition): string {
 
 function readDefinitionDescription(definition: NodeDefinition): string {
   return resolveNodeDefinitionDescription(definition, currentLocale.value)
+}
+
+function selectBarcodeDefinition(): void {
+  const definition = barcodeDecodeDefinitions.value.find(
+    (item) => item.node_type_id === selectedBarcodeNodeTypeId.value,
+  )
+  if (definition) emit('select', definition)
 }
 
 function formatNodePackLabel(packId: string): string {

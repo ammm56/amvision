@@ -17,6 +17,10 @@ from backend.nodes.core_nodes.support.local_io import (
     resolve_value_or_result_input,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.runtime.io import (
+    acquire_path_write_locks,
+    atomic_write_bytes,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -32,9 +36,19 @@ def _json_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str,
     )
     payload_value, source_kind = resolve_value_or_result_input(request)
     indent = _read_indent(request.parameters.get("indent"))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_text = json.dumps(payload_value, ensure_ascii=False, indent=indent)
-    output_path.write_text(output_text, encoding="utf-8")
+    with acquire_path_write_locks(request, (output_path,)):
+        try:
+            atomic_write_bytes(
+                output_path,
+                output_text.encode("utf-8"),
+                overwrite=overwrite,
+            )
+        except FileExistsError as exc:
+            raise InvalidRequestError(
+                "本地 JSON 输出文件已存在且 overwrite=false",
+                details={"local_path": str(output_path)},
+            ) from exc
     return {
         "summary": build_local_file_summary(
             local_path=output_path,

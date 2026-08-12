@@ -9,6 +9,12 @@ from types import ModuleType
 from backend.service.application.workflows.runtime_registry_loader import (
     NodePackEntrypointRegistrationContext,
 )
+from custom_nodes.barcode_nodes.shared.backend.runtime.decode import (
+    build_registered_decode_handler,
+)
+from custom_nodes.barcode_nodes.shared.backend.runtime.presets import (
+    list_barcode_decode_presets,
+)
 
 
 def _load_node_modules() -> tuple[ModuleType, ...]:
@@ -18,6 +24,8 @@ def _load_node_modules() -> tuple[ModuleType, ...]:
     modules: list[ModuleType] = []
     for nodes_dir in sorted(categories_dir.glob("*/backend/nodes")):
         category_name = nodes_dir.parents[1].name
+        if category_name == "decode":
+            continue
         for module_path in sorted(nodes_dir.glob("*.py")):
             if module_path.stem == "__init__" or module_path.stem.startswith("_"):
                 continue
@@ -34,6 +42,12 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     """注册 Barcode 包内全部分类节点。"""
 
     registered_node_type_ids: set[str] = set()
+    for preset in list_barcode_decode_presets():
+        context.register_python_callable(
+            preset.node_type_id,
+            build_registered_decode_handler(node_type_id=preset.node_type_id),
+        )
+        registered_node_type_ids.add(preset.node_type_id)
     for module in _load_node_modules():
         node_type_id = getattr(module, "NODE_TYPE_ID", None)
         handler = getattr(module, "handle_node", None)

@@ -96,7 +96,7 @@
     ]
   },
   "node_pack_id": "barcode.nodes",
-  "node_pack_version": "0.1.0",
+  "node_pack_version": "0.1.3",
   "metadata": {
     "family": "matrix",
     "variant": "pdf417",

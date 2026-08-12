@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from custom_nodes.barcode_nodes.shared.backend.runtime.decode import build_decode_handler
+from custom_nodes.barcode_nodes.shared.backend.runtime.decode import build_registered_decode_handler
 
 
 NODE_TYPE_ID = "custom.barcode.ean5-decode"
 
 
-handle_node = build_decode_handler(format_member_name="EAN5", requested_format="EAN-5")
+handle_node = build_registered_decode_handler(node_type_id=NODE_TYPE_ID)

@@ -114,6 +114,20 @@ def build_decode_handler(*, format_member_name: str, requested_format: str):
     return _handle_node
 
 
+def build_registered_decode_handler(*, node_type_id: str):
+    """从唯一 preset registry 构造指定公开节点 ID 的 decode handler。"""
+
+    from custom_nodes.barcode_nodes.shared.backend.runtime.presets import (
+        get_barcode_decode_preset,
+    )
+
+    preset = get_barcode_decode_preset(node_type_id)
+    return build_decode_handler(
+        format_member_name=preset.format_member_name,
+        requested_format=preset.requested_format,
+    )
+
+
 def _build_barcode_item(*, index: int, barcode: object) -> dict[str, object]:
     """把单个 zxingcpp Barcode 结果规范化为 JSON 安全结构。
 

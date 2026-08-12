@@ -5,9 +5,16 @@ from __future__ import annotations
 import pytest
 
 from backend.contracts.workflows.workflow_graph import WorkflowPayloadContract
-from backend.nodes.core_catalog import get_core_workflow_payload_contracts
+from backend.nodes.core_catalog import (
+    get_core_workflow_node_definitions,
+    get_core_workflow_payload_contracts,
+)
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodeCatalogSnapshot
+from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.workflows.execution.registry import (
+    WorkflowNodeRuntimeRegistry,
+)
 
 
 class _CatalogLoader:
@@ -61,3 +68,65 @@ def test_node_catalog_registry_rejects_duplicate_payload_contract_with_different
 
     with pytest.raises(ValueError, match="定义不一致"):
         registry.get_catalog_snapshot()
+
+
+def test_node_catalog_registry_keeps_one_copy_for_identical_node_definition() -> None:
+    """验证 custom 重复声明相同节点时统一目录只保留一份。"""
+
+    core_definition = get_core_workflow_node_definitions()[0]
+    registry = NodeCatalogRegistry(
+        node_pack_loader=_CatalogLoader(
+            NodeCatalogSnapshot(node_definitions=(core_definition,))
+        )
+    )
+
+    definitions = registry.get_workflow_node_definitions()
+
+    assert sum(
+        definition.node_type_id == core_definition.node_type_id
+        for definition in definitions
+    ) == 1
+
+
+def test_node_catalog_registry_rejects_conflicting_node_definition() -> None:
+    """验证 custom 节点不能使用相同 id 覆盖 core 节点。"""
+
+    core_definition = get_core_workflow_node_definitions()[0]
+    conflicting_definition = core_definition.model_copy(
+        update={"display_name": f"{core_definition.display_name} Conflict"}
+    )
+    registry = NodeCatalogRegistry(
+        node_pack_loader=_CatalogLoader(
+            NodeCatalogSnapshot(node_definitions=(conflicting_definition,))
+        )
+    )
+
+    with pytest.raises(ValueError, match="节点定义存在重复"):
+        registry.get_catalog_snapshot()
+
+
+def test_runtime_registry_rejects_definition_and_handler_overrides() -> None:
+    """验证运行时注册允许幂等调用，但拒绝定义和 handler 静默覆盖。"""
+
+    definition = next(
+        item
+        for item in get_core_workflow_node_definitions()
+        if item.runtime_kind == "python-callable"
+    )
+    registry = WorkflowNodeRuntimeRegistry()
+    registry.register_node_definition(definition)
+    registry.register_node_definition(definition)
+
+    with pytest.raises(ServiceConfigurationError, match="冲突定义"):
+        registry.register_node_definition(
+            definition.model_copy(
+                update={"display_name": f"{definition.display_name} Conflict"}
+            )
+        )
+
+    handler = lambda request: {}  # noqa: E731 - 测试需要稳定 callable identity
+    registry.register_python_callable(definition, handler)
+    registry.register_python_callable(definition, handler)
+
+    with pytest.raises(ServiceConfigurationError, match="处理函数重复注册"):
+        registry.register_python_callable(definition, lambda request: {})

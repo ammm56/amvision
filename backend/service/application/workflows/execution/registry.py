@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from backend.contracts.workflows.workflow_graph import NODE_IMPLEMENTATION_CUSTOM, NodeDefinition
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
 from backend.service.application.workflows.execution.contracts import WorkflowNodeExecutionRequest
+from backend.nodes.concurrency_policy import apply_inferred_concurrency_policy
+from backend.nodes.definition_metadata import enrich_node_definition_metadata
 from backend.service.application.workflows.execution.custom_node_policy import (
     CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
     CustomNodeHardTimeoutGuard,
@@ -38,9 +40,21 @@ class WorkflowNodeRuntimeRegistry:
         self._model_session_required_permissions: dict[str, tuple[str, ...]] = {}
 
     def register_node_definition(self, node_definition: NodeDefinition) -> None:
-        """只注册节点定义，不附带处理函数。"""
+        """幂等注册节点定义，并拒绝同 id 的冲突定义。"""
 
-        self._node_definitions[node_definition.node_type_id] = node_definition
+        node_definition = apply_inferred_concurrency_policy(node_definition)
+        node_definition = enrich_node_definition_metadata(node_definition)
+        existing_definition = self._node_definitions.get(node_definition.node_type_id)
+        if existing_definition is None:
+            self._node_definitions[node_definition.node_type_id] = node_definition
+            return
+        if existing_definition.model_dump(mode="json") != node_definition.model_dump(
+            mode="json"
+        ):
+            raise ServiceConfigurationError(
+                "节点运行时注册表存在冲突定义",
+                details={"node_type_id": node_definition.node_type_id},
+            )
 
     def clear(self) -> None:
         """清空当前注册表中的节点定义与处理函数。"""
@@ -70,6 +84,12 @@ class WorkflowNodeRuntimeRegistry:
             custom_node_policy=custom_node_policy,
             required_permission_scopes=required_permission_scopes,
         )
+        existing_provider = self._model_session_providers.get(loader_node_type_id)
+        if existing_provider is not None and existing_provider is not provider:
+            raise ServiceConfigurationError(
+                "模型 session provider 重复注册",
+                details={"node_type_id": loader_node_type_id},
+            )
         self._model_session_providers[loader_node_type_id] = provider
         self._model_session_required_permissions[loader_node_type_id] = (
             normalized_scopes
@@ -127,6 +147,14 @@ class WorkflowNodeRuntimeRegistry:
                 details={"node_type_id": node_definition.node_type_id},
             )
         self.register_node_definition(node_definition)
+        existing_handler = self._python_callable_handlers.get(
+            node_definition.node_type_id
+        )
+        if existing_handler is not None and existing_handler is not handler:
+            raise ServiceConfigurationError(
+                "python-callable 节点处理函数重复注册",
+                details={"node_type_id": node_definition.node_type_id},
+            )
         self._python_callable_handlers[node_definition.node_type_id] = handler
         self._register_custom_node_policy(node_definition, custom_node_policy)
         self._custom_node_required_permissions[node_definition.node_type_id] = (
@@ -153,6 +181,12 @@ class WorkflowNodeRuntimeRegistry:
                 details={"node_type_id": node_definition.node_type_id},
             )
         self.register_node_definition(node_definition)
+        existing_handler = self._worker_task_handlers.get(node_definition.node_type_id)
+        if existing_handler is not None and existing_handler is not handler:
+            raise ServiceConfigurationError(
+                "worker-task 节点处理函数重复注册",
+                details={"node_type_id": node_definition.node_type_id},
+            )
         self._worker_task_handlers[node_definition.node_type_id] = handler
         self._register_custom_node_policy(node_definition, custom_node_policy)
         self._custom_node_required_permissions[node_definition.node_type_id] = (

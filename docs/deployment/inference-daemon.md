@@ -43,9 +43,9 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 - 普通 HTTP 上传或 storage image-ref 继续使用 ObjectStore 引用，适合低频调用和可追溯输入。
 - 热路径禁止 inline image bytes、base64、PNG 临时编码和 `runtime/inputs/inference-control/` 临时图片。
 
-mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 generation、deadline 和 CRC32；超时或调用进程崩溃后的槽位由 daemon 回收。
+mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon `server_epoch`、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的槽位由 daemon 回收。
 
-槽位使用两阶段发布：先写完 body、generation、deadline、长度和 CRC32，最后单独发布 `REQUEST` 或 `RESPONSE` state。`REQUEST -> PROCESSING`、deadline 取消和 `PROCESSING -> RESPONSE` 使用同一跨进程 guard 串行化，避免扫描线程读取半写入 header，也避免取消状态被迟到响应覆盖。generation 不一致属于协议错误，不使用业务重试掩盖。
+槽位使用两阶段发布：先写完 body、generation、owner token、deadline、长度和 CRC32，最后单独发布 `REQUEST` 或 `RESPONSE` state。请求发布、`REQUEST -> PROCESSING`、deadline 取消、`PROCESSING -> RESPONSE` 和 client ACK/释放使用同一跨进程 guard 串行化。daemon 对 mailbox 持有生命周期单实例锁，禁止重叠 daemon 清空仍在使用的槽位；daemon 重启会改变 `server_epoch`，在途请求返回可重试取消错误，不会被误判为同一代请求。当前只维护这一套协议结构，不提供旧布局解析或双协议运行分支。
 
 ### mmap mailbox 配置
 

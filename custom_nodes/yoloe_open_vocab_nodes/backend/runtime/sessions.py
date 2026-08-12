@@ -1,109 +1,69 @@
-"""YOLOE project-native runtime session 缓存。"""
+"""YOLOE runtime session 创建与释放入口。"""
 
 from __future__ import annotations
 
-from threading import Lock
 from typing import Any
 
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.prompt_free import (
+    YoloePromptFreeRuntimeSession,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.text_prompt import (
+    YoloeTextPromptRuntimeSession,
+)
+from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.visual_prompt import (
+    YoloeVisualPromptRuntimeSession,
+)
 
-_PROMPT_FREE_RUNTIME_CACHE: dict[tuple[str, str, str], Any] = {}
-_PROMPT_FREE_RUNTIME_CACHE_LOCK = Lock()
-_TEXT_PROMPT_RUNTIME_CACHE: dict[tuple[str, str, str], Any] = {}
-_TEXT_PROMPT_RUNTIME_CACHE_LOCK = Lock()
-_VISUAL_PROMPT_RUNTIME_CACHE: dict[tuple[str, str, str], Any] = {}
-_VISUAL_PROMPT_RUNTIME_CACHE_LOCK = Lock()
 
+def create_text_prompt_runtime_session(
+    *, variant: Any, device_name: str, precision: str
+) -> object:
+    """创建一个 YOLOE text-prompt runtime session。"""
 
-def get_or_create_prompt_free_runtime_session(
-    *,
-    variant: Any,
-    device_name: str,
-    precision: str,
-) -> Any:
-    """返回可复用的 YOLOE prompt-free project-native 会话。"""
-
-    from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.prompt_free import (
-        YoloePromptFreeRuntimeSession,
+    return YoloeTextPromptRuntimeSession.load(
+        variant=variant,
+        device_name=device_name,
+        precision=precision,
     )
 
-    cache_key = _build_runtime_cache_key(variant=variant, device_name=device_name, precision=precision)
-    with _PROMPT_FREE_RUNTIME_CACHE_LOCK:
-        cached_session = _PROMPT_FREE_RUNTIME_CACHE.get(cache_key)
-        if cached_session is not None:
-            return cached_session
-        runtime_session = YoloePromptFreeRuntimeSession.load(
-            variant=variant,
-            device_name=device_name,
-            precision=precision,
-        )
-        _PROMPT_FREE_RUNTIME_CACHE[cache_key] = runtime_session
-        return runtime_session
 
+def create_prompt_free_runtime_session(
+    *, variant: Any, device_name: str, precision: str
+) -> object:
+    """创建一个 YOLOE prompt-free runtime session。"""
 
-def get_or_create_text_prompt_runtime_session(
-    *,
-    variant: Any,
-    device_name: str,
-    precision: str,
-) -> Any:
-    """返回可复用的 YOLOE text-prompt project-native 会话。"""
-
-    from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.text_prompt import (
-        YoloeTextPromptRuntimeSession,
+    return YoloePromptFreeRuntimeSession.load(
+        variant=variant,
+        device_name=device_name,
+        precision=precision,
     )
 
-    cache_key = _build_runtime_cache_key(variant=variant, device_name=device_name, precision=precision)
-    with _TEXT_PROMPT_RUNTIME_CACHE_LOCK:
-        cached_session = _TEXT_PROMPT_RUNTIME_CACHE.get(cache_key)
-        if cached_session is not None:
-            return cached_session
-        runtime_session = YoloeTextPromptRuntimeSession.load(
-            variant=variant,
-            device_name=device_name,
-            precision=precision,
-        )
-        _TEXT_PROMPT_RUNTIME_CACHE[cache_key] = runtime_session
-        return runtime_session
 
+def create_visual_prompt_runtime_session(
+    *, variant: Any, device_name: str, precision: str
+) -> object:
+    """创建一个 YOLOE visual-prompt runtime session。"""
 
-def get_or_create_visual_prompt_runtime_session(
-    *,
-    variant: Any,
-    device_name: str,
-    precision: str,
-) -> Any:
-    """返回可复用的 YOLOE visual-prompt project-native 会话。"""
-
-    from custom_nodes.yoloe_open_vocab_nodes.backend.runtime.visual_prompt import (
-        YoloeVisualPromptRuntimeSession,
+    return YoloeVisualPromptRuntimeSession.load(
+        variant=variant,
+        device_name=device_name,
+        precision=precision,
     )
 
-    cache_key = _build_runtime_cache_key(variant=variant, device_name=device_name, precision=precision)
-    with _VISUAL_PROMPT_RUNTIME_CACHE_LOCK:
-        cached_session = _VISUAL_PROMPT_RUNTIME_CACHE.get(cache_key)
-        if cached_session is not None:
-            return cached_session
-        runtime_session = YoloeVisualPromptRuntimeSession.load(
-            variant=variant,
-            device_name=device_name,
-            precision=precision,
-        )
-        _VISUAL_PROMPT_RUNTIME_CACHE[cache_key] = runtime_session
-        return runtime_session
 
+def close_runtime_session(session: object) -> None:
+    """释放一个 YOLOE session 持有的模型设备资源。"""
 
-def _build_runtime_cache_key(*, variant: Any, device_name: str, precision: str) -> tuple[str, str, str]:
-    """构建 runtime session 缓存键。"""
-
-    return (
-        str(variant.checkpoint_path),
-        str(device_name).strip().lower(),
-        str(precision).strip().lower(),
-    )
+    model = getattr(session, "model", None)
+    if model is not None:
+        move_to_cpu = getattr(model, "cpu", None)
+        if callable(move_to_cpu):
+            move_to_cpu()
 
 
 __all__ = [
-    "get_or_create_prompt_free_runtime_session",
-    "get_or_create_text_prompt_runtime_session",
-    "get_or_create_visual_prompt_runtime_session",
+    "close_runtime_session",
+    "create_prompt_free_runtime_session",
+    "create_text_prompt_runtime_session",
+    "create_visual_prompt_runtime_session",
 ]

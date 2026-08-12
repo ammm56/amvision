@@ -5,15 +5,18 @@ import { pathToFileURL } from 'node:url'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
+const projectDirectory = import.meta.dirname
 const packageJson = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
+  fs.readFileSync(path.resolve(projectDirectory, 'package.json'), 'utf-8'),
 ) as { version?: string }
 
 const frontendVersion =
   typeof packageJson.version === 'string' && packageJson.version.trim()
     ? packageJson.version.trim()
     : '0.0.0'
-const vitestSetupFile = pathToFileURL(path.resolve(__dirname, 'vitest.setup.ts')).href
+const vitestSetupFile = pathToFileURL(
+  path.resolve(projectDirectory, 'vitest.setup.ts'),
+).href
 
 export default defineConfig({
   plugins: [vue()],
@@ -22,8 +25,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@litegraph': path.resolve(__dirname, 'src/lib/litegraph/src'),
-      '@': path.resolve(__dirname, 'src'),
+      '@litegraph': path.resolve(projectDirectory, 'src/lib/litegraph/src'),
+      '@': path.resolve(projectDirectory, 'src'),
     },
   },
   build: {

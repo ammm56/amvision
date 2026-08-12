@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_PYTHON_CALLABLE,
@@ -21,6 +19,9 @@ from backend.nodes.core_nodes.support.service import (
     require_workflow_service_node_runtime,
 )
 from backend.service.application.errors import OperationTimeoutError
+from backend.service.application.workflows.execution.execution_control import (
+    build_node_execution_control,
+)
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
@@ -48,13 +49,20 @@ def _task_wait_handler(request: WorkflowNodeExecutionRequest) -> dict[str, objec
         )
 
     task_id = require_str_parameter(request, "task_id")
-    deadline = time.monotonic() + timeout_seconds
+    execution_control = build_node_execution_control(
+        request,
+        operation_timeout_seconds=timeout_seconds,
+    )
+    execution_control.raise_if_cancelled_or_expired()
     task_service = runtime_context.build_task_service()
     while True:
+        execution_control.raise_if_cancelled_or_expired()
         task_detail = task_service.get_task(task_id, include_events=False if include_events is None else include_events)
         if task_detail.task.state in TASK_TERMINAL_STATES:
             return build_response_body_output(build_task_detail_body(task_detail))
-        remaining_seconds = deadline - time.monotonic()
+        remaining_seconds = execution_control.remaining_seconds()
+        if remaining_seconds is None:
+            remaining_seconds = timeout_seconds
         if remaining_seconds <= 0:
             raise OperationTimeoutError(
                 "等待任务进入终态超时",
@@ -65,7 +73,9 @@ def _task_wait_handler(request: WorkflowNodeExecutionRequest) -> dict[str, objec
                     "current_state": task_detail.task.state,
                 },
             )
-        time.sleep(min(poll_interval_seconds, max(remaining_seconds, 0.01)))
+        execution_control.wait_interruptibly(
+            min(poll_interval_seconds, max(remaining_seconds, 0.01))
+        )
 
 
 CORE_NODE_SPEC = CoreNodeSpec(

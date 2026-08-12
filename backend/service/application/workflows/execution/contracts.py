@@ -34,6 +34,7 @@ class WorkflowNodeExecutionRequest:
     process_isolation: str | None = None
     timeout_action: str | None = None
     node_cancellation_event: object | None = None
+    node_invocation_id: str | None = None
 
 
 @dataclass(frozen=True)

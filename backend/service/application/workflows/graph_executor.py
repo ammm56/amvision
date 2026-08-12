@@ -300,6 +300,7 @@ class WorkflowGraphExecutor:
                     input_values=resolved_inputs,
                     execution_metadata=execution_metadata_payload,
                     runtime_context=runtime_context,
+                    node_invocation_id=f"{node_id}:{execution_index}",
                 )
                 try:
                     raw_outputs = invoke_with_parallel_safety(
@@ -790,6 +791,7 @@ class WorkflowGraphExecutor:
                     input_values=resolved_end_inputs,
                     execution_metadata=execution_metadata,
                     runtime_context=runtime_context,
+                    node_invocation_id=f"{end_node.node_id}:parallel-end",
                 )
             )
         )
@@ -1112,6 +1114,7 @@ class WorkflowGraphExecutor:
                 input_values=resolved_inputs,
                 execution_metadata=execution_metadata,
                 runtime_context=runtime_context,
+                node_invocation_id=iteration_node_id,
             )
             execution_index = len(node_records) + 1
             emit_node_event(

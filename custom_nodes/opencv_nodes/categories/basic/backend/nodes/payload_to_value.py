@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.payload_adapters import PAYLOAD_ADAPTER_REGISTRY
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -20,29 +21,24 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     - dict[str, object]：包装后的 value payload。
     """
 
-    supported_ports = (
-        "contours",
-        "measurements",
-        "rotated_rects",
-        "lines",
-        "circles",
-        "ellipses",
-        "regions",
-        "features",
-        "matches",
-        "planar_transform",
-    )
-    candidate_values: list[tuple[str, dict[str, object]]] = []
-    for port_name in supported_ports:
+    contract_by_port = {
+        "contours": "contours.v1",
+        "measurements": "measurements.v1",
+        "rotated_rects": "rotated-rects.v1",
+        "lines": "lines.v1",
+        "circles": "circles.v1",
+        "ellipses": "ellipses.v1",
+        "regions": "regions.v1",
+        "features": "local-features.v1",
+        "matches": "feature-matches.v1",
+        "planar_transform": "planar-transform.v1",
+    }
+    candidate_values: list[tuple[str, str, object]] = []
+    for port_name, source_contract in contract_by_port.items():
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
-        if not isinstance(raw_payload, dict):
-            raise InvalidRequestError(
-                "opencv payload-to-value 节点要求输入 payload 必须是对象",
-                details={"node_id": request.node_id, "port_name": port_name},
-            )
-        candidate_values.append((port_name, dict(raw_payload)))
+        candidate_values.append((port_name, source_contract, raw_payload))
 
     if not candidate_values:
         raise InvalidRequestError(
@@ -52,6 +48,13 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     if len(candidate_values) > 1:
         raise InvalidRequestError(
             "opencv payload-to-value 节点一次只能连接一个输入端口",
-            details={"node_id": request.node_id, "connected_ports": [name for name, _ in candidate_values]},
+            details={"node_id": request.node_id, "connected_ports": [name for name, _, _ in candidate_values]},
         )
-    return {"value": build_value_payload(candidate_values[0][1])}
+    _port_name, source_contract, payload = candidate_values[0]
+    converted = PAYLOAD_ADAPTER_REGISTRY.convert(
+        source_contract,
+        "value.v1",
+        payload,
+        request=request,
+    )
+    return {"value": build_value_payload(converted)}

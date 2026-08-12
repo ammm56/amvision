@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from time import perf_counter, sleep
+from time import monotonic_ns, perf_counter, sleep
 
 import pytest
 
@@ -32,7 +33,11 @@ from backend.service.application.runtime.deployment.inference_local_mmap import 
     InferenceLocalMmapClient,
     InferenceLocalMmapServer,
 )
-from backend.service.application.errors import InvalidRequestError, OperationTimeoutError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+)
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
     LocalBufferBrokerPoolSettings,
@@ -472,6 +477,34 @@ def test_local_mmap_client_mapping_survives_daemon_server_restart(
         second_server.stop()
 
 
+def test_local_mmap_rejects_second_server_for_same_mailbox(tmp_path: Path) -> None:
+    """验证同一 mailbox 只能由一个 daemon 实例初始化和回收。"""
+
+    mmap_path = tmp_path / "single-server" / "inference.mmap"
+    first_server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda payload: {"value": payload.get("value")},
+        slot_count=4,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=2,
+    )
+    second_server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda payload: {"value": payload.get("value")},
+        slot_count=4,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=2,
+    )
+
+    first_server.start()
+    try:
+        with pytest.raises(ServiceConfigurationError, match="另一个 daemon"):
+            second_server.start()
+    finally:
+        second_server.stop()
+        first_server.stop()
+
+
 def test_local_mmap_timeout_slot_is_reclaimed_for_next_request(tmp_path: Path) -> None:
     """验证超时中的 handler 完成后回收 slot，不污染后续推理。"""
 
@@ -502,6 +535,47 @@ def test_local_mmap_timeout_slot_is_reclaimed_for_next_request(tmp_path: Path) -
         sleep(0.25)
         response = client.request({"value": "next"})
         assert response["result"] == {"value": "next"}
+    finally:
+        client.close()
+        server.stop()
+
+
+def test_local_mmap_reclaims_expired_claim_before_request_publication(
+    tmp_path: Path,
+) -> None:
+    """验证 client 发布前崩溃留下的过期 FREE slot 锁不会永久降低容量。"""
+
+    mmap_path = tmp_path / "abandoned-claim" / "inference.mmap"
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda payload: {"value": payload.get("value")},
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    lock_path = mmap_path.with_name(f"{mmap_path.name}.slot-0.lock")
+    lock_path.write_text(
+        json.dumps(
+            {
+                "pid": 999999,
+                "owner_token": 1,
+                "server_epoch": 1,
+                "deadline_ns": monotonic_ns() - 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    try:
+        assert client.request({"value": "recovered"})["result"] == {
+            "value": "recovered"
+        }
     finally:
         client.close()
         server.stop()

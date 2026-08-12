@@ -9,8 +9,8 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.core_nodes.support.logic import build_value_payload, require_boolean_payload, require_value_payload
-from backend.nodes.core_nodes.support.roi import require_roi_list_payload, require_roi_payload
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.payload_adapters import PAYLOAD_ADAPTER_REGISTRY
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
@@ -25,47 +25,30 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     - dict[str, object]：包装后的 value payload。
     """
 
-    candidate_values: list[tuple[str, object]] = []
-
-    value_payload = request.input_values.get("value")
-    if value_payload is not None:
-        candidate_values.append(("value", require_value_payload(value_payload, field_name="value")["value"]))
-
-    boolean_payload = request.input_values.get("boolean")
-    if boolean_payload is not None:
-        candidate_values.append(("boolean", require_boolean_payload(boolean_payload, field_name="boolean")["value"]))
-
-    roi_payload = request.input_values.get("roi")
-    if roi_payload is not None:
-        candidate_values.append(("roi", require_roi_payload(roi_payload, node_id=request.node_id)))
-
-    roi_list_payload = request.input_values.get("rois")
-    if roi_list_payload is not None:
-        candidate_values.append(("rois", require_roi_list_payload(roi_list_payload, node_id=request.node_id)["items"]))
-
-    for port_name in (
-        "result",
-        "body",
-        "prompts",
-        "detections",
-        "segments",
-        "categories",
-        "poses",
-        "obbs",
-        "video",
-        "frames",
-        "tracks",
-        "regions",
-    ):
+    contract_by_port = {
+        "value": "value.v1",
+        "boolean": "boolean.v1",
+        "roi": "roi.v1",
+        "rois": "roi-list.v1",
+        "result": "result-record.v1",
+        "body": "response-body.v1",
+        "prompts": "prompt-regions.v1",
+        "detections": "detections.v1",
+        "segments": "segments.v1",
+        "categories": "categories.v1",
+        "poses": "poses.v1",
+        "obbs": "obbs.v1",
+        "video": "video-ref.v1",
+        "frames": "frame-window.v1",
+        "tracks": "tracks.v1",
+        "regions": "regions.v1",
+    }
+    candidate_values: list[tuple[str, str, object]] = []
+    for port_name, source_contract in contract_by_port.items():
         raw_payload = request.input_values.get(port_name)
         if raw_payload is None:
             continue
-        if not isinstance(raw_payload, dict):
-            raise InvalidRequestError(
-                "payload-to-value 节点要求结构化输入必须是对象",
-                details={"node_id": request.node_id, "port_name": port_name},
-            )
-        candidate_values.append((port_name, dict(raw_payload)))
+        candidate_values.append((port_name, source_contract, raw_payload))
 
     if not candidate_values:
         raise InvalidRequestError(
@@ -75,10 +58,17 @@ def _payload_to_value_handler(request: WorkflowNodeExecutionRequest) -> dict[str
     if len(candidate_values) > 1:
         raise InvalidRequestError(
             "payload-to-value 节点一次只能连接一个输入端口",
-            details={"node_id": request.node_id, "connected_ports": [name for name, _ in candidate_values]},
+            details={"node_id": request.node_id, "connected_ports": [name for name, _, _ in candidate_values]},
         )
 
-    return {"value": build_value_payload(candidate_values[0][1])}
+    _port_name, source_contract, payload = candidate_values[0]
+    converted = PAYLOAD_ADAPTER_REGISTRY.convert(
+        source_contract,
+        "value.v1",
+        payload,
+        request=request,
+    )
+    return {"value": build_value_payload(converted)}
 
 
 CORE_NODE_SPEC = CoreNodeSpec(

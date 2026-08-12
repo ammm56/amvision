@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import httpx
 
+from custom_nodes.http_nodes.categories.request.backend.runtime.transport import (
+    execute_bounded_http_request,
+)
+
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import OperationTimeoutError, ServiceError
 from backend.service.application.workflows.graph_executor import (
@@ -140,7 +144,8 @@ def execute_http_request_node(
     )
 
     try:
-        response = httpx.request(
+        response = execute_bounded_http_request(
+            request=request,
             method=method,
             url=url,
             params=query_payload or None,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
@@ -20,6 +21,12 @@ from backend.nodes.core_nodes.support.local_io import (
 )
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.runtime.io import (
+    WriteJournal,
+    acquire_path_write_locks,
+    build_node_operation_id,
+)
+from backend.service.application.runtime.io.write_journal import sha256_file
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
@@ -67,8 +74,10 @@ def _batch_files_relocate_handler(
     mapping_items: list[dict[str, object]] = []
     relocated_count = 0
     skipped_count = 0
-    for file_record in file_records:
+    for item_index, file_record in enumerate(file_records):
         mapping_item, relocated_record = _relocate_single_file(
+            request=request,
+            item_index=item_index,
             file_record=file_record,
             target_directory=target_directory,
             source_root=source_root,
@@ -107,6 +116,8 @@ def _batch_files_relocate_handler(
 
 def _relocate_single_file(
     *,
+    request: WorkflowNodeExecutionRequest,
+    item_index: int,
     file_record: dict[str, object],
     target_directory: Path,
     source_root: Path | None,
@@ -121,12 +132,6 @@ def _relocate_single_file(
     if not isinstance(source_path_value, str) or not source_path_value.strip():
         raise InvalidRequestError("batch-files-relocate 的 files 项缺少有效 path")
     source_path = Path(source_path_value).expanduser().resolve()
-    if not source_path.is_file():
-        raise InvalidRequestError(
-            "batch-files-relocate 只能处理已存在的本地文件",
-            details={"source_path": str(source_path)},
-        )
-
     destination_directory = target_directory
     if preserve_subdirectories and source_root is not None:
         try:
@@ -138,44 +143,52 @@ def _relocate_single_file(
             ) from exc
         destination_directory = target_directory / relative_parent
     destination_path = destination_directory / source_path.name
-    if destination_path == source_path:
-        relocated_record = build_directory_file_record(source_path)
-        return (
-            {
-                "source_path": str(source_path),
-                "target_path": str(destination_path),
-                "status": "skipped.same-path",
-            },
-            relocated_record,
+    if dry_run:
+        return _preview_relocation(
+            source_path=source_path,
+            destination_path=destination_path,
+            mode=mode,
+            conflict_policy=conflict_policy,
         )
-    resolved_destination_path, status = _resolve_destination_path(
-        source_path=source_path,
-        destination_path=destination_path,
-        conflict_policy=conflict_policy,
+    operation_id = build_node_operation_id(
+        request,
+        operation_kind="batch-files-relocate",
+        item_id=item_index,
     )
-    if status == "skipped.existing":
-        return (
-            {
-                "source_path": str(source_path),
-                "target_path": str(resolved_destination_path),
-                "status": status,
-            },
-            build_directory_file_record(resolved_destination_path),
+    with acquire_path_write_locks(
+        request,
+        (source_path, destination_directory, destination_path),
+    ):
+        resolved_destination_path, status, idempotent_replay = (
+            _execute_relocation_transaction(
+                source_path=source_path,
+                destination_path=destination_path,
+                mode=mode,
+                conflict_policy=conflict_policy,
+                operation_id=operation_id,
+            )
         )
-    if not dry_run:
-        resolved_destination_path.parent.mkdir(parents=True, exist_ok=True)
-        if mode == "copy":
-            shutil.copy2(source_path, resolved_destination_path)
-        else:
-            shutil.move(str(source_path), str(resolved_destination_path))
+        if status == "skipped.same-path":
+            relocated_record = build_directory_file_record(source_path)
+            return (
+                {
+                    "source_path": str(source_path),
+                    "target_path": str(resolved_destination_path),
+                    "status": status,
+                },
+                relocated_record,
+            )
+        if status == "skipped.existing":
+            return (
+                {
+                    "source_path": str(source_path),
+                    "target_path": str(resolved_destination_path),
+                    "status": status,
+                },
+                build_directory_file_record(resolved_destination_path),
+            )
     relocated_record = (
         build_directory_file_record(resolved_destination_path)
-        if not dry_run
-        else {
-            "path": str(resolved_destination_path),
-            "file_name": resolved_destination_path.name,
-            "extension": resolved_destination_path.suffix.lower(),
-        }
     )
     final_status = f"relocated.{mode}"
     if status == "renamed":
@@ -185,9 +198,212 @@ def _relocate_single_file(
             "source_path": str(source_path),
             "target_path": str(resolved_destination_path),
             "status": final_status,
+            "idempotent_replay": idempotent_replay,
         },
         relocated_record,
     )
+
+
+def _preview_relocation(
+    *,
+    source_path: Path,
+    destination_path: Path,
+    mode: str,
+    conflict_policy: str,
+) -> tuple[dict[str, object], dict[str, object] | None]:
+    """计算 dry-run 映射但不写入文件和 journal。"""
+
+    if not source_path.is_file():
+        raise InvalidRequestError(
+            "batch-files-relocate 只能处理已存在的本地文件",
+            details={"source_path": str(source_path)},
+        )
+    if destination_path == source_path:
+        status = "skipped.same-path"
+        resolved_destination_path = destination_path
+    else:
+        resolved_destination_path, status = _resolve_destination_path(
+            source_path=source_path,
+            destination_path=destination_path,
+            conflict_policy=conflict_policy,
+        )
+    final_status = status
+    if status not in {"skipped.same-path", "skipped.existing"}:
+        final_status = f"relocated.{mode}"
+        if status == "renamed":
+            final_status = f"relocated.{mode}.renamed"
+    return (
+        {
+            "source_path": str(source_path),
+            "target_path": str(resolved_destination_path),
+            "status": final_status,
+        },
+        {
+            "path": str(resolved_destination_path),
+            "file_name": resolved_destination_path.name,
+            "extension": resolved_destination_path.suffix.lower(),
+        },
+    )
+
+
+def _execute_relocation_transaction(
+    *,
+    source_path: Path,
+    destination_path: Path,
+    mode: str,
+    conflict_policy: str,
+    operation_id: str,
+) -> tuple[Path, str, bool]:
+    """在双路径锁内执行可恢复 copy/move。"""
+
+    journal = WriteJournal(
+        target_path=destination_path,
+        operation_id=operation_id,
+        operation_kind=f"relocate-{mode}",
+    )
+    record = journal.load()
+    if record is not None:
+        recovered = _recover_relocation_record(
+            journal=journal,
+            record=record,
+            source_path=source_path,
+            mode=mode,
+        )
+        if recovered is not None:
+            return recovered
+    if not source_path.is_file():
+        raise InvalidRequestError(
+            "batch-files-relocate 只能处理已存在的本地文件",
+            details={"source_path": str(source_path)},
+        )
+    if destination_path == source_path:
+        return destination_path, "skipped.same-path", False
+    if record is None:
+        resolved_destination_path, status = _resolve_destination_path(
+            source_path=source_path,
+            destination_path=destination_path,
+            conflict_policy=conflict_policy,
+        )
+        if status == "skipped.existing":
+            return resolved_destination_path, status, False
+        record = journal.write_prepared(
+            {
+                "source_path": str(source_path),
+                "resolved_target_path": str(resolved_destination_path),
+                "source_size": source_path.stat().st_size,
+                "source_sha256": sha256_file(source_path),
+                "conflict_status": status,
+            }
+        )
+    resolved_destination_path = _require_record_path(
+        record,
+        field_name="resolved_target_path",
+    )
+    source_digest = record.get("source_sha256")
+    if not isinstance(source_digest, str) or sha256_file(source_path) != source_digest:
+        raise InvalidRequestError(
+            "batch-files-relocate 源文件与 PREPARED journal 不一致",
+            details={"source_path": str(source_path)},
+        )
+    resolved_destination_path.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "copy":
+        _atomic_copy_file(source_path, resolved_destination_path)
+    else:
+        _atomic_move_file(source_path, resolved_destination_path)
+    journal.mark_committed(
+        record,
+        result={
+            "target_sha256": source_digest,
+            "target_path": str(resolved_destination_path),
+        },
+    )
+    status_value = str(record.get("conflict_status") or "ready")
+    return resolved_destination_path, status_value, False
+
+
+def _recover_relocation_record(
+    *,
+    journal: WriteJournal,
+    record: dict[str, object],
+    source_path: Path,
+    mode: str,
+) -> tuple[Path, str, bool] | None:
+    """恢复已写目标但尚未提交的 relocate journal。"""
+
+    target_path = _require_record_path(record, field_name="resolved_target_path")
+    expected_digest = record.get("source_sha256")
+    if not isinstance(expected_digest, str):
+        raise InvalidRequestError("batch-files-relocate journal 缺少 source_sha256")
+    if target_path.is_file() and sha256_file(target_path) == expected_digest:
+        if mode == "move" and source_path.is_file():
+            if sha256_file(source_path) != expected_digest:
+                raise InvalidRequestError(
+                    "batch-files-relocate 恢复时源文件内容发生变化",
+                    details={"source_path": str(source_path)},
+                )
+            source_path.unlink()
+        if record.get("state") != "committed":
+            journal.mark_committed(
+                record,
+                result={
+                    "target_sha256": expected_digest,
+                    "target_path": str(target_path),
+                },
+            )
+        return target_path, str(record.get("conflict_status") or "ready"), True
+    if record.get("state") == "committed":
+        raise InvalidRequestError(
+            "batch-files-relocate 已提交目标文件缺失或内容不一致",
+            details={"target_path": str(target_path)},
+        )
+    return None
+
+
+def _atomic_copy_file(source_path: Path, destination_path: Path) -> None:
+    """复制到同目录临时文件后原子替换目标。"""
+
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="wb",
+            dir=destination_path.parent,
+            prefix=f".{destination_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+        shutil.copy2(source_path, temporary_path)
+        with temporary_path.open("r+b") as copied_file:
+            os.fsync(copied_file.fileno())
+        os.replace(temporary_path, destination_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _atomic_move_file(source_path: Path, destination_path: Path) -> None:
+    """优先原子移动；跨卷时执行复制、替换、删除源。"""
+
+    try:
+        os.replace(source_path, destination_path)
+        return
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 17 and exc.errno != 18:
+            raise
+    _atomic_copy_file(source_path, destination_path)
+    source_path.unlink()
+
+
+def _require_record_path(record: dict[str, object], *, field_name: str) -> Path:
+    """读取 journal 中的绝对路径字段。"""
+
+    value = record.get(field_name)
+    if not isinstance(value, str) or not value:
+        raise InvalidRequestError(
+            f"batch-files-relocate journal 缺少 {field_name}"
+        )
+    return Path(value).expanduser().resolve(strict=False)
 
 
 def _resolve_destination_path(
@@ -213,8 +429,6 @@ def _resolve_destination_path(
     if conflict_policy == "skip":
         return destination_path, "skipped.existing"
     if conflict_policy == "overwrite":
-        if destination_path.is_file():
-            destination_path.unlink()
         return destination_path, "overwritten"
     return _build_renamed_destination_path(destination_path), "renamed"
 

@@ -10,6 +10,8 @@ from backend.nodes.core_catalog import (
     get_core_workflow_node_definitions,
     get_core_workflow_payload_contracts,
 )
+from backend.nodes.concurrency_policy import apply_inferred_concurrency_policy
+from backend.nodes.definition_metadata import enrich_node_definition_metadata
 from backend.nodes.node_pack_loader import NodeCatalogSnapshot, NodePackLoader
 
 
@@ -70,7 +72,10 @@ class NodeCatalogRegistry:
                 get_core_workflow_payload_contracts(),
                 custom_node_catalog.payload_contracts,
             ),
-            node_definitions=get_core_workflow_node_definitions() + custom_node_catalog.node_definitions,
+            node_definitions=_merge_node_definitions(
+                get_core_workflow_node_definitions(),
+                custom_node_catalog.node_definitions,
+            ),
         )
 
     def get_node_pack_manifests(self) -> tuple[NodePackManifest, ...]:
@@ -117,3 +122,28 @@ def _merge_payload_contracts(
             if existing_contract.model_dump(mode="json") != contract.model_dump(mode="json"):
                 raise ValueError(f"payload 规则 存在重复且定义不一致: {contract.payload_type_id}")
     return tuple(merged_contracts)
+
+
+def _merge_node_definitions(
+    *node_definition_groups: tuple[NodeDefinition, ...],
+) -> tuple[NodeDefinition, ...]:
+    """按 node_type_id 合并节点定义，并拒绝静默覆盖。"""
+
+    merged_definitions: list[NodeDefinition] = []
+    definition_index: dict[str, NodeDefinition] = {}
+    for node_definition_group in node_definition_groups:
+        for definition in node_definition_group:
+            definition = apply_inferred_concurrency_policy(definition)
+            definition = enrich_node_definition_metadata(definition)
+            existing_definition = definition_index.get(definition.node_type_id)
+            if existing_definition is None:
+                definition_index[definition.node_type_id] = definition
+                merged_definitions.append(definition)
+                continue
+            if existing_definition.model_dump(mode="json") != definition.model_dump(
+                mode="json"
+            ):
+                raise ValueError(
+                    f"节点定义存在重复且定义不一致: {definition.node_type_id}"
+                )
+    return tuple(merged_definitions)

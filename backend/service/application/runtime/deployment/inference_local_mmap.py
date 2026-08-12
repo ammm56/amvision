@@ -6,8 +6,9 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from secrets import randbits
 from threading import Event, Lock, Thread
-from time import sleep, time_ns
+from time import monotonic_ns, sleep
 from typing import BinaryIO
 import json
 import mmap
@@ -18,6 +19,7 @@ import zlib
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     OperationTimeoutError,
     ServiceConfigurationError,
 )
@@ -25,9 +27,14 @@ from backend.service.application.errors import (
 
 _FILE_MAGIC = b"AMVINF1\0"
 _FILE_VERSION = 1
-_FILE_HEADER = struct.Struct("<8sIIII40x")
-_SLOT_HEADER = struct.Struct("<IIIIIQ36x")
+# 文件头保持 64 bytes，在原有布局中加入 daemon instance epoch。
+_FILE_HEADER = struct.Struct("<8sIIIIQ32x")
+# slot header 保持 64 bytes，并把 generation 扩为 uint64，同时记录 request owner token。
+_SLOT_HEADER = struct.Struct("<IIIIQQQ24x")
 _SLOT_STATE = struct.Struct("<I")
+_MAX_UINT64 = 0xFFFFFFFFFFFFFFFF
+_ABANDONED_CLAIM_SWEEP_INTERVAL_NS = 1_000_000_000
+_RESPONSE_ACK_GRACE_NS = 1_000_000_000
 _STATE_FREE = 0
 _STATE_REQUEST = 1
 _STATE_PROCESSING = 2
@@ -84,8 +91,12 @@ class InferenceLocalMmapClient:
 
         _reject_inline_image_bytes(payload)
         encoded_request = _encode_payload(payload)
-        deadline_ns = time_ns() + int(self.request_timeout_seconds * 1_000_000_000)
+        deadline_ns = monotonic_ns() + int(
+            self.request_timeout_seconds * 1_000_000_000
+        )
         view = self._require_open()
+        server_epoch = _read_server_epoch(view, path=self.path)
+        owner_token = _new_u64_token()
         if len(encoded_request) > self._payload_capacity:
             raise InvalidRequestError(
                 "inference mmap 请求超过单槽容量",
@@ -94,18 +105,29 @@ class InferenceLocalMmapClient:
                     "slot_payload_capacity_bytes": self._payload_capacity,
                 },
             )
-        slot_index, lock_path = self._claim_slot(deadline_ns=deadline_ns)
-        generation = self._write_request(
+        slot_index, lock_path = self._claim_slot(
             view=view,
-            slot_index=slot_index,
-            encoded_request=encoded_request,
+            server_epoch=server_epoch,
+            owner_token=owner_token,
             deadline_ns=deadline_ns,
         )
+        generation: int | None = None
         try:
+            generation = self._write_request(
+                view=view,
+                slot_index=slot_index,
+                lock_path=lock_path,
+                server_epoch=server_epoch,
+                owner_token=owner_token,
+                encoded_request=encoded_request,
+                deadline_ns=deadline_ns,
+            )
             return self._wait_response(
                 view=view,
                 slot_index=slot_index,
                 generation=generation,
+                server_epoch=server_epoch,
+                owner_token=owner_token,
                 deadline_ns=deadline_ns,
             )
         finally:
@@ -113,6 +135,8 @@ class InferenceLocalMmapClient:
                 view=view,
                 slot_index=slot_index,
                 generation=generation,
+                server_epoch=server_epoch,
+                owner_token=owner_token,
                 lock_path=lock_path,
             )
 
@@ -145,7 +169,7 @@ class InferenceLocalMmapClient:
                     details={"path": str(self.path)},
                 ) from error
             view = mmap.mmap(file.fileno(), length=0, access=mmap.ACCESS_WRITE)
-            magic, version, slot_count, payload_capacity, slot_stride = (
+            magic, version, slot_count, payload_capacity, slot_stride, _ = (
                 _FILE_HEADER.unpack_from(view, 0)
             )
             if magic != _FILE_MAGIC or version != _FILE_VERSION:
@@ -162,18 +186,26 @@ class InferenceLocalMmapClient:
             self._slot_stride = slot_stride
             return view
 
-    def _claim_slot(self, *, deadline_ns: int) -> tuple[int, Path]:
+    def _claim_slot(
+        self,
+        *,
+        view: mmap.mmap,
+        server_epoch: int,
+        owner_token: int,
+        deadline_ns: int,
+    ) -> tuple[int, Path]:
         """用原子创建锁文件的方式申请一个独占 mailbox 槽位。"""
 
-        start_index = (os.getpid() + time_ns()) % self._slot_count
-        while time_ns() < deadline_ns:
+        start_index = (os.getpid() + monotonic_ns()) % self._slot_count
+        while monotonic_ns() < deadline_ns:
             for offset in range(self._slot_count):
                 slot_index = (start_index + offset) % self._slot_count
                 lock_path = _slot_lock_path(self.path, slot_index)
                 try:
                     guard_deadline_ns = min(
                         deadline_ns,
-                        time_ns() + max(5_000_000, int(self.poll_interval_seconds * 2e9)),
+                        monotonic_ns()
+                        + max(5_000_000, int(self.poll_interval_seconds * 2e9)),
                     )
                     with _acquire_slot_guard(
                         path=self.path,
@@ -190,17 +222,27 @@ class InferenceLocalMmapClient:
                             os.write(
                                 descriptor,
                                 json.dumps(
-                                    {"pid": os.getpid(), "deadline_ns": deadline_ns},
+                                    {
+                                        "pid": os.getpid(),
+                                        "owner_token": owner_token,
+                                        "server_epoch": server_epoch,
+                                        "deadline_ns": deadline_ns,
+                                    },
                                     separators=(",", ":"),
                                 ).encode("utf-8"),
                             )
                         finally:
                             os.close(descriptor)
-                        view = self._mmap
-                        if view is None:
+                        if self._mmap is None:
                             lock_path.unlink(missing_ok=True)
                             raise ServiceConfigurationError(
                                 "inference mmap client 尚未打开 mailbox"
+                            )
+                        if _read_server_epoch(view, path=self.path) != server_epoch:
+                            lock_path.unlink(missing_ok=True)
+                            raise OperationCancelledError(
+                                "inference daemon 在申请 mailbox 槽位时重启",
+                                details={"path": str(self.path), "retryable": True},
                             )
                         slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
                         state = _SLOT_HEADER.unpack_from(view, slot_offset)[0]
@@ -225,37 +267,61 @@ class InferenceLocalMmapClient:
         *,
         view: mmap.mmap,
         slot_index: int,
+        lock_path: Path,
+        server_epoch: int,
+        owner_token: int,
         encoded_request: bytes,
         deadline_ns: int,
     ) -> int:
         """先写请求正文，最后发布 REQUEST 状态。"""
 
-        slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
-        _, _, _, _, previous_generation, _ = _SLOT_HEADER.unpack_from(
-            view, slot_offset
-        )
-        generation = previous_generation % 0xFFFFFFFF + 1
-        request_offset = slot_offset + _SLOT_HEADER.size
-        view[request_offset : request_offset + len(encoded_request)] = encoded_request
-        # state 位于 header 首字段，直接以 REQUEST 调用 pack_into 会让扫描线程
-        # 先看到已发布状态，再看到 generation/deadline 等后续字段。先以 FREE
-        # 写完完整 header，最后单独发布 state，避免跨进程读取 torn header。
-        _SLOT_HEADER.pack_into(
-            view,
-            slot_offset,
-            _STATE_FREE,
-            len(encoded_request),
-            0,
-            zlib.crc32(encoded_request),
-            generation,
-            deadline_ns,
-        )
-        _publish_slot_state(
-            view,
-            slot_offset=slot_offset,
-            state=_STATE_REQUEST,
-        )
-        return generation
+        with _acquire_slot_guard(
+            path=self.path,
+            slot_index=slot_index,
+            deadline_ns=deadline_ns,
+            poll_interval_seconds=self.poll_interval_seconds,
+        ):
+            if (
+                _read_server_epoch(view, path=self.path) != server_epoch
+                or _read_slot_lock_owner(lock_path) != owner_token
+            ):
+                raise OperationCancelledError(
+                    "inference mmap 槽位所有权在请求发布前失效",
+                    details={"slot_index": slot_index, "retryable": True},
+                )
+            slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
+            state, _, _, _, previous_generation, _, _ = _SLOT_HEADER.unpack_from(
+                view, slot_offset
+            )
+            if state != _STATE_FREE:
+                raise OperationCancelledError(
+                    "inference mmap 槽位在请求发布前不再空闲",
+                    details={"slot_index": slot_index, "retryable": True},
+                )
+            generation = previous_generation % _MAX_UINT64 + 1
+            request_offset = slot_offset + _SLOT_HEADER.size
+            view[request_offset : request_offset + len(encoded_request)] = (
+                encoded_request
+            )
+            # state 位于 header 首字段，先以 FREE 写完完整 header，最后单独
+            # 发布 REQUEST，避免 daemon 读取到半写入 generation/owner/deadline。
+            _SLOT_HEADER.pack_into(
+                view,
+                slot_offset,
+                _STATE_FREE,
+                len(encoded_request),
+                0,
+                zlib.crc32(encoded_request),
+                generation,
+                owner_token,
+                deadline_ns,
+            )
+            _publish_slot_state(
+                view,
+                slot_offset=slot_offset,
+                state=_STATE_REQUEST,
+            )
+            return generation
 
     def _wait_response(
         self,
@@ -263,21 +329,39 @@ class InferenceLocalMmapClient:
         view: mmap.mmap,
         slot_index: int,
         generation: int,
+        server_epoch: int,
+        owner_token: int,
         deadline_ns: int,
     ) -> dict[str, object]:
         """等待 daemon 在同一槽位写回响应。"""
 
         slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
-        while time_ns() < deadline_ns:
-            state, _, response_size, response_crc, current_generation, _ = (
+        while monotonic_ns() < deadline_ns:
+            if _read_server_epoch(view, path=self.path) != server_epoch:
+                raise OperationCancelledError(
+                    "inference daemon 在请求处理中重启",
+                    details={"slot_index": slot_index, "retryable": True},
+                )
+            (
+                state,
+                _,
+                response_size,
+                response_crc,
+                current_generation,
+                current_owner_token,
+                _,
+            ) = (
                 _SLOT_HEADER.unpack_from(view, slot_offset)
             )
-            if current_generation != generation:
-                if time_ns() >= deadline_ns:
+            if (
+                current_generation != generation
+                or current_owner_token != owner_token
+            ):
+                if monotonic_ns() + int(self.poll_interval_seconds * 2e9) >= deadline_ns:
                     break
-                raise ServiceConfigurationError(
-                    "inference mmap 槽位 generation 被意外复用",
-                    details={"slot_index": slot_index},
+                raise OperationCancelledError(
+                    "inference mmap 槽位所有权在请求处理中失效",
+                    details={"slot_index": slot_index, "retryable": True},
                 )
             if state == _STATE_RESPONSE:
                 if response_size <= 0 or response_size > self._payload_capacity:
@@ -300,15 +384,26 @@ class InferenceLocalMmapClient:
             with _acquire_slot_guard(
                 path=self.path,
                 slot_index=slot_index,
-                deadline_ns=time_ns() + 1_000_000_000,
+                deadline_ns=monotonic_ns() + 1_000_000_000,
                 poll_interval_seconds=self.poll_interval_seconds,
             ):
-                state, _, _, _, current_generation, _ = _SLOT_HEADER.unpack_from(
-                    view, slot_offset
-                )
-                if current_generation == generation and state in (
+                (
+                    state,
+                    _,
+                    _,
+                    _,
+                    current_generation,
+                    current_owner_token,
+                    _,
+                ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                if (
+                    _read_server_epoch(view, path=self.path) == server_epoch
+                    and current_generation == generation
+                    and current_owner_token == owner_token
+                    and state in (
                     _STATE_REQUEST,
                     _STATE_PROCESSING,
+                    )
                 ):
                     _publish_slot_state(
                         view,
@@ -328,7 +423,9 @@ class InferenceLocalMmapClient:
         *,
         view: mmap.mmap,
         slot_index: int,
-        generation: int,
+        generation: int | None,
+        server_epoch: int,
+        owner_token: int,
         lock_path: Path,
     ) -> None:
         """完成响应后释放槽位；处理中超时的槽位交给 daemon 回收。"""
@@ -337,14 +434,31 @@ class InferenceLocalMmapClient:
             with _acquire_slot_guard(
                 path=self.path,
                 slot_index=slot_index,
-                deadline_ns=time_ns() + 1_000_000_000,
+                deadline_ns=monotonic_ns() + 1_000_000_000,
                 poll_interval_seconds=self.poll_interval_seconds,
             ):
+                if (
+                    _read_server_epoch(view, path=self.path) != server_epoch
+                    or _read_slot_lock_owner(lock_path) != owner_token
+                ):
+                    return
+                if generation is None:
+                    lock_path.unlink(missing_ok=True)
+                    return
                 slot_offset = _FILE_HEADER.size + slot_index * self._slot_stride
-                state, _, _, _, current_generation, _ = _SLOT_HEADER.unpack_from(
-                    view, slot_offset
-                )
-                if current_generation != generation:
+                (
+                    state,
+                    _,
+                    _,
+                    _,
+                    current_generation,
+                    current_owner_token,
+                    _,
+                ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                if (
+                    current_generation != generation
+                    or current_owner_token != owner_token
+                ):
                     return
                 if state in (_STATE_RESPONSE, _STATE_REQUEST):
                     _clear_slot(view, slot_offset=slot_offset, generation=generation)
@@ -383,6 +497,9 @@ class InferenceLocalMmapServer:
         self._stop_event = Event()
         self._active_slots: set[int] = set()
         self._active_lock = Lock()
+        self._instance_lock_file: BinaryIO | None = None
+        self._server_epoch = 0
+        self._next_abandoned_claim_sweep_ns = 0
 
     @property
     def is_running(self) -> bool:
@@ -396,45 +513,77 @@ class InferenceLocalMmapServer:
 
         if self.is_running:
             return
+        instance_lock_file = _acquire_server_instance_lock(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         expected_size = _FILE_HEADER.size + self.slot_count * self.slot_stride
-        if self.path.exists():
-            file = self.path.open("r+b", buffering=0)
-            actual_size = self.path.stat().st_size
-            if actual_size != expected_size:
-                file.close()
-                raise ServiceConfigurationError(
-                    "inference mmap 配置变化需要同时重启 daemon 和 backend-service",
-                    details={
-                        "path": str(self.path),
-                        "actual_size": actual_size,
-                        "expected_size": expected_size,
-                    },
-                )
-        else:
-            file = self.path.open("w+b", buffering=0)
-            file.truncate(expected_size)
-        view = mmap.mmap(file.fileno(), length=0, access=mmap.ACCESS_WRITE)
-        _FILE_HEADER.pack_into(
-            view,
-            0,
-            _FILE_MAGIC,
-            _FILE_VERSION,
-            self.slot_count,
-            self.slot_payload_capacity_bytes,
-            self.slot_stride,
-        )
-        for slot_index in range(self.slot_count):
-            slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
-            previous_generation = _SLOT_HEADER.unpack_from(view, slot_offset)[4]
-            _clear_slot(
+        file: BinaryIO | None = None
+        view: mmap.mmap | None = None
+        try:
+            if self.path.exists():
+                file = self.path.open("r+b", buffering=0)
+                actual_size = self.path.stat().st_size
+                if actual_size != expected_size:
+                    raise ServiceConfigurationError(
+                        "inference mmap 配置变化需要同时重启 daemon 和 backend-service",
+                        details={
+                            "path": str(self.path),
+                            "actual_size": actual_size,
+                            "expected_size": expected_size,
+                        },
+                    )
+            else:
+                file = self.path.open("w+b", buffering=0)
+                file.truncate(expected_size)
+            view = mmap.mmap(file.fileno(), length=0, access=mmap.ACCESS_WRITE)
+            server_epoch = _new_u64_token()
+            # 初始化期间先发布 epoch=0，client 会将其识别为可重试的 daemon
+            # 重启状态；所有旧槽位完成 fencing 后再发布新的有效 epoch。
+            _FILE_HEADER.pack_into(
                 view,
-                slot_offset=slot_offset,
-                generation=previous_generation % 0xFFFFFFFF + 1,
+                0,
+                _FILE_MAGIC,
+                _FILE_VERSION,
+                self.slot_count,
+                self.slot_payload_capacity_bytes,
+                self.slot_stride,
+                0,
             )
-            _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+            for slot_index in range(self.slot_count):
+                with _acquire_slot_guard(
+                    path=self.path,
+                    slot_index=slot_index,
+                    deadline_ns=monotonic_ns() + 1_000_000_000,
+                    poll_interval_seconds=self.poll_interval_seconds,
+                ):
+                    slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
+                    previous_generation = _SLOT_HEADER.unpack_from(view, slot_offset)[4]
+                    _clear_slot(
+                        view,
+                        slot_offset=slot_offset,
+                        generation=previous_generation % _MAX_UINT64 + 1,
+                    )
+                    _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+            _FILE_HEADER.pack_into(
+                view,
+                0,
+                _FILE_MAGIC,
+                _FILE_VERSION,
+                self.slot_count,
+                self.slot_payload_capacity_bytes,
+                self.slot_stride,
+                server_epoch,
+            )
+        except Exception:
+            if view is not None:
+                view.close()
+            if file is not None:
+                file.close()
+            _release_server_instance_lock(instance_lock_file)
+            raise
         self._file = file
         self._mmap = view
+        self._server_epoch = server_epoch
+        self._instance_lock_file = instance_lock_file
         self._stop_event.clear()
         self._executor = ThreadPoolExecutor(
             max_workers=self.max_concurrent_requests,
@@ -450,6 +599,13 @@ class InferenceLocalMmapServer:
     def stop(self) -> None:
         """停止消费新请求并关闭 mmap 资源。"""
 
+        if (
+            self._instance_lock_file is None
+            and self._file is None
+            and self._mmap is None
+            and self._thread is None
+        ):
+            return
         self._stop_event.set()
         thread = self._thread
         if thread is not None:
@@ -463,12 +619,17 @@ class InferenceLocalMmapServer:
         self._thread = None
         self._mmap = None
         self._file = None
+        self._server_epoch = 0
         if view is not None:
             view.close()
         if file is not None:
             file.close()
         for slot_index in range(self.slot_count):
             _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
+        instance_lock_file = self._instance_lock_file
+        self._instance_lock_file = None
+        if instance_lock_file is not None:
+            _release_server_instance_lock(instance_lock_file)
 
     def _run_loop(self) -> None:
         """扫描 REQUEST 槽位并提交到有界线程池。"""
@@ -478,11 +639,29 @@ class InferenceLocalMmapServer:
             return
         while not self._stop_event.is_set():
             dispatched = False
+            scan_time_ns = monotonic_ns()
+            sweep_abandoned_claims = (
+                scan_time_ns >= self._next_abandoned_claim_sweep_ns
+            )
+            if sweep_abandoned_claims:
+                self._next_abandoned_claim_sweep_ns = (
+                    scan_time_ns + _ABANDONED_CLAIM_SWEEP_INTERVAL_NS
+                )
             for slot_index in range(self.slot_count):
                 slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
-                state, request_size, _, request_crc, generation, deadline_ns = (
-                    _SLOT_HEADER.unpack_from(view, slot_offset)
-                )
+                (
+                    state,
+                    request_size,
+                    _,
+                    request_crc,
+                    generation,
+                    owner_token,
+                    deadline_ns,
+                ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                if state == _STATE_FREE:
+                    if sweep_abandoned_claims:
+                        self._reclaim_abandoned_claim(slot_index=slot_index)
+                    continue
                 if state == _STATE_CANCELLED:
                     with self._active_lock:
                         slot_is_active = slot_index in self._active_slots
@@ -491,19 +670,31 @@ class InferenceLocalMmapServer:
                     self._reclaim_inactive_slot(
                         slot_index=slot_index,
                         generation=generation,
+                        owner_token=owner_token,
                         allowed_states=(_STATE_CANCELLED,),
                         require_expired=False,
                     )
                     continue
+                if state == _STATE_REQUEST and monotonic_ns() >= deadline_ns:
+                    self._reclaim_inactive_slot(
+                        slot_index=slot_index,
+                        generation=generation,
+                        owner_token=owner_token,
+                        allowed_states=(_STATE_REQUEST,),
+                        require_expired=True,
+                    )
+                    continue
                 if (
-                    state in (_STATE_REQUEST, _STATE_RESPONSE)
-                    and time_ns() >= deadline_ns
+                    state == _STATE_RESPONSE
+                    and monotonic_ns() >= deadline_ns + _RESPONSE_ACK_GRACE_NS
                 ):
                     self._reclaim_inactive_slot(
                         slot_index=slot_index,
                         generation=generation,
-                        allowed_states=(_STATE_REQUEST, _STATE_RESPONSE),
+                        owner_token=owner_token,
+                        allowed_states=(_STATE_RESPONSE,),
                         require_expired=True,
+                        deadline_grace_ns=_RESPONSE_ACK_GRACE_NS,
                     )
                     continue
                 if state != _STATE_REQUEST:
@@ -517,7 +708,7 @@ class InferenceLocalMmapServer:
                     with _acquire_slot_guard(
                         path=self.path,
                         slot_index=slot_index,
-                        deadline_ns=time_ns() + 5_000_000,
+                        deadline_ns=monotonic_ns() + 5_000_000,
                         poll_interval_seconds=self.poll_interval_seconds,
                     ):
                         (
@@ -526,14 +717,16 @@ class InferenceLocalMmapServer:
                             _,
                             guarded_request_crc,
                             guarded_generation,
+                            guarded_owner_token,
                             guarded_deadline_ns,
                         ) = _SLOT_HEADER.unpack_from(view, slot_offset)
                         if (
                             guarded_state != _STATE_REQUEST
                             or guarded_generation != generation
+                            or guarded_owner_token != owner_token
                         ):
                             continue
-                        if time_ns() >= guarded_deadline_ns:
+                        if monotonic_ns() >= guarded_deadline_ns:
                             _clear_slot(
                                 view,
                                 slot_offset=slot_offset,
@@ -558,6 +751,7 @@ class InferenceLocalMmapServer:
                         )
                         request_size = guarded_request_size
                         request_crc = guarded_request_crc
+                        owner_token = guarded_owner_token
                         deadline_ns = guarded_deadline_ns
                 except _SlotGuardBusyError:
                     continue
@@ -567,6 +761,7 @@ class InferenceLocalMmapServer:
                         self._process_slot,
                         slot_index=slot_index,
                         generation=generation,
+                        owner_token=owner_token,
                         request_size=request_size,
                         request_crc=request_crc,
                         deadline_ns=deadline_ns,
@@ -575,11 +770,44 @@ class InferenceLocalMmapServer:
             if not dispatched:
                 self._stop_event.wait(self.poll_interval_seconds)
 
+    def _reclaim_abandoned_claim(self, *, slot_index: int) -> bool:
+        """回收 client 在发布 REQUEST 前崩溃留下的过期锁文件。"""
+
+        lock_path = _slot_lock_path(self.path, slot_index)
+        lock_metadata = _read_slot_lock_metadata(lock_path)
+        lock_deadline_ns = lock_metadata.get("deadline_ns")
+        if (
+            not isinstance(lock_deadline_ns, int)
+            or monotonic_ns() < lock_deadline_ns
+        ):
+            return False
+        try:
+            with _acquire_slot_guard(
+                path=self.path,
+                slot_index=slot_index,
+                deadline_ns=monotonic_ns() + 5_000_000,
+                poll_interval_seconds=self.poll_interval_seconds,
+            ):
+                view = self._mmap
+                if view is None:
+                    return False
+                slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
+                if _SLOT_HEADER.unpack_from(view, slot_offset)[0] != _STATE_FREE:
+                    return False
+                current_metadata = _read_slot_lock_metadata(lock_path)
+                if current_metadata != lock_metadata:
+                    return False
+                lock_path.unlink(missing_ok=True)
+                return True
+        except _SlotGuardBusyError:
+            return False
+
     def _process_slot(
         self,
         *,
         slot_index: int,
         generation: int,
+        owner_token: int,
         request_size: int,
         request_crc: int,
         deadline_ns: int,
@@ -598,7 +826,7 @@ class InferenceLocalMmapServer:
                 )
                 if zlib.crc32(encoded_request) == request_crc:
                     break
-                if time_ns() >= deadline_ns:
+                if monotonic_ns() >= deadline_ns:
                     raise InvalidRequestError(
                         "inference mmap 请求在跨进程发布时校验失败"
                     )
@@ -629,7 +857,7 @@ class InferenceLocalMmapServer:
                 with _acquire_slot_guard(
                     path=self.path,
                     slot_index=slot_index,
-                    deadline_ns=time_ns() + 1_000_000_000,
+                    deadline_ns=monotonic_ns() + 1_000_000_000,
                     poll_interval_seconds=self.poll_interval_seconds,
                 ):
                     (
@@ -638,11 +866,20 @@ class InferenceLocalMmapServer:
                         _,
                         _,
                         stored_generation,
+                        stored_owner_token,
                         stored_deadline,
                     ) = _SLOT_HEADER.unpack_from(view, slot_offset)
-                    if stored_generation != generation:
+                    if (
+                        stored_generation != generation
+                        or stored_owner_token != owner_token
+                        or _read_server_epoch(view, path=self.path)
+                        != self._server_epoch
+                    ):
                         return
-                    if state == _STATE_CANCELLED or time_ns() >= stored_deadline:
+                    if (
+                        state == _STATE_CANCELLED
+                        or monotonic_ns() >= stored_deadline
+                    ):
                         _clear_slot(
                             view,
                             slot_offset=slot_offset,
@@ -667,6 +904,7 @@ class InferenceLocalMmapServer:
                         len(encoded_response),
                         zlib.crc32(encoded_response),
                         stored_generation,
+                        stored_owner_token,
                         stored_deadline,
                     )
                     _publish_slot_state(
@@ -678,6 +916,7 @@ class InferenceLocalMmapServer:
                 self._reclaim_finished_slot(
                     slot_index=slot_index,
                     generation=generation,
+                    owner_token=owner_token,
                 )
         finally:
             with self._active_lock:
@@ -688,8 +927,10 @@ class InferenceLocalMmapServer:
         *,
         slot_index: int,
         generation: int,
+        owner_token: int,
         allowed_states: tuple[int, ...],
         require_expired: bool,
+        deadline_grace_ns: int = 0,
     ) -> bool:
         """在 guard 下回收未执行槽位，防止与新 client 的 claim 交错。"""
 
@@ -697,7 +938,7 @@ class InferenceLocalMmapServer:
             with _acquire_slot_guard(
                 path=self.path,
                 slot_index=slot_index,
-                deadline_ns=time_ns() + 5_000_000,
+                deadline_ns=monotonic_ns() + 5_000_000,
                 poll_interval_seconds=self.poll_interval_seconds,
             ):
                 with self._active_lock:
@@ -707,12 +948,19 @@ class InferenceLocalMmapServer:
                 if view is None:
                     return False
                 slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
-                state, _, _, _, stored_generation, deadline_ns = (
+                state, _, _, _, stored_generation, stored_owner_token, deadline_ns = (
                     _SLOT_HEADER.unpack_from(view, slot_offset)
                 )
-                if stored_generation != generation or state not in allowed_states:
+                if (
+                    stored_generation != generation
+                    or stored_owner_token != owner_token
+                    or state not in allowed_states
+                ):
                     return False
-                if require_expired and time_ns() < deadline_ns:
+                if (
+                    require_expired
+                    and monotonic_ns() < deadline_ns + deadline_grace_ns
+                ):
                     return False
                 _clear_slot(view, slot_offset=slot_offset, generation=generation)
                 _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
@@ -720,26 +968,35 @@ class InferenceLocalMmapServer:
         except _SlotGuardBusyError:
             return False
 
-    def _reclaim_finished_slot(self, *, slot_index: int, generation: int) -> None:
+    def _reclaim_finished_slot(
+        self,
+        *,
+        slot_index: int,
+        generation: int,
+        owner_token: int,
+    ) -> None:
         """在 handler 结束后按 generation 回收 cancelled/expired 槽位。"""
 
         try:
             with _acquire_slot_guard(
                 path=self.path,
                 slot_index=slot_index,
-                deadline_ns=time_ns() + 1_000_000_000,
+                deadline_ns=monotonic_ns() + 1_000_000_000,
                 poll_interval_seconds=self.poll_interval_seconds,
             ):
                 view = self._mmap
                 if view is None:
                     return
                 slot_offset = _FILE_HEADER.size + slot_index * self.slot_stride
-                state, _, _, _, stored_generation, deadline_ns = (
+                state, _, _, _, stored_generation, stored_owner_token, deadline_ns = (
                     _SLOT_HEADER.unpack_from(view, slot_offset)
                 )
-                if stored_generation != generation:
+                if (
+                    stored_generation != generation
+                    or stored_owner_token != owner_token
+                ):
                     return
-                if state != _STATE_CANCELLED and time_ns() < deadline_ns:
+                if state != _STATE_CANCELLED and monotonic_ns() < deadline_ns:
                     return
                 _clear_slot(view, slot_offset=slot_offset, generation=generation)
                 _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
@@ -757,6 +1014,79 @@ def _slot_guard_path(path: Path, slot_index: int) -> Path:
     """返回槽位状态切换使用的跨进程 byte-lock 文件。"""
 
     return path.with_name(f"{path.name}.slot-{slot_index}.guard")
+
+
+def _server_instance_lock_path(path: Path) -> Path:
+    """返回 inference mailbox server 生命周期独占锁文件路径。"""
+
+    return path.with_name(f"{path.name}.server.lock")
+
+
+def _acquire_server_instance_lock(path: Path) -> BinaryIO:
+    """获取 mailbox server 单实例锁，防止两个 daemon 重置同一文件。"""
+
+    lock_path = _server_instance_lock_path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_path.open("a+b", buffering=0)
+    try:
+        if lock_path.stat().st_size == 0:
+            lock_file.write(b"\0")
+        _lock_guard_file(lock_file)
+    except OSError as error:
+        lock_file.close()
+        raise ServiceConfigurationError(
+            "inference mmap mailbox 已由另一个 daemon 实例持有",
+            details={"path": str(path)},
+        ) from error
+    return lock_file
+
+
+def _release_server_instance_lock(lock_file: BinaryIO) -> None:
+    """释放 mailbox server 单实例锁。"""
+
+    try:
+        _unlock_guard_file(lock_file)
+    finally:
+        lock_file.close()
+
+
+def _new_u64_token() -> int:
+    """生成非零 uint64 token，标识 daemon 实例或单次请求 owner。"""
+
+    return randbits(64) or 1
+
+
+def _read_server_epoch(view: mmap.mmap, *, path: Path) -> int:
+    """读取并校验当前 mailbox daemon instance epoch。"""
+
+    magic, version, _, _, _, server_epoch = _FILE_HEADER.unpack_from(view, 0)
+    if magic != _FILE_MAGIC or version != _FILE_VERSION or server_epoch == 0:
+        raise OperationCancelledError(
+            "inference daemon mailbox 当前不可用或正在重启",
+            details={"path": str(path), "retryable": True},
+        )
+    return server_epoch
+
+
+def _read_slot_lock_owner(lock_path: Path) -> int | None:
+    """读取槽位锁文件中的 request owner token；损坏或消失时返回 None。"""
+
+    owner_token = _read_slot_lock_metadata(lock_path).get("owner_token")
+    if isinstance(owner_token, int) and owner_token > 0:
+        return owner_token
+    return None
+
+
+def _read_slot_lock_metadata(lock_path: Path) -> dict[str, object]:
+    """读取槽位锁元数据；文件消失、半写入或损坏时返回空字典。"""
+
+    try:
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return payload
+    except (OSError, ValueError, TypeError):
+        return {}
+    return {}
 
 
 @contextmanager
@@ -780,7 +1110,7 @@ def _acquire_slot_guard(
                 _lock_guard_file(guard_file)
                 break
             except OSError as error:
-                if time_ns() >= deadline_ns:
+                if monotonic_ns() >= deadline_ns:
                     raise _SlotGuardBusyError from error
                 sleep(poll_interval_seconds)
         try:
@@ -830,6 +1160,7 @@ def _clear_slot(view: mmap.mmap, *, slot_offset: int, generation: int) -> None:
         0,
         0,
         generation,
+        0,
         0,
     )
 

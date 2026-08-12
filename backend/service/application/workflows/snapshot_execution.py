@@ -29,6 +29,9 @@ from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError, ServiceError
 from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
+from backend.service.application.runtime.resource_scope import (
+    get_or_create_workflow_resource_scope,
+)
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_OBJECT,
     WORKFLOW_EXECUTION_CLEANUP_KIND_DATASET_STORAGE_TREE,
@@ -47,6 +50,9 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
 )
 from backend.service.application.workflows.execution.custom_node_policy import (
     CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
+)
+from backend.service.application.workflows.execution.execution_control import (
+    prepare_execution_control_metadata,
 )
 from backend.service.application.workflows.execution.topology import (
     build_node_execution_scope_template,
@@ -252,6 +258,10 @@ class SnapshotExecutionService:
             },
         )
         execution_metadata_payload = dict(request.execution_metadata)
+        workflow_resource_scope = get_or_create_workflow_resource_scope(
+            execution_metadata_payload
+        )
+        prepare_execution_control_metadata(execution_metadata_payload)
         execution_metadata_payload.setdefault("project_id", request.project_id)
         execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
@@ -324,12 +334,28 @@ class SnapshotExecutionService:
                     },
                 )
             finally:
+                resource_scope_errors = workflow_resource_scope.close()
                 # Runtime worker 会长期驻留；每次 Run 必须主动断开大图矩阵引用，
                 # 不能依赖下一轮 GC 或进程退出回收。
                 if owns_image_registry:
                     image_registry.clear()
                 else:
                     image_registry.clear_decoded_matrices()
+            if resource_scope_errors:
+                resource_scope_error = ServiceConfigurationError(
+                    "Workflow ResourceScope 资源清理失败",
+                    details={
+                        "errors": [error.to_dict() for error in resource_scope_errors]
+                    },
+                )
+                if cleanup_error is None:
+                    cleanup_error = resource_scope_error
+                else:
+                    cleanup_error.details["resource_scope_error"] = {
+                        "error_code": resource_scope_error.code,
+                        "error_message": resource_scope_error.message,
+                        "details": dict(resource_scope_error.details),
+                    }
             if cleanup_error is not None and execution_error is None:
                 raise cleanup_error
             if cleanup_error is not None and execution_error is not None:
@@ -837,6 +863,7 @@ def run_workflow_snapshot_process_worker(
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     published_inference_gateway: PublishedInferenceGatewayClient | None = None
     model_session_manager: WorkflowModelSessionManager | None = None
+    runtime_context: WorkflowServiceNodeRuntimeContext | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -965,6 +992,8 @@ def run_workflow_snapshot_process_worker(
             }
         )
     finally:
+        if runtime_context is not None:
+            runtime_context.close()
         if model_session_manager is not None:
             model_session_manager.close_all()
         if sync_supervisor is not None:

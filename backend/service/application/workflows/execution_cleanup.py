@@ -141,6 +141,15 @@ def build_process_safe_execution_metadata(
 
     payload = dict(execution_metadata)
     payload.pop(WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY, None)
+    from backend.service.application.runtime.resource_scope import (
+        WORKFLOW_RESOURCE_SCOPE_METADATA_KEY,
+    )
+    from backend.service.application.workflows.execution.execution_control import (
+        WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY,
+    )
+
+    payload.pop(WORKFLOW_RESOURCE_SCOPE_METADATA_KEY, None)
+    payload.pop(WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY, None)
     # 并行节点锁与 cleanup 锁一样，只能在实际执行所在进程中创建和使用。
     # 即使调用方复用了曾在本进程执行过的 metadata，也不能把 threading.RLock
     # 交给 multiprocessing.Queue 的异步 feeder 线程。

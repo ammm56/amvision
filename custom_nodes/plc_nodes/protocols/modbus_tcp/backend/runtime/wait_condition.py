@@ -12,6 +12,9 @@ from backend.service.application.errors import (
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
 )
+from backend.service.application.workflows.execution.execution_control import (
+    build_node_execution_control,
+)
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.client import _open_modbus_client
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.config import _build_read_config
 from custom_nodes.plc_nodes.protocols.modbus_tcp.backend.runtime.parameters import (
@@ -38,13 +41,19 @@ def execute_wait_condition_node(
     """执行 wait-condition 节点。"""
 
     config = _build_wait_condition_config(request=request, node_name=node_name)
+    execution_control = build_node_execution_control(
+        request,
+        operation_timeout_seconds=config.timeout_seconds,
+    )
     started_at = time.perf_counter()
     attempts = 0
     consecutive_match_count = 0
     last_result_value: dict[str, object] | None = None
 
+    execution_control.raise_if_cancelled_or_expired()
     with _open_modbus_client(config.read.connection, node_name=node_name) as client:
         while True:
+            execution_control.raise_if_cancelled_or_expired()
             attempts += 1
             last_result_value = _perform_read_operation(
                 client=client,
@@ -112,7 +121,7 @@ def execute_wait_condition_node(
                         "last_observed": last_result_value,
                     },
                 )
-            time.sleep(config.poll_interval_ms / 1000.0)
+            execution_control.wait_interruptibly(config.poll_interval_ms / 1000.0)
 
 
 def _build_wait_condition_config(

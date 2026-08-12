@@ -52,6 +52,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         model_scale=model_scale,
         device=device,
         precision=precision,
+        request=request,
     )
     prediction = runtime_session.predict(
         image_bytes=image_bytes,

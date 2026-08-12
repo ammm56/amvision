@@ -260,6 +260,7 @@ def run_workflow_application_process_worker(
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
     model_session_manager: WorkflowModelSessionManager | None = None
+    runtime_context: WorkflowServiceNodeRuntimeContext | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
@@ -371,6 +372,8 @@ def run_workflow_application_process_worker(
             }
         )
     finally:
+        if runtime_context is not None:
+            runtime_context.close()
         if model_session_manager is not None:
             model_session_manager.close_all()
         if sync_supervisor is not None:

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.model_type_support import normalize_optional_platform_model_type
 from backend.service.application.task_type_support import require_supported_platform_task_type
+from backend.service.application.runtime.resource_scope import (
+    ResourceCloseError,
+    ResourceScope,
+    create_process_resource_scope,
+)
 from backend.service.domain.models.platform_model_support import get_supported_platform_model_types
 
 if TYPE_CHECKING:
@@ -67,6 +72,16 @@ class WorkflowServiceNodeRuntimeContext:
     published_inference_gateway: PublishedInferenceGateway | None = None
     workflow_model_session_manager: WorkflowModelSessionManager | None = None
     workflow_storage_image_cache: ExecutionImageRegistry | None = None
+    process_resource_scope: ResourceScope = field(
+        default_factory=create_process_resource_scope,
+        compare=False,
+        repr=False,
+    )
+
+    def close(self) -> tuple[ResourceCloseError, ...]:
+        """关闭当前 worker 或服务进程持有的共享运行时资源。"""
+
+        return self.process_resource_scope.close()
 
     def require_workflow_model_session_manager(self) -> WorkflowModelSessionManager:
         """返回模型 Load Checkpoint 与消费节点共用的 session 管理器。"""

@@ -4204,6 +4204,39 @@ textarea:focus-visible {
   padding: 6px;
 }
 
+.workflow-node-picker__barcode-family {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--graph-line);
+  border-radius: 10px;
+  background: var(--graph-panel-strong);
+}
+
+.workflow-node-picker__barcode-family > span {
+  color: var(--graph-muted);
+  font-size: 12px;
+}
+
+.workflow-node-picker__barcode-family select,
+.workflow-node-picker__barcode-family button {
+  min-height: 34px;
+  border: 1px solid var(--graph-line);
+  border-radius: 7px;
+  background: var(--graph-panel);
+  color: inherit;
+}
+
+.workflow-node-picker__barcode-family select {
+  width: 100%;
+  padding: 0 10px;
+}
+
+.workflow-node-picker__barcode-family button {
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .workflow-node-picker__node {
   display: grid;
   gap: 3px;
