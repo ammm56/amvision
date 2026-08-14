@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from backend.service.application.tasks.task_service import AppendTaskEventRequest
 from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
@@ -66,6 +67,7 @@ from backend.service.application.support.resource_cleanup import (
     model_task_resource_cleanup,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
+from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -175,6 +177,11 @@ class SqlAlchemyYoloTrainingRunner:
         ):
             task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
             task = task_service.get_task(task_id).task
+            task = self._restore_recovered_running_task(
+                task=task,
+                task_service=task_service,
+                request=request,
+            )
 
             task_type = str(request.task_type or "").strip().lower()
             if not task_type:
@@ -242,3 +249,69 @@ class SqlAlchemyYoloTrainingRunner:
                 best_metric_value=result.get("best_metric_value"),
                 summary=result,
             )
+
+    def _restore_recovered_running_task(
+        self,
+        *,
+        task: TaskRecord,
+        task_service: SqlAlchemyTaskService,
+        request: TrainingBackendRunRequest,
+    ) -> TaskRecord:
+        """队列 lease 回收后，从已落盘的 latest checkpoint 恢复任务快照。"""
+
+        if request.metadata.get("queue_lease_recovered") is not True:
+            return task
+        if task.state != "running":
+            return task
+
+        output_prefix = f"task-runs/{task.task_id}/output-files"
+        latest_checkpoint_object_key = f"{output_prefix}/latest-checkpoint.pt"
+        latest_checkpoint_path = self.dataset_storage.resolve(
+            latest_checkpoint_object_key
+        )
+        if not latest_checkpoint_path.is_file():
+            raise InvalidRequestError(
+                "训练 queue lease 已恢复，但 latest checkpoint 不存在",
+                details={
+                    "task_id": task.task_id,
+                    "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                },
+            )
+
+        best_checkpoint_object_key = f"{output_prefix}/best-checkpoint.pt"
+        result_patch: dict[str, object] = {
+            "latest_checkpoint_object_key": latest_checkpoint_object_key,
+        }
+        if self.dataset_storage.resolve(best_checkpoint_object_key).is_file():
+            result_patch["checkpoint_object_key"] = best_checkpoint_object_key
+
+        recovery_count = request.metadata.get("queue_lease_recovery_count")
+        task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task.task_id,
+                event_type="status",
+                message="training queue lease recovered",
+                payload={
+                    "state": "running",
+                    "attempt_no": task.current_attempt_no + 1,
+                    "finished_at": None,
+                    "error_message": None,
+                    "progress": {"stage": "running"},
+                    "result": result_patch,
+                    "metadata": {
+                        "training_queue_recovery": {
+                            "queue_task_id": request.metadata.get("queue_task_id"),
+                            "queue_attempt_count": request.metadata.get(
+                                "queue_attempt_count"
+                            ),
+                            "lease_recovery_count": (
+                                recovery_count
+                                if isinstance(recovery_count, int)
+                                else 1
+                            ),
+                        }
+                    },
+                },
+            )
+        )
+        return task_service.get_task(task.task_id).task

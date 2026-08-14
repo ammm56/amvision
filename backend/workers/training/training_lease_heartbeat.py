@@ -10,6 +10,7 @@ from backend.queue import QueueBackend, QueueMessage
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_LEASE_TIMEOUT_SECONDS = 86400.0
+TRAINING_LEASE_TIMEOUT_SECONDS = 900.0
 MAX_HEARTBEAT_INTERVAL_SECONDS = 300.0
 
 
@@ -167,8 +168,12 @@ class TrainingLeaseHeartbeat:
         if interval_seconds is not None:
             return max(0.01, float(interval_seconds))
         settings = getattr(self._queue_backend, "settings", None)
-        lease_timeout_seconds = float(
+        queue_lease_timeout_seconds = float(
             getattr(settings, "lease_timeout_seconds", DEFAULT_LEASE_TIMEOUT_SECONDS)
+        )
+        lease_timeout_seconds = min(
+            queue_lease_timeout_seconds,
+            TRAINING_LEASE_TIMEOUT_SECONDS,
         )
         return max(
             0.01,

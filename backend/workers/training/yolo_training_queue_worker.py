@@ -64,6 +64,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
+from backend.workers.training.training_queue_claim import (
+    build_training_run_metadata as _build_training_run_metadata,
+    claim_next_training_queue as _claim_next_training_queue,
+)
 from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner
 
 
@@ -117,7 +121,7 @@ class ClassificationTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="classification"),
                     task_type="classification",
-                    metadata={"queue_task_id": qt.task_id},
+                    metadata=_build_training_run_metadata(qt),
                 )
             )
         except OperationCancelledError as error:
@@ -180,24 +184,6 @@ class ClassificationTrainingQueueWorker:
         return True
 
 
-def _claim_next_training_queue(
-    queue_backend: QueueBackend,
-    *,
-    queue_names: tuple[str, ...],
-    worker_id: str,
-) -> QueueMessage | None:
-    """按顺序从多个训练队列中领取一条任务。"""
-
-    for queue_name in queue_names:
-        queue_task = queue_backend.claim_next(
-            queue_name=queue_name,
-            worker_id=worker_id,
-        )
-        if queue_task is not None:
-            return queue_task
-    return None
-
-
 class SegmentationTrainingQueueWorker:
     """消费 segmentation 训练队列。"""
 
@@ -248,7 +234,7 @@ class SegmentationTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="segmentation"),
                     task_type="segmentation",
-                    metadata={"queue_task_id": qt.task_id},
+                    metadata=_build_training_run_metadata(qt),
                 )
             )
         except OperationCancelledError as error:
@@ -361,7 +347,7 @@ class PoseTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="pose"),
                     task_type="pose",
-                    metadata={"queue_task_id": qt.task_id},
+                    metadata=_build_training_run_metadata(qt),
                 )
             )
         except OperationCancelledError as error:
@@ -474,7 +460,7 @@ class ObbTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="obb"),
                     task_type="obb",
-                    metadata={"queue_task_id": qt.task_id},
+                    metadata=_build_training_run_metadata(qt),
                 )
             )
         except OperationCancelledError as error:

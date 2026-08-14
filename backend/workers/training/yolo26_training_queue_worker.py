@@ -10,6 +10,10 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
+from backend.workers.training.training_queue_claim import (
+    build_training_run_metadata,
+    claim_next_training_queue,
+)
 from backend.workers.training.yolo26_trainer_runner import SqlAlchemyYolo26TrainerRunner
 
 
@@ -36,8 +40,9 @@ class Yolo26TrainingQueueWorker:
     def run_once(self) -> bool:
         """消费并执行一条 YOLO26 训练队列任务。"""
 
-        queue_task = self.queue_backend.claim_next(
-            queue_name=YOLO26_TRAINING_QUEUE_NAME,
+        queue_task = claim_next_training_queue(
+            self.queue_backend,
+            queue_names=(YOLO26_TRAINING_QUEUE_NAME,),
             worker_id=self.worker_id,
         )
         if queue_task is None:
@@ -59,7 +64,7 @@ class Yolo26TrainingQueueWorker:
                     training_task_id=task_id,
                     model_type="yolo26",
                     task_type="detection",
-                    metadata={"queue_task_id": queue_task.task_id},
+                    metadata=build_training_run_metadata(queue_task),
                 )
             )
         except ServiceError as error:
