@@ -213,19 +213,6 @@ def run_yolo11_obb_training(
     eval_nms = float(extra.get("evaluation_nms_threshold", YOLO11_OBB_DEFAULT_EVAL_NMS))
     augmentation_options = build_yolo11_task_augmentation_options(extra)
 
-    if resume_state is not None:
-        validate_yolo11_obb_resume_parameters(
-            resume_state,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            evaluation_interval=evaluation_interval,
-            min_lr_ratio=min_lr_ratio,
-            evaluation_confidence_threshold=eval_conf,
-            evaluation_nms_threshold=eval_nms,
-        )
-
     model.to(device_name)
     batch_size = resolve_training_batch_size(
         torch_module=imports.torch,
@@ -242,6 +229,18 @@ def run_yolo11_obb_training(
             checkpoint_path=request.resume_checkpoint_path,
         ),
     ).batch_size
+    if resume_state is not None:
+        validate_yolo11_obb_resume_parameters(
+            resume_state,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            evaluation_interval=evaluation_interval,
+            min_lr_ratio=min_lr_ratio,
+            evaluation_confidence_threshold=eval_conf,
+            evaluation_nms_threshold=eval_nms,
+        )
     optimizer, training_schedule = build_yolo_ultralytics_optimizer(
         torch_module=imports.torch,
         model=model,

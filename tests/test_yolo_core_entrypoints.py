@@ -1994,6 +1994,31 @@ def test_yolo_segmentation_training_defaults_do_not_use_legacy_large_values(
 
 
 @pytest.mark.parametrize(
+    "training_entrypoint",
+    (
+        run_yolo11_classification_training,
+        run_yolo11_segmentation_training,
+        run_yolo11_pose_training,
+        run_yolo11_obb_training,
+        run_yolo26_classification_training,
+        run_yolo26_segmentation_training,
+        run_yolo26_pose_training,
+        run_yolo26_obb_training,
+    ),
+)
+def test_yolo_auto_batch_resume_validates_resolved_checkpoint_batch(
+    training_entrypoint: object,
+) -> None:
+    """验证 resume 先恢复 checkpoint batch，再校验不可变训练参数。"""
+
+    source = inspect.getsource(training_entrypoint)
+    batch_resolution = source.index("batch_size = resolve_training_batch_size(")
+    parameter_validation = source.index("resume_parameters(", batch_resolution)
+
+    assert parameter_validation > batch_resolution
+
+
+@pytest.mark.parametrize(
     ("runner_cls", "session_cls", "module_suffix"),
     (
         (

@@ -240,6 +240,22 @@ def run_yolo26_pose_training(
     )
     augmentation_options = build_yolo26_task_augmentation_options(extra)
 
+    model.to(device_name)
+    batch_size = resolve_training_batch_size(
+        torch_module=imports.torch,
+        model=model,
+        device_name=device_name,
+        input_size=input_size,
+        dataset_size=len(manifest.train_annotations),
+        requested_batch_size=request.batch_size,
+        default_batch_size=YOLO26_POSE_DEFAULT_BATCH_SIZE,
+        runtime_precision=precision,
+        extra_options=extra,
+        resume_batch_size=read_resume_checkpoint_batch_size(
+            torch_module=imports.torch,
+            checkpoint_path=request.resume_checkpoint_path,
+        ),
+    ).batch_size
     if resume_state is not None:
         validate_yolo26_pose_resume_parameters(
             resume_state,
@@ -259,23 +275,6 @@ def run_yolo26_pose_training(
             grad_clip_norm=grad_clip_norm,
             evaluation_confidence_threshold=eval_conf,
         )
-
-    model.to(device_name)
-    batch_size = resolve_training_batch_size(
-        torch_module=imports.torch,
-        model=model,
-        device_name=device_name,
-        input_size=input_size,
-        dataset_size=len(manifest.train_annotations),
-        requested_batch_size=request.batch_size,
-        default_batch_size=YOLO26_POSE_DEFAULT_BATCH_SIZE,
-        runtime_precision=precision,
-        extra_options=extra,
-        resume_batch_size=read_resume_checkpoint_batch_size(
-            torch_module=imports.torch,
-            checkpoint_path=request.resume_checkpoint_path,
-        ),
-    ).batch_size
     optimizer, training_schedule = build_yolo_ultralytics_optimizer(
         torch_module=imports.torch,
         model=model,

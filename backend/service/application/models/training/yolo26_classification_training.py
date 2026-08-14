@@ -236,17 +236,6 @@ def run_yolo26_classification_training(
         device=device_name,
     )
 
-    if resume_state is not None:
-        validate_yolo26_classification_resume_parameters(
-            resume_state,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            evaluation_interval=evaluation_interval,
-            min_lr_ratio=min_lr_ratio,
-        )
-
     model.to(device_name)
     batch_size = resolve_training_batch_size(
         torch_module=imports.torch,
@@ -263,6 +252,16 @@ def run_yolo26_classification_training(
             checkpoint_path=request.resume_checkpoint_path,
         ),
     ).batch_size
+    if resume_state is not None:
+        validate_yolo26_classification_resume_parameters(
+            resume_state,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            evaluation_interval=evaluation_interval,
+            min_lr_ratio=min_lr_ratio,
+        )
     runtime = build_yolo26_classification_training_runtime(
         torch_module=imports.torch,
         model=model,
