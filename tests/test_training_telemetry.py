@@ -16,6 +16,14 @@ from backend.service.application.models.training.training_telemetry import (
     TrainingTelemetryBroker,
     TrainingTelemetryPoint,
 )
+from backend.service.application.models.training.training_runtime_metrics_snapshot import (
+    TRAINING_RUNTIME_METRICS_PROTOCOL,
+    TrainingRuntimeMetricsSnapshotWriter,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
@@ -79,6 +87,109 @@ def test_training_telemetry_rejects_non_finite_public_scalars() -> None:
         )
 
 
+def test_runtime_metrics_snapshot_persists_filters_and_compacts_full_span(
+    tmp_path: Path,
+) -> None:
+    """验证运行时快照可跨 writer 恢复，且抽稀后保留首尾训练跨度。"""
+
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    writer = TrainingRuntimeMetricsSnapshotWriter(
+        storage=storage,
+        history_limit=3,
+        persist_interval_seconds=0,
+    )
+    broker = TrainingTelemetryBroker(
+        event_bus=InMemoryServiceEventBus(),
+        min_publish_interval_seconds=0,
+        runtime_snapshot_writer=writer,
+    )
+    for step in (1, 2, 3, 4):
+        broker.publish(
+            _build_batch_point(
+                step=step,
+                runtime={
+                    "samples_per_second": float(step * 10),
+                    "gpu_utilization_percent": 70,
+                    "invalid": math.nan,
+                    "device": "cuda:0",
+                },
+            )
+        )
+
+    object_key = (
+        "task-runs/training/training-task-1/artifacts/reports/runtime-metrics.json"
+    )
+    payload = storage.read_json(object_key)
+    assert isinstance(payload, dict)
+    assert payload["protocol"] == TRAINING_RUNTIME_METRICS_PROTOCOL
+    assert [item["global_step"] for item in payload["runtime_history"]] == [1, 3, 4]
+    assert payload["runtime_history"][-1]["runtime"] == {
+        "samples_per_second": 40.0,
+        "gpu_utilization_percent": 70,
+    }
+
+    resumed_writer = TrainingRuntimeMetricsSnapshotWriter(
+        storage=storage,
+        history_limit=3,
+        persist_interval_seconds=0,
+    )
+    resumed_broker = TrainingTelemetryBroker(
+        event_bus=InMemoryServiceEventBus(),
+        min_publish_interval_seconds=0,
+        runtime_snapshot_writer=resumed_writer,
+    )
+    resumed_broker.publish(
+        _build_batch_point(
+            step=5,
+            runtime={"samples_per_second": 50.0},
+        )
+    )
+    resumed_payload = storage.read_json(object_key)
+    assert isinstance(resumed_payload, dict)
+    assert [
+        item["global_step"] for item in resumed_payload["runtime_history"]
+    ] == [1, 4, 5]
+
+
+def test_runtime_metrics_snapshot_forces_the_final_batch_to_disk(tmp_path: Path) -> None:
+    """验证最终 batch 不受时间节流影响，任务完成后立即具有最新快照。"""
+
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    broker = TrainingTelemetryBroker(
+        event_bus=InMemoryServiceEventBus(),
+        min_publish_interval_seconds=0,
+        runtime_snapshot_writer=TrainingRuntimeMetricsSnapshotWriter(
+            storage=storage,
+            persist_interval_seconds=3_600,
+        ),
+    )
+    broker.publish(
+        _build_batch_point(step=1, runtime={"samples_per_second": 10.0})
+    )
+    broker.publish(
+        TrainingTelemetryPoint(
+            **{
+                **_build_batch_point(
+                    step=2,
+                    runtime={"samples_per_second": 20.0},
+                ).__dict__,
+                "global_step": 6,
+                "total_steps": 6,
+            }
+        )
+    )
+
+    payload = storage.read_json(
+        "task-runs/training/training-task-1/artifacts/reports/runtime-metrics.json"
+    )
+    assert isinstance(payload, dict)
+    assert payload["runtime_history"][-1]["global_step"] == 6
+
+
 def test_training_telemetry_websocket_replays_and_streams_without_task_events(
     tmp_path: Path,
 ) -> None:
@@ -135,6 +246,7 @@ def _build_batch_point(
     task_id: str = "training-task-1",
     step: int,
     metrics: dict[str, float] | None = None,
+    runtime: dict[str, object] | None = None,
 ) -> TrainingTelemetryPoint:
     """构造合法的 batch 测试点。"""
 
@@ -148,13 +260,14 @@ def _build_batch_point(
         epoch=1,
         max_epochs=2,
         step=step,
-        steps_per_epoch=3,
+        steps_per_epoch=max(3, step),
         global_step=step,
         total_steps=6,
         progress_percent=float(step * 10),
         learning_rate=0.001,
         metrics=metrics or {"loss": float(step)},
         input_size=(640, 640),
+        runtime=runtime or {},
     )
 
 

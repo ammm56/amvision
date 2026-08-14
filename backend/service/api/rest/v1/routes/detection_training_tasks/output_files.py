@@ -14,6 +14,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 DetectionTrainingOutputFileName = Literal[
     "train-metrics",
     "validation-metrics",
+    "runtime-metrics",
     "test-metrics",
     "summary",
     "labels",
@@ -31,6 +32,11 @@ _DETECTION_TRAINING_OUTPUT_FILE_SPECS: dict[DetectionTrainingOutputFileName, dic
     "validation-metrics": {
         "object_key_field": "validation_metrics_object_key",
         "relative_path": "artifacts/reports/validation-metrics.json",
+        "file_kind": "json",
+    },
+    "runtime-metrics": {
+        "object_key_field": "runtime_metrics_object_key",
+        "relative_path": "artifacts/reports/runtime-metrics.json",
         "file_kind": "json",
     },
     "test-metrics": {
@@ -63,6 +69,7 @@ _DETECTION_TRAINING_OUTPUT_FILE_SPECS: dict[DetectionTrainingOutputFileName, dic
 _DETECTION_TRAINING_OUTPUT_FILE_ORDER: tuple[DetectionTrainingOutputFileName, ...] = (
     "train-metrics",
     "validation-metrics",
+    "runtime-metrics",
     "test-metrics",
     "summary",
     "labels",
@@ -154,7 +161,11 @@ def _read_detection_training_output_file(
     file_kind = spec["file_kind"]
     object_key = _resolve_detection_training_output_file_object_key(task=task, file_name=file_name)
     if object_key is None:
-        if strict_missing and task_state not in {"queued", "running"}:
+        if (
+            strict_missing
+            and file_name != "runtime-metrics"
+            and task_state not in {"queued", "running"}
+        ):
             raise ResourceNotFoundError(
                 "当前训练任务缺少训练输出文件",
                 details={"task_id": task.task_id, "file_name": file_name},
@@ -169,7 +180,11 @@ def _read_detection_training_output_file(
 
     file_path = dataset_storage.resolve(object_key)
     if not file_path.is_file():
-        if strict_missing and task_state not in {"queued", "running"}:
+        if (
+            strict_missing
+            and file_name != "runtime-metrics"
+            and task_state not in {"queued", "running"}
+        ):
             raise ResourceNotFoundError(
                 "当前训练任务缺少训练输出文件",
                 details={"task_id": task.task_id, "file_name": file_name, "object_key": object_key},
@@ -240,7 +255,10 @@ def _resolve_detection_training_output_file_object_key(
     )
     if output_object_prefix is None:
         return None
-    return f"{output_object_prefix}/{spec['relative_path']}"
+    relative_path = spec["relative_path"]
+    if file_name == "runtime-metrics" and "/training/" not in output_object_prefix:
+        relative_path = "output-files/runtime-metrics.json"
+    return f"{output_object_prefix}/{relative_path}"
 
 
 def _read_optional_str(payload: dict[str, object], key: str) -> str | None:

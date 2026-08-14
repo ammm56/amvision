@@ -14,6 +14,7 @@ export interface TrainingRuntimePoint {
   globalStep: number
   timestamp: string
   runtime: Record<string, number>
+  attemptNo?: number
 }
 
 export interface TrainingMetricCapability {
@@ -117,6 +118,7 @@ export function buildRuntimePoint(
   globalStep: unknown,
   timestamp: unknown,
   runtime: unknown,
+  attemptNo?: unknown,
 ): TrainingRuntimePoint | null {
   if (
     typeof globalStep !== 'number'
@@ -125,8 +127,9 @@ export function buildRuntimePoint(
     || typeof timestamp !== 'string'
   ) return null
   const finiteRuntime = readFiniteRuntime(runtime)
-  return Object.keys(finiteRuntime).length === 0
-    ? null
+  if (Object.keys(finiteRuntime).length === 0) return null
+  return typeof attemptNo === 'number' && Number.isInteger(attemptNo) && attemptNo >= 0
+    ? { globalStep, timestamp, runtime: finiteRuntime, attemptNo }
     : { globalStep, timestamp, runtime: finiteRuntime }
 }
 
@@ -181,6 +184,26 @@ export function readPersistedLearningRateHistory(
     return appendTrainingScalarPoint(
       history,
       buildLearningRatePointFromProgress(normalizedRecord),
+    )
+  }, [])
+}
+
+export function readPersistedRuntimeHistory(
+  payload: Record<string, unknown>,
+): TrainingRuntimePoint[] {
+  const rawHistory = Array.isArray(payload.runtime_history)
+    ? payload.runtime_history
+    : []
+  return rawHistory.reduce<TrainingRuntimePoint[]>((history, item) => {
+    const record = readRecord(item)
+    return appendTrainingRuntimePoint(
+      history,
+      buildRuntimePoint(
+        record.global_step,
+        record.timestamp,
+        record.runtime,
+        record.attempt_no,
+      ),
     )
   }, [])
 }

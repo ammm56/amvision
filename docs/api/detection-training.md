@@ -513,7 +513,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 #### 当前用途
 
 - 前端卡片、详情页和调试页面可以只轮询这一个资源组，统一判断每个文件的 `file_status`。
-- 当前资源组固定返回 6 项：`train-metrics`、`validation-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint`。
+- 当前资源组固定返回 8 项：`train-metrics`、`validation-metrics`、`runtime-metrics`、`test-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint`。
 - running 或 paused 阶段当前通常会看到 `train-metrics` 已经进入 `ready`；如果当前轮做过真实验证评估，`validation-metrics` 也会进入 `ready`。
 - `latest-checkpoint` 仍然只会在手动保存、暂停或训练完成时进入 `ready`。
 
@@ -532,7 +532,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 #### 当前用途
 
-- `summary`、`train-metrics`、`validation-metrics` 会把 JSON 内容放在 `payload`。
+- `summary`、`train-metrics`、`validation-metrics`、`runtime-metrics`、`test-metrics` 会把 JSON 内容放在 `payload`。
 - `labels` 会把文本内容放在 `text_content`，并额外返回 `lines`。
 - `best-checkpoint` 和 `latest-checkpoint` 当前只返回文件状态与元数据，不直接返回二进制内容。
 
@@ -540,6 +540,8 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 - `train-metrics`
 - `validation-metrics`
+- `runtime-metrics`
+- `test-metrics`
 - `summary`
 - `labels`
 - `best-checkpoint`
@@ -553,6 +555,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
   - checkpoints/latest_ckpt.pth：训练完成时的最新 checkpoint。
   - reports/train-metrics.json：训练过程指标和 epoch_history。
   - reports/validation-metrics.json：真实验证评估摘要、evaluated_epochs 和验证 epoch_history。
+  - artifacts/reports/runtime-metrics.json：YOLO detection 的 `training.runtime-metrics.v1` 有界运行时遥测快照；RF-DETR detection 沿用其 output-files/runtime-metrics.json 目录。两者都供页面刷新和任务完成后恢复吞吐、GPU/显存和 Host 阶段耗时曲线。
   - training-summary.json：训练摘要、output_files、运行设备信息和验证摘要。
   - labels.txt：当前训练输出对应的类别文件。
 - 如果运行中调用手动保存或暂停，服务会提前写出 checkpoints/latest_ckpt.pth；当时 best checkpoint 是否 ready 取决于当前是否已经产生 best 指标。

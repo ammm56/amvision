@@ -9,6 +9,7 @@ import {
   getTrainingMetricCapability,
   readOrderedMetricNames,
   readPersistedMetricHistory,
+  readPersistedRuntimeHistory,
 } from './training-metric-history'
 
 describe('training metric history', () => {
@@ -67,6 +68,30 @@ describe('training metric history', () => {
       epoch: 2,
       value: 0.001,
     })
+  })
+
+  it('restores finite runtime history from the durable snapshot', () => {
+    expect(readPersistedRuntimeHistory({
+      protocol: 'training.runtime-metrics.v1',
+      runtime_history: [
+        {
+          attempt_no: 2,
+          global_step: 42,
+          timestamp: '2026-08-13T00:00:00Z',
+          runtime: {
+            samples_per_second: 31.5,
+            gpu_utilization_percent: 82,
+            invalid: Number.POSITIVE_INFINITY,
+            device: 'cuda:0',
+          },
+        },
+      ],
+    })).toEqual([{
+      attemptNo: 2,
+      globalStep: 42,
+      timestamp: '2026-08-13T00:00:00Z',
+      runtime: { samples_per_second: 31.5, gpu_utilization_percent: 82 },
+    }])
   })
 
   it('aligns validation history with its evaluated epoch list', () => {

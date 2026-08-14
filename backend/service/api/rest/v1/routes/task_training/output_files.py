@@ -15,6 +15,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import Lo
 TrainingOutputFileName = Literal[
     "train-metrics",
     "validation-metrics",
+    "runtime-metrics",
     "test-metrics",
     "summary",
     "labels",
@@ -32,6 +33,11 @@ _TRAINING_OUTPUT_FILE_SPECS: dict[TrainingOutputFileName, dict[str, str]] = {
     "validation-metrics": {
         "object_key_field": "validation_metrics_object_key",
         "relative_path": "output-files/validation-metrics.json",
+        "file_kind": "json",
+    },
+    "runtime-metrics": {
+        "object_key_field": "runtime_metrics_object_key",
+        "relative_path": "output-files/runtime-metrics.json",
         "file_kind": "json",
     },
     "test-metrics": {
@@ -64,6 +70,7 @@ _TRAINING_OUTPUT_FILE_SPECS: dict[TrainingOutputFileName, dict[str, str]] = {
 _TRAINING_OUTPUT_FILE_ORDER: tuple[TrainingOutputFileName, ...] = (
     "train-metrics",
     "validation-metrics",
+    "runtime-metrics",
     "test-metrics",
     "summary",
     "labels",
@@ -132,7 +139,11 @@ def read_training_output_file_detail(
     file_kind = spec["file_kind"]
     object_key = _resolve_training_output_file_object_key(task=task, file_name=parsed_name)
     if object_key is None:
-        if strict_missing and task.state not in {"queued", "running"}:
+        if (
+            strict_missing
+            and parsed_name != "runtime-metrics"
+            and task.state not in {"queued", "running"}
+        ):
             raise ResourceNotFoundError(
                 "当前训练任务缺少训练输出文件",
                 details={"task_id": task.task_id, "file_name": parsed_name},
@@ -147,7 +158,11 @@ def read_training_output_file_detail(
 
     file_path = dataset_storage.resolve(object_key)
     if not file_path.is_file():
-        if strict_missing and task.state not in {"queued", "running"}:
+        if (
+            strict_missing
+            and parsed_name != "runtime-metrics"
+            and task.state not in {"queued", "running"}
+        ):
             raise ResourceNotFoundError(
                 "当前训练任务缺少训练输出文件",
                 details={
@@ -232,6 +247,9 @@ def _resolve_training_output_file_object_key(
     file_name: TrainingOutputFileName,
 ) -> str | None:
     """从任务快照、summary 和标准目录解析输出文件 object key。"""
+
+    if file_name == "runtime-metrics":
+        return f"task-runs/{task.task_id}/output-files/runtime-metrics.json"
 
     result = dict(task.result) if task.result else {}
     metadata = dict(task.metadata) if task.metadata else {}

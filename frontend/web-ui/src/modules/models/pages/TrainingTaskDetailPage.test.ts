@@ -86,10 +86,10 @@ describe('TrainingTaskDetailPage', () => {
       task_id: 'task-classification-1',
       task_type: 'classification',
       model_type: 'yolo11',
-      display_name: 'yolo11 classifier',
+      display_name: 'completed yolo11 classifier with runtime snapshot',
       project_id: 'project-1',
       created_at: '2026-07-10T02:00:00Z',
-      state: 'running',
+      state: 'succeeded',
       current_attempt_no: 1,
       progress: {
         stage: 'running',
@@ -152,19 +152,51 @@ describe('TrainingTaskDetailPage', () => {
         size_bytes: 128,
         updated_at: '2026-07-10T02:01:00Z',
       },
+      {
+        file_name: 'runtime-metrics',
+        file_kind: 'json',
+        file_status: 'ready',
+        task_state: 'running',
+        object_key: 'task-runs/task-classification-1/output-files/runtime-metrics.json',
+        size_bytes: 256,
+        updated_at: '2026-07-10T02:01:01Z',
+      },
     ])
-    vi.mocked(getModelTrainingOutputFileDetail).mockResolvedValue({
-      file_name: 'train-metrics',
-      file_kind: 'json',
-      file_status: 'ready',
-      task_state: 'running',
-      object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
-      size_bytes: 128,
-      updated_at: '2026-07-10T02:01:00Z',
-      payload: { final_metrics: { loss: 0.1234567, accuracy: 0.875 } },
-      text_content: null,
-      lines: [],
-    })
+    vi.mocked(getModelTrainingOutputFileDetail).mockImplementation(
+      async (_taskType, _taskId, fileName) => fileName === 'runtime-metrics'
+        ? {
+            file_name: 'runtime-metrics',
+            file_kind: 'json',
+            file_status: 'ready',
+            task_state: 'running',
+            object_key: 'task-runs/task-classification-1/output-files/runtime-metrics.json',
+            size_bytes: 256,
+            updated_at: '2026-07-10T02:01:01Z',
+            payload: {
+              protocol: 'training.runtime-metrics.v1',
+              runtime_history: [{
+                attempt_no: 1,
+                global_step: 12,
+                timestamp: '2026-07-10T02:01:01Z',
+                runtime: { samples_per_second: 42.5 },
+              }],
+            },
+            text_content: null,
+            lines: [],
+          }
+        : {
+            file_name: 'train-metrics',
+            file_kind: 'json',
+            file_status: 'ready',
+            task_state: 'running',
+            object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
+            size_bytes: 128,
+            updated_at: '2026-07-10T02:01:00Z',
+            payload: { final_metrics: { loss: 0.1234567, accuracy: 0.875 } },
+            text_content: null,
+            lines: [],
+          },
+    )
 
     const wrapper = mount(TrainingTaskDetailPage, {
       global: {
@@ -182,6 +214,11 @@ describe('TrainingTaskDetailPage', () => {
       'task-classification-1',
       'train-metrics',
     )
+    expect(getModelTrainingOutputFileDetail).toHaveBeenCalledWith(
+      'classification',
+      'task-classification-1',
+      'runtime-metrics',
+    )
     expect(wrapper.text()).toContain('训练进度')
     expect(wrapper.text()).toContain('75.0%')
     expect(wrapper.text()).toContain('2 / 4')
@@ -189,6 +226,9 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('0.123457')
     expect(wrapper.text()).toContain('top1_accuracy')
     expect(wrapper.text()).toContain('train-metrics')
+    expect(wrapper.text()).toContain('runtime-metrics')
+    expect(trainingTelemetryStreamMock.start).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('此旧任务未保存运行时遥测')
   })
 
   it('separates completed epoch metrics from volatile batch metrics', async () => {
@@ -196,10 +236,10 @@ describe('TrainingTaskDetailPage', () => {
       task_id: 'task-classification-1',
       task_type: 'classification',
       model_type: 'yolo11',
-      display_name: 'yolo11 classifier',
+      display_name: 'completed yolo11 classifier',
       project_id: 'project-1',
       created_at: '2026-07-10T02:00:00Z',
-      state: 'running',
+      state: 'succeeded',
       current_attempt_no: 1,
       progress: {
         stage: 'running',
@@ -239,7 +279,7 @@ describe('TrainingTaskDetailPage', () => {
       file_name: 'train-metrics',
       file_kind: 'json',
       file_status: 'ready',
-      task_state: 'running',
+        task_state: 'succeeded',
       object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
       size_bytes: 128,
       updated_at: '2026-07-10T02:01:00Z',
@@ -248,7 +288,7 @@ describe('TrainingTaskDetailPage', () => {
       file_name: 'train-metrics',
       file_kind: 'json',
       file_status: 'ready',
-      task_state: 'running',
+        task_state: 'succeeded',
       object_key: 'task-runs/task-classification-1/output-files/train-metrics.json',
       size_bytes: 128,
       updated_at: '2026-07-10T02:01:00Z',
@@ -267,6 +307,7 @@ describe('TrainingTaskDetailPage', () => {
     expect(wrapper.text()).toContain('1.25')
     expect(wrapper.text()).toContain('2.75')
     expect(wrapper.text()).not.toContain('9.9')
+    expect(wrapper.text()).toContain('此旧任务未保存运行时遥测')
   })
 
   it('applies batch telemetry and refreshes output files at the next epoch boundary', async () => {

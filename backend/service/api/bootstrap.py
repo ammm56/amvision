@@ -62,6 +62,9 @@ from backend.service.application.models.catalog.yolo_model_pretrained_catalog im
 from backend.service.application.models.training.training_telemetry import (
     TrainingTelemetryBroker,
 )
+from backend.service.application.models.training.training_runtime_metrics_snapshot import (
+    TrainingRuntimeMetricsSnapshotWriter,
+)
 from backend.service.application.models.training.training_telemetry_mmap import (
     TrainingTelemetryMmapReceiver,
 )
@@ -378,8 +381,14 @@ class BackendServiceBootstrap(
         )
         async_inference_service_id = _resolve_async_inference_service_id(settings)
         service_event_bus = InMemoryServiceEventBus()
+        dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
+            settings.to_dataset_storage_settings()
+        )
         training_telemetry_broker = TrainingTelemetryBroker(
-            event_bus=service_event_bus
+            event_bus=service_event_bus,
+            runtime_snapshot_writer=TrainingRuntimeMetricsSnapshotWriter(
+                storage=dataset_storage,
+            ),
         )
         training_telemetry_receiver = (
             TrainingTelemetryMmapReceiver(
@@ -398,9 +407,6 @@ class BackendServiceBootstrap(
         )
         session_factory.service_event_bus = service_event_bus
         session_factory.training_telemetry_broker = training_telemetry_broker
-        dataset_storage = self._provided_dataset_storage or LocalDatasetStorage(
-            settings.to_dataset_storage_settings()
-        )
         queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
             settings.to_queue_settings()
         )
@@ -881,6 +887,7 @@ class BackendServiceBootstrap(
             runtime.background_task_manager_host.stop()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
+        runtime.training_telemetry_broker.close()
         runtime.trigger_source_supervisor.stop_all()
         runtime.deployment_runtime_reconciler.stop()
         runtime.workflow_preview_run_manager.stop()

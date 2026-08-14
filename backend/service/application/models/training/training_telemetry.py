@@ -19,6 +19,9 @@ from backend.service.application.models.training.training_engine import (
 from backend.service.application.models.training.training_runtime_metrics import (
     TrainingRuntimeMetricsSampler,
 )
+from backend.service.application.models.training.training_runtime_metrics_snapshot import (
+    TrainingRuntimeMetricsSnapshotWriter,
+)
 
 
 TRAINING_TELEMETRY_PROTOCOL = "training.telemetry.v1"
@@ -92,6 +95,7 @@ class TrainingTelemetryBroker:
         history_limit: int = 2_000,
         max_tasks: int = 256,
         min_publish_interval_seconds: float = 0.1,
+        runtime_snapshot_writer: TrainingRuntimeMetricsSnapshotWriter | None = None,
     ) -> None:
         """初始化 broker 并固定当前进程的 cursor session。"""
 
@@ -105,11 +109,13 @@ class TrainingTelemetryBroker:
         self.history_limit = history_limit
         self.max_tasks = max_tasks
         self.min_publish_interval_seconds = min_publish_interval_seconds
+        self.runtime_snapshot_writer = runtime_snapshot_writer
         self.stream_session_id = uuid4().hex
         self._lock = threading.Lock()
         self._histories: OrderedDict[str, deque[ServiceEvent]] = OrderedDict()
         self._sequences: dict[str, int] = {}
         self._last_publish_monotonic: dict[tuple[str, str], float] = {}
+        self._snapshot_warning_tasks: OrderedDict[str, None] = OrderedDict()
 
     def publish(
         self,
@@ -158,7 +164,26 @@ class TrainingTelemetryBroker:
             self._evict_inactive_tasks_locked()
 
         self.event_bus.publish(event)
+        if self.runtime_snapshot_writer is not None:
+            try:
+                self.runtime_snapshot_writer.append(event.payload)
+            except (OSError, TypeError, ValueError):
+                # 快照是旁路可观测性，磁盘故障不能改变实时遥测和训练主链。
+                self._warn_snapshot_write_once(point.task_id)
         return event
+
+    def close(self) -> None:
+        """在服务退出边界写出尚未达到时间阈值的运行时快照。"""
+
+        if self.runtime_snapshot_writer is None:
+            return
+        try:
+            self.runtime_snapshot_writer.flush_all()
+        except (OSError, TypeError, ValueError):
+            logger.warning(
+                "training runtime metrics snapshot final flush failed",
+                exc_info=True,
+            )
 
     def replay(
         self,
@@ -234,6 +259,21 @@ class TrainingTelemetryBroker:
             ]
             for key in stale_keys:
                 self._last_publish_monotonic.pop(key, None)
+
+    def _warn_snapshot_write_once(self, task_id: str) -> None:
+        """每个任务最多记录一次快照写入故障，避免高频遥测刷屏。"""
+
+        with self._lock:
+            if task_id in self._snapshot_warning_tasks:
+                return
+            self._snapshot_warning_tasks[task_id] = None
+            while len(self._snapshot_warning_tasks) > self.max_tasks:
+                self._snapshot_warning_tasks.popitem(last=False)
+        logger.warning(
+            "training runtime metrics snapshot write failed task_id=%s",
+            task_id,
+            exc_info=True,
+        )
 
 
 def configure_process_training_telemetry_publisher(publisher: object | None) -> None:

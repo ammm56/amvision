@@ -178,7 +178,11 @@ latest 与 best 分离：latest 用于恢复，best 用于最终 test 和模型�
 高频 batch 数据不写入任务事件表。独立训练 worker 先写入每个 worker 一个的有界
 mmap ring，backend-service 接收后再进入进程内有界 broker；内嵌 worker 直接进入
 同一 broker。`training.telemetry.v1` WebSocket 提供带游标的重放与重连，epoch 和
-validation 快照仍持久化到指标文件。mmap ring 使用 generation、sequence 与 CRC
+validation 快照仍持久化到指标文件。broker 同时把 runtime 数值降采样并原子写入
+任务正式输出树中的 `runtime-metrics.json`；非 detection 使用
+`task-runs/{task_id}/output-files/`，detection 使用其 `artifacts/reports/`。该文件使用
+`training.runtime-metrics.v1` 协议，达到 2,000 点上限时分层抽稀旧点并保留首尾跨度，
+磁盘写入按 5 秒和 epoch 边界节流。mmap ring 使用 generation、sequence 与 CRC
 拒绝跨进程 torn payload，不为每个 batch 写 SQLite 或创建普通事件文件。
 
 publisher 是 worker 进程级 runtime 资源，不绑定数据库 `SessionFactory` 生命周期。
@@ -202,12 +206,15 @@ batch 刷屏。service receiver 与 WebSocket 可以在首个 batch 前确认 pr
 每个 batch 的原始 loss 允许波动。页面必须分别标记 raw batch、EMA 和完整 epoch
 加权均值，不能把 batch 快照当作 epoch 收敛曲线。worker 对高频事件节流和合并，
 浏览器只保留有界 ring buffer；断线后从 cursor 恢复，缺口过大时读取一次 REST
-snapshot。
+snapshot。任务完成或页面重新加载时，吞吐、GPU/显存和 Host 阶段耗时从
+`runtime-metrics` 输出恢复，不再依赖已退出 worker 的 mmap 或服务进程内存。修复前
+已经完成且 mmap 已回收的任务无法无损回补，页面必须明确显示兼容提示，不能伪造数据。
 
 ### Vue 与 ECharts
 
 `TrainingTaskDetailPage` 在挂载时订阅训练遥测，在任务结束或页面卸载时释放连接。
-REST 仅负责首次快照、重连缺口和最终文件刷新，不再要求手动刷新页面。
+REST 仅负责首次快照、重连缺口和最终文件刷新，不再要求手动刷新页面。运行时曲线的
+REST 初始快照来自 `runtime-metrics`，活动任务再由 WebSocket 追加新点。
 
 ECharts 使用模块化按需导入，并将图表组件异步分包：
 
@@ -293,6 +300,8 @@ digest 和样本 id 稳定排序后等分为 725 张 validation 和 724 张 test
   utilization。YOLOX 和三代 YOLO 的训练主循环还记录 forward+loss、
   backward+optimizer 与 batch compute 的低开销 host wall-time，不为遥测强制同步
   CUDA。训练详情页已增加吞吐/batch time、阶段耗时与 GPU/显存 ECharts，采样状态
+  同时写入有界 `runtime-metrics.json`；完成任务刷新或服务重启后可恢复曲线。修复前
+  已完成且 mmap 已回收的旧任务会显示不可回补提示。
   按 task 有界保留且非有限值不会进入协议。
 - 三代 YOLO 的 classification、detection、segmentation、pose、OBB 以及 RF-DETR
   detection/segmentation 的训练结果均由 TrainingEngine 写入真实运行快照；训练摘要

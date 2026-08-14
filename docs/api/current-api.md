@@ -1615,7 +1615,7 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 ### GET /api/v1/models/detection/training-tasks/{task_id}/output-files
 
 - 需要 tasks:read
-- 统一列出 `train-metrics`、`validation-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint` 这 6 个训练输出文件
+- 统一列出 `train-metrics`、`validation-metrics`、`runtime-metrics`、`test-metrics`、`summary`、`labels`、`best-checkpoint`、`latest-checkpoint` 这 8 个训练输出文件
 - running 或 paused 阶段通常会看到 `train-metrics` 已经进入 `ready`；如果当前轮做过真实验证评估，`validation-metrics` 也会进入 `ready`
 - `latest-checkpoint` 仍然主要在 save、pause 或训练完成后进入 `ready`
 - 每个条目都会返回 `file_name`、`file_kind`、`file_status`、`task_state`、`object_key`、`size_bytes` 和 `updated_at`
@@ -1624,7 +1624,8 @@ classification、segmentation、pose 和 obb 四种任务类型也提供 task-na
 
 - 需要 tasks:read
 - 统一读取单个训练输出文件
-- `summary`、`train-metrics`、`validation-metrics` 通过 `payload` 返回 JSON 内容
+- `summary`、`train-metrics`、`validation-metrics`、`runtime-metrics`、`test-metrics` 通过 `payload` 返回 JSON 内容
+- `runtime-metrics` 使用 `training.runtime-metrics.v1` 协议，保存有界、降采样的吞吐、GPU/显存和 Host 阶段耗时历史；修复前已完成的旧任务可能为 `pending`，其已回收的 mmap 历史不能无损回补
 - `labels` 通过 `text_content` 和 `lines` 返回文本内容
 - `best-checkpoint`、`latest-checkpoint` 当前只返回文件元数据，不直接返回二进制内容
 

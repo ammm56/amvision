@@ -1086,7 +1086,7 @@ def test_get_yolox_training_output_files_returns_completed_entries(
 
         assert output_files_response.status_code == 200
         output_files_payload = output_files_response.json()
-        assert len(output_files_payload) == 7
+        assert len(output_files_payload) == 8
         output_files_by_name = {
             item["file_name"]: item for item in output_files_payload
         }
@@ -1095,6 +1095,22 @@ def test_get_yolox_training_output_files_returns_completed_entries(
         assert output_files_by_name["best-checkpoint"]["file_kind"] == "checkpoint"
         assert output_files_by_name["latest-checkpoint"]["file_status"] == "ready"
         assert output_files_by_name["test-metrics"]["file_status"] == "ready"
+        assert output_files_by_name["runtime-metrics"]["file_status"] == "ready"
+        assert output_files_by_name["runtime-metrics"]["object_key"] == (
+            f"task-runs/training/{task_id}/artifacts/reports/runtime-metrics.json"
+        )
+
+        with client:
+            runtime_metrics_response = client.get(
+                f"/api/v1/models/detection/training-tasks/{task_id}/"
+                "output-files/runtime-metrics",
+                headers=_build_training_headers(),
+            )
+        assert runtime_metrics_response.status_code == 200
+        runtime_metrics_payload = runtime_metrics_response.json()["payload"]
+        assert runtime_metrics_payload["protocol"] == "training.runtime-metrics.v1"
+        assert runtime_metrics_payload["task_id"] == task_id
+        assert runtime_metrics_payload["runtime_history"]
 
         with client:
             summary_response = client.get(

@@ -18,17 +18,17 @@
     <article class="training-chart-card">
       <h3>{{ t('trainingDetail.charts.runtimePerformance') }}</h3>
       <div ref="runtimeChartElement" class="training-chart-canvas training-chart-canvas--small" />
-      <span v-if="runtimeHistory.length === 0" class="training-chart-empty">{{ t('common.noValue') }}</span>
+      <span v-if="runtimeHistory.length === 0" class="training-chart-empty">{{ runtimeEmptyText }}</span>
     </article>
     <article class="training-chart-card">
       <h3>{{ t('trainingDetail.charts.gpuResources') }}</h3>
       <div ref="gpuChartElement" class="training-chart-canvas training-chart-canvas--small" />
-      <span v-if="!hasGpuHistory" class="training-chart-empty">{{ t('common.noValue') }}</span>
+      <span v-if="!hasGpuHistory" class="training-chart-empty">{{ runtimeHistory.length === 0 ? runtimeEmptyText : t('common.noValue') }}</span>
     </article>
     <article class="training-chart-card training-chart-card--wide">
       <h3>{{ t('trainingDetail.charts.stageTiming') }}</h3>
       <div ref="stageChartElement" class="training-chart-canvas training-chart-canvas--small" />
-      <span v-if="!hasStageHistory" class="training-chart-empty">{{ t('common.noValue') }}</span>
+      <span v-if="!hasStageHistory" class="training-chart-empty">{{ runtimeHistory.length === 0 ? runtimeEmptyText : t('common.noValue') }}</span>
     </article>
   </div>
 </template>
@@ -63,6 +63,7 @@ const props = defineProps<{
   validationHistory: TrainingMetricPoint[]
   learningRateHistory: TrainingScalarPoint[]
   runtimeHistory: TrainingRuntimePoint[]
+  runtimeEmptyText: string
 }>()
 
 const { t } = useI18n()

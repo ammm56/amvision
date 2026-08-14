@@ -318,6 +318,20 @@ def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_pat
         "task-runs/task-4/output-files/validation-metrics.json",
         {"final_metrics": {"top1_accuracy": 0.5, "top5_accuracy": 1.0}},
     )
+    storage.write_json(
+        "task-runs/task-4/output-files/runtime-metrics.json",
+        {
+            "protocol": "training.runtime-metrics.v1",
+            "runtime_history": [
+                {
+                    "attempt_no": 1,
+                    "global_step": 10,
+                    "timestamp": "2026-08-13T00:00:00+00:00",
+                    "runtime": {"samples_per_second": 40.0},
+                }
+            ],
+        },
+    )
     storage.write_text("task-runs/task-4/output-files/labels.txt", "ok\nng\n")
     task = SimpleNamespace(
         task_id="task-4",
@@ -339,10 +353,41 @@ def test_list_training_output_files_reads_standard_non_detection_outputs(tmp_pat
 
     assert by_name["train-metrics"].file_status == "ready"
     assert by_name["validation-metrics"].file_status == "ready"
+    assert by_name["runtime-metrics"].file_status == "ready"
+    assert by_name["runtime-metrics"].object_key == (
+        "task-runs/task-4/output-files/runtime-metrics.json"
+    )
     assert by_name["labels"].file_status == "ready"
     assert by_name["summary"].file_status == "pending"
     assert by_name["latest-checkpoint"].file_status == "pending"
     assert labels.lines == ["ok", "ng"]
+
+
+def test_legacy_runtime_metrics_detail_remains_pending_after_task_completion(
+    tmp_path,
+) -> None:
+    """验证修复前旧任务缺少 runtime 快照时详情接口不会误报 404。"""
+
+    storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "data"))
+    )
+    task = SimpleNamespace(
+        task_id="legacy-task",
+        state="succeeded",
+        result={"output_object_prefix": "task-runs/legacy-task"},
+        metadata={},
+    )
+
+    detail = output_files_module.read_training_output_file_detail(
+        task=task,
+        dataset_storage=storage,
+        file_name="runtime-metrics",
+    )
+
+    assert detail.file_status == "pending"
+    assert detail.object_key == (
+        "task-runs/legacy-task/output-files/runtime-metrics.json"
+    )
 
 
 def test_list_training_tasks_filters_by_task_type(monkeypatch: pytest.MonkeyPatch) -> None:

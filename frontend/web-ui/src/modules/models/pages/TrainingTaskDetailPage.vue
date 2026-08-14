@@ -188,6 +188,12 @@
           {{ trainingStreamConnected ? t('trainingDetail.charts.live') : t('trainingDetail.charts.snapshot') }}
         </StatusBadge>
       </div>
+      <p
+        v-if="runtimeHistory.length === 0"
+        class="training-metric-hint training-runtime-history-status"
+      >
+        {{ runtimeHistoryEmptyText }}
+      </p>
       <TrainingMetricsCharts
         v-if="taskType"
         :task-type="taskType"
@@ -195,6 +201,7 @@
         :validation-history="validationMetricHistory"
         :learning-rate-history="learningRateHistory"
         :runtime-history="runtimeHistory"
+        :runtime-empty-text="runtimeHistoryEmptyText"
       />
     </section>
 
@@ -298,6 +305,7 @@ import {
   buildRuntimePoint,
   readPersistedLearningRateHistory,
   readPersistedMetricHistory,
+  readPersistedRuntimeHistory,
   type TrainingMetricPoint,
   type TrainingRuntimePoint,
   type TrainingScalarPoint,
@@ -320,6 +328,7 @@ const deleteDialogOpen = ref(false)
 const errorMessage = ref<string | null>(null)
 const trainingMetricsPayload = ref<Record<string, unknown>>({})
 const validationMetricsPayload = ref<Record<string, unknown>>({})
+const runtimeMetricsPayload = ref<Record<string, unknown>>({})
 const trainMetricHistory = ref<TrainingMetricPoint[]>([])
 const validationMetricHistory = ref<TrainingMetricPoint[]>([])
 const learningRateHistory = ref<TrainingScalarPoint[]>([])
@@ -408,6 +417,13 @@ const trainingTelemetry = useTrainingTelemetry(
 const trainingStreamConnected = computed(() => (
   trainingTelemetry.streamState.value?.connected === true
 ))
+const runtimeHistoryEmptyText = computed(() => {
+  if (runtimeHistory.value.length > 0) return t('common.noValue')
+  const runtimeFile = outputFiles.value.find((file) => file.file_name === 'runtime-metrics')
+  return !isActiveTrainingState(task.value?.state) && runtimeFile?.file_status !== 'ready'
+    ? t('trainingDetail.charts.legacyRuntimeUnavailable')
+    : t('trainingDetail.charts.runtimePending')
+})
 
 onMounted(async () => {
   await refreshPage()
@@ -459,16 +475,21 @@ async function refreshPage(): Promise<void> {
     outputFiles.value = files
     const metricsFile = files.find((file) => file.file_name === 'train-metrics')
     const validationMetricsFile = files.find((file) => file.file_name === 'validation-metrics')
-    const [trainMetricsDetail, validationMetricsDetail] = await Promise.all([
+    const runtimeMetricsFile = files.find((file) => file.file_name === 'runtime-metrics')
+    const [trainMetricsDetail, validationMetricsDetail, runtimeMetricsDetail] = await Promise.all([
       metricsFile
         ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, metricsFile.file_name)
         : Promise.resolve(null),
       validationMetricsFile
         ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, validationMetricsFile.file_name)
         : Promise.resolve(null),
+      runtimeMetricsFile?.file_status === 'ready'
+        ? getModelTrainingOutputFileDetail(currentTaskType, taskId.value, runtimeMetricsFile.file_name)
+        : Promise.resolve(null),
     ])
     trainingMetricsPayload.value = trainMetricsDetail?.payload ?? {}
     validationMetricsPayload.value = validationMetricsDetail?.payload ?? {}
+    runtimeMetricsPayload.value = runtimeMetricsDetail?.payload ?? {}
     mergePersistedHistories()
     appendProgressHistory(taskDetail.progress)
     taskDetail.events.forEach((event) => {
@@ -626,7 +647,12 @@ function handleTrainingTelemetry(payload: TrainingTelemetryPayload): void {
   if (Object.keys(payload.runtime).length > 0) nextProgress.runtime = payload.runtime
   runtimeHistory.value = appendTrainingRuntimePoint(
     runtimeHistory.value,
-    buildRuntimePoint(payload.global_step, payload.timestamp, payload.runtime),
+    buildRuntimePoint(
+      payload.global_step,
+      payload.timestamp,
+      payload.runtime,
+      payload.attempt_no,
+    ),
   )
   task.value = {
     ...currentTask,
@@ -733,6 +759,9 @@ function mergePersistedHistories(): void {
   })
   readPersistedLearningRateHistory(trainingMetricsPayload.value).forEach((point) => {
     learningRateHistory.value = appendTrainingScalarPoint(learningRateHistory.value, point)
+  })
+  readPersistedRuntimeHistory(runtimeMetricsPayload.value).forEach((point) => {
+    runtimeHistory.value = appendTrainingRuntimePoint(runtimeHistory.value, point)
   })
 }
 
