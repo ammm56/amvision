@@ -218,11 +218,11 @@ def test_deployment_process_supervisor_limits_running_processes_across_superviso
         async_supervisor.stop()
 
 
-def test_deployment_process_supervisor_applies_and_releases_cpu_allocation(
+def test_deployment_process_supervisor_applies_and_releases_cpu_configuration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 CPU 线程在 worker 启动前裁剪，并在进程停止后完整释放。"""
+    """验证 CPU 线程在 worker 启动前按本 deployment 裁剪，并在停止后删除记录。"""
 
     monkeypatch.setattr(
         cpu_device_resource_manager,
@@ -276,12 +276,97 @@ def test_deployment_process_supervisor_applies_and_releases_cpu_allocation(
             "allocated_runtime_configuration"
         ]
         assert allocated["backend_options"]["inference_num_threads"] == 3
-        assert manager.snapshot()["allocated_thread_count"] == 6
+        assert manager.snapshot()["configured_thread_capacity"] == 6
 
         supervisor.stop_deployment(config)
-        assert manager.snapshot()["allocated_thread_count"] == 0
+        assert manager.snapshot()["configured_thread_capacity"] == 0
     finally:
         supervisor.stop()
+
+
+def test_sync_and_async_openvino_deployments_share_cpu_without_startup_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 sync/async 常驻配置总和超过核心数时仍可同时启动。"""
+
+    monkeypatch.setattr(
+        cpu_device_resource_manager,
+        "read_cpu_hardware_summary",
+        lambda: {
+            "cpu_physical_core_count": 6,
+            "cpu_logical_processor_count": 12,
+        },
+    )
+    runtime_artifact_path = tmp_path / "shared-runtime-artifact.xml"
+    runtime_artifact_path.write_bytes(b"fake-openvino-artifact")
+    runtime_target = replace(
+        _build_runtime_target(runtime_artifact_path),
+        runtime_backend="openvino",
+        runtime_artifact_file_type="openvino.xml",
+    )
+    configuration = DeploymentRuntimeConfiguration(
+        execution=DeploymentExecutionPolicy(instance_count=2),
+        backend_options=OpenVinoCpuRuntimeOptions(
+            inference_num_threads=4,
+            num_streams=1,
+        ),
+    )
+    sync_config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-openvino-sync",
+        runtime_target=runtime_target,
+        runtime_configuration=configuration,
+    )
+    async_config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-openvino-async",
+        runtime_target=runtime_target,
+        runtime_configuration=configuration,
+    )
+    settings = BackendServiceDeploymentProcessSupervisorConfig(
+        auto_restart=False,
+        request_timeout_seconds=30.0,
+        shutdown_timeout_seconds=1.0,
+        max_running_process_count=4,
+        operator_thread_count=8,
+    )
+    manager = CpuDeviceResourceManager()
+    sync_supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="sync",
+        settings=settings,
+        cpu_device_resource_manager=manager,
+        worker_target=fake_deployment_process_worker,
+    )
+    async_supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="async",
+        settings=settings,
+        cpu_device_resource_manager=manager,
+        worker_target=fake_deployment_process_worker,
+    )
+
+    sync_supervisor.start()
+    async_supervisor.start()
+    try:
+        assert sync_supervisor.start_deployment(sync_config).process_state == "running"
+        assert async_supervisor.start_deployment(async_config).process_state == "running"
+
+        sync_health = _wait_for_health(sync_supervisor, sync_config)
+        async_health = _wait_for_health(async_supervisor, async_config)
+        for health in (sync_health, async_health):
+            allocated = health.effective_runtime_configuration[
+                "allocated_runtime_configuration"
+            ]
+            assert allocated["backend_options"]["inference_num_threads"] == 3
+
+        snapshot = manager.snapshot()
+        assert snapshot["active_deployment_count"] == 2
+        assert snapshot["configured_thread_capacity"] == 12
+        assert snapshot["shared_thread_capacity"] == 6
+        assert snapshot["oversubscribed"] is False
+    finally:
+        sync_supervisor.stop()
+        async_supervisor.stop()
 
 
 def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:

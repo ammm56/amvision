@@ -448,19 +448,19 @@
             <strong>{{ selectedRuntimeHealth?.warmed_instance_count ?? '-' }}</strong>
           </div>
           <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuThreadAllocation') }}</span>
+            <span>{{ t('deploymentOps.fields.cpuDeploymentThreadCapacity') }}</span>
             <strong>
-              {{ selectedCpuResourceSummary.allocatedThreadCount }} /
+              {{ selectedCpuResourceSummary.deploymentThreadCapacity }} /
               {{ selectedCpuResourceSummary.physicalCoreCount }}
             </strong>
           </div>
           <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuThreadsAvailable') }}</span>
-            <strong>{{ selectedCpuResourceSummary.availableThreadCount }}</strong>
+            <span>{{ t('deploymentOps.fields.cpuThreadsPerInstance') }}</span>
+            <strong>{{ selectedCpuResourceSummary.threadsPerInstance }}</strong>
           </div>
           <div v-if="selectedCpuResourceSummary">
-            <span>{{ t('deploymentOps.fields.cpuConstrainedDeployments') }}</span>
-            <strong>{{ selectedCpuResourceSummary.constrainedDeploymentCount }}</strong>
+            <span>{{ t('deploymentOps.fields.cpuSchedulingPolicy') }}</span>
+            <strong>{{ t('deploymentOps.fields.cpuSchedulingPolicyShared') }}</strong>
           </div>
           <div>
             <span>{{ t('deploymentOps.fields.pinnedBytes') }}</span>
@@ -680,22 +680,29 @@ const selectedCpuResourceSummary = computed(() => {
     return null
   }
   const physicalCoreCount = readNonNegativeInteger(manager, 'cpu_physical_core_count')
-  const allocatedThreadCount = readNonNegativeInteger(manager, 'allocated_thread_count')
-  const availableThreadCount = readNonNegativeInteger(manager, 'available_thread_count')
-  const constrainedDeploymentCount = readNonNegativeInteger(manager, 'constrained_deployment_count')
+  const schedulingPolicy = manager.scheduling_policy
+  const reservations = Array.isArray(manager.reservations) ? manager.reservations : []
+  const reservation = reservations
+    .map((item) => asRecord(item))
+    .find((item) => item?.deployment_instance_id === deployment.deployment_instance_id)
+  const deploymentThreadCapacity = reservation
+    ? readNonNegativeInteger(reservation, 'allocated_thread_count')
+    : null
+  const threadsPerInstance = reservation
+    ? readNonNegativeInteger(reservation, 'allocated_threads_per_instance')
+    : null
   if (
     physicalCoreCount === null
-    || allocatedThreadCount === null
-    || availableThreadCount === null
-    || constrainedDeploymentCount === null
+    || schedulingPolicy !== 'per_deployment_shared'
+    || deploymentThreadCapacity === null
+    || threadsPerInstance === null
   ) {
     return null
   }
   return {
     physicalCoreCount,
-    allocatedThreadCount,
-    availableThreadCount,
-    constrainedDeploymentCount,
+    deploymentThreadCapacity,
+    threadsPerInstance,
   }
 })
 

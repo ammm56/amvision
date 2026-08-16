@@ -239,17 +239,20 @@ class DeploymentRuntimeReconciler:
     ) -> float:
         """构建有上限且带稳定抖动的指数退避秒数。"""
 
-        exponent = max(0, failure_count - 1)
-        base = min(
-            self.settings.restart_backoff_max_seconds,
-            self.settings.restart_backoff_initial_seconds * (2**exponent),
-        )
+        maximum = self.settings.restart_backoff_max_seconds
+        base = min(maximum, self.settings.restart_backoff_initial_seconds)
+        remaining_doublings = max(0, failure_count - 1)
+        # 达到上限后立即停止倍增，运行次数只与配置的退避范围相关，不与可能很大的失败计数相关。
+        while remaining_doublings > 0 and base < maximum:
+            base = min(maximum, base * 2.0)
+            remaining_doublings -= 1
         digest = sha256(
             f"{state.deployment_instance_id}:{state.runtime_mode}".encode("utf-8")
         ).digest()
         unit = int.from_bytes(digest[:8], "big") / float(2**64 - 1)
         jitter = (unit * 2.0 - 1.0) * self.settings.restart_backoff_jitter_ratio
-        return max(0.1, base * (1.0 + jitter))
+        minimum = min(0.1, maximum)
+        return min(maximum, max(minimum, base * (1.0 + jitter)))
 
 
 def _is_future_timestamp(value: str | None) -> bool:

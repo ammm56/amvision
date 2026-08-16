@@ -366,7 +366,7 @@ class DeploymentProcessSupervisor:
         - local_buffer_broker_event_channel：固定的 broker 事件通道。
         - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
         - local_buffer_direct_reader_settings：独立 daemon worker 的只读 mmap 配置。
-        - cpu_device_resource_manager：全部 supervisor 共享的 CPU 预算管理器。
+        - cpu_device_resource_manager：全部 supervisor 共享的 CPU 有效配置记录器。
         - worker_target：子进程入口函数；测试时可替换为 fake worker。
         """
 
@@ -1420,7 +1420,7 @@ def _resolve_worker_operator_thread_count(
     *,
     configured_thread_count: int,
 ) -> int:
-    """让 OpenCV/PyTorch 算子线程上限不超过 CPU deployment 的总预留。"""
+    """让 OpenCV/PyTorch 算子线程上限不超过当前 CPU deployment 的线程配置。"""
 
     options = runtime_configuration.backend_options
     if not isinstance(options, OpenVinoCpuRuntimeOptions):
@@ -1428,8 +1428,8 @@ def _resolve_worker_operator_thread_count(
     threads_per_instance = options.inference_num_threads
     if not isinstance(threads_per_instance, int):  # pragma: no cover
         return max(1, configured_thread_count)
-    allocated_thread_count = runtime_configuration.instance_count * threads_per_instance
-    return max(1, min(configured_thread_count, allocated_thread_count))
+    effective_thread_count = runtime_configuration.instance_count * threads_per_instance
+    return max(1, min(configured_thread_count, effective_thread_count))
 
 
 def _now_isoformat() -> str:

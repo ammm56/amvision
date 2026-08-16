@@ -61,7 +61,7 @@ def build_host_default_runtime_configuration(
 def evaluate_runtime_configuration_warnings(
     configuration: DeploymentRuntimeConfiguration,
 ) -> tuple[str, ...]:
-    """返回硬件预算相关的非阻断告警。"""
+    """返回单个 deployment CPU 并发配置相关的非阻断告警。"""
 
     options = configuration.backend_options
     if not isinstance(options, OpenVinoCpuRuntimeOptions):
@@ -74,9 +74,10 @@ def evaluate_runtime_configuration_warnings(
     if requested_thread_count <= physical_core_count:
         return ()
     return (
-        "OpenVINO CPU session 的线程预算总和 "
+        "OpenVINO CPU deployment 的实例并发线程配置总和 "
         f"{requested_thread_count} 超过当前主机物理核心数 {physical_core_count}；"
-        "启动时资源调度器会按可用物理核心裁剪每实例有效线程数",
+        "启动时会按本 deployment 的 instance_count 裁剪每实例有效线程数，"
+        "其他常驻 deployment 不会扣减该配置",
     )
 
 

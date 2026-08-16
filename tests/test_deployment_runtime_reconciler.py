@@ -17,6 +17,9 @@ from backend.service.application.runtime.deployment.deployment_runtime_reconcile
 from backend.service.application.runtime.deployment.deployment_runtime_state_service import (
     DeploymentRuntimeStateService,
 )
+from backend.service.domain.deployments.deployment_runtime_state import (
+    DeploymentRuntimeState,
+)
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
     serialize_deployment_runtime_configuration,
@@ -218,6 +221,33 @@ def test_runtime_state_generation_rejects_stale_controller_write(
     assert stale_result.observed_state == "stopped"
     assert stale_result.process_id is None
     session_factory.engine.dispose()
+
+
+def test_restart_backoff_is_bounded_for_extremely_large_failure_count() -> None:
+    """验证长期启动失败不会在指数计算时产生巨大整数或超过最大退避。"""
+
+    settings = BackendServiceDeploymentRuntimeReconcilerConfig(
+        restart_backoff_initial_seconds=1.0,
+        restart_backoff_max_seconds=60.0,
+        restart_backoff_jitter_ratio=0.2,
+    )
+    reconciler = DeploymentRuntimeReconciler(
+        state_service=SimpleNamespace(),  # type: ignore[arg-type]
+        lookup_service=SimpleNamespace(),  # type: ignore[arg-type]
+        bindings_by_task_type={},
+        settings=settings,
+    )
+    state = DeploymentRuntimeState(
+        deployment_instance_id="deployment-long-running-failure",
+        runtime_mode="sync",
+    )
+
+    delay = reconciler._build_restart_delay(  # noqa: SLF001 - 定向验证内部数值边界
+        state,
+        10**100,
+    )
+
+    assert 0.1 <= delay <= settings.restart_backoff_max_seconds
 
 
 def _insert_deployment_record(session_factory, deployment_instance_id: str) -> None:

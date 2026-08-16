@@ -142,10 +142,15 @@ const coldHealth: TaskDeploymentRuntimeHealth = {
   requested_runtime_configuration: {},
   effective_runtime_configuration: {
     cpu_device_resource_manager: {
+      scheduling_policy: 'per_deployment_shared',
       cpu_physical_core_count: 8,
-      allocated_thread_count: 6,
-      available_thread_count: 2,
-      constrained_deployment_count: 1,
+      reservations: [
+        {
+          deployment_instance_id: 'deployment-2',
+          allocated_threads_per_instance: 3,
+          allocated_thread_count: 6,
+        },
+      ],
     },
   },
   configuration_warnings: [],
@@ -540,7 +545,7 @@ describe('DeploymentOperationsPage', () => {
     expect(runTaskDeploymentStatusAction).toHaveBeenCalledWith('detection', 'deployment-1', 'sync', 'stop')
   })
 
-  it('renders the OpenVINO CPU scheduler allocation as a readable summary', async () => {
+  it('renders the OpenVINO CPU shared configuration as a readable summary', async () => {
     vi.mocked(listTaskDeployments).mockImplementation(async (taskType: ModelTaskType) => (
       taskType === 'detection' ? [deployment, secondDeployment] : []
     ))
@@ -554,10 +559,10 @@ describe('DeploymentOperationsPage', () => {
     await wrapper.find('[data-deployment-id="deployment-2"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('CPU 线程分配 / 物理核心')
+    expect(wrapper.text()).toContain('当前部署线程容量 / 物理核心')
     expect(wrapper.text()).toContain('6 / 8')
-    expect(wrapper.text()).toContain('CPU 可用线程')
-    expect(wrapper.text()).toContain('受限 CPU 部署')
+    expect(wrapper.text()).toContain('每实例有效线程')
+    expect(wrapper.text()).toContain('按部署共享 CPU')
   })
 
   it('shows configured or default keep-warm intervals only on enabled deployment cards', async () => {
