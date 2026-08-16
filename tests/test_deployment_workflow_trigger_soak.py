@@ -1,0 +1,256 @@
+"""Deployment/workflow/trigger 持续负载工具测试。"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from tests.integration import deployment_workflow_trigger_soak as soak_module
+from tests.integration.deployment_workflow_trigger_soak import (
+    LaneMetrics,
+    RuntimeSoakConfig,
+    _evaluate_result,
+    _execute_deployment_async,
+    _execute_workflow_invoke,
+    build_lanes,
+    run_preflight,
+)
+
+
+class _FakeApiClient:
+    """记录 soak helper 的公开 API 调用。"""
+
+    def __init__(self) -> None:
+        self.get_calls: list[str] = []
+        self.post_calls: list[tuple[str, dict[str, object]]] = []
+        self.task_poll_count = 0
+
+    def get(self, path: str, **_kwargs: object) -> dict[str, object]:
+        self.get_calls.append(path)
+        if path == "/system/health":
+            return {"status": "ok"}
+        if path.endswith("/sync/status") or path.endswith("/async/status"):
+            return {"process_state": "running"}
+        if path == "/workflows/app-runtimes/runtime-1/health":
+            return {"observed_state": "running"}
+        if path == "/workflows/trigger-sources/trigger-1":
+            return {
+                "trigger_kind": "zeromq-topic",
+                "transport_config": {"bind_endpoint": "tcp://127.0.0.1:5858"},
+            }
+        if path == "/workflows/trigger-sources/trigger-1/health":
+            return {
+                "observed_state": "running",
+                "health_summary": {"adapter_running": True},
+            }
+        if path == "/models/detection/inference-tasks/task-1":
+            self.task_poll_count += 1
+            return {"state": "queued" if self.task_poll_count == 1 else "succeeded"}
+        if path == "/models/detection/inference-tasks/task-1/result":
+            return {"status": "succeeded", "predictions": []}
+        raise AssertionError(f"未处理的 GET: {path}")
+
+    def post(self, path: str, **kwargs: object) -> dict[str, object]:
+        self.post_calls.append((path, kwargs))
+        if path == "/models/detection/deployment-instances/deployment-1/infer":
+            return {"status": "succeeded", "predictions": []}
+        if path == "/models/detection/inference-tasks":
+            return {"task_id": "task-1"}
+        if path == "/workflows/app-runtimes/runtime-1/invoke":
+            return {"state": "succeeded", "workflow_run_id": "run-1"}
+        raise AssertionError(f"未处理的 POST: {path}")
+
+
+def _build_config(tmp_path: Path) -> RuntimeSoakConfig:
+    return RuntimeSoakConfig(
+        base_url="http://127.0.0.1:5600",
+        token="test-token",
+        project_id="project-1",
+        duration_seconds=1.0,
+        concurrency_per_lane=1,
+        request_interval_seconds=0.0,
+        sample_interval_seconds=1.0,
+        http_timeout_seconds=5.0,
+        task_timeout_seconds=5.0,
+        async_poll_interval_seconds=0.001,
+        max_error_rate=0.0,
+        minimum_requests_per_lane=1,
+        output_dir=tmp_path,
+        deployment_instance_id="deployment-1",
+        deployment_task_type="detection",
+        deployment_model_type="yolov8",
+        deployment_image_path=tmp_path / "sample.png",
+        workflow_runtime_id="runtime-1",
+        workflow_request={"input_bindings": {"value": {"value": 1}}},
+        trigger_source_id="trigger-1",
+    )
+
+
+def test_runtime_soak_preflight_resolves_all_running_lanes(tmp_path: Path) -> None:
+    """验证预检覆盖 sync/async deployment、workflow 和 TriggerSource。"""
+
+    config = _build_config(tmp_path)
+    client = _FakeApiClient()
+
+    resolved_config, preflight = run_preflight(config, client)  # type: ignore[arg-type]
+
+    assert resolved_config.trigger_endpoint == "tcp://127.0.0.1:5858"
+    assert set(preflight["deployment"]) == {"sync", "async"}  # type: ignore[arg-type]
+    assert preflight["workflow_runtime"] == {"observed_state": "running"}
+    assert preflight["trigger_endpoint"] == "tcp://127.0.0.1:5858"
+    assert [lane.name for lane in build_lanes(resolved_config)] == [
+        "deployment-sync",
+        "deployment-async",
+        "workflow-invoke",
+        "trigger-zeromq",
+    ]
+
+
+def test_runtime_soak_async_and_workflow_operations_use_public_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证异步推理会轮询结果，workflow invoke 会补充 soak 元数据。"""
+
+    config = _build_config(tmp_path)
+    client = _FakeApiClient()
+    monkeypatch.setattr(
+        "tests.integration.deployment_workflow_trigger_soak.time.sleep",
+        lambda _seconds: None,
+    )
+
+    _execute_deployment_async(
+        config=config,
+        api_client=client,  # type: ignore[arg-type]
+        image_bytes=b"png",
+    )
+    _execute_workflow_invoke(
+        config=config,
+        api_client=client,  # type: ignore[arg-type]
+        sequence=7,
+        worker_index=2,
+    )
+
+    assert client.task_poll_count == 2
+    assert client.get_calls[-1] == "/models/detection/inference-tasks/task-1/result"
+    workflow_call = client.post_calls[-1]
+    assert workflow_call[0] == "/workflows/app-runtimes/runtime-1/invoke"
+    request = workflow_call[1]["json"]
+    assert isinstance(request, dict)
+    assert request["execution_metadata"] == {
+        "scenario": "deployment-workflow-trigger-soak",
+        "soak_sequence": 7,
+        "soak_worker_index": 2,
+    }
+
+
+def test_runtime_soak_metrics_gate_counts_errors_and_latency(tmp_path: Path) -> None:
+    """验证结果门禁按每条 lane 的最小请求量和错误率判定。"""
+
+    config = _build_config(tmp_path)
+    metrics = LaneMetrics(name="workflow-invoke")
+    metrics.begin()
+    metrics.finish(latency_ms=10.0, error=None)
+    metrics.begin()
+    metrics.finish(latency_ms=30.0, error=RuntimeError("failed"))
+
+    snapshot = metrics.snapshot()
+    assert snapshot["started_count"] == 2
+    assert snapshot["success_count"] == 1
+    assert snapshot["error_count"] == 1
+    assert snapshot["error_rate"] == 0.5
+    assert snapshot["latency_ms"] == {
+        "min": 10.0,
+        "mean": 20.0,
+        "p50": 20.0,
+        "p95": 29.0,
+        "p99": 29.8,
+        "max": 30.0,
+    }
+    failures = _evaluate_result(
+        config=config,
+        metrics={metrics.name: metrics},
+        monitor_errors=[],
+    )
+    assert failures == ["workflow-invoke 错误率超限: 0.50000000 > 0.00000000"]
+
+
+def test_runtime_soak_can_select_only_running_deployment_mode(tmp_path: Path) -> None:
+    """验证现场只启动 sync runtime 时可单独选择 sync 负载。"""
+
+    config = replace(_build_config(tmp_path), deployment_runtime_modes=("sync",))
+    client = _FakeApiClient()
+
+    _resolved_config, preflight = run_preflight(config, client)  # type: ignore[arg-type]
+
+    assert set(preflight["deployment"]) == {"sync"}  # type: ignore[arg-type]
+    assert "/models/detection/deployment-instances/deployment-1/async/status" not in (
+        client.get_calls
+    )
+    assert [lane.name for lane in build_lanes(config)] == [
+        "deployment-sync",
+        "workflow-invoke",
+        "trigger-zeromq",
+    ]
+
+
+def test_runtime_soak_runner_writes_successful_four_lane_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """验证 runner 会并行执行四条 lane、采样 health 并原子落结果。"""
+
+    sample_path = tmp_path / "sample.png"
+    sample_path.write_bytes(b"png")
+    config = replace(
+        _build_config(tmp_path),
+        duration_seconds=0.12,
+        request_interval_seconds=0.005,
+        sample_interval_seconds=0.03,
+        trigger_endpoint="tcp://127.0.0.1:5858",
+    )
+    client = _FakeApiClient()
+
+    class _FakeApiContext:
+        def __enter__(self) -> _FakeApiClient:
+            return client
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class _FakeZeroMqClient:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+        def send(self, _frames: list[bytes]) -> dict[str, object]:
+            return {"state": "succeeded"}
+
+    monkeypatch.setattr(soak_module, "_api_client", lambda _config: _FakeApiContext())
+    monkeypatch.setattr(soak_module, "ZeroMqSoakClient", _FakeZeroMqClient)
+
+    exit_code = soak_module.run_soak(config)
+
+    assert exit_code == 0
+    result = json.loads((tmp_path / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "succeeded"
+    assert set(result["lanes"]) == {
+        "deployment-sync",
+        "deployment-async",
+        "workflow-invoke",
+        "trigger-zeromq",
+    }
+    assert all(item["success_count"] >= 1 for item in result["lanes"].values())
+    assert len(result["health_samples"]) >= 2
+
+    console_summary = json.loads(capsys.readouterr().out)
+    assert console_summary["status"] == "succeeded"
+    assert console_summary["result_path"] == str(tmp_path / "result.json")
+    assert console_summary["health_sample_count"] == len(result["health_samples"])
+    assert "health_samples" not in console_summary

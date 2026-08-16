@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tests.integration.model_task_e2e_assets import ensure_model_task_e2e_archives
 from tests.integration.yolo_model_full_chain_smoke import (
     DEFAULT_PROJECT_ID,
     DEFAULT_TOKEN,
@@ -51,17 +52,16 @@ class YoloXExportCase:
 
 
 def build_yolox_export_cases() -> dict[str, YoloXExportCase]:
-    """返回 YOLOX 当前正式验收使用的 DatasetExport 场景。"""
+    """返回 YOLOX 当前正式验收使用的可复现 DatasetExport 场景。"""
 
-    dataset_dir = (
-        PROJECT_ROOT / "data" / "files" / "datasets" / "detection" / "medical-pills"
-    )
+    detection_archive = ensure_model_task_e2e_archives()["detection"]
     return {
         "coco": YoloXExportCase(
             case_id="coco",
             task_case=YoloModelTaskCase(
                 task_type="detection",
-                dataset_dir=dataset_dir,
+                dataset_dir=None,
+                dataset_archive=detection_archive,
                 export_format="coco-detection-v1",
                 input_size=(320, 320),
                 conversion_route="/models/detection/conversion-tasks",
@@ -73,7 +73,8 @@ def build_yolox_export_cases() -> dict[str, YoloXExportCase]:
             case_id="voc",
             task_case=YoloModelTaskCase(
                 task_type="detection",
-                dataset_dir=dataset_dir,
+                dataset_dir=None,
+                dataset_archive=detection_archive,
                 export_format="voc-detection-v1",
                 input_size=(320, 320),
                 conversion_route="/models/detection/conversion-tasks",

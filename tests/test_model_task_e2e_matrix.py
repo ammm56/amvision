@@ -129,12 +129,12 @@ def test_e2e_matrix_matches_all_public_training_combinations() -> None:
 
 def test_e2e_matrix_uses_existing_sources_and_model_native_exports() -> None:
     default_cases = build_default_task_cases()
-    assert default_cases["detection"].dataset_dir is not None
-    assert default_cases["detection"].dataset_dir.name == "barcodeqrcode"
-    assert default_cases["pose"].dataset_dir is not None
-    assert default_cases["pose"].dataset_dir.name == "hand-keypoints"
-    assert default_cases["obb"].dataset_dir is not None
-    assert default_cases["obb"].dataset_dir.name == "rotated-components-v1"
+    assert default_cases["detection"].dataset_archive is not None
+    assert default_cases["detection"].dataset_archive.name == "detection-minimal-v1.zip"
+    assert default_cases["pose"].dataset_archive is not None
+    assert default_cases["pose"].dataset_archive.name == "pose-minimal-v1.zip"
+    assert default_cases["obb"].dataset_archive is not None
+    assert default_cases["obb"].dataset_archive.name == "obb-minimal-v1.zip"
     for item in build_model_task_matrix():
         validate_task_case_source(item.task_case)
         if item.task_case.task_type == "obb":

@@ -17,6 +17,7 @@
 - RF-DETR full core 短时 smoke / benchmark 放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，必须通过环境变量显式打开。
 - RF-DETR 真实本地 checkpoint 覆盖率 smoke 也放在 `test_rfdetr_full_core_soak_benchmark.py`，默认跳过，只在显式指定环境变量时读取 `data/files/models/pretrained/rfdetr`。默认清单覆盖 detection `nano / s / m / l` 和 segmentation `nano / s / m / l / x`，并同时输出 raw coverage 与真实加载路径 coverage。
 - `release/full` 真实启停验收也放在本目录，默认只做短时驻留；需要更长 soak 时通过环境变量显式调大时长。该测试会检查陈旧状态文件恢复、组件日志、资源快照和 stop 后进程回收，并在本次 logs 子目录写出 `resource-baseline.json`。
+- `deployment_workflow_trigger_soak.py` 对已经启动的真实资源持续施加 sync/async deployment、WorkflowAppRuntime invoke 和 ZeroMQ TriggerSource 负载；它不创建或停止现场资源，结果持续写入独立的 `result.json`。
 - `--start-processes` 会按发布态顺序启动 backend-service、使用本轮唯一 service id 的 inference daemon 和 backend-worker；停止时按相反顺序回收。这样既避免 worker 早于数据库 schema 和 seeder 初始化，也不依赖桌面里已有的 daemon 或共享它的 mmap mailbox。
 
 # 手动执行
@@ -129,6 +130,28 @@ python -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integratio
 ```powershell
 $env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; python -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
+
+真实 deployment、workflow runtime 和 ZeroMQ TriggerSource 都已经启动后，可以单独执行负载。`workflow-request.json` 使用正式 invoke 请求体，`trigger-envelope.json` 使用 ZeroMQ envelope；涉及 deployment 的 workflow 应在两份 JSON 中写入对应 deployment binding。
+
+```powershell
+python -m tests.integration.deployment_workflow_trigger_soak `
+  --duration-seconds 3600 `
+  --concurrency-per-lane 1 `
+  --deployment-instance-id <deployment-id> `
+  --deployment-runtime-modes sync async `
+  --deployment-task-type detection `
+  --deployment-model-type yolov8 `
+  --deployment-image <sample-image.png> `
+  --workflow-runtime-id <workflow-runtime-id> `
+  --workflow-request-json <workflow-request.json> `
+  --trigger-source-id <trigger-source-id> `
+  --trigger-envelope-json <trigger-envelope.json> `
+  --trigger-binary <sample-image.png>
+```
+
+该入口默认把 deployment 拆成 `deployment-sync` 和 `deployment-async` 两条 lane，并同时运行 `workflow-invoke` 与 `trigger-zeromq`。现场资源预算只允许一种 deployment runtime 运行时，可以把 `--deployment-runtime-modes` 设为 `sync` 或 `async`；预检不会替调用方启动未运行的 runtime。每条 lane 分别统计请求数、错误率、并发峰值和 p50/p95/p99 延迟；控制面会周期采样 system、deployment、workflow runtime 和 TriggerSource health。默认任何请求错误或 health 采样错误都会使进程返回非 0。
+
+零错误稳定性门禁应按现场真实入口分别运行，或保证组合 lane 的理论并发不超过 deployment `instance_count`。故意让直接 deployment、workflow 和 trigger 同时争抢同一个 deployment 属于超容量行为验证；该场景返回非 0 是预期结果，验收重点是所有失败都为明确的“推理线程已满载”，且没有进程退出、mmap ownership、Buffer 泄漏或控制面健康错误。同步链路不自动排队，也不自动重试。
 
 RF-DETR deployment 常驻 soak 应先创建真实 deployment 任务和真实转换产物，再结合 release/full 启停验收执行；不要用普通模型前向测试冒充 deployment soak。
 RF-DETR 真实长时间训练不通过 pytest 跑；需要按现场数据集、训练参数和目标 GPU 手动提交平台训练任务，再用任务日志、模型输出文件和后续转换/部署结果判断。

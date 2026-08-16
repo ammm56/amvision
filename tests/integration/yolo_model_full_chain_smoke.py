@@ -32,6 +32,10 @@ from typing import Any, Callable, Iterable
 
 import httpx
 
+from tests.integration.model_task_e2e_assets import (
+    ensure_model_task_e2e_archives,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 API_PREFIX = "/api/v1"
@@ -97,13 +101,14 @@ WORKFLOW_EXAMPLE_BY_TASK_TYPE = {
 
 
 def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
-    """返回本项目当前真实数据资产对应的 YOLO 主线验收任务。"""
+    """返回基于可重复生成资产的 YOLO 主线验收任务。"""
 
-    dataset_root = PROJECT_ROOT / "data" / "files" / "datasets"
+    archives = ensure_model_task_e2e_archives()
     return {
         "detection": YoloModelTaskCase(
             task_type="detection",
-            dataset_dir=dataset_root / "detection" / "barcodeqrcode",
+            dataset_dir=None,
+            dataset_archive=archives["detection"],
             export_format="yolo-detection-v1",
             input_size=(256, 384),
             conversion_route="/models/detection/conversion-tasks",
@@ -112,7 +117,8 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "classification": YoloModelTaskCase(
             task_type="classification",
-            dataset_dir=dataset_root / "classification" / "computerasurfacedefect",
+            dataset_dir=None,
+            dataset_archive=archives["classification"],
             export_format="imagenet-classification-v1",
             input_size=(192, 256),
             conversion_route="/models/classification/conversion-tasks",
@@ -121,7 +127,8 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "segmentation": YoloModelTaskCase(
             task_type="segmentation",
-            dataset_dir=dataset_root / "segmentation" / "package-seg",
+            dataset_dir=None,
+            dataset_archive=archives["segmentation"],
             export_format="yolo-instance-seg-v1",
             input_size=(256, 384),
             conversion_route="/models/segmentation/conversion-tasks",
@@ -130,7 +137,8 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "pose": YoloModelTaskCase(
             task_type="pose",
-            dataset_dir=dataset_root / "pose" / "hand-keypoints",
+            dataset_dir=None,
+            dataset_archive=archives["pose"],
             export_format="yolo-pose-v1",
             input_size=(256, 384),
             conversion_route="/models/pose/conversion-tasks",
@@ -139,7 +147,8 @@ def build_default_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "obb": YoloModelTaskCase(
             task_type="obb",
-            dataset_dir=dataset_root / "obb" / "rotated-components-v1",
+            dataset_dir=None,
+            dataset_archive=archives["obb"],
             export_format="yolo-obb-v1",
             input_size=(256, 384),
             conversion_route="/models/obb/conversion-tasks",
@@ -906,8 +915,16 @@ def validate_task_case_source(case: YoloModelTaskCase) -> None:
         raise RuntimeError(
             f"{case.task_type} 必须且只能配置 dataset_dir 或 dataset_archive"
         )
-    if case.dataset_dir is not None and not case.dataset_dir.is_dir():
-        raise RuntimeError(f"{case.task_type} 数据集目录不存在：{case.dataset_dir}")
+    if case.dataset_dir is not None:
+        if not case.dataset_dir.is_dir():
+            raise RuntimeError(f"{case.task_type} 数据集目录不存在：{case.dataset_dir}")
+        if not any(
+            path.is_file() and path.suffix.lower() in case.sample_extensions
+            for path in case.dataset_dir.rglob("*")
+        ):
+            raise RuntimeError(
+                f"{case.task_type} 数据集目录没有可用图片：{case.dataset_dir}"
+            )
     if case.dataset_archive is not None:
         if not case.dataset_archive.is_file():
             raise RuntimeError(
@@ -917,6 +934,29 @@ def validate_task_case_source(case: YoloModelTaskCase) -> None:
             raise RuntimeError(
                 f"{case.task_type} dataset_archive 必须是 zip：{case.dataset_archive}"
             )
+        try:
+            with zipfile.ZipFile(case.dataset_archive, "r") as archive:
+                broken_member = archive.testzip()
+                if broken_member is not None:
+                    raise RuntimeError(
+                        f"{case.task_type} 数据集压缩包损坏：{broken_member}"
+                    )
+                normalized_extensions = {
+                    suffix.lower() for suffix in case.sample_extensions
+                }
+                if not any(
+                    PurePosixPath(member.filename).suffix.lower()
+                    in normalized_extensions
+                    for member in archive.infolist()
+                    if not member.is_dir()
+                ):
+                    raise RuntimeError(
+                        f"{case.task_type} 数据集压缩包没有可用图片：{case.dataset_archive}"
+                    )
+        except zipfile.BadZipFile as error:
+            raise RuntimeError(
+                f"{case.task_type} 数据集压缩包不是合法 zip：{case.dataset_archive}"
+            ) from error
 
 
 def extract_sample_image_from_archive(

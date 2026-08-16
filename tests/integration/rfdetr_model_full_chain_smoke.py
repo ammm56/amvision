@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tests.integration.model_task_e2e_assets import ensure_model_task_e2e_archives
 from tests.integration.yolo_model_full_chain_smoke import (
     DEFAULT_PROJECT_ID,
     DEFAULT_TOKEN,
@@ -46,13 +47,14 @@ DEFAULT_MODEL_SCALE = "nano"
 
 
 def build_rfdetr_task_cases() -> dict[str, YoloModelTaskCase]:
-    """返回 RF-DETR 当前正式验收使用的真实数据资产。"""
+    """返回 RF-DETR 当前正式验收使用的可复现数据资产。"""
 
-    dataset_root = PROJECT_ROOT / "data" / "files" / "datasets"
+    archives = ensure_model_task_e2e_archives()
     return {
         "detection": YoloModelTaskCase(
             task_type="detection",
-            dataset_dir=dataset_root / "detection" / "medical-pills",
+            dataset_dir=None,
+            dataset_archive=archives["detection"],
             export_format="coco-detection-v1",
             input_size=(384, 384),
             conversion_route="/models/detection/conversion-tasks",
@@ -61,7 +63,8 @@ def build_rfdetr_task_cases() -> dict[str, YoloModelTaskCase]:
         ),
         "segmentation": YoloModelTaskCase(
             task_type="segmentation",
-            dataset_dir=dataset_root / "segmentation" / "package-seg",
+            dataset_dir=None,
+            dataset_archive=archives["segmentation"],
             export_format="coco-instance-seg-v1",
             input_size=(384, 384),
             conversion_route="/models/segmentation/conversion-tasks",

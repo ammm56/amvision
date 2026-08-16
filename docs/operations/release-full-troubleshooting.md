@@ -333,12 +333,39 @@ $env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
 python -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
+空载驻留不能替代真实负载。已经准备好运行中的 deployment、workflow runtime 和 `tcp://` ZeroMQ TriggerSource 时，可以把持续负载工具接入 release/full 的外部 workload 槽。负载时长应略短于 release/full 总驻留时长，让工具有时间落下最终结果并以 0 退出。
+
+```powershell
+conda activate amvision
+$workload = @(
+  (Get-Command python).Source,
+  "-m", "tests.integration.deployment_workflow_trigger_soak",
+  "--duration-seconds", "540",
+  "--deployment-instance-id", "<deployment-id>",
+  "--deployment-task-type", "detection",
+  "--deployment-model-type", "yolov8",
+  "--deployment-image", "<sample-image.png>",
+  "--workflow-runtime-id", "<workflow-runtime-id>",
+  "--workflow-request-json", "<workflow-request.json>",
+  "--trigger-source-id", "<trigger-source-id>",
+  "--trigger-envelope-json", "<trigger-envelope.json>",
+  "--trigger-binary", "<sample-image.png>"
+)
+$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
+$env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
+$env:AMVISION_RELEASE_FULL_SOAK_WORKLOAD_CWD=(Get-Location).Path
+$env:AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON=($workload | ConvertTo-Json -Compress)
+python -m pytest --basetemp .tmp\pytest_release_full_loaded_soak tests/integration/test_release_full_stack_acceptance.py -q
+```
+
 长时 soak 完成后先看：
 
 - `release/full/logs/<logs-subdir>/resource-baseline.json`
 - `summary[*].rss_delta_bytes`
 - `summary[*].cpu_delta_seconds`
 - `samples` 中是否有某个组件持续单调增长
+- `.tmp/deployment-workflow-trigger-soak/<run-id>/result.json` 中各 lane 的 `error_rate` 和 p95/p99
+- `result.json` 的 `health_samples` 是否出现错误或运行状态回退
 
 如果只想跑短时启停，不需要设置 `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS`。
 
