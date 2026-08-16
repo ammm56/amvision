@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.service.application.models.registry.model_service import (
@@ -323,6 +325,64 @@ def test_yolo_model_pretrained_manifest_accepts_variant_model_version_id(
     )
 
     assert entry.model_version_id == "mv-pretrained-yolov8-detection-nano-openimagev7"
+
+
+def test_yolo_model_pretrained_manifest_concurrent_load_is_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证并发 catalog 扫描只读 manifest，不会把源文件写回自身。"""
+
+    manifest_path, dataset_storage = _write_yolo_model_manifest(
+        tmp_path,
+        model_version_id="mv-pretrained-yolov8-detection-nano",
+    )
+    original_content = manifest_path.read_bytes()
+
+    def reject_catalog_write(_relative_path: str, _content: str) -> None:
+        raise AssertionError("catalog 扫描不得写回预训练 manifest")
+
+    monkeypatch.setattr(dataset_storage, "write_text", reject_catalog_write)
+
+    def load_entry(_index: int) -> str:
+        entry = _load_yolo_model_catalog_entry(
+            manifest_path=manifest_path,
+            dataset_storage=dataset_storage,
+            model_type="yolov8",
+        )
+        return entry.model_version_id
+
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        model_version_ids = list(executor.map(load_entry, range(256)))
+
+    assert set(model_version_ids) == {"mv-pretrained-yolov8-detection-nano"}
+    assert manifest_path.read_bytes() == original_content
+
+
+def test_yolo_model_pretrained_manifest_reports_nul_corruption(
+    tmp_path: Path,
+) -> None:
+    """验证损坏 manifest 的启动错误包含路径和 NUL 诊断信息。"""
+
+    manifest_path, dataset_storage = _write_yolo_model_manifest(
+        tmp_path,
+        model_version_id="mv-pretrained-yolov8-detection-nano",
+    )
+    manifest_path.write_bytes(b"\x00" * 401)
+
+    with pytest.raises(ServiceConfigurationError) as exc_info:
+        _load_yolo_model_catalog_entry(
+            manifest_path=manifest_path,
+            dataset_storage=dataset_storage,
+            model_type="yolov8",
+        )
+
+    assert manifest_path.as_posix() in exc_info.value.message
+    assert exc_info.value.details == {
+        "manifest_path": manifest_path.as_posix(),
+        "file_size_bytes": 401,
+        "contains_nul": True,
+    }
 
 
 def _seed_platform_and_project_models(

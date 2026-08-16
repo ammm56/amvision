@@ -8,6 +8,7 @@ import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import BoundedSemaphore
 from time import monotonic_ns, perf_counter, sleep
 
 import pytest
@@ -167,6 +168,51 @@ def _run_mmap_echo_server(
         stop_event.wait(timeout=60.0)
     finally:
         server.stop()
+
+
+def _run_busy_mmap_client(
+    *,
+    path: str,
+    worker_index: int,
+    request_count: int,
+    start_event,
+    result_queue,
+) -> None:
+    """在独立进程中连续提交会混合成功和满载响应的 mmap 请求。"""
+
+    client = InferenceLocalMmapClient(
+        path=path,
+        request_timeout_seconds=5.0,
+        poll_interval_seconds=0.0005,
+    )
+    success_count = 0
+    busy_count = 0
+    errors: list[str] = []
+    try:
+        start_event.wait(timeout=30.0)
+        for request_index in range(request_count):
+            try:
+                response = client.request(
+                    {"value": f"{worker_index}-{request_index}"}
+                )
+                if response.get("ok") is True:
+                    success_count += 1
+                elif "满载" in str(response):
+                    busy_count += 1
+                else:
+                    errors.append(f"unexpected response: {response}")
+            except Exception as error:  # noqa: BLE001 - 子进程需要回传完整错误
+                errors.append(f"{error.__class__.__name__}: {error}")
+    finally:
+        client.close()
+    result_queue.put(
+        {
+            "worker_index": worker_index,
+            "success_count": success_count,
+            "busy_count": busy_count,
+            "errors": errors,
+        }
+    )
 
 
 def test_queue_backed_inference_control_round_trip_and_stages_image(
@@ -703,6 +749,70 @@ def test_local_mmap_concurrent_publication_never_exposes_partial_generation(
     assert [response["result"]["value"] for response in responses] == list(
         range(1000)
     )
+
+
+def test_local_mmap_multi_process_busy_responses_keep_slot_ownership(
+    tmp_path: Path,
+) -> None:
+    """验证多进程成功/满载响应交错时不会误报 slot ownership 丢失。"""
+
+    context = multiprocessing.get_context("spawn")
+    start_event = context.Event()
+    result_queue = context.Queue()
+    mmap_path = tmp_path / "multi-process-busy" / "inference.mmap"
+    infer_slots = BoundedSemaphore(2)
+
+    def handle_request(payload: dict[str, object]) -> dict[str, object]:
+        if not infer_slots.acquire(blocking=False):
+            raise InvalidRequestError("当前 deployment 推理线程已满载，请稍后重试")
+        try:
+            sleep(0.01)
+            return {"value": payload.get("value")}
+        finally:
+            infer_slots.release()
+
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=handle_request,
+        slot_count=16,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=8,
+        poll_interval_seconds=0.0005,
+    )
+    processes = tuple(
+        context.Process(
+            target=_run_busy_mmap_client,
+            kwargs={
+                "path": str(mmap_path),
+                "worker_index": worker_index,
+                "request_count": 300,
+                "start_event": start_event,
+                "result_queue": result_queue,
+            },
+            name=f"test-inference-mmap-busy-client-{worker_index}",
+        )
+        for worker_index in range(6)
+    )
+    server.start()
+    try:
+        for process in processes:
+            process.start()
+        start_event.set()
+        results = tuple(result_queue.get(timeout=90.0) for _ in processes)
+        for process in processes:
+            process.join(timeout=15.0)
+    finally:
+        start_event.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5.0)
+        server.stop()
+
+    assert all(process.exitcode == 0 for process in processes)
+    assert sum(result["success_count"] for result in results) > 0
+    assert sum(result["busy_count"] for result in results) > 0
+    assert [error for result in results for error in result["errors"]] == []
 
 
 def test_inference_control_dispatcher_cleans_abandoned_response_queues(

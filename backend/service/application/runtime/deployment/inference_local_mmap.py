@@ -357,11 +357,70 @@ class InferenceLocalMmapClient:
                 current_generation != generation
                 or current_owner_token != owner_token
             ):
+                # generation 和 owner_token 是两个独立 uint64 字段。正常轮询保持
+                # 无锁；只有观察到不一致时才进入现有 slot guard 复核，避免把
+                # Windows 跨进程 mmap 的复合 header 交错读取误判为所有权丢失。
+                try:
+                    with _acquire_slot_guard(
+                        path=self.path,
+                        slot_index=slot_index,
+                        deadline_ns=min(
+                            deadline_ns,
+                            monotonic_ns()
+                            + max(
+                                5_000_000,
+                                int(self.poll_interval_seconds * 2e9),
+                            ),
+                        ),
+                        poll_interval_seconds=self.poll_interval_seconds,
+                    ):
+                        (
+                            stable_state,
+                            _,
+                            _,
+                            _,
+                            stable_generation,
+                            stable_owner_token,
+                            stable_deadline_ns,
+                        ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+                        stable_server_epoch = _read_server_epoch(
+                            view,
+                            path=self.path,
+                        )
+                        stable_lock_owner = _read_slot_lock_owner(
+                            _slot_lock_path(self.path, slot_index)
+                        )
+                except _SlotGuardBusyError:
+                    sleep(self.poll_interval_seconds)
+                    continue
+                if stable_server_epoch != server_epoch:
+                    raise OperationCancelledError(
+                        "inference daemon 在请求处理中重启",
+                        details={"slot_index": slot_index, "retryable": True},
+                    )
+                if (
+                    stable_generation == generation
+                    and stable_owner_token == owner_token
+                    and stable_lock_owner == owner_token
+                ):
+                    continue
                 if monotonic_ns() + int(self.poll_interval_seconds * 2e9) >= deadline_ns:
                     break
                 raise OperationCancelledError(
                     "inference mmap 槽位所有权在请求处理中失效",
-                    details={"slot_index": slot_index, "retryable": True},
+                    details={
+                        "slot_index": slot_index,
+                        "retryable": True,
+                        "expected_generation": generation,
+                        "current_generation": stable_generation,
+                        "expected_owner_token": owner_token,
+                        "current_owner_token": stable_owner_token,
+                        "lock_owner_token": stable_lock_owner,
+                        "slot_state": stable_state,
+                        "request_deadline_ns": deadline_ns,
+                        "slot_deadline_ns": stable_deadline_ns,
+                        "observed_at_ns": monotonic_ns(),
+                    },
                 )
             if state == _STATE_RESPONSE:
                 if response_size <= 0 or response_size > self._payload_capacity:

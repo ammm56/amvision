@@ -88,3 +88,39 @@ def test_local_dataset_storage_json_write_uses_atomic_replace_retry(
     assert dataset_storage.read_json(
         "workflows/runtime/app-runtimes/runtime-1/events.json"
     ) == [{"sequence": 1}]
+
+
+def test_local_dataset_storage_text_write_uses_atomic_replace_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证文本写入不会原地截断，并复用 Windows 短暂占用恢复。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    original_replace = Path.replace
+    sharing_violation_count = 0
+
+    def replace_with_transient_lock(
+        source_path: Path,
+        target_path: str | Path,
+    ) -> Path:
+        nonlocal sharing_violation_count
+        if Path(target_path).name == "manifest.json" and sharing_violation_count < 2:
+            sharing_violation_count += 1
+            error = PermissionError("simulated Windows sharing violation")
+            error.winerror = 32  # type: ignore[attr-defined]
+            raise error
+        return original_replace(source_path, target_path)
+
+    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+
+    dataset_storage.write_text("models/manifest.json", '{"status":"ready"}\n')
+
+    assert sharing_violation_count == 2
+    assert (
+        dataset_storage.resolve("models/manifest.json").read_text(encoding="utf-8")
+        == '{"status":"ready"}\n'
+    )
+    assert not list(dataset_storage.resolve("models").glob("*.tmp"))

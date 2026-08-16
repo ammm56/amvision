@@ -139,7 +139,9 @@ class LocalDatasetStorage:
         - 该导入对应的目录布局。
         """
 
-        import_root = self._dataset_root(project_id, dataset_id) / "imports" / dataset_import_id
+        import_root = (
+            self._dataset_root(project_id, dataset_id) / "imports" / dataset_import_id
+        )
         manifests_dir = import_root / "manifests"
         staging_dir = import_root / "staging"
         logs_dir = import_root / "logs"
@@ -179,7 +181,9 @@ class LocalDatasetStorage:
         - 该版本对应的目录布局。
         """
 
-        version_root = self._dataset_root(project_id, dataset_id) / "versions" / dataset_version_id
+        version_root = (
+            self._dataset_root(project_id, dataset_id) / "versions" / dataset_version_id
+        )
         manifests_dir = version_root / "manifests"
         images_dir = version_root / "images"
         samples_dir = version_root / "samples"
@@ -362,7 +366,23 @@ class LocalDatasetStorage:
 
         target_path = self.resolve(relative_path)
         self._mkdir(target_path.parent)
-        to_filesystem_path(target_path).write_text(content, encoding="utf-8")
+        filesystem_target_path = to_filesystem_path(target_path)
+        temporary_path = filesystem_target_path.with_name(
+            f".{target_path.name}.{uuid.uuid4().hex[:12]}.tmp"
+        )
+        try:
+            # 文本 manifest 也必须先完整落盘再原子替换，避免并发读到空文件或半截内容。
+            with temporary_path.open(
+                "w", encoding="utf-8", newline=""
+            ) as output_stream:
+                output_stream.write(content)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            replace_path_with_retry(temporary_path, filesystem_target_path)
+            _sync_directory_after_replace(filesystem_target_path.parent)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
 
     def copy_file(self, source_path: Path, destination_path: str) -> None:
         """把一个已存在文件复制到本地文件存储目录。
@@ -376,7 +396,9 @@ class LocalDatasetStorage:
         self._mkdir(target_path.parent)
         shutil.copy2(to_filesystem_path(source_path), to_filesystem_path(target_path))
 
-    def copy_relative_file(self, source_relative_path: str, destination_path: str) -> None:
+    def copy_relative_file(
+        self, source_relative_path: str, destination_path: str
+    ) -> None:
         """把一个本地文件存储中的相对路径复制到另一相对路径。
 
         参数：
@@ -469,7 +491,10 @@ class LocalDatasetStorage:
                         continue
 
                     target_path.parent.mkdir(parents=True, exist_ok=True)
-                    with zip_file.open(member) as source_stream, target_path.open("wb") as target_stream:
+                    with (
+                        zip_file.open(member) as source_stream,
+                        target_path.open("wb") as target_stream,
+                    ):
                         shutil.copyfileobj(source_stream, target_stream)
             except Exception:
                 shutil.rmtree(destination_dir, ignore_errors=True)
@@ -490,7 +515,9 @@ class LocalDatasetStorage:
         if filesystem_target_path.exists():
             filesystem_target_path.unlink(missing_ok=True)
 
-    def move_tree(self, source_relative_path: str, destination_relative_path: str) -> None:
+    def move_tree(
+        self, source_relative_path: str, destination_relative_path: str
+    ) -> None:
         """把一个相对目录或文件移动到另一个相对路径。
 
         参数：
@@ -578,10 +605,7 @@ class LocalDatasetStorage:
         else:
             normalized_text = raw_path.replace("\\", "/")
         normalized_path = PurePosixPath(normalized_text)
-        if (
-            normalized_path.is_absolute()
-            or ".." in normalized_path.parts
-        ):
+        if normalized_path.is_absolute() or ".." in normalized_path.parts:
             raise InvalidRequestError(
                 "本地对象路径不合法",
                 details={"relative_path": relative_path},
@@ -593,7 +617,9 @@ class LocalDatasetStorage:
             raise InvalidRequestError("本地对象路径不能为空")
         return PurePosixPath(*cleaned_parts)
 
-    def _validate_zip_member(self, member_path: PurePosixPath, member: zipfile.ZipInfo) -> None:
+    def _validate_zip_member(
+        self, member_path: PurePosixPath, member: zipfile.ZipInfo
+    ) -> None:
         """校验 zip 成员路径是否合法。
 
         参数：
@@ -630,7 +656,9 @@ class LocalDatasetStorage:
         if total_size > self.settings.max_import_extracted_bytes:
             raise InvalidRequestError(
                 "数据集压缩包解压后总大小超过限制",
-                details={"max_extracted_bytes": self.settings.max_import_extracted_bytes},
+                details={
+                    "max_extracted_bytes": self.settings.max_import_extracted_bytes
+                },
             )
         for member in members:
             if member.is_dir() or member.file_size == 0:

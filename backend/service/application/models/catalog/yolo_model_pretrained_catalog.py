@@ -17,12 +17,24 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.models.registry.model_service import PretrainedRegistrationRequest
-from backend.service.application.models.registry.yolov8_model_service import SqlAlchemyYoloV8ModelService
-from backend.service.application.models.registry.yolo11_model_service import SqlAlchemyYolo11ModelService
-from backend.service.application.models.registry.yolo26_model_service import SqlAlchemyYolo26ModelService
-from backend.service.application.models.catalog.rfdetr import SqlAlchemyRfdetrModelService
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.models.registry.model_service import (
+    PretrainedRegistrationRequest,
+)
+from backend.service.application.models.registry.yolov8_model_service import (
+    SqlAlchemyYoloV8ModelService,
+)
+from backend.service.application.models.registry.yolo11_model_service import (
+    SqlAlchemyYolo11ModelService,
+)
+from backend.service.application.models.registry.yolo26_model_service import (
+    SqlAlchemyYolo26ModelService,
+)
+from backend.service.application.models.catalog.rfdetr import (
+    SqlAlchemyRfdetrModelService,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 if TYPE_CHECKING:
     from backend.service.api.bootstrap import BackendServiceRuntime
@@ -81,13 +93,17 @@ class YoloModelPretrainedCatalogSeeder:
             if service_cls is None:
                 continue
             model_service = service_cls(session_factory=runtime.session_factory)
-            for manifest_path in sorted(catalog_root.rglob(YOLO_MODEL_PRETRAINED_MANIFEST_FILE)):
+            for manifest_path in sorted(
+                catalog_root.rglob(YOLO_MODEL_PRETRAINED_MANIFEST_FILE)
+            ):
                 entry = _load_yolo_model_catalog_entry(
                     manifest_path=manifest_path,
                     dataset_storage=runtime.dataset_storage,
                     model_type=model_type,
                 )
-                previous_manifest_path = seen_model_version_ids.get(entry.model_version_id)
+                previous_manifest_path = seen_model_version_ids.get(
+                    entry.model_version_id
+                )
                 if previous_manifest_path is not None:
                     raise ServiceConfigurationError(
                         "预训练模型 manifest 的 model_version_id 重复",
@@ -119,22 +135,45 @@ def _load_yolo_model_catalog_entry(
 ) -> YoloModelPretrainedCatalogEntry:
     """从磁盘 manifest 读取一条 YOLO 主线预训练模型目录定义。"""
 
+    manifest_content = manifest_path.read_text(encoding="utf-8")
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(manifest_content)
     except json.JSONDecodeError as error:
-        raise ServiceConfigurationError("预训练模型 manifest 不是合法 JSON", details={"manifest_path": manifest_path.as_posix()}) from error
+        manifest_path_text = manifest_path.as_posix()
+        raise ServiceConfigurationError(
+            f"预训练模型 manifest 不是合法 JSON: {manifest_path_text}",
+            details={
+                "manifest_path": manifest_path_text,
+                "file_size_bytes": len(manifest_content.encode("utf-8")),
+                "contains_nul": "\x00" in manifest_content,
+            },
+        ) from error
 
     if not isinstance(payload, dict):
-        raise ServiceConfigurationError("预训练模型 manifest 内容必须是对象", details={"manifest_path": manifest_path.as_posix()})
+        raise ServiceConfigurationError(
+            "预训练模型 manifest 内容必须是对象",
+            details={"manifest_path": manifest_path.as_posix()},
+        )
 
-    checkpoint_path = _resolve_relative_path(manifest_path, _require_str(payload, "checkpoint_path"))
+    checkpoint_path = _resolve_relative_path(
+        manifest_path, _require_str(payload, "checkpoint_path")
+    )
     if not checkpoint_path.is_file():
-        raise ServiceConfigurationError("预训练模型 checkpoint 文件不存在", details={"checkpoint_path": checkpoint_path.as_posix()})
+        raise ServiceConfigurationError(
+            "预训练模型 checkpoint 文件不存在",
+            details={"checkpoint_path": checkpoint_path.as_posix()},
+        )
 
-    metadata = dict(payload.get("metadata")) if isinstance(payload.get("metadata"), dict) else {}
-    manifest_key = str(manifest_path.relative_to(dataset_storage.root_dir)).replace("\\", "/")
-    dataset_storage.write_text(manifest_key, manifest_path.read_text(encoding="utf-8"))
-    checkpoint_key = str(checkpoint_path.relative_to(dataset_storage.root_dir)).replace("\\", "/")
+    metadata = (
+        dict(payload.get("metadata"))
+        if isinstance(payload.get("metadata"), dict)
+        else {}
+    )
+    # manifest 本身已经位于本地对象存储中。启动扫描只读取并登记，不能把源文件
+    # 再写回自身；并发进程同时启动时，自覆盖会产生先截断后写入的空文件窗口。
+    checkpoint_key = str(checkpoint_path.relative_to(dataset_storage.root_dir)).replace(
+        "\\", "/"
+    )
     model_name = _require_str(payload, "model_name")
     model_scale = _require_str(payload, "model_scale")
     task_type = _require_str(payload, "task_type")
@@ -185,7 +224,9 @@ def _validate_model_version_id_prefix(
     """校验预训练版本 id 与 manifest 描述的模型、任务和 scale 一致。"""
 
     expected_prefix = f"mv-pretrained-{model_name}-{task_type}-{model_scale}"
-    if model_version_id == expected_prefix or model_version_id.startswith(f"{expected_prefix}-"):
+    if model_version_id == expected_prefix or model_version_id.startswith(
+        f"{expected_prefix}-"
+    ):
         return
     raise ServiceConfigurationError(
         "预训练模型 manifest 的 model_version_id 与模型信息不一致",
