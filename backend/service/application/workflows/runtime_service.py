@@ -1362,7 +1362,11 @@ class WorkflowRuntimeService:
                 execution_policy=execution_policy,
                 field_name="timeout_seconds",
             ),
-            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {}),
+            input_payload=(
+                sanitize_runtime_mapping(normalized_request.input_bindings or {})
+                if _should_retain_runtime_payload(metadata, "retain_input_payload_enabled")
+                else {}
+            ),
             metadata=metadata,
         )
         with self._open_unit_of_work() as unit_of_work:
@@ -1805,12 +1809,16 @@ class WorkflowRuntimeService:
                 worker_result,
                 execution_policy=self._load_runtime_execution_policy(workflow_app_runtime),
             )
+            record_mode = resolve_workflow_run_record_mode(updated_run.metadata)
+            if record_mode == WORKFLOW_RUN_RECORD_MODE_MINIMAL:
+                updated_run = _build_minimal_workflow_run_record(updated_run)
             updated_runtime = apply_worker_state(
                 replace(workflow_app_runtime, updated_at=_now_isoformat()),
                 worker_result.worker_state,
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL or updated_runtime.observed_state == "failed":
+                unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
             unit_of_work.commit()
         self._remember_raw_workflow_run_outputs(workflow_run_id, worker_result.outputs)
         self._append_workflow_run_event(

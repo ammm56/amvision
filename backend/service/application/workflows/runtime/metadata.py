@@ -48,12 +48,15 @@ def build_runtime_default_execution_metadata(
 
 
 def build_minimal_workflow_run_record(workflow_run: WorkflowRun) -> WorkflowRun:
-    """构造高速触发模式使用的最小 WorkflowRun 记录。"""
+    """构造高速触发模式使用的轻量 WorkflowRun 记录。
+
+    公开 ``outputs`` 是异步查询和服务重启后恢复结果语义所必需的数据，
+    因此 minimal 只移除输入、内部 template 输出和逐节点记录。
+    """
 
     return replace(
         workflow_run,
         input_payload={},
-        outputs={},
         template_outputs={},
         node_records=(),
         metadata=dict(workflow_run.metadata),

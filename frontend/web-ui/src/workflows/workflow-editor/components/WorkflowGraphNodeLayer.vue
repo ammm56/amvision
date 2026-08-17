@@ -98,6 +98,11 @@
       @open-display="emit('openPreviewDisplay', $event)"
       @open-image="emit('openPreviewImage', $event)"
     />
+    <span
+      v-if="readPreviewDurationLabel(node.node.node_id)"
+      class="workflow-graph-node__preview-duration"
+      :title="readPreviewDurationLabel(node.node.node_id)"
+    >{{ readPreviewDurationLabel(node.node.node_id) }}</span>
   </div>
 </template>
 
@@ -107,6 +112,7 @@ import { useTranslation } from '@/platform/i18n'
 import WorkflowNodeParameterWidgets from './WorkflowNodeParameterWidgets.vue'
 import WorkflowNodePreviewDisplay from './WorkflowNodePreviewDisplay.vue'
 import type { PreviewNodeDisplay, PreviewViewerImage } from '../preview/useWorkflowPreviewDisplays'
+import { formatPreviewNodeDuration } from '../preview/workflow-preview-node-timings'
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import type { WorkflowNodePortRowView } from '../nodes/useWorkflowNodeDisplayHelpers'
 import type { WorkflowNodeParameterSelectOption, WorkflowNodeParameterSelectValue } from '../parameters/useWorkflowNodeParameters'
@@ -140,6 +146,7 @@ const props = defineProps<{
   readParameterJsonPlaceholder: (field: NodeParameterUiField) => string
   readPreviewDisplay: (nodeId: string) => PreviewNodeDisplay | null
   readPreviewDisplayTooltip: (display: PreviewNodeDisplay | null) => string
+  readPreviewDurationMs: (nodeId: string) => number | null
 }>()
 
 const emit = defineEmits<{
@@ -172,5 +179,10 @@ function requirePreviewDisplay(node: WorkflowGraphNodeView): PreviewNodeDisplay 
   const display = props.readPreviewDisplay(node.node.node_id)
   if (!display) throw new Error(`preview display missing for node ${node.node.node_id}`)
   return display
+}
+
+function readPreviewDurationLabel(nodeId: string): string {
+  const durationMs = props.readPreviewDurationMs(nodeId)
+  return durationMs === null ? '' : formatPreviewNodeDuration(durationMs)
 }
 </script>

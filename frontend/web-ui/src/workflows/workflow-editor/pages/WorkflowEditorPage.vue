@@ -104,6 +104,7 @@
           :read-parameter-json-placeholder="nodeParameterJsonPlaceholder"
           :read-preview-display="getPreviewNodeDisplay"
           :read-preview-display-tooltip="readPreviewNodeDisplayTooltip"
+          :read-preview-duration-ms="readPreviewNodeDurationMs"
           @start-node-drag="startNodeDrag"
           @node-click="handleGraphNodeSelection"
           @open-node-context-menu="openNodeContextMenu"
@@ -141,18 +142,6 @@
         :preview-blocking-messages="previewBlockingMessages"
         :image-ref-transport-kind-options="imageRefTransportKindOptions"
         :last-preview-run="lastPreviewRun"
-        :last-preview-failure-message="lastPreviewFailureMessage"
-        :last-preview-failure-node-label="lastPreviewFailureNodeLabel"
-        :last-preview-failure-location="lastPreviewFailureLocation"
-        :last-preview-failure-detail-message="lastPreviewFailureDetailMessage"
-        :last-preview-failure-details="lastPreviewFailureDetails"
-        :last-preview-failure-details-json="lastPreviewFailureDetailsJson"
-        :last-preview-http-response="lastPreviewHttpResponse"
-        :last-preview-http-response-body-value="lastPreviewHttpResponseBodyValue"
-        :last-preview-http-status="lastPreviewHttpStatus"
-        :last-preview-http-response-json="lastPreviewHttpResponseJson"
-        :last-preview-http-response-body-json="lastPreviewHttpResponseBodyJson"
-        :has-preview-node-displays="hasPreviewNodeDisplays"
         @collapse="collapseInspector"
         @update-new-app-display-name="updateNewWorkflowDraftField('displayName', $event)"
         @update-new-app-application-id="updateNewWorkflowDraftField('applicationId', $event)"
@@ -285,6 +274,7 @@ import {
 import { useWorkflowPreviewInputHelpers } from '../preview/useWorkflowPreviewInputHelpers'
 import { getPreviewImageRefTransportKindOptions, useWorkflowPreviewInputs } from '../preview/useWorkflowPreviewInputs'
 import { formatPreviewRunStatusLabel, useWorkflowPreviewValidation } from '../preview/useWorkflowPreviewValidation'
+import { buildPreviewNodeDurationIndex } from '../preview/workflow-preview-node-timings'
 import { useWorkflowDocumentBuilder } from '../documents/useWorkflowDocumentBuilder'
 import { useWorkflowDocumentLoader } from '../documents/useWorkflowDocumentLoader'
 import { useWorkflowNewAppDraft } from '../documents/useWorkflowNewAppDraft'
@@ -514,7 +504,6 @@ const {
   activeImageViewer,
   activePreviewTable,
   activePreviewJson,
-  hasPreviewNodeDisplays,
   refreshPreviewNodeDisplays,
   revokePreviewImageObjectUrls,
   getPreviewNodeDisplay,
@@ -1203,24 +1192,18 @@ const previewAlternativeImageBindingIds = computed(() => {
 })
 const {
   previewBlockingMessages,
-  lastPreviewHttpResponse,
-  lastPreviewHttpStatus,
-  lastPreviewHttpResponseJson,
-  lastPreviewHttpResponseBodyJson,
-  lastPreviewHttpResponseBodyValue,
-  lastPreviewFailureDetails,
   lastPreviewFailureNodeId,
-  lastPreviewFailureMessage,
-  lastPreviewFailureDetailMessage,
-  lastPreviewFailureNodeLabel,
-  lastPreviewFailureLocation,
-  lastPreviewFailureDetailsJson,
 } = useWorkflowPreviewValidation({
   lastPreviewRun,
   previewInputBindings,
   previewAlternativeImageBindingIds,
   hasPreviewBindingValue,
 })
+const previewNodeDurationIndex = computed(() => buildPreviewNodeDurationIndex(lastPreviewRun.value?.node_records ?? []))
+
+function readPreviewNodeDurationMs(nodeId: string): number | null {
+  return previewNodeDurationIndex.value.get(nodeId) ?? null
+}
 const {
   buildPreviewInputBindings,
 } = useWorkflowPreviewInputHelpers({

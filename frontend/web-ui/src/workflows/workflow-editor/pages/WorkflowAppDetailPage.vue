@@ -468,8 +468,8 @@ const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 
 const workflowRunRecordModeOptions = computed<SelectOption[]>(() => [
-  { label: 'full', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
   { label: 'minimal', value: 'minimal', description: t('workflowEditor.appDetail.options.recordMinimal') },
+  { label: 'full', value: 'full', description: t('workflowEditor.appDetail.options.recordFull') },
   { label: 'none', value: 'none', description: t('workflowEditor.appDetail.options.recordNone') },
 ])
 
@@ -489,7 +489,7 @@ const pendingDeleteRuntime = ref<WorkflowAppRuntime | null>(null)
 const runtimePayloadText = ref('{}')
 const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
-const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('full')
+const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
 const runtimeReturnDiagnostics = ref('false')
 
 const applicationId = computed(() => String(route.params.applicationId ?? ''))
@@ -839,7 +839,7 @@ function selectValueToString(value: SelectValue): string {
 
 function setRuntimeWorkflowRunRecordMode(value: SelectValue): void {
   const nextValue = selectValueToString(value)
-  runtimeWorkflowRunRecordMode.value = nextValue === 'minimal' || nextValue === 'none' ? nextValue : 'full'
+  runtimeWorkflowRunRecordMode.value = nextValue === 'full' || nextValue === 'none' ? nextValue : 'minimal'
 }
 
 function setRuntimeReturnDiagnostics(value: SelectValue): void {
@@ -862,7 +862,7 @@ function readRuntimeWorkflowRunRecordMode(runtime: WorkflowAppRuntime): Workflow
   const recordMode = typeof defaultExecutionMetadata === 'object' && defaultExecutionMetadata !== null && !Array.isArray(defaultExecutionMetadata)
     ? (defaultExecutionMetadata as WorkflowJsonObject).workflow_run_record_mode
     : null
-  return recordMode === 'minimal' || recordMode === 'none' ? recordMode : 'full'
+  return recordMode === 'full' || recordMode === 'none' ? recordMode : 'minimal'
 }
 
 async function loadPage(): Promise<void> {

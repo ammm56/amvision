@@ -827,7 +827,7 @@ function applyProtocolTemplateDefaults(): void {
   resultBinding.value = findDefaultResultBinding()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
-  workflowRunRecordMode.value = template.templateId === 'zeromq-image-trigger' ? 'minimal' : 'full'
+  workflowRunRecordMode.value = 'minimal'
   returnDiagnostics.value = 'false'
   buildMappingRows()
 }
@@ -918,13 +918,13 @@ function buildDefaultExecutionMetadata(): WorkflowJsonObject {
     workflow_run_record_mode: workflowRunRecordMode.value,
     return_timing_metadata_enabled: returnDiagnostics.value === 'true',
     return_node_timings_enabled: returnDiagnostics.value === 'true',
+    trace_level: 'none',
+    retain_trace_enabled: false,
+    retain_node_records_enabled: false,
   }
   if (selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') return metadata
   return {
     ...metadata,
-    trace_level: 'none',
-    retain_trace_enabled: false,
-    retain_node_records_enabled: false,
     retain_input_payload_enabled: false,
     retain_outputs_enabled: false,
   }

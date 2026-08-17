@@ -24,7 +24,7 @@ WORKFLOW_RUN_RECORD_MODES = frozenset(
         WORKFLOW_RUN_RECORD_MODE_NONE,
     }
 )
-WORKFLOW_RUN_DEFAULT_RECORD_MODE = WORKFLOW_RUN_RECORD_MODE_FULL
+WORKFLOW_RUN_DEFAULT_RECORD_MODE = WORKFLOW_RUN_RECORD_MODE_MINIMAL
 WORKFLOW_RUN_DEFAULT_RETURN_TIMING_METADATA_ENABLED = False
 WORKFLOW_RUN_DEFAULT_RETURN_NODE_TIMINGS_ENABLED = False
 
@@ -200,6 +200,11 @@ def apply_workflow_run_persistence_defaults(
             _normalize_optional_str(_read_optional_text(policy_metadata.get("workflow_run_record_mode")))
             or WORKFLOW_RUN_DEFAULT_RECORD_MODE
         )
+    record_mode = resolve_workflow_run_record_mode(payload)
+    if record_mode in {WORKFLOW_RUN_RECORD_MODE_MINIMAL, WORKFLOW_RUN_RECORD_MODE_NONE}:
+        payload["retain_input_payload_enabled"] = False
+    if record_mode == WORKFLOW_RUN_RECORD_MODE_NONE:
+        payload["retain_outputs_enabled"] = False
     if "return_timing_metadata_enabled" not in payload:
         payload["return_timing_metadata_enabled"] = (
             _read_optional_bool_flag(policy_metadata.get("return_timing_metadata_enabled"))

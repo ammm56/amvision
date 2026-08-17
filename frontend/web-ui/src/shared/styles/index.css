@@ -3267,6 +3267,30 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
+.workflow-graph-node__preview-duration {
+  position: absolute;
+  right: -1px;
+  bottom: -23px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 23px;
+  padding: 0 6px;
+  border: 1px solid var(--graph-accent);
+  border-radius: 0 0 5px 5px;
+  color: var(--graph-text-strong);
+  background: color-mix(in srgb, var(--graph-accent) 22%, var(--graph-node-bg));
+  box-shadow: 0 5px 12px rgb(0 0 0 / 0.18);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .workflow-graph-inspector-row strong,
 .workflow-graph-inspector-row code {
   flex-shrink: 0;
@@ -4438,6 +4462,13 @@ textarea:focus-visible {
 .workflow-graph-preview-result {
   display: grid;
   gap: 8px;
+}
+
+.workflow-graph-preview-result__raw-json {
+  max-height: 480px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
 }
 
 .workflow-graph-preview-result--error {

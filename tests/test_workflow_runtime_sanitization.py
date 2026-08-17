@@ -219,7 +219,10 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
                     "media_type": "image/png",
                 }
             },
-            execution_metadata={"retain_node_records_enabled": True},
+            execution_metadata={
+                "workflow_run_record_mode": "full",
+                "retain_node_records_enabled": True,
+            },
         ),
         created_by="workflow-user",
     )
@@ -238,7 +241,7 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
 
 
 def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> None:
-    """验证正式 WorkflowRun 默认不保留磁盘 trace 和 node_records。
+    """验证正式 WorkflowRun 默认只保留最小状态且不写磁盘 trace。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
@@ -296,13 +299,17 @@ def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> No
     assert persisted_run.metadata["trace_level"] == "none"
     assert persisted_run.metadata["retain_trace_enabled"] is False
     assert persisted_run.metadata["retain_node_records_enabled"] is False
+    assert persisted_run.metadata["workflow_run_record_mode"] == "minimal"
+    assert persisted_run.input_payload == {}
+    assert persisted_run.outputs == {"http_response": {"status_code": 200}}
+    assert persisted_run.template_outputs == {}
     assert persisted_run.node_records == ()
     assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
     assert not service.dataset_storage.resolve(f"workflows/runtime/{workflow_run.workflow_run_id}").exists()
 
 
-def test_invoke_workflow_run_minimal_record_persists_only_status(tmp_path: Path) -> None:
-    """验证 minimal 记录模式只保存 WorkflowRun 最小状态。"""
+def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(tmp_path: Path) -> None:
+    """验证 minimal 记录模式只保存公开结果与 WorkflowRun 状态。"""
 
     worker_result = WorkflowRuntimeWorkerRunResult(
         state="succeeded",
@@ -366,7 +373,12 @@ def test_invoke_workflow_run_minimal_record_persists_only_status(tmp_path: Path)
     persisted_run = service.get_workflow_run(workflow_run.workflow_run_id)
     assert persisted_run.state == "succeeded"
     assert persisted_run.input_payload == {}
-    assert persisted_run.outputs == {}
+    assert persisted_run.outputs == {
+        "http_response": {
+            "status_code": 200,
+            "body": {"data": "ok", "metadata": {}},
+        }
+    }
     assert persisted_run.template_outputs == {}
     assert persisted_run.node_records == ()
     assert "timings" not in persisted_run.metadata

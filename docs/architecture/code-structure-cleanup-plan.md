@@ -566,7 +566,7 @@ backend/nodes/core_nodes/
 - 完成每批迁移后，同步更新 import smoke 和节点专项测试，不保留旧平铺模块兼容壳。
 - 节点模块导入阶段只允许声明节点定义和轻量 helper；不得为了类型注解、常量或可选执行分支顶层导入训练、转换、deployment、worker、HTTP client 等重依赖。
 - service node 需要调用平台服务时，DTO、worker 队列、部署 gateway 和模型运行时依赖应在 handler 或 service builder 执行阶段导入。
-- workflow preview / runtime worker / application process 子进程不得在启动阶段无条件启动 deployment supervisor；只在 workflow 实际执行 deployment 或模型推理服务节点时按需创建。
+- workflow preview 在 backend-service 当前进程直接执行；runtime worker / application process 子进程不得在启动阶段无条件启动 deployment supervisor，只在 workflow 实际执行 deployment 或模型推理服务节点时按需创建。
 
 ## 第五批：custom_nodes
 

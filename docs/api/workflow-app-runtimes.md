@@ -122,7 +122,7 @@
   "metadata": {
     "line_id": "line-1",
     "default_execution_metadata": {
-      "workflow_run_record_mode": "full",
+      "workflow_run_record_mode": "minimal",
       "return_timing_metadata_enabled": false,
       "return_node_timings_enabled": false,
       "trace_level": "none",
@@ -135,10 +135,11 @@
 
 ### default_execution_metadata 约定
 
-- `workflow_run_record_mode=full`：完整记录，适合人工调试、低频 HTTP 调用和需要历史追踪的场景。
-- `workflow_run_record_mode=minimal`：同步调用只写最小完成记录，适合高帧率 Trigger。
+- `workflow_run_record_mode=minimal`：生产默认值；同步调用只在完成后写一条轻量记录，保留公开 App Result 和必要状态，不保存输入、内部 template 输出和节点记录。公开结果用于异步查询和服务重启后的结果读取。
+- `workflow_run_record_mode=full`：显式调试选项，适合低频 HTTP 调用和确实需要完整历史追踪的场景。
 - `workflow_run_record_mode=none`：同步调用不写 WorkflowRun 数据库记录，适合只关心实时返回的极简链路；异步 run 不能使用。
 - `return_timing_metadata_enabled=false` 和 `return_node_timings_enabled=false` 是生产默认值。需要排查性能时再打开，返回体才会包含 `timings` 和 `node_timings`。
+- `trace_level=none` 和 `retain_trace_enabled=false` 时，每次正式调用不会创建或追加 `events.jsonl`。`WorkflowAppRuntime` 自身的 start、stop、异常恢复和 heartbeat 属于低频生命周期健康记录，不进入单次图执行热路径。
 
 ### 最小响应 JSON
 

@@ -12,7 +12,7 @@
 
 - 删除旧的 workflow application execute 路由，不再保留兼容模式。
 - 新增 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 三类资源。
-- 编辑态试跑采用一请求一子进程。
+- 编辑态试跑在 backend-service 当前进程内直接执行，不创建临时子进程。
 - 已发布应用运行采用单 runtime 单实例单进程。
 - 长期运行只支持 start、stop、health、sync invoke。
 - WorkflowRun 在第一阶段只承接 sync invoke，不提供异步 runs 创建接口。
@@ -32,7 +32,7 @@
 状态约束：
 
 - 第一阶段不开放 preview cancel 接口，因此没有外部 cancel 迁移。
-- preview child process 退出后，状态必须稳定在 succeeded、failed 或 timed_out 之一。
+- preview inline executor 返回后，状态必须稳定在 succeeded、failed 或 timed_out 之一。
 
 ### WorkflowAppRuntime
 
@@ -77,7 +77,7 @@
 
 ### WorkflowPreviewRun snapshot
 
-- 如果请求提供 inline application 或 inline template，backend-service 先把 JSON 写成临时 snapshot 文件，再拉起 preview child process。
+- 如果请求提供 inline application 或 inline template，backend-service 先把 JSON 写成临时 snapshot 文件，再由当前进程直接执行 snapshot。
 - 如果请求提供 application_ref，backend-service 先读取已保存 application，再把 application 与其引用 template 固定为 preview snapshot。
 - preview snapshot 使用短期 object key，允许按 retention_until 清理。
 
@@ -224,7 +224,7 @@
 1. 删除旧的 workflow application execute 路由和对应公开文档。
 2. 新增 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 的 contracts、domain、ORM、repository。
 3. 新增共享 SnapshotExecutionService，统一加载 snapshot 并执行图。
-4. preview-runs create 路由固定 snapshot 后拉起一次性 child process，并回写 WorkflowPreviewRun。
+4. preview-runs create 路由固定 snapshot 后调用 inline executor，并回写 WorkflowPreviewRun。
 5. app-runtimes create 路由固定 snapshot 并创建 WorkflowAppRuntime。
 6. workflow-runtime-worker 只支持单 runtime 单实例 start、stop、health、sync invoke。
 7. invoke 路由先创建 WorkflowRun，再通过 worker IPC 执行，并同步等待结束。

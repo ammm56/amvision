@@ -665,6 +665,15 @@ class WorkflowRuntimeWorkerManager:
             async_handle.callbacks.on_completed(worker_result)
         except OperationCancelledError:
             self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
+            # 取消状态和 run.cancelled 事件必须先对外可见，不能被后续 worker
+            # 恢复启动耗时阻塞。恢复属于 runtime 生命周期，不是本次 run 的完成条件。
+            try:
+                async_handle.callbacks.on_cancelled(None)
+            except Exception:  # noqa: BLE001 - run 状态持久化失败不能阻止 worker 恢复
+                LOGGER.exception(
+                    "workflow run 取消状态回写失败: workflow_run_id=%s",
+                    async_handle.workflow_run_id,
+                )
             runtime_state: WorkflowRuntimeWorkerState | None = None
             if async_handle.dispatched_event.is_set() and not self._stopping.is_set():
                 try:
@@ -679,7 +688,20 @@ class WorkflowRuntimeWorkerManager:
                             "last_error": error.message,
                         },
                     )
-            async_handle.callbacks.on_cancelled(runtime_state)
+                self._persist_runtime_state_event(
+                    workflow_runtime_id=async_handle.workflow_app_runtime.workflow_runtime_id,
+                    runtime_state=runtime_state,
+                    event_type=(
+                        "runtime.restarted"
+                        if runtime_state.observed_state == "running"
+                        else "runtime.failed"
+                    ),
+                    message=(
+                        "workflow app runtime 已在取消后恢复运行"
+                        if runtime_state.observed_state == "running"
+                        else "workflow app runtime 在取消后进入失败状态"
+                    ),
+                )
         except OperationTimeoutError as error:
             self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
             async_handle.callbacks.on_timed_out(error)

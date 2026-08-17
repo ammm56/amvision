@@ -18,7 +18,7 @@
 ## 设计结论
 
 - workflow 执行面应拆成编辑态试跑和已发布应用运行两类路径，不继续共用同一条 execute 语义。
-- 编辑态试跑默认采用一请求一子进程，不进入长期运行 worker。
+- 编辑态试跑在 backend-service 当前进程内直接执行，不创建临时子进程，也不进入长期运行 worker。
 - 已发布 FlowApplication 应引入专用 workflow-runtime-worker，由它管理长期运行的 workflow app runtime。
 - 每个 workflow app instance 默认独占一个子进程，实例之间不共享 Python 运行时、不共享节点模块状态、不共享执行上下文。
 - backend-service 保持控制面职责，负责资源创建、查询、健康观察、同步等待和路由分发，不再直接执行 workflow 图。
@@ -114,7 +114,8 @@
 - `WorkflowAppRuntime` 和 `TriggerSource` 的运行态当前统一使用 `stopped`、`starting`、`running`、`stopping`、`failed` 五态模型；两者的 `desired_state` 和 `observed_state` 应保持同一套语义。
 - `WorkflowRun` 当前稳定状态集合为 `created`、`queued`、`dispatching`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`。
 - `WorkflowExecutionPolicy` 当前只有 `preview-default` 和 `runtime-default` 两类，不在第一阶段继续引入更多 policy kind。
-- preview snapshot 目录固定在 `workflows/runtime/preview-runs/{preview_run_id}/`，其中每个节点事件直接向 `events.jsonl` 追加一行，不存在旧事件格式兼容路径。WorkflowRun 同样逐事件追加到 `workflows/runtime/{workflow_run_id}/events.jsonl`。app runtime snapshot 目录固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，其中 `events.json` 只保存低频 runtime 生命周期和受限窗口 heartbeat。
+- preview snapshot 目录固定在 `workflows/runtime/preview-runs/{preview_run_id}/`，其中每个节点事件直接向 `events.jsonl` 追加一行，不存在旧事件格式兼容路径。`.jsonl` 表示 JSON Lines：每一行都是可独立解析的 JSON 对象，文件整体不是单个 JSON 对象或数组，因此不能使用会误导通用 JSON 解析器的 `.json` 后缀。
+- 正式 WorkflowRun 只有显式打开 trace 时才向 `workflows/runtime/{workflow_run_id}/events.jsonl` 追加事件；生产默认 `trace_level=none`、`retain_trace_enabled=false`，不会进入事件文件写入路径。app runtime 目录下的 `events.json` 只保存 start、stop、heartbeat、异常和恢复等低频生命周期健康记录，不属于单次推理热路径。
 - preview cleanup 当前继续走显式 maintenance 命令 `cleanup-preview-runs`；删除语义是“先删数据库记录，再删对象存储目录”，因此当前仍属于可恢复但非原子清理。
 
 | 资源 | 作用 | 生命周期 |
@@ -339,7 +340,7 @@ WorkflowRun 表示已发布应用的一次正式调用。
 ### preview run
 
 - 默认不进入队列。
-- backend-service 直接创建 WorkflowPreviewRun，拉起子进程，同步等待结果或超时。
+- backend-service 在当前服务进程中直接创建并执行 WorkflowPreviewRun，同步等待结果或超时；不会为 Preview、节点或节点包拉起临时子进程。
 - 如果后续需要削峰，可再补 preview 专用排队层，但不建议作为第一阶段前提。
 
 ### 当前阶段 manager 模型
@@ -347,7 +348,8 @@ WorkflowRun 表示已发布应用的一次正式调用。
 当前实现使用 backend-service 进程内的 `WorkflowRuntimeWorkerManager` 管理 runtime 生命周期。
 
 - manager 负责 start、stop、restart、health、sync invoke 和 async run 提交。
-- 每个 `WorkflowAppRuntime` 仍然对应独立 spawn 子进程，图执行状态不会和 backend-service 共享执行上下文。
+- 每个 `WorkflowAppRuntime` 对应一个发布时启动并长期复用的 spawn worker。一次 invoke 只向已运行 worker 发送请求，不会重新创建进程；图中的核心节点和自定义节点都在该 worker 内直接调用。
+- 图片和其他大数据通过 LocalBuffer 的 BufferRef / FrameRef 穿过进程边界，控制队列只传小型结构化消息。这个常驻进程边界用于隔离控制面故障和承载 heartbeat、重启与资源回收，不具有旧 Preview“一次请求创建一次进程”的启动开销。
 - 这个模型已经满足“runtime 独立进程执行”的目标，当前不再额外引入一层 runtime 控制队列。
 
 ### 后续扩展条件
@@ -365,7 +367,7 @@ WorkflowRun 表示已发布应用的一次正式调用。
 ```text
 backend-service
   -> WorkflowPreviewService
-     -> preview child process (one request / one process)
+     -> inline preview executor
   -> WorkflowRuntimeControlService
      -> WorkflowAppRuntime / WorkflowRun persistence
      -> workflow-runtime-control queue
@@ -397,7 +399,7 @@ sequenceDiagram
   autonumber
   actor Client as 调用方
   participant API as backend-service
-  participant Preview as preview child process
+  participant Preview as inline preview executor
   participant CtrlSvc as WorkflowRuntimeControlService
   participant CtrlQ as workflow-runtime-control queue
   participant RunQ as workflow-runtime-runs queue
@@ -408,7 +410,7 @@ sequenceDiagram
   opt 编辑态 preview run
     Client->>API: POST /api/v1/workflows/preview-runs
     API->>API: 固定 inline 或 saved snapshot
-    API->>Preview: spawn preview process
+    API->>Preview: 直接执行固定 snapshot
     Preview->>Preview: 加载 template / application snapshot
     Preview->>Preview: 执行一次试跑
     Preview-->>API: outputs + template_outputs + node_records
@@ -852,7 +854,7 @@ preview 相关图片、文件和其他大结果仍通过对象存储引用、输
 如果只做最小可执行闭环，建议优先完成下面四件事：
 
 1. 定义最小 WorkflowExecutionPolicy，并把 preview 默认收口到 preview-default policy。
-2. 把编辑态试跑切到一请求一子进程。
+2. 把编辑态试跑收口到当前服务进程直接执行，删除临时子进程路径。
 3. 新增 WorkflowAppRuntime、WorkflowRun 和 WorkflowAppInstance 三类资源。
 4. 新增独立进程入口 workflow-runtime-worker，先实现 start、stop、health 和单实例运行。
 5. 让已发布应用的正式调用走 runtime 资源，并继续在这组资源上增量扩展 restart、instances、async runs 和 execution policy。

@@ -93,18 +93,6 @@
         :badge-tone="readPreviewRunBadgeTone(lastPreviewRun.state)"
         :status-label="formatPreviewRunStatusLabel(lastPreviewRun.state)"
         :created-at-text="formatSystemDateTime(lastPreviewRun.created_at)"
-        :failure-message="lastPreviewFailureMessage"
-        :failure-node-label="lastPreviewFailureNodeLabel"
-        :failure-location="lastPreviewFailureLocation"
-        :failure-detail-message="lastPreviewFailureDetailMessage"
-        :failure-details="lastPreviewFailureDetails"
-        :failure-details-json="lastPreviewFailureDetailsJson"
-        :http-response="lastPreviewHttpResponse"
-        :http-response-body-value="lastPreviewHttpResponseBodyValue"
-        :http-status="lastPreviewHttpStatus"
-        :http-response-json="lastPreviewHttpResponseJson"
-        :http-response-body-json="lastPreviewHttpResponseBodyJson"
-        :has-node-displays="hasPreviewNodeDisplays"
         @open-json="(title, value, statusText) => emit('openPreviewJson', title, value, statusText)"
       />
     </div>
@@ -131,7 +119,6 @@ import type { PreviewInputState, PreviewSelectOption, PreviewSelectValue } from 
 import type { WorkflowGraphNodeView } from '../nodes/useWorkflowGraphNodeViews'
 import type {
   FlowApplicationBinding,
-  WorkflowJsonObject,
   WorkflowPreviewRun,
 } from '../types'
 
@@ -154,18 +141,6 @@ defineProps<{
   previewBlockingMessages: string[]
   imageRefTransportKindOptions: PreviewSelectOption[]
   lastPreviewRun: WorkflowPreviewRun | null
-  lastPreviewFailureMessage: string
-  lastPreviewFailureNodeLabel: string
-  lastPreviewFailureLocation: string
-  lastPreviewFailureDetailMessage: string
-  lastPreviewFailureDetails: WorkflowJsonObject | null
-  lastPreviewFailureDetailsJson: string
-  lastPreviewHttpResponse: WorkflowJsonObject | null
-  lastPreviewHttpResponseBodyValue: unknown
-  lastPreviewHttpStatus: number | null
-  lastPreviewHttpResponseJson: string
-  lastPreviewHttpResponseBodyJson: string
-  hasPreviewNodeDisplays: boolean
 }>()
 
 const emit = defineEmits<{

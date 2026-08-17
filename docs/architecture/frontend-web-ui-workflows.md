@@ -220,7 +220,7 @@ PreviewRun 用于工作流调试，不等同于正式运行。
 4. `wait_mode=sync` 时直接展示返回结果。
 5. Preview 同步返回终态；需要回查过程时读取 `/events` 或订阅 `/ws/v1/workflows/preview-runs/events`。
 6. 断线或切页回来时，先调用详情接口和 events 历史接口恢复状态，再继续订阅实时事件。
-7. 结果进入 `result-viewer`，节点执行摘要叠加到画布节点状态。
+7. 属性面板底部直接显示完整 WorkflowPreviewRun 原始 JSON；每个已执行画布节点在右下角显示本次 Preview 汇总耗时，单位为毫秒并保留一位小数。
 
 界面不能假设 `node_records` 一定存在。执行策略可能关闭 trace 和节点记录，此时应只展示最终 outputs、template_outputs 和错误摘要。
 
@@ -236,6 +236,8 @@ ImageViewer 的“应用并 Preview”必须由父页面串行协调：先完成
 节点级 Preview 和重复应用均保持禁用，防止旧参数快照覆盖新结果。
 
 `wait_mode=sync` 的 editor preview 应直接读取 create 响应里的 `node_records`、`outputs` 和 `template_outputs`。其中 `node_records.outputs` 保留当前这次执行的原始 preview payload，适合直接渲染 image-preview、gallery-preview、table-preview 和 value-preview。
+
+同一图节点可能在 `ForEach` 等结构中产生多条执行记录。画布耗时角标按 `node_id` 累加这些记录，只显示当前一次 Preview 的总节点耗时；新 Preview 返回后整体替换，不沿用上次结果。
 
 无论 Preview 最终是 `succeeded` 还是 `failed`，前端都必须先用本次响应的
 `node_records` 替换节点调试展示，再显示失败信息。不得在失败时沿用上一次运行的

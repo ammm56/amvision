@@ -91,12 +91,6 @@ def append_workflow_run_event(
 ) -> WorkflowRunEvent:
     """按 WorkflowRun 保留策略直接追加一行 events.jsonl。"""
 
-    event_payload = sanitize_runtime_mapping(
-        {
-            **build_workflow_run_event_payload(workflow_run),
-            **dict(payload or {}),
-        }
-    )
     if not should_retain_workflow_run_trace(workflow_run):
         return WorkflowRunEvent(
             workflow_run_id=workflow_run.workflow_run_id,
@@ -105,9 +99,15 @@ def append_workflow_run_event(
             event_type=event_type.strip() or "run.updated",
             created_at=_now_isoformat(),
             message=message.strip() or "workflow run 事件",
-            payload=event_payload,
+            payload={},
         )
 
+    event_payload = sanitize_runtime_mapping(
+        {
+            **build_workflow_run_event_payload(workflow_run),
+            **dict(payload or {}),
+        }
+    )
     with event_lock:
         existing_events = read_workflow_run_events(
             dataset_storage,

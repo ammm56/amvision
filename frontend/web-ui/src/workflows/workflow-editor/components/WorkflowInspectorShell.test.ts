@@ -40,18 +40,6 @@ function mountInspector() {
       previewBlockingMessages: [],
       imageRefTransportKindOptions: [],
       lastPreviewRun: null,
-      lastPreviewFailureMessage: '',
-      lastPreviewFailureNodeLabel: '',
-      lastPreviewFailureLocation: '',
-      lastPreviewFailureDetailMessage: '',
-      lastPreviewFailureDetails: null,
-      lastPreviewFailureDetailsJson: '',
-      lastPreviewHttpResponse: null,
-      lastPreviewHttpResponseBodyValue: null,
-      lastPreviewHttpStatus: null,
-      lastPreviewHttpResponseJson: '',
-      lastPreviewHttpResponseBodyJson: '',
-      hasPreviewNodeDisplays: false,
     },
   })
 }
