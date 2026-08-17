@@ -1,12 +1,13 @@
 import type { ComputedRef } from 'vue'
 
 import { translate } from '@/platform/i18n'
-import type { FlowApplicationBinding, WorkflowJsonObject } from '../types'
+import type { FlowApplicationBinding } from '../types'
+import type { WorkflowPreviewInputPayload } from './useWorkflowPreviewInputs'
 
 export interface WorkflowPreviewInputHelperOptions {
   previewInputBindings: ComputedRef<FlowApplicationBinding[]>
   previewBlockingMessages: ComputedRef<string[]>
-  buildPreviewInputBindingsPayload: (bindings: FlowApplicationBinding[]) => Promise<WorkflowJsonObject>
+  buildPreviewInputBindingsPayload: (bindings: FlowApplicationBinding[]) => Promise<WorkflowPreviewInputPayload>
   hasPreviewBindingValue: (binding: FlowApplicationBinding) => boolean
   setErrorMessage: (message: string | null) => void
 }
@@ -14,7 +15,7 @@ export interface WorkflowPreviewInputHelperOptions {
 export function useWorkflowPreviewInputHelpers(options: WorkflowPreviewInputHelperOptions) {
   async function buildPreviewInputBindings(
     scopedBindings?: FlowApplicationBinding[],
-  ): Promise<WorkflowJsonObject | null> {
+  ): Promise<WorkflowPreviewInputPayload | null> {
     const bindings = scopedBindings ?? options.previewInputBindings.value
     const blockingMessages = scopedBindings
       ? (() => {

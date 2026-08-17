@@ -11,7 +11,7 @@
 - template：validate、save、get、list、version browse、delete version；列表和版本摘要已带 created_at、updated_at、created_by、updated_by
 - application：validate、save、get、list、delete；列表和详情已带 created_at、updated_at、created_by、updated_by，以及 template 一跳摘要
 - node catalog：统一读取 core node、custom node、payload 规则和 node pack manifest，支持按 category、node_pack_id、payload_type_id、q 过滤，并返回 palette_groups、parameter_ui_schema
-- preview run：create、get、list、events、cancel、delete；create 支持 sync/async wait_mode，列表支持按 state、created_from、created_to 过滤
+- preview run：create、get、list、events、delete；create 只支持 sync 直调，列表支持按 state、created_from、created_to 过滤
 - execution policy：create、list、get
 - app runtime：create、list、get、start、stop、restart、health、instances、sync invoke、async run create、get run、cancel run；响应已带 updated_by，以及 application/template 一跳摘要
 - trigger source：create、list、get、enable、disable、delete、health；响应已带 updated_by，以及 runtime/application 一跳摘要
@@ -30,7 +30,6 @@
 - `DELETE /api/v1/workflows/projects/{project_id}/applications/{application_id}`
 - `GET /api/v1/workflows/preview-runs?project_id=&state=&created_from=&created_to=`
 - `GET /api/v1/workflows/preview-runs/{preview_run_id}/events`
-- `POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel`
 - `DELETE /api/v1/workflows/preview-runs/{preview_run_id}`
 
 ## 当前已能支撑的前端第一阶段范围
@@ -40,7 +39,7 @@
 - 浏览同一模板的多版本
 - 复制 template version、复制 application，并直接读取 template 最新版本
 - 删除旧模板版本和无效流程应用
-- 使用 preview run 做编辑态试跑、轮询节点事件、取消运行、浏览最近试跑结果并清理临时记录
+- 使用 preview run 做编辑态同步试跑、读取节点事件、浏览最近试跑结果并清理临时记录
 - 基于 app runtime 做已发布应用的启动、调用和运行结果回查
 
 ## 下一批执行项

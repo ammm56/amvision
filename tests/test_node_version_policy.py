@@ -99,10 +99,6 @@ def test_node_pack_manifest_accepts_version_independent_from_backend() -> None:
             "capabilities": ["test.version"],
             "compatibility": {"api": ">=0.1,<1.0", "runtime": ">=3.12"},
             "timeout": {"defaultSeconds": 30, "maxSeconds": 60},
-            "execution": {
-                "isolation": "workflow-process",
-                "timeoutAction": "terminate-workflow-process",
-            },
         }
     )
 

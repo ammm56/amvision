@@ -7,14 +7,14 @@ from datetime import datetime, timezone
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
-from threading import Event, Lock, Thread
+from threading import Event, Lock, RLock, Thread
 from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
 import logging
 import multiprocessing
 
-from backend.contracts.buffers import BufferRef, FrameRef
+from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError
 from backend.service.application.local_buffers.backend_service_process_takeover import (
     take_over_backend_service_owner,
@@ -340,6 +340,8 @@ class LocalBufferBrokerProcessSupervisor:
         self._expire_thread: Thread | None = None
         self._recent_error: dict[str, object] | None = None
         self._lock = Lock()
+        self._direct_io_lock = RLock()
+        self._direct_io_client: LocalBufferBrokerClient | None = None
 
     @property
     def is_running(self) -> bool:
@@ -353,6 +355,8 @@ class LocalBufferBrokerProcessSupervisor:
 
         if not self.settings.enabled:
             return
+        if not self.is_running:
+            self._close_direct_io_client()
         timeout_seconds = max(0.1, float(self.settings.startup_timeout_seconds))
         deadline = monotonic() + timeout_seconds
         while True:
@@ -499,6 +503,7 @@ class LocalBufferBrokerProcessSupervisor:
         """停止 broker companion process。"""
 
         self._stop_expire_loop()
+        self._close_direct_io_client()
         with self._lock:
             process = self._process
             router = self._router
@@ -644,6 +649,22 @@ class LocalBufferBrokerProcessSupervisor:
             raise
         finally:
             client.close()
+
+    def write_lease_bytes(
+        self,
+        *,
+        lease: BufferLease,
+        content: bytes | bytearray | memoryview,
+    ) -> None:
+        """直接覆盖已分配 lease 的 mmap 内容，不发送 broker 控制事件。"""
+
+        try:
+            with self._direct_io_lock:
+                client = self._require_direct_io_client()
+                client.write_lease_bytes(lease=lease, content=content)
+        except Exception as exc:
+            self._record_recent_error(action="write-lease-bytes", error=exc)
+            raise
 
     def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
         """读取普通 BufferRef 对应的字节。"""
@@ -922,6 +943,27 @@ class LocalBufferBrokerProcessSupervisor:
         if client is None:
             raise ServiceConfigurationError("LocalBufferBroker 当前未启动")
         return client
+
+    def _require_direct_io_client(self) -> LocalBufferBrokerClient:
+        """返回监督器生命周期内复用的 direct mmap client。"""
+
+        with self._direct_io_lock:
+            client = self._direct_io_client
+            if client is None:
+                client = self.create_client()
+                if client is None:
+                    raise ServiceConfigurationError("LocalBufferBroker 当前未启动")
+                self._direct_io_client = client
+            return client
+
+    def _close_direct_io_client(self) -> None:
+        """关闭监督器持有的 direct mmap client。"""
+
+        with self._direct_io_lock:
+            client = self._direct_io_client
+            self._direct_io_client = None
+        if client is not None:
+            client.close()
 
     def _build_router_observation(self) -> dict[str, object]:
         """构造 broker router 的观测摘要。"""

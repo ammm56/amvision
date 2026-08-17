@@ -252,14 +252,9 @@ def _build_node_pack_zip(
         "category": "test",
         "categoryRoot": "test.demo",
         "capabilities": ["test.compute"],
-        "permissionScopes": [],
         "entrypoints": {"backend": "custom_nodes.demo_nodes.backend.entry:register"},
         "compatibility": compatibility or {"api": ">=0.1,<1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 10, "maxSeconds": 30, "killGraceSeconds": 1},
-        "execution": {
-            "isolation": "workflow-process",
-            "timeoutAction": "terminate-workflow-process",
-        },
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }

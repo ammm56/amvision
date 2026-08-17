@@ -565,7 +565,6 @@ class LocalNodePackLoader:
             loaded_at=self._last_refresh_at or generated_at,
             node_count=node_count,
             capabilities=manifest.capabilities,
-            permission_scopes=manifest.permission_scopes,
             dependencies=dependencies,
             issues=tuple(issues),
             logs=logs,

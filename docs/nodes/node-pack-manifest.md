@@ -2,19 +2,19 @@
 
 ## 文档目的
 
-本文档用于细化 node pack manifest 的结构、字段含义、capability 模型和权限边界，作为节点包注册、启用、兼容性检查和管理的基本规则。
+本文档用于细化 node pack manifest 的结构、字段含义和 capability 模型，作为节点包注册、启用、兼容性检查和管理的基本规则。
 
 ## 适用范围
 
 - node pack manifest 必填字段与推荐字段
-- capability 分类、permission scope 与依赖声明
+- capability 分类与依赖声明
 - 版本兼容性、超时和启停管理要求
 - 与 backend-service、LocalNodePackLoader、WorkflowNodeRuntimeRegistryLoader 和统一节点目录的关系
 
 ## 总体原则
 
 - 每个 node pack 必须有唯一 manifest，且 manifest 是节点包身份和能力的正式描述
-- capability 用于声明“节点包能做什么”，permission scope 用于声明“节点包能接触什么”
+- capability 用于声明“节点包能做什么”，不参与运行时权限限制
 - backend-service 根据 manifest 决定能否注册、启用、升级或回滚 node pack
 - 未在 manifest 中声明的能力、触发点和外部端点访问，不应被视为可用能力
 
@@ -33,7 +33,6 @@
   "capabilities": [
     "pipeline.node"
   ],
-  "permissionScopes": [],
   "entrypoints": {
     "backend": "custom_nodes.example_simple_nodes.backend.entry:register"
   },
@@ -76,10 +75,6 @@
       "nodePackId": "opencv.nodes",
       "versionRange": ">=0.1.0 <1.0"
     }
-  ],
-  "permissionScopes": [
-    "objectstore.read.ref",
-    "objectstore.write.ref"
   ],
   "entrypoints": {
     "backend": "custom_nodes.example_advanced_nodes.backend.entry:register"
@@ -148,7 +143,6 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 - description
 - categoryRoot：节点定义 `category` 的稳定根路径；提供后由 loader 强制校验
 - implementationLayout：包内实现采用 `flat`、`categories`、`providers` 或 `recipes`
-- permissionScopes
 - configSchema
 - inputSchema and outputSchema
 - uiSchema
@@ -174,7 +168,7 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 
 - 声明 node pack 可参与的后端服务或 worker 能力
 - 提供前端展示、筛选和管理的基础标签
-- 为启用检查、权限检查和兼容性检查提供依据
+- 为启用检查、前端筛选和兼容性检查提供依据
 
 ### capability 建议前缀
 
@@ -194,22 +188,13 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 - 同时避免过度碎片化到无法管理或无法理解
 - capability 应对齐 backend-service 能管理的资源和事件范围
 
-## permission scope 模型
+## 可信执行模型
 
-### permission scope 的职责
-
-- 描述 node pack 允许读取、写入、触发或调用的资源范围
-- 与 capability 配合定义最小权限原则
-
-### permission scope 示例
-
-- task.read
-- task.result.write
-- deployment.read
-- integration.endpoint.invoke
-- node.event.subscribe
-- objectstore.read.ref
-- objectstore.write.ref
+- 安装或启用 node pack 表示使用者信任该节点代码
+- core node、内置 node pack 和第三方 node pack 使用同一套进程内直接调用路径
+- manifest 不声明 permission scope，也不声明 per-node process isolation
+- WorkflowAppRuntime 长期 worker 和 deployment 常驻推理进程属于服务生命周期边界，继续保留
+- 外部 HTTP、数据库、PLC、相机和模型调用的连接与读取超时由对应节点实现负责
 
 ## 兼容性声明
 
@@ -238,7 +223,7 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 
 - 校验 id 与 version 的唯一性
 - 校验 node pack version 和 NodeDefinition version 均不高于当前后端版本
-- 校验 category、capabilities、permissionScopes 是否有效
+- 校验 category 和 capabilities 是否有效
 - 校验 triggerPoints、hookPoints 与平台支持的事件范围是否兼容
 - 校验 compatibility 与当前平台版本、runtime profile 是否匹配
 - 校验外部依赖是否满足启用前置条件

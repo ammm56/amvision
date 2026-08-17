@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "cancelled", "timed_out"]
+WorkflowPreviewRunState = Literal["created", "running", "succeeded", "failed", "timed_out"]
 WorkflowManagedRuntimeState = Literal["stopped", "starting", "running", "stopping", "failed"]
 WorkflowAppRuntimeState = WorkflowManagedRuntimeState
 WorkflowTriggerRuntimeState = WorkflowManagedRuntimeState
@@ -46,10 +46,9 @@ WORKFLOW_PREVIEW_RUN_STATES: tuple[WorkflowPreviewRunState, ...] = (
     "running",
     "succeeded",
     "failed",
-    "cancelled",
     "timed_out",
 )
-WORKFLOW_PREVIEW_RUN_TERMINAL_STATES = frozenset(("succeeded", "failed", "cancelled", "timed_out"))
+WORKFLOW_PREVIEW_RUN_TERMINAL_STATES = frozenset(("succeeded", "failed", "timed_out"))
 WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS = 24
 WORKFLOW_PREVIEW_RUN_STORAGE_ROOT = "workflows/runtime/preview-runs"
 WORKFLOW_PREVIEW_RUN_CLEANUP_STAGING_ROOT = "workflows/runtime/cleanup-staging/preview-runs"
@@ -162,7 +161,7 @@ def build_workflow_preview_run_cleanup_staging_dir(preview_run_id: str) -> str:
 def build_workflow_preview_run_events_object_key(preview_run_id: str) -> str:
     """返回单个 preview run 事件文件的 object key。"""
 
-    return build_workflow_preview_run_snapshot_object_key(preview_run_id, "events.json")
+    return build_workflow_preview_run_snapshot_object_key(preview_run_id, "events.jsonl")
 
 
 def build_workflow_app_runtime_storage_dir(workflow_runtime_id: str) -> str:
@@ -220,4 +219,4 @@ def build_workflow_run_storage_dir(workflow_run_id: str) -> str:
 def build_workflow_run_events_object_key(workflow_run_id: str) -> str:
     """返回单个 WorkflowRun 事件文件的 object key。"""
 
-    return f"{build_workflow_run_storage_dir(workflow_run_id)}/events.json"
+    return f"{build_workflow_run_storage_dir(workflow_run_id)}/events.jsonl"

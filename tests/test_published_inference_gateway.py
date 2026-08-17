@@ -36,6 +36,7 @@ from backend.service.application.runtime.contracts.detection.prediction import (
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     list_registered_execution_cleanups,
+    prepare_execution_cleanup_state,
 )
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
@@ -45,6 +46,9 @@ from backend.service.application.workflows.execution_cleanup import (
 )
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
 )
 from tests.api_test_support import build_test_jpeg_bytes
 
@@ -274,6 +278,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
                 "execution_image_registry": image_registry,
                 "local_buffer_reader": fake_writer,
                 "workflow_run_id": "run-1",
+                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY: "preview:project-1:app-1",
                 WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY: 90.0,
             },
             runtime_context=runtime_context,
@@ -286,6 +291,7 @@ def test_yolox_detection_node_writes_memory_image_to_local_buffer_before_gateway
     assert fake_writer.last_ttl_seconds == 120.0
     assert fake_gateway.last_request is not None
     assert fake_gateway.last_request.input_image_bytes is None
+    assert fake_gateway.last_request.execution_scope_id == "preview:project-1:app-1"
     assert fake_gateway.last_request.image_payload["transport_kind"] == "buffer"
     assert (
         fake_gateway.last_request.image_payload["buffer_ref"]["lease_id"]
@@ -396,6 +402,61 @@ def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails(
     )
     assert cleanup_items[0].resource_id == "lease-memory"
     assert cleanup_items[0].metadata == {"pool_name": "image-test"}
+
+
+def test_yolox_detection_node_reuses_one_local_buffer_slot_within_workflow_run() -> (
+    None
+):
+    """验证同一 Workflow Run 的串行模型节点只分配一个 mmap 槽位。"""
+
+    source_bytes = build_test_jpeg_bytes()
+    image_registry = ExecutionImageRegistry()
+    registered_image = image_registry.register_image_bytes(
+        content=source_bytes,
+        media_type="image/jpeg",
+        width=64,
+        height=64,
+        created_by_node_id="fixture",
+    )
+    fake_writer = _FakeLocalBufferWriter()
+    fake_gateway = _FakePublishedInferenceGateway()
+    execution_metadata = {
+        "execution_image_registry": image_registry,
+        "local_buffer_reader": fake_writer,
+        "workflow_run_id": "run-reuse",
+    }
+    prepare_execution_cleanup_state(execution_metadata)
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=object(),
+        dataset_storage=object(),
+        local_buffer_reader=fake_writer,
+        published_inference_gateway=fake_gateway,
+    )
+    request = WorkflowNodeExecutionRequest(
+        node_id="detect",
+        node_definition=object(),
+        parameters={"deployment_instance_id": "deployment-1"},
+        input_values={
+            "image": build_memory_image_payload(
+                image_handle=registered_image.image_handle,
+                media_type="image/jpeg",
+                width=64,
+                height=64,
+            )
+        },
+        execution_metadata=execution_metadata,
+        runtime_context=runtime_context,
+    )
+
+    _deployment_detection_handler(request)
+    _deployment_detection_handler(request)
+
+    cleanup_items = list_registered_execution_cleanups(execution_metadata)
+    assert fake_writer.write_count == 1
+    assert fake_writer.rewrite_count == 1
+    assert fake_writer.release_calls == []
+    assert len(cleanup_items) == 1
+    assert cleanup_items[0].resource_id == "lease-memory"
 
 
 def test_run_detection_inference_task_preserves_input_image_payload() -> None:
@@ -524,6 +585,8 @@ class _FakeLocalBufferWriter:
         self.last_content: bytes | None = None
         self.last_owner_id: str | None = None
         self.last_ttl_seconds: float | None = None
+        self.write_count = 0
+        self.rewrite_count = 0
         self.release_calls: list[tuple[str, str | None]] = []
         self.fail_release = False
 
@@ -541,6 +604,7 @@ class _FakeLocalBufferWriter:
 
         del owner_kind
         del trace_id
+        self.write_count += 1
         self.last_content = content
         self.last_owner_id = owner_id
         ttl_seconds = kwargs.get("ttl_seconds")
@@ -553,6 +617,13 @@ class _FakeLocalBufferWriter:
                 lease_id="lease-memory", media_type=media_type
             ),
         )
+
+    def write_lease_bytes(self, *, lease: object, content: bytes) -> None:
+        """记录对活动 lease 的直接覆盖。"""
+
+        assert getattr(lease, "lease_id", None) == "lease-memory"
+        self.rewrite_count += 1
+        self.last_content = content
 
     def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
         """记录 lease 释放参数。"""

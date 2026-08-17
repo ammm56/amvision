@@ -28,6 +28,12 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
 )
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
@@ -538,11 +544,20 @@ def _build_runtime_service(
         task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
     preview_run_manager = WorkflowPreviewRunManager(
-        settings=settings,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    preview_run_manager.start()
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+        load_custom_node_handlers=True,
+    )
+    runtime_registry_loader.refresh()
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
     service = WorkflowRuntimeService(
         settings=settings,
         session_factory=session_factory,
@@ -550,6 +565,8 @@ def _build_runtime_service(
         node_catalog_registry=node_catalog_registry,
         preview_run_manager=preview_run_manager,
         worker_manager=worker_manager if worker_manager is not None else SimpleNamespace(),
+        workflow_node_runtime_registry=runtime_registry_loader.get_runtime_registry(),
+        workflow_service_node_runtime_context=runtime_context,
     )
     return service, workflow_service, node_catalog_registry
 

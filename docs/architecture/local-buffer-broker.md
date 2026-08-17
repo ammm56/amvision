@@ -2,19 +2,19 @@
 
 ## 文档目的
 
-本文档用于规划本项目中的本机高性能数据交换层，重点说明 Broker + mmap 文件池如何支撑 workflow 隔离进程、已发布推理服务和外部高速输入之间的大图数据传递。
+本文档用于规划本项目中的本机高性能数据交换层，重点说明 Broker + mmap 文件池如何支撑 workflow、已发布推理服务和外部高速输入之间的大图数据传递。
 
 本文档描述长期架构和分期实现。当前主干已经完成第 0 阶段和第 1 阶段的基础实现：BufferRef、FrameRef、BufferLease、mmap pool、LocalBufferBroker companion process、preview run / WorkflowAppRuntime / deployment worker 的 broker client 接入、direct mmap 读写数据面、LocalBufferBroker 状态事件队列、父进程响应隔离 router、workflow 执行结束释放 broker lease，以及 PublishedInferenceGateway 事件 dispatcher。第 2.2 阶段已经补入 owner 批量释放、expire_leases 触发入口和基础 pool 状态指标。第 2.3 阶段已经补入周期性 expire loop、最近 broker 错误记录，以及 backend-service health、workflow runtime health 和 deployment health 的 broker 摘要。第 3 阶段已经补入 ring buffer channel 的最小闭环：固定槽位 channel、FrameRef direct mmap 写读、覆盖后的旧 FrameRef 失效校验和基础帧指标。lease heartbeat、registry 恢复、目录扫描清理和更完整的配额策略仍属于后续阶段。
 
 ## 背景
 
-workflow 编辑态试跑和已发布应用运行都需要保持独立进程隔离。发布推理服务也需要作为长期稳定运行的独立 worker，持有模型 session、实例池、keep-warm 和运行时状态。
+workflow 编辑态同步试跑复用 backend-service 进程内节点 registry；已发布应用由长期 worker 执行。发布推理服务作为长期稳定运行的独立 worker，持有模型 session、实例池、keep-warm 和运行时状态。
 
 这些进程之间需要频繁传递图片、视频帧和后续可能出现的 tensor。HTTP、JSON base64 或 ZeroMQ 大帧传输都不适合作为本机内部热路径的数据面。更合适的方式是把大数据放入本机可共享的 mmap 文件池，消息中只传递引用、偏移和形状信息。
 
 ## 目标
 
-- 保留 preview run 的一请求一子进程隔离模型。
+- Preview 上传图片直接写入 LocalBufferBroker，并以内联执行方式复用进程内节点 handler。
 - 保留 WorkflowAppRuntime 的长期 worker 隔离模型。
 - 保留 DeploymentInstance 推理 worker 的长期稳定运行模型。
 - 支持 Windows、Ubuntu 和 macOS，不依赖单一操作系统专用机制。
@@ -44,7 +44,7 @@ TriggerSource / Integration Adapter
 WorkflowRun / PreviewRun / AppRuntime
         |
         v
-隔离 workflow 执行进程
+Preview 内联执行 / WorkflowAppRuntime worker
         |
         v
 PublishedInferenceGateway
@@ -56,7 +56,7 @@ LocalBufferBroker
 长期运行的 DeploymentInstance 推理 worker
 ```
 
-ZeroMQ 属于外部高速输入或触发入口之一。LocalBufferBroker 属于本机内部数据交换层。两者不能混成同一层：ZeroMQ 负责把上位机或桥接进程的高速输入接入平台，LocalBufferBroker 负责平台内部隔离进程之间的大数据引用和生命周期管理。
+ZeroMQ 属于外部高速输入或触发入口之一。LocalBufferBroker 属于本机内部数据交换层。两者不能混成同一层：ZeroMQ 负责把上位机或桥接进程的高速输入接入平台，LocalBufferBroker 负责平台内部组件之间的大数据引用和生命周期管理。
 
 ## 推荐方案
 
@@ -75,7 +75,7 @@ LocalBufferBroker
 
 ## 本项目实现方式
 
-LocalBufferBroker 在目标运行形态中是本机独立 companion process，由 backend-service 或本地启动器负责启动、健康检查和停止。它不是对外公开服务，也不是新的远程微服务；它只服务同一台机器上的 backend-service、workflow preview 子进程、WorkflowAppRuntime worker、DeploymentInstance 推理 worker 和受控本地 adapter。
+LocalBufferBroker 在目标运行形态中是本机独立 companion process，由 backend-service 或本地启动器负责启动、健康检查和停止。它不是对外公开服务，也不是新的远程微服务；它只服务同一台机器上的 backend-service 内联 Preview、WorkflowAppRuntime worker、DeploymentInstance 推理 worker 和受控本地 adapter。
 
 LocalBufferBroker process 必须服从 backend-service 的进程生命周期：backend-service 正常停止或 reload 时，broker 先关闭 mmap 句柄再退出；broker 会定期检查 supervisor 的 parent process sentinel，父进程被强制结束后也会自行退出，避免作为孤立进程长期持有默认 pool 文件。broker 在打开任何 pool 文件前必须持有 `root_dir/.local-buffer-broker.lock` 跨进程独占锁，同一根目录只能存在一个写入仲裁者。锁元数据包含 broker、supervisor 和 uvicorn 根进程的 PID、创建时间、解释器、工作目录和完整命令。重复启动时，较新的 backend-service 只有在完整身份、锁文件打开句柄和父子链都通过校验后才结束旧进程树并重试；旧 uvicorn 根进程已经消失时，可以在验证同一运行环境和真实锁持有者后回收残留 supervisor/broker。PID 复用、伪造锁、无关进程、不同工作区或解释器、当前自身进程树都拒绝接管，不能仅凭锁中的 PID 结束进程。`takeover_existing_process=false` 可恢复严格拒绝重复实例的行为。supervisor 启动阶段会持续检查子进程状态，子进程启动结果在退出前显式刷新到父进程，提前退出时立即返回具体配置错误或 process id 和 exit code，不再等待完整启动超时；真正的启动超时会同时记录 root directory 和 pool file 路径，便于区分文件占用、磁盘权限与子进程初始化错误。控制台中断在 broker 内只触发清理，不重复输出无意义的 `KeyboardInterrupt` traceback。
 
@@ -100,7 +100,7 @@ workflow preview process / workflow runtime worker / deployment worker / local a
 
 控制通道只负责 allocate、commit、read-validate、release、heartbeat 和 metrics，不承载大图。大图数据只写入 mmap 文件，调用方通过 BufferRef 或 FrameRef 传递 `path`、`offset`、`size`、`broker_epoch` 和 `generation`。
 
-当前实现中，LocalBufferBroker client 的 `write_bytes` 已拆成 allocate、direct mmap write 和 commit，读取已拆成 validate 和 direct mmap read；长期 workflow worker 读取 raw BufferRef / FrameRef 时会借用只读 mmap view，避免先复制为等大的 Python bytes。broker 控制动作只保留 allocate、commit、validate、release、release-owner、expire、status 和 shutdown 等状态事件。broker 进程通过父进程创建的事件队列接收控制事件，不再通过 host、port 或 authkey 暴露本地监听入口。多个 preview、runtime 和 deployment 子进程不会直接共享 broker response queue，backend-service 父进程会为每个 client channel 分配独立 response queue，并通过 router 按 request_id 分发响应。owner 批量释放支持按 owner_id 精确匹配或按 owner_id_prefix 兜底清理同一 workflow run 创建的 lease。
+当前实现中，LocalBufferBroker client 的 `write_bytes` 已拆成 allocate、direct mmap write 和 commit，读取已拆成 validate 和 direct mmap read；长期 workflow worker 读取 raw BufferRef / FrameRef 时会借用只读 mmap view，避免先复制为等大的 Python bytes。broker 控制动作只保留 allocate、commit、validate、release、release-owner、expire、status 和 shutdown 等状态事件。broker 进程通过父进程创建的事件队列接收控制事件，不再通过 host、port 或 authkey 暴露本地监听入口。多个 Preview、runtime 和 deployment 调用方不会直接共享 broker response queue，backend-service 父进程会为每个 client channel 分配独立 response queue，并通过 router 按 request_id 分发响应。owner 批量释放支持按 owner_id 精确匹配或按 owner_id_prefix 兜底清理同一 workflow run 创建的 lease。
 
 ## 当前可用性核查
 
@@ -306,13 +306,14 @@ FrameRef 的有效期通常短于普通 BufferRef。workflow 执行前应尽量�
 
 ## 与 Workflow 的关系
 
-workflow runtime 继续保持隔离进程执行。
+编辑态同步 Preview 直接复用 backend-service 的 runtime registry；正式 WorkflowAppRuntime 继续由长期 worker 执行。两种执行面都直接调用已加载节点，不为单个节点建立隔离进程。
 
 需要调整的主要是公共输入和服务节点支持层：
 
 1. 扩展 image payload 解析，支持 BufferRef 和 FrameRef。
 2. 增加 PublishedInferenceGateway，workflow 推理节点只依赖 gateway，不直接依赖 deployment supervisor。
-3. preview run 和 WorkflowAppRuntime 的 execution metadata 中携带 broker 客户端上下文。
+3. preview run 和 WorkflowAppRuntime 的 execution metadata 中携带 broker 客户端上下文；
+   Preview multipart 上传先写普通 buffer lease，再向图传递 `image-ref.v1`。
 4. workflow 执行结束后释放当前 run 持有的 lease。
 5. 需要保留的预览图、标注图和中间图通过 ObjectStore 保存，不依赖 mmap 文件长期存在。
 
@@ -491,4 +492,4 @@ Broker + mmap 文件池主要减少三类成本：
 - ring buffer 作为 mmap 文件池上的高频输入模式，不作为所有输入的默认模式。
 - ZeroMQ 保持为高速外部接入和触发入口之一，不作为本机内部大图数据面的主方案。
 - workflow 节点只依赖 ImageRef / BufferRef / FrameRef 和 PublishedInferenceGateway，不直接依赖 mmap 实现。
-- 已发布推理服务继续作为长期稳定 worker，workflow preview 和 runtime 继续保持独立隔离。
+- 已发布推理服务继续作为长期稳定 worker；同步 Preview 内联执行，正式 workflow runtime 保持长期 worker 生命周期。

@@ -16,11 +16,7 @@ from backend.service.application.project_summary import (
     publish_project_summary_event,
     should_publish_project_summary_for_workflow_run_event,
 )
-from backend.contracts.workflows.workflow_graph import (
-    NODE_IMPLEMENTATION_CUSTOM,
-    FlowApplication,
-    WorkflowGraphTemplate,
-)
+from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.contracts.workflows.resource_semantics import (
     WorkflowPreviewRunState,
     build_workflow_app_runtime_storage_dir,
@@ -36,13 +32,15 @@ from backend.service.application.errors import (
 )
 from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
 from backend.service.application.workflows.preview_run_manager import (
-    WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS,
     WorkflowPreviewRunExecutionRequest,
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
 from backend.service.application.workflows.preview_partial_results import (
     build_completed_node_records_from_events,
+)
+from backend.service.application.workflows.execution_cleanup import (
+    WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY,
 )
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
@@ -107,7 +105,6 @@ from backend.service.application.workflows.runtime.preview_runs import (
     build_preview_run_retention_until,
     filter_preview_runs,
     normalize_preview_run_create_request,
-    preview_run_needs_cancel_before_delete,
 )
 from backend.service.application.workflows.runtime.invokes import (
     WorkflowRuntimeInvokeRequest,
@@ -126,7 +123,6 @@ from backend.service.application.workflows.runtime.metadata import (
     now_isoformat as _now_isoformat,
     resolve_preview_retain_node_records_enabled as _resolve_preview_retain_node_records_enabled,
     should_retain_runtime_payload as _should_retain_runtime_payload,
-    should_run_preview_inline as _should_run_preview_inline,
     strip_output_diagnostic_timings as _strip_output_diagnostic_timings,
 )
 from backend.service.application.workflows.runtime.persistence import (
@@ -270,7 +266,7 @@ class WorkflowRuntimeService:
         *,
         created_by: str | None,
     ) -> WorkflowPreviewRun:
-        """创建一条 preview run，并按 wait_mode 决定是否同步等待。"""
+        """创建并在当前服务进程直接执行一条 Preview Run。"""
 
         if self.preview_run_manager is None:
             raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
@@ -337,15 +333,13 @@ class WorkflowRuntimeService:
             "kind": normalized_request.execution_scope_kind,
             "target_node_id": normalized_request.target_node_id,
         }
+        preview_metadata[WORKFLOW_EXECUTION_TIMEOUT_SECONDS_KEY] = float(
+            effective_timeout_seconds
+        )
         retain_node_records_enabled = _resolve_preview_retain_node_records_enabled(
             preview_metadata,
             execution_policy=execution_policy,
         )
-        template_requires_process_isolation = self._template_requires_process_isolation(template)
-        if template_requires_process_isolation:
-            preview_metadata["custom_node_process_isolation"] = "workflow-process"
-            preview_metadata["preview_execution_mode"] = "process"
-
         now = _now_isoformat()
         preview_run = WorkflowPreviewRun(
             preview_run_id=preview_run_id,
@@ -376,66 +370,15 @@ class WorkflowRuntimeService:
             execution_metadata=preview_metadata,
             timeout_seconds=effective_timeout_seconds,
             retain_node_records_enabled=retain_node_records_enabled,
-            return_sync_response_payload_enabled=normalized_request.wait_mode == "sync",
+            return_sync_response_payload_enabled=True,
             target_node_id=normalized_request.target_node_id,
         )
-        if (
-            normalized_request.wait_mode == "sync"
-            and _should_run_preview_inline(preview_metadata)
-            and not template_requires_process_isolation
-        ):
-            return self._execute_preview_run_inline(
-                preview_run_id,
-                execution_request,
-                retain_node_records_enabled=retain_node_records_enabled,
-                return_sync_response_payload_enabled=True,
-            )
-
-        try:
-            self.preview_run_manager.submit_run(execution_request)
-        except ServiceError as exc:
-            preview_run = replace(
-                preview_run,
-                state="failed",
-                finished_at=_now_isoformat(),
-                error_message=exc.message,
-            )
-            with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_preview_run(preview_run)
-                unit_of_work.commit()
-            return preview_run
-
-        if normalized_request.wait_mode == "async":
-            return self.get_preview_run(preview_run_id)
-        return self.preview_run_manager.wait_for_completion(
+        return self._execute_preview_run_inline(
             preview_run_id,
-            timeout_seconds=(
-                float(effective_timeout_seconds)
-                + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
-                + 5.0
-            ),
+            execution_request,
+            retain_node_records_enabled=retain_node_records_enabled,
+            return_sync_response_payload_enabled=True,
         )
-
-    def _template_requires_process_isolation(
-        self,
-        template: WorkflowGraphTemplate,
-    ) -> bool:
-        """判断模板是否包含必须离开 API 主进程执行的 custom node。"""
-
-        definition_index = {
-            definition.node_type_id: definition
-            for definition in self.node_catalog_registry.get_workflow_node_definitions()
-        }
-        for graph_node in template.nodes:
-            if not graph_node.enabled:
-                continue
-            node_definition = definition_index.get(graph_node.node_type_id)
-            if (
-                node_definition is not None
-                and node_definition.implementation_kind == NODE_IMPLEMENTATION_CUSTOM
-            ):
-                return True
-        return False
 
     def _execute_preview_run_inline(
         self,
@@ -453,17 +396,12 @@ class WorkflowRuntimeService:
         """
 
         if self.workflow_node_runtime_registry is None or self.workflow_service_node_runtime_context is None:
-            if self.preview_run_manager is None:
-                raise ServiceConfigurationError("当前服务缺少 inline preview 和 preview manager 运行资源")
-            self.preview_run_manager.submit_run(execution_request)
-            return self.preview_run_manager.wait_for_completion(
-                preview_run_id,
-                timeout_seconds=float(execution_request.timeout_seconds) + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS + 5.0,
-            )
+            raise ServiceConfigurationError("当前服务缺少 Preview 直接执行资源")
 
         inline_started_at = monotonic()
         execution_metadata = dict(execution_request.execution_metadata)
         execution_metadata.setdefault(WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, preview_run_id)
+        execution_metadata.setdefault("return_timing_metadata_enabled", True)
         model_session_manager = (
             self.workflow_service_node_runtime_context.workflow_model_session_manager
         )
@@ -472,7 +410,47 @@ class WorkflowRuntimeService:
                 WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY, ""
             )
         ).strip()
-        inline_events: list[dict[str, object]] = []
+        event_persist_ms = 0.0
+        event_persist_ms += self.preview_run_manager.initialize_event_stream(
+            preview_run_id
+        )
+
+        def persist_preview_event(raw_event: dict[str, object]) -> None:
+            """把图执行器产生的一条事件立即追加到 JSONL。"""
+
+            nonlocal event_persist_ms
+            _, persist_ms = self.preview_run_manager.append_event(
+                preview_run_id,
+                event_type=str(raw_event.get("event_type") or "workflow.event"),
+                message=str(raw_event.get("message") or raw_event.get("event_type") or "workflow event"),
+                payload=(
+                    dict(raw_event["payload"])
+                    if isinstance(raw_event.get("payload"), dict)
+                    else {}
+                ),
+            )
+            event_persist_ms += persist_ms
+
+        persist_preview_event(
+            {
+                "event_type": "preview.started",
+                "message": "preview run started",
+                "payload": {"state": "running"},
+            }
+        )
+        graph_execute_started_at = monotonic()
+        graph_event_persist_started_ms = event_persist_ms
+
+        def read_graph_execute_ms() -> float:
+            """返回扣除同步 JSONL 写入后的节点图执行耗时。"""
+
+            graph_total_ms = _elapsed_ms(graph_execute_started_at)
+            graph_event_persist_ms = max(
+                0.0,
+                event_persist_ms - graph_event_persist_started_ms,
+            )
+            return round(max(0.0, graph_total_ms - graph_event_persist_ms), 3)
+
         try:
             if model_session_manager is not None and model_session_scope_id:
                 evicted_scope_ids = model_session_manager.enforce_scope_limit(
@@ -495,7 +473,7 @@ class WorkflowRuntimeService:
                 node_catalog_registry=self.node_catalog_registry,
                 runtime_registry=self.workflow_node_runtime_registry,
                 runtime_context=self.workflow_service_node_runtime_context,
-                event_sink=inline_events.append,
+                event_sink=persist_preview_event,
                 decoded_image_cache_max_entries=(
                     self.settings.workflow_runtime.decoded_image_cache_max_entries
                 ),
@@ -514,29 +492,70 @@ class WorkflowRuntimeService:
                 )
             )
         except ServiceError as exc:
-            return self._finish_inline_preview_run_failed(
+            graph_execute_ms = read_graph_execute_ms()
+            failed_preview_run = self._finish_inline_preview_run_failed(
                 preview_run_id,
                 exc,
+                inline_started_at=inline_started_at,
+                graph_execute_ms=graph_execute_ms,
+                event_persist_ms=event_persist_ms,
                 node_records=(
-                    build_completed_node_records_from_events(inline_events)
+                    build_completed_node_records_from_events(
+                        self.preview_run_manager.list_events(preview_run_id)
+                    )
                     if retain_node_records_enabled
                     else ()
                 ),
             )
+            self._append_inline_terminal_event(
+                preview_run_id,
+                event_type=(
+                    "preview.timed_out"
+                    if isinstance(exc, OperationTimeoutError)
+                    else "preview.failed"
+                ),
+                message=(
+                    "preview run timed out"
+                    if isinstance(exc, OperationTimeoutError)
+                    else "preview run failed"
+                ),
+                payload={
+                    "state": failed_preview_run.state,
+                    "error_message": failed_preview_run.error_message,
+                },
+            )
+            return failed_preview_run
         except Exception as exc:
+            graph_execute_ms = read_graph_execute_ms()
             wrapped_error = ServiceConfigurationError(
                 "workflow preview run 直接执行失败",
                 details={"error_type": type(exc).__name__, "error_message": str(exc) or type(exc).__name__},
             )
-            return self._finish_inline_preview_run_failed(
+            failed_preview_run = self._finish_inline_preview_run_failed(
                 preview_run_id,
                 wrapped_error,
+                inline_started_at=inline_started_at,
+                graph_execute_ms=graph_execute_ms,
+                event_persist_ms=event_persist_ms,
                 node_records=(
-                    build_completed_node_records_from_events(inline_events)
+                    build_completed_node_records_from_events(
+                        self.preview_run_manager.list_events(preview_run_id)
+                    )
                     if retain_node_records_enabled
                     else ()
                 ),
             )
+            self._append_inline_terminal_event(
+                preview_run_id,
+                event_type="preview.failed",
+                message="preview run failed",
+                payload={"state": "failed", "error_message": failed_preview_run.error_message},
+            )
+            return failed_preview_run
+        event_persist_ms += self.preview_run_manager.flush_event_stream(
+            preview_run_id
+        )
+        graph_execute_ms = read_graph_execute_ms()
         model_session_health = (
             model_session_manager.build_health_summary(
                 scope_id=model_session_scope_id
@@ -544,14 +563,23 @@ class WorkflowRuntimeService:
             if model_session_manager is not None and model_session_scope_id
             else None
         )
-        return self._finish_inline_preview_run_succeeded(
+        succeeded_preview_run = self._finish_inline_preview_run_succeeded(
             preview_run_id,
             execution_result,
             retain_node_records_enabled=retain_node_records_enabled,
             return_sync_response_payload_enabled=return_sync_response_payload_enabled,
-            inline_duration_ms=_elapsed_ms(inline_started_at),
+            inline_started_at=inline_started_at,
+            graph_execute_ms=graph_execute_ms,
+            event_persist_ms=event_persist_ms,
             model_session_health=model_session_health,
         )
+        self._append_inline_terminal_event(
+            preview_run_id,
+            event_type="preview.succeeded",
+            message="preview run succeeded",
+            payload={"state": "succeeded"},
+        )
+        return succeeded_preview_run
 
     def _finish_inline_preview_run_succeeded(
         self,
@@ -560,16 +588,44 @@ class WorkflowRuntimeService:
         *,
         retain_node_records_enabled: bool,
         return_sync_response_payload_enabled: bool,
-        inline_duration_ms: float,
+        inline_started_at: float,
+        graph_execute_ms: float,
+        event_persist_ms: float,
         model_session_health: dict[str, object] | None = None,
     ) -> WorkflowPreviewRun:
         """把 inline Preview Run 写入 succeeded 状态。"""
 
+        response_serialize_started_at = monotonic()
+        persisted_outputs = sanitize_runtime_mapping(execution_result.outputs)
+        persisted_template_outputs = sanitize_runtime_mapping(
+            execution_result.template_outputs
+        )
+        persisted_node_records = (
+            tuple(
+                serialize_node_execution_record(item)
+                for item in execution_result.node_records
+            )
+            if retain_node_records_enabled
+            else ()
+        )
+        response_node_records = (
+            tuple(
+                serialize_node_execution_record_for_response(item)
+                for item in execution_result.node_records
+            )
+            if retain_node_records_enabled and return_sync_response_payload_enabled
+            else persisted_node_records
+        )
+        response_serialize_ms = _elapsed_ms(response_serialize_started_at)
         with self._open_unit_of_work() as unit_of_work:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
             preview_metadata = _merge_preview_run_inline_metadata(
                 preview_run.metadata,
-                inline_duration_ms=inline_duration_ms,
+                inline_duration_ms=_elapsed_ms(inline_started_at),
+                process_startup_ms=0.0,
+                graph_execute_ms=graph_execute_ms,
+                event_persist_ms=event_persist_ms,
+                response_serialize_ms=response_serialize_ms,
             )
             if model_session_health is not None:
                 preview_metadata["model_session"] = dict(model_session_health)
@@ -577,13 +633,9 @@ class WorkflowRuntimeService:
                 preview_run,
                 state="succeeded",
                 finished_at=_now_isoformat(),
-                outputs=sanitize_runtime_mapping(execution_result.outputs),
-                template_outputs=sanitize_runtime_mapping(execution_result.template_outputs),
-                node_records=(
-                    tuple(serialize_node_execution_record(item) for item in execution_result.node_records)
-                    if retain_node_records_enabled
-                    else ()
-                ),
+                outputs=persisted_outputs,
+                template_outputs=persisted_template_outputs,
+                node_records=persisted_node_records,
                 error_message=None,
                 metadata=preview_metadata,
             )
@@ -595,11 +647,7 @@ class WorkflowRuntimeService:
             persisted_preview_run,
             outputs=dict(execution_result.outputs),
             template_outputs=dict(execution_result.template_outputs),
-            node_records=(
-                tuple(serialize_node_execution_record_for_response(item) for item in execution_result.node_records)
-                if retain_node_records_enabled
-                else ()
-            ),
+            node_records=response_node_records,
         )
 
     def _finish_inline_preview_run_failed(
@@ -607,6 +655,9 @@ class WorkflowRuntimeService:
         preview_run_id: str,
         error: ServiceError,
         *,
+        inline_started_at: float,
+        graph_execute_ms: float,
+        event_persist_ms: float,
         node_records: tuple[dict[str, object], ...] = (),
     ) -> WorkflowPreviewRun:
         """把 inline Preview Run 写入 failed 状态。"""
@@ -615,11 +666,22 @@ class WorkflowRuntimeService:
             preview_run = self._require_preview_run(unit_of_work, preview_run_id)
             updated_preview_run = replace(
                 preview_run,
-                state="failed",
+                state=(
+                    "timed_out"
+                    if isinstance(error, OperationTimeoutError)
+                    else "failed"
+                ),
                 finished_at=_now_isoformat(),
                 error_message=error.message,
                 metadata=_build_preview_run_error_metadata(
-                    _merge_preview_run_inline_metadata(preview_run.metadata),
+                    _merge_preview_run_inline_metadata(
+                        preview_run.metadata,
+                        inline_duration_ms=_elapsed_ms(inline_started_at),
+                        process_startup_ms=0.0,
+                        graph_execute_ms=graph_execute_ms,
+                        event_persist_ms=event_persist_ms,
+                        response_serialize_ms=0.0,
+                    ),
                     error=error,
                 ),
                 node_records=node_records,
@@ -627,6 +689,25 @@ class WorkflowRuntimeService:
             unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
             unit_of_work.commit()
         return updated_preview_run
+
+    def _append_inline_terminal_event(
+        self,
+        preview_run_id: str,
+        *,
+        event_type: str,
+        message: str,
+        payload: dict[str, object],
+    ) -> None:
+        """在 inline Preview 状态落库后追加终态事件。"""
+
+        if self.preview_run_manager is None:
+            return
+        self.preview_run_manager.append_event(
+            preview_run_id,
+            event_type=event_type,
+            message=message,
+            payload=payload,
+        )
 
     @staticmethod
     def _require_preview_run(unit_of_work: SqlAlchemyUnitOfWork, preview_run_id: str) -> WorkflowPreviewRun:
@@ -678,18 +759,6 @@ class WorkflowRuntimeService:
             after_sequence=after_sequence,
             limit=limit,
         )
-
-    def cancel_preview_run(
-        self,
-        preview_run_id: str,
-        *,
-        cancelled_by: str | None,
-    ) -> WorkflowPreviewRun:
-        """取消一条 preview run。"""
-
-        if self.preview_run_manager is None:
-            raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
-        return self.preview_run_manager.cancel_run(preview_run_id, cancelled_by=cancelled_by)
 
     def list_preview_runs(self, *, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
         """按 Project id 列出 WorkflowPreviewRun。
@@ -771,10 +840,11 @@ class WorkflowRuntimeService:
         """
 
         preview_run = self.get_preview_run(preview_run_id)
-        if preview_run_needs_cancel_before_delete(preview_run):
-            if self.preview_run_manager is None:
-                raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
-            preview_run = self.preview_run_manager.cancel_run(preview_run_id, cancelled_by=None)
+        if preview_run.state == "running":
+            raise InvalidRequestError(
+                "正在执行的同步 Preview 不能删除",
+                details={"preview_run_id": preview_run.preview_run_id},
+            )
         staging_dir = stage_preview_run_storage_for_cleanup(
             dataset_storage=self.dataset_storage,
             preview_run_id=preview_run.preview_run_id,

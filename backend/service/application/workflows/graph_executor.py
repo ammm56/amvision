@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Lock
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import Callable
 
 from backend.contracts.workflows.workflow_graph import (
@@ -18,6 +18,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationTimeoutError,
     ServiceConfigurationError,
     ServiceError,
 )
@@ -67,6 +68,9 @@ from backend.service.application.workflows.execution.parallel_safety import (
 )
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.execution.execution_control import (
+    WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY,
 )
 from backend.service.application.workflows.execution.topology import (
     build_required_node_ids,
@@ -151,6 +155,10 @@ class WorkflowGraphExecutor:
         )
 
         for node_id in topological_order:
+            _raise_if_workflow_deadline_expired(
+                execution_metadata_payload,
+                node_id=node_id,
+            )
             node = node_instances[node_id]
             if not _is_workflow_node_enabled(node):
                 continue
@@ -353,6 +361,10 @@ class WorkflowGraphExecutor:
                         "workflow 节点执行失败",
                         details=failed_node_details,
                     ) from exc
+            _raise_if_workflow_deadline_expired(
+                execution_metadata_payload,
+                node_id=node_id,
+            )
             duration_ms = _elapsed_ms(node_started_at)
             declared_output_names = {port.name for port in node_definition.output_ports}
             for output_name, output_value in raw_outputs.items():
@@ -397,6 +409,10 @@ class WorkflowGraphExecutor:
                 extra_payload={"duration_ms": duration_ms},
             )
 
+        _raise_if_workflow_deadline_expired(
+            execution_metadata_payload,
+            node_id="workflow",
+        )
         resolved_template_outputs: dict[str, object] = {}
         for template_output in template.template_outputs:
             output_key = (template_output.source_node_id, template_output.source_port)
@@ -1366,6 +1382,25 @@ def _should_retain_node_record_payloads(
     if execution_metadata.get("trace_level") == "none":
         return False
     return True
+
+
+def _raise_if_workflow_deadline_expired(
+    execution_metadata: dict[str, object],
+    *,
+    node_id: str,
+) -> None:
+    """在节点调用前后检查同步 Workflow 的统一 deadline。"""
+
+    deadline = execution_metadata.get(WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY)
+    if (
+        isinstance(deadline, int | float)
+        and not isinstance(deadline, bool)
+        and monotonic() >= float(deadline)
+    ):
+        raise OperationTimeoutError(
+            "Workflow 执行超过 deadline",
+            details={"node_id": node_id},
+        )
 
 
 def _elapsed_ms(started_at: float) -> float:

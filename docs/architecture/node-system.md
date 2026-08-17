@@ -119,11 +119,8 @@ USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默�
 - `id` 和独立 SemVer `version`
 - `category`、`capabilities` 和 `dependencies`
 - `entrypoints.backend` 和 `customNodeCatalogPath`
-- `permissionScopes`
 - `compatibility.api`、`compatibility.runtime`，以及可选的操作系统和架构范围
 - `timeout.defaultSeconds`、`timeout.maxSeconds` 和 `timeout.killGraceSeconds`
-- `execution.isolation=workflow-process`
-- `execution.timeoutAction=terminate-workflow-process`
 - `enabledByDefault`
 
 节点实现的 `NodeDefinition.version` 与 node pack 版本相互独立。流程模板同时固定
@@ -136,7 +133,8 @@ USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默�
 
 - backend-service 在 custom_nodes 根目录中发现可用 node pack
 - 使用 NodePackManifest 校验 manifest 完整性、版本兼容性和依赖边界
-- API 控制进程只读取 manifest 和 catalog，不导入 custom node Python module
+- backend-service 启动时读取 manifest、catalog，并加载已经启用且审核通过的 custom node
+  handler；这些 handler 与 core node 共用进程内调用路径
 
 ### 2. 注册
 
@@ -145,26 +143,24 @@ USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默�
 - 为前端节点编辑器和执行器生成统一节点目录
 - 安装 ZIP 在 staging 中执行路径穿越、绝对路径、链接、重复路径、大小写冲突、
   加密成员、文件数、单文件大小、解压总量和异常压缩率校验
-- staging 静态规则通过后，平台在一次性 `spawn` 子进程中真实导入 backend
-  entrypoint，并要求全部 executable node 完成 handler 注册；导入异常、入口不可调用、
-  权限入口声明错误、注册缺失、进程异常退出或验证超时都会拒绝安装
+- staging 静态规则通过后，平台直接加载 backend entrypoint，并要求全部 executable node
+  完成 handler 注册；导入异常、入口不可调用或注册缺失都会拒绝安装
 
 ### 3. 启用
 
 - 允许按 node pack 启用或禁用；激活版本由版本库状态唯一确定
-- 启用前进行权限校验、manifest dependencies 依赖检查和运行时兼容性校验
+- 启用前进行 manifest dependencies 依赖检查和运行时兼容性校验
 - 启用、禁用、安装、升级、回滚和 reload 都写入持久化审计记录
 
 ### 4. 执行
 
-- workers 按节点输入输出规则、超时和权限边界执行 custom node 逻辑
+- 执行器按节点输入输出规则直接调用 custom node 逻辑
 - 结果和错误统一回到后端服务状态流中
 - 节点扩展能力可在受控接口内连接内部模块、外部端点和相关数据对象
-- 含 custom node 的 Preview Run 强制进入独立 workflow 进程，不能退回 API
-  进程内执行；常驻 AppRuntime 也只在独立 worker 进程加载 custom node
-- 每次 custom node 调用使用 manifest 的 `defaultSeconds` 发出 cancellation event，
-  宽限 `killGraceSeconds` 后仍未返回时使用稳定退出码终止整个 workflow 进程；父进程把
-  该退出映射为 `timed_out`，不会继续复用状态可能损坏的 worker
+- 编辑器同步 Preview 在 backend-service 内复用已加载的 runtime registry，不为 core node
+  或 custom node 新建执行进程；常驻 AppRuntime 在自己的长期 worker 中直接调用同一套 handler
+- manifest 的 timeout 继续用于参数校验、协作式取消和运行记录，但不再为了单个节点启动或
+  强杀额外进程；不能协作式停止的节点由管理员在导入前审核其实现和外部调用超时
 
 ### 5. 升级
 
@@ -185,40 +181,28 @@ USB/UVC，相机厂商，SQLite/MySQL 和 MES 提交都不是一级 pack 的默�
 - API 提供 ZIP 安装、版本列表、回滚、启用、禁用和审计查询，前端节点目录页使用同一组
   接口，不直接修改 manifest 文件
 
-## 权限执行边界
+## 可信直调边界
 
-`permissionScopes` 不是展示字段。entrypoint 在注册真实资源入口时必须声明该 handler 或
-model session provider 所需的最小 scope；注册表先验证 scope 已包含在 manifest 中，再在
-每次调用前使用服务端注入的 node pack 身份和权限集合强制校验。节点参数和浏览器传入的
-execution metadata 不能扩大权限。
+本地工业视觉部署把 node pack 的安装和启用视为使用者已经完成的信任选择。core node、
+内置 node pack 和导入的第三方 node pack 使用同一套进程内 handler 注册与调用方式，不做
+per-node 权限 scope、不注入权限代理，也不为单个节点创建隔离进程。HTTP、数据库、PLC、
+相机、ObjectStore 和模型资源由节点实现直接调用项目已有接口。
 
-当前受控入口如下：
+WorkflowAppRuntime 的长期 worker 和 deployment 的常驻推理进程仍然保留，因为它们是平台
+进程生命周期与故障恢复边界，不是节点权限或隔离策略。节点代码自身需要为外部调用设置
+明确的连接、读取和执行超时，避免一个阻塞调用占住长期 worker。
 
-| 资源入口 | 强制 scope |
-| --- | --- |
-| ObjectStore 引用读取 / 写入 | `objectstore.read.ref` / `objectstore.write.ref` |
-| HTTP 外部端点 | `integration.endpoint.invoke` |
-| SQL upsert | `integration.database.connect`、`integration.database.write` |
-| Modbus 读取 / 条件等待 | `integration.plc.modbus.read` |
-| Modbus 写值 / 结果信号回写 | `integration.plc.modbus.write` |
-| USB/UVC 相机会话、参数、采图和流读取 | `hardware.camera.capture` |
-| SAM3 model session 预加载、YOLOE 模型读取 | `model.asset.read` |
+## 信任与执行边界
 
-模型 loader 的权限校验发生在 `WorkflowModelSessionProvider.load` 之前，不能因为 session
-预加载早于普通节点 handler 而绕过。新增平台 broker 或资源 helper 时，必须先登记稳定
-scope，再把校验放到实际资源调用边界并增加拒绝和放行测试。
-
-## 进程隔离与信任边界
-
-- API 控制进程不导入第三方节点 Python 代码。安装验证使用一次性子进程；Preview Run 和
-  AppRuntime 使用独立 workflow 进程。
-- hard timeout 的处置单位是 workflow 进程，不尝试在线程级强杀 Python 代码。进程退出后
-  由父进程收敛错误、清理句柄并按运行策略重建。
+- Python node pack 是管理员主动安装、启用并审核的受信任扩展。安装验证仍可使用一次性
+  子进程检查 import 和 handler 注册，但正常节点执行不经过隔离进程或跨进程 RPC。
+- 同步 Preview 在 backend-service 内直接执行；正式 AppRuntime 仍有长期 worker 生命周期，
+  但 core node 与 custom node 都在该 worker 内直接调用，不按节点拆进程。
 - scope 只约束平台管理的 ObjectStore、HTTP、数据库、PLC、相机和模型资产入口。普通
   Python 代码如果直接调用 `open`、`socket`、`subprocess` 或厂商 SDK，不能由应用层 scope
   完成操作系统级阻断。
-- 因此当前 Python node pack 定位为管理员安装的受信任扩展代码，不是面向任意租户的
-  不可信代码沙箱。需要运行未经信任的第三方代码时，必须另设 service-call 节点或接入
+- 当前 Python node pack 不是面向任意租户的不可信代码沙箱。需要运行未经信任的第三方
+  代码时，必须另设 service-call 节点或接入
   Windows AppContainer、Linux namespace/seccomp/container 等操作系统隔离配置，不能只靠
   manifest 权限宣称安全。
 
@@ -307,7 +291,7 @@ ORB、Homography、模板定位这类参考对位节点不应把调试交互伪�
 - 语义 overlay 可复用 `line_xyxy`、`points_xy`、`circle` 等基础图形字段绘制，但 `kind` 必须保留业务语义，避免后续双图 overlay、匹配筛选、手动点对和投影框编辑继续叠临时字段。注意：`points_xy` 是 ImageViewer preview overlay 协议字段，`polygon_xy` 只用于 ROI、regions 等正式节点 payload。
 - 这些调试参数只能用于编辑期 Preview Run；生产 runtime 默认关闭 `debug_image_panel_enabled`，不得因为 matching 调试图产生额外 BGR24 编码、数据库记录或节点输出负担。
 
-Preview Run 与图像交互取参要保持边界清楚：Preview Run 负责提供可用图像和节点输出；交互编辑器负责把人工选择转换成参数。大循环或大图 workflow 没有预览节点时，Preview Run 默认不应返回完整 `node_records`，避免跨进程序列化和数据库记录拖慢调试。
+Preview Run 与图像交互取参要保持边界清楚：Preview Run 负责提供可用图像和节点输出；交互编辑器负责把人工选择转换成参数。大循环或大图 workflow 没有预览节点时，Preview Run 默认不应返回完整 `node_records`，避免大对象复制和数据库记录拖慢调试。
 
 ## 与核心模块的关系
 

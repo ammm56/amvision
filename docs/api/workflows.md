@@ -322,11 +322,10 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 
 ## workflow runtime 当前公开路径
 
-- POST /api/v1/workflows/preview-runs：创建一条 WorkflowPreviewRun，支持 sync/async wait_mode
+- POST /api/v1/workflows/preview-runs：创建并同步执行一条 WorkflowPreviewRun
 - GET /api/v1/workflows/preview-runs：按 Project 列出 WorkflowPreviewRun，并支持 state、created_from、created_to 过滤
 - GET /api/v1/workflows/preview-runs/{preview_run_id}：读取一条 WorkflowPreviewRun
 - GET /api/v1/workflows/preview-runs/{preview_run_id}/events：读取 preview run 事件历史，支持 after_sequence 和 limit
-- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel：取消 queued 或 running 的 preview run
 - DELETE /api/v1/workflows/preview-runs/{preview_run_id}：删除一条 WorkflowPreviewRun 和对应 snapshot 目录
 - POST /api/v1/workflows/execution-policies：创建一条 WorkflowExecutionPolicy
 - GET /api/v1/workflows/execution-policies：按 Project 列出 WorkflowExecutionPolicy

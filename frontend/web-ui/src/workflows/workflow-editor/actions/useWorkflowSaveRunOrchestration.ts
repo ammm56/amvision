@@ -2,12 +2,12 @@ import type { ComputedRef, Ref } from 'vue'
 
 import type { WorkflowSaveActionInput, WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
 import type { PreviewNodeDisplayRefreshOptions } from '../preview/useWorkflowPreviewDisplays'
+import type { WorkflowPreviewInputPayload } from '../preview/useWorkflowPreviewInputs'
 import type { WorkflowAppSaveResult } from '../services/workflow-app.service'
 import type {
   FlowApplication,
   FlowApplicationBinding,
   WorkflowGraphTemplate,
-  WorkflowJsonObject,
   WorkflowPreviewRun,
 } from '../types'
 import type { WorkflowValidationIssue } from '../validation/useWorkflowPreflight'
@@ -26,7 +26,7 @@ export interface WorkflowSaveRunOrchestrationOptions {
   buildCurrentApplication: (template: WorkflowGraphTemplate) => FlowApplication | null
   runWorkflowPreflight: (template: WorkflowGraphTemplate, application: FlowApplication) => WorkflowValidationIssue | null
   applyWorkflowValidationIssue: (issue: WorkflowValidationIssue) => void
-  buildPreviewInputBindings: (bindings?: FlowApplicationBinding[]) => Promise<WorkflowJsonObject | null>
+  buildPreviewInputBindings: (bindings?: FlowApplicationBinding[]) => Promise<WorkflowPreviewInputPayload | null>
   saveWorkflowDocument: (input: WorkflowSaveActionInput) => Promise<WorkflowAppSaveResult | null>
   runWorkflowPreview: (input: WorkflowPreviewRunActionInput) => Promise<WorkflowPreviewRun | null>
   applyWorkflowSaveFeedback: (result: WorkflowAppSaveResult, options: { wasNewApp: boolean }) => Promise<void>
@@ -86,8 +86,8 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
     const scopedInputBindings = targetNodeId
       ? collectNodeScopeInputBindings(template, application, targetNodeId)
       : undefined
-    const inputBindings = await options.buildPreviewInputBindings(scopedInputBindings)
-    if (!inputBindings) return
+    const previewInputPayload = await options.buildPreviewInputBindings(scopedInputBindings)
+    if (!previewInputPayload) return
     options.clearActionMessages()
     options.clearContextMenu()
     const preserveImageViewerNodeId = readOptionalText(uiOptions.preserveImageViewerNodeId)
@@ -98,7 +98,8 @@ export function useWorkflowSaveRunOrchestration(options: WorkflowSaveRunOrchestr
       projectId: options.selectedProjectId.value,
       template,
       application,
-      inputBindings,
+      inputBindings: previewInputPayload.inputBindings,
+      imageUploads: previewInputPayload.imageUploads,
       executionScope: targetNodeId
         ? { kind: 'node', targetNodeId }
         : { kind: 'application' },

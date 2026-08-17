@@ -13,10 +13,6 @@
     "integration.camera.usb-uvc",
     "vision.image-input"
   ],
-  "permissionScopes": [
-    "objectstore.write.ref",
-    "hardware.camera.capture"
-  ],
   "entrypoints": {
     "backend": "custom_nodes.camera_nodes.backend.entry:register"
   },
@@ -28,10 +24,6 @@
     "defaultSeconds": 30,
     "maxSeconds": 30,
     "killGraceSeconds": 2
-  },
-  "execution": {
-    "isolation": "workflow-process",
-    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

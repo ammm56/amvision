@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import mimetypes
+from time import perf_counter
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import FileResponse
+from starlette.datastructures import UploadFile
 
 from backend.contracts.workflows import (
     WorkflowPreviewRunContract,
@@ -25,9 +28,15 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.services import
     build_workflow_runtime_service as _build_workflow_runtime_service,
     ensure_project_visible as _ensure_project_visible,
     require_dataset_storage as _require_dataset_storage,
+    read_local_buffer_broker_event_channel as _read_local_buffer_broker_event_channel,
     with_created_by as _with_created_by,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+    ServiceConfigurationError,
+)
+from backend.service.application.local_buffers import LocalBufferBrokerClient
 from backend.service.application.workflows.preview_display_outputs import is_preview_run_artifact_object_key
 from backend.service.application.workflows.runtime.preview_runs import WorkflowPreviewRunCreateRequest
 
@@ -44,21 +53,142 @@ def create_workflow_preview_run(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
 ) -> WorkflowPreviewRunContract:
-    """创建一条 preview run，支持 sync/async wait_mode。"""
+    """创建并同步执行一条 preview run。"""
 
     _ensure_project_visible(principal=principal, project_id=body.project_id)
-    preview_run = _build_workflow_runtime_service(
+    preview_run = _create_preview_run(
+        body=body,
+        request=request,
+        principal=principal,
+        input_bindings=dict(body.input_bindings),
+    )
+    return _build_preview_run_contract(preview_run)
+
+
+@workflow_runtime_preview_runs_router.post(
+    "/preview-runs/multipart",
+    response_model=WorkflowPreviewRunContract,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_workflow_preview_run_multipart(
+    request: Request,
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
+) -> WorkflowPreviewRunContract:
+    """把 Preview 图片写入 LocalBuffer 后按 image-ref 执行同步 Preview。"""
+
+    form = await request.form()
+    raw_request_body = form.get("request")
+    if not isinstance(raw_request_body, str) or not raw_request_body.strip():
+        raise InvalidRequestError("multipart Preview 缺少 request JSON")
+    try:
+        body = WorkflowPreviewRunCreateRequestBody.model_validate_json(raw_request_body)
+    except ValueError as exc:
+        raise InvalidRequestError(
+            "multipart Preview request 不是合法 JSON",
+            details={"error_message": str(exc)},
+        ) from exc
+    if body.wait_mode != "sync":
+        raise InvalidRequestError("LocalBuffer 图片 Preview 当前只支持 sync wait_mode")
+
+    binding_ids = [str(value).strip() for value in form.getlist("image_binding_id")]
+    image_files = form.getlist("image_file")
+    if len(binding_ids) != len(image_files) or not binding_ids:
+        raise InvalidRequestError("image_binding_id 与 image_file 必须一一对应")
+    if any(not binding_id for binding_id in binding_ids) or len(set(binding_ids)) != len(binding_ids):
+        raise InvalidRequestError("image_binding_id 不能为空或重复")
+
+    channel = _read_local_buffer_broker_event_channel(request)
+    if channel is None:
+        raise ServiceConfigurationError("LocalBufferBroker 未启用，无法执行图片 Preview")
+    input_bindings = dict(body.input_bindings)
+    lease_refs: list[tuple[str, str]] = []
+    client = LocalBufferBrokerClient(channel)
+    try:
+        owner_id = f"preview-upload-{uuid4().hex}"
+        for binding_id, image_file in zip(binding_ids, image_files, strict=True):
+            if not isinstance(image_file, UploadFile):
+                raise InvalidRequestError("image_file 不是有效的上传文件")
+            content = await image_file.read()
+            if not content:
+                raise InvalidRequestError(
+                    "Preview 图片不能为空",
+                    details={"binding_id": binding_id},
+                )
+            media_type = (
+                image_file.content_type
+                or mimetypes.guess_type(image_file.filename or "")[0]
+                or "application/octet-stream"
+            )
+            write_result = client.write_bytes(
+                content=content,
+                owner_kind="workflow-preview-upload",
+                owner_id=owner_id,
+                media_type=media_type,
+                ttl_seconds=float(body.timeout_seconds or 120) + 30.0,
+                trace_id=getattr(request.state, "request_id", None),
+            )
+            lease_refs.append(
+                (write_result.lease.lease_id, write_result.lease.pool_name)
+            )
+            input_bindings[binding_id] = {
+                "transport_kind": "buffer",
+                "buffer_ref": write_result.buffer_ref.model_dump(mode="json"),
+            }
+        preview_run = _create_preview_run(
+            body=body,
+            request=request,
+            principal=principal,
+            input_bindings=input_bindings,
+        )
+        return _build_preview_run_contract(preview_run)
+    finally:
+        for lease_id, pool_name in lease_refs:
+            try:
+                client.release(lease_id, pool_name=pool_name)
+            except Exception:
+                pass
+        client.close()
+
+
+def _create_preview_run(
+    *,
+    body: WorkflowPreviewRunCreateRequestBody,
+    request: Request,
+    principal: AuthenticatedPrincipal,
+    input_bindings: dict[str, object],
+):
+    """按统一参数创建 JSON 或 LocalBuffer multipart Preview。"""
+
+    _ensure_project_visible(principal=principal, project_id=body.project_id)
+    execution_metadata = _with_created_by(
+        body.execution_metadata,
+        principal.principal_id,
+    )
+    timings = execution_metadata.get("timings")
+    timing_payload = dict(timings) if isinstance(timings, dict) else {}
+    request_started_at = getattr(request.state, "request_started_at", None)
+    if isinstance(request_started_at, float):
+        timing_payload["request_parse_ms"] = round(
+            max(0.0, (perf_counter() - request_started_at) * 1000.0),
+            3,
+        )
+    execution_metadata["timings"] = timing_payload
+    return _build_workflow_runtime_service(
         request,
         include_local_buffer_broker_event_channel=True,
     ).create_preview_run(
         WorkflowPreviewRunCreateRequest(
             project_id=body.project_id,
-            application_ref_id=body.application_ref.application_id if body.application_ref is not None else None,
+            application_ref_id=(
+                body.application_ref.application_id
+                if body.application_ref is not None
+                else None
+            ),
             execution_policy_id=body.execution_policy_id,
             application=body.application,
             template=body.template,
-            input_bindings=dict(body.input_bindings),
-            execution_metadata=_with_created_by(body.execution_metadata, principal.principal_id),
+            input_bindings=input_bindings,
+            execution_metadata=execution_metadata,
             timeout_seconds=body.timeout_seconds,
             wait_mode=body.wait_mode,
             execution_scope_kind=body.execution_scope.kind,
@@ -66,7 +196,6 @@ def create_workflow_preview_run(
         ),
         created_by=principal.principal_id,
     )
-    return _build_preview_run_contract(preview_run)
 
 
 @workflow_runtime_preview_runs_router.get(
@@ -170,27 +299,6 @@ def get_workflow_preview_run_events(
         limit=limit,
     )
     return [_build_preview_run_event_contract(item) for item in events]
-
-
-@workflow_runtime_preview_runs_router.post(
-    "/preview-runs/{preview_run_id}/cancel",
-    response_model=WorkflowPreviewRunContract,
-)
-def cancel_workflow_preview_run(
-    preview_run_id: str,
-    request: Request,
-    principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("workflows:write"))],
-) -> WorkflowPreviewRunContract:
-    """取消一条 preview run。"""
-
-    runtime_service = _build_workflow_runtime_service(request)
-    preview_run = runtime_service.get_preview_run(preview_run_id)
-    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
-    updated_preview_run = runtime_service.cancel_preview_run(
-        preview_run_id,
-        cancelled_by=principal.principal_id,
-    )
-    return _build_preview_run_contract(updated_preview_run)
 
 
 @workflow_runtime_preview_runs_router.delete(

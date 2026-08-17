@@ -276,7 +276,7 @@ def should_retain_workflow_run_node_records(
 
 
 def should_retain_workflow_run_trace(workflow_run: WorkflowRun) -> bool:
-    """判断 WorkflowRun 是否需要写入 events.json。"""
+    """判断 WorkflowRun 是否需要写入 events.jsonl。"""
 
     metadata = dict(workflow_run.metadata)
     metadata_flag = _read_optional_bool_flag(metadata.get("retain_trace_enabled"))

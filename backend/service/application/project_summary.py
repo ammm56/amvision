@@ -69,7 +69,6 @@ _PROJECT_SUMMARY_PREVIEW_EVENT_TYPES = frozenset(
         "preview.started",
         "preview.succeeded",
         "preview.failed",
-        "preview.cancelled",
         "preview.timed_out",
     }
 )

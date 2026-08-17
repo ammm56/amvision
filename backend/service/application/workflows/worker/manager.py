@@ -47,9 +47,6 @@ from backend.service.application.workflows.worker.messages import (
     resolve_backend_service_settings,
     try_deserialize_run_result_worker_state,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CUSTOM_NODE_TIMEOUT_EXIT_CODE,
-)
 from backend.service.application.workflows.worker import process as worker_process
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
@@ -616,16 +613,6 @@ class WorkflowRuntimeWorkerManager:
                         workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
                         handle=handle,
                     )
-                    if process_exit_code == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
-                        raise OperationTimeoutError(
-                            "custom node 执行超过 manifest timeout，workflow runtime worker 已终止",
-                            details={
-                                "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
-                                "workflow_run_id": workflow_run_id,
-                                "worker_process_id": worker_process_id,
-                                "process_exit_code": process_exit_code,
-                            },
-                        )
                     raise ServiceConfigurationError(
                         "workflow runtime worker 进程已退出",
                         details={
@@ -880,14 +867,6 @@ class WorkflowRuntimeWorkerManager:
         while not handle.started_event.wait(timeout=0.1):
             if not handle.process.is_alive():
                 process_exit_code = handle.process.exitcode
-                if process_exit_code == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
-                    raise OperationTimeoutError(
-                        "custom model loader 超过 manifest timeout，workflow runtime worker 已终止",
-                        details={
-                            "workflow_runtime_id": handle.workflow_runtime_id,
-                            "process_exit_code": process_exit_code,
-                        },
-                    )
                 raise ServiceConfigurationError(
                     "workflow runtime worker 在启动完成前退出",
                     details={
@@ -1101,30 +1080,15 @@ class WorkflowRuntimeWorkerManager:
                             continue
                         if not handle.background_failure_reported:
                             handle.background_failure_reported = True
-                            custom_node_timed_out = (
-                                handle.process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE
-                            )
                             runtime_state_to_persist = build_synthetic_runtime_state(
                                 previous_state=latest_runtime_state,
                                 observed_state="failed",
-                                last_error=(
-                                    "custom node hard timeout"
-                                    if custom_node_timed_out
-                                    else "workflow runtime worker 进程已退出"
-                                ),
+                                last_error="workflow runtime worker 进程已退出",
                             )
                             handle.latest_runtime_state = runtime_state_to_persist
                             handle.latest_runtime_state_monotonic = now
-                            event_type = (
-                                "runtime.custom_node_timed_out"
-                                if custom_node_timed_out
-                                else "runtime.failed"
-                            )
-                            message = (
-                                "custom node 超时，workflow runtime worker 已终止"
-                                if custom_node_timed_out
-                                else "workflow runtime worker 进程异常退出"
-                            )
+                            event_type = "runtime.failed"
+                            message = "workflow runtime worker 进程异常退出"
                         remove_handle = True
                     elif (
                         latest_runtime_state is not None

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
-import multiprocessing
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -23,7 +22,7 @@ from zipfile import BadZipFile, ZipFile, ZipInfo
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_pack_loader import NodePackStatusSnapshot
-from backend.nodes.node_pack_validation_process import (
+from backend.nodes.node_pack_runtime_validation import (
     validate_staged_node_pack_runtime,
 )
 from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
@@ -37,7 +36,6 @@ NODE_PACK_MAX_FILES = 20_000
 NODE_PACK_MAX_MEMBER_BYTES = 256 * 1024 * 1024
 NODE_PACK_MAX_COMPRESSION_RATIO = 200
 NODE_PACK_MAX_MEMBER_PATH_LENGTH = 512
-NODE_PACK_RUNTIME_VALIDATION_TIMEOUT_SECONDS = 30.0
 _COPY_CHUNK_SIZE = 1024 * 1024
 _VERSION_PATH_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]*$")
 
@@ -103,9 +101,6 @@ class LocalNodePackLifecycleManager:
         node_pack_loader: LocalNodePackLoader,
         *,
         lock_timeout_seconds: float = 30.0,
-        runtime_validation_timeout_seconds: float = (
-            NODE_PACK_RUNTIME_VALIDATION_TIMEOUT_SECONDS
-        ),
     ) -> None:
         """初始化节点包生命周期管理器。"""
 
@@ -120,10 +115,6 @@ class LocalNodePackLifecycleManager:
         self.journal_path = self.management_root_dir / "transaction.json"
         self.lock_path = self.management_root_dir / "lifecycle.lock"
         self.lock_timeout_seconds = max(1.0, float(lock_timeout_seconds))
-        self.runtime_validation_timeout_seconds = max(
-            1.0,
-            float(runtime_validation_timeout_seconds),
-        )
 
     def install_archive(
         self,
@@ -178,7 +169,7 @@ class LocalNodePackLifecycleManager:
                         active_directory=active_directory,
                     )
                     self._validate_dependencies(manifest)
-                    self._validate_staged_runtime_in_subprocess(
+                    self._validate_staged_runtime(
                         staged_custom_nodes_root=staged_custom_nodes_root,
                         active_directory=active_directory,
                         manifest=manifest,
@@ -833,106 +824,35 @@ class LocalNodePackLifecycleManager:
                     },
                 )
 
-    def _validate_staged_runtime_in_subprocess(
+    def _validate_staged_runtime(
         self,
         *,
         staged_custom_nodes_root: Path,
         active_directory: str,
         manifest: NodePackManifest,
     ) -> None:
-        """激活前在一次性子进程中导入并注册 staging entrypoint。"""
+        """激活前在当前服务进程导入并注册 staging entrypoint。"""
 
         if not manifest.entrypoints.get("backend"):
             return
-        process_context = multiprocessing.get_context("spawn")
-        receive_connection, send_connection = process_context.Pipe(duplex=False)
-        process = process_context.Process(
-            target=validate_staged_node_pack_runtime,
-            kwargs={
-                "staged_custom_nodes_root": str(
-                    staged_custom_nodes_root.resolve()
-                ),
-                "active_custom_nodes_root": str(
-                    self.custom_nodes_root_dir.resolve()
-                ),
-                "active_directory": active_directory,
-                "expected_node_pack_id": manifest.node_pack_id,
-                "expected_version": manifest.version,
-                "result_connection": send_connection,
-            },
-            name=f"node-pack-validate-{active_directory}",
-            daemon=True,
-        )
-        process.start()
-        send_connection.close()
-        result: dict[str, object] | None = None
         try:
-            if receive_connection.poll(self.runtime_validation_timeout_seconds):
-                try:
-                    raw_result = receive_connection.recv()
-                except EOFError:
-                    raw_result = None
-                if isinstance(raw_result, dict):
-                    result = raw_result
-            else:
-                self._terminate_validation_process(process)
-                raise InvalidRequestError(
-                    "node pack staging 运行时代码验证超时",
-                    details={
-                        "node_pack_id": manifest.node_pack_id,
-                        "version": manifest.version,
-                        "timeout_seconds": (
-                            self.runtime_validation_timeout_seconds
-                        ),
-                    },
-                )
-        finally:
-            receive_connection.close()
-        process.join(timeout=5.0)
-        if process.is_alive():
-            self._terminate_validation_process(process)
-            raise InvalidRequestError(
-                "node pack staging 验证进程未正常退出",
-                details={
-                    "node_pack_id": manifest.node_pack_id,
-                    "version": manifest.version,
-                },
+            validate_staged_node_pack_runtime(
+                staged_custom_nodes_root=staged_custom_nodes_root,
+                active_custom_nodes_root=self.custom_nodes_root_dir,
+                active_directory=active_directory,
+                expected_node_pack_id=manifest.node_pack_id,
+                expected_version=manifest.version,
             )
-        if result is None:
-            raise InvalidRequestError(
-                "node pack staging 验证进程没有返回结果",
-                details={
-                    "node_pack_id": manifest.node_pack_id,
-                    "version": manifest.version,
-                    "process_exit_code": process.exitcode,
-                },
-            )
-        if result.get("ok") is not True or process.exitcode != 0:
+        except Exception as error:
             raise InvalidRequestError(
                 "node pack staging 运行时代码验证失败",
                 details={
                     "node_pack_id": manifest.node_pack_id,
                     "version": manifest.version,
-                    "process_exit_code": process.exitcode,
-                    "error_type": result.get("error_type"),
-                    "error": result.get("error"),
+                    "error_type": type(error).__name__,
+                    "error": str(error),
                 },
-            )
-
-    @staticmethod
-    def _terminate_validation_process(
-        process: multiprocessing.Process,
-    ) -> None:
-        """终止并回收失去响应的 staging 验证进程。"""
-
-        if not process.is_alive():
-            process.join(timeout=0.1)
-            return
-        process.terminate()
-        process.join(timeout=2.0)
-        if process.is_alive():
-            process.kill()
-            process.join(timeout=2.0)
+            ) from error
 
     def _find_active_package(self, node_pack_id: str) -> tuple[Path, NodePackManifest] | None:
         """按 manifest id 查找唯一激活目录。"""

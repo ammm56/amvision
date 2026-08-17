@@ -1997,10 +1997,8 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "frame_ref" in readme_text
     assert "不写入当前通用 Postman 请求体" in readme_text
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
-    assert (
-        "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher"
-        in readme_text
-    )
+    assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
+    assert "已接入 LocalBufferBroker direct mmap 数据面" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
     assert "不替 workflow 图做跨 payload type 转换" in readme_text
 
@@ -2043,10 +2041,8 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     assert "独立的 TriggerSource / directory-watch 调试示例" in readme_text
     assert "独立的 TriggerSource / directory-poll 调试示例" in readme_text
     assert "正式的工业单帧交付示例" in readme_text
-    assert (
-        "已接入 LocalBufferBroker direct mmap 数据面和 PublishedInferenceGateway 事件 dispatcher"
-        in readme_text
-    )
+    assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
+    assert "已接入 LocalBufferBroker direct mmap 数据面" in readme_text
     assert "BufferRef" in readme_text
     assert "FrameRef" in readme_text
     assert "不适合作为固定 checked-in 请求体" in readme_text

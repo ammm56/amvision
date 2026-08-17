@@ -115,7 +115,7 @@ def build_node_execution_control(
     *,
     operation_timeout_seconds: float | None = None,
 ) -> ExecutionControl:
-    """组合 Workflow、manifest 和节点操作 timeout。"""
+    """组合 Workflow 和节点操作 timeout。"""
 
     now = monotonic()
     deadlines: list[float] = []
@@ -127,8 +127,6 @@ def build_node_execution_control(
         and not isinstance(workflow_deadline, bool)
     ):
         deadlines.append(float(workflow_deadline))
-    if request.node_timeout_seconds is not None:
-        deadlines.append(now + max(0.0, float(request.node_timeout_seconds)))
     if operation_timeout_seconds is not None:
         deadlines.append(now + max(0.0, float(operation_timeout_seconds)))
     return ExecutionControl(

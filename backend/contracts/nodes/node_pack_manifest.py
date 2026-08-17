@@ -17,51 +17,6 @@ from backend.version import BACKEND_VERSION
 NODE_PACK_MANIFEST_FORMAT = "amvision.node-pack-manifest.v1"
 CUSTOM_NODE_CATALOG_FORMAT = "amvision.custom-node-catalog.v1"
 
-SUPPORTED_NODE_PACK_PERMISSION_SCOPES = frozenset(
-    {
-        "task.read",
-        "task.result.write",
-        "deployment.read",
-        "integration.endpoint.invoke",
-        "integration.database.connect",
-        "integration.database.read",
-        "integration.database.write",
-        "integration.plc.modbus.read",
-        "integration.plc.modbus.write",
-        "hardware.camera.capture",
-        "model.asset.read",
-        "node.event.subscribe",
-        "objectstore.read.ref",
-        "objectstore.write.ref",
-    }
-)
-
-NODE_PACK_CAPABILITY_PERMISSION_REQUIREMENTS: tuple[tuple[str, frozenset[str]], ...] = (
-    ("integration.http", frozenset({"integration.endpoint.invoke"})),
-    (
-        "integration.database",
-        frozenset(
-            {
-                "integration.database.connect",
-                "integration.database.read",
-                "integration.database.write",
-            }
-        ),
-    ),
-    (
-        "integration.plc",
-        frozenset(
-            {
-                "integration.plc.modbus.read",
-                "integration.plc.modbus.write",
-            }
-        ),
-    ),
-    ("integration.camera", frozenset({"hardware.camera.capture"})),
-    ("model.loader", frozenset({"model.asset.read"})),
-)
-
-
 def _require_stripped_text(value: str, field_name: str) -> str:
     """校验字符串字段非空且去除两端空白后仍然有效。
 
@@ -231,15 +186,6 @@ class NodePackTimeoutPolicy(BaseModel):
         return self
 
 
-class NodePackExecutionPolicy(BaseModel):
-    """描述 custom node 的进程隔离和超时处置规则。"""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
-
-    isolation: Literal["workflow-process"]
-    timeout_action: Literal["terminate-workflow-process"] = Field(alias="timeoutAction")
-
-
 class NodePackManifest(BaseModel):
     """描述单个节点包的稳定 manifest。
 
@@ -254,7 +200,6 @@ class NodePackManifest(BaseModel):
     - implementation_layout：包内实现的目录组织方式。
     - capabilities：节点包能力声明列表。
     - dependencies：当前节点包依赖的其他节点包列表。
-    - permission_scopes：节点包声明的权限范围。
     - entrypoints：节点包入口点映射。
     - compatibility：节点包兼容性声明。
     - timeout：节点包默认超时配置。
@@ -281,11 +226,9 @@ class NodePackManifest(BaseModel):
     ] = Field(default="flat", alias="implementationLayout")
     capabilities: tuple[str, ...] = ()
     dependencies: tuple[NodePackDependency, ...] = ()
-    permission_scopes: tuple[str, ...] = Field(default=(), alias="permissionScopes")
     entrypoints: dict[str, str] = Field(default_factory=dict)
     compatibility: NodePackCompatibility
     timeout: NodePackTimeoutPolicy
-    execution: NodePackExecutionPolicy
     enabled_by_default: bool = Field(default=False, alias="enabledByDefault")
     custom_node_catalog_path: str | None = Field(default=None, alias="customNodeCatalogPath")
     metadata: dict[str, object] = Field(default_factory=dict)
@@ -311,25 +254,6 @@ class NodePackManifest(BaseModel):
             raise ValueError("capabilities 不能包含空值")
         if len(set(normalized_capabilities)) != len(normalized_capabilities):
             raise ValueError("capabilities 不能包含重复值")
-        normalized_scopes = tuple(item.strip() for item in self.permission_scopes)
-        if any(not item for item in normalized_scopes):
-            raise ValueError("permissionScopes 不能包含空值")
-        if len(set(normalized_scopes)) != len(normalized_scopes):
-            raise ValueError("permissionScopes 不能包含重复值")
-        unsupported_scopes = sorted(set(normalized_scopes) - SUPPORTED_NODE_PACK_PERMISSION_SCOPES)
-        if unsupported_scopes:
-            raise ValueError(f"permissionScopes 包含平台未登记的权限: {', '.join(unsupported_scopes)}")
-        for capability_prefix, required_scopes in NODE_PACK_CAPABILITY_PERMISSION_REQUIREMENTS:
-            if not any(
-                capability == capability_prefix or capability.startswith(f"{capability_prefix}.")
-                for capability in normalized_capabilities
-            ):
-                continue
-            missing_scopes = sorted(required_scopes - set(normalized_scopes))
-            if missing_scopes:
-                raise ValueError(
-                    f"capability {capability_prefix} 缺少 permissionScopes: {', '.join(missing_scopes)}"
-                )
         if self.custom_node_catalog_path is not None:
             _require_stripped_text(self.custom_node_catalog_path, "custom_node_catalog_path")
         duplicated_dependency_ids: set[str] = set()

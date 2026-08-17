@@ -3261,12 +3261,15 @@ textarea:focus-visible {
 }
 
 .workflow-graph-inspector-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--graph-muted);
   font-size: 12px;
 }
 
 .workflow-graph-inspector-row strong,
 .workflow-graph-inspector-row code {
+  flex-shrink: 0;
   min-width: 0;
   max-width: 220px;
   overflow-wrap: anywhere;

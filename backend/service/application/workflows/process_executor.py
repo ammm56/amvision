@@ -1,38 +1,15 @@
-"""workflow application 执行器。"""
+"""workflow application 当前进程执行器。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from multiprocessing.queues import Queue
-from pathlib import Path
-from queue import Empty
-from time import monotonic
-from typing import Any
 from uuid import uuid4
-import multiprocessing
 
-from sqlalchemy.engine import URL, make_url
-
-from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.queue import LocalFileQueueBackend
-from backend.service.application.errors import (
-    InvalidRequestError,
-    OperationTimeoutError,
-    ServiceConfigurationError,
-    ServiceError,
-)
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
-)
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
-    CUSTOM_NODE_TIMEOUT_EXIT_CODE,
-)
-from backend.service.application.workflows.runtime_payload_sanitizer import serialize_node_execution_record
-from backend.service.application.workflows.runtime_registry_loader import (
-    WorkflowNodeRuntimeRegistryLoader,
 )
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
@@ -42,29 +19,17 @@ from backend.service.application.workflows.snapshot_execution import (
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
-from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
-)
-from backend.service.settings import BackendServiceSettings
-from backend.service.application.workflows.process_threads import configure_workflow_process_threads
-from backend.service.application.workflows.model_sessions import (
-    WorkflowModelSessionManager,
 )
 
 
 @dataclass(frozen=True)
 class WorkflowApplicationExecutionRequest:
-    """描述一次 workflow application 执行请求。
-
-    字段：
-    - project_id：所属 Project id。
-    - application_id：流程应用 id。
-    - input_bindings：按 application input binding_id 组织的输入 payload。
-    - execution_metadata：整次执行附加元数据；建议保持 JSON 可序列化，隔离进程执行器要求可跨进程序列化。
-    """
+    """描述一次已保存 workflow application 的直接执行请求。"""
 
     project_id: str
     application_id: str
@@ -74,17 +39,7 @@ class WorkflowApplicationExecutionRequest:
 
 @dataclass(frozen=True)
 class WorkflowApplicationExecutionResult:
-    """描述一次 workflow application 隔离执行结果。
-
-    字段：
-    - project_id：所属 Project id。
-    - application_id：流程应用 id。
-    - template_id：实际执行的模板 id。
-    - template_version：实际执行的模板版本。
-    - outputs：按 output binding_id 组织的输出 payload。
-    - template_outputs：按 template output id 组织的底层执行结果。
-    - node_records：节点执行记录。
-    """
+    """描述一次 workflow application 的直接执行结果。"""
 
     project_id: str
     application_id: str
@@ -95,117 +50,8 @@ class WorkflowApplicationExecutionResult:
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
 
 
-def _to_application_execution_result(
-    result: WorkflowSnapshotExecutionResult,
-) -> WorkflowApplicationExecutionResult:
-    """把 snapshot 执行结果转换为兼容的 application 执行结果。"""
-
-    return WorkflowApplicationExecutionResult(
-        project_id=result.project_id,
-        application_id=result.application_id,
-        template_id=result.template_id,
-        template_version=result.template_version,
-        outputs=dict(result.outputs),
-        template_outputs=dict(result.template_outputs),
-        node_records=tuple(result.node_records),
-    )
-
-
-class WorkflowApplicationProcessExecutor:
-    """把已保存的 workflow application 放到独立子进程里执行。"""
-
-    def __init__(
-        self,
-        *,
-        settings: BackendServiceSettings,
-        request_timeout_seconds: float = 60.0,
-    ) -> None:
-        """初始化 workflow application 隔离进程执行器。
-
-        参数：
-        - settings：backend-service 当前使用的统一配置。
-        - request_timeout_seconds：等待子进程返回执行结果的最长秒数。
-        """
-
-        self.settings = _resolve_backend_service_settings(settings)
-        self.request_timeout_seconds = max(0.1, request_timeout_seconds)
-        self._context = multiprocessing.get_context("spawn")
-
-    def execute(
-        self,
-        request: WorkflowApplicationExecutionRequest,
-    ) -> WorkflowApplicationExecutionResult:
-        """在独立子进程中执行一份已保存的 workflow application。"""
-
-        normalized_request = _normalize_execution_request(request)
-        response_queue: Queue[Any] = self._context.Queue()
-        process = self._context.Process(
-            target=run_workflow_application_process_worker,
-            kwargs={
-                "settings_payload": self.settings.model_dump(mode="python"),
-                "request_payload": {
-                    "project_id": normalized_request.project_id,
-                    "application_id": normalized_request.application_id,
-                    "input_bindings": dict(normalized_request.input_bindings),
-                    "execution_metadata": dict(normalized_request.execution_metadata),
-                },
-                "response_queue": response_queue,
-            },
-            name=f"workflow-app-{normalized_request.application_id}",
-            daemon=False,
-        )
-        process.start()
-        try:
-            try:
-                deadline = monotonic() + self.request_timeout_seconds
-                while True:
-                    remaining_seconds = deadline - monotonic()
-                    if remaining_seconds <= 0:
-                        raise OperationTimeoutError(
-                            "等待 workflow application 子进程响应超时",
-                            details={
-                                "project_id": normalized_request.project_id,
-                                "application_id": normalized_request.application_id,
-                                "timeout_seconds": self.request_timeout_seconds,
-                            },
-                        )
-                    try:
-                        message = response_queue.get(timeout=min(0.2, remaining_seconds))
-                        break
-                    except Empty:
-                        if process.is_alive():
-                            continue
-                        if process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
-                            raise OperationTimeoutError(
-                                "custom node 执行超过 manifest timeout，workflow application 进程已终止",
-                                details={
-                                    "project_id": normalized_request.project_id,
-                                    "application_id": normalized_request.application_id,
-                                    "process_exit_code": process.exitcode,
-                                },
-                            )
-                        raise ServiceConfigurationError(
-                            "workflow application 子进程已退出且未返回结果",
-                            details={
-                                "project_id": normalized_request.project_id,
-                                "application_id": normalized_request.application_id,
-                                "process_exit_code": process.exitcode,
-                            },
-                        )
-            finally:
-                process.join(timeout=1.0)
-                if process.is_alive():
-                    process.terminate()
-                    process.join(timeout=1.0)
-
-            return _deserialize_execution_result(message)
-        finally:
-            response_queue.close()
-            response_queue.join_thread()
-
-
 class WorkflowApplicationRuntimeExecutor:
-    """在当前 backend-service 运行时中执行已保存 workflow application。"""
+    """复用当前服务或长期 worker 已加载的 registry 直接执行 application。"""
 
     def __init__(
         self,
@@ -215,14 +61,7 @@ class WorkflowApplicationRuntimeExecutor:
         runtime_registry: WorkflowNodeRuntimeRegistry,
         runtime_context: WorkflowServiceNodeRuntimeContext,
     ) -> None:
-        """初始化 workflow application 当前运行时执行器。
-
-        参数：
-        - dataset_storage：当前 backend-service 使用的数据集存储。
-        - node_catalog_registry：当前 backend-service 的节点目录注册表。
-        - runtime_registry：当前 backend-service 的 workflow 节点运行时注册表。
-        - runtime_context：当前 backend-service 的 workflow service node 运行时上下文。
-        """
+        """初始化直接执行器。"""
 
         self.dataset_storage = dataset_storage
         self.node_catalog_registry = node_catalog_registry
@@ -233,155 +72,39 @@ class WorkflowApplicationRuntimeExecutor:
         self,
         request: WorkflowApplicationExecutionRequest,
     ) -> WorkflowApplicationExecutionResult:
-        """在当前 backend-service 运行时中执行一份已保存的 workflow application。"""
+        """在当前运行时中执行一份已保存的 workflow application。"""
 
         normalized_request = _normalize_execution_request(request)
-        return _execute_workflow_application(
+        workflow_service = LocalWorkflowJsonService(
+            dataset_storage=self.dataset_storage,
+            node_catalog_registry=self.node_catalog_registry,
+        )
+        application_document = workflow_service.get_application(
             project_id=normalized_request.project_id,
             application_id=normalized_request.application_id,
-            input_bindings=normalized_request.input_bindings,
-            execution_metadata=normalized_request.execution_metadata,
+        )
+        application = application_document.application
+        template_document = workflow_service.get_template(
+            project_id=normalized_request.project_id,
+            template_id=application.template_ref.template_id,
+            template_version=application.template_ref.template_version,
+        )
+        snapshot_result = SnapshotExecutionService(
             dataset_storage=self.dataset_storage,
             node_catalog_registry=self.node_catalog_registry,
             runtime_registry=self.runtime_registry,
             runtime_context=self.runtime_context,
+        ).execute(
+            WorkflowSnapshotExecutionRequest(
+                project_id=normalized_request.project_id,
+                application_id=normalized_request.application_id,
+                application_snapshot_object_key=application_document.object_key,
+                template_snapshot_object_key=template_document.object_key,
+                input_bindings=dict(normalized_request.input_bindings),
+                execution_metadata=dict(normalized_request.execution_metadata),
+            )
         )
-
-
-def run_workflow_application_process_worker(
-    *,
-    settings_payload: dict[str, object],
-    request_payload: dict[str, object],
-    response_queue: Queue[Any],
-) -> None:
-    """workflow application 子进程入口。"""
-
-    session_factory: SessionFactory | None = None
-    sync_supervisor: LazyDeploymentProcessSupervisor | None = None
-    async_supervisor: LazyDeploymentProcessSupervisor | None = None
-    model_session_manager: WorkflowModelSessionManager | None = None
-    runtime_context: WorkflowServiceNodeRuntimeContext | None = None
-    try:
-        settings = BackendServiceSettings.model_validate(settings_payload)
-        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
-        session_factory = SessionFactory(settings.to_database_settings())
-        dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
-        queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
-
-        node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
-        node_pack_loader.refresh()
-        node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
-        runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
-            node_catalog_registry=node_catalog_registry,
-            node_pack_loader=node_pack_loader,
-        )
-        runtime_registry_loader.refresh()
-        model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=runtime_registry_loader.get_runtime_registry(),
-            max_parallel_loads=(
-                settings.workflow_runtime.model_startup_parallelism
-            ),
-        )
-
-        sync_supervisor = LazyDeploymentProcessSupervisor(
-            dataset_storage_root_dir=str(dataset_storage.root_dir),
-            runtime_mode="sync",
-            settings=settings.deployment_process_supervisor,
-        )
-        async_supervisor = LazyDeploymentProcessSupervisor(
-            dataset_storage_root_dir=str(dataset_storage.root_dir),
-            runtime_mode="async",
-            settings=settings.deployment_process_supervisor,
-        )
-
-        project_id = _require_payload_str(request_payload, "project_id")
-        application_id = _require_payload_str(request_payload, "application_id")
-        input_bindings = _require_payload_dict(request_payload, "input_bindings")
-        execution_metadata = _require_payload_dict(request_payload, "execution_metadata")
-        execution_metadata[CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY] = True
-        runtime_context = WorkflowServiceNodeRuntimeContext(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            detection_sync_deployment_process_supervisor=sync_supervisor,
-            detection_async_deployment_process_supervisor=async_supervisor,
-            classification_sync_deployment_process_supervisor=sync_supervisor,
-            classification_async_deployment_process_supervisor=async_supervisor,
-            segmentation_sync_deployment_process_supervisor=sync_supervisor,
-            segmentation_async_deployment_process_supervisor=async_supervisor,
-            pose_sync_deployment_process_supervisor=sync_supervisor,
-            pose_async_deployment_process_supervisor=async_supervisor,
-            obb_sync_deployment_process_supervisor=sync_supervisor,
-            obb_async_deployment_process_supervisor=async_supervisor,
-            async_inference_service_id="workflow-local",
-            workflow_model_session_manager=model_session_manager,
-        )
-        execution_result = _execute_workflow_application(
-            project_id=project_id,
-            application_id=application_id,
-            input_bindings=input_bindings,
-            execution_metadata=execution_metadata,
-            dataset_storage=dataset_storage,
-            node_catalog_registry=node_catalog_registry,
-            runtime_registry=runtime_registry_loader.get_runtime_registry(),
-            runtime_context=runtime_context,
-            decoded_image_cache_max_entries=(
-                settings.workflow_runtime.decoded_image_cache_max_entries
-            ),
-            decoded_image_cache_max_bytes=(
-                settings.workflow_runtime.decoded_image_cache_max_bytes
-            ),
-        )
-        response_queue.put(
-            {
-                "ok": True,
-                "payload": {
-                    "project_id": execution_result.project_id,
-                    "application_id": execution_result.application_id,
-                    "template_id": execution_result.template_id,
-                    "template_version": execution_result.template_version,
-                    "outputs": dict(execution_result.outputs),
-                    "template_outputs": dict(execution_result.template_outputs),
-                    "node_records": [_serialize_node_record(record) for record in execution_result.node_records],
-                },
-            }
-        )
-    except ServiceError as exc:
-        response_queue.put(
-            {
-                "ok": False,
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": dict(exc.details),
-                },
-            }
-        )
-    except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
-        response_queue.put(
-            {
-                "ok": False,
-                "error": {
-                    "code": "service_configuration_error",
-                    "message": "workflow application 子进程执行失败",
-                    "details": {
-                        "error_type": type(exc).__name__,
-                        "error_message": str(exc) or type(exc).__name__,
-                    },
-                },
-            }
-        )
-    finally:
-        if runtime_context is not None:
-            runtime_context.close()
-        if model_session_manager is not None:
-            model_session_manager.close_all()
-        if sync_supervisor is not None:
-            sync_supervisor.stop()
-        if async_supervisor is not None:
-            async_supervisor.stop()
-        if session_factory is not None:
-            session_factory.engine.dispose()
+        return _to_application_execution_result(snapshot_result)
 
 
 def _normalize_execution_request(
@@ -395,168 +118,34 @@ def _normalize_execution_request(
         raise InvalidRequestError("project_id 不能为空")
     if not application_id:
         raise InvalidRequestError("application_id 不能为空")
-    normalized_execution_metadata = dict(request.execution_metadata)
-    normalized_execution_metadata.setdefault("workflow_run_id", uuid4().hex)
+    execution_metadata = dict(request.execution_metadata)
+    execution_metadata.setdefault("workflow_run_id", uuid4().hex)
     return WorkflowApplicationExecutionRequest(
         project_id=project_id,
         application_id=application_id,
         input_bindings=dict(request.input_bindings),
-        execution_metadata=normalized_execution_metadata,
+        execution_metadata=execution_metadata,
     )
 
 
-def _execute_workflow_application(
-    *,
-    project_id: str,
-    application_id: str,
-    input_bindings: dict[str, object],
-    execution_metadata: dict[str, object],
-    dataset_storage: LocalDatasetStorage,
-    node_catalog_registry: NodeCatalogRegistry,
-    runtime_registry: WorkflowNodeRuntimeRegistry,
-    runtime_context: WorkflowServiceNodeRuntimeContext,
-    decoded_image_cache_max_entries: int = 8,
-    decoded_image_cache_max_bytes: int = 256 * 1024 * 1024,
+def _to_application_execution_result(
+    result: WorkflowSnapshotExecutionResult,
 ) -> WorkflowApplicationExecutionResult:
-    """在给定运行时资源中执行一份已保存的 workflow application。"""
+    """把 snapshot 执行结果转换为 application 执行结果。"""
 
-    workflow_service = LocalWorkflowJsonService(
-        dataset_storage=dataset_storage,
-        node_catalog_registry=node_catalog_registry,
-    )
-    application_document = workflow_service.get_application(
-        project_id=project_id,
-        application_id=application_id,
-    )
-    application = application_document.application
-    template_document = workflow_service.get_template(
-        project_id=project_id,
-        template_id=application.template_ref.template_id,
-        template_version=application.template_ref.template_version,
-    )
-    snapshot_result = SnapshotExecutionService(
-        dataset_storage=dataset_storage,
-        node_catalog_registry=node_catalog_registry,
-        runtime_registry=runtime_registry,
-        runtime_context=runtime_context,
-        decoded_image_cache_max_entries=decoded_image_cache_max_entries,
-        decoded_image_cache_max_bytes=decoded_image_cache_max_bytes,
-    ).execute(
-        WorkflowSnapshotExecutionRequest(
-            project_id=project_id,
-            application_id=application_id,
-            application_snapshot_object_key=application_document.object_key,
-            template_snapshot_object_key=template_document.object_key,
-            input_bindings=dict(input_bindings),
-            execution_metadata=dict(execution_metadata),
-        )
-    )
-    return _to_application_execution_result(snapshot_result)
-
-
-def _deserialize_execution_result(message: object) -> WorkflowApplicationExecutionResult:
-    """把子进程返回消息转换为稳定执行结果。"""
-
-    if not isinstance(message, dict):
-        raise ServiceConfigurationError("workflow application 子进程返回了无效消息")
-    if message.get("ok") is not True:
-        error_payload = message.get("error") if isinstance(message.get("error"), dict) else {}
-        error_code = str(error_payload.get("code") or "service_configuration_error")
-        error_message = str(error_payload.get("message") or "workflow application 执行失败")
-        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
-        if error_code == "invalid_request":
-            raise InvalidRequestError(error_message, details=error_details)
-        raise ServiceConfigurationError(error_message, details=error_details)
-
-    payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
-    node_records_payload = payload.get("node_records") if isinstance(payload.get("node_records"), list) else []
-    node_records = tuple(
-        WorkflowNodeExecutionRecord(
-            node_id=_require_payload_str(item, "node_id"),
-            node_type_id=_require_payload_str(item, "node_type_id"),
-            runtime_kind=_require_payload_str(item, "runtime_kind"),
-            duration_ms=_read_optional_float(item.get("duration_ms")),
-            inputs=_require_payload_dict(item, "inputs"),
-            outputs=_require_payload_dict(item, "outputs"),
-        )
-        for item in node_records_payload
-        if isinstance(item, dict)
-    )
     return WorkflowApplicationExecutionResult(
-        project_id=_require_payload_str(payload, "project_id"),
-        application_id=_require_payload_str(payload, "application_id"),
-        template_id=_require_payload_str(payload, "template_id"),
-        template_version=_require_payload_str(payload, "template_version"),
-        outputs=_require_payload_dict(payload, "outputs"),
-        template_outputs=_require_payload_dict(payload, "template_outputs"),
-        node_records=node_records,
+        project_id=result.project_id,
+        application_id=result.application_id,
+        template_id=result.template_id,
+        template_version=result.template_version,
+        outputs=dict(result.outputs),
+        template_outputs=dict(result.template_outputs),
+        node_records=tuple(result.node_records),
     )
 
 
-def _serialize_node_record(record: WorkflowNodeExecutionRecord) -> dict[str, object]:
-    """把节点执行记录转换为可跨进程序列化的字典。"""
-
-    return serialize_node_execution_record(record)
-
-
-def _require_payload_str(payload: object, field_name: str) -> str:
-    """从字典负载中读取必填字符串字段。"""
-
-    if not isinstance(payload, dict):
-        raise ServiceConfigurationError("workflow application 子进程负载格式无效")
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ServiceConfigurationError(
-            "workflow application 子进程负载缺少有效字符串字段",
-            details={"field_name": field_name},
-        )
-    return value.strip()
-
-
-def _require_payload_dict(payload: object, field_name: str) -> dict[str, object]:
-    """从字典负载中读取对象字段。"""
-
-    if not isinstance(payload, dict):
-        raise ServiceConfigurationError("workflow application 子进程负载格式无效")
-    value = payload.get(field_name)
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ServiceConfigurationError(
-            "workflow application 子进程负载缺少有效对象字段",
-            details={"field_name": field_name},
-        )
-    return {str(key): item for key, item in value.items()}
-
-
-def _read_optional_float(value: object) -> float | None:
-    """从字典负载中读取可选数值字段。"""
-
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return float(value)
-    return None
-
-
-def _resolve_backend_service_settings(settings: BackendServiceSettings) -> BackendServiceSettings:
-    """把 backend-service settings 规范化为适合子进程复用的绝对路径版本。"""
-
-    normalized_settings = BackendServiceSettings.model_validate(settings.model_dump(mode="python"))
-    normalized_settings.database.url = _resolve_database_url(normalized_settings.database.url)
-    normalized_settings.dataset_storage.root_dir = str(Path(normalized_settings.dataset_storage.root_dir).resolve())
-    normalized_settings.queue.root_dir = str(Path(normalized_settings.queue.root_dir).resolve())
-    normalized_settings.custom_nodes.root_dir = str(Path(normalized_settings.custom_nodes.root_dir).resolve())
-    return normalized_settings
-
-
-def _resolve_database_url(database_url: str) -> str:
-    """把 SQLite 文件数据库 URL 规范化为绝对路径。"""
-
-    parsed_url: URL = make_url(database_url)
-    if parsed_url.drivername != "sqlite" or parsed_url.database in (None, ":memory:"):
-        return database_url
-    resolved_database_path = Path(parsed_url.database).resolve()
-    return parsed_url.set(database=resolved_database_path.as_posix()).render_as_string(
-        hide_password=False
-    )
+__all__ = [
+    "WorkflowApplicationExecutionRequest",
+    "WorkflowApplicationExecutionResult",
+    "WorkflowApplicationRuntimeExecutor",
+]

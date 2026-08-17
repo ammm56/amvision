@@ -60,23 +60,15 @@ def build_minimal_workflow_run_record(workflow_run: WorkflowRun) -> WorkflowRun:
     )
 
 
-def should_run_preview_inline(metadata: dict[str, object]) -> bool:
-    """判断 Preview Run 是否应走当前进程直接执行路径。"""
-
-    raw_mode = metadata.get("preview_execution_mode")
-    if isinstance(raw_mode, str):
-        normalized_mode = raw_mode.strip().lower()
-        if normalized_mode in {"inline", "direct"}:
-            return True
-        if normalized_mode in {"process", "subprocess"}:
-            return False
-    return metadata.get("source") == "workflow-graph-workbench"
-
-
 def merge_preview_run_inline_metadata(
     metadata: dict[str, object],
     *,
     inline_duration_ms: float | None = None,
+    request_parse_ms: float | None = None,
+    process_startup_ms: float | None = None,
+    graph_execute_ms: float | None = None,
+    event_persist_ms: float | None = None,
+    response_serialize_ms: float | None = None,
 ) -> dict[str, object]:
     """给 PreviewRun metadata 标记当前使用的直接执行模式。"""
 
@@ -86,6 +78,20 @@ def merge_preview_run_inline_metadata(
         timings = payload.get("timings")
         timings_payload = dict(timings) if isinstance(timings, dict) else {}
         timings_payload["preview_inline_total_ms"] = inline_duration_ms
+    else:
+        timings = payload.get("timings")
+        timings_payload = dict(timings) if isinstance(timings, dict) else {}
+    timing_values = {
+        "request_parse_ms": request_parse_ms,
+        "process_startup_ms": process_startup_ms,
+        "graph_execute_ms": graph_execute_ms,
+        "event_persist_ms": event_persist_ms,
+        "response_serialize_ms": response_serialize_ms,
+    }
+    for timing_name, timing_value in timing_values.items():
+        if timing_value is not None:
+            timings_payload[timing_name] = round(max(0.0, float(timing_value)), 3)
+    if timings_payload:
         payload["timings"] = timings_payload
     return payload
 
@@ -265,6 +271,5 @@ __all__ = [
     "now_isoformat",
     "resolve_preview_retain_node_records_enabled",
     "should_retain_runtime_payload",
-    "should_run_preview_inline",
     "strip_output_diagnostic_timings",
 ]

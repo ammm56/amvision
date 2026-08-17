@@ -4,18 +4,12 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from multiprocessing.queues import Queue
-from pathlib import Path
-from queue import Empty
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Callable
 from threading import Lock
 from uuid import uuid4
-import multiprocessing
 import json
 import hashlib
 import logging
-
-from sqlalchemy.engine import URL, make_url
 
 from backend.contracts.workflows.workflow_graph import (
     FLOW_BINDING_DIRECTION_INPUT,
@@ -24,11 +18,8 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
 )
 from backend.nodes import ExecutionImageRegistry
-from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.queue import LocalFileQueueBackend
-from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError, ServiceError
-from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
+from backend.service.application.errors import ServiceConfigurationError, ServiceError
 from backend.service.application.runtime.resource_scope import (
     get_or_create_workflow_resource_scope,
 )
@@ -45,44 +36,29 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRecord,
     WorkflowNodeRuntimeRegistry,
 )
-from backend.service.application.workflows.runtime_payload_sanitizer import (
-    serialize_node_execution_record_for_response,
-)
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
-)
 from backend.service.application.workflows.execution.execution_control import (
     prepare_execution_control_metadata,
 )
 from backend.service.application.workflows.execution.topology import (
     build_node_execution_scope_template,
 )
-from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
-from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.settings import BackendServiceSettings
-from backend.service.application.workflows.process_threads import configure_workflow_process_threads
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY,
-    WorkflowModelSessionManager,
 )
 
 
 LOGGER = logging.getLogger(__name__)
 _MAX_VALIDATED_SNAPSHOT_PAIRS = 16
-WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE = "workflow.worker.ready"
-
-if TYPE_CHECKING:
-    from backend.service.application.deployments import (
-        PublishedInferenceGateway,
-        PublishedInferenceGatewayClient,
-        PublishedInferenceGatewayDispatcher,
-        PublishedInferenceGatewayEventChannel,
-    )
 
 
 @dataclass(frozen=True)
@@ -128,18 +104,6 @@ class WorkflowSnapshotExecutionResult:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
-
-
-@dataclass
-class WorkflowSnapshotProcessHandle:
-    """描述一个已启动但尚未回收的 snapshot 子进程句柄。"""
-
-    process: Any
-    response_queue: Queue[Any]
-    event_queue: Queue[Any]
-    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
-    published_inference_gateway_channel: PublishedInferenceGatewayEventChannel | None = None
-    published_inference_gateway_dispatcher: PublishedInferenceGatewayDispatcher | None = None
 
 
 class SnapshotExecutionService:
@@ -188,9 +152,7 @@ class SnapshotExecutionService:
         """在稳定模型 scope 内执行一次固定 snapshot 的 workflow 图。"""
 
         model_session_scope_id = self._resolve_model_session_scope_id(request)
-        model_session_manager = (
-            self.runtime_context.workflow_model_session_manager
-        )
+        model_session_manager = self.runtime_context.workflow_model_session_manager
         if model_session_manager is None:
             return self._execute_in_model_session_scope(
                 request=request,
@@ -265,9 +227,9 @@ class SnapshotExecutionService:
         execution_metadata_payload.setdefault("project_id", request.project_id)
         execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
-        execution_metadata_payload[
-            WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
-        ] = model_session_scope_id
+        execution_metadata_payload[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY] = (
+            model_session_scope_id
+        )
         execution_metadata_payload["dataset_storage"] = self.dataset_storage
         image_registry = execution_metadata_payload.get("execution_image_registry")
         owns_image_registry = image_registry is None
@@ -287,19 +249,21 @@ class SnapshotExecutionService:
                 details={"actual_type": type(image_registry).__name__},
             )
         if self.runtime_context.local_buffer_reader is not None:
-            execution_metadata_payload.setdefault("local_buffer_reader", self.runtime_context.local_buffer_reader)
+            execution_metadata_payload.setdefault(
+                "local_buffer_reader", self.runtime_context.local_buffer_reader
+            )
         execution_error: Exception | None = None
         try:
-            graph_execution_result = WorkflowGraphExecutor(registry=self.runtime_registry).execute(
+            graph_execution_result = WorkflowGraphExecutor(
+                registry=self.runtime_registry
+            ).execute(
                 template=template,
                 input_values=template_input_values,
                 execution_metadata=execution_metadata_payload,
                 runtime_context=self.runtime_context,
                 event_callback=self.event_sink,
                 target_node_ids=(
-                    frozenset((target_node_id,))
-                    if target_node_id
-                    else frozenset()
+                    frozenset((target_node_id,)) if target_node_id else frozenset()
                 ),
             )
             snapshot_result = WorkflowSnapshotExecutionResult(
@@ -377,9 +341,7 @@ class SnapshotExecutionService:
     ) -> tuple[object, ...]:
         """只校验 snapshot 并准备图中的模型 session，不执行业务节点。"""
 
-        _application, full_template = self._load_validated_snapshots(
-            request=request
-        )
+        _application, full_template = self._load_validated_snapshots(request=request)
         target_node_id = (
             request.target_node_id.strip()
             if isinstance(request.target_node_id, str)
@@ -422,9 +384,7 @@ class SnapshotExecutionService:
                 node.node_id
                 for node in execution_template.nodes
                 if node.enabled
-                and self.runtime_registry.get_model_session_provider(
-                    node.node_type_id
-                )
+                and self.runtime_registry.get_model_session_provider(node.node_type_id)
                 is not None
             }
             manager.prepare_template(
@@ -580,7 +540,10 @@ def _cleanup_local_buffer_lease(
         ]
     pool_name = cleanup.metadata.get("pool_name")
     try:
-        release(cleanup.resource_id, pool_name=pool_name if isinstance(pool_name, str) else None)
+        release(
+            cleanup.resource_id,
+            pool_name=pool_name if isinstance(pool_name, str) else None,
+        )
     except ServiceError as exc:
         return [
             {
@@ -591,7 +554,9 @@ def _cleanup_local_buffer_lease(
                 "error_message": exc.message,
             }
         ]
-    except Exception as exc:  # pragma: no cover - 依赖 broker I/O 失败场景，优先由行为测试覆盖
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - 依赖 broker I/O 失败场景，优先由行为测试覆盖
         return [
             {
                 "resource_kind": cleanup.resource_kind,
@@ -614,7 +579,9 @@ def _cleanup_dataset_storage_path(
 
     try:
         runtime_context.dataset_storage.delete_tree(cleanup.resource_id)
-    except Exception as exc:  # pragma: no cover - 依赖底层 I/O 失败场景，优先由行为测试覆盖
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - 依赖底层 I/O 失败场景，优先由行为测试覆盖
         return [
             {
                 "resource_kind": cleanup.resource_kind,
@@ -637,7 +604,9 @@ def _stop_registered_deployment_processes(
     """在删除 DeploymentInstance 前尽量停止当前运行时里的 deployment 子进程。"""
 
     try:
-        process_config = deployment_service.resolve_process_config(deployment_instance_id)
+        process_config = deployment_service.resolve_process_config(
+            deployment_instance_id
+        )
     except ServiceError:
         return []
 
@@ -679,468 +648,6 @@ def _resolve_cleanup_task_type(cleanup: WorkflowExecutionCleanupItem) -> str:
     )
 
 
-class WorkflowSnapshotProcessExecutor:
-    """把固定 snapshot 的 workflow 执行放到独立子进程里完成。"""
-
-    def __init__(
-        self,
-        *,
-        settings: BackendServiceSettings,
-        request_timeout_seconds: float = 60.0,
-        local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
-        published_inference_gateway: PublishedInferenceGateway | None = None,
-    ) -> None:
-        """初始化 snapshot 隔离进程执行器。
-
-        参数：
-        - settings：backend-service 当前使用的统一配置。
-        - request_timeout_seconds：等待子进程返回执行结果的最长秒数。
-        - local_buffer_broker_event_channel：可选的 LocalBufferBroker 事件通道。
-        - published_inference_gateway：可选的父进程 PublishedInferenceGateway。
-        """
-
-        self.settings = _resolve_backend_service_settings(settings)
-        self.request_timeout_seconds = max(0.1, request_timeout_seconds)
-        self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
-        self.published_inference_gateway = published_inference_gateway
-        self._context = multiprocessing.get_context("spawn")
-
-    def execute(
-        self,
-        request: WorkflowSnapshotExecutionRequest,
-    ) -> WorkflowSnapshotExecutionResult:
-        """在独立子进程中执行一份 snapshot 请求。
-
-        参数：
-        - request：snapshot 执行请求。
-
-        返回：
-        - WorkflowSnapshotExecutionResult：稳定执行结果。
-        """
-
-        process_handle = self.start(request)
-        try:
-            return self.wait_for_result(process_handle, timeout_seconds=self.request_timeout_seconds)
-        finally:
-            self.close_handle(process_handle)
-
-    def start(self, request: WorkflowSnapshotExecutionRequest) -> WorkflowSnapshotProcessHandle:
-        """启动一个 snapshot 子进程，并返回可等待的句柄。"""
-
-        response_queue: Queue[Any] = self._context.Queue()
-        event_queue: Queue[Any] = self._context.Queue()
-        gateway_channel = self._build_published_inference_gateway_channel()
-        gateway_dispatcher = self._build_published_inference_gateway_dispatcher(gateway_channel)
-        if gateway_dispatcher is not None:
-            gateway_dispatcher.start()
-        process = self._context.Process(
-            target=run_workflow_snapshot_process_worker,
-            kwargs={
-                "settings_payload": self.settings.model_dump(mode="python"),
-                "request_payload": {
-                    "project_id": request.project_id,
-                    "application_id": request.application_id,
-                    "application_snapshot_object_key": request.application_snapshot_object_key,
-                    "template_snapshot_object_key": request.template_snapshot_object_key,
-                    "input_bindings": dict(request.input_bindings),
-                    "execution_metadata": dict(request.execution_metadata),
-                    "target_node_id": request.target_node_id,
-                },
-                "local_buffer_broker_event_channel": self.local_buffer_broker_event_channel,
-                "published_inference_gateway_event_channel": gateway_channel,
-                "response_queue": response_queue,
-                "event_queue": event_queue,
-            },
-            name=f"workflow-snapshot-{request.application_id}",
-            daemon=False,
-        )
-        process.start()
-        return WorkflowSnapshotProcessHandle(
-            process=process,
-            response_queue=response_queue,
-            event_queue=event_queue,
-            local_buffer_broker_event_channel=self.local_buffer_broker_event_channel,
-            published_inference_gateway_channel=gateway_channel,
-            published_inference_gateway_dispatcher=gateway_dispatcher,
-        )
-
-    def wait_for_result(
-        self,
-        handle: WorkflowSnapshotProcessHandle,
-        *,
-        timeout_seconds: float | None = None,
-    ) -> WorkflowSnapshotExecutionResult:
-        """等待一个已启动的 snapshot 子进程返回最终结果。"""
-
-        effective_timeout_seconds = self.request_timeout_seconds if timeout_seconds is None else max(0.1, timeout_seconds)
-        try:
-            message = handle.response_queue.get(timeout=effective_timeout_seconds)
-        except Empty as exc:
-            raise OperationTimeoutError(
-                "等待 workflow snapshot 子进程响应超时",
-                details={"timeout_seconds": effective_timeout_seconds},
-            ) from exc
-        finally:
-            handle.process.join(timeout=1.0)
-        return deserialize_snapshot_execution_result(message)
-
-    def read_event(
-        self,
-        handle: WorkflowSnapshotProcessHandle,
-        *,
-        timeout_seconds: float = 0.0,
-    ) -> dict[str, object] | None:
-        """读取一条 snapshot 子进程上报的执行事件。"""
-
-        try:
-            if timeout_seconds > 0:
-                message = handle.event_queue.get(timeout=timeout_seconds)
-            else:
-                message = handle.event_queue.get_nowait()
-        except Empty:
-            return None
-        return deserialize_snapshot_execution_event(message)
-
-    def terminate(self, handle: WorkflowSnapshotProcessHandle) -> None:
-        """强制终止一个仍在运行的 snapshot 子进程。"""
-
-        if handle.process.is_alive():
-            handle.process.terminate()
-            handle.process.join(timeout=1.0)
-
-    def close_handle(self, handle: WorkflowSnapshotProcessHandle) -> None:
-        """关闭并回收一个 snapshot 子进程句柄。"""
-
-        self.terminate(handle)
-        if handle.published_inference_gateway_dispatcher is not None:
-            handle.published_inference_gateway_dispatcher.stop()
-        _close_local_buffer_broker_channel(handle.local_buffer_broker_event_channel)
-        _close_gateway_channel(handle.published_inference_gateway_channel)
-        handle.response_queue.close()
-        handle.response_queue.join_thread()
-        handle.event_queue.close()
-        handle.event_queue.join_thread()
-
-    def _build_published_inference_gateway_channel(self) -> PublishedInferenceGatewayEventChannel | None:
-        """为当前 preview 子进程创建 PublishedInferenceGateway 事件通道。"""
-
-        if self.published_inference_gateway is None:
-            return None
-        from backend.service.application.deployments import PublishedInferenceGatewayEventChannel
-
-        return PublishedInferenceGatewayEventChannel(
-            request_queue=self._context.Queue(),
-            response_queue=self._context.Queue(),
-            request_timeout_seconds=self.request_timeout_seconds,
-        )
-
-    def _build_published_inference_gateway_dispatcher(
-        self,
-        channel: PublishedInferenceGatewayEventChannel | None,
-    ) -> PublishedInferenceGatewayDispatcher | None:
-        """为当前 preview 子进程创建父进程 gateway dispatcher。"""
-
-        if channel is None or self.published_inference_gateway is None:
-            return None
-        from backend.service.application.deployments import PublishedInferenceGatewayDispatcher
-
-        return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)
-
-
-def run_workflow_snapshot_process_worker(
-    *,
-    settings_payload: dict[str, object],
-    request_payload: dict[str, object],
-    response_queue: Queue[Any],
-    event_queue: Queue[Any] | None = None,
-    local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
-    published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel | None = None,
-) -> None:
-    """workflow snapshot 子进程入口。"""
-
-    session_factory: SessionFactory | None = None
-    sync_supervisor: LazyDeploymentProcessSupervisor | None = None
-    async_supervisor: LazyDeploymentProcessSupervisor | None = None
-    published_inference_gateway: PublishedInferenceGatewayClient | None = None
-    model_session_manager: WorkflowModelSessionManager | None = None
-    runtime_context: WorkflowServiceNodeRuntimeContext | None = None
-    try:
-        settings = BackendServiceSettings.model_validate(settings_payload)
-        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
-        session_factory = SessionFactory(settings.to_database_settings())
-        dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
-        queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
-        local_buffer_reader = _build_local_buffer_reader(local_buffer_broker_event_channel)
-        published_inference_gateway = _build_published_inference_gateway(published_inference_gateway_event_channel)
-        node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
-        node_pack_loader.refresh()
-        node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
-        runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
-            node_catalog_registry=node_catalog_registry,
-            node_pack_loader=node_pack_loader,
-        )
-        runtime_registry_loader.refresh()
-        model_session_manager = WorkflowModelSessionManager(
-            runtime_registry=runtime_registry_loader.get_runtime_registry(),
-            max_parallel_loads=(
-                settings.workflow_runtime.model_startup_parallelism
-            ),
-        )
-        sync_supervisor = LazyDeploymentProcessSupervisor(
-            dataset_storage_root_dir=str(dataset_storage.root_dir),
-            runtime_mode="sync",
-            settings=settings.deployment_process_supervisor,
-            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
-        )
-        async_supervisor = LazyDeploymentProcessSupervisor(
-            dataset_storage_root_dir=str(dataset_storage.root_dir),
-            runtime_mode="async",
-            settings=settings.deployment_process_supervisor,
-            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
-        )
-        runtime_context = WorkflowServiceNodeRuntimeContext(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            detection_sync_deployment_process_supervisor=sync_supervisor,
-            detection_async_deployment_process_supervisor=async_supervisor,
-            classification_sync_deployment_process_supervisor=sync_supervisor,
-            classification_async_deployment_process_supervisor=async_supervisor,
-            segmentation_sync_deployment_process_supervisor=sync_supervisor,
-            segmentation_async_deployment_process_supervisor=async_supervisor,
-            pose_sync_deployment_process_supervisor=sync_supervisor,
-            pose_async_deployment_process_supervisor=async_supervisor,
-            obb_sync_deployment_process_supervisor=sync_supervisor,
-            obb_async_deployment_process_supervisor=async_supervisor,
-            async_inference_service_id="workflow-local",
-            local_buffer_reader=local_buffer_reader,
-            published_inference_gateway=published_inference_gateway,
-            workflow_model_session_manager=model_session_manager,
-        )
-        _emit_snapshot_execution_event(
-            event_queue,
-            {
-                "event_type": WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE,
-                "message": "workflow snapshot worker ready",
-                "payload": {},
-            },
-        )
-        execution_result = SnapshotExecutionService(
-            dataset_storage=dataset_storage,
-            node_catalog_registry=node_catalog_registry,
-            runtime_registry=runtime_registry_loader.get_runtime_registry(),
-            runtime_context=runtime_context,
-            event_sink=(lambda event: _emit_snapshot_execution_event(event_queue, event)),
-            decoded_image_cache_max_entries=(
-                settings.workflow_runtime.decoded_image_cache_max_entries
-            ),
-            decoded_image_cache_max_bytes=(
-                settings.workflow_runtime.decoded_image_cache_max_bytes
-            ),
-        ).execute(
-            WorkflowSnapshotExecutionRequest(
-                project_id=_require_payload_str(request_payload, "project_id"),
-                application_id=_require_payload_str(request_payload, "application_id"),
-                application_snapshot_object_key=_require_payload_str(
-                    request_payload,
-                    "application_snapshot_object_key",
-                ),
-                template_snapshot_object_key=_require_payload_str(
-                    request_payload,
-                    "template_snapshot_object_key",
-                ),
-                input_bindings=_require_payload_dict(request_payload, "input_bindings"),
-                execution_metadata={
-                    **_require_payload_dict(request_payload, "execution_metadata"),
-                    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY: True,
-                },
-                target_node_id=_read_optional_payload_str(
-                    request_payload,
-                    "target_node_id",
-                ),
-            )
-        )
-        response_queue.put(
-            {
-                "ok": True,
-                "payload": serialize_snapshot_execution_result(execution_result),
-            }
-        )
-    except ServiceError as exc:
-        response_queue.put(
-            {
-                "ok": False,
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": dict(exc.details),
-                },
-            }
-        )
-    except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
-        response_queue.put(
-            {
-                "ok": False,
-                "error": {
-                    "code": "service_configuration_error",
-                    "message": "workflow snapshot 子进程执行失败",
-                    "details": {
-                        "error_type": type(exc).__name__,
-                        "error_message": str(exc) or type(exc).__name__,
-                    },
-                },
-            }
-        )
-    finally:
-        if runtime_context is not None:
-            runtime_context.close()
-        if model_session_manager is not None:
-            model_session_manager.close_all()
-        if sync_supervisor is not None:
-            sync_supervisor.stop()
-        if async_supervisor is not None:
-            async_supervisor.stop()
-        if local_buffer_reader is not None:
-            local_buffer_reader.close()
-        if published_inference_gateway is not None:
-            published_inference_gateway.close()
-        if session_factory is not None:
-            session_factory.engine.dispose()
-
-
-def _build_local_buffer_reader(
-    channel: LocalBufferBrokerEventChannel | None,
-) -> LocalBufferBrokerClient | None:
-    """按事件通道创建 LocalBufferBroker client。"""
-
-    if channel is None:
-        return None
-    return LocalBufferBrokerClient(channel)
-
-
-def _build_published_inference_gateway(
-    channel: PublishedInferenceGatewayEventChannel | None,
-) -> PublishedInferenceGatewayClient | None:
-    """按事件通道创建 PublishedInferenceGateway client。"""
-
-    if channel is None:
-        return None
-    from backend.service.application.deployments import PublishedInferenceGatewayClient
-
-    return PublishedInferenceGatewayClient(channel)
-
-
-def _close_gateway_channel(channel: PublishedInferenceGatewayEventChannel | None) -> None:
-    """关闭 preview 父进程持有的 gateway 队列。"""
-
-    if channel is None:
-        return
-    for queue in (channel.request_queue, channel.response_queue):
-        queue.close()
-        queue.join_thread()
-
-
-def _close_local_buffer_broker_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
-    """关闭 preview 父进程持有的 LocalBufferBroker client channel。"""
-
-    if channel is None:
-        return
-    LocalBufferBrokerClient(channel).close()
-
-
-def serialize_snapshot_execution_result(
-    result: WorkflowSnapshotExecutionResult,
-) -> dict[str, object]:
-    """把 snapshot 执行结果转换为可跨进程序列化的字典。"""
-
-    return {
-        "project_id": result.project_id,
-        "application_id": result.application_id,
-        "template_id": result.template_id,
-        "template_version": result.template_version,
-        "outputs": dict(result.outputs),
-        "template_outputs": dict(result.template_outputs),
-        "node_records": [_serialize_node_record(record) for record in result.node_records],
-    }
-
-
-def deserialize_snapshot_execution_result(message: object) -> WorkflowSnapshotExecutionResult:
-    """把子进程返回消息转换为稳定 snapshot 执行结果。"""
-
-    if not isinstance(message, dict):
-        raise ServiceConfigurationError("workflow snapshot 子进程返回了无效消息")
-    if message.get("ok") is not True:
-        error_payload = message.get("error") if isinstance(message.get("error"), dict) else {}
-        error_code = str(error_payload.get("code") or "service_configuration_error")
-        error_message = str(error_payload.get("message") or "workflow snapshot 执行失败")
-        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
-        if error_code == "invalid_request":
-            from backend.service.application.errors import InvalidRequestError  # noqa: PLC0415
-
-            raise InvalidRequestError(error_message, details=error_details)
-        if error_code == "operation_timeout":
-            raise OperationTimeoutError(error_message, details=error_details)
-        raise ServiceConfigurationError(error_message, details=error_details)
-
-    payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
-    node_records_payload = payload.get("node_records") if isinstance(payload.get("node_records"), list) else []
-    node_records = tuple(
-        WorkflowNodeExecutionRecord(
-            node_id=_require_payload_str(item, "node_id"),
-            node_type_id=_require_payload_str(item, "node_type_id"),
-            runtime_kind=_require_payload_str(item, "runtime_kind"),
-            duration_ms=_read_optional_float(item.get("duration_ms")),
-            inputs=_require_payload_dict(item, "inputs"),
-            outputs=_require_payload_dict(item, "outputs"),
-        )
-        for item in node_records_payload
-        if isinstance(item, dict)
-    )
-    return WorkflowSnapshotExecutionResult(
-        project_id=_require_payload_str(payload, "project_id"),
-        application_id=_require_payload_str(payload, "application_id"),
-        template_id=_require_payload_str(payload, "template_id"),
-        template_version=_require_payload_str(payload, "template_version"),
-        outputs=_require_payload_dict(payload, "outputs"),
-        template_outputs=_require_payload_dict(payload, "template_outputs"),
-        node_records=node_records,
-    )
-
-
-def deserialize_snapshot_execution_event(message: object) -> dict[str, object]:
-    """把子进程事件消息转换为稳定字典。"""
-
-    if not isinstance(message, dict):
-        raise ServiceConfigurationError("workflow snapshot 子进程返回了无效事件消息")
-    event_type = message.get("event_type") if isinstance(message.get("event_type"), str) else ""
-    if not event_type:
-        raise ServiceConfigurationError("workflow snapshot 子进程事件缺少 event_type")
-    payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
-    raw_message = message.get("message")
-    return {
-        "event_type": event_type,
-        "message": raw_message.strip() if isinstance(raw_message, str) else event_type,
-        "payload": payload,
-    }
-
-
-def _emit_snapshot_execution_event(
-    event_queue: Queue[Any] | None,
-    event: dict[str, object],
-) -> None:
-    """向父进程发送一条 snapshot 执行事件。"""
-
-    if event_queue is None:
-        return
-    event_queue.put(
-        {
-            "event_type": str(event.get("event_type") or "workflow.event"),
-            "message": str(event.get("message") or event.get("event_type") or "workflow event"),
-            "payload": event.get("payload") if isinstance(event.get("payload"), dict) else {},
-        }
-    )
-
-
 def build_snapshot_fingerprint(
     *,
     dataset_storage: LocalDatasetStorage,
@@ -1152,8 +659,19 @@ def build_snapshot_fingerprint(
     application_payload = dataset_storage.read_json(application_snapshot_object_key)
     template_payload = dataset_storage.read_json(template_snapshot_object_key)
     digest = hashlib.sha256()
-    digest.update(json.dumps(application_payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-    digest.update(json.dumps(template_payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    digest.update(
+        json.dumps(
+            application_payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    digest.update(
+        json.dumps(
+            template_payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    )
     return f"sha256:{digest.hexdigest()}"
 
 
@@ -1188,7 +706,9 @@ def _build_template_input_values(
         if binding.direction == FLOW_BINDING_DIRECTION_INPUT
     }
     required_binding_ids = {
-        binding.binding_id for binding in input_binding_index.values() if binding.required
+        binding.binding_id
+        for binding in input_binding_index.values()
+        if binding.required
     }
     missing_binding_ids = sorted(required_binding_ids - set(input_bindings.keys()))
     if missing_binding_ids:
@@ -1216,26 +736,6 @@ def _build_template_input_values(
     }
 
 
-def _read_optional_payload_str(
-    payload: object,
-    field_name: str,
-) -> str | None:
-    """从跨进程负载读取可选字符串。"""
-
-    if not isinstance(payload, dict):
-        raise ServiceConfigurationError("workflow snapshot 子进程负载格式无效")
-    value = payload.get(field_name)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ServiceConfigurationError(
-            "workflow snapshot 子进程负载字段类型无效",
-            details={"field_name": field_name},
-        )
-    normalized_value = value.strip()
-    return normalized_value or None
-
-
 def _build_binding_outputs(
     *,
     application: FlowApplication,
@@ -1256,72 +756,3 @@ def _build_binding_outputs(
         for binding in application.bindings
         if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT
     }
-
-
-def _serialize_node_record(record: WorkflowNodeExecutionRecord) -> dict[str, object]:
-    """把节点执行记录转换为可跨进程序列化的同步响应字典。"""
-
-    return serialize_node_execution_record_for_response(record)
-
-
-def _require_payload_str(payload: object, field_name: str) -> str:
-    """从字典负载中读取必填字符串字段。"""
-
-    if not isinstance(payload, dict):
-        raise ServiceConfigurationError("workflow snapshot 子进程负载格式无效")
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ServiceConfigurationError(
-            "workflow snapshot 子进程负载缺少有效字符串字段",
-            details={"field_name": field_name},
-        )
-    return value.strip()
-
-
-def _require_payload_dict(payload: object, field_name: str) -> dict[str, object]:
-    """从字典负载中读取对象字段。"""
-
-    if not isinstance(payload, dict):
-        raise ServiceConfigurationError("workflow snapshot 子进程负载格式无效")
-    value = payload.get(field_name)
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ServiceConfigurationError(
-            "workflow snapshot 子进程负载缺少有效对象字段",
-            details={"field_name": field_name},
-        )
-    return {str(key): item for key, item in value.items()}
-
-
-def _read_optional_float(value: object) -> float | None:
-    """从字典负载中读取可选数值字段。"""
-
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return float(value)
-    return None
-
-
-def _resolve_backend_service_settings(settings: BackendServiceSettings) -> BackendServiceSettings:
-    """把 backend-service settings 规范化为适合子进程复用的绝对路径版本。"""
-
-    normalized_settings = BackendServiceSettings.model_validate(settings.model_dump(mode="python"))
-    normalized_settings.database.url = _resolve_database_url(normalized_settings.database.url)
-    normalized_settings.dataset_storage.root_dir = str(Path(normalized_settings.dataset_storage.root_dir).resolve())
-    normalized_settings.queue.root_dir = str(Path(normalized_settings.queue.root_dir).resolve())
-    normalized_settings.custom_nodes.root_dir = str(Path(normalized_settings.custom_nodes.root_dir).resolve())
-    return normalized_settings
-
-
-def _resolve_database_url(database_url: str) -> str:
-    """把 SQLite 文件数据库 URL 规范化为绝对路径。"""
-
-    parsed_url: URL = make_url(database_url)
-    if parsed_url.drivername != "sqlite" or parsed_url.database in (None, ":memory:"):
-        return database_url
-    resolved_database_path = Path(parsed_url.database).resolve()
-    return parsed_url.set(database=resolved_database_path.as_posix()).render_as_string(
-        hide_password=False
-    )

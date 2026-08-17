@@ -61,7 +61,7 @@ class WorkflowPreviewRunCreateRequestBody(BaseModel):
     input_bindings: dict[str, object] = Field(default_factory=dict, description="输入绑定 payload")
     execution_metadata: dict[str, object] = Field(default_factory=dict, description="执行元数据")
     timeout_seconds: int | None = Field(default=None, description="可选同步等待超时秒数")
-    wait_mode: Literal["sync", "async"] = Field(default="sync", description="创建后是否同步等待 preview 完成")
+    wait_mode: Literal["sync"] = Field(default="sync", description="Preview 固定同步直接执行")
     execution_scope: WorkflowPreviewExecutionScopeRequestBody = Field(
         default_factory=WorkflowPreviewExecutionScopeRequestBody,
         description="编辑器 Preview 执行范围",

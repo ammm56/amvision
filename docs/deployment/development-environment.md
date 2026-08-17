@@ -77,10 +77,10 @@ python -m backend.inference_daemon.main --probe
 daemon probe 成功后，在终端二执行并保持常驻：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
-也可以使用 VS Code Run and Debug 中的 `Python 调试程序: backend-service 热重载`。开发环境使用 `--reload` 时，service 源码修改会触发 service 子进程重载，但不会代替 daemon 或 worker 的重启。
+也可以使用 VS Code Run and Debug 中的 `Python 调试程序: backend-service 热重载`。开发环境使用 `--reload` 时，只监视 `backend` 和 `custom_nodes` 两个源码目录；pytest 临时文件、数据资产、参考源码和发布生成物不会中断正在运行的 workflow runtime。热重载不会代替 daemon 或 worker 的重启。
 
 等待启动日志完成后验证：
 

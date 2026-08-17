@@ -15,6 +15,7 @@ import type {
   WorkflowRun,
   WorkflowRunEvent,
 } from '../types'
+import type { WorkflowPreviewImageUpload } from '../preview/useWorkflowPreviewInputs'
 
 export interface WorkflowRuntimeListQuery {
   projectId: string
@@ -33,9 +34,10 @@ export interface WorkflowPreviewRunCreateInput {
   application?: FlowApplication | null
   template?: WorkflowGraphTemplate | null
   inputBindings?: WorkflowJsonObject
+  imageUploads?: WorkflowPreviewImageUpload[]
   executionMetadata?: WorkflowJsonObject
   timeoutSeconds?: number | null
-  waitMode?: 'sync' | 'async'
+  waitMode?: 'sync'
   executionScope?: WorkflowPreviewExecutionScope
 }
 
@@ -108,9 +110,7 @@ export async function getWorkflowExecutionPolicy(executionPolicyId: string): Pro
 }
 
 export async function createWorkflowPreviewRun(input: WorkflowPreviewRunCreateInput): Promise<WorkflowPreviewRun> {
-  return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs', {
-    method: 'POST',
-    body: {
+  const requestBody = {
       project_id: input.projectId,
       execution_policy_id: input.executionPolicyId ?? null,
       application_ref: input.applicationId ? { application_id: input.applicationId } : null,
@@ -123,7 +123,22 @@ export async function createWorkflowPreviewRun(input: WorkflowPreviewRunCreateIn
       execution_scope: input.executionScope?.kind === 'node'
         ? { kind: 'node', target_node_id: input.executionScope.targetNodeId }
         : { kind: 'application', target_node_id: null },
-    },
+  }
+  if (input.imageUploads?.length) {
+    const form = new FormData()
+    form.append('request', JSON.stringify(requestBody))
+    for (const upload of input.imageUploads) {
+      form.append('image_binding_id', upload.bindingId)
+      form.append('image_file', upload.file, upload.file.name)
+    }
+    return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs/multipart', {
+      method: 'POST',
+      body: form,
+    })
+  }
+  return apiRequest<WorkflowPreviewRun>('/workflows/preview-runs', {
+    method: 'POST',
+    body: requestBody,
   })
 }
 
@@ -165,10 +180,6 @@ export async function readProjectObjectContentBlob(projectId: string, objectKey:
     query: { object_key: objectKey },
     responseType: 'blob',
   })
-}
-
-export async function cancelWorkflowPreviewRun(previewRunId: string): Promise<WorkflowPreviewRun> {
-  return apiRequest<WorkflowPreviewRun>(`/workflows/preview-runs/${encodePathPart(previewRunId)}/cancel`, { method: 'POST' })
 }
 
 export async function deleteWorkflowPreviewRun(previewRunId: string): Promise<void> {

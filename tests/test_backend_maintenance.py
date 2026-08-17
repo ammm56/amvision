@@ -206,9 +206,9 @@ def test_cleanup_runtime_storage_removes_short_lived_runtime_objects_but_keeps_p
         "workflows/runtime/app-runtimes/workflow-runtime-orphan/application.snapshot.json",
         {"application_id": "orphan"},
     )
-    dataset_storage.write_json("workflows/runtime/workflow-run-expired/events.json", [])
-    dataset_storage.write_json("workflows/runtime/workflow-run-active/events.json", [])
-    dataset_storage.write_json("workflows/runtime/workflow-run-orphan/events.json", [])
+    dataset_storage.write_bytes("workflows/runtime/workflow-run-expired/events.jsonl", b"")
+    dataset_storage.write_bytes("workflows/runtime/workflow-run-active/events.jsonl", b"")
+    dataset_storage.write_bytes("workflows/runtime/workflow-run-orphan/events.jsonl", b"")
 
     _set_path_mtime(
         dataset_storage.resolve("runtime/inputs/inference/request-expired"),
@@ -279,7 +279,7 @@ def test_cleanup_runtime_storage_removes_short_lived_runtime_objects_but_keeps_p
         "workflows/runtime/app-runtimes/workflow-runtime-orphan"
     ).exists()
     assert not dataset_storage.resolve("workflows/runtime/workflow-run-expired").exists()
-    assert dataset_storage.resolve("workflows/runtime/workflow-run-active/events.json").is_file()
+    assert dataset_storage.resolve("workflows/runtime/workflow-run-active/events.jsonl").is_file()
     assert not dataset_storage.resolve("workflows/runtime/workflow-run-orphan").exists()
     remaining_preview_run_ids = _list_preview_run_ids(session_factory)
     assert remaining_preview_run_ids == ["preview-active"]

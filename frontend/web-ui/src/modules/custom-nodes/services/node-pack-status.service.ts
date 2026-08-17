@@ -36,7 +36,6 @@ export interface NodePackStatusItem {
   loaded_at: string | null
   node_count: number
   capabilities: string[]
-  permission_scopes: string[]
   dependencies: NodePackDependencyStatus[]
   issues: NodePackStatusIssue[]
   logs: NodePackStatusLog[]

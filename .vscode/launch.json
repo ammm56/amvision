@@ -16,7 +16,11 @@
                 "127.0.0.1",
                 "--port",
                 "5600",
-                "--reload"
+                "--reload",
+                "--reload-dir",
+                "${workspaceFolder}/backend",
+                "--reload-dir",
+                "${workspaceFolder}/custom_nodes"
             ],
             "jinja": true,
             "cwd": "${workspaceFolder}",

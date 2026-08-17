@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS,
     WORKFLOW_PREVIEW_RUN_STATES,
-    WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
     WorkflowPreviewRunState,
 )
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
@@ -44,9 +43,9 @@ def normalize_preview_run_create_request(
     if request.timeout_seconds is not None and request.timeout_seconds <= 0:
         raise InvalidRequestError("timeout_seconds 必须大于 0")
     wait_mode = request.wait_mode.strip().lower()
-    if wait_mode not in {"sync", "async"}:
+    if wait_mode != "sync":
         raise InvalidRequestError(
-            "wait_mode 只支持 sync 或 async",
+            "Preview 只支持 sync wait_mode",
             details={"wait_mode": request.wait_mode},
         )
     execution_scope_kind = request.execution_scope_kind.strip().lower()
@@ -123,12 +122,6 @@ def build_preview_run_retention_until() -> str:
         datetime.now(timezone.utc)
         + timedelta(hours=WORKFLOW_PREVIEW_RUN_DEFAULT_RETENTION_HOURS)
     ).isoformat().replace("+00:00", "Z")
-
-
-def preview_run_needs_cancel_before_delete(preview_run: WorkflowPreviewRun) -> bool:
-    """判断删除 preview run 前是否需要先取消执行。"""
-
-    return preview_run.state not in WORKFLOW_PREVIEW_RUN_TERMINAL_STATES
 
 
 def _normalize_optional_str(value: str | None) -> str | None:

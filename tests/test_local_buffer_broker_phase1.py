@@ -141,6 +141,46 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(
     assert supervisor.is_running is False
 
 
+def test_local_buffer_broker_supervisor_rewrites_active_lease_without_control_event(
+    tmp_path: Path,
+) -> None:
+    """验证监督器可复用 direct mmap client 覆盖活动槽位。"""
+
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
+    supervisor.start()
+    try:
+        write_result = supervisor.write_bytes(
+            content=b"abcdef",
+            owner_kind="workflow-runtime",
+            owner_id="workflow-1:model-1",
+            media_type="image/raw",
+        )
+
+        supervisor.write_lease_bytes(
+            lease=write_result.lease,
+            content=b"ghijkl",
+        )
+        first_direct_client = supervisor._direct_io_client
+        supervisor.write_lease_bytes(
+            lease=write_result.lease,
+            content=b"mnopqr",
+        )
+
+        assert first_direct_client is not None
+        assert supervisor._direct_io_client is first_direct_client
+        assert supervisor.read_buffer_ref(write_result.buffer_ref) == b"mnopqr"
+        supervisor.release(
+            write_result.lease.lease_id,
+            pool_name=write_result.lease.pool_name,
+        )
+    finally:
+        supervisor.stop()
+
+    assert supervisor._direct_io_client is None
+
+
 def test_local_buffer_broker_client_serializes_shared_response_channel(
     tmp_path: Path,
 ) -> None:

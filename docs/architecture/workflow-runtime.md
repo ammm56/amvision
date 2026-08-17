@@ -54,7 +54,7 @@
 ## 工业现场副作用边界
 
 - PLC 写入、运动控制、传感器触发、相机控制和结果上报都属于强副作用节点。
-- 这些行为默认由 custom node 或 node pack 自己定义和承担，workflow runtime 只负责进程隔离、超时、trace 和稳定性。
+- 这些行为默认由 custom node 或 node pack 自己定义和承担，workflow runtime 负责调用生命周期、超时、trace 和稳定性。
 - 如果需要模拟、空跑或联调，应通过 simulate 节点、mock 节点或独立模拟 node pack 实现，而不是由 workflow 再增加一层硬件操作开关。
 - 已发布 runtime 不负责判断节点是否应该操作硬件；节点一旦被放入图中，就按该节点自身语义执行。
 - 现场硬件接入优先通过 node pack 或外部设备代理实现，不把 PLC、机械臂、相机和传感器 SDK 直接并入核心 runtime。
@@ -68,8 +68,8 @@
 
 这类执行建议采用下面的规则：
 
-- 每次试跑都在独立子进程里执行。
-- 子进程执行完成、失败或超时后立即退出，不保留长期实例。
+- 同步试跑复用 backend-service 启动时已经加载的 core/custom node registry，不创建临时执行进程。
+- Preview Run 仍保留独立资源记录、超时、事件流和清理生命周期。
 - 默认同步等待结果，优先返回 outputs、template_outputs、node_records 和错误摘要。
 - 失败不触发自动重启，不把试跑进程纳入长期 supervisor。
 - 这一路径默认不进入后台队列，避免界面调试被排队延迟放大。
@@ -99,8 +99,8 @@
 
 - LocalBufferBroker 是本机内部数据交换层，不是新的 workflow 触发入口。
 - trigger source、HTTP、ZeroMQ、gRPC、MQTT、PLC、IO 和传感器入口负责创建 PreviewRun、WorkflowRun 或 runtime invoke 请求。
-- 大图、连续帧和需要跨隔离进程复用的中间结果进入 LocalBufferBroker 后，以 BufferRef 或 FrameRef 传给 workflow 节点和发布推理 worker。
-- preview run 继续保持一请求一子进程；已发布 workflow runtime 继续保持长期独立 worker；已发布推理服务继续保持长期 deployment worker。
+- 大图、连续帧和需要跨组件复用的中间结果进入 LocalBufferBroker 后，以 BufferRef 或 FrameRef 传给 workflow 节点和发布推理 worker。
+- preview run 同步路径在 backend-service 内联执行；已发布 workflow runtime 继续保持长期 worker；已发布推理服务继续保持长期 deployment worker。
 - workflow 节点通过 PublishedInferenceGateway 调用已发布推理服务，不直接依赖 deployment worker 的父进程内存状态。
 - 详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)。
 
@@ -110,16 +110,16 @@
 
 当前实现已经先落了一版 workflow 资源规则，后续继续收口时需要统一遵守下面这几条：
 
-- `WorkflowPreviewRun` 当前稳定状态集合为 `created`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`；当前已把 preview cancel 收口到公开控制面，但仍不把 `queued`、`expired` 混入规则。
+- `WorkflowPreviewRun` 当前稳定状态集合为 `created`、`running`、`succeeded`、`failed`、`timed_out`；Preview 只提供同步直调，不引入 queue、async 或 cancel 状态机。
 - `WorkflowAppRuntime` 和 `TriggerSource` 的运行态当前统一使用 `stopped`、`starting`、`running`、`stopping`、`failed` 五态模型；两者的 `desired_state` 和 `observed_state` 应保持同一套语义。
 - `WorkflowRun` 当前稳定状态集合为 `created`、`queued`、`dispatching`、`running`、`succeeded`、`failed`、`cancelled`、`timed_out`。
 - `WorkflowExecutionPolicy` 当前只有 `preview-default` 和 `runtime-default` 两类，不在第一阶段继续引入更多 policy kind。
-- preview snapshot 目录固定在 `workflows/runtime/preview-runs/{preview_run_id}/`，其中 `events.json` 用于保存节点执行过程事件；app runtime snapshot 目录固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，其中 `events.json` 用于保存 runtime 生命周期事件；WorkflowRun 的事件文件固定在 `workflows/runtime/{workflow_run_id}/events.json`。
+- preview snapshot 目录固定在 `workflows/runtime/preview-runs/{preview_run_id}/`，其中每个节点事件直接向 `events.jsonl` 追加一行，不存在旧事件格式兼容路径。WorkflowRun 同样逐事件追加到 `workflows/runtime/{workflow_run_id}/events.jsonl`。app runtime snapshot 目录固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，其中 `events.json` 只保存低频 runtime 生命周期和受限窗口 heartbeat。
 - preview cleanup 当前继续走显式 maintenance 命令 `cleanup-preview-runs`；删除语义是“先删数据库记录，再删对象存储目录”，因此当前仍属于可恢复但非原子清理。
 
 | 资源 | 作用 | 生命周期 |
 | --- | --- | --- |
-| WorkflowPreviewRun | 表示一次编辑态隔离试跑 | 短时、可过期 |
+| WorkflowPreviewRun | 表示一次编辑态试跑 | 短时、可过期 |
 | WorkflowExecutionPolicy | 表示 preview 和 runtime 的执行默认项，以及 AI 相关运行时配置 | 可独立版本化 |
 | PersonaProfile | 表示 LLM / VLM / agent 节点使用的人格、语气和系统提示模板 | 可独立版本化 |
 | ToolPolicy | 表示 LLM / agent 节点可用的工具集合和调用上限 | 可独立版本化 |
@@ -481,7 +481,7 @@ workflow runtime 不应把节点能力固定在单一视觉链路上，而应覆
 
 这几组节点可以在编辑器里统一编排，但运行时权限、timeout 和隔离级别不应相同。
 
-这几组节点在运行时的差异更适合通过节点实现、simulate 节点、timeout 和进程隔离来处理，而不是在 workflow 再抽一层复杂的硬件权限模型。
+这几组节点在运行时的差异更适合通过节点实现、simulate 节点、timeout 和审计来处理，而不是在 workflow 再抽一层复杂的硬件权限模型。
 
 ## LLM / Agent 演进方向
 
@@ -696,7 +696,7 @@ WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、WorkflowExecutionPolicy�
 
 #### POST /api/v1/workflows/preview-runs
 
-用途：创建一次编辑态隔离试跑。
+用途：创建一次编辑态同步试跑。
 
 建议请求字段：
 
@@ -708,12 +708,11 @@ WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、WorkflowExecutionPolicy�
 - input_bindings
 - execution_metadata
 - timeout_seconds
-- wait_mode，取值建议为 sync 或 async
+- wait_mode，只允许 sync
 
 当前实现：
 
-- wait_mode=sync 时等待 preview run 进入终态，再返回完整 WorkflowPreviewRun
-- wait_mode=async 时立即返回 `state=running` 的 WorkflowPreviewRun，后续通过详情接口、事件接口或 WebSocket 资源流观察执行过程
+- 请求在 backend-service 当前进程直接执行，等待 preview run 进入终态后返回完整 WorkflowPreviewRun
 - preview run 的实时事件已经接入统一的 `workflows.preview-runs.events` 资源流，沿用 `preview_run_id` 作为筛选键，而不是单独扩出 preview 专用 WebSocket 面
 
 #### GET /api/v1/workflows/preview-runs/{preview_run_id}
@@ -722,13 +721,9 @@ WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun、WorkflowExecutionPolicy�
 
 #### GET /api/v1/workflows/preview-runs/{preview_run_id}/events
 
-用途：查询 preview run 的执行事件；当前事件固定写入 preview run 目录下的 `events.json`。
+用途：查询 preview run 的执行事件；当前事件追加写入 preview run 目录下的 `events.jsonl`。
 
 该接口继续作为历史事件读取和断线恢复的正式读取面；对应的实时资源流为 `/ws/v1/workflows/preview-runs/events`，不再另起一套独立事件来源。
-
-#### POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
-
-用途：取消尚未结束的 preview run，并终止对应子进程；成功后 `WorkflowPreviewRun.state` 进入 `cancelled`。
 
 preview 相关图片、文件和其他大结果仍通过对象存储引用、输出摘要或其他结构化字段暴露，不通过 WebSocket 直接传输二进制正文。
 

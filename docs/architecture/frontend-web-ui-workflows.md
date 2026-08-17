@@ -218,7 +218,7 @@ PreviewRun 用于工作流调试，不等同于正式运行。
 2. 用户在 PreviewRunPanel 中填写输入绑定。
 3. 调用 `POST /api/v1/workflows/preview-runs`。
 4. `wait_mode=sync` 时直接展示返回结果。
-5. `wait_mode=async` 时先展示 running 状态，再订阅 `/ws/v1/workflows/preview-runs/events`。
+5. Preview 同步返回终态；需要回查过程时读取 `/events` 或订阅 `/ws/v1/workflows/preview-runs/events`。
 6. 断线或切页回来时，先调用详情接口和 events 历史接口恢复状态，再继续订阅实时事件。
 7. 结果进入 `result-viewer`，节点执行摘要叠加到画布节点状态。
 

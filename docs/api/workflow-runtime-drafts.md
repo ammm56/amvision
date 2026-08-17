@@ -55,7 +55,6 @@ flowchart LR
 ## 当前仍未公开接口
 
 - GET /api/v1/workflows/preview-runs/{preview_run_id}/events
-- POST /api/v1/workflows/preview-runs/{preview_run_id}/cancel
 - GET /api/v1/workflows/runs/{workflow_run_id}/events
 
 ## 建议阅读顺序

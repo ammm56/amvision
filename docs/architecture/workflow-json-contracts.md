@@ -378,7 +378,7 @@ barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_node
 - LocalNodePackLoader、NodePackManifest、CustomNodeCatalogDocument
 - NodeCatalogRegistry 合并 core nodes 与 custom nodes
 - backend-service 的模板 / 应用 validate、save、get API
-- backend-service 当前已经公开 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 三类 runtime API；编辑态试跑走隔离子进程，已发布应用走单 runtime worker
+- backend-service 当前已经公开 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 三类 runtime API；编辑态试跑在 backend-service 当前进程同步直调，已发布应用走长期 runtime worker
 - 最小图执行器，当前支持 python-callable 和 worker-task 两类节点
 - node pack entrypoint 到实际 python-callable / worker-task handler 的自动注册
 

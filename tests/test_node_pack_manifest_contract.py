@@ -20,26 +20,21 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "displayName": "Test Nodes",
         "category": "test",
         "capabilities": ["test.compute"],
-        "permissionScopes": [],
         "compatibility": {"api": ">=0.1,<1.0", "runtime": ">=3.12"},
         "timeout": {
             "defaultSeconds": 30,
             "maxSeconds": 60,
             "killGraceSeconds": 2,
         },
-        "execution": {
-            "isolation": "workflow-process",
-            "timeoutAction": "terminate-workflow-process",
-        },
     }
     payload.update(overrides)
     return payload
 
 
-def test_manifest_requires_typed_compatibility_timeout_and_execution_contracts() -> None:
-    """验证三类运行契约不能缺失或使用松散字典替代。"""
+def test_manifest_requires_typed_compatibility_and_timeout_contracts() -> None:
+    """验证兼容性和 timeout 契约不能缺失或使用松散字典替代。"""
 
-    for field_name in ("compatibility", "timeout", "execution"):
+    for field_name in ("compatibility", "timeout"):
         payload = _manifest_payload()
         payload.pop(field_name)
 
@@ -56,22 +51,14 @@ def test_manifest_rejects_timeout_default_above_hard_limit() -> None:
         )
 
 
-def test_manifest_rejects_unknown_permission_scope() -> None:
-    """验证节点包不能自行发明平台无法执行的权限 scope。"""
+def test_manifest_accepts_trusted_integration_capability_without_permission_policy() -> None:
+    """验证可信节点包能力不再绑定权限策略字段。"""
 
-    with pytest.raises(ValidationError, match="平台未登记"):
-        NodePackManifest.model_validate(
-            _manifest_payload(permissionScopes=["operating-system.unrestricted"])
-        )
+    manifest = NodePackManifest.model_validate(
+        _manifest_payload(capabilities=["integration.database.sql"])
+    )
 
-
-def test_manifest_requires_capability_permissions() -> None:
-    """验证高风险 capability 必须声明对应的最小权限集合。"""
-
-    with pytest.raises(ValidationError, match="integration.database.connect"):
-        NodePackManifest.model_validate(
-            _manifest_payload(capabilities=["integration.database.sql"])
-        )
+    assert manifest.capabilities == ("integration.database.sql",)
 
 
 def test_manifest_reports_current_platform_incompatibilities() -> None:

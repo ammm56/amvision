@@ -29,9 +29,6 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    require_custom_node_permission,
-)
 from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -513,20 +510,16 @@ class ExecutionImageRegistry:
 
 def require_dataset_storage(
     request: WorkflowNodeExecutionRequest,
-    *,
-    permission_scope: str = "objectstore.read.ref",
 ) -> LocalDatasetStorage:
     """从执行元数据中读取 LocalDatasetStorage。
 
     参数：
     - request：当前节点执行请求。
-    - permission_scope：本次资源访问需要的明确 objectstore 权限。
 
     返回：
     - LocalDatasetStorage：当前执行上下文绑定的文件存储服务。
     """
 
-    require_node_pack_permission(request, permission_scope)
     dataset_storage = request.execution_metadata.get("dataset_storage")
     if not isinstance(dataset_storage, LocalDatasetStorage):
         raise ServiceConfigurationError(
@@ -534,20 +527,6 @@ def require_dataset_storage(
             details={"node_id": request.node_id, "required_metadata": "dataset_storage"},
         )
     return dataset_storage
-
-
-def require_node_pack_permission(
-    request: WorkflowNodeExecutionRequest,
-    permission_scope: str,
-) -> None:
-    """校验 custom node 是否被 manifest 授予指定平台资源权限。
-
-    core node 不受 node pack 权限模型约束。custom node 必须经过
-    WorkflowNodeRuntimeRegistry 注入经过 manifest 校验的权限集合；调用平台 broker
-    或资源 helper 时缺少权限会稳定返回 permission_denied。
-    """
-
-    require_custom_node_permission(request, permission_scope)
 
 
 def require_execution_image_registry(request: WorkflowNodeExecutionRequest) -> ExecutionImageRegistry:
@@ -1805,10 +1784,7 @@ def copy_image_payload(
     """
 
     normalized_source_payload = require_image_payload(source_payload)
-    dataset_storage = require_dataset_storage(
-        request,
-        permission_scope="objectstore.write.ref",
-    )
+    dataset_storage = require_dataset_storage(request)
     source_object_key = _normalize_optional_text(normalized_source_payload.get("object_key"))
     target_object_key = object_key or _build_default_target_object_key(
         request,
@@ -1830,7 +1806,6 @@ def copy_image_payload(
         dataset_storage.write_bytes(target_object_key, image_bytes)
         normalized_source_payload = json_safe_payload
     elif normalized_source_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE and source_object_key is not None:
-        require_node_pack_permission(request, "objectstore.read.ref")
         if target_object_key != source_object_key:
             dataset_storage.copy_relative_file(source_object_key, target_object_key)
     else:
@@ -1876,10 +1851,7 @@ def write_image_bytes(
     - dict[str, object]：写入后的 image-ref payload。
     """
 
-    dataset_storage = require_dataset_storage(
-        request,
-        permission_scope="objectstore.write.ref",
-    )
+    dataset_storage = require_dataset_storage(request)
     normalized_source_payload = require_image_payload(source_payload)
     target_object_key = object_key or _build_default_target_object_key(
         request,

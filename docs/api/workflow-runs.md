@@ -309,7 +309,7 @@
 - query 参数：workflow_run_id 必填；after_cursor、limit 可选
 - after_cursor 当前直接使用 WorkflowRun 事件的 sequence
 - 连接成功后先返回 workflows.runs.connected，再按 sequence 持续推送增量事件
-- 实时推送走 service_event_bus，历史回放与 REST 事件接口共用同一份 `events.json`
+- 实时推送走 service_event_bus，历史回放与 REST 事件接口共用逐事件追加的 `events.jsonl`
 - WorkflowAppRuntime 正式调用默认不返回 diagnostics：`return_timing_metadata_enabled=false`、`return_node_timings_enabled=false`。调用结果默认不包含 `metadata.timings`、`metadata.node_timings`，PublishedInferenceGateway 写入业务输出的 `metadata.timings` 也会被清理。
 - WorkflowRun 数据库记录通过 `workflow_run_record_mode` 控制：
   - `full`：保留完整 WorkflowRun 记录、dispatch/final 事件、按 retention 开关保留输入输出和 node_records。

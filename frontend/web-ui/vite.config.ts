@@ -32,25 +32,27 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks(moduleId) {
-          const normalizedId = moduleId.replaceAll('\\', '/')
-          if (
-            normalizedId.includes('/node_modules/vue/')
-            || normalizedId.includes('/node_modules/vue-router/')
-            || normalizedId.includes('/node_modules/pinia/')
-            || normalizedId.includes('/node_modules/vue-i18n/')
-          ) {
-            return 'vendor-vue'
-          }
-          if (
-            normalizedId.includes('/node_modules/@lucide/vue/')
-            || normalizedId.includes('/node_modules/@vueuse/')
-            || normalizedId.includes('/node_modules/reka-ui/')
-          ) {
-            return 'vendor-ui'
-          }
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor-echarts',
+              test: /node_modules[\\/](?:echarts|zrender)[\\/]/,
+              priority: 2,
+              maxSize: 300 * 1024,
+            },
+            {
+              name: 'vendor-vue',
+              test: /node_modules[\\/](?:vue|vue-router|pinia|vue-i18n)[\\/]/,
+              priority: 1,
+            },
+            {
+              name: 'vendor-ui',
+              test: /node_modules[\\/](?:@lucide[\\/]vue|@vueuse|reka-ui)[\\/]/,
+              priority: 1,
+            },
+          ],
         },
       },
     },

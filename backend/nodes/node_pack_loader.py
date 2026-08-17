@@ -95,7 +95,6 @@ class NodePackStatusItem:
     - loaded_at：最近一次 loader 扫描时间。
     - node_count：当前成功加载的节点数量。
     - capabilities：能力标签。
-    - permission_scopes：权限 scope。
     - dependencies：依赖状态列表。
     - issues：问题列表。
     - logs：状态日志列表。
@@ -113,7 +112,6 @@ class NodePackStatusItem:
     loaded_at: str | None = None
     node_count: int = 0
     capabilities: tuple[str, ...] = ()
-    permission_scopes: tuple[str, ...] = ()
     dependencies: tuple[NodePackDependencyStatus, ...] = ()
     issues: tuple[NodePackStatusIssue, ...] = ()
     logs: tuple[NodePackStatusLog, ...] = ()

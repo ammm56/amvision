@@ -22,10 +22,6 @@ from backend.service.application.errors import (
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CustomNodeHardTimeoutGuard,
-)
-
 from .contracts import (
     WorkflowModelSessionLoadResult,
     WorkflowModelSessionProvider,
@@ -214,9 +210,6 @@ class WorkflowModelSessionManager:
             )
             if provider is None:
                 continue
-            self.runtime_registry.require_model_session_provider_permissions(
-                loader_node.node_type_id
-            )
             consumer_node_type_ids = tuple(
                 sorted(set(outgoing_types.get(loader_node.node_id, ())))
             )
@@ -391,22 +384,6 @@ class WorkflowModelSessionManager:
     ) -> _PreparedModelSession:
         """在一个独立加载线程内完成 provider 的完整启动协议。"""
 
-        policy = self.runtime_registry.get_custom_node_policy(
-            preparation.loader_node.node_type_id
-        )
-        if policy is not None:
-            guard = CustomNodeHardTimeoutGuard(
-                node_id=preparation.loader_node.node_id,
-                node_type_id=preparation.loader_node.node_type_id,
-                timeout_seconds=policy.default_timeout_seconds,
-                kill_grace_seconds=policy.kill_grace_seconds,
-            )
-            return guard.run(
-                lambda: self._load_validate_session_without_timeout(
-                    preparation=preparation,
-                    runtime_context=runtime_context,
-                )
-            )
         return self._load_validate_session_without_timeout(
             preparation=preparation,
             runtime_context=runtime_context,
@@ -418,7 +395,7 @@ class WorkflowModelSessionManager:
         preparation: _ModelSessionPreparation,
         runtime_context: object,
     ) -> _PreparedModelSession:
-        """完成 provider 启动协议；外层负责 custom node hard timeout。"""
+        """完成 provider 启动协议，由所属 runtime 统一管理生命周期。"""
 
         load_result: WorkflowModelSessionLoadResult | None = None
         try:

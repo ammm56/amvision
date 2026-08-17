@@ -10,8 +10,4 @@ def register(context: NodePackEntrypointRegistrationContext) -> None:
     """注册 HTTP 通用节点。"""
 
     for node_type_id, handler in NODE_HANDLERS.items():
-        context.register_python_callable(
-            node_type_id,
-            handler,
-            required_permission_scopes=("integration.endpoint.invoke",),
-        )
+        context.register_python_callable(node_type_id, handler)

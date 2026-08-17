@@ -14,7 +14,7 @@ def build_completed_node_records_from_events(
 ) -> tuple[dict[str, object], ...]:
     """把 ``node.completed`` 事件转换为稳定的 node_records。
 
-    Preview 的最终状态可以是 failed、timed_out 或 cancelled，但本次运行中已经成功
+    Preview 的最终状态可以是 failed 或 timed_out，但本次运行中已经成功
     完成的节点仍是有效调试结果。该函数只读取节点事件，不把输出复制到错误详情。
     """
 

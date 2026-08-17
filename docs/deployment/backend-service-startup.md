@@ -277,7 +277,7 @@ conda activate amvision
 开发调试使用：
 
 ```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload
+python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
 性能测量或稳定性压测使用：
@@ -288,7 +288,7 @@ python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600
 
 说明：
 
-- --reload 只用于开发阶段
+- --reload 只用于开发阶段，并且只监视 `backend` 和 `custom_nodes`；测试临时文件、数据资产、参考仓库和发布生成物不得触发 service 重载
 - 需要观察 TensorRT、PyTorch、OpenVINO 等 runtime 的真实延迟时，不应使用 --reload
 - 如果 5600 端口被占用，可改为其他端口，例如 5610
 - 服务日志当前默认输出到控制台

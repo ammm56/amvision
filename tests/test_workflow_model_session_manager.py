@@ -17,9 +17,6 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.service.application.workflows.execution.registry import (
     WorkflowNodeRuntimeRegistry,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    WorkflowCustomNodeRuntimePolicy,
-)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_PREVIEW_MODEL_SESSION_SCOPE_PREFIX,
     WorkflowModelSessionLoadResult,
@@ -515,17 +512,6 @@ def _register_fake_provider(
     registry.register_model_session_provider(
         "custom.fake.load-checkpoint",
         provider,  # type: ignore[arg-type]
-        custom_node_policy=WorkflowCustomNodeRuntimePolicy(
-            node_pack_id="fake.nodes",
-            node_pack_version="0.1.3",
-            permission_scopes=frozenset({"model.asset.read"}),
-            default_timeout_seconds=30,
-            max_timeout_seconds=30,
-            kill_grace_seconds=2,
-            isolation="workflow-process",
-            timeout_action="terminate-workflow-process",
-        ),
-        required_permission_scopes=("model.asset.read",),
     )
 
 

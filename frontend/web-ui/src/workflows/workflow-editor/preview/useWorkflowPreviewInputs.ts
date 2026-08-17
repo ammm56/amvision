@@ -28,6 +28,16 @@ export interface PreviewInputState {
   plainValue: string
 }
 
+export interface WorkflowPreviewImageUpload {
+  bindingId: string
+  file: File
+}
+
+export interface WorkflowPreviewInputPayload {
+  inputBindings: Record<string, unknown>
+  imageUploads: WorkflowPreviewImageUpload[]
+}
+
 export function getPreviewImageRefTransportKindOptions(): PreviewSelectOption[] {
   return [
     { label: translate('workflowEditor.feedback.objectStoreImage'), value: 'storage' },
@@ -148,13 +158,34 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     state.imageRefTransportKind = selectValueToString(value) === 'memory' ? 'memory' : 'storage'
   }
 
-  async function buildPreviewInputBindings(bindings: FlowApplicationBinding[]): Promise<Record<string, unknown>> {
+  async function buildPreviewInputBindings(bindings: FlowApplicationBinding[]): Promise<WorkflowPreviewInputPayload> {
     const inputBindings: Record<string, unknown> = {}
+    const imageUploads: WorkflowPreviewImageUpload[] = []
+    const imageRefBindings = bindings.filter(
+      (binding) => options.getBindingPayloadTypeId(binding) === 'image-ref.v1',
+    )
+    const usedUploadBindingIds = new Set<string>()
     for (const binding of bindings) {
       if (!hasPreviewBindingValue(binding)) continue
+      const payloadTypeId = options.getBindingPayloadTypeId(binding)
+      if (payloadTypeId === 'image-base64.v1') {
+        const state = previewInputState.value[binding.binding_id]
+        if (!state?.file) continue
+        const targetBinding = resolveImageRefUploadBinding(
+          binding,
+          imageRefBindings,
+          usedUploadBindingIds,
+        )
+        if (!targetBinding) {
+          throw new Error(translate('workflowEditor.feedback.previewImageRefRequired'))
+        }
+        usedUploadBindingIds.add(targetBinding.binding_id)
+        imageUploads.push({ bindingId: targetBinding.binding_id, file: state.file })
+        continue
+      }
       inputBindings[binding.binding_id] = await buildPreviewPayload(binding)
     }
-    return inputBindings
+    return { inputBindings, imageUploads }
   }
 
   async function buildPreviewPayload(binding: FlowApplicationBinding): Promise<unknown> {
@@ -162,7 +193,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     const payloadTypeId = options.getBindingPayloadTypeId(binding)
     if (!state) return null
     if (payloadTypeId === 'value.v1') return buildValuePreviewPayload(state)
-    if (payloadTypeId === 'image-base64.v1') return buildImageBase64PreviewPayload(state)
+    if (payloadTypeId === 'image-base64.v1') return {}
     if (payloadTypeId === 'image-ref.v1') return buildImageRefPreviewPayload(state)
     return { value: parsePreviewScalarValue(state.plainValue) }
   }
@@ -207,15 +238,6 @@ function buildValuePreviewPayload(state: PreviewInputState): Record<string, unkn
   return { value }
 }
 
-async function buildImageBase64PreviewPayload(state: PreviewInputState): Promise<Record<string, unknown>> {
-  if (!state.file) return {}
-  const imageBase64 = await readFileAsBase64(state.file)
-  return {
-    image_base64: imageBase64,
-    media_type: state.mediaType.trim() || state.file.type || 'application/octet-stream',
-  }
-}
-
 function buildImageRefPreviewPayload(state: PreviewInputState): Record<string, unknown> {
   if (state.imageRefTransportKind === 'memory') {
     return {
@@ -241,21 +263,22 @@ function parsePreviewScalarValue(value: string): unknown {
   return value
 }
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : ''
-      const commaIndex = result.indexOf(',')
-      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
-    }
-    reader.onerror = () => reject(reader.error ?? new Error(translate('workflowEditor.feedback.readImageFailed')))
-    reader.readAsDataURL(file)
-  })
-}
-
 function createPreviewFieldId(): string {
   return `preview-field-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function resolveImageRefUploadBinding(
+  sourceBinding: FlowApplicationBinding,
+  candidates: FlowApplicationBinding[],
+  usedBindingIds: Set<string>,
+): FlowApplicationBinding | null {
+  const availableCandidates = candidates.filter(
+    (candidate) => !usedBindingIds.has(candidate.binding_id),
+  )
+  const preferredBindingId = sourceBinding.binding_id.replace(/base64/iu, 'ref')
+  return availableCandidates.find(
+    (candidate) => candidate.binding_id === preferredBindingId,
+  ) ?? (availableCandidates.length === 1 ? availableCandidates[0] : null)
 }
 
 function selectValueToString(value: PreviewSelectValue): string {

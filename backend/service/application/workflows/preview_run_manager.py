@@ -1,54 +1,31 @@
-"""preview run 长生命周期管理器。"""
+"""Preview Run 记录与 JSONL 事件存储。"""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import json
 import logging
-from queue import Empty
-from threading import Event, Lock, Thread
+from pathlib import Path
+from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING
+from typing import BinaryIO
 
-from backend.contracts.workflows.resource_semantics import (
-    WORKFLOW_PREVIEW_RUN_TERMINAL_STATES,
-    build_workflow_preview_run_events_object_key,
-)
-from backend.service.application.events import ServiceEvent
+from backend.contracts.workflows.resource_semantics import build_workflow_preview_run_events_object_key
 from backend.service.application.errors import (
     InvalidRequestError,
-    OperationTimeoutError,
     ResourceNotFoundError,
-    ServiceConfigurationError,
-    ServiceError,
 )
+from backend.service.application.events import ServiceEvent
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
     publish_project_summary_event,
     should_publish_project_summary_for_preview_event,
 )
-from backend.service.application.local_buffers import LocalBufferBrokerEventChannel
-from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
-from backend.service.application.workflows.preview_partial_results import (
-    build_completed_node_records_from_events,
-)
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CUSTOM_NODE_TIMEOUT_EXIT_CODE,
-)
 from backend.service.application.workflows.runtime_payload_sanitizer import (
     sanitize_runtime_mapping,
-    serialize_node_execution_record,
-    serialize_node_execution_record_for_response,
-)
-from backend.service.application.workflows.snapshot_execution import (
-    WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE,
-    WorkflowSnapshotExecutionRequest,
-    WorkflowSnapshotExecutionResult,
-    WorkflowSnapshotProcessExecutor,
-    WorkflowSnapshotProcessHandle,
-    deserialize_snapshot_execution_result,
 )
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowPreviewRun,
@@ -56,33 +33,17 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.service.settings import BackendServiceSettings
-
-if TYPE_CHECKING:
-    from backend.service.application.deployments import PublishedInferenceGateway
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
-WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS = 15.0
 LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class WorkflowPreviewRunExecutionRequest:
-    """描述一条交给 preview manager 托管执行的请求。
-
-    字段：
-    - preview_run_id：preview run id。
-    - project_id：所属 Project id。
-    - application_id：所属 application id。
-    - application_snapshot_object_key：application snapshot object key。
-    - template_snapshot_object_key：template snapshot object key。
-    - input_bindings：按 application input binding id 组织的输入 payload。
-    - execution_metadata：执行元数据。
-    - timeout_seconds：子进程执行超时秒数。
-    - retain_node_records_enabled：是否保留 node_records。
-    - return_sync_response_payload_enabled：是否为同步响应暂存原始 outputs、template_outputs 和 node_records。
-    """
+    """描述一条在当前服务进程直接执行的 Preview 请求。"""
 
     preview_run_id: str
     project_id: str
@@ -93,152 +54,104 @@ class WorkflowPreviewRunExecutionRequest:
     execution_metadata: dict[str, object] = field(default_factory=dict)
     timeout_seconds: int = 30
     retain_node_records_enabled: bool = True
-    return_sync_response_payload_enabled: bool = False
+    return_sync_response_payload_enabled: bool = True
     target_node_id: str | None = None
 
 
-@dataclass
-class _ActiveWorkflowPreviewRun:
-    """描述一条正在父进程中被观察的 preview run。"""
-
-    request: WorkflowPreviewRunExecutionRequest
-    executor: WorkflowSnapshotProcessExecutor
-    handle: WorkflowSnapshotProcessHandle
-    final_preview_run: WorkflowPreviewRun | None = None
-    cancel_event: Event = field(default_factory=Event, repr=False)
-    completion_event: Event = field(default_factory=Event, repr=False)
-    event_lock: Lock = field(default_factory=Lock, repr=False)
-    thread: Thread | None = field(default=None, repr=False)
-
-
 class WorkflowPreviewRunManager:
-    """管理 preview run 子进程、过程事件和取消语义。"""
+    """提供 Preview Run 查询、状态更新和单事件 JSONL 追加。"""
 
     def __init__(
         self,
         *,
-        settings: BackendServiceSettings,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
-        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
-        published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
-        """初始化 preview run 管理器。"""
+        """初始化 Preview Run 存储管理器。"""
 
-        self.settings = settings
         self.session_factory = session_factory
         self.service_event_bus = getattr(session_factory, "service_event_bus", None)
         self.dataset_storage = dataset_storage
-        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
-        self.published_inference_gateway = published_inference_gateway
-        self._active_runs: dict[str, _ActiveWorkflowPreviewRun] = {}
-        self._completed_preview_runs: dict[str, WorkflowPreviewRun] = {}
         self._lock = Lock()
-        self._stopping = Event()
+        self._event_locks: dict[str, Lock] = {}
+        self._event_sequences: dict[str, int] = {}
+        self._event_streams: dict[str, BinaryIO] = {}
 
-    def start(self) -> None:
-        """启动管理器本身。"""
+    def initialize_event_stream(self, preview_run_id: str) -> float:
+        """为新 Preview Run 创建唯一的空 events.jsonl。"""
 
-        self._stopping.clear()
-
-    def stop(self) -> None:
-        """停止全部活动 preview run，并等待后台观察线程收口。"""
-
-        self._stopping.set()
-        with self._lock:
-            active_runs = tuple(self._active_runs.values())
-        for active_run in active_runs:
-            active_run.cancel_event.set()
-            active_run.executor.terminate(active_run.handle)
-        for active_run in active_runs:
-            active_run.completion_event.wait(timeout=1.0)
-
-    def submit_run(self, request: WorkflowPreviewRunExecutionRequest) -> None:
-        """提交一条 preview run，并异步观察其生命周期。"""
-
-        if self._stopping.is_set():
-            raise ServiceConfigurationError("workflow preview run manager 已停止")
-        with self._lock:
-            if request.preview_run_id in self._active_runs:
-                raise InvalidRequestError(
-                    "preview run 已在执行中",
-                    details={"preview_run_id": request.preview_run_id},
-                )
-
-        executor = WorkflowSnapshotProcessExecutor(
-            settings=self.settings,
-            request_timeout_seconds=request.timeout_seconds,
-            local_buffer_broker_event_channel=self._resolve_local_buffer_broker_event_channel(),
-            published_inference_gateway=self.published_inference_gateway,
-        )
-        execution_metadata = dict(request.execution_metadata)
-        execution_metadata.setdefault(WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, request.preview_run_id)
-        handle = executor.start(
-            WorkflowSnapshotExecutionRequest(
-                project_id=request.project_id,
-                application_id=request.application_id,
-                application_snapshot_object_key=request.application_snapshot_object_key,
-                template_snapshot_object_key=request.template_snapshot_object_key,
-                input_bindings=dict(request.input_bindings),
-                execution_metadata=execution_metadata,
-                target_node_id=request.target_node_id,
-            )
-        )
-        active_run = _ActiveWorkflowPreviewRun(
-            request=request,
-            executor=executor,
-            handle=handle,
-        )
-        try:
-            self._write_events(active_run.request.preview_run_id, (), event_lock=active_run.event_lock)
-            self._append_event(
-                active_run.request.preview_run_id,
-                event_type="preview.started",
-                message="preview run started",
-                payload={"state": "running"},
-                event_lock=active_run.event_lock,
-            )
-            thread = Thread(
-                target=self._observe_active_run,
-                args=(active_run,),
-                name=f"workflow-preview-{request.preview_run_id}",
-                daemon=True,
-            )
-            active_run.thread = thread
+        started_at = monotonic()
+        event_lock = self._resolve_event_lock(preview_run_id)
+        with event_lock:
+            events_path = self._events_path(preview_run_id)
+            events_path.parent.mkdir(parents=True, exist_ok=True)
+            event_stream = events_path.open("wb")
             with self._lock:
-                self._active_runs[request.preview_run_id] = active_run
-            thread.start()
-        except Exception:
-            with self._lock:
-                self._active_runs.pop(request.preview_run_id, None)
-            executor.close_handle(handle)
-            raise
+                previous_stream = self._event_streams.pop(preview_run_id, None)
+                self._event_streams[preview_run_id] = event_stream
+                self._event_sequences[preview_run_id] = 0
+            if previous_stream is not None:
+                previous_stream.close()
+        return _elapsed_milliseconds(started_at)
 
-    def wait_for_completion(
+    def append_event(
         self,
         preview_run_id: str,
         *,
-        timeout_seconds: float,
-    ) -> WorkflowPreviewRun:
-        """等待一条 preview run 进入终态。"""
+        event_type: str,
+        message: str,
+        payload: dict[str, object],
+    ) -> tuple[WorkflowPreviewRunEvent, float]:
+        """构造一条事件并直接追加一行 JSONL。"""
 
-        active_run = self._get_active_run(preview_run_id)
-        if active_run is None:
-            completed_preview_run = self._pop_completed_preview_run(preview_run_id)
-            return completed_preview_run if completed_preview_run is not None else self.get_preview_run(preview_run_id)
-        if not active_run.completion_event.wait(timeout=max(0.1, timeout_seconds)):
-            raise OperationTimeoutError(
-                "等待 workflow preview run 完成超时",
-                details={
+        persist_started_at = monotonic()
+        event_lock = self._resolve_event_lock(preview_run_id)
+        with event_lock:
+            sequence = self._next_event_sequence(preview_run_id)
+            normalized_event_type = event_type.strip() or "workflow.event"
+            normalized_message = message.strip() or normalized_event_type
+            event = WorkflowPreviewRunEvent(
+                preview_run_id=preview_run_id,
+                sequence=sequence,
+                event_type=normalized_event_type,
+                created_at=_now_isoformat(),
+                message=normalized_message,
+                payload=sanitize_runtime_mapping(payload),
+            )
+            events_path = self._events_path(preview_run_id)
+            events_path.parent.mkdir(parents=True, exist_ok=True)
+            encoded_line = (
+                json.dumps(
+                    _serialize_preview_run_event(event),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                + b"\n"
+            )
+            event_stream = self._resolve_event_stream(
+                preview_run_id,
+                events_path=events_path,
+            )
+            event_stream.write(encoded_line)
+        persist_ms = _elapsed_milliseconds(persist_started_at)
+        self._publish_preview_run_event(event)
+        try:
+            self._publish_project_summary_event(preview_run_id, event)
+        except Exception:
+            LOGGER.exception(
+                "workflow preview run project summary event publish failed",
+                extra={
                     "preview_run_id": preview_run_id,
-                    "timeout_seconds": timeout_seconds,
+                    "event_type": event.event_type,
                 },
             )
-        if active_run.final_preview_run is not None:
-            self._pop_completed_preview_run(preview_run_id)
-            return active_run.final_preview_run
-        completed_preview_run = self._pop_completed_preview_run(preview_run_id)
-        return completed_preview_run if completed_preview_run is not None else self.get_preview_run(preview_run_id)
+        if event.event_type in {
+            "preview.succeeded",
+            "preview.failed",
+            "preview.timed_out",
+        }:
+            self._release_event_state(preview_run_id)
+        return event, persist_ms
 
     def list_events(
         self,
@@ -247,16 +160,7 @@ class WorkflowPreviewRunManager:
         after_sequence: int | None = None,
         limit: int | None = None,
     ) -> tuple[WorkflowPreviewRunEvent, ...]:
-        """读取一条 preview run 的过程事件。
-
-        参数：
-        - preview_run_id：目标 preview run id。
-        - after_sequence：可选事件下界；只返回 sequence 更大的事件。
-        - limit：可选返回条数上限；为空时返回全部命中的事件。
-
-        返回：
-        - tuple[WorkflowPreviewRunEvent, ...]：按 sequence 升序排列的事件列表。
-        """
+        """按顺序读取 events.jsonl 中的有效事件。"""
 
         if after_sequence is not None and after_sequence < 0:
             raise InvalidRequestError("after_sequence 不能小于 0")
@@ -264,46 +168,14 @@ class WorkflowPreviewRunManager:
             raise InvalidRequestError("limit 必须大于 0")
         event_lock = self._resolve_event_lock(preview_run_id)
         with event_lock:
+            self._flush_event_stream(preview_run_id)
             events = self._read_events(preview_run_id)
         if after_sequence is not None:
             events = tuple(item for item in events if item.sequence > after_sequence)
-        if limit is None:
-            return events
-        return events[:limit]
-
-    def cancel_run(self, preview_run_id: str, *, cancelled_by: str | None) -> WorkflowPreviewRun:
-        """取消一条正在执行的 preview run。"""
-
-        preview_run = self.get_preview_run(preview_run_id)
-        if preview_run.state in WORKFLOW_PREVIEW_RUN_TERMINAL_STATES:
-            return preview_run
-
-        metadata = dict(preview_run.metadata)
-        metadata["cancel_requested_at"] = _now_isoformat()
-        normalized_cancelled_by = _normalize_optional_str(cancelled_by)
-        if normalized_cancelled_by is not None:
-            metadata["cancelled_by"] = normalized_cancelled_by
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_preview_run(replace(preview_run, metadata=metadata))
-            unit_of_work.commit()
-
-        active_run = self._get_active_run(preview_run_id)
-        if active_run is None:
-            updated_preview_run = self._mark_run_cancelled(preview_run_id)
-            self._append_event(
-                preview_run_id,
-                event_type="preview.cancelled",
-                message="preview run cancelled",
-                payload={"state": "cancelled", "error_message": updated_preview_run.error_message},
-            )
-            return updated_preview_run
-
-        active_run.cancel_event.set()
-        active_run.completion_event.wait(timeout=5.0)
-        return self.get_preview_run(preview_run_id)
+        return events if limit is None else events[:limit]
 
     def get_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun:
-        """按 id 读取一个 preview run。"""
+        """按 id 读取 Preview Run。"""
 
         with self._open_unit_of_work() as unit_of_work:
             preview_run = unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
@@ -314,397 +186,113 @@ class WorkflowPreviewRunManager:
             )
         return preview_run
 
-    def _observe_active_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
-        """在后台线程里观察单条 preview run 的执行过程。"""
+    def _events_path(self, preview_run_id: str) -> Path:
+        """返回 Preview Run 的 events.jsonl 本地路径。"""
 
-        startup_deadline = monotonic() + WORKFLOW_PREVIEW_PROCESS_STARTUP_GRACE_SECONDS
-        execution_deadline: float | None = None
-        preview_run_id = active_run.request.preview_run_id
-        try:
-            while True:
-                if self._drain_child_events(active_run) and execution_deadline is None:
-                    execution_deadline = (
-                        monotonic() + float(active_run.request.timeout_seconds)
-                    )
-                if active_run.cancel_event.is_set():
-                    active_run.executor.terminate(active_run.handle)
-                    updated_preview_run = self._mark_run_cancelled(preview_run_id)
-                    self._append_event(
-                        preview_run_id,
-                        event_type="preview.cancelled",
-                        message="preview run cancelled",
-                        payload={"state": "cancelled", "error_message": updated_preview_run.error_message},
-                        event_lock=active_run.event_lock,
-                    )
-                    return
-
-                deadline = (
-                    execution_deadline
-                    if execution_deadline is not None
-                    else startup_deadline
-                )
-                remaining_seconds = deadline - monotonic()
-                if remaining_seconds <= 0:
-                    active_run.executor.terminate(active_run.handle)
-                    self._settle_child_events(active_run)
-                    error = OperationTimeoutError(
-                        "等待 workflow snapshot 子进程响应超时",
-                        details={
-                            "preview_run_id": preview_run_id,
-                            "timeout_seconds": active_run.request.timeout_seconds,
-                        },
-                    )
-                    updated_preview_run = self._mark_run_timed_out(
-                        preview_run_id,
-                        error,
-                        node_records=self._build_partial_node_records(active_run),
-                    )
-                    active_run.final_preview_run = updated_preview_run
-                    self._append_event(
-                        preview_run_id,
-                        event_type="preview.timed_out",
-                        message="preview run timed out",
-                        payload={"state": "timed_out", "error_message": updated_preview_run.error_message},
-                        event_lock=active_run.event_lock,
-                    )
-                    return
-
-                try:
-                    message = active_run.handle.response_queue.get(
-                        timeout=max(0.1, min(0.2, remaining_seconds))
-                    )
-                except Empty:
-                    if not active_run.handle.process.is_alive():
-                        self._settle_child_events(active_run)
-                        if active_run.handle.process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE:
-                            error = OperationTimeoutError(
-                                "custom node 执行超过 manifest timeout，workflow snapshot 进程已终止",
-                                details={
-                                    "preview_run_id": preview_run_id,
-                                    "process_exit_code": CUSTOM_NODE_TIMEOUT_EXIT_CODE,
-                                },
-                            )
-                            updated_preview_run = self._mark_run_timed_out(
-                                preview_run_id,
-                                error,
-                                node_records=self._build_partial_node_records(active_run),
-                            )
-                            active_run.final_preview_run = updated_preview_run
-                            self._append_event(
-                                preview_run_id,
-                                event_type="preview.timed_out",
-                                message="custom node hard timeout",
-                                payload={
-                                    "state": "timed_out",
-                                    "error_message": updated_preview_run.error_message,
-                                },
-                                event_lock=active_run.event_lock,
-                            )
-                            return
-                        error = ServiceConfigurationError(
-                            "workflow snapshot 子进程已退出且未返回结果",
-                            details={"preview_run_id": preview_run_id},
-                        )
-                        updated_preview_run = self._mark_run_failed(
-                            preview_run_id,
-                            error,
-                            node_records=self._build_partial_node_records(active_run),
-                        )
-                        active_run.final_preview_run = updated_preview_run
-                        self._append_event(
-                            preview_run_id,
-                            event_type="preview.failed",
-                            message="preview run failed",
-                            payload={"state": "failed", "error_message": updated_preview_run.error_message},
-                            event_lock=active_run.event_lock,
-                        )
-                        return
-                    continue
-
-                self._drain_child_events(active_run)
-                try:
-                    execution_result = deserialize_snapshot_execution_result(message)
-                except OperationTimeoutError as exc:
-                    self._settle_child_events(active_run)
-                    updated_preview_run = self._mark_run_timed_out(
-                        preview_run_id,
-                        exc,
-                        node_records=self._build_partial_node_records(active_run),
-                    )
-                    active_run.final_preview_run = updated_preview_run
-                    self._append_event(
-                        preview_run_id,
-                        event_type="preview.timed_out",
-                        message="preview run timed out",
-                        payload={
-                            "state": "timed_out",
-                            "error_message": updated_preview_run.error_message,
-                            "error_details": _read_preview_run_last_error_details(updated_preview_run),
-                        },
-                        event_lock=active_run.event_lock,
-                    )
-                    return
-                except ServiceError as exc:
-                    self._settle_child_events(active_run)
-                    updated_preview_run = self._mark_run_failed(
-                        preview_run_id,
-                        exc,
-                        node_records=self._build_partial_node_records(active_run),
-                    )
-                    active_run.final_preview_run = updated_preview_run
-                    self._append_event(
-                        preview_run_id,
-                        event_type="preview.failed",
-                        message="preview run failed",
-                        payload={
-                            "state": "failed",
-                            "error_message": updated_preview_run.error_message,
-                            "error_details": _read_preview_run_last_error_details(updated_preview_run),
-                        },
-                        event_lock=active_run.event_lock,
-                    )
-                    return
-
-                updated_preview_run = self._mark_run_succeeded(
-                    preview_run_id,
-                    execution_result,
-                    retain_node_records_enabled=active_run.request.retain_node_records_enabled,
-                    return_sync_response_payload_enabled=active_run.request.return_sync_response_payload_enabled,
-                )
-                active_run.final_preview_run = updated_preview_run
-                self._append_event(
-                    preview_run_id,
-                    event_type="preview.succeeded",
-                    message="preview run succeeded",
-                    payload={"state": "succeeded"},
-                    event_lock=active_run.event_lock,
-                )
-                return
-        finally:
-            try:
-                self._drain_child_events(active_run)
-            except ServiceError:
-                pass
-            active_run.executor.close_handle(active_run.handle)
-            self._remember_completed_preview_run(active_run)
-            with self._lock:
-                self._active_runs.pop(preview_run_id, None)
-            active_run.completion_event.set()
-
-    def _remember_completed_preview_run(self, active_run: _ActiveWorkflowPreviewRun) -> None:
-        """为同步等待方暂存刚完成的 PreviewRun。"""
-
-        if not active_run.request.return_sync_response_payload_enabled:
-            return
-        if active_run.final_preview_run is None:
-            return
-        with self._lock:
-            self._completed_preview_runs[active_run.request.preview_run_id] = active_run.final_preview_run
-
-    def _pop_completed_preview_run(self, preview_run_id: str) -> WorkflowPreviewRun | None:
-        """读取并移除刚完成但已离开 active map 的 PreviewRun。"""
-
-        with self._lock:
-            return self._completed_preview_runs.pop(preview_run_id, None)
-
-    def _drain_child_events(self, active_run: _ActiveWorkflowPreviewRun) -> bool:
-        """持久化子进程事件，并返回 worker 是否已完成启动。"""
-
-        worker_ready = False
-        while True:
-            child_event = active_run.executor.read_event(active_run.handle)
-            if child_event is None:
-                return worker_ready
-            event_type = str(child_event.get("event_type") or "workflow.event")
-            if event_type == WORKFLOW_SNAPSHOT_WORKER_READY_EVENT_TYPE:
-                worker_ready = True
-                continue
-            self._append_event(
-                active_run.request.preview_run_id,
-                event_type=event_type,
-                message=str(child_event.get("message") or child_event.get("event_type") or "workflow event"),
-                payload=child_event.get("payload") if isinstance(child_event.get("payload"), dict) else {},
-                event_lock=active_run.event_lock,
-            )
-
-    def _settle_child_events(
-        self,
-        active_run: _ActiveWorkflowPreviewRun,
-    ) -> None:
-        """在失败收口前等待独立事件队列完成短暂刷新。"""
-
-        stable_poll_count = 0
-        previous_event_count = -1
-        for _ in range(10):
-            self._drain_child_events(active_run)
-            current_event_count = len(
-                self._read_events(active_run.request.preview_run_id)
-            )
-            if current_event_count == previous_event_count:
-                stable_poll_count += 1
-                if stable_poll_count >= 2:
-                    return
-            else:
-                stable_poll_count = 0
-                previous_event_count = current_event_count
-            active_run.completion_event.wait(timeout=0.01)
-
-    def _mark_run_succeeded(
-        self,
-        preview_run_id: str,
-        execution_result: WorkflowSnapshotExecutionResult,
-        *,
-        retain_node_records_enabled: bool,
-        return_sync_response_payload_enabled: bool,
-    ) -> WorkflowPreviewRun:
-        """把 preview run 更新为 succeeded。"""
-
-        with self._open_unit_of_work() as unit_of_work:
-            preview_run = self._require_preview_run(unit_of_work, preview_run_id)
-            persisted_preview_run = replace(
-                preview_run,
-                state="succeeded",
-                finished_at=_now_isoformat(),
-                outputs=sanitize_runtime_mapping(execution_result.outputs),
-                template_outputs=sanitize_runtime_mapping(execution_result.template_outputs),
-                node_records=(
-                    tuple(serialize_node_execution_record(item) for item in execution_result.node_records)
-                    if retain_node_records_enabled
-                    else ()
-                ),
-                error_message=None,
-            )
-            unit_of_work.workflow_runtime.save_preview_run(persisted_preview_run)
-            unit_of_work.commit()
-        if not return_sync_response_payload_enabled:
-            return persisted_preview_run
-        return replace(
-            persisted_preview_run,
-            outputs=dict(execution_result.outputs),
-            template_outputs=dict(execution_result.template_outputs),
-            node_records=(
-                tuple(serialize_node_execution_record_for_response(item) for item in execution_result.node_records)
-                if retain_node_records_enabled
-                else ()
-            ),
+        return self.dataset_storage.resolve(
+            build_workflow_preview_run_events_object_key(preview_run_id)
         )
 
-    def _mark_run_failed(
-        self,
-        preview_run_id: str,
-        error: ServiceError,
-        *,
-        node_records: tuple[dict[str, object], ...] = (),
-    ) -> WorkflowPreviewRun:
-        """把 preview run 更新为 failed。"""
+    def _read_events(self, preview_run_id: str) -> tuple[WorkflowPreviewRunEvent, ...]:
+        """只从当前 events.jsonl 读取事件。"""
 
-        with self._open_unit_of_work() as unit_of_work:
-            preview_run = self._require_preview_run(unit_of_work, preview_run_id)
-            updated_preview_run = replace(
-                preview_run,
-                state="failed",
-                finished_at=_now_isoformat(),
-                error_message=error.message,
-                metadata=_build_preview_run_error_metadata(preview_run, error=error),
-                node_records=node_records,
-            )
-            unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
-            unit_of_work.commit()
-        return updated_preview_run
-
-    def _mark_run_timed_out(
-        self,
-        preview_run_id: str,
-        error: OperationTimeoutError,
-        *,
-        node_records: tuple[dict[str, object], ...] = (),
-    ) -> WorkflowPreviewRun:
-        """把 preview run 更新为 timed_out。"""
-
-        with self._open_unit_of_work() as unit_of_work:
-            preview_run = self._require_preview_run(unit_of_work, preview_run_id)
-            updated_preview_run = replace(
-                preview_run,
-                state="timed_out",
-                finished_at=_now_isoformat(),
-                error_message=error.message,
-                metadata=_build_preview_run_error_metadata(preview_run, error=error),
-                node_records=node_records,
-            )
-            unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
-            unit_of_work.commit()
-        return updated_preview_run
-
-    def _build_partial_node_records(
-        self,
-        active_run: _ActiveWorkflowPreviewRun,
-    ) -> tuple[dict[str, object], ...]:
-        """读取本次失败 Preview 已完成节点的调试记录。"""
-
-        if not active_run.request.retain_node_records_enabled:
+        events_path = self._events_path(preview_run_id)
+        if not events_path.is_file():
             return ()
-        return build_completed_node_records_from_events(
-            self._read_events(active_run.request.preview_run_id)
-        )
+        events: list[WorkflowPreviewRunEvent] = []
+        with events_path.open("r", encoding="utf-8", errors="replace") as event_stream:
+            for line in event_stream:
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                event = _deserialize_preview_run_event(preview_run_id, item)
+                if event is not None:
+                    events.append(event)
+        return tuple(events)
 
-    def _mark_run_cancelled(self, preview_run_id: str) -> WorkflowPreviewRun:
-        """把 preview run 更新为 cancelled。"""
+    def _next_event_sequence(self, preview_run_id: str) -> int:
+        """在事件文件锁内生成下一序号。"""
 
-        with self._open_unit_of_work() as unit_of_work:
-            preview_run = self._require_preview_run(unit_of_work, preview_run_id)
-            updated_preview_run = replace(
-                preview_run,
-                state="cancelled",
-                finished_at=_now_isoformat(),
-                error_message="workflow preview run 已取消",
+        with self._lock:
+            sequence = self._event_sequences.get(preview_run_id)
+        if sequence is None:
+            _ensure_jsonl_append_boundary(self._events_path(preview_run_id))
+            sequence = _read_last_valid_event_sequence(
+                self._events_path(preview_run_id),
+                preview_run_id=preview_run_id,
             )
-            unit_of_work.workflow_runtime.save_preview_run(updated_preview_run)
-            unit_of_work.commit()
-        return updated_preview_run
+        sequence += 1
+        with self._lock:
+            self._event_sequences[preview_run_id] = sequence
+        return sequence
 
-    def _append_event(
+    def _resolve_event_lock(self, preview_run_id: str) -> Lock:
+        """返回单个 Preview Run 的事件写锁。"""
+
+        with self._lock:
+            event_lock = self._event_locks.get(preview_run_id)
+            if event_lock is None:
+                event_lock = Lock()
+                self._event_locks[preview_run_id] = event_lock
+            return event_lock
+
+    def _resolve_event_stream(
         self,
         preview_run_id: str,
         *,
-        event_type: str,
-        message: str,
-        payload: dict[str, object],
-        event_lock: Lock | None = None,
-    ) -> WorkflowPreviewRunEvent:
-        """向 preview run 的 events.json 追加一条事件。"""
+        events_path: Path,
+    ) -> BinaryIO:
+        """返回当前 Preview 的 JSONL 追加句柄。"""
 
-        active_event_lock = event_lock or self._resolve_event_lock(preview_run_id)
-        with active_event_lock:
-            existing_events = list(self._read_events(preview_run_id))
-            new_event = WorkflowPreviewRunEvent(
-                preview_run_id=preview_run_id,
-                sequence=len(existing_events) + 1,
-                event_type=event_type.strip() or "workflow.event",
-                created_at=_now_isoformat(),
-                message=message.strip() or event_type.strip() or "workflow event",
-                payload=sanitize_runtime_mapping(payload),
-            )
-            existing_events.append(new_event)
-            self._write_events(preview_run_id, tuple(existing_events), event_lock=active_event_lock)
-            self._publish_preview_run_event(new_event)
-        try:
-            self._publish_project_summary_event(preview_run_id, new_event)
-        except Exception:
-            LOGGER.exception(
-                "workflow preview run project summary event publish failed",
-                extra={
-                    "preview_run_id": preview_run_id,
-                    "event_type": new_event.event_type,
-                },
-            )
-        return new_event
+        with self._lock:
+            event_stream = self._event_streams.get(preview_run_id)
+            if event_stream is not None:
+                return event_stream
+            event_stream = events_path.open("ab")
+            self._event_streams[preview_run_id] = event_stream
+            return event_stream
+
+    def flush_event_stream(self, preview_run_id: str) -> float:
+        """把当前 Preview 已逐行写入的事件刷新到文件。"""
+
+        started_at = monotonic()
+        event_lock = self._resolve_event_lock(preview_run_id)
+        with event_lock:
+            self._flush_event_stream(preview_run_id)
+        return _elapsed_milliseconds(started_at)
+
+    def _flush_event_stream(self, preview_run_id: str) -> None:
+        """在事件锁内刷新当前 Preview 的 JSONL 句柄。"""
+
+        with self._lock:
+            event_stream = self._event_streams.get(preview_run_id)
+        if event_stream is not None:
+            event_stream.flush()
+
+    def _release_event_state(self, preview_run_id: str) -> None:
+        """终态后释放进程内序号和锁索引。"""
+
+        with self._lock:
+            self._event_sequences.pop(preview_run_id, None)
+            self._event_locks.pop(preview_run_id, None)
+            event_stream = self._event_streams.pop(preview_run_id, None)
+        if event_stream is not None:
+            event_stream.close()
+
+    def close(self) -> None:
+        """关闭仍在执行中的 Preview JSONL 追加句柄。"""
+
+        with self._lock:
+            event_streams = tuple(self._event_streams.values())
+            self._event_streams.clear()
+            self._event_sequences.clear()
+            self._event_locks.clear()
+        for event_stream in event_streams:
+            event_stream.close()
 
     def _publish_preview_run_event(self, event: WorkflowPreviewRunEvent) -> None:
-        """把 preview run 事件同步发布到统一服务内事件总线。
-
-        参数：
-        - event：刚写入 events.json 的 preview run 事件。
-        """
+        """把新事件同步发布到服务事件总线。"""
 
         if self.service_event_bus is None:
             return
@@ -730,121 +318,28 @@ class WorkflowPreviewRunManager:
         preview_run_id: str,
         event: WorkflowPreviewRunEvent,
     ) -> None:
-        """按需为 preview run 生命周期事件发布项目级聚合更新。"""
+        """为 Preview 生命周期事件发布项目摘要更新。"""
 
         if not should_publish_project_summary_for_preview_event(event.event_type):
             return
-        project_id = self._resolve_preview_run_project_id(preview_run_id)
-        if project_id is None:
+        with self._open_unit_of_work() as unit_of_work:
+            preview_run = unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
+        if preview_run is None:
             return
         publish_project_summary_event(
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
             service_event_bus=self.service_event_bus,
-            project_id=project_id,
+            project_id=preview_run.project_id,
             topic=PROJECT_SUMMARY_TOPIC_WORKFLOW_PREVIEW_RUNS,
             source_stream="workflows.preview-runs.events",
             source_resource_kind="workflow_preview_run",
             source_resource_id=preview_run_id,
         )
 
-    def _resolve_preview_run_project_id(self, preview_run_id: str) -> str | None:
-        """解析一条 preview run 对应的 Project id。"""
-
-        active_run = self._get_active_run(preview_run_id)
-        if active_run is not None:
-            return active_run.request.project_id
-        with self._open_unit_of_work() as unit_of_work:
-            preview_run = unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
-        if preview_run is None:
-            return None
-        return preview_run.project_id
-
-    def _read_events(self, preview_run_id: str) -> tuple[WorkflowPreviewRunEvent, ...]:
-        """读取一条 preview run 的全部事件。"""
-
-        object_key = build_workflow_preview_run_events_object_key(preview_run_id)
-        if not self.dataset_storage.resolve(object_key).exists():
-            return ()
-        payload = self.dataset_storage.read_json(object_key)
-        if not isinstance(payload, list):
-            raise ServiceConfigurationError(
-                "preview run 事件文件格式无效",
-                details={"preview_run_id": preview_run_id},
-            )
-        events: list[WorkflowPreviewRunEvent] = []
-        for item in payload:
-            if not isinstance(item, dict):
-                continue
-            sequence = item.get("sequence")
-            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= 0:
-                continue
-            created_at = item.get("created_at") if isinstance(item.get("created_at"), str) else ""
-            event_type = item.get("event_type") if isinstance(item.get("event_type"), str) else ""
-            message = item.get("message") if isinstance(item.get("message"), str) else ""
-            payload_value = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-            if not created_at or not event_type or not message:
-                continue
-            events.append(
-                WorkflowPreviewRunEvent(
-                    preview_run_id=preview_run_id,
-                    sequence=sequence,
-                    event_type=event_type,
-                    created_at=created_at,
-                    message=message,
-                    payload=payload_value,
-                )
-            )
-        return tuple(events)
-
-    def _write_events(
-        self,
-        preview_run_id: str,
-        events: tuple[WorkflowPreviewRunEvent, ...],
-        *,
-        event_lock: Lock | None = None,
-    ) -> None:
-        """把 preview run 事件列表写回 events.json。"""
-
-        _ = event_lock
-        object_key = build_workflow_preview_run_events_object_key(preview_run_id)
-        payload = [
-            {
-                "preview_run_id": item.preview_run_id,
-                "sequence": item.sequence,
-                "event_type": item.event_type,
-                "created_at": item.created_at,
-                "message": item.message,
-                "payload": sanitize_runtime_mapping(item.payload),
-            }
-            for item in events
-        ]
-        self.dataset_storage.write_json(object_key, payload)
-
-    def _resolve_event_lock(self, preview_run_id: str) -> Lock:
-        """返回指定 preview run 事件文件对应的写锁。"""
-
-        active_run = self._get_active_run(preview_run_id)
-        if active_run is not None:
-            return active_run.event_lock
-        return self._lock
-
-    def _get_active_run(self, preview_run_id: str) -> _ActiveWorkflowPreviewRun | None:
-        """按 id 返回当前活动 preview run 句柄。"""
-
-        with self._lock:
-            return self._active_runs.get(preview_run_id)
-
-    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
-        """读取当前 preview run 可复用的 LocalBufferBroker 事件通道。"""
-
-        if self.local_buffer_broker_event_channel_provider is None:
-            return None
-        return self.local_buffer_broker_event_channel_provider()
-
     @contextmanager
     def _open_unit_of_work(self) -> Iterator[SqlAlchemyUnitOfWork]:
-        """创建并管理一个 preview manager 使用的 Unit of Work。"""
+        """创建并管理一个 Unit of Work。"""
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
@@ -855,70 +350,88 @@ class WorkflowPreviewRunManager:
         finally:
             unit_of_work.close()
 
-    @staticmethod
-    def _require_preview_run(unit_of_work: SqlAlchemyUnitOfWork, preview_run_id: str) -> WorkflowPreviewRun:
-        """从持久化层中读取一个必然存在的 preview run。"""
 
-        preview_run = unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
-        if preview_run is None:
-            raise ResourceNotFoundError(
-                "请求的 WorkflowPreviewRun 不存在",
-                details={"preview_run_id": preview_run_id},
-            )
-        return preview_run
+def _serialize_preview_run_event(event: WorkflowPreviewRunEvent) -> dict[str, object]:
+    """把事件转换为 JSON 字典。"""
 
-
-def _normalize_optional_str(value: str | None) -> str | None:
-    """把可选字符串规范化为去空白后的值。"""
-
-    if value is None:
-        return None
-    normalized_value = value.strip()
-    return normalized_value or None
-
-
-def _build_preview_run_error_metadata(
-    preview_run: WorkflowPreviewRun,
-    *,
-    error: ServiceError,
-) -> dict[str, object]:
-    """把失败错误细节合并进 preview run metadata。
-
-    参数：
-    - preview_run：当前待更新的 preview run。
-    - error：导致失败或超时的 ServiceError。
-
-    返回：
-    - dict[str, object]：包含 last_error 的新 metadata。
-    """
-
-    metadata = dict(preview_run.metadata)
-    metadata["last_error"] = {
-        "code": error.code,
-        "message": error.message,
-        "details": sanitize_runtime_mapping(error.details),
+    return {
+        "preview_run_id": event.preview_run_id,
+        "sequence": event.sequence,
+        "event_type": event.event_type,
+        "created_at": event.created_at,
+        "message": event.message,
+        "payload": dict(event.payload),
     }
-    return metadata
 
 
-def _read_preview_run_last_error_details(preview_run: WorkflowPreviewRun) -> dict[str, object]:
-    """读取 preview run metadata 中的 last_error.details。
+def _deserialize_preview_run_event(
+    preview_run_id: str,
+    value: object,
+) -> WorkflowPreviewRunEvent | None:
+    """把一行 JSON 字典转换为事件，无效行返回 None。"""
 
-    参数：
-    - preview_run：目标 preview run。
+    if not isinstance(value, dict):
+        return None
+    sequence = value.get("sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= 0:
+        return None
+    event_type = value.get("event_type")
+    created_at = value.get("created_at")
+    message = value.get("message")
+    if not all(isinstance(item, str) and item for item in (event_type, created_at, message)):
+        return None
+    payload = value.get("payload")
+    return WorkflowPreviewRunEvent(
+        preview_run_id=preview_run_id,
+        sequence=sequence,
+        event_type=event_type,
+        created_at=created_at,
+        message=message,
+        payload=payload if isinstance(payload, dict) else {},
+    )
 
-    返回：
-    - dict[str, object]：已脱敏的错误细节；不存在时返回空字典。
-    """
 
-    last_error = preview_run.metadata.get("last_error")
-    if not isinstance(last_error, dict):
-        return {}
-    details = last_error.get("details")
-    return details if isinstance(details, dict) else {}
+def _read_last_valid_event_sequence(
+    events_path: Path,
+    *,
+    preview_run_id: str,
+) -> int:
+    """服务重启后从 JSONL 恢复最后一个有效序号。"""
+
+    if not events_path.is_file():
+        return 0
+    last_sequence = 0
+    with events_path.open("r", encoding="utf-8", errors="replace") as event_stream:
+        for line in event_stream:
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            event = _deserialize_preview_run_event(preview_run_id, value)
+            if event is not None:
+                last_sequence = max(last_sequence, event.sequence)
+    return last_sequence
+
+
+def _ensure_jsonl_append_boundary(events_path: Path) -> None:
+    """服务重启后为异常退出留下的半行补一个换行边界。"""
+
+    if not events_path.is_file() or events_path.stat().st_size == 0:
+        return
+    with events_path.open("rb+") as event_stream:
+        event_stream.seek(-1, 2)
+        if event_stream.read(1) != b"\n":
+            event_stream.seek(0, 2)
+            event_stream.write(b"\n")
 
 
 def _now_isoformat() -> str:
-    """返回当前 UTC 时间的 ISO8601 文本。"""
+    """返回当前 UTC 时间。"""
 
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _elapsed_milliseconds(started_at: float) -> float:
+    """返回从 started_at 到当前的毫秒数。"""
+
+    return round(max(0.0, (monotonic() - started_at) * 1000.0), 3)

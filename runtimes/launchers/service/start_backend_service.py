@@ -19,6 +19,10 @@ from common import (  # noqa: E402
 )
 
 
+RELOAD_SOURCE_DIRECTORIES = ("backend", "custom_nodes")
+"""开发热重载允许观察的服务源码目录。"""
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """构造 backend-service launcher 参数解析器。"""
 
@@ -60,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.reload:
         module_args.append("--reload")
+        for source_directory in RELOAD_SOURCE_DIRECTORIES:
+            module_args.extend(
+                ("--reload-dir", str((app_root / source_directory).resolve()))
+            )
     module_args.extend(extra_args)
     return run_python_module(
         app_root=app_root,

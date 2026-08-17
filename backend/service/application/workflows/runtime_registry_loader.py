@@ -18,9 +18,6 @@ from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
     WorkflowNodeRuntimeRegistry,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    WorkflowCustomNodeRuntimePolicy,
-)
 
 
 SUPPORTED_EXECUTABLE_RUNTIME_KINDS = frozenset({"python-callable", "worker-task"})
@@ -82,8 +79,6 @@ class NodePackEntrypointRegistrationContext:
         self,
         node_type_id: str,
         handler: WorkflowNodeHandler,
-        *,
-        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 python-callable 节点注册 handler。
 
@@ -96,16 +91,12 @@ class NodePackEntrypointRegistrationContext:
         self.runtime_registry.register_python_callable(
             node_definition,
             handler,
-            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(self.manifest),
-            required_permission_scopes=required_permission_scopes,
         )
 
     def register_worker_task(
         self,
         node_type_id: str,
         handler: WorkflowNodeHandler,
-        *,
-        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 worker-task 节点注册 handler。
 
@@ -118,16 +109,12 @@ class NodePackEntrypointRegistrationContext:
         self.runtime_registry.register_worker_task(
             node_definition,
             handler,
-            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(self.manifest),
-            required_permission_scopes=required_permission_scopes,
         )
 
     def register_model_session_provider(
         self,
         loader_node_type_id: str,
         provider: object,
-        *,
-        required_permission_scopes: tuple[str, ...] = (),
     ) -> None:
         """为当前 node pack 的 Load Checkpoint 节点注册生命周期 provider。"""
 
@@ -135,10 +122,6 @@ class NodePackEntrypointRegistrationContext:
         self.runtime_registry.register_model_session_provider(
             loader_node_type_id,
             cast("WorkflowModelSessionProvider", provider),
-            custom_node_policy=WorkflowCustomNodeRuntimePolicy.from_manifest(
-                self.manifest
-            ),
-            required_permission_scopes=required_permission_scopes,
         )
 
 

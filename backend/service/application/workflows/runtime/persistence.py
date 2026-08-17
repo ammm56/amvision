@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime, timezone
+import json
 from threading import Lock
 
 from backend.contracts.buffers import BufferRef
 from backend.contracts.workflows.resource_semantics import build_workflow_run_events_object_key
-from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.workflows.execution_cleanup import register_local_buffer_lease_cleanup
 from backend.service.application.workflows.runtime.policies import (
     should_retain_workflow_run_node_records,
@@ -89,7 +89,7 @@ def append_workflow_run_event(
     message: str,
     payload: dict[str, object] | None = None,
 ) -> WorkflowRunEvent:
-    """按 WorkflowRun 保留策略追加事件到 events.json。"""
+    """按 WorkflowRun 保留策略直接追加一行 events.jsonl。"""
 
     event_payload = sanitize_runtime_mapping(
         {
@@ -109,24 +109,32 @@ def append_workflow_run_event(
         )
 
     with event_lock:
-        existing_events = list(
-            read_workflow_run_events(dataset_storage, workflow_run.workflow_run_id)
+        existing_events = read_workflow_run_events(
+            dataset_storage,
+            workflow_run.workflow_run_id,
         )
         event = WorkflowRunEvent(
             workflow_run_id=workflow_run.workflow_run_id,
             workflow_runtime_id=workflow_run.workflow_runtime_id,
-            sequence=len(existing_events) + 1,
+            sequence=max((item.sequence for item in existing_events), default=0) + 1,
             event_type=event_type.strip() or "run.updated",
             created_at=_now_isoformat(),
             message=message.strip() or "workflow run 事件",
             payload=event_payload,
         )
-        existing_events.append(event)
-        write_workflow_run_events(
-            dataset_storage,
-            workflow_run.workflow_run_id,
-            tuple(existing_events),
+        events_path = dataset_storage.resolve(
+            build_workflow_run_events_object_key(workflow_run.workflow_run_id)
         )
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        with events_path.open("ab") as event_stream:
+            event_stream.write(
+                json.dumps(
+                    _serialize_workflow_run_event(event),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                + b"\n"
+            )
     return event
 
 
@@ -139,14 +147,19 @@ def read_workflow_run_events(
     object_key = build_workflow_run_events_object_key(workflow_run_id)
     if not dataset_storage.resolve(object_key).exists():
         return ()
-    payload = dataset_storage.read_json(object_key)
-    if not isinstance(payload, list):
-        raise ServiceConfigurationError(
-            "workflow run 事件文件格式无效",
-            details={"workflow_run_id": workflow_run_id},
-        )
     events: list[WorkflowRunEvent] = []
-    for item in payload:
+    with dataset_storage.resolve(object_key).open(
+        "r",
+        encoding="utf-8",
+        errors="replace",
+    ) as event_stream:
+        raw_items: list[object] = []
+        for line in event_stream:
+            try:
+                raw_items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    for item in raw_items:
         if not isinstance(item, dict):
             continue
         sequence = item.get("sequence")
@@ -183,26 +196,18 @@ def read_workflow_run_events(
     return tuple(events)
 
 
-def write_workflow_run_events(
-    dataset_storage: LocalDatasetStorage,
-    workflow_run_id: str,
-    events: tuple[WorkflowRunEvent, ...],
-) -> None:
-    """把 WorkflowRun 事件列表写回 events.json。"""
+def _serialize_workflow_run_event(event: WorkflowRunEvent) -> dict[str, object]:
+    """把一条 WorkflowRun 事件转换成 JSONL 字典。"""
 
-    payload = [
-        {
-            "workflow_run_id": item.workflow_run_id,
-            "workflow_runtime_id": item.workflow_runtime_id,
-            "sequence": item.sequence,
-            "event_type": item.event_type,
-            "created_at": item.created_at,
-            "message": item.message,
-            "payload": sanitize_runtime_mapping(item.payload),
-        }
-        for item in events
-    ]
-    dataset_storage.write_json(build_workflow_run_events_object_key(workflow_run_id), payload)
+    return {
+        "workflow_run_id": event.workflow_run_id,
+        "workflow_runtime_id": event.workflow_runtime_id,
+        "sequence": event.sequence,
+        "event_type": event.event_type,
+        "created_at": event.created_at,
+        "message": event.message,
+        "payload": sanitize_runtime_mapping(event.payload),
+    }
 
 
 def build_workflow_run_event_payload(workflow_run: WorkflowRun) -> dict[str, object]:

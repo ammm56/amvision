@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from time import perf_counter
 from uuid import uuid4
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -28,6 +29,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         - 追加了 request_id 响应头的响应对象。
         """
 
+        request.state.request_started_at = perf_counter()
         request.state.request_id = request.headers.get("x-request-id", str(uuid4()))
         response = await call_next(request)
         response.headers.setdefault("x-request-id", request.state.request_id)

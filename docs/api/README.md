@@ -12,7 +12,7 @@
 - [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)：当前 WebSocket 资源流、统一消息结构、控制事件和重连规则
 - [docs/api/websocket-usage.md](websocket-usage.md)：第三方系统、HMI、嵌入式 UI 和前端界面接入公开 WebSocket 的连接顺序、恢复流程和最小客户端规则
 - [docs/api/workflows.md](workflows.md)：workflow template/application、node catalog 和 workflow runtime 当前公开边界说明
-- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态快速试跑、sync/async wait_mode 和结果回查
+- [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态同步直调、JSONL 事件和结果回查
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、delete、start、stop、restart、health、instances 和事件历史
 - [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、multipart invoke、async run create、multipart run create、事件历史和取消
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的执行默认项

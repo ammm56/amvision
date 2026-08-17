@@ -254,7 +254,6 @@ def register(context):
         "entrypoints": {"backend": "custom_nodes.opencv_basic_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
-        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": enabled_by_default,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -359,7 +358,6 @@ def register(context):
         "entrypoints": {"backend": "custom_nodes.barcode_nodes.backend.entry:register"},
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
-        "execution": {"isolation": "workflow-process", "timeoutAction": "terminate-workflow-process"},
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }

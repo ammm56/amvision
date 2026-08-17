@@ -269,11 +269,10 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 | POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
 | GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy；支持 offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
-| POST | /api/v1/workflows/preview-runs | workflows:write | 创建一条 WorkflowPreviewRun；支持 sync/async wait_mode，以及 application/node execution_scope。 |
+| POST | /api/v1/workflows/preview-runs | workflows:write | 创建并同步执行一条 WorkflowPreviewRun；支持 application/node execution_scope。 |
 | GET | /api/v1/workflows/preview-runs | workflows:read | 按 Project 列出 WorkflowPreviewRun，并支持状态、创建时间、offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:read | 读取一条 WorkflowPreviewRun。 |
 | GET | /api/v1/workflows/preview-runs/{preview_run_id}/events | workflows:read | 读取一条 WorkflowPreviewRun 的执行事件；支持 after_sequence 和 limit。 |
-| POST | /api/v1/workflows/preview-runs/{preview_run_id}/cancel | workflows:write | 取消一条 queued 或 running 的 WorkflowPreviewRun。 |
 | DELETE | /api/v1/workflows/preview-runs/{preview_run_id} | workflows:write | 删除一条 WorkflowPreviewRun 和对应 snapshot 目录。 |
 | POST | /api/v1/workflows/app-runtimes | workflows:write | 创建一条 WorkflowAppRuntime。 |
 | GET | /api/v1/workflows/app-runtimes | workflows:read | 按 Project 列出 WorkflowAppRuntime；支持 offset、limit 和统一分页响应头。 |
@@ -2207,7 +2206,7 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 
 连接成功后会先收到一条 workflows.preview-runs.connected 事件，随后按当前筛选条件持续推送 preview run 事件。
 
-当前实现使用 service_event_bus 分发实时事件，并使用 preview run snapshot 目录下的 `events.json` 提供历史回放。
+当前实现使用 service_event_bus 分发实时事件，并使用 preview run snapshot 目录下逐事件追加写入的 `events.jsonl` 提供历史回放；不存在旧格式兼容读取。
 
 ### /ws/v1/workflows/runs/events
 
@@ -2221,7 +2220,7 @@ workflow preview-run、run、app-runtime 和 deployment 四类事件流当前都
 
 连接成功后会先收到一条 workflows.runs.connected 事件，随后按当前筛选条件持续推送 WorkflowRun 事件。
 
-当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/workflows/runs/{workflow_run_id}/events` 对应的 `events.json` 提供历史回放。
+当前实现使用 service_event_bus 分发实时事件，并使用 `GET /api/v1/workflows/runs/{workflow_run_id}/events` 对应的 `events.jsonl` 提供逐事件追加的历史回放。
 
 ### /ws/v1/workflows/app-runtimes/events
 

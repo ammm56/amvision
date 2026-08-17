@@ -498,7 +498,6 @@ interface NodePackStatusRow {
   nodeCount: number
   capabilitySummary: string
   dependencySummary: string
-  permissionScopeSummary: string
   sourceDir: string
   manifestPath: string
   catalogPath: string
@@ -705,7 +704,6 @@ const selectedNodePackDetails = computed<NodePackDetailItem[]>(() => {
     { key: 'loaded-at', label: t('customNodes.fields.loadedAt'), value: row.loadedAt },
     { key: 'capabilities', label: t('customNodes.fields.capabilityTags'), value: row.capabilitySummary },
     { key: 'dependencies', label: t('customNodes.fields.dependencies'), value: row.dependencySummary },
-    { key: 'permissions', label: t('customNodes.fields.permissionScopes'), value: row.permissionScopeSummary },
     { key: 'entrypoints', label: t('customNodes.fields.entrypoints'), value: row.manifest ? formatListValue(readManifestValue(row.manifest, 'entrypoints')) : '-' },
     { key: 'catalog-path', label: t('customNodes.fields.catalogPath'), value: row.catalogPath },
   ]
@@ -933,11 +931,6 @@ function buildNodePackStatusRow(pack: NodePackOption): NodePackStatusRow {
     dependencySummary: dependencies.length
       ? dependencies.map((dependency) => `${dependency.nodePackId} ${dependency.versionRange}`.trim()).join(', ')
       : '-',
-    permissionScopeSummary: statusItem
-      ? formatListValue(statusItem.permission_scopes)
-      : manifest
-        ? formatListValue(readManifestValue(manifest, 'permissionScopes', 'permission_scopes'))
-        : '-',
     sourceDir: statusItem?.source_dir ?? '-',
     manifestPath: statusItem?.manifest_path ?? '-',
     catalogPath: statusItem?.custom_node_catalog_path ?? (manifest ? readManifestText(manifest, 'customNodeCatalogPath', 'custom_node_catalog_path') : '-'),

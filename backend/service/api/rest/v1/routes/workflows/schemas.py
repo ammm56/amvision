@@ -206,7 +206,6 @@ class WorkflowNodePackStatusItemResponse(BaseModel):
     loaded_at: str | None = Field(default=None, description="最近一次 loader 扫描时间")
     node_count: int = Field(description="当前成功加载的节点数量")
     capabilities: list[str] = Field(default_factory=list, description="能力标签")
-    permission_scopes: list[str] = Field(default_factory=list, description="权限 scope")
     dependencies: list[WorkflowNodePackDependencyStatusResponse] = Field(
         default_factory=list,
         description="依赖状态列表",

@@ -13,10 +13,6 @@
     "prompt.text",
     "prompt.visual"
   ],
-  "permissionScopes": [
-    "objectstore.read.ref",
-    "model.asset.read"
-  ],
   "entrypoints": {
     "backend": "custom_nodes.yoloe_open_vocab_nodes.backend.entry:register"
   },
@@ -28,10 +24,6 @@
     "defaultSeconds": 120,
     "maxSeconds": 120,
     "killGraceSeconds": 5
-  },
-  "execution": {
-    "isolation": "workflow-process",
-    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

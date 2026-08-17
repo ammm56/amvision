@@ -15,10 +15,6 @@
     "barcode.display",
     "response.body"
   ],
-  "permissionScopes": [
-    "objectstore.read.ref",
-    "objectstore.write.ref"
-  ],
   "entrypoints": {
     "backend": "custom_nodes.barcode_nodes.backend.entry:register"
   },
@@ -30,10 +26,6 @@
     "defaultSeconds": 30,
     "maxSeconds": 30,
     "killGraceSeconds": 2
-  },
-  "execution": {
-    "isolation": "workflow-process",
-    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

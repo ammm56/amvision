@@ -9,7 +9,6 @@
     "pipeline.node",
     "example.hello"
   ],
-  "permissionScopes": [],
   "entrypoints": {
     "backend": "custom_nodes.hello_world_nodes.backend.entry:register"
   },
@@ -21,10 +20,6 @@
     "defaultSeconds": 30,
     "maxSeconds": 30,
     "killGraceSeconds": 2
-  },
-  "execution": {
-    "isolation": "workflow-process",
-    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

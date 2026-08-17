@@ -91,7 +91,6 @@ def _build_node_pack_status_item_response(item: NodePackStatusItem) -> WorkflowN
         loaded_at=item.loaded_at,
         node_count=item.node_count,
         capabilities=list(item.capabilities),
-        permission_scopes=list(item.permission_scopes),
         dependencies=[
             WorkflowNodePackDependencyStatusResponse(
                 node_pack_id=dependency.node_pack_id,

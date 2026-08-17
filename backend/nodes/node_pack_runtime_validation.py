@@ -1,9 +1,8 @@
-"""node pack staging 代码的独立进程验证入口。"""
+"""node pack staging 代码的当前进程注册验证。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from multiprocessing.connection import Connection
 from pathlib import Path
 
 from backend.contracts.nodes.node_pack_manifest import NodePackManifest
@@ -47,9 +46,7 @@ class _StagedNodePackLoader:
 
         return (self.manifest,)
 
-    def get_workflow_payload_contracts(
-        self,
-    ) -> tuple[WorkflowPayloadContract, ...]:
+    def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
         """返回 staging payload 规则。"""
 
         return self.payload_contracts
@@ -60,7 +57,7 @@ class _StagedNodePackLoader:
         return self.node_definitions
 
     def get_runtime_module_search_paths(self) -> tuple[str, ...]:
-        """优先从 staging 导入，并允许读取已验证的激活依赖包。"""
+        """优先从 staging 导入，并允许读取已激活的依赖包。"""
 
         search_paths = [str(self.staged_custom_nodes_root.parent)]
         active_search_path = str(self.active_custom_nodes_root.parent)
@@ -73,7 +70,7 @@ class _StagedNodePackLoader:
         node_pack_id: str,
         node_pack_version: str,
     ) -> str:
-        """返回从受信任 staging 一级目录生成的 module 边界。"""
+        """返回 staging 一级目录对应的 module 前缀。"""
 
         if (
             node_pack_id != self.manifest.node_pack_id
@@ -85,65 +82,47 @@ class _StagedNodePackLoader:
 
 def validate_staged_node_pack_runtime(
     *,
-    staged_custom_nodes_root: str,
-    active_custom_nodes_root: str,
+    staged_custom_nodes_root: Path,
+    active_custom_nodes_root: Path,
     active_directory: str,
     expected_node_pack_id: str,
     expected_version: str,
-    result_connection: Connection,
-) -> None:
-    """在一次性子进程中导入 entrypoint 并完成全部运行时注册。"""
+) -> tuple[str, ...]:
+    """在当前服务进程导入 entrypoint 并验证全部可执行节点已注册。"""
 
-    try:
-        staged_root = Path(staged_custom_nodes_root).resolve()
-        package_dir = (staged_root / active_directory).resolve()
-        validator = LocalNodePackLoader(staged_root)
-        manifest, catalog = validator.validate_node_pack_directory(package_dir)
-        if (
-            manifest.node_pack_id != expected_node_pack_id
-            or manifest.version != expected_version
-        ):
-            raise ValueError("staging manifest 身份在进程边界发生变化")
-        staged_loader = _StagedNodePackLoader(
-            staged_custom_nodes_root=staged_root,
-            active_custom_nodes_root=Path(active_custom_nodes_root).resolve(),
-            active_directory=active_directory,
-            manifest=manifest,
-            payload_contracts=(catalog.payload_contracts if catalog is not None else ()),
-            node_definitions=(catalog.node_definitions if catalog is not None else ()),
-        )
-        catalog_registry = NodeCatalogRegistry(node_pack_loader=staged_loader)
-        runtime_loader = WorkflowNodeRuntimeRegistryLoader(
-            node_catalog_registry=catalog_registry,
-            node_pack_loader=staged_loader,
-            load_custom_node_handlers=True,
-        )
-        runtime_loader.refresh()
-        registered_node_type_ids = sorted(
+    staged_root = staged_custom_nodes_root.resolve()
+    package_dir = (staged_root / active_directory).resolve()
+    validator = LocalNodePackLoader(staged_root)
+    manifest, catalog = validator.validate_node_pack_directory(package_dir)
+    if (
+        manifest.node_pack_id != expected_node_pack_id
+        or manifest.version != expected_version
+    ):
+        raise ValueError("staging manifest 身份在验证期间发生变化")
+    staged_loader = _StagedNodePackLoader(
+        staged_custom_nodes_root=staged_root,
+        active_custom_nodes_root=active_custom_nodes_root.resolve(),
+        active_directory=active_directory,
+        manifest=manifest,
+        payload_contracts=(catalog.payload_contracts if catalog is not None else ()),
+        node_definitions=(catalog.node_definitions if catalog is not None else ()),
+    )
+    catalog_registry = NodeCatalogRegistry(node_pack_loader=staged_loader)
+    runtime_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=catalog_registry,
+        node_pack_loader=staged_loader,
+        load_custom_node_handlers=True,
+    )
+    runtime_loader.refresh()
+    return tuple(
+        sorted(
             definition.node_type_id
             for definition in staged_loader.node_definitions
             if runtime_loader.get_runtime_registry().has_registered_handler(
                 node_definition=definition
             )
         )
-        result_connection.send(
-            {
-                "ok": True,
-                "node_pack_id": manifest.node_pack_id,
-                "version": manifest.version,
-                "registered_node_type_ids": registered_node_type_ids,
-            }
-        )
-    except BaseException as error:
-        result_connection.send(
-            {
-                "ok": False,
-                "error_type": type(error).__name__,
-                "error": str(error),
-            }
-        )
-    finally:
-        result_connection.close()
+    )
 
 
 __all__ = ["validate_staged_node_pack_runtime"]

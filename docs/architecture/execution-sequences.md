@@ -19,7 +19,7 @@
 - 训练和转换都先创建 TaskRecord，再写入 LocalFileQueueBackend，由独立 worker 消费。
 - 部署推理顺序图覆盖同步直返接口，不展开异步 inference task 链。
 - 同步 deployment 推理接口不会自动启动 sync 子进程；未启动时会要求先调用 start 或 warmup。
-- workflow runtime 当前公开接口已经拆成两条路径：preview-runs 走隔离子进程；app-runtimes/{workflow_runtime_id}/invoke 走单实例 worker。
+- workflow runtime 当前公开接口已经拆成两条路径：preview-runs 在 backend-service 当前进程同步直调；app-runtimes/{workflow_runtime_id}/invoke 走长期 worker。
 
 ## 训练链
 
@@ -373,7 +373,7 @@ sequenceDiagram
 
 - preview / app runtime 控制面入口：[backend/service/api/rest/v1/routes/workflow_runtime/router.py](../../backend/service/api/rest/v1/routes/workflow_runtime/router.py)
 - runtime 服务门面：[backend/service/application/workflows/runtime_service.py](../../backend/service/application/workflows/runtime_service.py)
-- preview 子进程执行器：[backend/service/application/workflows/snapshot_execution.py](../../backend/service/application/workflows/snapshot_execution.py)
+- preview 直接执行器：[backend/service/application/workflows/snapshot_execution.py](../../backend/service/application/workflows/snapshot_execution.py)
 - runtime worker 管理器：[backend/service/application/workflows/worker/manager.py](../../backend/service/application/workflows/worker/manager.py)
 
 ```mermaid
@@ -384,7 +384,6 @@ sequenceDiagram
     participant RuntimeSvc as WorkflowRuntimeService
     participant Storage as LocalDatasetStorage
     participant DB as WorkflowRuntimeRepository
-    participant PreviewProc as WorkflowSnapshotProcessExecutor
     participant WorkerMgr as WorkflowRuntimeWorkerManager
     participant RuntimeProc as workflow runtime worker process
     participant SnapshotExec as SnapshotExecutionService
@@ -394,10 +393,8 @@ sequenceDiagram
         API->>RuntimeSvc: create_preview_run(request)
         RuntimeSvc->>Storage: write application/template snapshot
         RuntimeSvc->>DB: save WorkflowPreviewRun(state=running)
-        RuntimeSvc->>PreviewProc: execute(snapshot request)
-        PreviewProc->>SnapshotExec: execute(snapshot)
-        SnapshotExec-->>PreviewProc: outputs + template_outputs + node_records
-        PreviewProc-->>RuntimeSvc: execution_result
+        RuntimeSvc->>SnapshotExec: execute(snapshot)
+        SnapshotExec-->>RuntimeSvc: outputs + template_outputs + node_records
         RuntimeSvc->>DB: update WorkflowPreviewRun(state=succeeded|failed|timed_out)
         RuntimeSvc-->>API: WorkflowPreviewRun
         API-->>Client: 201 WorkflowPreviewRun
@@ -422,7 +419,7 @@ sequenceDiagram
     end
 ```
 
-workflow runtime 链的关键点是编辑态试跑和已发布应用运行已经拆成两条公开路径。preview 通过固定 snapshot 在隔离子进程执行；已发布应用通过单实例 worker 进程执行 start、stop、restart、health、instances 和 sync invoke。
+workflow runtime 链的关键点是编辑态试跑和已发布应用运行已经拆成两条公开路径。preview 通过固定 snapshot 在 backend-service 当前进程直接执行；已发布应用通过长期 worker 进程执行 start、stop、restart、health、instances 和 sync invoke。
 
 ### Workflow Runtime 链异常分支
 

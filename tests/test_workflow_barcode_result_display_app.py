@@ -11,6 +11,12 @@ from backend.contracts.workflows.workflow_graph import FlowApplication, Workflow
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 from backend.service.application.workflows.runtime_service import (
     WorkflowPreviewRunCreateRequest,
     WorkflowRuntimeService,
@@ -105,11 +111,20 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
         task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
     preview_run_manager = WorkflowPreviewRunManager(
-        settings=settings,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    preview_run_manager.start()
+    runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
+        node_catalog_registry=node_catalog_registry,
+        node_pack_loader=node_pack_loader,
+        load_custom_node_handlers=True,
+    )
+    runtime_registry_loader.refresh()
+    runtime_context = WorkflowServiceNodeRuntimeContext(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
     service = WorkflowRuntimeService(
         settings=settings,
         session_factory=session_factory,
@@ -117,6 +132,8 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
         node_catalog_registry=node_catalog_registry,
         preview_run_manager=preview_run_manager,
         worker_manager=SimpleNamespace(),
+        workflow_node_runtime_registry=runtime_registry_loader.get_runtime_registry(),
+        workflow_service_node_runtime_context=runtime_context,
     )
     return service, dataset_storage
 

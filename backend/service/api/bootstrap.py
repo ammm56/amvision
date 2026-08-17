@@ -415,7 +415,7 @@ class BackendServiceBootstrap(
         workflow_node_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
             node_catalog_registry=node_catalog_registry,
             node_pack_loader=node_pack_loader,
-            load_custom_node_handlers=False,
+            load_custom_node_handlers=True,
         )
         workflow_model_session_manager = WorkflowModelSessionManager(
             runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
@@ -664,11 +664,8 @@ class BackendServiceBootstrap(
             published_inference_gateway=published_inference_gateway,
         )
         workflow_preview_run_manager = WorkflowPreviewRunManager(
-            settings=settings,
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            local_buffer_broker_event_channel_provider=local_buffer_broker_supervisor.get_event_channel,
-            published_inference_gateway=published_inference_gateway,
         )
         trigger_workflow_runtime_service = WorkflowRuntimeService(
             settings=settings,
@@ -866,7 +863,6 @@ class BackendServiceBootstrap(
             component.start()
         runtime.deployment_runtime_reconciler.start()
         runtime.workflow_runtime_worker_manager.start()
-        runtime.workflow_preview_run_manager.start()
         WorkflowTriggerSourceService(
             session_factory=runtime.session_factory,
             trigger_source_supervisor=runtime.trigger_source_supervisor,
@@ -890,8 +886,8 @@ class BackendServiceBootstrap(
         runtime.training_telemetry_broker.close()
         runtime.trigger_source_supervisor.stop_all()
         runtime.deployment_runtime_reconciler.stop()
-        runtime.workflow_preview_run_manager.stop()
         runtime.workflow_runtime_worker_manager.stop()
+        runtime.workflow_preview_run_manager.close()
         model_session_manager = (
             runtime.workflow_service_node_runtime_context.workflow_model_session_manager
         )

@@ -27,9 +27,6 @@ from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WorkflowModelSessionManager,
 )
-from backend.service.application.workflows.execution.custom_node_policy import (
-    CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY,
-)
 from backend.service.application.workflows.worker.health import (
     build_runtime_health_summary,
     build_runtime_instance_id,
@@ -168,7 +165,6 @@ def run_workflow_runtime_worker_process(
         model_session_scope_id = f"runtime:{workflow_runtime_id}"
         startup_execution_metadata = {
             WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY: model_session_scope_id,
-            CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY: True,
             "workflow_runtime_id": workflow_runtime_id,
         }
         snapshot_execution_service.prepare_model_sessions(
@@ -266,7 +262,6 @@ def run_workflow_runtime_worker_process(
             requested_timeout_seconds = read_timeout_seconds(command)
             input_bindings = require_payload_dict(command, "input_bindings")
             execution_metadata = require_payload_dict(command, "execution_metadata")
-            execution_metadata[CUSTOM_NODE_PROCESS_ISOLATED_METADATA_KEY] = True
             execution_metadata.setdefault("workflow_run_id", workflow_run_id)
             execution_metadata[
                 WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY

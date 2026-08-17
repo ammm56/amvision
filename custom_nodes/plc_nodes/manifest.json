@@ -13,11 +13,6 @@
     "integration.plc.modbus-tcp",
     "integration.report"
   ],
-  "permissionScopes": [
-    "integration.endpoint.invoke",
-    "integration.plc.modbus.read",
-    "integration.plc.modbus.write"
-  ],
   "entrypoints": {
     "backend": "custom_nodes.plc_nodes.backend.entry:register"
   },
@@ -29,10 +24,6 @@
     "defaultSeconds": 60,
     "maxSeconds": 60,
     "killGraceSeconds": 2
-  },
-  "execution": {
-    "isolation": "workflow-process",
-    "timeoutAction": "terminate-workflow-process"
   },
   "enabledByDefault": true,
   "customNodeCatalogPath": "workflow/catalog.json",

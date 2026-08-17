@@ -338,9 +338,6 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
                 }
             },
             execution_metadata={"dataset_storage": dataset_storage},
-            node_pack_id="camera.nodes",
-            node_pack_version="0.1.4",
-            granted_permission_scopes=frozenset({"objectstore.write.ref"}),
         )
     )
 
