@@ -36,65 +36,77 @@ async def build_multipart_runtime_invoke_request(
     """把 multipart/form-data 请求转换为 workflow runtime 调用请求。"""
 
     form = await request.form()
-    input_bindings = read_optional_json_object(
-        form.get("input_bindings_json") or form.get("input_bindings"),
-        field_name="input_bindings_json",
-    )
-    execution_metadata = with_created_by(
-        read_optional_json_object(
-            form.get("execution_metadata_json") or form.get("execution_metadata"),
-            field_name="execution_metadata_json",
-        ),
-        created_by,
-    )
-    timeout_seconds = read_optional_int_text(
-        form.get("timeout_seconds"),
-        field_name="timeout_seconds",
-    )
-    application = load_runtime_application(request=request, workflow_app_runtime=workflow_app_runtime)
-    input_binding_payload_types = {
-        binding.binding_id: str(
-            binding.config.get("payload_type_id")
-            or binding.metadata.get("payload_type_id")
-            or ""
+    try:
+        input_bindings = read_optional_json_object(
+            form.get("input_bindings_json") or form.get("input_bindings"),
+            field_name="input_bindings_json",
         )
-        for binding in application.bindings
-        if binding.direction == "input"
-    }
-    for field_name, field_value in form.multi_items():
-        if field_name in _MULTIPART_RUNTIME_RESERVED_FIELDS:
-            continue
-        if isinstance(field_value, UploadFile):
-            if field_name in input_bindings:
-                raise InvalidRequestError(
-                    "multipart 上传字段与 input_bindings_json 中的 binding_id 冲突",
-                    details={"binding_id": field_name},
-                )
-            payload_type_id = input_binding_payload_types.get(field_name)
-            if payload_type_id is None:
-                raise InvalidRequestError(
-                    "multipart 上传字段未声明为 workflow application 输入绑定",
-                    details={"binding_id": field_name},
-                )
-            if payload_type_id != "dataset-package.v1":
-                raise InvalidRequestError(
-                    "当前 multipart 上传入口仅支持 dataset-package.v1 输入绑定",
-                    details={"binding_id": field_name, "payload_type_id": payload_type_id},
-                )
-            input_bindings[field_name] = await build_dataset_package_binding_payload(
-                upload=field_value,
-                binding_id=field_name,
+        execution_metadata = with_created_by(
+            read_optional_json_object(
+                form.get("execution_metadata_json")
+                or form.get("execution_metadata"),
+                field_name="execution_metadata_json",
+            ),
+            created_by,
+        )
+        timeout_seconds = read_optional_int_text(
+            form.get("timeout_seconds"),
+            field_name="timeout_seconds",
+        )
+        application = load_runtime_application(
+            request=request,
+            workflow_app_runtime=workflow_app_runtime,
+        )
+        input_binding_payload_types = {
+            binding.binding_id: str(
+                binding.config.get("payload_type_id")
+                or binding.metadata.get("payload_type_id")
+                or ""
             )
-            continue
-        raise InvalidRequestError(
-            "multipart 非文件字段请放入 input_bindings_json 或 execution_metadata_json",
-            details={"field_name": field_name},
+            for binding in application.bindings
+            if binding.direction == "input"
+        }
+        for field_name, field_value in form.multi_items():
+            if field_name in _MULTIPART_RUNTIME_RESERVED_FIELDS:
+                continue
+            if isinstance(field_value, UploadFile):
+                if field_name in input_bindings:
+                    raise InvalidRequestError(
+                        "multipart 上传字段与 input_bindings_json 中的 binding_id 冲突",
+                        details={"binding_id": field_name},
+                    )
+                payload_type_id = input_binding_payload_types.get(field_name)
+                if payload_type_id is None:
+                    raise InvalidRequestError(
+                        "multipart 上传字段未声明为 workflow application 输入绑定",
+                        details={"binding_id": field_name},
+                    )
+                if payload_type_id != "dataset-package.v1":
+                    raise InvalidRequestError(
+                        "当前 multipart 上传入口仅支持 dataset-package.v1 输入绑定",
+                        details={
+                            "binding_id": field_name,
+                            "payload_type_id": payload_type_id,
+                        },
+                    )
+                input_bindings[field_name] = (
+                    await build_dataset_package_binding_payload(
+                        upload=field_value,
+                        binding_id=field_name,
+                    )
+                )
+                continue
+            raise InvalidRequestError(
+                "multipart 非文件字段请放入 input_bindings_json 或 execution_metadata_json",
+                details={"field_name": field_name},
+            )
+        return WorkflowRuntimeInvokeRequest(
+            input_bindings=input_bindings,
+            execution_metadata=execution_metadata,
+            timeout_seconds=timeout_seconds,
         )
-    return WorkflowRuntimeInvokeRequest(
-        input_bindings=input_bindings,
-        execution_metadata=execution_metadata,
-        timeout_seconds=timeout_seconds,
-    )
+    finally:
+        await form.close()
 
 
 async def build_dataset_package_binding_payload(

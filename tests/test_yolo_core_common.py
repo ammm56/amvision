@@ -414,6 +414,8 @@ def test_infinite_dataloader_closes_real_windows_worker_handles() -> None:
     next(iter(loader))
     workers = tuple(loader.iterator._workers)
 
+    assert loader.persistent_workers is False
+
     loader.close()
 
     assert len(workers) == 2

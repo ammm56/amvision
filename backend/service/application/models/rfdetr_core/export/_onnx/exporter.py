@@ -33,6 +33,9 @@ from backend.service.application.models.rfdetr_core.export._onnx.symbolic import
     CustomOpSymbolicRegistry,
 )
 from backend.service.application.models.rfdetr_core.utilities.logger import get_logger
+from backend.service.application.support.torch_compat import (
+    suppress_torch_leafspec_deprecation_warning,
+)
 
 logger = get_logger()
 
@@ -157,24 +160,25 @@ def _export_onnx_with_torch(
     - 当前函数的执行结果。
     """
 
-    torch.onnx.export(
-        model,
-        input_tensors,
-        output_file,
-        input_names=input_names,
-        output_names=output_names,
-        export_params=True,
-        keep_initializers_as_inputs=False,
-        do_constant_folding=True,
-        verbose=verbose,
-        opset_version=opset_version,
-        dynamic_axes=dynamic_axes,
-        dynamo=dynamo,
-        report=False,
-        optimize=True,
-        verify=False,
-        external_data=False,
-    )
+    with suppress_torch_leafspec_deprecation_warning():
+        torch.onnx.export(
+            model,
+            input_tensors,
+            output_file,
+            input_names=input_names,
+            output_names=output_names,
+            export_params=True,
+            keep_initializers_as_inputs=False,
+            do_constant_folding=True,
+            verbose=verbose,
+            opset_version=opset_version,
+            dynamic_axes=dynamic_axes,
+            dynamo=dynamo,
+            report=False,
+            optimize=True,
+            verify=False,
+            external_data=False,
+        )
 
 
 def _write_rfdetr_onnx_metadata(

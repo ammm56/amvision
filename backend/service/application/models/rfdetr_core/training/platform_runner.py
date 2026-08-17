@@ -24,6 +24,9 @@ from backend.service.application.models.training.training_engine import (
 from backend.service.application.support.resource_cleanup import (
     release_model_task_resources,
 )
+from backend.service.application.support.torch_compat import (
+    suppress_torch_leafspec_deprecation_warning,
+)
 from backend.service.application.models.rfdetr_core.config import (
     SegmentationTrainConfig,
     TrainConfig,
@@ -263,11 +266,12 @@ def run_rfdetr_platform_training(
                 ),
                 enable_model_summary=False,
             )
-            trainer.fit(
-                module,
-                datamodule=data_module,
-                ckpt_path=train_config.resume or None,
-            )
+            with suppress_torch_leafspec_deprecation_warning():
+                trainer.fit(
+                    module,
+                    datamodule=data_module,
+                    ckpt_path=train_config.resume or None,
+                )
 
             checkpoint_artifacts = read_or_build_checkpoint_artifacts(
                 output_dir=output_dir,

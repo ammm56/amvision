@@ -19,25 +19,28 @@ async def read_inference_http_payload(
     content_type = (request.headers.get("content-type") or "").lower()
     if content_type.startswith("multipart/form-data"):
         form = await request.form()
-        upload = form.get("input_image")
-        upload_bytes = None
-        upload_filename = None
-        upload_content_type = None
-        if upload is not None:
-            if not hasattr(upload, "read"):
-                raise InvalidRequestError("input_image 必须是有效的上传文件")
-            upload_bytes = await upload.read()
-            upload_filename = getattr(upload, "filename", None)
-            upload_content_type = getattr(upload, "content_type", None)
-        payload = _normalize_form_payload(form)
-        return payload, {
-            "input_file_id": payload.get("input_file_id"),
-            "input_uri": payload.get("input_uri"),
-            "image_base64": payload.get("image_base64"),
-            "upload_bytes": upload_bytes,
-            "upload_filename": upload_filename,
-            "upload_content_type": upload_content_type,
-        }
+        try:
+            upload = form.get("input_image")
+            upload_bytes = None
+            upload_filename = None
+            upload_content_type = None
+            if upload is not None:
+                if not hasattr(upload, "read"):
+                    raise InvalidRequestError("input_image 必须是有效的上传文件")
+                upload_bytes = await upload.read()
+                upload_filename = getattr(upload, "filename", None)
+                upload_content_type = getattr(upload, "content_type", None)
+            payload = _normalize_form_payload(form)
+            return payload, {
+                "input_file_id": payload.get("input_file_id"),
+                "input_uri": payload.get("input_uri"),
+                "image_base64": payload.get("image_base64"),
+                "upload_bytes": upload_bytes,
+                "upload_filename": upload_filename,
+                "upload_content_type": upload_content_type,
+            }
+        finally:
+            await form.close()
     if content_type.startswith("application/json") or not content_type:
         try:
             payload = await request.json()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from queue import Empty
-from threading import Event, Lock, Thread
+from threading import Event, Lock, RLock, Thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -87,9 +87,11 @@ class _WorkflowRuntimeProcessHandle:
     started_event: Event = field(default_factory=Event, repr=False)
     request_lock: Lock = field(default_factory=Lock, repr=False)
     state_lock: Lock = field(default_factory=Lock, repr=False)
+    cleanup_lock: Lock = field(default_factory=Lock, repr=False)
     latest_runtime_state: WorkflowRuntimeWorkerState | None = None
     latest_runtime_state_monotonic: float | None = None
     expected_shutdown: bool = False
+    cleanup_completed: bool = False
     heartbeat_timeout_reported: bool = False
     background_failure_reported: bool = False
 
@@ -148,6 +150,9 @@ class WorkflowRuntimeWorkerManager:
         self._recovery_threads: dict[str, Thread] = {}
         self._recovery_failures: dict[str, int] = {}
         self._recovery_next_attempt_at: dict[str, float] = {}
+        # 使用固定数量的分段锁串行化同一 runtime 的显式生命周期操作与
+        # monitor 自动恢复，避免为历史 runtime id 无限保留独立锁。
+        self._runtime_lifecycle_locks = tuple(RLock() for _ in range(64))
         self._cleanup_client_lock = Lock()
         self._cleanup_local_buffer_client: LocalBufferBrokerClient | None = None
 
@@ -211,6 +216,17 @@ class WorkflowRuntimeWorkerManager:
 
     def start_runtime(self, workflow_app_runtime: WorkflowAppRuntime) -> WorkflowRuntimeWorkerState:
         """拉起一个 runtime 对应的单实例 worker 进程。"""
+
+        with self._resolve_runtime_lifecycle_lock(
+            workflow_app_runtime.workflow_runtime_id
+        ):
+            return self._start_runtime(workflow_app_runtime)
+
+    def _start_runtime(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+    ) -> WorkflowRuntimeWorkerState:
+        """在当前 runtime 生命周期锁内拉起 worker 进程。"""
 
         with self._lock:
             existing_handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
@@ -289,6 +305,12 @@ class WorkflowRuntimeWorkerManager:
     def stop_runtime(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
         """停止一个 runtime 对应的 worker 进程。"""
 
+        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+            return self._stop_runtime(workflow_runtime_id)
+
+    def _stop_runtime(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
+        """在当前 runtime 生命周期锁内停止 worker 进程。"""
+
         with self._lock:
             handle = self._handles.get(workflow_runtime_id)
         if handle is None:
@@ -318,6 +340,17 @@ class WorkflowRuntimeWorkerManager:
             self._handles.pop(workflow_runtime_id, None)
         self._cleanup_handle(handle)
         return runtime_state
+
+    def restart_runtime(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+    ) -> WorkflowRuntimeWorkerState:
+        """在同一生命周期临界区内停止并重新拉起 runtime worker。"""
+
+        workflow_runtime_id = workflow_app_runtime.workflow_runtime_id
+        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+            self._stop_runtime(workflow_runtime_id)
+            return self._start_runtime(workflow_app_runtime)
 
     def get_runtime_health(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
         """查询一个 runtime 对应 worker 的健康状态。"""
@@ -944,28 +977,42 @@ class WorkflowRuntimeWorkerManager:
         self._cleanup_handle(handle)
 
     def _cleanup_handle(self, handle: _WorkflowRuntimeProcessHandle) -> None:
-        """关闭并回收一个 worker 句柄。"""
+        """按单一所有权关闭并回收一个 worker 句柄。"""
 
-        handle.response_stop_event.set()
-        if handle.process.is_alive():
-            handle.process.terminate()
-            handle.process.join(timeout=1.0)
-        response_thread = handle.response_thread
-        if response_thread is not None:
-            response_thread.join(timeout=1.0)
-        if handle.published_inference_gateway_dispatcher is not None:
-            handle.published_inference_gateway_dispatcher.stop()
-        with handle.state_lock:
-            for pending in handle.pending_responses.values():
-                pending.error_message = "workflow runtime worker 已退出"
-                pending.event.set()
-            handle.pending_responses.clear()
-        handle.request_queue.close()
-        handle.request_queue.join_thread()
-        handle.response_queue.close()
-        handle.response_queue.join_thread()
-        worker_process.close_local_buffer_broker_channel(handle.local_buffer_broker_event_channel)
-        worker_process.close_published_inference_gateway_channel(handle.published_inference_gateway_channel)
+        # monitor、显式 stop/restart 和 startup 失败可能同时观察到同一个旧
+        # handle。清理锁保证 Queue、Process 和 dispatcher 只由一个调用方
+        # 关闭；expected_shutdown 让尚未进入清理的 monitor 不再重复接管。
+        with handle.cleanup_lock:
+            if handle.cleanup_completed:
+                return
+            with handle.state_lock:
+                handle.expected_shutdown = True
+
+            handle.response_stop_event.set()
+            if handle.process.is_alive():
+                handle.process.terminate()
+                handle.process.join(timeout=1.0)
+            response_thread = handle.response_thread
+            if response_thread is not None:
+                response_thread.join(timeout=1.0)
+            if handle.published_inference_gateway_dispatcher is not None:
+                handle.published_inference_gateway_dispatcher.stop()
+            with handle.state_lock:
+                for pending in handle.pending_responses.values():
+                    pending.error_message = "workflow runtime worker 已退出"
+                    pending.event.set()
+                handle.pending_responses.clear()
+            handle.request_queue.close()
+            handle.request_queue.join_thread()
+            handle.response_queue.close()
+            handle.response_queue.join_thread()
+            worker_process.close_local_buffer_broker_channel(
+                handle.local_buffer_broker_event_channel
+            )
+            worker_process.close_published_inference_gateway_channel(
+                handle.published_inference_gateway_channel
+            )
+            handle.cleanup_completed = True
 
     def _run_response_loop(self, handle: _WorkflowRuntimeProcessHandle) -> None:
         """持续消费指定 runtime worker 的响应队列。"""
@@ -1048,7 +1095,11 @@ class WorkflowRuntimeWorkerManager:
                     latest_runtime_state = handle.latest_runtime_state
                     latest_runtime_state_monotonic = handle.latest_runtime_state_monotonic
                     if not process_alive:
-                        if not handle.expected_shutdown and not handle.background_failure_reported:
+                        if handle.expected_shutdown:
+                            # stop/restart 调用方持有生命周期锁并负责移除、回收句柄；
+                            # monitor 不能并发关闭相同 Queue/Process 资源。
+                            continue
+                        if not handle.background_failure_reported:
                             handle.background_failure_reported = True
                             custom_node_timed_out = (
                                 handle.process.exitcode == CUSTOM_NODE_TIMEOUT_EXIT_CODE
@@ -1285,6 +1336,12 @@ class WorkflowRuntimeWorkerManager:
             model_startup_timeout_seconds,
             5.0,
         )
+
+    def _resolve_runtime_lifecycle_lock(self, workflow_runtime_id: str) -> RLock:
+        """按 runtime id 返回有界分段生命周期锁。"""
+
+        lock_index = hash(workflow_runtime_id) % len(self._runtime_lifecycle_locks)
+        return self._runtime_lifecycle_locks[lock_index]
 
     def _snapshot_has_model_loaders(self, template_snapshot_object_key: str) -> bool:
         """快速判断固定 snapshot 是否包含 Load Checkpoint 节点。"""

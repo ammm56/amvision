@@ -5,10 +5,14 @@ from __future__ import annotations
 import contextlib
 import inspect
 import io
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.support.torch_compat import (
+    suppress_torch_leafspec_deprecation_warning,
+)
 
 
 TORCH_ONNX_DYNAMO_EXPORTER_MODE = "torch-onnx-dynamo-export"
@@ -51,7 +55,11 @@ def export_torch_model_to_onnx(
     }.items():
         if key in export_parameters:
             export_kwargs[key] = value
-    with contextlib.redirect_stdout(progress_stdout), contextlib.redirect_stderr(progress_stderr):
+    with (
+        suppress_torch_leafspec_deprecation_warning(),
+        contextlib.redirect_stdout(progress_stdout),
+        contextlib.redirect_stderr(progress_stderr),
+    ):
         torch_module.onnx.export(**export_kwargs)
 
 

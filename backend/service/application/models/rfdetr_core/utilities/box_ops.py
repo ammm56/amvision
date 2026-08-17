@@ -115,7 +115,9 @@ def batch_dice_loss(inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor
     return loss
 
 
-batch_dice_loss_jit = torch.jit.script(batch_dice_loss)
+# PyTorch 2.10 已弃用 TorchScript。保留原名称兼容 RF-DETR 调用面，
+# 直接使用 eager 函数，避免模块导入时创建已弃用的 ScriptFunction。
+batch_dice_loss_jit = batch_dice_loss
 
 
 def batch_sigmoid_ce_loss(inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
@@ -138,6 +140,6 @@ def batch_sigmoid_ce_loss(inputs: torch.Tensor, targets: torch.Tensor) -> torch.
     return loss / hw
 
 
-batch_sigmoid_ce_loss_jit = torch.jit.script(batch_sigmoid_ce_loss)
+batch_sigmoid_ce_loss_jit = batch_sigmoid_ce_loss
 
 

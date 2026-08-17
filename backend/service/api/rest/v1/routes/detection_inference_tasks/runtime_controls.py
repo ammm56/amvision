@@ -142,47 +142,68 @@ async def _read_detection_multipart_payload(
     """读取 multipart/form-data detection 推理请求。"""
 
     form = await request.form()
-    upload = form.get("input_image")
-    upload_bytes = None
-    upload_filename = None
-    upload_content_type = None
-    if upload is not None:
-        if not hasattr(upload, "read"):
-            raise InvalidRequestError("input_image 必须是有效的上传文件")
-        upload_bytes = await upload.read()
-        upload_filename = getattr(upload, "filename", None)
-        upload_content_type = getattr(upload, "content_type", None)
-    payload = {
-        "project_id": _read_optional_form_str(form, "project_id"),
-        "deployment_instance_id": _read_optional_form_str(form, "deployment_instance_id"),
-        "model_type": _read_optional_form_str(form, "model_type"),
-        "input_file_id": _read_optional_form_str(form, "input_file_id"),
-        "input_uri": _read_optional_form_str(form, "input_uri"),
-        "image_base64": _read_optional_form_str(form, "image_base64"),
-        "input_transport_mode": _read_optional_form_str(form, "input_transport_mode")
-        or DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
-        "score_threshold": _parse_optional_form_float(form.get("score_threshold"), field_name="score_threshold"),
-        "save_result_image": _parse_optional_form_bool(
-            form.get("save_result_image"),
-            field_name="save_result_image",
-            default=True,
-        ),
-        "return_preview_image_base64": _parse_optional_form_bool(
-            form.get("return_preview_image_base64"),
-            field_name="return_preview_image_base64",
-            default=False,
-        ),
-        "extra_options": _parse_optional_form_json_dict(form.get("extra_options"), field_name="extra_options"),
-        "display_name": _read_optional_form_str(form, "display_name") or "",
-    }
-    return payload, DetectionInferenceInputSource(
-        input_file_id=payload.get("input_file_id") if isinstance(payload.get("input_file_id"), str) else None,
-        input_uri=payload.get("input_uri") if isinstance(payload.get("input_uri"), str) else None,
-        image_base64=payload.get("image_base64") if isinstance(payload.get("image_base64"), str) else None,
-        upload_bytes=upload_bytes,
-        upload_filename=upload_filename,
-        upload_content_type=upload_content_type,
-    )
+    try:
+        upload = form.get("input_image")
+        upload_bytes = None
+        upload_filename = None
+        upload_content_type = None
+        if upload is not None:
+            if not hasattr(upload, "read"):
+                raise InvalidRequestError("input_image 必须是有效的上传文件")
+            upload_bytes = await upload.read()
+            upload_filename = getattr(upload, "filename", None)
+            upload_content_type = getattr(upload, "content_type", None)
+        payload = {
+            "project_id": _read_optional_form_str(form, "project_id"),
+            "deployment_instance_id": _read_optional_form_str(form, "deployment_instance_id"),
+            "model_type": _read_optional_form_str(form, "model_type"),
+            "input_file_id": _read_optional_form_str(form, "input_file_id"),
+            "input_uri": _read_optional_form_str(form, "input_uri"),
+            "image_base64": _read_optional_form_str(form, "image_base64"),
+            "input_transport_mode": _read_optional_form_str(
+                form, "input_transport_mode"
+            )
+            or DETECTION_INFERENCE_INPUT_TRANSPORT_STORAGE,
+            "score_threshold": _parse_optional_form_float(
+                form.get("score_threshold"), field_name="score_threshold"
+            ),
+            "save_result_image": _parse_optional_form_bool(
+                form.get("save_result_image"),
+                field_name="save_result_image",
+                default=True,
+            ),
+            "return_preview_image_base64": _parse_optional_form_bool(
+                form.get("return_preview_image_base64"),
+                field_name="return_preview_image_base64",
+                default=False,
+            ),
+            "extra_options": _parse_optional_form_json_dict(
+                form.get("extra_options"), field_name="extra_options"
+            ),
+            "display_name": _read_optional_form_str(form, "display_name") or "",
+        }
+        return payload, DetectionInferenceInputSource(
+            input_file_id=(
+                payload.get("input_file_id")
+                if isinstance(payload.get("input_file_id"), str)
+                else None
+            ),
+            input_uri=(
+                payload.get("input_uri")
+                if isinstance(payload.get("input_uri"), str)
+                else None
+            ),
+            image_base64=(
+                payload.get("image_base64")
+                if isinstance(payload.get("image_base64"), str)
+                else None
+            ),
+            upload_bytes=upload_bytes,
+            upload_filename=upload_filename,
+            upload_content_type=upload_content_type,
+        )
+    finally:
+        await form.close()
 
 
 def _read_optional_form_str(form: FormData, key: str) -> str | None:

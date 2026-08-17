@@ -635,6 +635,24 @@ class LocalBufferBrokerClient:
                 pass
         self._mmap_cache.close()
 
+    def __enter__(self) -> "LocalBufferBrokerClient":
+        """进入 client 生命周期上下文。"""
+
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        """退出上下文并关闭 mmap 与事件通道。"""
+
+        self.close()
+
+    def __del__(self) -> None:
+        """在调用方遗漏显式 close 时兜底释放 mmap 文件句柄。"""
+
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def get_health_summary(self) -> dict[str, object]:
         """返回当前 client 的 broker 调用健康摘要。
 
@@ -758,8 +776,10 @@ class _MappedFile:
     def close(self) -> None:
         """关闭 mmap 视图和文件句柄。"""
 
-        self.mmap_view.close()
-        self.file.close()
+        try:
+            self.mmap_view.close()
+        finally:
+            self.file.close()
 
 
 class _MmapFileCache:
@@ -838,9 +858,15 @@ class _MmapFileCache:
         """关闭全部缓存的 mmap 文件。"""
 
         with self._lock:
-            for mapped_file in self._mapped_files.values():
-                mapped_file.close()
+            mapped_files = tuple(self._mapped_files.values())
             self._mapped_files.clear()
+        for mapped_file in mapped_files:
+            try:
+                mapped_file.close()
+            except BufferError:
+                # 调用方仍持有 memoryview 时，文件句柄已由 _MappedFile.close
+                # 的 finally 释放；view 将由最后一个借用方释放。
+                continue
 
     def _require_mapped_file(self, path: str) -> _MappedFile:
         """返回指定路径对应的 mmap 文件映射。"""

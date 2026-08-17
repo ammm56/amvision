@@ -1109,10 +1109,7 @@ def _override_python_handler(
 ) -> None:
     """替换指定 python-callable 节点的运行时 handler。"""
 
-    runtime_registry.register_python_callable(
-        runtime_registry.get_node_definition(node_type_id),
-        handler,
-    )
+    runtime_registry.replace_python_callable_handler(node_type_id, handler)
 
 
 def _override_worker_task_handler(
@@ -1122,10 +1119,7 @@ def _override_worker_task_handler(
 ) -> None:
     """替换指定 worker-task 节点的运行时 handler。"""
 
-    runtime_registry.register_worker_task(
-        runtime_registry.get_node_definition(node_type_id),
-        handler,
-    )
+    runtime_registry.replace_worker_task_handler(node_type_id, handler)
 
 
 def _build_image_base64_payload(image_bytes: bytes) -> dict[str, object]:

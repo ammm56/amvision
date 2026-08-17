@@ -79,7 +79,9 @@ def dice_loss(
     return loss.sum() / num_masks
 
 
-dice_loss_jit = torch.jit.script(dice_loss)  # type: torch.jit.ScriptModule
+# PyTorch 2.10 已弃用 TorchScript。保留原名称兼容 RF-DETR 调用面，
+# 直接使用 eager 函数，训练方仍可在上层选择 torch.compile。
+dice_loss_jit = dice_loss
 
 
 def sigmoid_ce_loss(
@@ -99,7 +101,7 @@ def sigmoid_ce_loss(
     return loss.mean(1).sum() / num_masks
 
 
-sigmoid_ce_loss_jit = torch.jit.script(sigmoid_ce_loss)  # type: torch.jit.ScriptModule
+sigmoid_ce_loss_jit = sigmoid_ce_loss
 
 
 class SetCriterion(nn.Module):

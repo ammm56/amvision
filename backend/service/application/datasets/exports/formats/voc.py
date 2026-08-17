@@ -28,6 +28,9 @@ from backend.contracts.datasets.exports.voc_instance_segmentation_export import 
     VocInstanceSegmentationExportManifest,
     VocInstanceSegmentationSplit,
 )
+from backend.service.application.support.pycocotools_compat import (
+    decode_pycocotools_mask,
+)
 from backend.service.application.datasets.exports.formats.common import (
     _build_version_image_relative_path,
 )
@@ -654,7 +657,7 @@ class VocExportMixin:
                 raise ValueError("VOC 导出发现无效的 segmentation RLE counts")
         else:
             raise ValueError("VOC instance segmentation 标注缺少 mask")
-        decoded = coco_mask.decode(encoded)
+        decoded = decode_pycocotools_mask(coco_mask, encoded)
         if decoded.ndim == 3:
             decoded = np.any(decoded, axis=2)
         binary_mask = np.asarray(decoded, dtype=bool)

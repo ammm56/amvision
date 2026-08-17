@@ -12,6 +12,9 @@ from torchvision.transforms.v2 import Compose, ToDtype, ToImage
 from backend.service.application.models.rfdetr_core.datasets.aug_config import AUG_CONFIG
 from backend.service.application.models.rfdetr_core.datasets.transforms import AlbumentationsWrapper, Normalize
 from backend.service.application.models.rfdetr_core.utilities.logger import get_logger
+from backend.service.application.support.pycocotools_compat import (
+    decode_pycocotools_mask,
+)
 
 logger = get_logger()
 
@@ -79,7 +82,7 @@ def convert_coco_poly_to_mask(segmentations: List[Any], height: int, width: int)
                 rles = [coco_mask.frPyObjects(segmentation, height, width)]
         else:
             rles = coco_mask.frPyObjects(segmentation, height, width)
-        mask = coco_mask.decode(rles)
+        mask = decode_pycocotools_mask(coco_mask, rles)
         if mask.ndim < 3:
             mask = mask[..., None]
         mask = torch.as_tensor(mask, dtype=torch.uint8)

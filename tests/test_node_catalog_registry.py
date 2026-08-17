@@ -130,3 +130,29 @@ def test_runtime_registry_rejects_definition_and_handler_overrides() -> None:
 
     with pytest.raises(ServiceConfigurationError, match="处理函数重复注册"):
         registry.register_python_callable(definition, lambda request: {})
+
+    replacement_handler = lambda request: {"replaced": True}  # noqa: E731
+    registry.replace_python_callable_handler(
+        definition.node_type_id,
+        replacement_handler,
+    )
+
+    assert registry.resolve_handler(node_definition=definition) is replacement_handler
+
+    worker_definition = next(
+        item
+        for item in get_core_workflow_node_definitions()
+        if item.runtime_kind == "worker-task"
+    )
+    worker_handler = lambda request: {}  # noqa: E731
+    replacement_worker_handler = lambda request: {"replaced": True}  # noqa: E731
+    registry.register_worker_task(worker_definition, worker_handler)
+    registry.replace_worker_task_handler(
+        worker_definition.node_type_id,
+        replacement_worker_handler,
+    )
+
+    assert (
+        registry.resolve_handler(node_definition=worker_definition)
+        is replacement_worker_handler
+    )

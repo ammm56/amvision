@@ -70,7 +70,7 @@ def import_yolo_runtime_cuda_runtime_module() -> Any:
     """导入 cuda-python 的 cudart 模块。"""
 
     try:
-        from cuda import cudart
+        from cuda.bindings import runtime as cudart
     except ImportError as error:  # pragma: no cover - 依赖存在时不会进入该分支
         raise ServiceConfigurationError("当前运行环境缺少 cuda-python 依赖") from error
     return cudart

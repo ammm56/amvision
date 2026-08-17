@@ -197,6 +197,46 @@ class WorkflowNodeRuntimeRegistry:
             )
         )
 
+    def replace_python_callable_handler(
+        self,
+        node_type_id: str,
+        handler: Callable[[WorkflowNodeExecutionRequest], dict[str, object]],
+    ) -> None:
+        """显式替换已注册 python-callable 节点的处理函数。"""
+
+        node_definition = self.get_node_definition(node_type_id)
+        if node_definition.runtime_kind != "python-callable":
+            raise InvalidRequestError(
+                "替换处理函数的节点不是 python-callable",
+                details={"node_type_id": node_type_id},
+            )
+        if node_type_id not in self._python_callable_handlers:
+            raise ServiceConfigurationError(
+                "当前节点注册表缺少可替换的 python-callable 处理函数",
+                details={"node_type_id": node_type_id},
+            )
+        self._python_callable_handlers[node_type_id] = handler
+
+    def replace_worker_task_handler(
+        self,
+        node_type_id: str,
+        handler: Callable[[WorkflowNodeExecutionRequest], dict[str, object]],
+    ) -> None:
+        """显式替换已注册 worker-task 节点的处理函数。"""
+
+        node_definition = self.get_node_definition(node_type_id)
+        if node_definition.runtime_kind != "worker-task":
+            raise InvalidRequestError(
+                "替换处理函数的节点不是 worker-task",
+                details={"node_type_id": node_type_id},
+            )
+        if node_type_id not in self._worker_task_handlers:
+            raise ServiceConfigurationError(
+                "当前节点注册表缺少可替换的 worker-task 处理函数",
+                details={"node_type_id": node_type_id},
+            )
+        self._worker_task_handlers[node_type_id] = handler
+
     def list_node_definitions(self) -> tuple[NodeDefinition, ...]:
         """返回当前注册表中的全部节点定义。"""
 

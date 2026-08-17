@@ -187,10 +187,19 @@ def build_trainer(
         "logger": loggers if loggers else False,
         "enable_progress_bar": tc.progress_bar is not None,
         "default_root_dir": tc.output_dir,
-        "log_every_n_steps": 50,
+        # 当前平台默认按 epoch 记录训练指标；设为 1 可兼容现场小数据集，
+        # 避免整个 epoch 的 batch 数少于检查间隔时丢失日志。
+        "log_every_n_steps": 1,
         "deterministic": False,
     }
     trainer_config.update(trainer_kwargs)
-    return Trainer(**trainer_config)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"GPU available but not used\..*",
+            category=UserWarning,
+            module=r"pytorch_lightning\.trainer\.setup",
+        )
+        return Trainer(**trainer_config)
 
 

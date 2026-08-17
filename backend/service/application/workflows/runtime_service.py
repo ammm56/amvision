@@ -1130,9 +1130,8 @@ class WorkflowRuntimeService:
                 restarting_runtime
             )
             unit_of_work.commit()
-        self.worker_manager.stop_runtime(workflow_runtime_id)
         try:
-            runtime_state = self.worker_manager.start_runtime(restarting_runtime)
+            runtime_state = self.worker_manager.restart_runtime(restarting_runtime)
         except Exception as error:
             failed_runtime = replace(
                 restarting_runtime,

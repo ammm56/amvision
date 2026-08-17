@@ -2306,7 +2306,7 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     assert invoke_response.status_code == 200
     assert get_run_response.status_code == 200
     assert get_runtime_response.status_code == 200
-    assert restart_response.status_code == 200
+    assert restart_response.status_code == 200, restart_response.text
     assert stop_response.status_code == 200
     run_payload = invoke_response.json()
     runtime_payload = get_runtime_response.json()
@@ -2516,7 +2516,7 @@ def test_workflow_app_runtime_api_can_restart_after_failed_run(
     assert first_start_response.status_code == 200
     assert invoke_response.status_code == 200
     assert failed_health_response.status_code == 200
-    assert second_start_response.status_code == 200
+    assert second_start_response.status_code == 200, second_start_response.text
     assert recovered_health_response.status_code == 200
     assert stop_response.status_code == 200
     first_process_id = first_start_response.json()["worker_process_id"]
@@ -2612,7 +2612,7 @@ def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
     assert create_runtime_response.status_code == 201
     assert start_response.status_code == 200
     assert instances_response.status_code == 200
-    assert restart_response.status_code == 200
+    assert restart_response.status_code == 200, restart_response.text
     assert restarted_instances_response.status_code == 200
     assert stop_response.status_code == 200
     assert stopped_instances_response.status_code == 200
@@ -2941,7 +2941,7 @@ def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_deta
     assert create_run_response.status_code == 201
     assert final_run_response.status_code == 200
     assert health_response.status_code == 200
-    assert restart_response.status_code == 200
+    assert restart_response.status_code == 200, restart_response.text
     assert stop_response.status_code == 200
 
     final_payload = final_run_response.json()
@@ -3068,7 +3068,7 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
     assert final_run_response.status_code == 200
     assert get_runtime_response.status_code == 200
     assert health_response.status_code == 200
-    assert restart_response.status_code == 200
+    assert restart_response.status_code == 200, restart_response.text
     assert stop_response.status_code == 200
 
     assert create_run_response.json()["state"] == "queued"

@@ -76,18 +76,21 @@ def test_task_mixup_applies_affine_to_both_inputs_before_blending(
     monkeypatch.setattr(module.random, "choice", lambda values: values[0])
 
     prepare = getattr(module, f"_prepare_{prefix}_{task}_sample_with_mix")
-    image, result_target = prepare(
-        training=True,
-        imports=SimpleNamespace(np=np),
-        primary_sample=SimpleNamespace(),
-        available_samples=(SimpleNamespace(),),
-        target_width=640,
-        target_height=640,
-        augmentation_options=SimpleNamespace(
+    prepare_kwargs = {
+        "training": True,
+        "imports": SimpleNamespace(np=np),
+        "primary_sample": SimpleNamespace(),
+        "available_samples": (SimpleNamespace(),),
+        "target_width": 640,
+        "target_height": 640,
+        "augmentation_options": SimpleNamespace(
             mosaic_prob=1.0,
             mixup_prob=1.0,
         ),
-    )
+    }
+    if task == "segmentation":
+        prepare_kwargs["scaleup"] = True
+    image, result_target = prepare(**prepare_kwargs)
 
     assert calls == ["mosaic", "affine", "mosaic", "affine", "mixup"]
     assert image.shape[:2] == (640, 640)

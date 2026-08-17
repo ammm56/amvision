@@ -490,14 +490,18 @@ def start_process(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_handle = log_path.open("ab")
     creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    process = subprocess.Popen(
-        args,
-        cwd=PROJECT_ROOT,
-        env=env,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        creationflags=creation_flags,
-    )
+    try:
+        process = subprocess.Popen(
+            args,
+            cwd=PROJECT_ROOT,
+            env=env,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            creationflags=creation_flags,
+        )
+    finally:
+        # Popen 已复制/继承日志句柄，父进程不应继续持有文件对象。
+        log_handle.close()
     return ManagedProcess(
         name=name,
         process=process,

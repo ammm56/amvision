@@ -13,6 +13,10 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core._namespace import (
     _namespace_from_configs,
 )
+from backend.service.application.models.rfdetr_core.config import (
+    PretrainWeightsCompatibilityWarning,
+    RFDETRSegNanoConfig,
+)
 from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_config,
 )
@@ -55,6 +59,16 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+
+
+def test_rfdetr_pretrain_compatibility_warning_is_not_repeated_on_assignment() -> None:
+    """验证 intentional scratch 配置不会在后续字段赋值时重复告警。"""
+
+    with pytest.warns(PretrainWeightsCompatibilityWarning) as warning_records:
+        model_config = RFDETRSegNanoConfig(pretrain_weights=None)
+        model_config.resolution = model_config.resolution
+
+    assert len(warning_records) == 1
 
 
 def test_rfdetr_platform_dataset_preserves_nested_image_paths() -> None:

@@ -8,6 +8,10 @@ import shutil
 import numpy as np
 from PIL import Image
 from pycocotools import mask as coco_mask
+
+from backend.service.application.support.pycocotools_compat import (
+    decode_pycocotools_mask,
+)
 import pytest
 
 from backend.contracts.datasets.dataset_formats import (
@@ -73,7 +77,7 @@ def test_voc_instance_segmentation_import_preserves_indexed_mask_as_rle(
     assert annotation.metadata["difficult"] == 1
     assert annotation.metadata["truncated"] == 0
     assert annotation.metadata["xml_bbox_iou"] == pytest.approx(1.0)
-    decoded = coco_mask.decode(annotation.segmentation)
+    decoded = decode_pycocotools_mask(coco_mask, annotation.segmentation)
     assert decoded.shape == (5, 6)
     assert int(decoded.sum()) == 6
 

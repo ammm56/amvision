@@ -108,68 +108,49 @@ def test_yoloe_text_runtime_session_reuses_cpu_cache() -> None:
         precision="fp32",
     )
 
-    assert session_a is session_b
-
-    prediction_a = session_a.predict(
-        image_bytes=_build_test_png_bytes(width=80, height=60),
-        image_payload=None,
-        prompts=(
-            _build_namespace(
-                prompt_id="prompt-1",
-                text="person",
-                display_name="person",
-                negative=False,
-                language=None,
-            ),
-            _build_namespace(
-                prompt_id="prompt-1",
-                text="background",
-                display_name="person",
-                negative=True,
-                language=None,
-            ),
-            _build_namespace(
-                prompt_id="prompt-2",
-                text="car",
-                display_name="car",
-                negative=False,
-                language=None,
-            ),
+    prompts = (
+        _build_namespace(
+            prompt_id="prompt-1",
+            text="person",
+            display_name="person",
+            negative=False,
+            language=None,
         ),
-        confidence_threshold=0.25,
-        iou_threshold=0.7,
-        max_detections=5,
-    )
-    prediction_b = session_b.predict(
-        image_bytes=_build_test_png_bytes(width=80, height=60),
-        image_payload=None,
-        prompts=(
-            _build_namespace(
-                prompt_id="prompt-1",
-                text="person",
-                display_name="person",
-                negative=False,
-                language=None,
-            ),
-            _build_namespace(
-                prompt_id="prompt-1",
-                text="background",
-                display_name="person",
-                negative=True,
-                language=None,
-            ),
-            _build_namespace(
-                prompt_id="prompt-2",
-                text="car",
-                display_name="car",
-                negative=False,
-                language=None,
-            ),
+        _build_namespace(
+            prompt_id="prompt-1",
+            text="background",
+            display_name="person",
+            negative=True,
+            language=None,
         ),
-        confidence_threshold=0.25,
-        iou_threshold=0.7,
-        max_detections=5,
+        _build_namespace(
+            prompt_id="prompt-2",
+            text="car",
+            display_name="car",
+            negative=False,
+            language=None,
+        ),
     )
+    with session_a as runtime_session_a:
+        runtime_session_identity = id(runtime_session_a)
+        prediction_a = runtime_session_a.predict(
+            image_bytes=_build_test_png_bytes(width=80, height=60),
+            image_payload=None,
+            prompts=prompts,
+            confidence_threshold=0.25,
+            iou_threshold=0.7,
+            max_detections=5,
+        )
+    with session_b as runtime_session_b:
+        assert id(runtime_session_b) == runtime_session_identity
+        prediction_b = runtime_session_b.predict(
+            image_bytes=_build_test_png_bytes(width=80, height=60),
+            image_payload=None,
+            prompts=prompts,
+            confidence_threshold=0.25,
+            iou_threshold=0.7,
+            max_detections=5,
+        )
 
     assert prediction_a.summary["prompt_count"] == 2
     assert prediction_a.summary["prompt_item_count"] == 3

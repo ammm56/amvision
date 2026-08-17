@@ -67,6 +67,10 @@ class YoloInfiniteDataLoader:
             """绑定当前 torch 模块的 InfiniteDataLoader 实现。"""
 
             def __init__(self, *loader_args: Any, **loader_kwargs: Any) -> None:
+                # 无限 batch sampler 和常驻 iterator 已经保证 worker 跨 epoch
+                # 复用。底层 persistent_workers 会在同时启用 pin memory 时再向
+                # atexit 注册相同 Process，和本类显式 close 的句柄释放冲突。
+                loader_kwargs["persistent_workers"] = False
                 super().__init__(*loader_args, **loader_kwargs)
                 object.__setattr__(
                     self,

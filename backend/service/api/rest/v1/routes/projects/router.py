@@ -126,10 +126,13 @@ async def upload_workflow_prompt_mask(
                 f"{field_name} 只能包含字母、数字、点、下划线和连字符"
             )
     form = await request.form()
-    upload = form.get("mask")
-    if not isinstance(upload, UploadFile):
-        raise InvalidRequestError("mask 必须是 multipart 文件")
-    content = await upload.read()
+    try:
+        upload = form.get("mask")
+        if not isinstance(upload, UploadFile):
+            raise InvalidRequestError("mask 必须是 multipart 文件")
+        content = await upload.read()
+    finally:
+        await form.close()
     if not content:
         raise InvalidRequestError("Mask 文件不能为空")
     normalized_mask = _decode_workflow_prompt_mask(content)

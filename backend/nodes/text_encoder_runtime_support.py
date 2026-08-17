@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import html
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -160,7 +161,20 @@ class MobileClipTorchScriptTextEncoder:
         except Exception as exc:  # pragma: no cover - 非法 device 由调用参数触发
             raise InvalidRequestError("文本编码器收到的 device 不是有效 torch device") from exc
         try:
-            self.encoder = torch.jit.load(str(weight_path), map_location=self.device)
+            # 当前随包 MobileCLIP 权重仍是 TorchScript 文件，不能由只接受
+            # ExportedProgram 的 torch.export.load 直接读取。兼容抑制只覆盖这一条
+            # 已知弃用提示，资产迁移为 PT2 后即可删除。
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"`torch\.jit\.load` is deprecated\..*",
+                    category=DeprecationWarning,
+                    module=r"torch\.jit\._serialization",
+                )
+                self.encoder = torch.jit.load(
+                    str(weight_path),
+                    map_location=self.device,
+                )
         except Exception as exc:  # pragma: no cover - 文件损坏或设备不支持
             raise InvalidRequestError(
                 "无法加载本地 MobileCLIP TorchScript 文本编码器",

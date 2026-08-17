@@ -3,7 +3,14 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Literal, Mapping, Optional, TypeAlias, Union
 
 import torch
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticUndefined
 
 EncoderName: TypeAlias = Literal["dinov2_windowed_small", "dinov2_windowed_base", "dinov2_registers_windowed_small"]
@@ -70,6 +77,8 @@ class BaseConfig(BaseModel):
 
 
 class ModelConfig(BaseConfig):
+    _pretrain_compatibility_warning_signature: object = PrivateAttr(default=None)
+
     encoder: EncoderName
     out_feature_indexes: List[int]
     dec_layers: int
@@ -161,14 +170,20 @@ class ModelConfig(BaseConfig):
         if pretrain_user_set and self.pretrain_weights is None:
             default_pretrain = cls.model_fields["pretrain_weights"].default
             if default_pretrain is not PydanticUndefined and default_pretrain is not None:
-                warnings.warn(
-                    f"{cls.__name__} was instantiated with pretrain_weights=None. "
-                    f"The model will be initialised from scratch, which typically "
-                    f"produces lower accuracy than fine-tuning from the published "
-                    f"checkpoint ({default_pretrain!r}).",
-                    PretrainWeightsCompatibilityWarning,
-                    stacklevel=2,
-                )
+                warning_signature = ("from-scratch", default_pretrain)
+                if (
+                    self._pretrain_compatibility_warning_signature
+                    != warning_signature
+                ):
+                    self._pretrain_compatibility_warning_signature = warning_signature
+                    warnings.warn(
+                        f"{cls.__name__} was instantiated with pretrain_weights=None. "
+                        f"The model will be initialised from scratch, which typically "
+                        f"produces lower accuracy than fine-tuning from the published "
+                        f"checkpoint ({default_pretrain!r}).",
+                        PretrainWeightsCompatibilityWarning,
+                        stacklevel=2,
+                    )
             return self
 
         if pretrain_user_set and self.pretrain_weights is not None:
@@ -249,19 +264,28 @@ class ModelConfig(BaseConfig):
             lines = "\n".join(
                 f"  {name}: {current!r} (variant default: {default!r})" for name, current, default in overrides
             )
-            warnings.warn(
-                f"{cls.__name__} was instantiated with overrides that differ from the variant "
-                f"defaults in ways that prevent the published pretrained weights "
-                f"({default_pretrain!r}) from loading correctly:\n"
-                f"{lines}\n"
-                "Loading the checkpoint with this configuration will leave significant portions "
-                "of the model randomly initialised, which typically produces lower accuracy. "
-                "To suppress this warning: revert the override(s), pick a variant whose defaults "
-                "match, or pass pretrain_weights=None to acknowledge that you intend to train "
-                "from scratch.",
-                PretrainWeightsCompatibilityWarning,
-                stacklevel=2,
+            warning_signature = (
+                "incompatible-overrides",
+                tuple(
+                    (name, repr(current), repr(default))
+                    for name, current, default in overrides
+                ),
             )
+            if self._pretrain_compatibility_warning_signature != warning_signature:
+                self._pretrain_compatibility_warning_signature = warning_signature
+                warnings.warn(
+                    f"{cls.__name__} was instantiated with overrides that differ from the variant "
+                    f"defaults in ways that prevent the published pretrained weights "
+                    f"({default_pretrain!r}) from loading correctly:\n"
+                    f"{lines}\n"
+                    "Loading the checkpoint with this configuration will leave significant portions "
+                    "of the model randomly initialised, which typically produces lower accuracy. "
+                    "To suppress this warning: revert the override(s), pick a variant whose defaults "
+                    "match, or pass pretrain_weights=None to acknowledge that you intend to train "
+                    "from scratch.",
+                    PretrainWeightsCompatibilityWarning,
+                    stacklevel=2,
+                )
 
         return self
 
