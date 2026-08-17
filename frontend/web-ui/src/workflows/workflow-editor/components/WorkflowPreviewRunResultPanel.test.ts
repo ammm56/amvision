@@ -28,7 +28,7 @@ describe('WorkflowPreviewRunResultPanel', () => {
       global: { plugins: [i18n] },
       props: {
         previewRun,
-        badgeTone: 'info',
+        badgeTone: 'success',
         statusLabel: 'succeeded',
         createdAtText: '2026-08-17 08:00:00',
       },
@@ -37,6 +37,9 @@ describe('WorkflowPreviewRunResultPanel', () => {
     const rawJson = wrapper.get('.workflow-graph-preview-result__raw-json')
     expect(rawJson.text()).toBe(JSON.stringify(previewRun, null, 2))
     expect(wrapper.find('.workflow-graph-inspector-row').exists()).toBe(false)
+    expect(wrapper.get('.status-badge').classes()).toContain('status-badge--success')
+    expect(wrapper.get('.workflow-graph-preview-run__record-count').text()).toBe('1 条记录')
+    expect(wrapper.findAll('.status-badge')).toHaveLength(1)
 
     await rawJson.trigger('dblclick')
     expect(wrapper.emitted('open-json')?.[0]).toEqual(['运行结果', previewRun, 'succeeded'])

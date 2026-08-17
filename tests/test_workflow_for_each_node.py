@@ -173,6 +173,17 @@ def test_workflow_graph_executor_runs_for_each_body_and_collects_results() -> No
     assert execution_result.outputs["terminated_early"]["value"] is False
     assert execution_result.outputs["termination_reason"]["value"] is None
     assert execution_result.outputs["termination_index"]["value"] is None
+    start_records = [
+        record
+        for record in execution_result.node_records
+        if record.node_type_id == "core.logic.for-each-start"
+    ]
+    assert [record.node_id for record in start_records] == [
+        "iterate_items[1].iterate_start",
+        "iterate_items[2].iterate_start",
+        "iterate_items[3].iterate_start",
+    ]
+    assert all(record.duration_ms is not None for record in start_records)
     assert any(record.node_id == "iterate_items[1].compare_item" for record in execution_result.node_records)
     assert any(record.node_id == "iterate_items" for record in execution_result.node_records)
 

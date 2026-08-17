@@ -3270,7 +3270,7 @@ textarea:focus-visible {
 .workflow-graph-node__preview-duration {
   position: absolute;
   right: -1px;
-  bottom: -23px;
+  bottom: -28px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -3279,7 +3279,7 @@ textarea:focus-visible {
   height: 23px;
   padding: 0 6px;
   border: 1px solid var(--graph-accent);
-  border-radius: 0 0 5px 5px;
+  border-radius: 5px;
   color: var(--graph-text-strong);
   background: color-mix(in srgb, var(--graph-accent) 22%, var(--graph-node-bg));
   box-shadow: 0 5px 12px rgb(0 0 0 / 0.18);
@@ -4397,11 +4397,29 @@ textarea:focus-visible {
 
 .workflow-graph-preview-binding__summary {
   align-items: flex-start;
+  flex: 1 1 auto;
   flex-direction: column;
   justify-content: flex-start;
 }
 
-.workflow-graph-preview-binding__tools .status-badge {
+.workflow-graph-preview-binding__tools {
+  flex: 0 0 auto;
+}
+
+.workflow-graph-preview-run__record-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--graph-line) 72%, transparent);
+  border-radius: 6px;
+  color: var(--graph-muted);
+  background: var(--graph-panel-soft);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 16px;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 

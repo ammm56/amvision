@@ -35,9 +35,9 @@ export function formatPreviewRunStatusLabel(state: WorkflowPreviewRun['state']):
   return `Preview ${state}`
 }
 
-export function readPreviewRunBadgeTone(state: WorkflowPreviewRun['state']): 'info' | 'danger' | 'neutral' {
+export function readPreviewRunBadgeTone(state: WorkflowPreviewRun['state']): 'success' | 'danger' | 'neutral' {
   if (state === 'failed' || state === 'timed_out' || state === 'cancelled') return 'danger'
-  if (state === 'succeeded') return 'info'
+  if (state === 'succeeded') return 'success'
   return 'neutral'
 }
 

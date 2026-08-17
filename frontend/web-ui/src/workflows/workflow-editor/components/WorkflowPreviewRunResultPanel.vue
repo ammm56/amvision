@@ -2,7 +2,7 @@
   <div class="workflow-graph-preview-inputs">
     <div class="workflow-graph-panel__header">
       <h2>{{ t('workflowEditor.editor.runResult') }}</h2>
-      <StatusBadge :tone="badgeTone">
+      <StatusBadge :tone="badgeTone" with-dot>
         {{ statusLabel }}
       </StatusBadge>
     </div>
@@ -13,7 +13,9 @@
           <small>{{ createdAtText }}</small>
         </span>
         <div class="workflow-graph-preview-binding__tools">
-          <StatusBadge tone="neutral">{{ previewRun.node_records.length }} records</StatusBadge>
+          <span class="workflow-graph-preview-run__record-count">
+            {{ t('workflowEditor.editor.nodeRecordCount', { count: previewRun.node_records.length }) }}
+          </span>
         </div>
       </div>
       <pre
@@ -35,7 +37,7 @@ const { t } = useTranslation()
 
 const props = defineProps<{
   previewRun: WorkflowPreviewRun
-  badgeTone: 'info' | 'danger' | 'neutral'
+  badgeTone: 'success' | 'danger' | 'neutral'
   statusLabel: string
   createdAtText: string
 }>()

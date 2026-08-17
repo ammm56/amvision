@@ -986,16 +986,6 @@ class WorkflowGraphExecutor:
             )
             try:
                 for iteration_index, item_value in enumerate(items_value):
-                    write_workflow_variable_value(
-                        execution_metadata=execution_metadata,
-                        name=plan.item_variable_name,
-                        value=item_value,
-                    )
-                    write_workflow_variable_value(
-                        execution_metadata=execution_metadata,
-                        name=plan.index_variable_name,
-                        value=iteration_index,
-                    )
                     iteration_result = self._execute_for_each_body_iteration(
                         template=template,
                         for_each_node=for_each_node,
@@ -1094,12 +1084,85 @@ class WorkflowGraphExecutor:
     ) -> WorkflowForEachIterationResult:
         """执行单轮 for-each 循环体。"""
 
-        local_output_values: dict[tuple[str, str], object] = {
-            (plan.start_node_id, FOR_EACH_ITEM_OUTPUT_PORT): {"value": item_value},
-            (plan.start_node_id, FOR_EACH_INDEX_OUTPUT_PORT): {
-                "value": iteration_index
-            },
+        start_node = node_instances[plan.start_node_id]
+        start_node_definition = self.registry.get_node_definition(
+            start_node.node_type_id
+        )
+        iteration_start_node_id = (
+            f"{for_each_node.node_id}[{iteration_index + 1}].{plan.start_node_id}"
+        )
+        start_inputs: dict[str, object] = {
+            "items": {"value": [item_value]},
         }
+        start_outputs: dict[str, object] = {
+            FOR_EACH_ITEM_OUTPUT_PORT: {"value": item_value},
+            FOR_EACH_INDEX_OUTPUT_PORT: {"value": iteration_index},
+        }
+        start_execution_index = len(node_records) + 1
+        emit_node_event(
+            event_callback=event_callback,
+            event_type="node.started",
+            message="node execution started",
+            node_id=iteration_start_node_id,
+            node=start_node,
+            node_definition=start_node_definition,
+            execution_index=start_execution_index,
+            inputs=start_inputs,
+            extra_payload={
+                "for_each_node_id": for_each_node.node_id,
+                "for_each_iteration_index": iteration_index,
+            },
+        )
+        start_node_started_at = perf_counter()
+        write_workflow_variable_value(
+            execution_metadata=execution_metadata,
+            name=plan.item_variable_name,
+            value=item_value,
+        )
+        write_workflow_variable_value(
+            execution_metadata=execution_metadata,
+            name=plan.index_variable_name,
+            value=iteration_index,
+        )
+        local_output_values: dict[tuple[str, str], object] = {
+            (plan.start_node_id, output_name): output_value
+            for output_name, output_value in start_outputs.items()
+        }
+        start_duration_ms = _elapsed_ms(start_node_started_at)
+        node_records.append(
+            WorkflowNodeExecutionRecord(
+                node_id=iteration_start_node_id,
+                node_type_id=start_node_definition.node_type_id,
+                runtime_kind=start_node_definition.runtime_kind,
+                duration_ms=start_duration_ms,
+                inputs=(
+                    sanitize_runtime_mapping(start_inputs)
+                    if _should_retain_node_record_payloads(execution_metadata)
+                    else {}
+                ),
+                outputs=(
+                    start_outputs
+                    if _should_retain_node_record_payloads(execution_metadata)
+                    else {}
+                ),
+            )
+        )
+        emit_node_event(
+            event_callback=event_callback,
+            event_type="node.completed",
+            message="node execution completed",
+            node_id=iteration_start_node_id,
+            node=start_node,
+            node_definition=start_node_definition,
+            execution_index=start_execution_index,
+            inputs=start_inputs,
+            outputs=start_outputs,
+            extra_payload={
+                "for_each_node_id": for_each_node.node_id,
+                "for_each_iteration_index": iteration_index,
+                "duration_ms": start_duration_ms,
+            },
+        )
         for body_node_id in plan.body_node_order:
             body_node = node_instances[body_node_id]
             if not _is_workflow_node_enabled(body_node):

@@ -1,6 +1,12 @@
 import type { WorkflowJsonObject } from '../types'
 
-/** 按画布 node_id 汇总一次 Preview 中同一节点的全部执行耗时。 */
+/** 把 for-each 单轮调用 id 还原为画布中的原始 node_id。 */
+function readCanvasNodeId(nodeId: string): string {
+  const scopedNodeMatch = nodeId.match(/^.*\[\d+\]\.(.+)$/)
+  return scopedNodeMatch?.[1] || nodeId
+}
+
+/** 按画布 node_id 保留一次 Preview 中每个节点最后一轮的执行耗时。 */
 export function buildPreviewNodeDurationIndex(
   nodeRecords: WorkflowJsonObject[],
 ): ReadonlyMap<string, number> {
@@ -10,7 +16,7 @@ export function buildPreviewNodeDurationIndex(
     const durationMs = record.duration_ms
     if (typeof nodeId !== 'string' || !nodeId.trim()) continue
     if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) continue
-    durations.set(nodeId, (durations.get(nodeId) ?? 0) + durationMs)
+    durations.set(readCanvasNodeId(nodeId.trim()), durationMs)
   }
   return durations
 }
