@@ -14,7 +14,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     normalize_kernel_shape,
     normalize_morphology_operation,
     normalize_odd_kernel_size,
-    normalize_optional_object_key,
     require_positive_int,
     resolve_morphology_operation,
 )
@@ -62,7 +61,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         content=encoded_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name=f"morphology-{operation_name}",
         output_extension=".png",
         width=int(output_image.shape[1]),

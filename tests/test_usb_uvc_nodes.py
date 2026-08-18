@@ -333,7 +333,7 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
                     "value": {
                         "device_index": 2,
                         "output_format": "jpeg",
-                        "output_object_key": "captures/line-a-camera-2.jpg",
+                        "save_location": "captures/line-a-camera-2.jpg",
                     }
                 }
             },
@@ -351,7 +351,7 @@ def test_capture_frame_node_supports_request_override_and_storage_output(
     assert summary_value["device_index"] == 2
     assert summary_value["output_format"] == "jpeg"
     assert summary_value["transport_kind"] == "storage"
-    assert summary_value["output_object_key"] == "captures/line-a-camera-2.jpg"
+    assert summary_value["save_location"] == "captures/line-a-camera-2.jpg"
     assert capture.released is True
 
 

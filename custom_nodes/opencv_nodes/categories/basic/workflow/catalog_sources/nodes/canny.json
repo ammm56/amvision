@@ -70,7 +70,7 @@
         "title": "Pre Blur Kernel Size",
         "description": "进入 Canny 前的 Gaussian Blur 奇数核；1 表示不平滑。"
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       },
       "search_bbox_xyxy": {

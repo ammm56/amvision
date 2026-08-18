@@ -404,7 +404,7 @@ release/
 参数：
 
 - `title`
-- `output_object_key`
+- `save_location`
 
 输出：
 
@@ -413,7 +413,7 @@ release/
 第一阶段说明：
 
 - `frame-window-preview` 负责“多帧调试和缩略预览”
-- `video-body` 负责“最终视频结果的正式可播放响应”
+- `video-body` 负责“最终视频结果的正式可播放响应”；`save_location` 使用相对路径时写入 ObjectStore，使用系统绝对路径时写入 runtime 主机磁盘
 - 两者都复用 `response-body.v1` 总协议，但职责不同，不应合并成一个万能节点
 
 ### 6. `core.logic.value-field-extract`

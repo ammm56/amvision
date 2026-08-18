@@ -79,13 +79,6 @@ def read_non_negative_float_parameter(
     return require_non_negative_float(raw_value, field_name=field_name)
 
 
-def normalize_optional_object_key(value: object) -> str | None:
-    """规范化可选 output_object_key 参数。"""
-
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
-
 
 def require_positive_int(value: object, *, field_name: str) -> int:
     """把输入值解析为正整数。"""

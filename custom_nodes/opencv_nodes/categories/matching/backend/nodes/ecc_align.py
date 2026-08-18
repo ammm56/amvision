@@ -90,7 +90,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             source_payload=moving_payload,
             image_matrix=aligned,
             variant_name="ecc-align",
-            output_object_key=request.parameters.get("output_object_key"),
+            save_location=request.parameters.get("save_location"),
         ),
         "transform": build_value_payload(
             {

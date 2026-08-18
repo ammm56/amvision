@@ -258,7 +258,7 @@ Measurement、Inspection、Output 十个一级分类，并在每个一级分类�
       "line_thickness": {"type": "integer", "minimum": 1},
       "font_scale": {"type": "number", "minimum": 0},
       "draw_scores": {"type": "boolean"},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.draw", "vision.render"],

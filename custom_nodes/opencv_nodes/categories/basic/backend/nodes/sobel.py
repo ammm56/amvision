@@ -13,7 +13,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     load_image_matrix,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     require_non_negative_float,
     require_number,
 )
@@ -100,7 +99,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         content=encoded_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="sobel",
         output_extension=".png",
         width=int(output_image.shape[1]),

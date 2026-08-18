@@ -18,7 +18,7 @@
       "output_height": {"type": "integer", "minimum": 1},
       "mode": {"type": "string", "enum": ["linear", "log"], "default": "linear"},
       "inverse": {"type": "boolean", "default": false},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.warp-polar", "vision.opencv", "vision.geometry"],

@@ -85,7 +85,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             source_payload=image_payload,
             image_matrix=result,
             variant_name="warp-polar",
-            output_object_key=request.parameters.get("output_object_key"),
+            save_location=request.parameters.get("save_location"),
         )
     }
 

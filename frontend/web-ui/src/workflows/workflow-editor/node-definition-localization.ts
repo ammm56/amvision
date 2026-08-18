@@ -33,6 +33,7 @@ export function resolveNodePortDescription(port: NodePortDefinition, locale: Sup
 }
 
 export function resolveNodeParameterDisplayName(field: NodeParameterUiField, locale: SupportedLocale): string {
+  if (field.parameter_name === 'save_location') return saveLocationText(locale).title
   return resolveLocalizedText(
     readParameterSchemaLocalization(field, 'title'),
     field.display_name,
@@ -42,7 +43,33 @@ export function resolveNodeParameterDisplayName(field: NodeParameterUiField, loc
 }
 
 export function resolveNodeParameterDescription(field: NodeParameterUiField, locale: SupportedLocale): string {
+  if (field.parameter_name === 'save_location') return saveLocationText(locale).description
   return resolveLocalizedText(readParameterSchemaLocalization(field, 'description'), field.description, locale, '')
+}
+
+function saveLocationText(locale: SupportedLocale): { title: string; description: string } {
+  if (locale === 'zh-CN') {
+    return {
+      title: '保存位置',
+      description: '相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。',
+    }
+  }
+  if (locale === 'ja-JP') {
+    return {
+      title: '保存先',
+      description: '相対パスは ObjectStore、絶対パスはローカルディスクに保存します。',
+    }
+  }
+  if (locale === 'ko-KR') {
+    return {
+      title: '저장 위치',
+      description: '상대 경로는 ObjectStore에, 절대 경로는 로컬 디스크에 저장합니다.',
+    }
+  }
+  return {
+    title: 'Save location',
+    description: 'Relative paths save to ObjectStore; absolute paths save to the local filesystem.',
+  }
 }
 
 function readNodeMetadataLocalization(metadata: WorkflowJsonObject, key: 'display_name' | 'description'): unknown {

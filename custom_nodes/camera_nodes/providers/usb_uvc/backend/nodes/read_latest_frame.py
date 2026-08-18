@@ -29,7 +29,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             frame=frame,
             successful_reads=successful_reads,
         )
-    if read_config.output_format == "raw" and read_config.output_object_key is None:
+    if read_config.output_format == "raw" and read_config.save_location is None:
         media_type = "image/raw"
         image_payload = payloads.build_captured_raw_image_payload(
             request,
@@ -51,7 +51,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             media_type=media_type,
             width=frame_width,
             height=frame_height,
-            output_object_key=read_config.output_object_key,
+            save_location=read_config.save_location,
             overwrite=read_config.overwrite,
         )
     summary = payloads.build_camera_session_summary(
@@ -70,9 +70,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "transport_kind": image_payload.get("transport_kind"),
         }
     )
-    output_object_key = image_payload.get("object_key")
-    if isinstance(output_object_key, str) and output_object_key:
-        summary["output_object_key"] = output_object_key
+    saved_output = image_payload.get("saved_output")
+    if isinstance(saved_output, dict):
+        summary["save_location"] = saved_output.get("object_key") or saved_output.get("local_path")
     image_handle = image_payload.get("image_handle")
     if isinstance(image_handle, str) and image_handle:
         summary["image_handle"] = image_handle

@@ -147,16 +147,16 @@
           }
         }
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string",
-        "title": "Output object key",
-        "description": "Optional storage object key. Leave empty to return a memory image reference.",
+        "title": "Save location",
+        "description": "Optional save location. Relative paths save to ObjectStore; absolute paths save to the local filesystem.",
         "x-amvision-i18n": {
           "title": {
-            "zh-CN": "输出 object key"
+            "zh-CN": "保存位置"
           },
           "description": {
-            "zh-CN": "可选输出 object key；留空时返回 memory image-ref。"
+            "zh-CN": "可选保存位置；相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。"
           }
         }
       }

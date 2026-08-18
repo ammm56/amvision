@@ -16,16 +16,16 @@ from backend.service.application.workflows.graph_executor import WorkflowNodeExe
 def _video_body_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把视频引用转换成正式 response-body.v1 视频结构。"""
 
-    output_object_key = request.parameters.get("output_object_key")
-    normalized_output_object_key = (
-        output_object_key.strip()
-        if isinstance(output_object_key, str) and output_object_key.strip()
+    save_location = request.parameters.get("save_location")
+    normalized_save_location = (
+        save_location.strip()
+        if isinstance(save_location, str) and save_location.strip()
         else None
     )
     response_video = build_response_video_payload(
         request,
         video_payload=request.input_values.get("video"),
-        object_key=normalized_output_object_key,
+        save_location=normalized_save_location,
         variant_name="response-video",
     )
     response_body: dict[str, object] = {
@@ -69,10 +69,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "description": "正式视频 body 的显示名称。",
                     "default": "Video",
                 },
-                "output_object_key": {
+                "save_location": {
                     "type": "string",
-                    "title": "输出 object_key",
-                    "description": "为空时优先复用 storage 输入；local-path 输入会按 Preview Run artifact 或 runtime 目录自动生成。",
+                    "title": "保存位置",
+                    "description": "可选保存位置；相对路径写入 ObjectStore，绝对路径写入本地磁盘。",
                     "default": "",
                 },
             },

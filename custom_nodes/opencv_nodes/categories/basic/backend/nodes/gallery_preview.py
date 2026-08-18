@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from backend.nodes.output_targets import (
-    WorkflowOutputDirectory,
-    resolve_optional_output_directory,
+from backend.nodes.save_locations import (
+    WorkflowSaveLocation,
+    resolve_optional_save_location,
 )
 from backend.nodes.runtime_support import (
     build_preview_response_image_payload,
@@ -39,7 +39,7 @@ def _build_gallery_item(
     *,
     image_item: dict[str, object],
     response_transport_mode: str,
-    output_directory: WorkflowOutputDirectory | None,
+    save_location: WorkflowSaveLocation | None,
     item_index: int,
     batch_timestamp: str | None,
 ) -> dict[str, object]:
@@ -49,7 +49,7 @@ def _build_gallery_item(
     - request：当前节点执行请求。
     - image_item：单个图片引用条目。
     - response_transport_mode：响应传输方式。
-    - output_directory：可选输出目录。
+    - save_location：可选保存位置。
     - item_index：当前图片序号。
     - batch_timestamp：当前批次共用的输出时间戳。
 
@@ -58,7 +58,7 @@ def _build_gallery_item(
     """
 
     response_source = image_item
-    if output_directory is not None and batch_timestamp is not None:
+    if save_location is not None and batch_timestamp is not None:
         cv2_module, np_module = require_opencv_imports()
         normalized_payload, image_matrix = load_image_matrix_from_payload(
             request,
@@ -74,7 +74,7 @@ def _build_gallery_item(
             request,
             source_payload=normalized_payload,
             image_matrix=image_matrix,
-            output_directory=output_directory,
+            save_location=save_location,
             output_name=output_name,
             keep_raw_memory=False,
             media_type="image/png",
@@ -133,11 +133,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     response_transport_mode = str(
         request.parameters.get("response_transport_mode", "inline-base64")
     )
-    output_directory = resolve_optional_output_directory(
-        request.parameters.get("output_dir")
+    save_location = resolve_optional_save_location(
+        request.parameters.get("save_location"),
+        scope="directory",
     )
     output_batch_timestamp = (
-        build_image_crop_batch_timestamp() if output_directory is not None else None
+        build_image_crop_batch_timestamp() if save_location is not None else None
     )
     image_items = image_refs_payload["items"]
     max_items_raw = request.parameters.get("max_items")
@@ -149,7 +150,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             request,
             image_item=image_item,
             response_transport_mode=response_transport_mode,
-            output_directory=output_directory,
+            save_location=save_location,
             item_index=index,
             batch_timestamp=output_batch_timestamp,
         )

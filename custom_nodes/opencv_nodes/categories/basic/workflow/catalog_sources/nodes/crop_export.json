@@ -128,18 +128,18 @@
           }
         }
       },
-      "output_dir": {
+      "save_location": {
         "type": "string",
-        "title": "Output directory",
-        "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem. Leave empty to return memory image refs without saving files.",
+        "title": "Save location",
+        "description": "Optional save location. Relative paths write to ObjectStore; absolute paths write to the local filesystem. Leave empty to return memory image refs without saving files.",
         "examples": [
           "workflow/roi",
           "T:\\temp\\roi"
         ],
         "x-amvision-i18n": {
           "title": {
-            "zh-CN": "输出目录",
-            "en-US": "Output directory"
+            "zh-CN": "保存位置",
+            "en-US": "Save location"
           },
           "description": {
             "zh-CN": "相对路径写入 ObjectStore（如 workflow/roi）；当前系统绝对路径直接写入本机目录（如 T:\\temp\\roi）；留空时不保存文件并返回 memory image-ref。",

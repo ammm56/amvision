@@ -170,7 +170,7 @@
       "node_id": "save_result_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/result-{timestamp}.json",
+        "save_location": "{workflow_app_result_dir}/glue-roi-delivery-bundle/result-{timestamp}.json",
         "overwrite": true,
         "indent": 2
       }
@@ -179,7 +179,7 @@
       "node_id": "append_result_csv",
       "node_type_id": "core.output.csv-append-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv"
+        "save_location": "{workflow_app_result_dir}/glue-roi-delivery-bundle/history.csv"
       }
     },
     {
@@ -314,13 +314,13 @@
           {
             "target_path": "payload.json_result_path",
             "source_kind": "request",
-            "source_path": "json_summary.local_path",
+            "source_path": "json_summary.saved_output.object_key",
             "on_missing": "null"
           },
           {
             "target_path": "payload.csv_result_path",
             "source_kind": "request",
-            "source_path": "csv_summary.local_path",
+            "source_path": "csv_summary.saved_output.object_key",
             "on_missing": "null"
           }
         ]
@@ -408,13 +408,13 @@
           {
             "column_name": "json_result_path",
             "source_kind": "request",
-            "source_path": "json_summary.local_path",
+            "source_path": "json_summary.saved_output.object_key",
             "on_missing": "null"
           },
           {
             "column_name": "csv_result_path",
             "source_kind": "request",
-            "source_path": "csv_summary.local_path",
+            "source_path": "csv_summary.saved_output.object_key",
             "on_missing": "null"
           }
         ],

@@ -17,9 +17,13 @@ from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.local_io import (
     build_directory_file_record,
     require_file_record_list,
-    resolve_local_path_value_from_request,
 )
 from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.runtime_support import require_dataset_storage
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_required_save_location_from_request,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.io import (
     WriteJournal,
@@ -57,11 +61,23 @@ def _batch_files_relocate_handler(
         field_name="dry_run",
         default_value=False,
     )
-    target_directory = resolve_local_path_value_from_request(
+    save_location = resolve_required_save_location_from_request(
         request,
-        parameter_name="target_directory",
-        description="批次文件归档目标目录",
+        scope="directory",
     )
+    if save_location.kind == SAVE_LOCATION_OBJECT_STORE:
+        target_directory = require_dataset_storage(request).resolve(
+            str(save_location.object_key or "")
+        )
+        saved_output: dict[str, object] = {
+            "kind": SAVE_LOCATION_OBJECT_STORE,
+            "object_key": str(save_location.object_key or ""),
+        }
+    else:
+        if save_location.filesystem_path is None:
+            raise InvalidRequestError("批次文件保存位置缺少有效系统路径")
+        target_directory = save_location.filesystem_path
+        saved_output = {"kind": "filesystem", "local_path": str(target_directory)}
     source_root = _resolve_source_root(
         file_records=file_records,
         parameter_value=request.parameters.get("source_root"),
@@ -103,6 +119,7 @@ def _batch_files_relocate_handler(
                 "conflict_policy": conflict_policy,
                 "preserve_subdirectories": preserve_subdirectories,
                 "dry_run": dry_run,
+                "saved_output": saved_output,
                 "target_directory": str(target_directory),
                 "source_root": str(source_root) if source_root is not None else None,
                 "count": len(file_records),
@@ -139,7 +156,10 @@ def _relocate_single_file(
         except ValueError as exc:
             raise InvalidRequestError(
                 "batch-files-relocate 的 source_root 必须覆盖全部 source 文件",
-                details={"source_path": str(source_path), "source_root": str(source_root)},
+                details={
+                    "source_path": str(source_path),
+                    "source_root": str(source_root),
+                },
             ) from exc
         destination_directory = target_directory / relative_parent
     destination_path = destination_directory / source_path.name
@@ -187,9 +207,7 @@ def _relocate_single_file(
                 },
                 build_directory_file_record(resolved_destination_path),
             )
-    relocated_record = (
-        build_directory_file_record(resolved_destination_path)
-    )
+    relocated_record = build_directory_file_record(resolved_destination_path)
     final_status = f"relocated.{mode}"
     if status == "renamed":
         final_status = f"relocated.{mode}.renamed"
@@ -400,9 +418,7 @@ def _require_record_path(record: dict[str, object], *, field_name: str) -> Path:
 
     value = record.get(field_name)
     if not isinstance(value, str) or not value:
-        raise InvalidRequestError(
-            f"batch-files-relocate journal 缺少 {field_name}"
-        )
+        raise InvalidRequestError(f"batch-files-relocate journal 缺少 {field_name}")
     return Path(value).expanduser().resolve(strict=False)
 
 
@@ -424,7 +440,10 @@ def _resolve_destination_path(
     if conflict_policy == "error":
         raise InvalidRequestError(
             "batch-files-relocate 目标文件已存在",
-            details={"source_path": str(source_path), "target_path": str(destination_path)},
+            details={
+                "source_path": str(source_path),
+                "target_path": str(destination_path),
+            },
         )
     if conflict_policy == "skip":
         return destination_path, "skipped.existing"
@@ -437,7 +456,9 @@ def _build_renamed_destination_path(destination_path: Path) -> Path:
     """为冲突文件生成带序号的新路径。"""
 
     suffix = destination_path.suffix
-    base_name = destination_path.name[: -len(suffix)] if suffix else destination_path.name
+    base_name = (
+        destination_path.name[: -len(suffix)] if suffix else destination_path.name
+    )
     candidate_index = 2
     while True:
         candidate_path = destination_path.with_name(
@@ -460,7 +481,9 @@ def _resolve_source_root(
         return None
     if parameter_value is not None:
         if not isinstance(parameter_value, str) or not parameter_value.strip():
-            raise InvalidRequestError("batch-files-relocate 的 source_root 必须是非空字符串")
+            raise InvalidRequestError(
+                "batch-files-relocate 的 source_root 必须是非空字符串"
+            )
         return Path(parameter_value.strip()).expanduser().resolve()
     source_parent_paths = [
         str(Path(str(file_record["path"])).expanduser().resolve().parent)
@@ -493,7 +516,9 @@ def _read_conflict_policy(raw_value: object) -> str:
     if raw_value is None:
         return "rename"
     if not isinstance(raw_value, str):
-        raise InvalidRequestError("batch-files-relocate 的 conflict_policy 必须是字符串")
+        raise InvalidRequestError(
+            "batch-files-relocate 的 conflict_policy 必须是字符串"
+        )
     normalized_value = raw_value.strip().lower()
     if normalized_value not in {"error", "skip", "overwrite", "rename"}:
         raise InvalidRequestError(
@@ -522,7 +547,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         node_type_id="core.io.batch-files-relocate",
         display_name="Batch Files Relocate",
         category="core.io.file",
-        description="把当前批次文件复制或移动到 processed/archive/failed/quarantine 等目标目录，并输出目标文件列表与映射摘要。",
+        description="把当前批次文件复制或移动到 ObjectStore 相对目录或 runtime 主机绝对目录，并输出文件列表与映射摘要。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -532,8 +557,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 payload_type_id="value.v1",
             ),
             NodePortDefinition(
-                name="path",
-                display_name="Path",
+                name="save_location",
+                display_name="保存位置",
                 payload_type_id="value.v1",
                 required=False,
             ),
@@ -558,7 +583,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "target_directory": {"type": "string", "title": "目标目录"},
+                "save_location": {"type": "string", "title": "保存位置"},
                 "source_root": {"type": "string", "title": "源根目录"},
                 "mode": {
                     "type": "string",

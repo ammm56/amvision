@@ -19,7 +19,7 @@
         "default": [[-1, -1, -1], [0, 1, 0], [1, 1, 1]],
         "items": {"type": "array", "items": {"type": "integer", "enum": [-1, 0, 1]}}
       },
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.morphology-hitmiss", "vision.opencv", "vision.region"],

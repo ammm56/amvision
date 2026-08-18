@@ -26,7 +26,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.search_roi import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     normalize_odd_kernel_size,
-    normalize_optional_object_key,
     require_aperture_size,
     require_non_negative_float,
 )
@@ -85,7 +84,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         image_matrix=output_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="canny",
         error_message="OpenCV Canny 后无法编码输出图片",
     )

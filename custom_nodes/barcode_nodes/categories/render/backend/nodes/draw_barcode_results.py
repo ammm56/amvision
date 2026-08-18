@@ -13,7 +13,6 @@ from custom_nodes.barcode_nodes.shared.backend.runtime.results import (
     iter_barcode_result_items,
 )
 from custom_nodes.barcode_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     read_bool_parameter,
     read_non_negative_float_parameter,
     read_positive_int_parameter,
@@ -62,7 +61,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     output_payload = build_output_image_matrix_payload(
         request,
         source_payload=image_payload,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="draw-barcode-results",
         image_matrix=image_matrix,
     )

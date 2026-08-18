@@ -14,7 +14,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     normalize_adaptive_block_size,
     normalize_adaptive_threshold_method,
     normalize_binary_threshold_mode,
-    normalize_optional_object_key,
     require_number,
     require_uint8_int,
 )
@@ -66,7 +65,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         content=encoded_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="adaptive-threshold",
         output_extension=".png",
         width=int(threshold_image.shape[1]),

@@ -20,7 +20,7 @@
       "up_diff": {"type": "number", "default": 10.0, "minimum": 0, "maximum": 255},
       "connectivity": {"type": "integer", "enum": [4, 8], "default": 4},
       "fixed_range": {"type": "boolean", "default": false},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.flood-fill", "vision.opencv", "vision.segmentation"],

@@ -47,7 +47,7 @@
       "node_id": "save_archive_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/plc-modbus-wait-status-word-alarm-mask/result-{timestamp}.json",
+        "save_location": "{workflow_app_result_dir}/plc-modbus-wait-status-word-alarm-mask/result-{timestamp}.json",
         "overwrite": true,
         "indent": 2
       }

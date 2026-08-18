@@ -11,7 +11,6 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.runtime_support import (
     PREVIEW_DISPLAY_MEDIA_TYPE,
-    RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
     build_preview_response_image_payload,
     require_image_payload,
 )
@@ -25,14 +24,9 @@ from backend.service.application.workflows.preview_display_outputs import (
 def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """把图片引用转换成可直接进入 HTTP 响应的结构化 body。"""
 
-    output_object_key = request.parameters.get("output_object_key")
-    normalized_output_object_key = (
-        output_object_key.strip()
-        if isinstance(output_object_key, str) and output_object_key.strip()
-        else None
-    )
+    save_location = request.parameters.get("save_location")
     response_transport_mode = str(request.parameters.get("response_transport_mode", "inline-base64")).strip()
-    source_object_key = normalized_output_object_key or _build_preview_artifact_object_key(
+    source_object_key = _build_preview_artifact_object_key(
         request,
         artifact_name="image-preview",
         media_type=str(require_image_payload(request.input_values.get("image")).get("media_type") or "image/png"),
@@ -42,13 +36,12 @@ def _image_preview_handler(request: WorkflowNodeExecutionRequest) -> dict[str, o
         artifact_name="image-preview-display",
         media_type=PREVIEW_DISPLAY_MEDIA_TYPE,
     )
-    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF:
-        normalized_output_object_key = source_object_key
     response_image = build_preview_response_image_payload(
         request,
         image_payload=request.input_values.get("image"),
         response_transport_mode=response_transport_mode,
-        object_key=normalized_output_object_key or source_object_key,
+        object_key=source_object_key,
+        save_location=save_location if isinstance(save_location, str) else None,
         display_object_key=display_object_key,
         variant_name="image-preview",
     )
@@ -126,10 +119,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "enum": ["inline-base64", "storage-ref"],
                     "default": "inline-base64",
                 },
-                "output_object_key": {
+                "save_location": {
                     "type": "string",
-                    "title": "输出 object_key",
-                    "description": "仅 storage-ref 模式使用；为空时自动保存到 Preview Run artifact 目录。",
+                    "title": "保存位置",
+                    "description": "可选保存位置；相对路径写入 ObjectStore，绝对路径写入本地磁盘。",
                     "default": "",
                 },
             },

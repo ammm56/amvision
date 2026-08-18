@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_optional_save_location,
+    save_file,
+)
 from backend.nodes.core_nodes.support.logic import require_value_payload
 from backend.nodes.runtime_support import require_image_payload
 from backend.nodes.video_runtime_support_tools import (
@@ -211,14 +216,28 @@ def build_response_video_payload(
     *,
     video_payload: object,
     object_key: str | None = None,
+    save_location: str | None = None,
     variant_name: str = "response-video",
     overwrite: bool = True,
 ) -> dict[str, object]:
     """把内部 video-ref payload 转换成对外 JSON 安全的视频响应结构。"""
 
+    normalized_source_payload = require_video_payload(video_payload)
+    saved_output: dict[str, object] | None = None
+    resolved_save_location = resolve_optional_save_location(save_location, scope="file")
+    if resolved_save_location is not None:
+        saved_file = save_file(
+            request,
+            save_location=resolved_save_location,
+            source_path=resolve_video_source_path(request, video_payload=normalized_source_payload),
+            overwrite=overwrite,
+        )
+        saved_output = saved_file.to_payload()
+        if saved_file.kind == SAVE_LOCATION_OBJECT_STORE:
+            object_key = saved_file.object_key
     stored_payload = materialize_video_storage_payload(
         request,
-        source_payload=video_payload,
+        source_payload=normalized_source_payload,
         object_key=object_key,
         overwrite=overwrite,
         variant_name=variant_name,
@@ -231,6 +250,8 @@ def build_response_video_payload(
     for field_name in ("frame_count", "fps", "width", "height", "duration_ms"):
         if stored_payload.get(field_name) is not None:
             response_video[field_name] = stored_payload[field_name]
+    if saved_output is not None:
+        response_video["saved_output"] = saved_output
     return response_video
 
 

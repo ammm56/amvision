@@ -9,7 +9,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import normalize_bbox
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     require_non_negative_float,
     require_positive_int,
 )
@@ -72,7 +71,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             request,
             source_payload=image_payload,
             content=encoded_image_bytes,
-            object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+            save_location=request.parameters.get("save_location"),
             variant_name="draw-contours",
             output_extension=".png",
             width=int(image_matrix.shape[1]),

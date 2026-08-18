@@ -61,7 +61,7 @@
         "maximum": 1,
         "default": 0.55
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

@@ -266,7 +266,7 @@ def test_runtime_registry_loader_registers_core_basic_nodes(
             WorkflowGraphNode(
                 node_id="save",
                 node_type_id="core.io.image-save",
-                parameters={"object_key": "workflow/previews/saved-source.png"},
+                parameters={"save_location": "workflow/previews/saved-source.png"},
             ),
             WorkflowGraphNode(
                 node_id="preview",
@@ -2465,6 +2465,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
     )
     dataset_storage = _create_dataset_storage(tmp_path)
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
+    saved_image_path = (tmp_path / "external-output" / "drawn.png").resolve()
 
     runtime_registry_loader.refresh()
     executor = WorkflowGraphExecutor(
@@ -2485,6 +2486,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
                     "line_thickness": 2,
                     "font_scale": 0.5,
                     "draw_scores": True,
+                    "save_location": str(saved_image_path),
                 },
             ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
@@ -2576,6 +2578,7 @@ def test_repository_opencv_node_pack_executes_draw_detections_node(
         "image/png",
     }
     assert response_payload["body"]["image"]["image_base64"]
+    assert saved_image_path.is_file() is True
     assert any(
         record.node_type_id == "custom.opencv.draw-detections"
         for record in execution_result.node_records
@@ -3089,7 +3092,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
                 parameters={
                     "box_padding": 2,
                     "max_crops": 2,
-                    "output_dir": output_dir,
+                    "save_location": output_dir,
                 },
             ),
         ),
@@ -3208,7 +3211,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
 def test_repository_opencv_crop_export_node_defaults_to_memory_crops_with_memory_input(
     tmp_path: Path,
 ) -> None:
-    """验证 crop-export 在 memory 输入且未显式 output_dir 时默认返回 memory crops。"""
+    """验证 crop-export 在 memory 输入且未显式 save_location 时默认返回 memory crops。"""
 
     custom_nodes_root_dir = _get_repository_custom_nodes_root()
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -3352,7 +3355,11 @@ def test_repository_opencv_crop_export_node_uses_defaults_when_parameters_are_nu
             WorkflowGraphNode(
                 node_id="crop",
                 node_type_id="custom.opencv.crop-export",
-                parameters={"box_padding": None, "max_crops": None, "output_dir": None},
+                parameters={
+                    "box_padding": None,
+                    "max_crops": None,
+                    "save_location": None,
+                },
             ),
         ),
         template_inputs=(
@@ -3807,7 +3814,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
                 parameters={
                     "box_padding": 1,
                     "max_crops": 2,
-                    "output_dir": "workflow/gallery",
+                    "save_location": "workflow/gallery",
                 },
             ),
             WorkflowGraphNode(
@@ -3817,7 +3824,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
                     "title": "Crop Gallery",
                     "max_items": 2,
                     "response_transport_mode": "inline-base64",
-                    "output_dir": gallery_output_dir,
+                    "save_location": gallery_output_dir,
                 },
             ),
             WorkflowGraphNode(

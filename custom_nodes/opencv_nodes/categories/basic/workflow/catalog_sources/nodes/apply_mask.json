@@ -28,7 +28,7 @@
   "parameter_schema": {
     "type": "object",
     "properties": {
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

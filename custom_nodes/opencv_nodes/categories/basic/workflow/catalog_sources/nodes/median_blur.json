@@ -28,7 +28,7 @@
         "minimum": 1,
         "default": 5
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

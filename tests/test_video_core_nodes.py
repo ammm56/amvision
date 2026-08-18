@@ -433,8 +433,7 @@ def test_video_save_handler_writes_local_video_file(tmp_path: Path) -> None:
             node_id="video-save",
             node_definition=object(),
             parameters={
-                "output_transport_kind": VIDEO_TRANSPORT_LOCAL_PATH,
-                "local_path": str(output_path),
+                "save_location": str(output_path),
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -445,7 +444,7 @@ def test_video_save_handler_writes_local_video_file(tmp_path: Path) -> None:
 
     assert output_path.is_file() is True
     assert output["video"]["transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
-    assert output["summary"]["value"]["output_transport_kind"] == VIDEO_TRANSPORT_LOCAL_PATH
+    assert output["summary"]["value"]["save_location"] == str(output_path)
     assert output["video"]["frame_count"] >= 1
 
 
@@ -477,7 +476,7 @@ def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
         WorkflowNodeExecutionRequest(
             node_id="video-save",
             node_definition=object(),
-            parameters={"output_transport_kind": VIDEO_TRANSPORT_STORAGE, "container": "avi"},
+            parameters={"save_location": "workflow/videos/rendered.avi", "container": "avi"},
             input_values={"frames": decoded_output["frames"]},
             execution_metadata={
                 "execution_image_registry": image_registry,
@@ -490,7 +489,7 @@ def test_video_save_handler_writes_storage_video_ref(tmp_path: Path) -> None:
     assert output["video"]["transport_kind"] == VIDEO_TRANSPORT_STORAGE
     object_key = output["video"]["object_key"]
     assert dataset_storage.resolve(object_key).is_file() is True
-    assert output["summary"]["value"]["output_transport_kind"] == VIDEO_TRANSPORT_STORAGE
+    assert output["summary"]["value"]["save_location"] == "workflow/videos/rendered.avi"
 
 
 def _build_test_video_file(video_path: Path, *, frame_count: int) -> Path:

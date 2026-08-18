@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
-from backend.nodes.output_targets import resolve_optional_output_directory
+from backend.nodes.save_locations import resolve_optional_save_location
 from backend.nodes.parameter_utils import is_empty_parameter
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
@@ -56,11 +56,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         if max_crops_raw is not None
         else None
     )
-    output_directory = resolve_optional_output_directory(
-        request.parameters.get("output_dir")
+    save_location = resolve_optional_save_location(
+        request.parameters.get("save_location"),
+        scope="directory",
     )
     output_batch_timestamp = (
-        build_image_crop_batch_timestamp() if output_directory is not None else None
+        build_image_crop_batch_timestamp() if save_location is not None else None
     )
     polygon_background_fill = _read_polygon_background_fill(
         request.parameters.get("polygon_background_fill")
@@ -100,12 +101,12 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 background_fill=polygon_background_fill,
             )
         crop_output_index = len(exported_crops) + 1
-        if output_directory is None:
+        if save_location is None:
             crop_payload = build_output_image_matrix_payload(
                 request,
                 source_payload=image_payload,
                 image_matrix=crop_image,
-                object_key=None,
+                save_location=None,
                 variant_name=f"crop-{crop_output_index:03d}",
                 output_extension=".png",
                 media_type="image/png",
@@ -116,7 +117,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 request,
                 source_payload=image_payload,
                 image_matrix=crop_image,
-                output_directory=output_directory,
+                save_location=save_location,
                 output_name=build_image_crop_output_name(
                     batch_timestamp=str(output_batch_timestamp),
                     item_index=crop_output_index,

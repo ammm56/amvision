@@ -1646,7 +1646,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1729,7 +1729,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1874,17 +1874,17 @@
               }
             }
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string",
-            "description": "可选输出 object key；留空时返回 memory image-ref。",
+            "description": "可选保存位置；相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。",
             "x-amvision-i18n": {
               "title": {
-                "zh-CN": "输出 object key",
-                "en-US": "Output object key"
+                "zh-CN": "保存位置",
+                "en-US": "Save location"
               },
               "description": {
-                "zh-CN": "可选输出 object key；留空时返回 memory image-ref。",
-                "en-US": "Optional output object key. When omitted, the node returns a memory image-ref."
+                "zh-CN": "可选保存位置；相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。",
+                "en-US": "Optional save location. When omitted, the node returns a memory image-ref."
               }
             }
           }
@@ -1987,7 +1987,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2071,7 +2071,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2168,7 +2168,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2258,7 +2258,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2351,7 +2351,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }

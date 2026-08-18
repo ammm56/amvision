@@ -11,7 +11,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     load_image_matrix,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     require_non_negative_float,
     require_positive_int,
 )
@@ -124,7 +123,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             request,
             source_payload=image_payload,
             image_matrix=image_matrix,
-            object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+            save_location=request.parameters.get("save_location"),
             variant_name="draw-roi",
             output_extension=".png",
             media_type="image/png",

@@ -15,7 +15,7 @@
       "height": {"type": "integer", "default": 64, "minimum": 1},
       "center_x": {"type": "number"},
       "center_y": {"type": "number"},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.get-rect-subpix", "vision.opencv", "vision.geometry"],

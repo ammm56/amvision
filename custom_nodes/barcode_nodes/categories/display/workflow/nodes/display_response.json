@@ -58,7 +58,7 @@
           "storage-ref"
         ]
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

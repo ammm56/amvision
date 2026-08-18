@@ -93,7 +93,7 @@
         "maximum": 255,
         "default": 0
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       },
       "output_roi_id": {

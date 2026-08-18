@@ -30,17 +30,29 @@ from backend.nodes.core_nodes.io.directory.directory_scan import _directory_scan
 from backend.nodes.core_nodes.io.local.image_list_local import _image_list_local_handler
 from backend.nodes.core_nodes.io.local.image_load_local import _image_load_local_handler
 from backend.nodes.core_nodes.io.local.json_load_local import _json_load_local_handler
-from backend.nodes.core_nodes.io.output.records.batch_record import _batch_record_handler
+from backend.nodes.core_nodes.io.output.records.batch_record import (
+    _batch_record_handler,
+)
 from backend.nodes.core_nodes.io.output.records.batch_result_summary import (
     _batch_result_summary_handler,
 )
-from backend.nodes.core_nodes.io.output.storage.csv_append_local import _csv_append_local_handler
-from backend.nodes.core_nodes.io.output.storage.json_save_local import _json_save_local_handler
-from backend.nodes.core_nodes.io.output.records.workflow_result import _workflow_result_handler
+from backend.nodes.core_nodes.io.output.storage.csv_append_local import (
+    _csv_append_local_handler,
+)
+from backend.nodes.core_nodes.io.output.storage.json_save_local import (
+    _json_save_local_handler,
+)
+from backend.nodes.core_nodes.io.output.records.workflow_result import (
+    _workflow_result_handler,
+)
 from backend.nodes.runtime_support import require_execution_image_registry
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import (
     WorkflowNodeExecutionRequest,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
 )
 
 
@@ -165,7 +177,7 @@ def test_json_save_local_handler_writes_result_record(tmp_path: Path) -> None:
         WorkflowNodeExecutionRequest(
             node_id="json-save-local",
             node_definition=object(),
-            parameters={"local_path": str(output_path), "indent": 2},
+            parameters={"save_location": str(output_path), "indent": 2},
             input_values={
                 "result": {
                     "ok_ng": "NG",
@@ -192,7 +204,7 @@ def test_csv_append_local_handler_appends_alarm_record(tmp_path: Path) -> None:
         WorkflowNodeExecutionRequest(
             node_id="csv-append-local",
             node_definition=object(),
-            parameters={"local_path": str(output_path)},
+            parameters={"save_location": str(output_path)},
             input_values={
                 "alarm": {
                     "active": True,
@@ -209,6 +221,46 @@ def test_csv_append_local_handler_appends_alarm_record(tmp_path: Path) -> None:
     assert "active,level,message,metrics.coverage_ratio" in csv_text
     assert "True,warning,glue coverage low,0.12" in csv_text
     assert output["summary"]["value"]["record_kind"] == "alarm-record"
+
+
+def test_json_and_csv_save_handlers_support_object_store_relative_locations(
+    tmp_path: Path,
+) -> None:
+    """验证 JSON 和 CSV 保存节点支持 ObjectStore 相对保存位置。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    execution_metadata = {"dataset_storage": dataset_storage}
+    json_output = _json_save_local_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="json-save-object-store",
+            node_definition=object(),
+            parameters={"save_location": "workflow/results/result.json"},
+            input_values={"value": {"value": {"ok": True}}},
+            execution_metadata=execution_metadata,
+        )
+    )
+    csv_output = _csv_append_local_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="csv-save-object-store",
+            node_definition=object(),
+            parameters={"save_location": "workflow/results/result.csv"},
+            input_values={"value": {"value": {"ok": True}}},
+            execution_metadata=execution_metadata,
+        )
+    )
+
+    assert dataset_storage.resolve("workflow/results/result.json").is_file()
+    assert dataset_storage.resolve("workflow/results/result.csv").is_file()
+    assert json_output["summary"]["value"]["saved_output"] == {
+        "kind": "object-store",
+        "object_key": "workflow/results/result.json",
+    }
+    assert csv_output["summary"]["value"]["saved_output"] == {
+        "kind": "object-store",
+        "object_key": "workflow/results/result.csv",
+    }
 
 
 def test_directory_batch_window_handler_returns_subset() -> None:
@@ -374,7 +426,9 @@ def test_directory_poll_window_handler_returns_no_new_files_when_cursor_reaches_
     assert output["cursor"]["value"]["last_path"] == str(Path("W:/tmp/b.png").resolve())
 
 
-def test_directory_poll_window_handler_returns_next_batch_when_new_files_exist() -> None:
+def test_directory_poll_window_handler_returns_next_batch_when_new_files_exist() -> (
+    None
+):
     """验证目录轮询窗口节点在存在新文件时会返回实际批次。"""
 
     output = _directory_poll_window_handler(
@@ -471,7 +525,11 @@ def test_directory_cursor_advance_handler_merges_previous_and_window_cursor() ->
             parameters={},
             input_values={
                 "cursor": {
-                    "value": {"next_start_index": 1, "last_path": "W:/tmp/a.png", "completed": False}
+                    "value": {
+                        "next_start_index": 1,
+                        "last_path": "W:/tmp/a.png",
+                        "completed": False,
+                    }
                 },
                 "window_cursor": {
                     "value": {
@@ -512,7 +570,9 @@ def test_batch_record_handler_builds_batch_archive_object() -> None:
             input_values={
                 "scan_summary": {"value": {"directory_path": "W:/tmp", "count": 3}},
                 "window_summary": {"value": {"count": 2, "has_next": True}},
-                "cursor": {"value": {"next_start_index": 2, "last_path": "W:/tmp/b.png"}},
+                "cursor": {
+                    "value": {"next_start_index": 2, "last_path": "W:/tmp/b.png"}
+                },
                 "files": {
                     "value": [
                         {"path": "W:/tmp/a.png", "file_name": "a.png"},
@@ -567,7 +627,7 @@ def test_batch_files_relocate_handler_copies_files_and_returns_mappings(
             node_id="batch-files-relocate",
             node_definition=object(),
             parameters={
-                "target_directory": str(target_directory),
+                "save_location": str(target_directory),
                 "mode": "copy",
                 "preserve_subdirectories": True,
             },
@@ -593,7 +653,37 @@ def test_batch_files_relocate_handler_copies_files_and_returns_mappings(
     assert output["summary"]["value"]["mode"] == "copy"
 
 
-def test_workflow_result_handler_builds_workflow_result_from_execution_metadata() -> None:
+def test_batch_files_relocate_handler_supports_object_store_relative_directory(
+    tmp_path: Path,
+) -> None:
+    """验证批次归档节点支持 ObjectStore 相对保存目录。"""
+
+    source_file = tmp_path / "incoming.png"
+    source_file.write_bytes(b"image")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+
+    output = _batch_files_relocate_handler(
+        WorkflowNodeExecutionRequest(
+            node_id="batch-files-relocate-object-store",
+            node_definition=object(),
+            parameters={"save_location": "workflow/archive", "mode": "copy"},
+            input_values={"files": {"value": [{"path": str(source_file)}]}},
+            execution_metadata={"dataset_storage": dataset_storage},
+        )
+    )
+
+    assert dataset_storage.resolve("workflow/archive/incoming.png").is_file()
+    assert output["summary"]["value"]["saved_output"] == {
+        "kind": "object-store",
+        "object_key": "workflow/archive",
+    }
+
+
+def test_workflow_result_handler_builds_workflow_result_from_execution_metadata() -> (
+    None
+):
     """验证统一 workflow 结果节点会输出 workflow-result.v1。"""
 
     output = _workflow_result_handler(
@@ -669,7 +759,9 @@ def test_batch_result_summary_handler_aggregates_record_and_direct_results() -> 
     }
 
 
-def test_batch_result_summary_handler_uses_precomputed_summary_when_record_has_no_items() -> None:
+def test_batch_result_summary_handler_uses_precomputed_summary_when_record_has_no_items() -> (
+    None
+):
     """验证批次结果摘要节点可复用 batch-record 中已有的预计算摘要。"""
 
     output = _batch_result_summary_handler(

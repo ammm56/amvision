@@ -13,6 +13,10 @@ from backend.maintenance.extension_pretrained_manifests import (
     sync_extension_pretrained_manifests,
 )
 from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.maintenance.workflow_save_location_migration import (
+    WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
+    migrate_workflow_save_locations,
+)
 from backend.maintenance.database_migrations import (
     DATABASE_MIGRATION_COMMAND,
     migrate_database,
@@ -97,6 +101,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND,
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
             DEVELOPMENT_MODEL_RESET_COMMAND,
+            WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
         ),
         help="要执行的 maintenance 命令",
     )
@@ -167,6 +172,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="确认执行 reset-development-model-state；省略时只输出预览",
     )
+    parser.add_argument(
+        "--confirm-migration",
+        action="store_true",
+        help="确认写入 migrate-workflow-save-locations；省略时只输出预览",
+    )
     return parser
 
 
@@ -186,6 +196,7 @@ def run_command(
     compile_only: bool = False,
     backend_service_settings: object | None = None,
     confirm_reset: bool = False,
+    confirm_migration: bool = False,
 ) -> dict[str, object]:
     """执行指定 maintenance 命令。
 
@@ -418,6 +429,22 @@ def run_command(
                 backend_service_settings or get_backend_service_settings()
             ),
         )
+    if command == WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND:
+        from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+        from backend.service.settings import get_backend_service_settings
+
+        service_settings = backend_service_settings or get_backend_service_settings()
+        result = migrate_workflow_save_locations(
+            dataset_storage=LocalDatasetStorage(service_settings.to_dataset_storage_settings()),
+            confirm=confirm_migration,
+        )
+        return {
+            "command": command,
+            "confirmed": result.confirmed,
+            "scanned_files": result.scanned_files,
+            "changed_nodes": result.changed_nodes,
+            "changed_files": list(result.changed_files),
+        }
     raise ValueError(f"unsupported maintenance command: {command}")
 
 
@@ -632,6 +659,7 @@ def main(argv: list[str] | None = None) -> int:
         clean_only=args.clean_only,
         compile_only=args.compile_only,
         confirm_reset=args.confirm_reset,
+        confirm_migration=args.confirm_migration,
     )
     if args.output == "text":
         print(format_text_output(payload))

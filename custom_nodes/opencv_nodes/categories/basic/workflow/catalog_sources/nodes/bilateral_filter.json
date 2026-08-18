@@ -55,7 +55,7 @@
         "minimum": 0,
         "default": 75.0
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       },
       "search_bbox_xyxy": {

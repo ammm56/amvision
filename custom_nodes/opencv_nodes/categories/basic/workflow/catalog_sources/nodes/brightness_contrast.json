@@ -34,7 +34,7 @@
         "minimum": -255,
         "maximum": 255
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

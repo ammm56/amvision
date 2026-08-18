@@ -14,7 +14,7 @@
       "node_id": "load_cursor_state",
       "node_type_id": "core.io.json-load-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/cursor.json",
+        "save_location": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/cursor.json",
         "allow_missing": true,
         "allow_invalid_json": true,
         "default_value": {
@@ -78,7 +78,7 @@
       "node_id": "save_cursor_state",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/cursor.json",
+        "save_location": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/cursor.json",
         "overwrite": true,
         "indent": 2
       }
@@ -87,7 +87,7 @@
       "node_id": "save_batch_archive",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/archive/batch-{timestamp}.json",
+        "save_location": "{workflow_app_result_dir}/industrial-local-directory-polling-cursor-guard/archive/batch-{timestamp}.json",
         "overwrite": true,
         "indent": 2
       }

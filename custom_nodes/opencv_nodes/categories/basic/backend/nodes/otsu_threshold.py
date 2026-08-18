@@ -12,7 +12,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     normalize_binary_threshold_mode,
-    normalize_optional_object_key,
     require_uint8_int,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
@@ -51,7 +50,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         content=encoded_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="otsu-threshold",
         output_extension=".png",
         width=int(threshold_image.shape[1]),

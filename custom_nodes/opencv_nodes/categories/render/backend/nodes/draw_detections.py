@@ -13,7 +13,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import (
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import normalize_bbox
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     require_non_negative_float,
     require_positive_int,
 )
@@ -61,7 +60,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     output_payload = build_output_image_matrix_payload(
         request,
         source_payload=image_payload,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="draw-detections",
         image_matrix=image_matrix,
         error_message="OpenCV 绘制 detection 后无法编码输出图片",

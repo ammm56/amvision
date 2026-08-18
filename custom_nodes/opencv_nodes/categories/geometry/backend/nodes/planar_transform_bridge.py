@@ -22,7 +22,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     load_image_matrix,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     normalize_resize_interpolation,
     require_positive_int,
     require_uint8_int,
@@ -129,7 +128,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             request,
             source_payload=image_payload,
             content=encoded_image,
-            object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+            save_location=request.parameters.get("save_location"),
             variant_name="planar-transform-bridge",
             output_extension=".png",
             width=int(output_width),

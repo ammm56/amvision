@@ -12,7 +12,7 @@
     "type": "object",
     "properties": {
       "direction": {"type": "string", "enum": ["horizontal", "vertical", "both"], "default": "horizontal"},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.flip", "vision.opencv", "vision.geometry"],

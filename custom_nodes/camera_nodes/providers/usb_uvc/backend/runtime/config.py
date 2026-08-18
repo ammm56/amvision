@@ -115,8 +115,8 @@ def resolve_capture_config(request: WorkflowNodeExecutionRequest, *, cv2_module:
             minimum=1,
             maximum=100,
         ),
-        output_object_key=normalize_optional_text(
-            request_override.get("output_object_key", request.parameters.get("output_object_key"))
+        save_location=normalize_optional_text(
+            request_override.get("save_location", request.parameters.get("save_location"))
         ),
         overwrite=require_bool(
             request_override.get("overwrite", request.parameters.get("overwrite", True)),
@@ -193,8 +193,8 @@ def resolve_session_read_config(request: WorkflowNodeExecutionRequest) -> UsbCam
             minimum=1,
             maximum=100,
         ),
-        output_object_key=normalize_optional_text(
-            request_override.get("output_object_key", request.parameters.get("output_object_key"))
+        save_location=normalize_optional_text(
+            request_override.get("save_location", request.parameters.get("save_location"))
         ),
         overwrite=require_bool(
             request_override.get("overwrite", request.parameters.get("overwrite", True)),

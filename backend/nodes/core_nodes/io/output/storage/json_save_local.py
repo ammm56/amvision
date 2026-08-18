@@ -11,51 +11,47 @@ from backend.contracts.workflows.workflow_graph import (
     NodePortDefinition,
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
-from backend.nodes.core_nodes.support.local_io import (
-    build_local_file_summary,
-    resolve_local_output_file_path,
-    resolve_value_or_result_input,
+from backend.nodes.core_nodes.support.local_io import resolve_value_or_result_input
+from backend.nodes.core_nodes.support.logic import build_value_payload
+from backend.nodes.save_locations import (
+    resolve_required_save_location_from_request,
+    save_bytes,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.runtime.io import (
-    acquire_path_write_locks,
-    atomic_write_bytes,
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
 )
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
 
-def _json_save_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把结果对象或 value 内容保存为本地 JSON 文件。"""
+def _json_save_local_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
+    """把结果对象或 value 内容保存到 ObjectStore 或系统文件。"""
 
     overwrite = _read_overwrite(request.parameters.get("overwrite"))
-    output_path = resolve_local_output_file_path(
+    save_location = resolve_required_save_location_from_request(
         request,
-        parameter_name="local_path",
-        overwrite=overwrite,
-        description="本地 JSON 输出文件",
+        scope="file",
     )
     payload_value, source_kind = resolve_value_or_result_input(request)
     indent = _read_indent(request.parameters.get("indent"))
-    output_text = json.dumps(payload_value, ensure_ascii=False, indent=indent)
-    with acquire_path_write_locks(request, (output_path,)):
-        try:
-            atomic_write_bytes(
-                output_path,
-                output_text.encode("utf-8"),
-                overwrite=overwrite,
-            )
-        except FileExistsError as exc:
-            raise InvalidRequestError(
-                "本地 JSON 输出文件已存在且 overwrite=false",
-                details={"local_path": str(output_path)},
-            ) from exc
+    output_bytes = json.dumps(payload_value, ensure_ascii=False, indent=indent).encode(
+        "utf-8"
+    )
+    saved_file = save_bytes(
+        request,
+        save_location=save_location,
+        content=output_bytes,
+        overwrite=overwrite,
+    )
     return {
-        "summary": build_local_file_summary(
-            local_path=output_path,
-            extra_fields={
+        "summary": build_value_payload(
+            {
+                "saved_output": saved_file.to_payload(),
+                "size_bytes": len(output_bytes),
                 "record_kind": source_kind,
                 "indent": indent,
-            },
+            }
         )
     }
 
@@ -85,9 +81,9 @@ def _read_indent(raw_value: object) -> int:
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.output.json-save-local",
-        display_name="Save Local JSON",
+        display_name="Save JSON",
         category="core.io.file",
-        description="把 result-record 或 value 内容保存为本地 JSON 文件，适合工业现场结果归档。",
+        description="把 result-record 或 value 内容保存到 ObjectStore 或 runtime 主机文件。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -110,8 +106,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 required=False,
             ),
             NodePortDefinition(
-                name="path",
-                display_name="Path",
+                name="save_location",
+                display_name="保存位置",
                 payload_type_id="value.v1",
                 required=False,
             ),
@@ -126,9 +122,14 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "local_path": {"type": "string", "title": "本地 JSON 路径"},
+                "save_location": {"type": "string", "title": "保存位置"},
                 "overwrite": {"type": "boolean", "title": "允许覆盖", "default": True},
-                "indent": {"type": "integer", "title": "JSON 缩进", "default": 2, "minimum": 0},
+                "indent": {
+                    "type": "integer",
+                    "title": "JSON 缩进",
+                    "default": 2,
+                    "minimum": 0,
+                },
             },
         },
         capability_tags=("io.output", "inspection.result.persist", "json.save"),

@@ -70,7 +70,7 @@
         "minimum": 0,
         "default": 1.0
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

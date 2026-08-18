@@ -31,12 +31,14 @@ def require_positive_int(value: object, *, field_name: str) -> int:
         raise InvalidRequestError(f"{field_name} 必须大于 0")
     return normalized_value
 
+
 def require_number(value: object, *, field_name: str) -> float:
     """把输入值解析为数值。"""
 
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise InvalidRequestError(f"{field_name} 必须是数值")
     return float(value)
+
 
 def require_non_negative_float(value: object, *, field_name: str) -> float:
     """把输入值解析为非负浮点数。
@@ -54,6 +56,7 @@ def require_non_negative_float(value: object, *, field_name: str) -> float:
         raise InvalidRequestError(f"{field_name} 不能小于 0")
     return normalized_value
 
+
 def require_uint8_int(value: object, *, field_name: str) -> int:
     """把输入值解析为 0 到 255 之间的整数。
 
@@ -70,6 +73,7 @@ def require_uint8_int(value: object, *, field_name: str) -> int:
         raise InvalidRequestError(f"{field_name} 不能大于 255")
     return normalized_value
 
+
 def normalize_odd_kernel_size(value: object) -> int:
     """把 kernel size 规范化为奇数正整数。
 
@@ -85,6 +89,7 @@ def normalize_odd_kernel_size(value: object) -> int:
         raise InvalidRequestError("kernel_size 必须是奇数")
     return kernel_size
 
+
 def normalize_adaptive_block_size(value: object) -> int:
     """把 adaptive-threshold 的 block size 规范化为大于等于 3 的奇数。"""
 
@@ -92,6 +97,7 @@ def normalize_adaptive_block_size(value: object) -> int:
     if block_size < 3:
         raise InvalidRequestError("block_size 必须是大于等于 3 的奇数")
     return block_size
+
 
 def normalize_morphology_operation(value: object) -> str:
     """规范化 morphology 操作名称。
@@ -106,9 +112,18 @@ def normalize_morphology_operation(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise InvalidRequestError("operation 必须是非空字符串")
     normalized_value = value.strip().lower()
-    if normalized_value not in {"erode", "dilate", "open", "close", "gradient", "top-hat", "black-hat"}:
+    if normalized_value not in {
+        "erode",
+        "dilate",
+        "open",
+        "close",
+        "gradient",
+        "top-hat",
+        "black-hat",
+    }:
         raise InvalidRequestError("operation 不在支持的 morphology 列表中")
     return normalized_value
+
 
 def normalize_contour_retrieval_mode(value: object, *, cv2_module: Any) -> int:
     """把 contour retrieval mode 解析为 OpenCV 常量。
@@ -134,6 +149,7 @@ def normalize_contour_retrieval_mode(value: object, *, cv2_module: Any) -> int:
         return cv2_module.RETR_CCOMP
     raise InvalidRequestError("retrieval_mode 不在支持的 contour retrieval 列表中")
 
+
 def normalize_contour_approximation(value: object, *, cv2_module: Any) -> int:
     """把 contour approximation 解析为 OpenCV 常量。
 
@@ -158,6 +174,7 @@ def normalize_contour_approximation(value: object, *, cv2_module: Any) -> int:
         return cv2_module.CHAIN_APPROX_TC89_KCOS
     raise InvalidRequestError("approximation 不在支持的 contour approximation 列表中")
 
+
 def normalize_kernel_shape(value: object, *, cv2_module: Any) -> int:
     """规范化 morphology kernel 形状。
 
@@ -180,6 +197,7 @@ def normalize_kernel_shape(value: object, *, cv2_module: Any) -> int:
         return cv2_module.MORPH_CROSS
     raise InvalidRequestError("shape 不在支持的 morphology 形状列表中")
 
+
 def normalize_resize_interpolation(value: object, *, cv2_module: Any) -> int:
     """把 resize interpolation 解析为 OpenCV 常量。"""
 
@@ -198,6 +216,7 @@ def normalize_resize_interpolation(value: object, *, cv2_module: Any) -> int:
         return cv2_module.INTER_LANCZOS4
     raise InvalidRequestError("interpolation 不在支持的 resize interpolation 列表中")
 
+
 def normalize_binary_threshold_mode(value: object, *, cv2_module: Any) -> int:
     """把二值 threshold mode 解析为 OpenCV 常量。"""
 
@@ -210,6 +229,7 @@ def normalize_binary_threshold_mode(value: object, *, cv2_module: Any) -> int:
         return cv2_module.THRESH_BINARY_INV
     raise InvalidRequestError("threshold_type 仅支持 binary 或 binary-inv")
 
+
 def normalize_image_diff_mode(value: object) -> str:
     """规范化 image-diff 的输出模式。"""
 
@@ -219,6 +239,7 @@ def normalize_image_diff_mode(value: object) -> str:
     if normalized_value not in {"grayscale", "color"}:
         raise InvalidRequestError("diff_mode 仅支持 grayscale 或 color")
     return normalized_value
+
 
 def normalize_adaptive_threshold_method(value: object, *, cv2_module: Any) -> int:
     """把 adaptive threshold method 解析为 OpenCV 常量。"""
@@ -232,6 +253,7 @@ def normalize_adaptive_threshold_method(value: object, *, cv2_module: Any) -> in
         return cv2_module.ADAPTIVE_THRESH_GAUSSIAN_C
     raise InvalidRequestError("adaptive_method 仅支持 mean 或 gaussian")
 
+
 def normalize_connected_components_connectivity(value: object) -> int:
     """规范化 connected-components 的 connectivity。"""
 
@@ -239,6 +261,7 @@ def normalize_connected_components_connectivity(value: object) -> int:
     if connectivity not in {4, 8}:
         raise InvalidRequestError("connectivity 只能是 4 或 8")
     return connectivity
+
 
 def resolve_morphology_operation(operation_name: str, *, cv2_module: Any) -> int:
     """把 morphology 操作名称解析为 OpenCV 常量。
@@ -260,8 +283,11 @@ def resolve_morphology_operation(operation_name: str, *, cv2_module: Any) -> int
     }
     operation_value = operation_mapping.get(operation_name)
     if operation_value is None:
-        raise InvalidRequestError("当前 morphology operation 不支持通过 morphologyEx 执行")
+        raise InvalidRequestError(
+            "当前 morphology operation 不支持通过 morphologyEx 执行"
+        )
     return operation_value
+
 
 def require_aperture_size(value: object) -> int:
     """把 Canny aperture size 规范化为 3、5 或 7。
@@ -278,6 +304,7 @@ def require_aperture_size(value: object) -> int:
         raise InvalidRequestError("aperture_size 只能是 3、5 或 7")
     return aperture_size
 
+
 def require_non_negative_int(value: object, *, field_name: str) -> int:
     """把输入值解析为非负整数。
 
@@ -293,17 +320,3 @@ def require_non_negative_int(value: object, *, field_name: str) -> int:
     if normalized_value < 0:
         raise InvalidRequestError(f"{field_name} 不能小于 0")
     return normalized_value
-
-def normalize_optional_object_key(value: object) -> str | None:
-    """规范化可选 output_object_key 参数。
-
-    参数：
-    - value：原始 object key。
-
-    返回：
-    - str | None：规范化后的 object key。
-    """
-
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None

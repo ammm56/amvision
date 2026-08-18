@@ -14,16 +14,18 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.runtime_support import load_image_bytes_from_payload
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_optional_save_location,
+    save_file,
+)
 from backend.nodes.video_runtime_support import (
-    VIDEO_TRANSPORT_LOCAL_PATH,
-    VIDEO_TRANSPORT_STORAGE,
     build_local_video_payload,
     build_runtime_video_object_key,
     build_storage_video_payload,
     encode_video_frames_with_backend,
     probe_video_metadata,
     read_video_tool_summary,
-    require_dataset_storage,
     require_frame_window_payload,
 )
 from backend.service.application.errors import InvalidRequestError
@@ -40,7 +42,6 @@ def _video_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
     fps = _resolve_output_fps(request, frame_window_payload=frame_window_payload)
     container = _read_container(request.parameters.get("container"))
     overwrite = _read_optional_bool(request.parameters.get("overwrite"), default=True)
-    output_transport_kind = _read_output_transport_kind(request.parameters.get("output_transport_kind"))
     output_extension = ".avi" if container == "avi" else ".mp4"
 
     prepared_frame_items: list[dict[str, object]] = []
@@ -55,46 +56,15 @@ def _video_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
             }
         )
 
-    if output_transport_kind == VIDEO_TRANSPORT_LOCAL_PATH:
-        local_path = _resolve_local_output_path(
-            request=request,
-            raw_local_path=request.parameters.get("local_path"),
-            output_extension=output_extension,
-            overwrite=overwrite,
-        )
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        encode_backend = encode_video_frames_with_backend(
-            frame_items=prepared_frame_items,
-            output_path=local_path,
-            fps=fps,
-            container=container,
-        )
-        metadata = probe_video_metadata(local_path)
-        return {
-            "video": build_local_video_payload(local_path=str(local_path), metadata=metadata),
-            "summary": build_value_payload(
-                {
-                    "output_transport_kind": output_transport_kind,
-                    "local_path": str(local_path),
-                    "encode_backend": encode_backend,
-                    **read_video_tool_summary(),
-                    "frame_count": metadata["frame_count"],
-                    "fps": metadata["fps"],
-                    "width": metadata["width"],
-                    "height": metadata["height"],
-                    "duration_ms": metadata["duration_ms"],
-                    "container": container,
-                }
-            ),
-        }
-
-    object_key = _resolve_storage_object_key(
+    raw_save_location = _resolve_save_location_value(
         request=request,
         frame_window_payload=frame_window_payload,
-        raw_object_key=request.parameters.get("object_key"),
+        raw_save_location=request.parameters.get("save_location"),
         output_extension=output_extension,
     )
-    dataset_storage = require_dataset_storage(request)
+    save_location = resolve_optional_save_location(raw_save_location, scope="file")
+    if save_location is None:
+        raise InvalidRequestError("video-save 缺少有效保存位置")
     with tempfile.TemporaryDirectory(prefix="amvision-video-save-") as temp_dir:
         temp_output_path = Path(temp_dir) / f"video-output{output_extension}"
         encode_backend = encode_video_frames_with_backend(
@@ -103,19 +73,24 @@ def _video_save_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
             fps=fps,
             container=container,
         )
-        if dataset_storage.resolve(object_key).exists() and not overwrite:
-            raise InvalidRequestError(
-                "video-save 目标 object_key 已存在，且当前节点未允许覆盖",
-                details={"node_id": request.node_id, "object_key": object_key},
-            )
-        dataset_storage.copy_file(temp_output_path, object_key)
         metadata = probe_video_metadata(temp_output_path)
+        saved_file = save_file(
+            request,
+            save_location=save_location,
+            source_path=temp_output_path,
+            overwrite=overwrite,
+        )
+    video_payload = (
+        build_storage_video_payload(object_key=str(saved_file.object_key or ""), metadata=metadata)
+        if saved_file.kind == SAVE_LOCATION_OBJECT_STORE
+        else build_local_video_payload(local_path=str(saved_file.local_path or ""), metadata=metadata)
+    )
     return {
-        "video": build_storage_video_payload(object_key=object_key, metadata=metadata),
+        "video": video_payload,
         "summary": build_value_payload(
             {
-                "output_transport_kind": output_transport_kind,
-                "object_key": object_key,
+                "save_location": raw_save_location,
+                "saved_output": saved_file.to_payload(),
                 "encode_backend": encode_backend,
                 **read_video_tool_summary(),
                 "frame_count": metadata["frame_count"],
@@ -155,43 +130,20 @@ def _resolve_output_fps(
     return 5.0
 
 
-def _resolve_local_output_path(
-    *,
-    request: WorkflowNodeExecutionRequest,
-    raw_local_path: object,
-    output_extension: str,
-    overwrite: bool,
-) -> Path:
-    """解析 local-path 输出位置。"""
-
-    if not isinstance(raw_local_path, str) or not raw_local_path.strip():
-        raise InvalidRequestError(
-            "video-save 在 local-path 模式下要求 local_path 为非空字符串",
-            details={"node_id": request.node_id},
-        )
-    output_path = Path(raw_local_path.strip()).expanduser()
-    if not output_path.suffix:
-        output_path = output_path.with_suffix(output_extension)
-    output_path = output_path.resolve()
-    if output_path.exists() and not overwrite:
-        raise InvalidRequestError(
-            "video-save 目标本地视频文件已存在，且当前节点未允许覆盖",
-            details={"node_id": request.node_id, "local_path": str(output_path)},
-        )
-    return output_path
-
-
-def _resolve_storage_object_key(
+def _resolve_save_location_value(
     *,
     request: WorkflowNodeExecutionRequest,
     frame_window_payload: dict[str, object],
-    raw_object_key: object,
+    raw_save_location: object,
     output_extension: str,
 ) -> str:
-    """解析 storage 输出 object_key。"""
+    """解析统一保存位置，空值使用 runtime ObjectStore 默认路径。"""
 
-    if isinstance(raw_object_key, str) and raw_object_key.strip():
-        return raw_object_key.strip()
+    if isinstance(raw_save_location, str) and raw_save_location.strip():
+        normalized_value = raw_save_location.strip()
+        if Path(normalized_value).suffix:
+            return normalized_value
+        return f"{normalized_value}{output_extension}"
     source_video_payload = frame_window_payload.get("source_video")
     return build_runtime_video_object_key(
         request,
@@ -209,19 +161,6 @@ def _read_optional_bool(raw_value: object, *, default: bool) -> bool:
     if isinstance(raw_value, bool):
         return raw_value
     raise InvalidRequestError("video-save 的 overwrite 必须是布尔值")
-
-
-def _read_output_transport_kind(raw_value: object) -> str:
-    """读取输出传输方式。"""
-
-    if raw_value is None:
-        return VIDEO_TRANSPORT_STORAGE
-    if not isinstance(raw_value, str):
-        raise InvalidRequestError("video-save 的 output_transport_kind 必须是字符串")
-    normalized_value = raw_value.strip().lower()
-    if normalized_value not in {VIDEO_TRANSPORT_STORAGE, VIDEO_TRANSPORT_LOCAL_PATH}:
-        raise InvalidRequestError("video-save 的 output_transport_kind 仅支持 storage 或 local-path")
-    return normalized_value
 
 
 def _read_container(raw_value: object) -> str:
@@ -267,13 +206,12 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "output_transport_kind": {
+                "save_location": {
                     "type": "string",
-                    "enum": ["storage", "local-path"],
-                    "default": "storage",
+                    "title": "保存位置",
+                    "description": "相对路径保存到 ObjectStore，绝对路径保存到本地磁盘；为空时保存到 runtime 默认位置。",
+                    "default": "",
                 },
-                "object_key": {"type": "string", "default": ""},
-                "local_path": {"type": "string", "default": ""},
                 "container": {"type": "string", "enum": ["mp4", "avi"], "default": "mp4"},
                 "fps": {"type": "number", "minimum": 0},
                 "overwrite": {"type": "boolean", "default": True},

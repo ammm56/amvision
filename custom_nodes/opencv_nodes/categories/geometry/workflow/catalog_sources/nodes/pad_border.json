@@ -17,7 +17,7 @@
       "right": {"type": "integer", "default": 0, "minimum": 0},
       "border_mode": {"type": "string", "enum": ["constant", "replicate", "reflect", "reflect101", "wrap"], "default": "constant"},
       "border_value": {"type": "array", "default": [0, 0, 0], "items": {"type": "number"}, "minItems": 1, "maxItems": 4},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.pad-border", "vision.opencv", "vision.geometry"],

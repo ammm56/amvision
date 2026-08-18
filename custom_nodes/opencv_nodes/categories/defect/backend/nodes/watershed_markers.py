@@ -43,7 +43,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             source_payload=image_payload,
             image_matrix=foreground,
             variant_name="watershed-markers-mask",
-            output_object_key=request.parameters.get("output_object_key"),
+            save_location=request.parameters.get("save_location"),
         ),
         "boundary": build_image_output(
             request,

@@ -70,7 +70,7 @@ def build_debug_image_preview_output(
 
     normalized_image_payload = require_image_payload(image_payload)
     response_transport_mode = _read_debug_transport_mode(request.parameters.get(DEBUG_IMAGE_PANEL_TRANSPORT_PARAMETER))
-    output_object_key = _build_debug_preview_artifact_object_key(
+    object_key = _build_debug_preview_artifact_object_key(
         request,
         artifact_name=artifact_name,
         media_type=str(normalized_image_payload.get("media_type") or "image/png"),
@@ -84,7 +84,7 @@ def build_debug_image_preview_output(
         request,
         image_payload=normalized_image_payload,
         response_transport_mode=response_transport_mode,
-        object_key=output_object_key,
+        object_key=object_key,
         display_object_key=display_object_key,
         variant_name=artifact_name,
     )

@@ -43,7 +43,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         frame_width, frame_height, channels = capture.get_frame_dimensions(frame)
         if (
             capture_config.output_format == "raw"
-            and capture_config.output_object_key is None
+            and capture_config.save_location is None
         ):
             media_type = "image/raw"
             image_payload = payloads.build_captured_raw_image_payload(
@@ -68,7 +68,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 media_type=media_type,
                 width=frame_width,
                 height=frame_height,
-                output_object_key=capture_config.output_object_key,
+                save_location=capture_config.save_location,
                 overwrite=capture_config.overwrite,
             )
         backend_name = capture.get_capture_backend_name(video_capture)
@@ -115,9 +115,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             summary["observed_height"] = int(round(observed_height))
         if observed_fps is not None:
             summary["observed_fps"] = observed_fps
-        output_object_key = image_payload.get("object_key")
-        if isinstance(output_object_key, str) and output_object_key:
-            summary["output_object_key"] = output_object_key
+        saved_output = image_payload.get("saved_output")
+        if isinstance(saved_output, dict):
+            summary["save_location"] = saved_output.get("object_key") or saved_output.get("local_path")
         image_handle = image_payload.get("image_handle")
         if isinstance(image_handle, str) and image_handle:
             summary["image_handle"] = image_handle

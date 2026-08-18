@@ -1632,7 +1632,7 @@
           "c_value": {
             "type": "number"
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1696,7 +1696,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1793,7 +1793,7 @@
             "minimum": 0,
             "default": 75.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "search_bbox_xyxy": {
@@ -1884,7 +1884,7 @@
             "minimum": 0,
             "maximum": 255
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1953,7 +1953,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2019,7 +2019,7 @@
             "minimum": -255,
             "maximum": 255
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2131,7 +2131,7 @@
             "title": "Pre Blur Kernel Size",
             "description": "进入 Canny 前的 Gaussian Blur 奇数核；1 表示不平滑。"
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "search_bbox_xyxy": {
@@ -2238,7 +2238,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2299,7 +2299,7 @@
             "minimum": 0,
             "maximum": 3
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2446,7 +2446,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2526,7 +2526,7 @@
               "bgr-to-bgra"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2619,7 +2619,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2708,7 +2708,7 @@
             ],
             "default": "black"
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2859,18 +2859,18 @@
               }
             }
           },
-          "output_dir": {
+          "save_location": {
             "type": "string",
-            "title": "Output directory",
-            "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem. Leave empty to return memory image refs without saving files.",
+            "title": "Save location",
+            "description": "Optional save location. Relative paths write to ObjectStore; absolute paths write to the local filesystem. Leave empty to return memory image refs without saving files.",
             "examples": [
               "workflow/roi",
               "T:\\temp\\roi"
             ],
             "x-amvision-i18n": {
               "title": {
-                "zh-CN": "输出目录",
-                "en-US": "Output directory"
+                "zh-CN": "保存位置",
+                "en-US": "Save location"
               },
               "description": {
                 "zh-CN": "相对路径写入 ObjectStore（如 workflow/roi）；当前系统绝对路径直接写入本机目录（如 T:\\temp\\roi）；留空时不保存文件并返回 memory image-ref。",
@@ -2987,7 +2987,7 @@
             "type": "number",
             "default": 0.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3070,7 +3070,7 @@
             "type": "number",
             "default": 0.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3139,18 +3139,18 @@
               "storage-ref"
             ]
           },
-          "output_dir": {
+          "save_location": {
             "type": "string",
-            "title": "Output directory",
-            "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem.",
+            "title": "Save location",
+            "description": "Optional save location. Relative paths write to ObjectStore; absolute paths write to the local filesystem.",
             "examples": [
               "workflow/gallery-preview",
               "T:\\temp\\gallery-preview"
             ],
             "x-amvision-i18n": {
               "title": {
-                "zh-CN": "输出目录",
-                "en-US": "Output directory"
+                "zh-CN": "保存位置",
+                "en-US": "Save location"
               },
               "description": {
                 "zh-CN": "相对路径写入 ObjectStore；当前系统绝对路径直接写入本机目录；留空时不额外保存 Gallery 图片。",
@@ -3217,7 +3217,7 @@
             "default": 1.0,
             "minimum": 0.01
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3280,7 +3280,7 @@
             "type": "number",
             "minimum": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3335,7 +3335,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3473,7 +3473,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3561,7 +3561,7 @@
             "type": "number",
             "default": 0.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4212,7 +4212,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4299,7 +4299,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4374,7 +4374,7 @@
               "not"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4434,7 +4434,7 @@
             "minimum": 1,
             "default": 5
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4518,7 +4518,7 @@
             "type": "integer",
             "minimum": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4585,7 +4585,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4652,7 +4652,7 @@
               "binary-inv"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -4980,7 +4980,7 @@
               "lanczos4"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -5119,7 +5119,7 @@
             "type": "number",
             "default": 0.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -5316,7 +5316,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6079,7 +6079,7 @@
               "binary-inv"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6144,7 +6144,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6364,7 +6364,7 @@
             "minimum": 0,
             "default": 1.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6435,7 +6435,7 @@
             "maximum": 255,
             "default": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6534,7 +6534,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6638,7 +6638,7 @@
             "default": 5,
             "minimum": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6739,7 +6739,7 @@
             "maximum": 1,
             "default": 0.55
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6820,7 +6820,7 @@
               "color"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -6906,7 +6906,7 @@
             "default": 1.0,
             "minimum": 1e-09
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7002,7 +7002,7 @@
               }
             }
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7076,7 +7076,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7150,7 +7150,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7224,7 +7224,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7302,7 +7302,7 @@
             ],
             "default": 8
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7377,7 +7377,7 @@
             "type": "integer",
             "minimum": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7483,7 +7483,7 @@
             "maximum": 1,
             "default": 0.35
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7566,7 +7566,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7731,7 +7731,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "debug_image_panel_enabled": {
@@ -7812,7 +7812,7 @@
             ],
             "default": "horizontal"
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -7884,7 +7884,7 @@
           "center_y": {
             "type": "number"
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -8144,7 +8144,7 @@
             "minItems": 1,
             "maxItems": 4
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -8276,7 +8276,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "debug_image_panel_enabled": {
@@ -8432,7 +8432,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "output_roi_id": {
@@ -8879,7 +8879,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "debug_image_panel_enabled": {
@@ -9019,7 +9019,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "debug_image_panel_enabled": {
@@ -9091,7 +9091,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -9272,7 +9272,7 @@
             "maximum": 255,
             "default": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           },
           "debug_image_panel_enabled": {
@@ -9374,7 +9374,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -9627,7 +9627,7 @@
             "default": 5,
             "minimum": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12024,7 +12024,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12107,7 +12107,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12252,17 +12252,17 @@
               }
             }
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string",
-            "description": "可选输出 object key；留空时返回 memory image-ref。",
+            "description": "可选保存位置；相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。",
             "x-amvision-i18n": {
               "title": {
-                "zh-CN": "输出 object key",
-                "en-US": "Output object key"
+                "zh-CN": "保存位置",
+                "en-US": "Save location"
               },
               "description": {
-                "zh-CN": "可选输出 object key；留空时返回 memory image-ref。",
-                "en-US": "Optional output object key. When omitted, the node returns a memory image-ref."
+                "zh-CN": "可选保存位置；相对路径保存到 ObjectStore，绝对路径保存到本地磁盘。",
+                "en-US": "Optional save location. When omitted, the node returns a memory image-ref."
               }
             }
           }
@@ -12365,7 +12365,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12449,7 +12449,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12546,7 +12546,7 @@
             "type": "boolean",
             "default": true
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12636,7 +12636,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -12729,7 +12729,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }

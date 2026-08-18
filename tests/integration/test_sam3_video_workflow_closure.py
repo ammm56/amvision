@@ -144,7 +144,6 @@ def test_sam3_video_semantic_closure_smoke(
             node_id="video-save",
             node_definition=object(),
             parameters={
-                "output_transport_kind": "storage",
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -170,7 +169,7 @@ def test_sam3_video_semantic_closure_smoke(
     )
     assert tracked_output["summary"]["processed_frame_count"] == 4
     assert rendered_frames["summary"]["value"]["frame_count"] == 4
-    assert saved_video["summary"]["value"]["output_transport_kind"] == "storage"
+    assert saved_video["summary"]["value"]["saved_output"]["kind"] == "object-store"
     assert body_output["body"]["type"] == "video"
     assert body_output["body"]["video"]["transport_kind"] == "storage-ref"
     dataset_storage = execution_metadata["dataset_storage"]
@@ -269,7 +268,6 @@ def test_sam3_video_interactive_closure_smoke(
             node_id="video-save",
             node_definition=object(),
             parameters={
-                "output_transport_kind": "storage",
                 "container": "mp4",
                 "overwrite": True,
             },
@@ -295,7 +293,7 @@ def test_sam3_video_interactive_closure_smoke(
     )
     assert tracked_output["summary"]["processed_frame_count"] == 4
     assert rendered_frames["summary"]["value"]["frame_count"] == 4
-    assert saved_video["summary"]["value"]["output_transport_kind"] == "storage"
+    assert saved_video["summary"]["value"]["saved_output"]["kind"] == "object-store"
     assert body_output["body"]["type"] == "video"
     assert body_output["body"]["video"]["transport_kind"] == "storage-ref"
     dataset_storage = execution_metadata["dataset_storage"]

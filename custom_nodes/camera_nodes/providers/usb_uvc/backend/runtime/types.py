@@ -114,7 +114,7 @@ class UsbCameraCaptureConfig:
     retry_read_count: int
     output_format: str
     jpeg_quality: int
-    output_object_key: str | None
+    save_location: str | None
     overwrite: bool
 
     @property
@@ -163,7 +163,7 @@ class UsbCameraSessionReadConfig:
     retry_read_count: int
     output_format: str
     jpeg_quality: int
-    output_object_key: str | None
+    save_location: str | None
     overwrite: bool
 
 

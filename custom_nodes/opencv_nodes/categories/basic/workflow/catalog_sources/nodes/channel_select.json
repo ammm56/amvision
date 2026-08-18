@@ -29,7 +29,7 @@
         "minimum": 0,
         "maximum": 3
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

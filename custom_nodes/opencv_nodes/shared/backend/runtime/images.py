@@ -5,17 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from backend.nodes.output_targets import (
-    OUTPUT_TARGET_OBJECT_STORE,
-    WorkflowOutputDirectory,
-    write_output_bytes,
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    WorkflowSaveLocation,
+    resolve_optional_save_location,
+    save_bytes,
 )
 from backend.nodes.runtime_support import (
     build_storage_image_payload,
     load_image_matrix as load_runtime_image_matrix,
     register_image_matrix,
     register_image_bytes,
-    write_image_bytes,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -24,16 +24,13 @@ from backend.service.application.errors import (
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
     require_opencv_imports,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
-)
 
 
 class EncodedImageBytes:
     """携带 OpenCV matrix 的懒编码图片对象。
 
     说明：
-    - 大多数节点没有显式 output_object_key 时会直接输出 memory/raw BGR24，
+    - 大多数节点没有显式 save_location 时会直接输出 memory/raw BGR24，
       不需要先 PNG 编码。
     - 只有确实需要落盘时，bytes(content) 才触发编码。
     """
@@ -120,7 +117,7 @@ def build_output_image_payload(
     media_type: str,
     variant_name: str,
     output_extension: str,
-    object_key: str | None = None,
+    save_location: str | None = None,
 ) -> dict[str, object]:
     """根据可选 object_key 选择 storage 或 memory 模式输出图片。
 
@@ -139,19 +136,37 @@ def build_output_image_payload(
     - dict[str, object]：输出图片 payload。
     """
 
-    normalized_object_key = normalize_optional_object_key(object_key)
-    if normalized_object_key is not None:
-        return write_image_bytes(
+    resolved_save_location = resolve_optional_save_location(save_location, scope="file")
+    if resolved_save_location is not None:
+        encoded_content = bytes(content)
+        saved_file = save_bytes(
             request,
-            source_payload=source_payload,
-            content=bytes(content),
-            object_key=normalized_object_key,
-            variant_name=variant_name,
-            output_extension=output_extension,
-            width=width,
-            height=height,
-            media_type=media_type,
+            save_location=resolved_save_location,
+            content=encoded_content,
         )
+        if saved_file.kind == SAVE_LOCATION_OBJECT_STORE:
+            image_payload = build_storage_image_payload(
+                object_key=str(saved_file.object_key or ""),
+                source_payload=source_payload,
+                width=width,
+                height=height,
+                media_type=media_type,
+            )
+        else:
+            image_matrix = getattr(content, "image_matrix", None)
+            image_payload = (
+                register_image_matrix(request, image_matrix=image_matrix)
+                if image_matrix is not None
+                else register_image_bytes(
+                    request,
+                    content=encoded_content,
+                    media_type=media_type,
+                    width=width,
+                    height=height,
+                )
+            )
+        image_payload["saved_output"] = saved_file.to_payload()
+        return image_payload
     image_matrix = getattr(content, "image_matrix", None)
     if image_matrix is not None:
         return register_image_matrix(request, image_matrix=image_matrix)
@@ -169,7 +184,7 @@ def build_output_image_matrix_payload(
     *,
     source_payload: dict[str, object],
     image_matrix: Any,
-    object_key: str | None,
+    save_location: str | None,
     variant_name: str,
     output_extension: str = ".png",
     media_type: str = "image/png",
@@ -177,8 +192,7 @@ def build_output_image_matrix_payload(
 ) -> dict[str, object]:
     """按输出模式返回绘制后的图片，memory/raw 模式不做 PNG 编码。"""
 
-    normalized_object_key = normalize_optional_object_key(object_key)
-    if normalized_object_key is None:
+    if not isinstance(save_location, str) or not save_location.strip():
         return register_image_matrix(request, image_matrix=image_matrix)
     encoded_image = encode_png_image_bytes(
         request,
@@ -189,7 +203,7 @@ def build_output_image_matrix_payload(
         request,
         source_payload=source_payload,
         content=encoded_image,
-        object_key=normalized_object_key,
+        save_location=save_location,
         variant_name=variant_name,
         output_extension=output_extension,
         width=int(image_matrix.shape[1]),
@@ -285,7 +299,7 @@ def build_persisted_output_image_matrix_payload(
     *,
     source_payload: dict[str, object],
     image_matrix: Any,
-    output_directory: WorkflowOutputDirectory,
+    save_location: WorkflowSaveLocation,
     output_name: str,
     keep_raw_memory: bool,
     media_type: str = "image/png",
@@ -297,7 +311,7 @@ def build_persisted_output_image_matrix_payload(
     - request：当前节点执行请求。
     - source_payload：源图片 payload。
     - image_matrix：待保存的 OpenCV matrix。
-    - output_directory：已解析的输出目录。
+    - save_location：已解析的保存位置。
     - output_name：输出文件名。
     - keep_raw_memory：是否保留 raw matrix 供后续节点高性能消费。
 
@@ -312,13 +326,13 @@ def build_persisted_output_image_matrix_payload(
             error_message=error_message,
         )
     )
-    output_file = write_output_bytes(
+    output_file = save_bytes(
         request,
-        output_directory=output_directory,
+        save_location=save_location,
         file_name=output_name,
         content=encoded_image,
     )
-    if output_file.kind == OUTPUT_TARGET_OBJECT_STORE and not keep_raw_memory:
+    if output_file.kind == SAVE_LOCATION_OBJECT_STORE and not keep_raw_memory:
         image_payload = build_storage_image_payload(
             object_key=str(output_file.object_key or ""),
             source_payload=source_payload,

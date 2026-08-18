@@ -45,18 +45,18 @@
           "storage-ref"
         ]
       },
-      "output_dir": {
+      "save_location": {
         "type": "string",
-        "title": "Output directory",
-        "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem.",
+        "title": "Save location",
+        "description": "Optional save location. Relative paths write to ObjectStore; absolute paths write to the local filesystem.",
         "examples": [
           "workflow/gallery-preview",
           "T:\\temp\\gallery-preview"
         ],
         "x-amvision-i18n": {
           "title": {
-            "zh-CN": "输出目录",
-            "en-US": "Output directory"
+            "zh-CN": "保存位置",
+            "en-US": "Save location"
           },
           "description": {
             "zh-CN": "相对路径写入 ObjectStore；当前系统绝对路径直接写入本机目录；留空时不额外保存 Gallery 图片。",

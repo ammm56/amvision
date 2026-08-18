@@ -1632,7 +1632,7 @@
               "binary-inv"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1697,7 +1697,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1917,7 +1917,7 @@
             "minimum": 0,
             "default": 1.0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -1988,7 +1988,7 @@
             "maximum": 255,
             "default": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2087,7 +2087,7 @@
             "type": "boolean",
             "default": false
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2191,7 +2191,7 @@
             "default": 5,
             "minimum": 1
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2292,7 +2292,7 @@
             "maximum": 1,
             "default": 0.55
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2373,7 +2373,7 @@
               "color"
             ]
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2459,7 +2459,7 @@
             "default": 1.0,
             "minimum": 1e-09
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2555,7 +2555,7 @@
               }
             }
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2629,7 +2629,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2703,7 +2703,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2777,7 +2777,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2855,7 +2855,7 @@
             ],
             "default": 8
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -2930,7 +2930,7 @@
             "type": "integer",
             "minimum": 0
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3036,7 +3036,7 @@
             "maximum": 1,
             "default": 0.35
           },
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }
@@ -3119,7 +3119,7 @@
       "parameter_schema": {
         "type": "object",
         "properties": {
-          "output_object_key": {
+          "save_location": {
             "type": "string"
           }
         }

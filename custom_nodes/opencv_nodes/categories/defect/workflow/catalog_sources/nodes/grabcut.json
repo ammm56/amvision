@@ -23,7 +23,7 @@
       "width": {"type": "integer", "minimum": 1},
       "height": {"type": "integer", "minimum": 1},
       "iterations": {"type": "integer", "default": 5, "minimum": 1},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.grabcut", "vision.opencv", "vision.segmentation"],

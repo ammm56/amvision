@@ -8,7 +8,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     encode_png_image_bytes,
     load_image_matrix,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.validators import normalize_optional_object_key
 from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
 
 
@@ -30,7 +29,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         content=encoded_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="invert",
         output_extension=".png",
         width=int(output_image.shape[1]),

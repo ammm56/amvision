@@ -112,7 +112,7 @@
       "node_id": "save_result_json",
       "node_type_id": "core.output.json-save-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi/result-{timestamp}.json",
+        "save_location": "{workflow_app_result_dir}/glue-roi/result-{timestamp}.json",
         "overwrite": true,
         "indent": 2
       }
@@ -121,7 +121,7 @@
       "node_id": "append_result_csv",
       "node_type_id": "core.output.csv-append-local",
       "parameters": {
-        "local_path": "{workflow_app_result_dir}/glue-roi/history.csv"
+        "save_location": "{workflow_app_result_dir}/glue-roi/history.csv"
       }
     },
     {

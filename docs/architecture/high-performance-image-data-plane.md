@@ -207,12 +207,13 @@ BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded �
 - `Crop Export` 写文件时可以编码输出；给后续节点使用时应优先输出 raw image-ref。
 - `Draw Detections` 给后续节点使用时应优先输出 raw image-ref；给前端预览时才编码。
 
-带 `output_dir` 的 workflow 节点统一使用双路径规则：
+需要保存文件或目录的 workflow 节点统一使用 `save_location`，并遵循双路径规则：
 
 - 相对路径表示 ObjectStore 目录，例如 `workflow/roi` 会写入默认本地 ObjectStore 根目录下的 `workflow/roi`。
 - 当前系统可解析的绝对路径表示本机文件系统目录，例如 Windows 的 `T:\temp\roi`；绝对路径不得伪装成 object key，也不得写入数据库中的 object key 字段。
 - `Crop Export` 无论保存到哪一种目录，给后续节点的结果都继续使用 raw memory image-ref；落盘位置单独记录在每个图片结果的 `saved_output` 中，避免保存动作把后续推理链路降级为磁盘读取和重复解码。
 - 系统绝对路径依赖 runtime 所在主机的挂载和权限。发布后的 Workflow App 与 Trigger 会在 runtime 主机上解释该路径，不在浏览器所在主机上解释。
+- `save_location` 是唯一公开保存参数；旧的 `output_dir`、`output_object_key`、`output_transport_kind`、`object_key` 和 `local_path` 组合不再作为节点保存接口。已有正式 Workflow 模板和 App Runtime 快照通过 `python -m backend.maintenance.main migrate-workflow-save-locations --confirm-migration` 一次性迁移。
 
 当前 OpenCV shared runtime、Barcode/QR runtime、SAM3/YOLOE 图片入口、Image Preview、Image Body、Image Save、Image Base64 Encode、regions/ROI/video overlay 支撑函数和 06/07 ZeroMQ 示例图已经按上述规则调整：默认中间结果走 raw BGR24 memory image-ref，对外 JSON、预览和落盘边界才编码。
 

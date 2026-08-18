@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_optional_save_location,
+    save_bytes,
+)
 from backend.nodes.runtime_support import (
-    copy_image_payload,
+    build_storage_image_payload,
     register_image_bytes,
     register_image_matrix,
 )
@@ -23,7 +28,7 @@ def build_captured_image_payload(
     media_type: str,
     width: int,
     height: int,
-    output_object_key: str | None,
+    save_location: str | None,
     overwrite: bool,
 ) -> dict[str, object]:
     """把相机帧注册为 image-ref；需要时再复制到目标 object key。"""
@@ -35,15 +40,28 @@ def build_captured_image_payload(
         width=width,
         height=height,
     )
-    if output_object_key is None:
+    resolved_save_location = resolve_optional_save_location(save_location, scope="file")
+    if resolved_save_location is None:
         return memory_payload
-    return copy_image_payload(
+    saved_file = save_bytes(
         request,
-        source_payload=memory_payload,
-        object_key=output_object_key,
+        save_location=resolved_save_location,
+        content=content,
         overwrite=overwrite,
-        variant_name="usb-capture-frame",
     )
+    output_payload = (
+        build_storage_image_payload(
+            object_key=str(saved_file.object_key or ""),
+            source_payload=memory_payload,
+            width=width,
+            height=height,
+            media_type=media_type,
+        )
+        if saved_file.kind == SAVE_LOCATION_OBJECT_STORE
+        else memory_payload
+    )
+    output_payload["saved_output"] = saved_file.to_payload()
+    return output_payload
 
 
 def build_captured_raw_image_payload(

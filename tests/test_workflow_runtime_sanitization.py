@@ -27,7 +27,9 @@ from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
 )
-from backend.service.application.workflows.preview_run_manager import WorkflowPreviewRunManager
+from backend.service.application.workflows.preview_run_manager import (
+    WorkflowPreviewRunManager,
+)
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
@@ -49,9 +51,15 @@ from backend.service.application.workflows.runtime_service import (
     WorkflowRuntimeInvokeRequest,
     WorkflowRuntimeService,
 )
-from backend.service.application.workflows.worker.health import WorkflowRuntimeWorkerState
-from backend.service.application.workflows.worker.messages import WorkflowRuntimeWorkerRunResult
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.worker.health import (
+    WorkflowRuntimeWorkerState,
+)
+from backend.service.application.workflows.worker.messages import (
+    WorkflowRuntimeWorkerRunResult,
+)
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -63,7 +71,9 @@ from backend.service.settings import (
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 
 
-def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_sanitized(tmp_path: Path) -> None:
+def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_sanitized(
+    tmp_path: Path,
+) -> None:
     """验证 preview run 同步响应返回 raw base64，而持久化详情仍会脱敏。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
@@ -85,29 +95,57 @@ def test_preview_run_sync_response_keeps_inline_base64_but_persisted_copy_is_san
         == "preview:project-1:image-decode-preview-app"
     )
     assert (
-        preview_run.metadata[
-            WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
-        ]
+        preview_run.metadata[WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY]
         is False
     )
     preview_image = preview_run.outputs["http_response"]["body"]["image"]
     assert preview_image["transport_kind"] == "inline-base64"
     assert preview_image["image_base64"] == image_base64
-    assert preview_run.template_outputs["http_response"]["body"]["image"]["image_base64"] == image_base64
-    assert preview_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"] is True
+    assert (
+        preview_run.template_outputs["http_response"]["body"]["image"]["image_base64"]
+        == image_base64
+    )
+    assert (
+        preview_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"]
+        is True
+    )
     assert preview_run.node_records[0]["outputs"]["image"]["image_handle"]
-    assert preview_run.node_records[1]["inputs"]["image"]["image_handle_redacted"] is True
-    assert preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64"] == image_base64
+    assert (
+        preview_run.node_records[1]["inputs"]["image"]["image_handle_redacted"] is True
+    )
+    assert (
+        preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64"]
+        == image_base64
+    )
     persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    persisted_preview_image = persisted_preview_run.outputs["http_response"]["body"]["image"]
+    persisted_preview_image = persisted_preview_run.outputs["http_response"]["body"][
+        "image"
+    ]
     assert persisted_preview_image["image_base64_redacted"] is True
     assert "image_base64" not in persisted_preview_image
-    assert persisted_preview_run.template_outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
-    assert persisted_preview_run.node_records[0]["outputs"]["image"]["image_handle_redacted"] is True
-    assert persisted_preview_run.node_records[1]["outputs"]["body"]["image"]["image_base64_redacted"] is True
+    assert (
+        persisted_preview_run.template_outputs["http_response"]["body"]["image"][
+            "image_base64_redacted"
+        ]
+        is True
+    )
+    assert (
+        persisted_preview_run.node_records[0]["outputs"]["image"][
+            "image_handle_redacted"
+        ]
+        is True
+    )
+    assert (
+        persisted_preview_run.node_records[1]["outputs"]["body"]["image"][
+            "image_base64_redacted"
+        ]
+        is True
+    )
 
 
-def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: Path) -> None:
+def test_preview_run_storage_ref_image_preview_uses_preview_artifact(
+    tmp_path: Path,
+) -> None:
     """验证 storage-ref Image Preview 会保存到 Preview Run artifact 目录。"""
 
     service, _, _ = _build_runtime_service(tmp_path)
@@ -132,10 +170,15 @@ def test_preview_run_storage_ref_image_preview_uses_preview_artifact(tmp_path: P
     )
     assert service.dataset_storage.resolve(object_key).exists()
     persisted_preview_run = service.get_preview_run(preview_run.preview_run_id)
-    assert persisted_preview_run.outputs["http_response"]["body"]["image"]["object_key"] == object_key
+    assert (
+        persisted_preview_run.outputs["http_response"]["body"]["image"]["object_key"]
+        == object_key
+    )
 
 
-def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tmp_path: Path) -> None:
+def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(
+    tmp_path: Path,
+) -> None:
     """验证同步 WorkflowRun 会对输入、输出和节点记录做脱敏。"""
 
     worker_result = WorkflowRuntimeWorkerRunResult(
@@ -171,7 +214,12 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
                 "node_id": "decode",
                 "node_type_id": "core.io.image-base64-decode",
                 "runtime_kind": "python-callable",
-                "inputs": {"payload": {"image_base64": "ZmFrZS1pbnB1dA==", "media_type": "image/png"}},
+                "inputs": {
+                    "payload": {
+                        "image_base64": "ZmFrZS1pbnB1dA==",
+                        "media_type": "image/png",
+                    }
+                },
                 "outputs": {
                     "image": {
                         "transport_kind": "memory",
@@ -208,7 +256,9 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
         created_by="workflow-user",
     )
     running_runtime = replace(runtime, observed_state="running")
-    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: (
+        running_runtime
+    )  # type: ignore[method-assign]
 
     workflow_run = service.invoke_workflow_app_runtime(
         runtime.workflow_runtime_id,
@@ -228,12 +278,29 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(tm
     )
 
     assert workflow_run.state == "succeeded"
-    assert workflow_run.input_payload["request_image_base64"]["image_base64_redacted"] is True
+    assert (
+        workflow_run.input_payload["request_image_base64"]["image_base64_redacted"]
+        is True
+    )
     assert "image_base64" not in workflow_run.input_payload["request_image_base64"]
-    assert workflow_run.outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
-    assert workflow_run.template_outputs["http_response"]["body"]["image"]["image_base64_redacted"] is True
-    assert workflow_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"] is True
-    assert workflow_run.node_records[0]["outputs"]["image"]["image_handle_redacted"] is True
+    assert (
+        workflow_run.outputs["http_response"]["body"]["image"]["image_base64_redacted"]
+        is True
+    )
+    assert (
+        workflow_run.template_outputs["http_response"]["body"]["image"][
+            "image_base64_redacted"
+        ]
+        is True
+    )
+    assert (
+        workflow_run.node_records[0]["inputs"]["payload"]["image_base64_redacted"]
+        is True
+    )
+    assert (
+        workflow_run.node_records[0]["outputs"]["image"]["image_handle_redacted"]
+        is True
+    )
 
     persisted_run = service.get_workflow_run(workflow_run.workflow_run_id)
     assert persisted_run.input_payload == workflow_run.input_payload
@@ -286,11 +353,15 @@ def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> No
         created_by="workflow-user",
     )
     running_runtime = replace(runtime, observed_state="running")
-    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: (
+        running_runtime
+    )  # type: ignore[method-assign]
 
     workflow_run = service.invoke_workflow_app_runtime(
         runtime.workflow_runtime_id,
-        WorkflowRuntimeInvokeRequest(input_bindings={"request_text": {"value": "hello"}}),
+        WorkflowRuntimeInvokeRequest(
+            input_bindings={"request_text": {"value": "hello"}}
+        ),
         created_by="workflow-user",
     )
 
@@ -305,10 +376,14 @@ def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> No
     assert persisted_run.template_outputs == {}
     assert persisted_run.node_records == ()
     assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
-    assert not service.dataset_storage.resolve(f"workflows/runtime/{workflow_run.workflow_run_id}").exists()
+    assert not service.dataset_storage.resolve(
+        f"workflows/runtime/{workflow_run.workflow_run_id}"
+    ).exists()
 
 
-def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(tmp_path: Path) -> None:
+def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(
+    tmp_path: Path,
+) -> None:
     """验证 minimal 记录模式只保存公开结果与 WorkflowRun 状态。"""
 
     worker_result = WorkflowRuntimeWorkerRunResult(
@@ -359,7 +434,9 @@ def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(tm
         created_by="workflow-user",
     )
     running_runtime = replace(runtime, observed_state="running")
-    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: (
+        running_runtime
+    )  # type: ignore[method-assign]
 
     workflow_run = service.invoke_workflow_app_runtime(
         runtime.workflow_runtime_id,
@@ -385,7 +462,9 @@ def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(tm
     assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
 
 
-def test_invoke_workflow_run_none_record_mode_skips_database_record(tmp_path: Path) -> None:
+def test_invoke_workflow_run_none_record_mode_skips_database_record(
+    tmp_path: Path,
+) -> None:
     """验证 none 记录模式的同步调用不写 WorkflowRun 数据库记录。"""
 
     worker_result = WorkflowRuntimeWorkerRunResult(
@@ -418,7 +497,9 @@ def test_invoke_workflow_run_none_record_mode_skips_database_record(tmp_path: Pa
         created_by="workflow-user",
     )
     running_runtime = replace(runtime, observed_state="running")
-    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: (
+        running_runtime
+    )  # type: ignore[method-assign]
 
     workflow_run = service.invoke_workflow_app_runtime(
         runtime.workflow_runtime_id,
@@ -456,7 +537,9 @@ def test_runtime_payload_sanitizer_bounds_large_database_values() -> None:
     assert sanitized["image_base64_char_length"] == MAX_PERSISTED_STRING_CHARS + 1
 
 
-def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file(tmp_path: Path) -> None:
+def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file(
+    tmp_path: Path,
+) -> None:
     """验证正式调用会释放输入 BufferRef 且可跳过 workflow-run 事件文件。
 
     参数：
@@ -493,7 +576,9 @@ def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file
         created_by="workflow-user",
     )
     running_runtime = replace(runtime, observed_state="running")
-    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: running_runtime  # type: ignore[method-assign]
+    service.get_workflow_app_runtime_health = lambda workflow_runtime_id: (
+        running_runtime
+    )  # type: ignore[method-assign]
 
     workflow_run = service.invoke_workflow_app_runtime(
         runtime.workflow_runtime_id,
@@ -526,7 +611,9 @@ def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file
     ]
     assert WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY not in persisted_run.metadata
     assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
-    assert not service.dataset_storage.resolve(f"workflows/runtime/{workflow_run.workflow_run_id}").exists()
+    assert not service.dataset_storage.resolve(
+        f"workflows/runtime/{workflow_run.workflow_run_id}"
+    ).exists()
 
 
 def _build_runtime_service(
@@ -550,9 +637,13 @@ def _build_runtime_service(
     )
     settings = BackendServiceSettings(
         database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-        dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+        dataset_storage=BackendServiceDatasetStorageConfig(
+            root_dir=str(dataset_storage.root_dir)
+        ),
         queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-        custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+        custom_nodes=BackendServiceCustomNodesConfig(
+            root_dir=str(custom_nodes_root_dir)
+        ),
         task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
     preview_run_manager = WorkflowPreviewRunManager(
@@ -576,7 +667,9 @@ def _build_runtime_service(
         dataset_storage=dataset_storage,
         node_catalog_registry=node_catalog_registry,
         preview_run_manager=preview_run_manager,
-        worker_manager=worker_manager if worker_manager is not None else SimpleNamespace(),
+        worker_manager=worker_manager
+        if worker_manager is not None
+        else SimpleNamespace(),
         workflow_node_runtime_registry=runtime_registry_loader.get_runtime_registry(),
         workflow_service_node_runtime_context=runtime_context,
     )
@@ -591,9 +684,13 @@ def _build_image_decode_preview_template() -> WorkflowGraphTemplate:
         template_version="1.0.0",
         display_name="Image Decode Preview Template",
         nodes=(
-            WorkflowGraphNode(node_id="decode", node_type_id="core.io.image-base64-decode"),
+            WorkflowGraphNode(
+                node_id="decode", node_type_id="core.io.image-base64-decode"
+            ),
             WorkflowGraphNode(node_id="preview", node_type_id="core.io.image-preview"),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(
@@ -640,18 +737,24 @@ def _build_image_decode_save_preview_template() -> WorkflowGraphTemplate:
         template_version="1.0.0",
         display_name="Image Decode Save Preview Template",
         nodes=(
-            WorkflowGraphNode(node_id="decode", node_type_id="core.io.image-base64-decode"),
+            WorkflowGraphNode(
+                node_id="decode", node_type_id="core.io.image-base64-decode"
+            ),
             WorkflowGraphNode(
                 node_id="save",
                 node_type_id="core.io.image-save",
-                parameters={"object_key": "projects/project-1/results/formal-preview-source.png"},
+                parameters={
+                    "save_location": "projects/project-1/results/formal-preview-source.png"
+                },
             ),
             WorkflowGraphNode(
                 node_id="preview",
                 node_type_id="core.io.image-preview",
                 parameters={"response_transport_mode": "storage-ref"},
             ),
-            WorkflowGraphNode(node_id="response", node_type_id="core.output.http-response"),
+            WorkflowGraphNode(
+                node_id="response", node_type_id="core.output.http-response"
+            ),
         ),
         edges=(
             WorkflowGraphEdge(

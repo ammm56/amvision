@@ -11,9 +11,6 @@ from backend.service.application.errors import InvalidRequestError
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
     build_output_image_matrix_payload,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
-)
 
 
 def read_bool(value: object, *, field_name: str, default: bool) -> bool:
@@ -179,7 +176,7 @@ def build_image_output(
     source_payload: dict[str, object],
     image_matrix: Any,
     variant_name: str,
-    output_object_key: object = None,
+    save_location: object = None,
 ) -> dict[str, object]:
     """构造原子图像算子的统一 image-ref.v1 输出。"""
 
@@ -187,7 +184,7 @@ def build_image_output(
         request,
         source_payload=source_payload,
         image_matrix=image_matrix,
-        object_key=normalize_optional_object_key(output_object_key),
+        save_location=save_location,
         variant_name=variant_name,
         error_message=f"OpenCV {variant_name} 后无法编码输出图片",
     )

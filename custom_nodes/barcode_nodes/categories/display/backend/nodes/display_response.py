@@ -72,10 +72,10 @@ def _build_image_preview(*, request: WorkflowNodeExecutionRequest, image_payload
     - dict[str, object]：可直接进入 response body 的 image-preview 对象。
     """
 
-    output_object_key = request.parameters.get("output_object_key")
-    normalized_output_object_key = (
-        output_object_key.strip()
-        if isinstance(output_object_key, str) and output_object_key.strip()
+    save_location = request.parameters.get("save_location")
+    normalized_save_location = (
+        save_location.strip()
+        if isinstance(save_location, str) and save_location.strip()
         else None
     )
     response_image = build_response_image_payload(
@@ -84,7 +84,7 @@ def _build_image_preview(*, request: WorkflowNodeExecutionRequest, image_payload
         response_transport_mode=_read_response_transport_mode(
             request.parameters.get("response_transport_mode"),
         ),
-        object_key=normalized_output_object_key,
+        save_location=normalized_save_location,
         variant_name="barcode-display-response",
     )
     return {

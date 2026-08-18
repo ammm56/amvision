@@ -15,6 +15,11 @@ from typing import Any
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferRef, FrameRef
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_optional_save_location,
+    save_bytes,
+)
 from backend.service.application.images.image_matrix import (
     IMAGE_MEDIA_TYPE_RAW,
     apply_raw_ref_metadata,
@@ -29,9 +34,15 @@ from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
 )
-from backend.service.application.workflows.execution_cleanup import register_dataset_storage_object_cleanup
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.workflows.execution_cleanup import (
+    register_dataset_storage_object_cleanup,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 IMAGE_TRANSPORT_MEMORY = "memory"
@@ -148,9 +159,13 @@ class ExecutionImageRegistry:
         """
 
         if int(decoded_cache_max_entries) <= 0:
-            raise InvalidRequestError("execution image registry 解码缓存条目上限必须为正整数")
+            raise InvalidRequestError(
+                "execution image registry 解码缓存条目上限必须为正整数"
+            )
         if int(decoded_cache_max_bytes) <= 0:
-            raise InvalidRequestError("execution image registry 解码缓存字节上限必须为正整数")
+            raise InvalidRequestError(
+                "execution image registry 解码缓存字节上限必须为正整数"
+            )
 
         self._entries: dict[str, ExecutionImageEntry] = {}
         self._decoded_matrices: OrderedDict[str, Any] = OrderedDict()
@@ -164,9 +179,7 @@ class ExecutionImageRegistry:
         self._decoded_cache_misses = 0
         self._decoded_cache_evictions = 0
         self._shared_decoded_cache = shared_decoded_cache
-        self._shared_cache_scope_id = _normalize_optional_text(
-            shared_cache_scope_id
-        )
+        self._shared_cache_scope_id = _normalize_optional_text(shared_cache_scope_id)
         self._lock = RLock()
 
     def register_image_bytes(
@@ -199,11 +212,17 @@ class ExecutionImageRegistry:
         - ExecutionImageEntry：注册后的图片条目。
         """
 
-        normalized_media_type = media_type.strip() if isinstance(media_type, str) else ""
+        normalized_media_type = (
+            media_type.strip() if isinstance(media_type, str) else ""
+        )
         if not normalized_media_type:
-            raise InvalidRequestError("execution image registry 要求 media_type 不能为空")
+            raise InvalidRequestError(
+                "execution image registry 要求 media_type 不能为空"
+            )
         if not isinstance(content, bytes) or not content:
-            raise InvalidRequestError("execution image registry 要求 content 必须是非空 bytes")
+            raise InvalidRequestError(
+                "execution image registry 要求 content 必须是非空 bytes"
+            )
         image_handle = f"img-{uuid4().hex}"
         entry = ExecutionImageEntry(
             image_handle=image_handle,
@@ -268,9 +287,13 @@ class ExecutionImageRegistry:
         - ExecutionImageEntry：对应的图片条目。
         """
 
-        normalized_image_handle = image_handle.strip() if isinstance(image_handle, str) else ""
+        normalized_image_handle = (
+            image_handle.strip() if isinstance(image_handle, str) else ""
+        )
         if not normalized_image_handle:
-            raise InvalidRequestError("execution image registry 要求 image_handle 不能为空")
+            raise InvalidRequestError(
+                "execution image registry 要求 image_handle 不能为空"
+            )
         with self._lock:
             entry = self._entries.get(normalized_image_handle)
         if entry is None:
@@ -443,12 +466,10 @@ class ExecutionImageRegistry:
             )
             for key in keys:
                 self._decoded_matrices.pop(key, None)
-                self._decoded_cache_total_bytes -= (
-                    self._decoded_matrix_sizes.pop(key, 0)
+                self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(
+                    key, 0
                 )
-            self._decoded_cache_total_bytes = max(
-                0, self._decoded_cache_total_bytes
-            )
+            self._decoded_cache_total_bytes = max(0, self._decoded_cache_total_bytes)
 
     def _clear_decoded_matrices_locked(self) -> None:
         """在持有 registry lock 时清空解码缓存和在途索引。"""
@@ -485,7 +506,9 @@ class ExecutionImageRegistry:
             or self._decoded_cache_total_bytes > self._decoded_cache_max_bytes
         ):
             evicted_key, _ = self._decoded_matrices.popitem(last=False)
-            self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(evicted_key, 0)
+            self._decoded_cache_total_bytes -= self._decoded_matrix_sizes.pop(
+                evicted_key, 0
+            )
             self._decoded_cache_evictions += 1
 
     def release(self, image_handle: str) -> None:
@@ -495,7 +518,9 @@ class ExecutionImageRegistry:
         - image_handle：图片句柄。
         """
 
-        normalized_image_handle = image_handle.strip() if isinstance(image_handle, str) else ""
+        normalized_image_handle = (
+            image_handle.strip() if isinstance(image_handle, str) else ""
+        )
         if normalized_image_handle:
             with self._lock:
                 self._entries.pop(normalized_image_handle, None)
@@ -524,12 +549,17 @@ def require_dataset_storage(
     if not isinstance(dataset_storage, LocalDatasetStorage):
         raise ServiceConfigurationError(
             "当前节点执行缺少 LocalDatasetStorage 上下文",
-            details={"node_id": request.node_id, "required_metadata": "dataset_storage"},
+            details={
+                "node_id": request.node_id,
+                "required_metadata": "dataset_storage",
+            },
         )
     return dataset_storage
 
 
-def require_execution_image_registry(request: WorkflowNodeExecutionRequest) -> ExecutionImageRegistry:
+def require_execution_image_registry(
+    request: WorkflowNodeExecutionRequest,
+) -> ExecutionImageRegistry:
     """从执行元数据中读取 execution image registry。
 
     参数：
@@ -546,7 +576,10 @@ def require_execution_image_registry(request: WorkflowNodeExecutionRequest) -> E
     if not isinstance(image_registry, ExecutionImageRegistry):
         raise ServiceConfigurationError(
             "当前节点执行缺少 ExecutionImageRegistry 上下文",
-            details={"node_id": request.node_id, "required_metadata": "execution_image_registry"},
+            details={
+                "node_id": request.node_id,
+                "required_metadata": "execution_image_registry",
+            },
         )
     return image_registry
 
@@ -565,7 +598,9 @@ def require_image_payload(payload: object) -> dict[str, object]:
         raise InvalidRequestError("图片节点要求 image-ref payload 必须是对象")
     normalized_payload = dict(payload)
     transport_kind = normalized_payload.get("transport_kind")
-    normalized_transport_kind = transport_kind.strip() if isinstance(transport_kind, str) else ""
+    normalized_transport_kind = (
+        transport_kind.strip() if isinstance(transport_kind, str) else ""
+    )
     object_key = normalized_payload.get("object_key")
     image_handle = normalized_payload.get("image_handle")
     buffer_ref_value = normalized_payload.get("buffer_ref")
@@ -597,7 +632,9 @@ def require_image_payload(payload: object) -> dict[str, object]:
         normalized_payload.pop("image_handle", None)
         media_type = normalized_payload.get("media_type")
         if not isinstance(media_type, str) or not media_type.strip():
-            normalized_payload["media_type"] = infer_media_type(normalized_payload["object_key"])
+            normalized_payload["media_type"] = infer_media_type(
+                normalized_payload["object_key"]
+            )
     elif normalized_transport_kind == IMAGE_TRANSPORT_MEMORY:
         if not isinstance(image_handle, str) or not image_handle.strip():
             raise InvalidRequestError("memory image-ref payload 缺少有效 image_handle")
@@ -728,7 +765,10 @@ def _apply_media_type_from_ref(
     if normalized_media_type is not None and normalized_media_type != ref_media_type:
         raise InvalidRequestError(
             "image-ref payload media_type 与底层引用不一致",
-            details={"transport_kind": transport_kind, "media_type": normalized_media_type},
+            details={
+                "transport_kind": transport_kind,
+                "media_type": normalized_media_type,
+            },
         )
     payload["media_type"] = ref_media_type
 
@@ -807,7 +847,10 @@ def resolve_image_input(
 
     dataset_storage = require_dataset_storage(request)
     resolved_image = resolve_image_reference(request, input_name=input_name)
-    if resolved_image.transport_kind != IMAGE_TRANSPORT_STORAGE or resolved_image.object_key is None:
+    if (
+        resolved_image.transport_kind != IMAGE_TRANSPORT_STORAGE
+        or resolved_image.object_key is None
+    ):
         raise InvalidRequestError(
             "当前节点尚未支持 memory image-ref payload，请改用双模式 helper",
             details={"node_id": request.node_id, "input_name": input_name},
@@ -886,14 +929,19 @@ def load_image_bytes_from_payload(
         if not source_path.is_file():
             raise InvalidRequestError(
                 "图片节点引用的 object_key 不存在",
-                details={"node_id": request.node_id, "object_key": resolved_image.object_key},
+                details={
+                    "node_id": request.node_id,
+                    "object_key": resolved_image.object_key,
+                },
             )
         return dict(resolved_image.payload), source_path.read_bytes()
 
     if resolved_image.transport_kind == IMAGE_TRANSPORT_MEMORY:
         image_registry = require_execution_image_registry(request)
         assert resolved_image.image_handle is not None
-        return dict(resolved_image.payload), image_registry.read_bytes(resolved_image.image_handle)
+        return dict(resolved_image.payload), image_registry.read_bytes(
+            resolved_image.image_handle
+        )
 
     local_buffer_reader = require_local_buffer_reader(request)
     if resolved_image.transport_kind == IMAGE_TRANSPORT_BUFFER:
@@ -967,7 +1015,10 @@ def require_local_buffer_reader(request: WorkflowNodeExecutionRequest) -> object
     if local_buffer_reader is None:
         raise ServiceConfigurationError(
             "当前节点执行缺少 LocalBufferBroker reader 上下文",
-            details={"node_id": request.node_id, "required_metadata": "local_buffer_reader"},
+            details={
+                "node_id": request.node_id,
+                "required_metadata": "local_buffer_reader",
+            },
         )
     if not callable(getattr(local_buffer_reader, "read_buffer_ref", None)):
         raise ServiceConfigurationError(
@@ -1001,7 +1052,9 @@ def build_runtime_image_object_key(
     - str：生成后的目标 object key。
     """
 
-    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    workflow_run_id = str(
+        request.execution_metadata.get("workflow_run_id") or "default-run"
+    )
     source_path = PurePosixPath(source_object_key)
     source_stem = source_path.stem or "image"
     source_suffix = output_extension or source_path.suffix or ".png"
@@ -1041,7 +1094,9 @@ def build_memory_image_payload(
     - dict[str, object]：memory 模式图片引用。
     """
 
-    normalized_image_handle = image_handle.strip() if isinstance(image_handle, str) else ""
+    normalized_image_handle = (
+        image_handle.strip() if isinstance(image_handle, str) else ""
+    )
     normalized_media_type = media_type.strip() if isinstance(media_type, str) else ""
     if not normalized_image_handle:
         raise InvalidRequestError("memory image-ref payload 要求 image_handle 不能为空")
@@ -1096,10 +1151,14 @@ def build_storage_image_payload(
     if not normalized_object_key:
         raise InvalidRequestError("storage image-ref payload 要求 object_key 不能为空")
 
-    base_payload = require_image_payload(source_payload) if source_payload is not None else {}
+    base_payload = (
+        require_image_payload(source_payload) if source_payload is not None else {}
+    )
     resolved_width = width if width is not None else base_payload.get("width")
     resolved_height = height if height is not None else base_payload.get("height")
-    resolved_media_type = media_type or _normalize_optional_text(base_payload.get("media_type"))
+    resolved_media_type = media_type or _normalize_optional_text(
+        base_payload.get("media_type")
+    )
 
     image_payload: dict[str, object] = {
         "transport_kind": IMAGE_TRANSPORT_STORAGE,
@@ -1349,8 +1408,7 @@ def load_image_matrix_from_payload(
         cache_key=decode_cache_key,
         decoder=decode_matrix,
         share_across_runs=(
-            normalized_payload.get("transport_kind")
-            == IMAGE_TRANSPORT_STORAGE
+            normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_STORAGE
         ),
     )
     return normalized_payload, matrix.copy() if copy_raw else matrix
@@ -1363,7 +1421,10 @@ def _try_load_borrowed_raw_image_view(
 ) -> memoryview | None:
     """在 reader 支持时直接借用 broker mmap raw 区域，避免复制整帧 bytes。"""
 
-    if str(image_payload.get("media_type") or "").strip().lower() != IMAGE_MEDIA_TYPE_RAW:
+    if (
+        str(image_payload.get("media_type") or "").strip().lower()
+        != IMAGE_MEDIA_TYPE_RAW
+    ):
         return None
     return _try_load_borrowed_image_view(
         request,
@@ -1511,6 +1572,7 @@ def build_response_image_payload(
     image_payload: object,
     response_transport_mode: str = RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
     object_key: str | None = None,
+    save_location: str | None = None,
     variant_name: str = "response-image",
     overwrite: bool = True,
 ) -> dict[str, object]:
@@ -1530,8 +1592,28 @@ def build_response_image_payload(
 
     normalized_mode = _normalize_response_transport_mode(response_transport_mode)
     original_image_payload = require_image_payload(image_payload)
+    resolved_save_location = resolve_optional_save_location(save_location, scope="file")
+    saved_output: dict[str, object] | None = None
+    if resolved_save_location is not None:
+        _, saved_image_bytes = load_encoded_image_bytes_from_payload(
+            request,
+            image_payload=original_image_payload,
+        )
+        saved_file = save_bytes(
+            request,
+            save_location=resolved_save_location,
+            content=saved_image_bytes,
+        )
+        saved_output = saved_file.to_payload()
+        if (
+            saved_file.kind == SAVE_LOCATION_OBJECT_STORE
+            and normalized_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF
+        ):
+            object_key = saved_file.object_key
     source_was_raw = _is_raw_image_payload(original_image_payload)
-    original_object_key = _normalize_optional_text(original_image_payload.get("object_key"))
+    original_object_key = _normalize_optional_text(
+        original_image_payload.get("object_key")
+    )
     if (
         normalized_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF
         and original_image_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE
@@ -1544,15 +1626,21 @@ def build_response_image_payload(
             "media_type": str(original_image_payload["media_type"]),
             "object_key": original_object_key,
         }
-        normalized_width = _normalize_optional_dimension(original_image_payload.get("width"))
-        normalized_height = _normalize_optional_dimension(original_image_payload.get("height"))
+        normalized_width = _normalize_optional_dimension(
+            original_image_payload.get("width")
+        )
+        normalized_height = _normalize_optional_dimension(
+            original_image_payload.get("height")
+        )
         if normalized_width is not None:
             response_image["width"] = normalized_width
         if normalized_height is not None:
             response_image["height"] = normalized_height
+        if saved_output is not None:
+            response_image["saved_output"] = saved_output
         return response_image
 
-    normalized_image_payload, image_bytes = _load_json_safe_image_bytes(
+    normalized_image_payload, image_bytes = load_encoded_image_bytes_from_payload(
         request,
         image_payload=original_image_payload,
     )
@@ -1560,8 +1648,12 @@ def build_response_image_payload(
         "transport_kind": normalized_mode,
         "media_type": str(normalized_image_payload["media_type"]),
     }
-    normalized_width = _normalize_optional_dimension(normalized_image_payload.get("width"))
-    normalized_height = _normalize_optional_dimension(normalized_image_payload.get("height"))
+    normalized_width = _normalize_optional_dimension(
+        normalized_image_payload.get("width")
+    )
+    normalized_height = _normalize_optional_dimension(
+        normalized_image_payload.get("height")
+    )
     if normalized_width is not None:
         response_image["width"] = normalized_width
     if normalized_height is not None:
@@ -1569,6 +1661,8 @@ def build_response_image_payload(
 
     if normalized_mode == RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64:
         response_image["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
+        if saved_output is not None:
+            response_image["saved_output"] = saved_output
         return response_image
 
     if (
@@ -1589,6 +1683,8 @@ def build_response_image_payload(
             variant_name=variant_name,
         )
     response_image["object_key"] = str(stored_payload["object_key"])
+    if saved_output is not None:
+        response_image["saved_output"] = saved_output
     return response_image
 
 
@@ -1598,6 +1694,7 @@ def build_preview_response_image_payload(
     image_payload: object,
     response_transport_mode: str = RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
     object_key: str | None = None,
+    save_location: str | None = None,
     display_object_key: str | None = None,
     variant_name: str = "preview-image",
     overwrite: bool = True,
@@ -1634,21 +1731,26 @@ def build_preview_response_image_payload(
         image_payload=original_image_payload,
         response_transport_mode=source_mode,
         object_key=object_key,
+        save_location=save_location,
         variant_name=variant_name,
         overwrite=overwrite,
     )
-    source_width, source_height = _read_payload_dimensions(source_image, fallback=(source_width, source_height))
+    source_width, source_height = _read_payload_dimensions(
+        source_image, fallback=(source_width, source_height)
+    )
     display_image = source_image
     display_scale = 1.0
     if _is_high_resolution_preview_image(source_width, source_height):
-        display_image, detected_source_width, detected_source_height, display_scale = _build_resized_preview_display_image(
-            request,
-            image_payload=original_image_payload,
-            source_image=source_image,
-            response_transport_mode=normalized_mode,
-            object_key=display_object_key,
-            variant_name=f"{variant_name}-display",
-            loaded_image=loaded_image,
+        display_image, detected_source_width, detected_source_height, display_scale = (
+            _build_resized_preview_display_image(
+                request,
+                image_payload=original_image_payload,
+                source_image=source_image,
+                response_transport_mode=normalized_mode,
+                object_key=display_object_key,
+                variant_name=f"{variant_name}-display",
+                loaded_image=loaded_image,
+            )
         )
         source_width = detected_source_width
         source_height = detected_source_height
@@ -1666,7 +1768,9 @@ def build_preview_response_image_payload(
     if display_height is not None:
         response_image["display_height"] = int(display_height)
     response_image["display_scale"] = round(float(display_scale), 8)
-    response_image["preview_image_kind"] = "display" if display_image != source_image else "source"
+    response_image["preview_image_kind"] = (
+        "display" if display_image != source_image else "source"
+    )
     return response_image
 
 
@@ -1685,15 +1789,19 @@ def _build_resized_preview_display_image(
     import cv2  # noqa: PLC0415
 
     if loaded_image is None:
-        normalized_payload, image_matrix, source_width, source_height = _load_preview_image_matrix(
-            request,
-            image_payload=image_payload,
+        normalized_payload, image_matrix, source_width, source_height = (
+            _load_preview_image_matrix(
+                request,
+                image_payload=image_payload,
+            )
         )
     else:
         normalized_payload, image_matrix, source_width, source_height = loaded_image
     if source_width <= 0 or source_height <= 0:
         return dict(source_image), None, None, 1.0
-    scale = min(1.0, PREVIEW_DISPLAY_MAX_LONG_EDGE / float(max(source_width, source_height)))
+    scale = min(
+        1.0, PREVIEW_DISPLAY_MAX_LONG_EDGE / float(max(source_width, source_height))
+    )
     if scale >= 1.0:
         return dict(source_image), source_width, source_height, 1.0
 
@@ -1710,7 +1818,10 @@ def _build_resized_preview_display_image(
         extension=PREVIEW_DISPLAY_EXTENSION,
         error_message="Preview display 图片无法编码",
     )
-    if response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF and object_key is not None:
+    if (
+        response_transport_mode == RESPONSE_IMAGE_TRANSPORT_STORAGE_REF
+        and object_key is not None
+    ):
         stored_payload = write_image_bytes(
             request,
             source_payload=normalized_payload,
@@ -1759,7 +1870,12 @@ def _load_preview_image_matrix(
     )
     if image_matrix.ndim < 2:
         return normalized_payload, image_matrix, 0, 0
-    return normalized_payload, image_matrix, int(image_matrix.shape[1]), int(image_matrix.shape[0])
+    return (
+        normalized_payload,
+        image_matrix,
+        int(image_matrix.shape[1]),
+        int(image_matrix.shape[0]),
+    )
 
 
 def copy_image_payload(
@@ -1785,31 +1901,42 @@ def copy_image_payload(
 
     normalized_source_payload = require_image_payload(source_payload)
     dataset_storage = require_dataset_storage(request)
-    source_object_key = _normalize_optional_text(normalized_source_payload.get("object_key"))
+    source_object_key = _normalize_optional_text(
+        normalized_source_payload.get("object_key")
+    )
     target_object_key = object_key or _build_default_target_object_key(
         request,
         normalized_source_payload=normalized_source_payload,
         variant_name=variant_name,
     )
     target_path = dataset_storage.resolve(target_object_key)
-    if target_path.exists() and not overwrite and target_object_key != source_object_key:
+    if (
+        target_path.exists()
+        and not overwrite
+        and target_object_key != source_object_key
+    ):
         raise InvalidRequestError(
             "图片保存目标已存在，且当前节点未允许覆盖",
             details={"node_id": request.node_id, "object_key": target_object_key},
         )
     if _is_raw_image_payload(normalized_source_payload):
-        json_safe_payload, image_bytes = _load_json_safe_image_bytes(
+        json_safe_payload, image_bytes = load_encoded_image_bytes_from_payload(
             request,
             image_payload=normalized_source_payload,
-            target_object_key=target_object_key,
+            target_location=target_object_key,
         )
         dataset_storage.write_bytes(target_object_key, image_bytes)
         normalized_source_payload = json_safe_payload
-    elif normalized_source_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE and source_object_key is not None:
+    elif (
+        normalized_source_payload["transport_kind"] == IMAGE_TRANSPORT_STORAGE
+        and source_object_key is not None
+    ):
         if target_object_key != source_object_key:
             dataset_storage.copy_relative_file(source_object_key, target_object_key)
     else:
-        _, image_bytes = load_image_bytes_from_payload(request, image_payload=normalized_source_payload)
+        _, image_bytes = load_image_bytes_from_payload(
+            request, image_payload=normalized_source_payload
+        )
         dataset_storage.write_bytes(target_object_key, image_bytes)
     _register_temporary_runtime_object_cleanup(
         request,
@@ -1917,13 +2044,13 @@ def infer_media_type_from_image_bytes(content: bytes) -> str:
     return "image/png"
 
 
-def _load_json_safe_image_bytes(
+def load_encoded_image_bytes_from_payload(
     request: WorkflowNodeExecutionRequest,
     *,
     image_payload: object,
-    target_object_key: str | None = None,
+    target_location: str | None = None,
 ) -> tuple[dict[str, object], bytes]:
-    """读取图片并保证返回 bytes 是 JSON / 文件安全的编码图片。
+    """读取图片并保证返回 bytes 是可保存、可传输的编码图片。
 
     raw BGR24 只在这里按需编码，内部节点流转不做 PNG/JPEG 编码。
     """
@@ -1945,7 +2072,7 @@ def _load_json_safe_image_bytes(
         cv2_module=cv2,
         np_module=np,
     )
-    output_extension = _resolve_encoded_output_extension(target_object_key)
+    output_extension = _resolve_encoded_output_extension(target_location)
     encoded_bytes = encode_matrix_to_image_bytes(
         cv2_module=cv2,
         image_matrix=image_matrix,
@@ -1977,7 +2104,10 @@ def _is_raw_image_payload(payload: dict[str, object]) -> bool:
     """判断 image-ref payload 是否为 raw 图片。"""
 
     media_type = payload.get("media_type")
-    return isinstance(media_type, str) and media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW
+    return (
+        isinstance(media_type, str)
+        and media_type.strip().lower() == IMAGE_MEDIA_TYPE_RAW
+    )
 
 
 def _read_payload_dimensions(
@@ -2019,7 +2149,11 @@ def infer_file_extension_from_media_type(media_type: str) -> str:
     - str：推断后的扩展名；未知时返回 .png。
     """
 
-    guessed_extension = mimetypes.guess_extension(media_type.strip()) if isinstance(media_type, str) else None
+    guessed_extension = (
+        mimetypes.guess_extension(media_type.strip())
+        if isinstance(media_type, str)
+        else None
+    )
     if isinstance(guessed_extension, str) and guessed_extension:
         return guessed_extension
     return ".png"
@@ -2028,7 +2162,11 @@ def infer_file_extension_from_media_type(media_type: str) -> str:
 def _normalize_response_transport_mode(value: object) -> str:
     """规范化图片响应传输方式。"""
 
-    normalized_value = value.strip() if isinstance(value, str) else RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64
+    normalized_value = (
+        value.strip()
+        if isinstance(value, str)
+        else RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64
+    )
     if normalized_value not in {
         RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64,
         RESPONSE_IMAGE_TRANSPORT_STORAGE_REF,
@@ -2049,7 +2187,9 @@ def _build_default_target_object_key(
 ) -> str:
     """按来源模式生成默认目标 object key。"""
 
-    source_object_key = _normalize_optional_text(normalized_source_payload.get("object_key"))
+    source_object_key = _normalize_optional_text(
+        normalized_source_payload.get("object_key")
+    )
     if source_object_key is not None:
         return build_runtime_image_object_key(
             request,
@@ -2058,7 +2198,9 @@ def _build_default_target_object_key(
             output_extension=output_extension,
         )
 
-    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    workflow_run_id = str(
+        request.execution_metadata.get("workflow_run_id") or "default-run"
+    )
     normalized_variant_name = variant_name.strip().replace(" ", "-") or "output"
     if output_extension is not None:
         target_extension = output_extension
@@ -2099,7 +2241,9 @@ def _is_temporary_runtime_object_key(
 ) -> bool:
     """判断 object key 是否位于当前 workflow run 的临时 runtime 目录下。"""
 
-    workflow_run_id = str(request.execution_metadata.get("workflow_run_id") or "default-run")
+    workflow_run_id = str(
+        request.execution_metadata.get("workflow_run_id") or "default-run"
+    )
     return object_key.startswith(f"workflows/runtime/{workflow_run_id}/")
 
 

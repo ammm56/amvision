@@ -27,7 +27,7 @@
         "type": "boolean",
         "default": true
       },
-      "output_object_key": {
+      "save_location": {
         "type": "string"
       }
     }

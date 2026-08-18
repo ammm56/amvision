@@ -23,10 +23,10 @@ def _image_body_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
     - dict[str, object]：包含 body 输出的正式图片响应。
     """
 
-    output_object_key = request.parameters.get("output_object_key")
-    normalized_output_object_key = (
-        output_object_key.strip()
-        if isinstance(output_object_key, str) and output_object_key.strip()
+    save_location = request.parameters.get("save_location")
+    normalized_save_location = (
+        save_location.strip()
+        if isinstance(save_location, str) and save_location.strip()
         else None
     )
     response_transport_mode = str(
@@ -36,7 +36,7 @@ def _image_body_handler(request: WorkflowNodeExecutionRequest) -> dict[str, obje
         request,
         image_payload=request.input_values.get("image"),
         response_transport_mode=response_transport_mode,
-        object_key=normalized_output_object_key,
+        save_location=normalized_save_location,
         variant_name="response-image",
     )
     response_body: dict[str, object] = {
@@ -87,10 +87,10 @@ CORE_NODE_SPEC = CoreNodeSpec(
                     "enum": ["inline-base64", "storage-ref"],
                     "default": "inline-base64",
                 },
-                "output_object_key": {
+                "save_location": {
                     "type": "string",
-                    "title": "输出 object_key",
-                    "description": "仅 storage-ref 模式使用；为空时优先复用输入存储路径，或按 runtime 默认目录生成。",
+                    "title": "保存位置",
+                    "description": "可选保存位置；相对路径写入 ObjectStore，绝对路径写入本地磁盘。",
                     "default": "",
                 },
             },

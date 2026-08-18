@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveNodeDefinitionDisplayName } from './node-definition-localization'
-import type { NodeDefinition } from './types'
+import {
+  resolveNodeDefinitionDisplayName,
+  resolveNodeParameterDescription,
+  resolveNodeParameterDisplayName,
+} from './node-definition-localization'
+import type { NodeDefinition, NodeParameterUiField } from './types'
 
 function buildDefinition(): NodeDefinition {
   return {
@@ -39,5 +43,30 @@ describe('node definition display name', () => {
     expect(resolveNodeDefinitionDisplayName(definition, 'en-US')).toBe('Draw Detections')
     expect(resolveNodeDefinitionDisplayName(definition, 'ja-JP')).toBe('Draw Detections')
     expect(resolveNodeDefinitionDisplayName(definition, 'ko-KR')).toBe('Draw Detections')
+  })
+})
+
+describe('save location parameter localization', () => {
+  const field: NodeParameterUiField = {
+    parameter_name: 'save_location',
+    display_name: 'Save Location',
+    description: '',
+    group_id: '',
+    order: 0,
+    required: false,
+    hidden: false,
+    readonly: false,
+    default_value: '',
+    enum_options: [],
+    json_schema: { type: 'string' },
+  }
+
+  it('uses concise locale-specific labels and dual-path help', () => {
+    expect(resolveNodeParameterDisplayName(field, 'zh-CN')).toBe('保存位置')
+    expect(resolveNodeParameterDisplayName(field, 'en-US')).toBe('Save location')
+    expect(resolveNodeParameterDisplayName(field, 'ja-JP')).toBe('保存先')
+    expect(resolveNodeParameterDisplayName(field, 'ko-KR')).toBe('저장 위치')
+    expect(resolveNodeParameterDescription(field, 'zh-CN')).toContain('ObjectStore')
+    expect(resolveNodeParameterDescription(field, 'en-US')).toContain('local filesystem')
   })
 })

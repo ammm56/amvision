@@ -15,12 +15,15 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.nodes.core_nodes.support.base import CoreNodeSpec
 from backend.nodes.core_nodes.support.local_io import (
-    build_local_file_summary,
     flatten_mapping_for_csv,
-    resolve_local_output_file_path,
     resolve_value_or_result_input,
 )
+from backend.nodes.core_nodes.support.logic import build_value_payload
 from backend.nodes.core_nodes.support.service import get_optional_str_tuple_parameter
+from backend.nodes.save_locations import (
+    resolve_required_save_location_from_request,
+    resolve_save_location_path,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.runtime.io import (
     WriteJournal,
@@ -28,17 +31,22 @@ from backend.service.application.runtime.io import (
     build_node_operation_id,
 )
 from backend.service.application.runtime.io.write_journal import sha256_bytes
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 
 
-def _csv_append_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """把结果对象、报警对象或 value 追加到本地 CSV 文件。"""
+def _csv_append_local_handler(
+    request: WorkflowNodeExecutionRequest,
+) -> dict[str, object]:
+    """把结果对象、报警对象或 value 追加到 ObjectStore 或系统 CSV 文件。"""
 
-    output_path = resolve_local_output_file_path(
+    save_location = resolve_required_save_location_from_request(
         request,
-        parameter_name="local_path",
-        overwrite=True,
-        description="本地 CSV 输出文件",
+        scope="file",
+    )
+    output_path, saved_file = resolve_save_location_path(
+        request, save_location=save_location
     )
     payload_value, record_kind = resolve_value_or_result_input(request)
     row = flatten_mapping_for_csv(payload_value)
@@ -51,15 +59,17 @@ def _csv_append_local_handler(request: WorkflowNodeExecutionRequest) -> dict[str
             field_order=field_order,
         )
     return {
-        "summary": build_local_file_summary(
-            local_path=output_path,
-            extra_fields={
+        "summary": build_value_payload(
+            {
+                "saved_output": saved_file.to_payload(),
+                "file_name": output_path.name,
+                "size_bytes": output_path.stat().st_size,
                 "record_kind": record_kind,
                 "field_count": len(fieldnames),
                 "fieldnames": list(fieldnames),
                 "wrote_header": write_header,
                 "idempotent_replay": idempotent_replay,
-            },
+            }
         )
     }
 
@@ -233,9 +243,9 @@ def _read_field_order(request: WorkflowNodeExecutionRequest) -> tuple[str, ...] 
 CORE_NODE_SPEC = CoreNodeSpec(
     node_definition=NodeDefinition(
         node_type_id="core.output.csv-append-local",
-        display_name="Append Local CSV",
+        display_name="Append CSV",
         category="core.io.file",
-        description="把 result-record、alarm-record 或 value 内容扁平化后追加到本地 CSV 文件。",
+        description="把 result-record、alarm-record 或 value 追加到 ObjectStore 或 runtime 主机 CSV。",
         implementation_kind=NODE_IMPLEMENTATION_CORE,
         runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
         input_ports=(
@@ -258,8 +268,8 @@ CORE_NODE_SPEC = CoreNodeSpec(
                 required=False,
             ),
             NodePortDefinition(
-                name="path",
-                display_name="Path",
+                name="save_location",
+                display_name="保存位置",
                 payload_type_id="value.v1",
                 required=False,
             ),
@@ -274,7 +284,7 @@ CORE_NODE_SPEC = CoreNodeSpec(
         parameter_schema={
             "type": "object",
             "properties": {
-                "local_path": {"type": "string", "title": "本地 CSV 路径"},
+                "save_location": {"type": "string", "title": "保存位置"},
                 "field_order": {
                     "type": "array",
                     "title": "字段顺序",

@@ -22,7 +22,6 @@ from custom_nodes.opencv_nodes.shared.backend.runtime.search_roi import (
     resolve_search_roi,
 )
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
-    normalize_optional_object_key,
     require_non_negative_float,
     require_positive_int,
 )
@@ -61,7 +60,7 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         request,
         source_payload=image_payload,
         image_matrix=output_image,
-        object_key=normalize_optional_object_key(request.parameters.get("output_object_key")),
+        save_location=request.parameters.get("save_location"),
         variant_name="bilateral-filter",
         error_message="OpenCV bilateral-filter 后无法编码输出图片",
     )

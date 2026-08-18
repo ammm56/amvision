@@ -18,7 +18,7 @@
       "attempts": {"type": "integer", "default": 3, "minimum": 1},
       "max_iterations": {"type": "integer", "default": 20, "minimum": 1},
       "epsilon": {"type": "number", "default": 1.0, "minimum": 1e-09},
-      "output_object_key": {"type": "string"}
+      "save_location": {"type": "string"}
     }
   },
   "capability_tags": ["opencv.kmeans-segment", "vision.opencv", "vision.segmentation"],

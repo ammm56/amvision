@@ -4,15 +4,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.nodes.save_locations import (
+    SAVE_LOCATION_OBJECT_STORE,
+    resolve_optional_save_location,
+    save_bytes,
+)
 from backend.nodes.runtime_support import (
+    build_storage_image_payload,
     load_image_matrix as load_runtime_image_matrix,
     register_image_bytes,
     register_image_matrix,
-    write_image_bytes,
 )
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 from custom_nodes.barcode_nodes.shared.backend.runtime.imports import require_barcode_runtime_imports
-from custom_nodes.barcode_nodes.shared.backend.runtime.validators import normalize_optional_object_key
 
 
 class EncodedImageBytes(bytes):
@@ -38,23 +42,40 @@ def build_output_image_payload(
     media_type: str,
     variant_name: str,
     output_extension: str,
-    object_key: str | None = None,
+    save_location: str | None = None,
 ) -> dict[str, object]:
     """根据可选 object_key 选择 storage 或 memory 模式输出图片。"""
 
-    normalized_object_key = normalize_optional_object_key(object_key)
-    if normalized_object_key is not None:
-        return write_image_bytes(
+    resolved_save_location = resolve_optional_save_location(save_location, scope="file")
+    if resolved_save_location is not None:
+        saved_file = save_bytes(
             request,
-            source_payload=source_payload,
+            save_location=resolved_save_location,
             content=bytes(content),
-            object_key=normalized_object_key,
-            variant_name=variant_name,
-            output_extension=output_extension,
-            width=width,
-            height=height,
-            media_type=media_type,
         )
+        if saved_file.kind == SAVE_LOCATION_OBJECT_STORE:
+            output_payload = build_storage_image_payload(
+                object_key=str(saved_file.object_key or ""),
+                source_payload=source_payload,
+                width=width,
+                height=height,
+                media_type=media_type,
+            )
+        else:
+            image_matrix = getattr(content, "image_matrix", None)
+            output_payload = (
+                register_image_matrix(request, image_matrix=image_matrix)
+                if image_matrix is not None
+                else register_image_bytes(
+                    request,
+                    content=bytes(content),
+                    media_type=media_type,
+                    width=width,
+                    height=height,
+                )
+            )
+        output_payload["saved_output"] = saved_file.to_payload()
+        return output_payload
     image_matrix = getattr(content, "image_matrix", None)
     if image_matrix is not None:
         return register_image_matrix(request, image_matrix=image_matrix)
@@ -71,15 +92,14 @@ def build_output_image_matrix_payload(
     *,
     source_payload: dict[str, object],
     image_matrix: Any,
-    object_key: str | None,
+    save_location: str | None,
     variant_name: str,
     output_extension: str = ".png",
     media_type: str = "image/png",
 ) -> dict[str, object]:
     """按输出模式返回绘制后的图片，memory/raw 模式不做 PNG 编码。"""
 
-    normalized_object_key = normalize_optional_object_key(object_key)
-    if normalized_object_key is None:
+    if not isinstance(save_location, str) or not save_location.strip():
         return register_image_matrix(request, image_matrix=image_matrix)
     cv2_module, _, _ = require_barcode_runtime_imports()
     success, encoded_image = cv2_module.imencode(".png", image_matrix)
@@ -94,7 +114,7 @@ def build_output_image_matrix_payload(
         request,
         source_payload=source_payload,
         content=EncodedImageBytes(encoded_image.tobytes(), image_matrix),
-        object_key=normalized_object_key,
+        save_location=save_location,
         variant_name=variant_name,
         output_extension=output_extension,
         width=int(image_matrix.shape[1]),
