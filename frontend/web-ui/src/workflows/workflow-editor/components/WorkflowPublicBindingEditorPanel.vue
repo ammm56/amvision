@@ -18,7 +18,6 @@
     >
       <div class="workflow-graph-public-binding-editor__title">
         <strong>{{ binding.binding_id }}</strong>
-        <small>{{ readEndpointText(binding) }} · {{ getPayloadTypeId(binding) || 'unknown' }}</small>
       </div>
       <label class="workflow-graph-preview-field">
         <span>{{ t('workflowEditor.editor.publicId') }}</span>
@@ -29,7 +28,7 @@
         <input :value="readDisplayName(binding)" @input="emit('update-display-name', binding, $event)" />
       </label>
       <label class="workflow-graph-preview-field">
-        <span>binding kind</span>
+        <span>{{ t('workflowEditor.editor.bindingType') }}</span>
         <SelectField
           :model-value="binding.binding_kind"
           :options="readKindOptions(binding)"
@@ -76,10 +75,8 @@ interface SelectOption {
 defineProps<{
   title: string
   bindings: FlowApplicationBinding[]
-  readEndpointText: (binding: FlowApplicationBinding) => string
   readDisplayName: (binding: FlowApplicationBinding) => string
   readKindOptions: (binding: FlowApplicationBinding) => SelectOption[]
-  getPayloadTypeId: (binding: FlowApplicationBinding) => string
 }>()
 
 const emit = defineEmits<{

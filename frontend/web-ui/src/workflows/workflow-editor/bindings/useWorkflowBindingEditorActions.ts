@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
-import type { FlowApplicationBinding, WorkflowGraphInput, WorkflowGraphOutput } from '../types'
+import type { FlowApplicationBinding } from '../types'
 import { normalizePublicIdentifier, type WorkflowBoundaryKind } from './useWorkflowPublicBindings'
 
 export type WorkflowBindingEditorSelectValue = string | number | boolean | null
@@ -16,7 +16,6 @@ export interface WorkflowBindingEditorActionsOptions {
   selectedBoundaryKind: Ref<WorkflowBoundaryKind | null>
   contextMenu: Ref<WorkflowBindingEditorContextMenu | null>
   nodePicker: Ref<unknown | null>
-  readTemplatePortForBinding: (binding: FlowApplicationBinding) => WorkflowGraphInput | WorkflowGraphOutput | null
   renameApplicationBinding: (binding: FlowApplicationBinding, nextBindingId: string) => boolean
   setBindingDisplayName: (binding: FlowApplicationBinding, nextDisplayName: string) => void
   updateApplicationBindingRequired: (binding: FlowApplicationBinding, required: boolean) => void
@@ -28,14 +27,6 @@ export interface WorkflowBindingEditorActionsOptions {
 }
 
 export function useWorkflowBindingEditorActions(options: WorkflowBindingEditorActionsOptions) {
-  function bindingEndpointText(binding: FlowApplicationBinding): string {
-    const templatePort = options.readTemplatePortForBinding(binding)
-    if (!templatePort) return translate('workflowEditor.feedback.templatePortNotFound')
-    if (binding.direction === 'input' && 'target_node_id' in templatePort) return `${templatePort.target_node_id}.${templatePort.target_port}`
-    if (binding.direction === 'output' && 'source_node_id' in templatePort) return `${templatePort.source_node_id}.${templatePort.source_port}`
-    return binding.template_port_id
-  }
-
   function updateBindingIdFromEvent(binding: FlowApplicationBinding, event: Event): void {
     const target = event.target
     if (!(target instanceof HTMLInputElement)) return
@@ -97,7 +88,6 @@ export function useWorkflowBindingEditorActions(options: WorkflowBindingEditorAc
   }
 
   return {
-    bindingEndpointText,
     updateBindingIdFromEvent,
     updateBindingDisplayNameFromEvent,
     updateBindingKindFromValue,

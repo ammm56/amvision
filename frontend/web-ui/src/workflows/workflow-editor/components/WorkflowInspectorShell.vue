@@ -47,10 +47,8 @@
         v-else-if="inspectorDetail.kind === 'boundary'"
         :title="inspectorDetail.title"
         :bindings="inspectorDetail.bindings"
-        :read-endpoint-text="bindingEndpointText"
         :read-display-name="bindingDisplayName"
         :read-kind-options="bindingKindSelectOptions"
-        :get-payload-type-id="getBindingPayloadTypeId"
         @update-binding-id="(binding, event) => emit('updateBindingId', binding, event)"
         @update-display-name="(binding, event) => emit('updateBindingDisplayName', binding, event)"
         @update-kind="(binding, value) => emit('updateBindingKind', binding, value)"
@@ -70,7 +68,6 @@
         v-if="showAppContractPanel && (showNewAppDraftPanel || inspectorDetail.kind === 'application')"
         :input-bindings="appInputBindings"
         :output-bindings="appOutputBindings"
-        :get-payload-type-id="getBindingPayloadTypeId"
         @add-request-image-ref="emit('addRequestImageRef')"
         @add-request-image-base64="emit('addRequestImageBase64')"
       />
@@ -132,7 +129,6 @@ defineProps<{
   appOutputBindings: FlowApplicationBinding[]
   inspectorDetail: WorkflowInspectorDetail<WorkflowGraphNodeView>
   readGraphNodeTitle: (node: WorkflowGraphNodeView) => string
-  bindingEndpointText: (binding: FlowApplicationBinding) => string
   bindingDisplayName: (binding: FlowApplicationBinding) => string
   bindingKindSelectOptions: (binding: FlowApplicationBinding) => Array<{ label: string; value: string | number | boolean | null; description?: string }>
   getBindingPayloadTypeId: (binding: FlowApplicationBinding) => string

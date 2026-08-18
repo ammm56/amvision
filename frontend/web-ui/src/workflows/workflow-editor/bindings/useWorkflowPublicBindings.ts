@@ -235,7 +235,6 @@ export function useWorkflowPublicBindings(options: WorkflowPublicBindingsOptions
     initializePublicBindings,
     readBoundaryPositionsFromMetadata,
     writeBoundaryPositionsToMetadata,
-    readTemplatePortForBinding,
     getBindingPayloadTypeId,
     bindingDisplayName,
     bindingKindSelectOptions,

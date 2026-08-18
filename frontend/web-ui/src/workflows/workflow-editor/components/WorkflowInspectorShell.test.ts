@@ -31,7 +31,6 @@ function mountInspector() {
         previewRunText: null,
       },
       readGraphNodeTitle: () => '',
-      bindingEndpointText: () => '',
       bindingDisplayName: () => '',
       bindingKindSelectOptions: () => [],
       getBindingPayloadTypeId: () => '',

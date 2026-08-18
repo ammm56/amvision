@@ -28,8 +28,8 @@
       <span>{{ t('workflowEditor.editor.formDescription') }}</span>
       <input :value="draft.description" :placeholder="t('workflowEditor.editor.optional')" @input="emit('update-description', $event)" />
     </label>
-    <p class="workflow-graph-preview-hint" :class="{ 'workflow-graph-preview-hint--danger': saveBlocker }">
-      {{ saveBlocker || t('workflowEditor.editor.firstSaveHint') }}
+    <p v-if="saveBlocker" class="workflow-graph-preview-hint workflow-graph-preview-hint--danger">
+      {{ saveBlocker }}
     </p>
   </div>
 </template>

@@ -57,4 +57,20 @@ describe('WorkflowPreviewInputPanel', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('就绪')
   })
+
+  it.each([
+    ['zh-CN', '存储路径', '媒体类型'],
+    ['en-US', 'Storage path', 'Media type'],
+    ['ja-JP', '保存先パス', 'メディアタイプ'],
+    ['ko-KR', '저장 경로', '미디어 유형'],
+  ] as const)('使用 %s 显示本地化图片引用字段', (locale, storagePathLabel, mediaTypeLabel) => {
+    setI18nLocale(locale)
+    const wrapper = mountPanel()
+
+    expect(wrapper.text()).toContain(storagePathLabel)
+    expect(wrapper.text()).toContain(mediaTypeLabel)
+    expect(wrapper.text()).not.toContain('object_key')
+    expect(wrapper.text()).not.toContain('media_type')
+    expect(wrapper.text()).not.toContain('image-ref.v1')
+  })
 })

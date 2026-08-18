@@ -18,9 +18,8 @@
       <div v-for="binding in inputBindings" :key="`contract-input-${binding.binding_id}`" class="workflow-graph-contract-binding">
         <div>
           <strong>{{ binding.binding_id }}</strong>
-          <span>{{ getPayloadTypeId(binding) || 'unknown' }}</span>
         </div>
-        <small>{{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }} / {{ binding.binding_kind }}</small>
+        <small>{{ binding.required ? t('workflowEditor.editor.required') : t('workflowEditor.editor.optional') }}</small>
       </div>
     </section>
     <section class="workflow-graph-contract-section">
@@ -28,9 +27,7 @@
       <div v-for="binding in outputBindings" :key="`contract-output-${binding.binding_id}`" class="workflow-graph-contract-binding">
         <div>
           <strong>{{ binding.binding_id }}</strong>
-          <span>{{ getPayloadTypeId(binding) || 'unknown' }}</span>
         </div>
-        <small>{{ binding.binding_kind }}</small>
       </div>
     </section>
   </div>
@@ -47,7 +44,6 @@ import type { FlowApplicationBinding } from '../types'
 defineProps<{
   inputBindings: FlowApplicationBinding[]
   outputBindings: FlowApplicationBinding[]
-  getPayloadTypeId: (binding: FlowApplicationBinding) => string
 }>()
 
 const emit = defineEmits<{

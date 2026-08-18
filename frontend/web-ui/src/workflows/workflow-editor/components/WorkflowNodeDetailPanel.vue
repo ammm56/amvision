@@ -3,9 +3,6 @@
     <div class="workflow-graph-inspector-card__header">
       <span class="workflow-graph-inspector-card__summary">
         <strong>{{ readTitle(node) }}</strong>
-        <small :title="node.node.node_type_id">
-          {{ node.node.node_type_id }} · {{ node.definition?.category || 'unknown' }}
-        </small>
       </span>
       <label
         class="workflow-graph-inspector-switch"

@@ -133,7 +133,6 @@
         :app-output-bindings="appOutputBindings"
         :inspector-detail="inspectorDetail"
         :read-graph-node-title="readGraphNodeTitle"
-        :binding-endpoint-text="bindingEndpointText"
         :binding-display-name="bindingDisplayName"
         :binding-kind-select-options="bindingKindSelectOptions"
         :get-binding-payload-type-id="getBindingPayloadTypeId"
@@ -539,7 +538,6 @@ const {
   templateOutputById,
   initializePublicBindings,
   writeBoundaryPositionsToMetadata,
-  readTemplatePortForBinding,
   getBindingPayloadTypeId: readPublicBindingPayloadTypeId,
   bindingDisplayName,
   bindingKindSelectOptions,
@@ -586,7 +584,6 @@ const {
   },
 })
 const {
-  bindingEndpointText,
   updateBindingIdFromEvent,
   updateBindingDisplayNameFromEvent,
   updateBindingKindFromValue,
@@ -599,7 +596,6 @@ const {
   selectedBoundaryKind,
   contextMenu,
   nodePicker,
-  readTemplatePortForBinding,
   renameApplicationBinding,
   setBindingDisplayName,
   updateApplicationBindingRequired,

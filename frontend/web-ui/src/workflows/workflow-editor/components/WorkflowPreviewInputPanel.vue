@@ -13,7 +13,6 @@
       <div class="workflow-graph-preview-binding__header">
         <span class="workflow-graph-preview-binding__summary">
           <strong>{{ binding.binding_id }}</strong>
-          <small>{{ getPayloadTypeId(binding) || 'unknown' }}</small>
         </span>
         <div class="workflow-graph-preview-binding__tools">
           <StatusBadge :tone="binding.required ? 'warning' : 'neutral'">
@@ -44,7 +43,7 @@
           :label="t('workflowEditor.editor.imageFile')"
         />
         <label class="workflow-graph-preview-field">
-          <span>media_type</span>
+          <span>{{ t('workflowEditor.editor.mediaType') }}</span>
           <input v-model="states[binding.binding_id].mediaType" :placeholder="t('workflowEditor.editor.autoFileType')" />
         </label>
       </template>
@@ -58,15 +57,15 @@
           />
         </label>
         <label v-if="states[binding.binding_id].imageRefTransportKind === 'storage'" class="workflow-graph-preview-field">
-          <span>object_key</span>
+          <span>{{ t('workflowEditor.editor.storagePath') }}</span>
           <input v-model="states[binding.binding_id].objectKey" placeholder="project/files/image.jpg" />
         </label>
         <label v-else class="workflow-graph-preview-field">
-          <span>image_handle</span>
+          <span>{{ t('workflowEditor.editor.imageHandle') }}</span>
           <input v-model="states[binding.binding_id].imageHandle" placeholder="execution-scoped image handle" />
         </label>
         <label class="workflow-graph-preview-field">
-          <span>media_type</span>
+          <span>{{ t('workflowEditor.editor.mediaType') }}</span>
           <input v-model="states[binding.binding_id].mediaType" placeholder="image/jpeg" />
         </label>
       </template>
