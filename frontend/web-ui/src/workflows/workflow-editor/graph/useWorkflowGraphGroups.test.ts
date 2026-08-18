@@ -44,4 +44,24 @@ describe('useWorkflowGraphGroups', () => {
     expect(group.locked).toBe(false)
     expect(statusMessages.at(-1)).toContain('可移动和调整大小')
   })
+
+  it('左键释放事件丢失时根据 buttons 状态结束节点组拖动', () => {
+    const group = createGroup()
+    const groups = useWorkflowGraphGroups({
+      graphGroups: ref([group]),
+      graphNodes: ref([]),
+      screenToWorld: (clientX, clientY) => ({ x: clientX, y: clientY }),
+      readNodeHeight: () => 0,
+      setStatusMessage: () => undefined,
+      setErrorMessage: () => undefined,
+    })
+
+    groups.startGroupDrag(new MouseEvent('mousedown', { button: 0, clientX: 10, clientY: 20, cancelable: true }), group)
+    document.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 30, clientY: 50 }))
+    expect(group.rect).toMatchObject({ x: 30, y: 50 })
+
+    document.dispatchEvent(new MouseEvent('mousemove', { buttons: 0, clientX: 80, clientY: 100 }))
+    document.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 120, clientY: 140 }))
+    expect(group.rect).toMatchObject({ x: 30, y: 50 })
+  })
 })

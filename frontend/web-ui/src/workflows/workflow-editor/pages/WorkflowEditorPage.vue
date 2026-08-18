@@ -4,6 +4,7 @@
       ref="canvasRef"
       class="workflow-graph-stage"
       @mousedown="handleStageMouseDown"
+      @dragstart.prevent
       @wheel="handleStageWheel"
       @contextmenu.prevent="openStageContextMenu"
     >

@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 
 import type { WorkflowConnectionDraftState } from './useWorkflowPortConnections'
+import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
 
 export interface WorkflowNodeDragNodeView {
   node: {
@@ -30,7 +31,7 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
   const nodeDragState = ref<WorkflowNodeDragState | null>(null)
 
   function startNodeDrag(event: MouseEvent, node: NodeView): void {
-    if (options.connectionDraft.value) return
+    if (event.button !== 0 || options.connectionDraft.value) return
     const worldPosition = options.screenToWorld(event.clientX, event.clientY)
     options.selectNode(node.node.node_id)
     nodeDragState.value = {
@@ -41,13 +42,21 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
     event.preventDefault()
     document.addEventListener('mousemove', moveDraggedNode)
     document.addEventListener('mouseup', stopNodeDrag)
+    window.addEventListener('blur', stopNodeDrag)
   }
 
   function moveDraggedNode(event: MouseEvent): void {
     const drag = nodeDragState.value
     if (!drag) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopNodeDrag()
+      return
+    }
     const targetNode = options.graphNodes.value.find((node) => node.node.node_id === drag.nodeId)
-    if (!targetNode) return
+    if (!targetNode) {
+      stopNodeDrag()
+      return
+    }
     const worldPosition = options.screenToWorld(event.clientX, event.clientY)
     targetNode.x = Math.round(worldPosition.x - drag.offsetX)
     targetNode.y = Math.round(worldPosition.y - drag.offsetY)
@@ -59,6 +68,7 @@ export function useWorkflowNodeDrag<NodeView extends WorkflowNodeDragNodeView>(o
     nodeDragState.value = null
     document.removeEventListener('mousemove', moveDraggedNode)
     document.removeEventListener('mouseup', stopNodeDrag)
+    window.removeEventListener('blur', stopNodeDrag)
     if (wasDragging) options.onStop?.()
   }
 

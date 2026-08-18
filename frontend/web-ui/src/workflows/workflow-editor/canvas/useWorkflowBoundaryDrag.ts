@@ -1,5 +1,7 @@
 import { shallowRef } from 'vue'
 
+import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
+
 export interface WorkflowBoundaryDragState<BoundaryKind extends string> {
   boundaryKind: BoundaryKind
   offsetX: number
@@ -34,11 +36,16 @@ export function useWorkflowBoundaryDrag<BoundaryKind extends string>(options: Wo
     event.preventDefault()
     document.addEventListener('mousemove', moveDraggedBoundary)
     document.addEventListener('mouseup', stopBoundaryDrag)
+    window.addEventListener('blur', stopBoundaryDrag)
   }
 
   function moveDraggedBoundary(event: MouseEvent): void {
     const drag = boundaryDragState.value
     if (!drag) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopBoundaryDrag()
+      return
+    }
     const worldPosition = options.screenToWorld(event.clientX, event.clientY)
     options.updateBoundaryPosition(drag.boundaryKind, {
       x: Math.round(worldPosition.x - drag.offsetX),
@@ -50,6 +57,7 @@ export function useWorkflowBoundaryDrag<BoundaryKind extends string>(options: Wo
     boundaryDragState.value = null
     document.removeEventListener('mousemove', moveDraggedBoundary)
     document.removeEventListener('mouseup', stopBoundaryDrag)
+    window.removeEventListener('blur', stopBoundaryDrag)
   }
 
   return {

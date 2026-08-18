@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
+
 export type WorkflowPortDirection = 'input' | 'output'
 
 export interface WorkflowPortReference {
@@ -68,11 +70,16 @@ export function useWorkflowPortConnections(options: WorkflowPortConnectionOption
     event.preventDefault()
     document.addEventListener('mousemove', movePortConnection)
     document.addEventListener('mouseup', stopPortConnection)
+    window.addEventListener('blur', cancelPortConnection)
     return true
   }
 
   function movePortConnection(event: MouseEvent): void {
     if (!connectionDraft.value) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopPortConnection()
+      return
+    }
     const pointer = options.screenToWorld(event.clientX, event.clientY)
     const movedDistance = Math.hypot(event.clientX - connectionDraft.value.startClientX, event.clientY - connectionDraft.value.startClientY)
     connectionDraft.value = {
@@ -105,6 +112,11 @@ export function useWorkflowPortConnections(options: WorkflowPortConnectionOption
     connectionDraft.value = null
     document.removeEventListener('mousemove', movePortConnection)
     document.removeEventListener('mouseup', stopPortConnection)
+    window.removeEventListener('blur', cancelPortConnection)
+  }
+
+  function cancelPortConnection(): void {
+    stopPortConnection()
   }
 
   return {

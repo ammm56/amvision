@@ -1,5 +1,7 @@
 import { ref, type Ref } from 'vue'
 
+import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
+
 interface PanState {
   startClientX: number
   startClientY: number
@@ -26,13 +28,19 @@ export function useWorkflowCanvasPan(options: WorkflowCanvasPanOptions) {
       startX: options.viewportX.value,
       startY: options.viewportY.value,
     }
+    event.preventDefault()
     document.addEventListener('mousemove', moveStagePan)
     document.addEventListener('mouseup', stopStagePan)
+    window.addEventListener('blur', stopStagePan)
   }
 
   function moveStagePan(event: MouseEvent): void {
     const pan = panState.value
     if (!pan) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopStagePan()
+      return
+    }
     options.viewportX.value = pan.startX + event.clientX - pan.startClientX
     options.viewportY.value = pan.startY + event.clientY - pan.startClientY
   }
@@ -41,6 +49,7 @@ export function useWorkflowCanvasPan(options: WorkflowCanvasPanOptions) {
     panState.value = null
     document.removeEventListener('mousemove', moveStagePan)
     document.removeEventListener('mouseup', stopStagePan)
+    window.removeEventListener('blur', stopStagePan)
   }
 
   return {

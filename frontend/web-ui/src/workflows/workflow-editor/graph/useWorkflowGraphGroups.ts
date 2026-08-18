@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 
 import { translate } from '@/platform/i18n'
 import type { WorkflowGraphGroup, WorkflowGraphGroupRect } from '../types'
+import { isPrimaryMouseButtonPressed } from '../canvas/workflowMouseDrag'
 import { defaultWorkflowGraphGroupColor } from './workflowGraphPalette'
 
 export type WorkflowGraphGroupState = 'enabled' | 'disabled' | 'mixed' | 'empty'
@@ -80,7 +81,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
   }
 
   function startGroupCreate(event: MouseEvent): boolean {
-    if (!groupCreateMode.value) return false
+    if (event.button !== 0 || !groupCreateMode.value) return false
     const start = options.screenToWorld(event.clientX, event.clientY)
     groupCreateState.value = { start }
     draftGroupRect.value = {
@@ -92,12 +93,17 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     event.preventDefault()
     document.addEventListener('mousemove', moveGroupCreate)
     document.addEventListener('mouseup', stopGroupCreate)
+    window.addEventListener('blur', cancelGroupCreate)
     return true
   }
 
   function moveGroupCreate(event: MouseEvent): void {
     const createState = groupCreateState.value
     if (!createState) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      cancelGroupCreate()
+      return
+    }
     draftGroupRect.value = normalizeRectFromPoints(createState.start, options.screenToWorld(event.clientX, event.clientY))
   }
 
@@ -108,6 +114,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     groupCreateMode.value = false
     document.removeEventListener('mousemove', moveGroupCreate)
     document.removeEventListener('mouseup', stopGroupCreate)
+    window.removeEventListener('blur', cancelGroupCreate)
     if (!rect || rect.width < minimumGroupWidth || rect.height < minimumGroupHeight) {
       options.setStatusMessage(translate('workflowEditor.feedback.groupTooSmall'))
       return
@@ -119,6 +126,15 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     options.setStatusMessage(translate('workflowEditor.feedback.groupCreated', { name: group.name }))
   }
 
+  function cancelGroupCreate(): void {
+    groupCreateState.value = null
+    draftGroupRect.value = null
+    groupCreateMode.value = false
+    document.removeEventListener('mousemove', moveGroupCreate)
+    document.removeEventListener('mouseup', stopGroupCreate)
+    window.removeEventListener('blur', cancelGroupCreate)
+  }
+
   function selectGroup(groupId: string): void {
     selectedGroupId.value = groupId
   }
@@ -128,7 +144,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
   }
 
   function startGroupDrag(event: MouseEvent, group: WorkflowGraphGroup): void {
-    if (group.locked) return
+    if (event.button !== 0 || group.locked) return
     const start = options.screenToWorld(event.clientX, event.clientY)
     const memberNodeIds = new Set(group.member_node_ids)
     const nodes = options.graphNodes.value.filter((node) => memberNodeIds.has(node.node.node_id))
@@ -143,13 +159,21 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     event.preventDefault()
     document.addEventListener('mousemove', moveGroupDrag)
     document.addEventListener('mouseup', stopGroupDrag)
+    window.addEventListener('blur', stopGroupDrag)
   }
 
   function moveGroupDrag(event: MouseEvent): void {
     const dragState = groupDragState.value
     if (!dragState) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopGroupDrag()
+      return
+    }
     const group = options.graphGroups.value.find((item) => item.group_id === dragState.groupId)
-    if (!group) return
+    if (!group) {
+      stopGroupDrag()
+      return
+    }
     const pointer = options.screenToWorld(event.clientX, event.clientY)
     const deltaX = Math.round(pointer.x - dragState.start.x)
     const deltaY = Math.round(pointer.y - dragState.start.y)
@@ -172,11 +196,12 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     groupDragState.value = null
     document.removeEventListener('mousemove', moveGroupDrag)
     document.removeEventListener('mouseup', stopGroupDrag)
+    window.removeEventListener('blur', stopGroupDrag)
     if (groupId) syncGroupMemberships(groupId)
   }
 
   function startGroupResize(event: MouseEvent, group: WorkflowGraphGroup): void {
-    if (group.locked) return
+    if (event.button !== 0 || group.locked) return
     groupResizeState.value = {
       groupId: group.group_id,
       start: options.screenToWorld(event.clientX, event.clientY),
@@ -186,13 +211,21 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     event.preventDefault()
     document.addEventListener('mousemove', moveGroupResize)
     document.addEventListener('mouseup', stopGroupResize)
+    window.addEventListener('blur', stopGroupResize)
   }
 
   function moveGroupResize(event: MouseEvent): void {
     const resizeState = groupResizeState.value
     if (!resizeState) return
+    if (!isPrimaryMouseButtonPressed(event)) {
+      stopGroupResize()
+      return
+    }
     const group = options.graphGroups.value.find((item) => item.group_id === resizeState.groupId)
-    if (!group) return
+    if (!group) {
+      stopGroupResize()
+      return
+    }
     const pointer = options.screenToWorld(event.clientX, event.clientY)
     group.rect = {
       ...resizeState.initialRect,
@@ -206,6 +239,7 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
     groupResizeState.value = null
     document.removeEventListener('mousemove', moveGroupResize)
     document.removeEventListener('mouseup', stopGroupResize)
+    window.removeEventListener('blur', stopGroupResize)
     if (groupId) syncGroupMemberships(groupId)
   }
 
@@ -309,10 +343,13 @@ export function useWorkflowGraphGroups<NodeView extends WorkflowGraphGroupNodeVi
   function removeDocumentListeners(): void {
     document.removeEventListener('mousemove', moveGroupCreate)
     document.removeEventListener('mouseup', stopGroupCreate)
+    window.removeEventListener('blur', cancelGroupCreate)
     document.removeEventListener('mousemove', moveGroupDrag)
     document.removeEventListener('mouseup', stopGroupDrag)
+    window.removeEventListener('blur', stopGroupDrag)
     document.removeEventListener('mousemove', moveGroupResize)
     document.removeEventListener('mouseup', stopGroupResize)
+    window.removeEventListener('blur', stopGroupResize)
   }
 
   function createGraphGroup(rect: WorkflowGraphGroupRect): WorkflowGraphGroup {

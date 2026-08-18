@@ -1,5 +1,7 @@
 import { computed, ref, type Ref } from 'vue'
 
+import { isPrimaryMouseButtonPressed } from './workflowMouseDrag'
+
 interface WorkflowCanvasViewportNodeView {
   x: number
   y: number
@@ -150,15 +152,25 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
   }
 
   function startMinimapNavigation(event: MouseEvent): void {
+    if (event.button !== 0) return
+    event.preventDefault()
     moveViewportFromMinimap(event)
     document.addEventListener('mousemove', moveViewportFromMinimap)
     document.addEventListener('mouseup', stopMinimapNavigation)
+    window.addEventListener('blur', stopMinimapNavigation)
   }
 
   function moveViewportFromMinimap(event: MouseEvent): void {
+    if (event.type === 'mousemove' && !isPrimaryMouseButtonPressed(event)) {
+      stopMinimapNavigation()
+      return
+    }
     const target = event.currentTarget instanceof Element ? event.currentTarget : document.querySelector('.workflow-graph-minimap')
     const bounds = target?.getBoundingClientRect()
-    if (!bounds) return
+    if (!bounds) {
+      stopMinimapNavigation()
+      return
+    }
     const scale = minimapScale.value
     const worldBoundsValue = worldBounds.value
     const worldX = worldBoundsValue.minX + (event.clientX - bounds.left - minimapPadding) / scale
@@ -170,6 +182,7 @@ export function useWorkflowCanvasViewport<NodeView extends WorkflowCanvasViewpor
   function stopMinimapNavigation(): void {
     document.removeEventListener('mousemove', moveViewportFromMinimap)
     document.removeEventListener('mouseup', stopMinimapNavigation)
+    window.removeEventListener('blur', stopMinimapNavigation)
   }
 
   function fitView(): void {
