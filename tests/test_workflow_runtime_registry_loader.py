@@ -201,7 +201,9 @@ def test_runtime_registry_loader_can_keep_custom_code_out_of_control_process(
 
     custom_nodes_root_dir = _create_executable_node_pack_fixture(tmp_path)
     import_marker_path = tmp_path / "custom-entrypoint-imported.txt"
-    entrypoint_path = custom_nodes_root_dir / "text_basic_nodes" / "backend" / "entry.py"
+    entrypoint_path = (
+        custom_nodes_root_dir / "text_basic_nodes" / "backend" / "entry.py"
+    )
     original_entrypoint = entrypoint_path.read_text(encoding="utf-8")
     entrypoint_path.write_text(
         "from pathlib import Path\n"
@@ -227,7 +229,10 @@ def test_runtime_registry_loader_can_keep_custom_code_out_of_control_process(
         for item in runtime_registry.list_node_definitions()
         if item.node_type_id == "custom.text.normalize"
     )
-    assert runtime_registry.has_registered_handler(node_definition=custom_definition) is False
+    assert (
+        runtime_registry.has_registered_handler(node_definition=custom_definition)
+        is False
+    )
 
 
 def test_runtime_registry_loader_registers_core_basic_nodes(
@@ -3041,10 +3046,12 @@ def test_repository_opencv_morphology_and_canny_nodes_accept_memory_image_payloa
     )
 
 
+@pytest.mark.parametrize("output_target_kind", ["object-store", "filesystem"])
 def test_repository_opencv_node_pack_executes_crop_export_node(
     tmp_path: Path,
+    output_target_kind: str,
 ) -> None:
-    """验证仓库内置 OpenCV 节点包可以导出裁剪图集合。"""
+    """验证 crop-export 同时支持 ObjectStore 和系统绝对输出目录。"""
 
     custom_nodes_root_dir = _get_repository_custom_nodes_root()
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -3056,6 +3063,13 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
     )
     dataset_storage = _create_dataset_storage(tmp_path)
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
+    image_registry = ExecutionImageRegistry()
+    filesystem_output_dir = (tmp_path / "external-crops").resolve()
+    output_dir = (
+        "workflow/roi"
+        if output_target_kind == "object-store"
+        else str(filesystem_output_dir)
+    )
 
     runtime_registry_loader.refresh()
     executor = WorkflowGraphExecutor(
@@ -3075,7 +3089,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
                 parameters={
                     "box_padding": 2,
                     "max_crops": 2,
-                    "output_dir": "workflow/crops",
+                    "output_dir": output_dir,
                 },
             ),
         ),
@@ -3146,6 +3160,7 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
         },
         execution_metadata={
             "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-crop",
         },
     )
@@ -3156,13 +3171,33 @@ def test_repository_opencv_node_pack_executes_crop_export_node(
     assert len(crops_payload["items"]) == 2
     output_timestamps: set[str] = set()
     for expected_index, crop_item in enumerate(crops_payload["items"], start=1):
+        _assert_memory_raw_bgr24_image(
+            crop_item,
+            image_registry=image_registry,
+        )
+        saved_output = crop_item["saved_output"]
+        assert saved_output["kind"] == output_target_kind
+        output_reference = str(
+            saved_output.get("object_key") or saved_output.get("local_path") or ""
+        )
+        if output_target_kind == "object-store":
+            assert output_reference.startswith("workflow/roi/")
+            output_name = output_reference.rsplit("/", maxsplit=1)[-1]
+        else:
+            output_name = Path(output_reference).name
         output_match = re.fullmatch(
-            rf"workflow/crops/image-crop-(\d{{14}})-{expected_index:03d}\.png",
-            str(crop_item["object_key"]),
+            rf"image-crop-(\d{{14}})-{expected_index:03d}\.png",
+            output_name,
         )
         assert output_match is not None
         output_timestamps.add(output_match.group(1))
-        output_path = dataset_storage.resolve(crop_item["object_key"])
+        output_path = (
+            dataset_storage.resolve(saved_output["object_key"])
+            if output_target_kind == "object-store"
+            else Path(saved_output["local_path"])
+        )
+        if output_target_kind == "filesystem":
+            assert output_path.parent == filesystem_output_dir
         assert output_path.is_file()
         assert output_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
         assert isinstance(crop_item["bbox_xyxy"], list)
@@ -3729,10 +3764,12 @@ def test_repository_opencv_contour_and_measure_nodes_accept_memory_image_payload
     assert "source_object_key" not in measurements_payload
 
 
+@pytest.mark.parametrize("output_target_kind", ["object-store", "filesystem"])
 def test_repository_opencv_node_pack_executes_gallery_preview_node(
     tmp_path: Path,
+    output_target_kind: str,
 ) -> None:
-    """验证仓库内置 OpenCV 节点包可以把裁剪图集合转换为 gallery preview。"""
+    """验证 gallery-preview 的双输出目录和 Preview 响应链路。"""
 
     custom_nodes_root_dir = _get_repository_custom_nodes_root()
     node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
@@ -3744,6 +3781,13 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     )
     dataset_storage = _create_dataset_storage(tmp_path)
     dataset_storage.write_bytes("inputs/source.jpg", build_test_jpeg_bytes())
+    image_registry = ExecutionImageRegistry()
+    filesystem_output_dir = (tmp_path / "external-gallery-preview").resolve()
+    gallery_output_dir = (
+        "workflow/gallery-preview"
+        if output_target_kind == "object-store"
+        else str(filesystem_output_dir)
+    )
 
     runtime_registry_loader.refresh()
     executor = WorkflowGraphExecutor(
@@ -3773,7 +3817,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
                     "title": "Crop Gallery",
                     "max_items": 2,
                     "response_transport_mode": "inline-base64",
-                    "output_dir": "workflow/gallery-preview",
+                    "output_dir": gallery_output_dir,
                 },
             ),
             WorkflowGraphNode(
@@ -3856,6 +3900,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
         },
         execution_metadata={
             "dataset_storage": dataset_storage,
+            "execution_image_registry": image_registry,
             "workflow_run_id": "opencv-gallery",
         },
     )
@@ -3872,10 +3917,16 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
     )
     assert response_payload["body"]["items"][0]["image"]["media_type"] == "image/png"
     assert response_payload["body"]["items"][0]["image"]["image_base64"]
-    gallery_output_files = sorted(
-        path.name
-        for path in dataset_storage.resolve("workflow/gallery-preview").iterdir()
+    response_items = response_payload["body"]["items"]
+    assert all(
+        item["saved_output"]["kind"] == output_target_kind for item in response_items
     )
+    gallery_output_root = (
+        dataset_storage.resolve("workflow/gallery-preview")
+        if output_target_kind == "object-store"
+        else filesystem_output_dir
+    )
+    gallery_output_files = sorted(path.name for path in gallery_output_root.iterdir())
     assert len(gallery_output_files) == 2
     gallery_timestamps: set[str] = set()
     for expected_index, output_name in enumerate(gallery_output_files, start=1):
@@ -3886,7 +3937,7 @@ def test_repository_opencv_node_pack_executes_gallery_preview_node(
         assert output_match is not None
         gallery_timestamps.add(output_match.group(1))
         assert (
-            dataset_storage.resolve(f"workflow/gallery-preview/{output_name}")
+            (gallery_output_root / output_name)
             .read_bytes()
             .startswith(b"\x89PNG\r\n\x1a\n")
         )

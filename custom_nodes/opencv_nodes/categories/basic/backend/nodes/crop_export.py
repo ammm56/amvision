@@ -2,28 +2,34 @@
 
 from __future__ import annotations
 
-from backend.nodes.parameter_utils import is_empty_parameter
-
 import math
 
 from backend.nodes.core_nodes.support.roi import iter_roi_payloads
+from backend.nodes.output_targets import resolve_optional_output_directory
+from backend.nodes.parameter_utils import is_empty_parameter
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.images import (
-    build_crop_object_key,
     build_image_crop_batch_timestamp,
+    build_image_crop_output_name,
     build_output_image_matrix_payload,
+    build_persisted_output_image_matrix_payload,
     clip_bbox,
     load_image_matrix,
-    normalize_optional_output_dir,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import iter_detection_items
+from custom_nodes.opencv_nodes.shared.backend.runtime.payloads import (
+    iter_detection_items,
+)
 from custom_nodes.opencv_nodes.shared.backend.runtime.geometry import normalize_bbox
 from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
     require_non_negative_int,
     require_positive_int,
 )
-from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
+from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
+    require_opencv_imports,
+)
 
 
 NODE_TYPE_ID = "custom.opencv.crop-export"
@@ -37,14 +43,24 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
 
     image_height, image_width = image_matrix.shape[:2]
     raw_box_padding = request.parameters.get("box_padding")
-    box_padding = 0 if is_empty_parameter(raw_box_padding) else require_non_negative_int(raw_box_padding, field_name="box_padding")
+    box_padding = (
+        0
+        if is_empty_parameter(raw_box_padding)
+        else require_non_negative_int(raw_box_padding, field_name="box_padding")
+    )
     max_crops_raw = request.parameters.get("max_crops")
     if max_crops_raw == "":
         max_crops_raw = None
-    max_crops = require_positive_int(max_crops_raw, field_name="max_crops") if max_crops_raw is not None else None
-    output_dir = normalize_optional_output_dir(request.parameters.get("output_dir"))
+    max_crops = (
+        require_positive_int(max_crops_raw, field_name="max_crops")
+        if max_crops_raw is not None
+        else None
+    )
+    output_directory = resolve_optional_output_directory(
+        request.parameters.get("output_dir")
+    )
     output_batch_timestamp = (
-        build_image_crop_batch_timestamp() if output_dir is not None else None
+        build_image_crop_batch_timestamp() if output_directory is not None else None
     )
     polygon_background_fill = _read_polygon_background_fill(
         request.parameters.get("polygon_background_fill")
@@ -70,7 +86,9 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
         crop_image = image_matrix[crop_y1:crop_y2, crop_x1:crop_x2].copy()
         if crop_image.size == 0:
             continue
-        polygon_mask_applied = crop_spec["source_kind"] == "roi" and crop_spec.get("roi_kind") == "polygon"
+        polygon_mask_applied = (
+            crop_spec["source_kind"] == "roi" and crop_spec.get("roi_kind") == "polygon"
+        )
         if polygon_mask_applied:
             crop_image = _apply_polygon_mask(
                 cv2_module=cv2_module,
@@ -82,27 +100,31 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
                 background_fill=polygon_background_fill,
             )
         crop_output_index = len(exported_crops) + 1
-        crop_object_key = (
-            build_crop_object_key(
+        if output_directory is None:
+            crop_payload = build_output_image_matrix_payload(
                 request,
-                source_object_key=image_object_key,
-                output_dir=output_dir,
-                detection_index=crop_output_index,
-                batch_timestamp=output_batch_timestamp,
+                source_payload=image_payload,
+                image_matrix=crop_image,
+                object_key=None,
+                variant_name=f"crop-{crop_output_index:03d}",
+                output_extension=".png",
+                media_type="image/png",
+                error_message="OpenCV crop export 后无法编码输出图片",
             )
-            if output_dir is not None
-            else None
-        )
-        crop_payload = build_output_image_matrix_payload(
-            request,
-            source_payload=image_payload,
-            image_matrix=crop_image,
-            object_key=crop_object_key,
-            variant_name=f"crop-{crop_output_index:03d}",
-            output_extension=".png",
-            media_type="image/png",
-            error_message="OpenCV crop export 后无法编码输出图片",
-        )
+        else:
+            crop_payload = build_persisted_output_image_matrix_payload(
+                request,
+                source_payload=image_payload,
+                image_matrix=crop_image,
+                output_directory=output_directory,
+                output_name=build_image_crop_output_name(
+                    batch_timestamp=str(output_batch_timestamp),
+                    item_index=crop_output_index,
+                ),
+                keep_raw_memory=True,
+                media_type="image/png",
+                error_message="OpenCV crop export 后无法编码输出图片",
+            )
         crop_payload["bbox_xyxy"] = [crop_x1, crop_y1, crop_x2, crop_y2]
         crop_payload["crop_index"] = crop_output_index
         crop_payload["crop_source"] = crop_spec["source_kind"]
@@ -121,12 +143,18 @@ def handle_node(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
             "items": exported_crops,
             "count": len(exported_crops),
             "source_image": dict(image_payload),
-            **({"source_object_key": image_object_key} if image_object_key is not None else {}),
+            **(
+                {"source_object_key": image_object_key}
+                if image_object_key is not None
+                else {}
+            ),
         }
     }
 
 
-def _resolve_crop_specs(request: WorkflowNodeExecutionRequest) -> list[dict[str, object]]:
+def _resolve_crop_specs(
+    request: WorkflowNodeExecutionRequest,
+) -> list[dict[str, object]]:
     """按优先级解析 ROI list 或 detections 裁剪来源。"""
 
     raw_rois = request.input_values.get("rois")
@@ -193,7 +221,10 @@ def _apply_polygon_mask(
 
     shifted_points = np_module.asarray(
         [
-            [int(round(float(point[0]) - crop_x1)), int(round(float(point[1]) - crop_y1))]
+            [
+                int(round(float(point[0]) - crop_x1)),
+                int(round(float(point[1]) - crop_y1)),
+            ]
             for point in polygon_xy
         ],
         dtype=np_module.int32,
@@ -201,7 +232,9 @@ def _apply_polygon_mask(
     output_image = cropped_image.copy()
     mask = np_module.zeros(output_image.shape[:2], dtype=np_module.uint8)
     cv2_module.fillPoly(mask, [shifted_points], 255)
-    output_image[mask == 0] = _build_background_fill_value(output_image, background_fill)
+    output_image[mask == 0] = _build_background_fill_value(
+        output_image, background_fill
+    )
     return output_image
 
 

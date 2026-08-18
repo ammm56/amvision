@@ -2862,15 +2862,19 @@
           "output_dir": {
             "type": "string",
             "title": "Output directory",
-            "description": "Optional storage directory for exported crops. Leave empty to return memory image refs.",
+            "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem. Leave empty to return memory image refs without saving files.",
+            "examples": [
+              "workflow/roi",
+              "T:\\temp\\roi"
+            ],
             "x-amvision-i18n": {
               "title": {
                 "zh-CN": "输出目录",
                 "en-US": "Output directory"
               },
               "description": {
-                "zh-CN": "可选输出目录；留空时返回 memory image-ref。",
-                "en-US": "Optional storage directory for exported crops. Leave blank to return memory image refs."
+                "zh-CN": "相对路径写入 ObjectStore（如 workflow/roi）；当前系统绝对路径直接写入本机目录（如 T:\\temp\\roi）；留空时不保存文件并返回 memory image-ref。",
+                "en-US": "Relative paths write to ObjectStore (for example workflow/roi); absolute paths write directly to the local filesystem (for example T:\\temp\\roi); leave blank to return memory image refs without saving files."
               }
             }
           },
@@ -3136,7 +3140,23 @@
             ]
           },
           "output_dir": {
-            "type": "string"
+            "type": "string",
+            "title": "Output directory",
+            "description": "Optional output directory. Relative paths write to ObjectStore; absolute paths write to the local filesystem.",
+            "examples": [
+              "workflow/gallery-preview",
+              "T:\\temp\\gallery-preview"
+            ],
+            "x-amvision-i18n": {
+              "title": {
+                "zh-CN": "输出目录",
+                "en-US": "Output directory"
+              },
+              "description": {
+                "zh-CN": "相对路径写入 ObjectStore；当前系统绝对路径直接写入本机目录；留空时不额外保存 Gallery 图片。",
+                "en-US": "Relative paths write to ObjectStore; absolute paths write directly to the local filesystem; leave blank to avoid saving an extra Gallery image copy."
+              }
+            }
           }
         }
       },

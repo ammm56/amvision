@@ -5,16 +5,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from backend.nodes.output_targets import (
+    OUTPUT_TARGET_OBJECT_STORE,
+    WorkflowOutputDirectory,
+    write_output_bytes,
+)
 from backend.nodes.runtime_support import (
-    build_runtime_image_object_key,
+    build_storage_image_payload,
     load_image_matrix as load_runtime_image_matrix,
     register_image_matrix,
     register_image_bytes,
     write_image_bytes,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
-from custom_nodes.opencv_nodes.shared.backend.runtime.imports import require_opencv_imports
-from custom_nodes.opencv_nodes.shared.backend.runtime.validators import normalize_optional_object_key
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
+from custom_nodes.opencv_nodes.shared.backend.runtime.imports import (
+    require_opencv_imports,
+)
+from custom_nodes.opencv_nodes.shared.backend.runtime.validators import (
+    normalize_optional_object_key,
+)
 
 
 class EncodedImageBytes:
@@ -26,7 +38,9 @@ class EncodedImageBytes:
     - 只有确实需要落盘时，bytes(content) 才触发编码。
     """
 
-    def __init__(self, *, request: object, image_matrix: Any, extension: str, error_message: str) -> None:
+    def __init__(
+        self, *, request: object, image_matrix: Any, extension: str, error_message: str
+    ) -> None:
         """保存懒编码所需的最小上下文。"""
 
         self.request = request
@@ -89,9 +103,12 @@ def load_image_matrix(
     resolved_source_object_key = image_payload.get("object_key")
     return (
         image_payload,
-        resolved_source_object_key if isinstance(resolved_source_object_key, str) and resolved_source_object_key else None,
+        resolved_source_object_key
+        if isinstance(resolved_source_object_key, str) and resolved_source_object_key
+        else None,
         image_matrix,
     )
+
 
 def build_output_image_payload(
     request: object,
@@ -146,6 +163,7 @@ def build_output_image_payload(
         height=height,
     )
 
+
 def build_output_image_matrix_payload(
     request: object,
     *,
@@ -179,6 +197,7 @@ def build_output_image_matrix_payload(
         media_type=media_type,
     )
 
+
 def encode_png_image_bytes(
     request: object,
     *,
@@ -193,6 +212,7 @@ def encode_png_image_bytes(
         extension=".png",
         error_message=error_message,
     )
+
 
 def require_dataset_path(request: object, object_key: str):
     """把 object key 解析为本地绝对路径。
@@ -209,23 +229,6 @@ def require_dataset_path(request: object, object_key: str):
 
     return require_dataset_storage(request).resolve(object_key)
 
-def normalize_optional_output_dir(value: object) -> str | None:
-    """规范化可选裁剪输出目录。
-
-    参数：
-    - value：原始输出目录。
-
-    返回：
-    - str | None：规范化后的输出目录。
-    """
-
-    if not isinstance(value, str) or not value.strip():
-        return None
-    normalized_value = value.strip().replace("\\", "/").rstrip("/")
-    if ".." in normalized_value.split("/"):
-        raise InvalidRequestError("output_dir 不能包含父目录引用")
-    return normalized_value
-
 
 def build_image_crop_batch_timestamp() -> str:
     """生成一次图片批量输出共用的本地时间戳。"""
@@ -241,6 +244,7 @@ def build_image_crop_output_name(*, batch_timestamp: str, item_index: int) -> st
     if item_index < 1:
         raise InvalidRequestError("图片批量输出序号必须大于 0")
     return f"image-crop-{batch_timestamp}-{item_index:03d}.png"
+
 
 def clip_bbox(
     *,
@@ -275,37 +279,65 @@ def clip_bbox(
         return None
     return clipped_x1, clipped_y1, clipped_x2, clipped_y2
 
-def build_crop_object_key(
+
+def build_persisted_output_image_matrix_payload(
     request: object,
     *,
-    source_object_key: str | None,
-    output_dir: str | None,
-    detection_index: int,
-    batch_timestamp: str | None = None,
-) -> str:
-    """为单个裁剪图生成输出 object key。
+    source_payload: dict[str, object],
+    image_matrix: Any,
+    output_directory: WorkflowOutputDirectory,
+    output_name: str,
+    keep_raw_memory: bool,
+    media_type: str = "image/png",
+    error_message: str = "OpenCV 节点无法编码输出图片",
+) -> dict[str, object]:
+    """保存图片，并按节点用途返回 storage 或 memory image-ref。
 
     参数：
     - request：当前节点执行请求。
-    - source_object_key：源图片 object key。
-    - output_dir：可选输出目录。
-    - detection_index：当前 detection 序号。
-    - batch_timestamp：当前批次共用的时间戳。
+    - source_payload：源图片 payload。
+    - image_matrix：待保存的 OpenCV matrix。
+    - output_directory：已解析的输出目录。
+    - output_name：输出文件名。
+    - keep_raw_memory：是否保留 raw matrix 供后续节点高性能消费。
 
     返回：
-    - str：裁剪图 object key。
+    - dict[str, object]：带 saved_output 的 image-ref payload。
     """
 
-    if output_dir is not None:
-        output_name = build_image_crop_output_name(
-            batch_timestamp=batch_timestamp or build_image_crop_batch_timestamp(),
-            item_index=detection_index,
+    encoded_image = bytes(
+        encode_png_image_bytes(
+            request,
+            image_matrix=image_matrix,
+            error_message=error_message,
         )
-        return f"{output_dir}/{output_name}"
-    normalized_source_object_key = source_object_key.strip() if isinstance(source_object_key, str) else ""
-    return build_runtime_image_object_key(
-        request,
-        source_object_key=normalized_source_object_key or "image.png",
-        variant_name=f"crop-{detection_index:03d}",
-        output_extension=".png",
     )
+    output_file = write_output_bytes(
+        request,
+        output_directory=output_directory,
+        file_name=output_name,
+        content=encoded_image,
+    )
+    if output_file.kind == OUTPUT_TARGET_OBJECT_STORE and not keep_raw_memory:
+        image_payload = build_storage_image_payload(
+            object_key=str(output_file.object_key or ""),
+            source_payload=source_payload,
+            width=int(image_matrix.shape[1]),
+            height=int(image_matrix.shape[0]),
+            media_type=media_type,
+        )
+    elif keep_raw_memory:
+        image_payload = register_image_matrix(
+            request,
+            image_matrix=image_matrix,
+        )
+    else:
+        image_payload = register_image_bytes(
+            request,
+            content=encoded_image,
+            media_type=media_type,
+            width=int(image_matrix.shape[1]),
+            height=int(image_matrix.shape[0]),
+        )
+    image_payload["saved_output"] = output_file.to_payload()
+    return image_payload
