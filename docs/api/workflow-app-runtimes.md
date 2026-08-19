@@ -6,6 +6,14 @@
 
 本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括第一阶段最小运行面，以及第二阶段已经落地的 restart、instances 和 execution policy 最小接入。
 
+## 当前能力与版本管理规划边界
+
+当前 Runtime 创建接口接收 `application_id`，并固定创建时的 Application、Template 和可选 ExecutionPolicy snapshot。修改 Workflow App 不会改变已有 Runtime，但当前 Runtime 不能改选另一个 Workflow App 发布版本。
+
+规划中的 Workflow App 版本管理会增加不可变 `WorkflowAppVersion`、`WorkflowRuntimeRevision` 和 stopped-only 版本选择，同时保持 `workflow_runtime_id`、TriggerSource id、调用地址和 SDK Runtime key 不变。规划接口尚未公开，不属于本文档的当前接口清单。完整设计见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
+
+把 Runtime 创建从 `application_id` 改成必填 `workflow_app_version_id` 会改变当前请求体，实施时必须通过新增 API 大版本或明确的兼容期完成，不能静默修改当前 v1 行为。
+
 ## 当前公开范围
 
 - POST /api/v1/workflows/app-runtimes

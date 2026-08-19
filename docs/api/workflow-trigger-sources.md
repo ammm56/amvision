@@ -9,6 +9,7 @@
 ## 当前边界
 
 - 当前 workflow runtime 已落地的正式执行入口仍是 HTTP 控制面，TriggerSource 内部提交也复用同一套 runtime service 语义。
+- TriggerSource 始终绑定稳定的 `workflow_runtime_id`，不绑定 Workflow App 草稿、发布版本或 Runtime revision；后续 Runtime 选择版本时 TriggerSource id 和协议地址保持不变。
 - 当前已经提供 `/api/v1/workflows/trigger-sources` 管理 API，用于创建、查询、启用、停用和读取 health。
 - 04/05 保持为 HTTP base64 workflow app 调试示例；06/07 单独保存同 app HTTP base64 + ZeroMQ image-ref 调试示例，避免把两类入口混在同一目录中。
 - TriggerSource 只提交协议原生输入，不负责把 `image-ref.v1` 主动转换成 `image-base64.v1`，也不负责补出本地图片、相机帧或其他节点级输入。
@@ -51,6 +52,7 @@
 - FlowApplication 把图的输入输出端口发布成稳定 binding，例如 `request_image_base64`、`request_image_ref`、`deployment_request` 和 `http_response`。
 - WorkflowAppRuntime 固定 application snapshot 和 template snapshot，是现场长期运行的宿主。
 - WorkflowTriggerSource 绑定 WorkflowAppRuntime，并把外部事件映射到 application 的 `input_bindings`，不修改 workflow 图。
+- Workflow App 版本管理落地后，Trigger 在创建 WorkflowRun 时固定 Runtime 当时的 active revision、version 和 generation；版本管理完整规划见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
 - 同一张图可以同时被 HTTP invoke、async run 和后续 trigger source 使用；区别只在输入从哪里来、以 sync 还是 async 提交，以及回执如何返回。
 - 如果同一张图既要接 HTTP base64，又要接 ZeroMQ image-ref，应在图里显式发布多个 binding，或增加转换节点把两条入口汇到共同下游节点，而不是把转换逻辑塞进 TriggerSource。
 

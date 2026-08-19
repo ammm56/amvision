@@ -50,6 +50,7 @@
 - [docs/api/websocket-usage.md](api/websocket-usage.md) 汇总第三方系统、HMI、嵌入式 UI 和前端界面接入公开 WebSocket 的连接顺序与恢复流程
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
+- [docs/architecture/workflow-app-versioning.md](architecture/workflow-app-versioning.md) 固定 Workflow App 不可变发布版本、Runtime revision、稳定 Runtime/Trigger id、停机切换、回滚、契约兼容和迁移规则；当前为待实现规划
 - [docs/architecture/workflow-model-session-runtime.md](architecture/workflow-model-session-runtime.md) 固定图内 Load Checkpoint 节点、AppRuntime 模型隔离、启动预热验证、串行执行和释放规则
 - [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md) 汇总上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow 节点和模型 runtime 之间的 BGR24 高性能图片数据面规则
@@ -132,24 +133,25 @@
 30. [docs/architecture/yoloe-sam3-workflow-app-operations.md](architecture/yoloe-sam3-workflow-app-operations.md)
 31. [docs/architecture/execution-sequences.md](architecture/execution-sequences.md)
 32. [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md)
-33. [docs/architecture/project-structure.md](architecture/project-structure.md)
-34. [docs/architecture/backend-service.md](architecture/backend-service.md)
-35. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
-36. [docs/architecture/task-system.md](architecture/task-system.md)
-37. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
-38. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
-39. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
-40. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
-41. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
-42. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
-43. [docs/architecture/node-system.md](architecture/node-system.md)
-44. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
-45. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
-46. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
-47. [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md)
-48. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
-49. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
-50. 根据任务继续进入 API、部署、节点扩展或决策文档
+33. [docs/architecture/workflow-app-versioning.md](architecture/workflow-app-versioning.md)
+34. [docs/architecture/project-structure.md](architecture/project-structure.md)
+35. [docs/architecture/backend-service.md](architecture/backend-service.md)
+36. [docs/architecture/websocket-architecture.md](architecture/websocket-architecture.md)
+37. [docs/architecture/task-system.md](architecture/task-system.md)
+38. [docs/architecture/yolox-module-design.md](architecture/yolox-module-design.md)
+39. [docs/architecture/frontend-web-ui.md](architecture/frontend-web-ui.md)
+40. [docs/architecture/frontend-web-ui-structure.md](architecture/frontend-web-ui-structure.md)
+41. [docs/architecture/frontend-web-ui-startup-session.md](architecture/frontend-web-ui-startup-session.md)
+42. [docs/architecture/frontend-web-ui-development-readiness.md](architecture/frontend-web-ui-development-readiness.md)
+43. [docs/architecture/frontend-web-ui-workflows.md](architecture/frontend-web-ui-workflows.md)
+44. [docs/architecture/node-system.md](architecture/node-system.md)
+45. [docs/architecture/workflow-json-contracts.md](architecture/workflow-json-contracts.md)
+46. [docs/architecture/data-and-files.md](architecture/data-and-files.md)
+47. [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md)
+48. [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md)
+49. [docs/architecture/dataset-import-spec.md](architecture/dataset-import-spec.md)
+50. [docs/architecture/dataset-export-formats.md](architecture/dataset-export-formats.md)
+51. 根据任务继续进入 API、部署、节点扩展或决策文档
 
 ## 文档维护建议
 

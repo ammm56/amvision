@@ -10,6 +10,7 @@
 - [docs/decisions/ADR-0002-bundled-python-runtime.md](ADR-0002-bundled-python-runtime.md)：固定开发 conda / 发布 bundled Python 的运行时策略
 - [docs/decisions/ADR-0003-node-pack-extension-model.md](ADR-0003-node-pack-extension-model.md)：固定节点扩展优先和 ComfyUI 风格能力模型
 - [docs/decisions/ADR-0004-model-deployment-runtime-options.md](ADR-0004-model-deployment-runtime-options.md)：固定模型发布配置按平台策略和 OpenVINO CPU / GPU / NPU、TensorRT 后端专属参数拆分
+- [docs/decisions/ADR-0005-workflow-app-versioned-runtime.md](ADR-0005-workflow-app-versioned-runtime.md)：固定 WorkflowAppRuntime 作为稳定调用身份、指向不可变 Workflow App 版本，并采用 stopped-only revision 切换
 
 ## 适合存放的内容
 

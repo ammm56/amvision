@@ -21,6 +21,8 @@
 
 workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies 和对应 WebSocket 事件流；其余扩展设计继续保留在独立草案文档中。
 
+当前 FlowApplication 是可变保存文档，WorkflowAppRuntime 在创建时固定 snapshot。不可变 Workflow App 发布版本、Runtime revision、版本选择和保留稳定 Runtime/Trigger id 的迁移尚未公开，规划见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
+
 当前公开接口与后续扩展的导航页见 [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)。
 
 - [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)
@@ -68,6 +70,8 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 - application sidecar：workflows/projects/{project_id}/applications/{application_id}/application.summary.json
 - preview snapshot：workflows/runtime/preview-runs/{preview_run_id}/
 - app runtime snapshot：workflows/runtime/app-runtimes/{workflow_runtime_id}/
+
+规划中的 draft/version/revision 目标路径只记录在 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)，在实现和迁移完成前不得当作当前真实路径使用。
 
 本文档配套的 deployment lifecycle detection 手工调试示例使用下面这组真实 object key：
 

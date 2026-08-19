@@ -8,6 +8,8 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 本文档只描述当前真实实现，不展开未来接口规划。
 
+Workflow App 不可变发布版本和 Runtime 版本切换尚未公开。当前 API 仍以 `application_id` 创建 Runtime 并固定当时 snapshot；未来设计见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)，其中的规划端点不得视为当前 API。
+
 ## 统一鉴权输入
 
 当前公开业务 REST 接口统一使用 Bearer token。仓库默认配置为 `mode=local`，并在空库首次启动时自动初始化默认本地用户和长期调用 token。

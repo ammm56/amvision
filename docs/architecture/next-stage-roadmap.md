@@ -54,6 +54,7 @@
 - workflow 资源面已经拆成 templates、applications、execution-policies、preview-runs、app-runtimes、runs、trigger-sources
 - LocalBufferBroker、PublishedInferenceGateway、deployment runtime 与 workflow runtime 的边界已经形成
 - node pack 已经具备 manifest、依赖检查、启停、catalog 汇总和 loader 状态观察能力
+- 当前 Runtime 已能固定 Application/Template snapshot，但 Workflow App 不可变发布版本和保持 Runtime/Trigger id 不变的版本切换尚未落地
 
 ## 本轮已收口的事项
 
@@ -160,6 +161,7 @@
 - 任务列表与详情
 - 部署启动、停止、warmup、health
 - workflow preview-run、app-runtime、run 的主链路
+- Workflow App 发布版本、Runtime 停机选择版本、失败保留旧 revision、回滚和 Trigger/SDK 地址不变的端到端回归
 - 登录、任务详情、部署控制、workflow 主流程的 Playwright 端到端回归
 
 ### 5. 从 YOLOX 实现走向平台接口
@@ -173,6 +175,7 @@ YOLOX 当前已经是完整样板，下一步要把样板继续抽象成平台�
 - 继续抽象 `ConversionBackend`
 - 收口 workflow service node 与任务系统的边界
 - 强化 node pack 的权限、依赖、版本、禁用、回滚和兼容性规则
+- 按 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md) 落地 Workflow App 不可变发布版本和 Runtime revision，迁移时保留现有 Runtime/Trigger id
 
 目标是让 YOLOX 成为第一套完整实现，而不是唯一实现。
 
@@ -182,7 +185,8 @@ YOLOX 当前已经是完整样板，下一步要把样板继续抽象成平台�
 
 1. 先完成发布闭环验收和固定命令收口
 2. 再补运行时 smoke test、benchmark 和回归报告
-3. 再补前端 E2E 和发布后的浏览器端验收
-4. 最后进入多模型平台抽象和更强的 node pack 约束
+3. 再落地 Workflow App 发布版本、Runtime revision 和保留稳定调用地址的数据迁移
+4. 再补前端 E2E 和发布后的浏览器端验收
+5. 最后进入多模型平台抽象和更强的 node pack 约束
 
 这个顺序的核心理由是：先把已有能力稳定交付，再继续抽象平台，会比一边缺交付闭环一边扩新抽象更稳。

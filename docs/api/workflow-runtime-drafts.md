@@ -11,7 +11,7 @@
 - workflow runtime 当前已经公开 preview-runs、app-runtimes、runs 和 execution-policies 四组接口。
 - phase2 第一块已经增量公开 app-runtimes 的 restart 和 instances。
 - workflow template/application 的 validate、save、get 仍集中在 [docs/api/workflows.md](workflows.md)。
-- PersonaProfile、ToolPolicy 和 trigger-sources 仍保持草案状态，不进入 current-api 总览。
+- PersonaProfile 和 ToolPolicy 仍保持草案状态；trigger-sources 已进入当前公开接口。
 - 当前 workflow runtime 文档主要描述 HTTP 控制面下的正式执行接口；后续 PLC、MQTT、ZeroMQ、gRPC、IO 变化等触发方式仍统一映射到 WorkflowRun，触发入口草案见 [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)。
 
 ## 边界说明图
@@ -39,14 +39,16 @@ flowchart LR
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、start、stop、restart、health 和 instances。
 - [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、async run create、结果回查和取消。
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的 timeout、trace 和保留策略。
+- [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 的正式接口文档，覆盖当前已接入 adapter 和 Runtime 绑定边界。
 
 这一组文档与 [docs/api/current-api.md](current-api.md) 保持一致，描述的是当前已经落代码的真实接口。
 
 第二阶段边界收口见 [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)。
 
+Workflow App 不可变发布版本、Runtime revision 和保持 Runtime/Trigger id 不变的 stopped-only 版本选择仍是待实现规划，见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。规划接口不能加入当前公开文档清单。
+
 ## 后续扩展草案
 
-- [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 草案，覆盖 PLC、MQTT、ZeroMQ、gRPC、IO 变化和传感器读取等外部触发入口边界。
 - [docs/api/workflow-persona-profiles.md](workflow-persona-profiles.md)：PersonaProfile 资源草案，覆盖 AI 节点的人格、语气和系统提示模板。
 - [docs/api/workflow-tool-policies.md](workflow-tool-policies.md)：ToolPolicy 资源草案，覆盖 AI 节点可用工具集合和调用上限。
 

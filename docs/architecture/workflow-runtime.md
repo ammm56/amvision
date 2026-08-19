@@ -268,6 +268,14 @@ WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
 
 当前实现里的 snapshot 根目录已经固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，application、template 和 execution-policy snapshot 都应落在这个目录下，而不是继续在不同服务里自由拼接路径。
 
+#### Workflow App 版本管理目标
+
+上述 snapshot 固定行为是当前已经实现的生产隔离基线，需要保留。当前尚未实现 Workflow App 的不可变发布版本和 Runtime 版本切换；因此修改 Application 后仍需新建 Runtime 才能使用新内容。
+
+后续版本管理不再增加 Workflow Channel。`WorkflowAppRuntime` 本身作为第三方调用和 TriggerSource 绑定的稳定地址，通过 `WorkflowRuntimeRevision` 选择明确的不可变 `WorkflowAppVersion`。版本切换不得改变 Runtime id、TriggerSource id、协议地址和 SDK Runtime key。第一阶段只允许 stopped 状态切换，并使用 generation CAS、启动 fingerprint 校验和失败保留最后 active revision。
+
+完整领域模型、发布流程、停机切换、回滚、契约兼容、API 版本边界和现有 Runtime 迁移规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。该文档当前是待实现规划，不代表接口已经公开。
+
 ### WorkflowAppInstance
 
 WorkflowAppInstance 表示 runtime 下面一个真正执行请求的独立实例。

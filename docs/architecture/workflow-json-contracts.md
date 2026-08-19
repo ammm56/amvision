@@ -92,6 +92,12 @@ FlowApplication 不是新的打包形式，也不是 exe。它只是另一份 JS
 
 FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定目标和后续适配方向，不等价于“保存 application 后自动生成同名专用 HTTP 路由”。
 
+### 编辑版本与生产发布版本
+
+`WorkflowGraphTemplate.template_version` 是模板文档的保存和引用版本，FlowApplication 是可继续编辑的应用文档。两者都不能单独代表完整、不可变的生产发布版本。
+
+规划中的 `WorkflowAppVersion` 会在发布时同时固定 Application、实际解析出的 Template、公开输入输出契约、ExecutionPolicy 和节点/节点包依赖。WorkflowAppRuntime 再通过 revision 选择这个不可变整体。当前实现仍是创建 Runtime 时直接复制 Application/Template snapshot，版本发布和切换尚未落地。完整规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。
+
 ## service 节点语义分组
 
 当前直接对接后端服务的 workflow 节点按语义分成两组：
@@ -384,13 +390,15 @@ barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_node
 
 当前还没有落地：
 
+- Workflow App 不可变发布版本、Runtime revision、版本选择和运行版本来源记录
 - 更完整的 custom node 运行时隔离与依赖装载
 - 流程编辑器前端的节点组持久化和批量状态控制
 
 ## 下一步建议
 
-1. 在节点编辑器里补齐 `WorkflowGraphTemplate.groups`，节点组只作为 editor artifact 保存，不作为 runtime node 执行。
-2. 把 custom_nodes 资产纳入发行装配与发布校验。
-3. 再把图执行结果接入现有任务状态流和现场端点绑定。
+1. 按 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md) 落地不可变发布版本和 Runtime revision。
+2. 在节点编辑器里补齐 `WorkflowGraphTemplate.groups`，节点组只作为 editor artifact 保存，不作为 runtime node 执行。
+3. 把 custom_nodes 资产纳入发行装配与发布校验。
+4. 再把图执行结果接入现有任务状态流和现场端点绑定。
 
 
