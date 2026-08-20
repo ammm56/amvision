@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import os
+from pathlib import Path
 from threading import BoundedSemaphore, Event, Lock, Thread
 from typing import Any
 
@@ -11,6 +12,7 @@ from backend.contracts.buffers import BufferRef, FrameRef
 from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
     IMAGE_TRANSPORT_FRAME,
+    IMAGE_TRANSPORT_LOCAL_PATH,
     IMAGE_TRANSPORT_MEMORY,
     IMAGE_TRANSPORT_STORAGE,
     require_image_payload,
@@ -472,6 +474,20 @@ def _resolve_input_image_payload(
     transport_kind = str(normalized_payload.get("transport_kind") or "")
     if transport_kind == IMAGE_TRANSPORT_STORAGE:
         return str(normalized_payload.get("object_key") or ""), None, None
+    if transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+        local_path = Path(str(normalized_payload.get("local_path") or ""))
+        if not local_path.is_file():
+            raise InvalidRequestError(
+                "本地图片文件不存在",
+                details={"local_path": str(local_path)},
+            )
+        try:
+            return None, local_path.read_bytes(), normalized_payload
+        except OSError as error:
+            raise InvalidRequestError(
+                "本地图片文件无法读取",
+                details={"local_path": str(local_path)},
+            ) from error
     if transport_kind == IMAGE_TRANSPORT_BUFFER:
         if local_buffer_reader is None:
             raise ServiceConfigurationError(

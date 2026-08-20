@@ -422,6 +422,14 @@ POST /api/v1/workflows/app-runtimes/{{ selectedRuntime.workflow_runtime_id }}/in
 GET /api/v1/workflows/runs/{workflow_run_id}
 GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
           </div>
+          <label v-if="hasImageRefInput" class="field">
+            <span>{{ t('workflowEditor.appDetail.fields.imageRefSampleTransport') }}</span>
+            <SelectField
+              :model-value="imageRefSampleTransportKind"
+              :options="imageRefSampleTransportOptions"
+              @update:model-value="setImageRefSampleTransport"
+            />
+          </label>
           <label class="field field--wide">
             <span>input_bindings JSON</span>
             <textarea v-model="runtimePayloadText" rows="8" spellcheck="false" />
@@ -630,6 +638,10 @@ import {
   canSelectWorkflowRuntimeVersion,
   selectRuntimeCandidateVersions,
 } from '../runtime-version-selection'
+import {
+  buildWorkflowRuntimeInputSample,
+  type ImageRefSampleTransportKind,
+} from '../runtime-input-samples'
 import type {
   FlowApplicationBinding,
   WorkflowAppRuntime,
@@ -668,6 +680,19 @@ const returnDiagnosticsOptions = computed<SelectOption[]>(() => [
   { label: t('workflowEditor.appDetail.options.yes'), value: 'true', description: t('workflowEditor.appDetail.options.diagnosticsOn') },
 ])
 
+const imageRefSampleTransportOptions = computed<SelectOption[]>(() => [
+  {
+    label: t('workflowEditor.appDetail.options.imageRefSampleStorage'),
+    value: 'storage',
+    description: t('workflowEditor.appDetail.options.imageRefSampleStorageDescription'),
+  },
+  {
+    label: t('workflowEditor.appDetail.options.imageRefSampleLocalPath'),
+    value: 'local-path',
+    description: t('workflowEditor.appDetail.options.imageRefSampleLocalPathDescription'),
+  },
+])
+
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
@@ -677,6 +702,7 @@ const selectedRuntimeId = ref('')
 const busyRuntimeId = ref<string | null>(null)
 const pendingDeleteRuntime = ref<WorkflowAppRuntime | null>(null)
 const runtimePayloadText = ref('{}')
+const imageRefSampleTransportKind = ref<ImageRefSampleTransportKind>('storage')
 const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
 const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
@@ -705,6 +731,9 @@ const application = computed(() => workflowApp.value?.applicationDocument.applic
 const graph = computed(() => workflowApp.value?.graphDocument.template ?? null)
 const bindings = computed(() => application.value?.bindings ?? [])
 const inputBindings = computed(() => bindings.value.filter((binding) => binding.direction === 'input'))
+const hasImageRefInput = computed(() => inputBindings.value.some(
+  (binding) => getBindingPayloadTypeId(binding) === 'image-ref.v1',
+))
 const outputBindings = computed(() => bindings.value.filter((binding) => binding.direction === 'output'))
 const runtimes = computed(() => workflowApp.value?.runtimes ?? [])
 const versions = computed(() => workflowApp.value?.versions ?? [])
@@ -824,37 +853,23 @@ function formatSummary(value: WorkflowJsonObject | null | undefined): string {
   return JSON.stringify(value)
 }
 
-function sampleValueForPayloadType(payloadTypeId: string, bindingId: string): unknown {
-  if (bindingId.includes('deployment_request')) return { request_id: 'manual-test', source: 'web-ui' }
-  if (payloadTypeId === 'image-ref.v1') {
-    return {
-      transport_kind: 'storage',
-      object_key: 'workflows/inputs/sample.png',
-      media_type: 'image/png',
-    }
-  }
-  if (payloadTypeId === 'image-base64.v1') {
-    return {
-      image_base64: '<base64>',
-      media_type: 'image/png',
-    }
-  }
-  if (payloadTypeId.includes('boolean')) return false
-  if (payloadTypeId.includes('number') || payloadTypeId.includes('float') || payloadTypeId.includes('integer')) return 0
-  if (payloadTypeId.includes('object') || payloadTypeId.includes('json')) return {}
-  if (payloadTypeId.includes('array') || payloadTypeId.includes('list')) return []
-  return ''
-}
-
 function buildSampleInputBindings(): WorkflowJsonObject {
   const sampleInputBindings: WorkflowJsonObject = {}
   for (const binding of inputBindings.value) {
     const payloadTypeId = getBindingPayloadTypeId(binding)
     const shouldInclude = binding.required
+      || payloadTypeId === 'image-ref.v1'
+      || payloadTypeId === 'image-base64.v1'
       || binding.binding_id === 'request_image_base64'
       || binding.binding_id === 'request_image_ref'
       || binding.binding_id.includes('deployment_request')
-    if (shouldInclude) sampleInputBindings[binding.binding_id] = sampleValueForPayloadType(payloadTypeId, binding.binding_id)
+    if (shouldInclude) {
+      sampleInputBindings[binding.binding_id] = buildWorkflowRuntimeInputSample(
+        payloadTypeId,
+        binding.binding_id,
+        imageRefSampleTransportKind.value,
+      )
+    }
   }
   return sampleInputBindings
 }
@@ -874,6 +889,11 @@ function parseInputBindings(): WorkflowJsonObject {
   }
   validateInputBindingPayloads(parsedValue)
   return parsedValue
+}
+
+function setImageRefSampleTransport(value: SelectValue): void {
+  imageRefSampleTransportKind.value = value === 'local-path' ? 'local-path' : 'storage'
+  resetSamplePayload()
 }
 
 function shortId(value: string): string {
@@ -1179,6 +1199,11 @@ function validateImageRefBindingPayload(bindingId: string, payload: unknown): vo
     if (typeof objectKey !== 'string' || !objectKey.trim()) {
       throw new Error(t('workflowEditor.appDetail.messages.storageObjectKeyMissing', { bindingId }))
     }
+  } else if (transportKind === 'local-path') {
+    const localPath = payload.local_path
+    if (typeof localPath !== 'string' || !localPath.trim()) {
+      throw new Error(t('workflowEditor.appDetail.messages.localPathMissing', { bindingId }))
+    }
   } else if (transportKind === 'memory') {
     const imageHandle = payload.image_handle
     if (typeof imageHandle !== 'string' || !imageHandle.trim()) {
@@ -1186,12 +1211,12 @@ function validateImageRefBindingPayload(bindingId: string, payload: unknown): vo
     }
   } else if (transportKind === 'buffer') {
     const bufferRef = payload.buffer_ref
-    if (typeof bufferRef !== 'string' || !bufferRef.trim()) {
+    if (!isRecord(bufferRef)) {
       throw new Error(t('workflowEditor.appDetail.messages.bufferRefMissing', { bindingId }))
     }
   } else if (transportKind === 'frame') {
     const frameRef = payload.frame_ref
-    if (typeof frameRef !== 'string' || !frameRef.trim()) {
+    if (!isRecord(frameRef)) {
       throw new Error(t('workflowEditor.appDetail.messages.frameRefMissing', { bindingId }))
     }
   }

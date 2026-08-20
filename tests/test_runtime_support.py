@@ -15,11 +15,13 @@ import backend.nodes.runtime_support as runtime_support
 from backend.contracts.workflows.workflow_graph import NodeDefinition
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
+    IMAGE_TRANSPORT_LOCAL_PATH,
     IMAGE_TRANSPORT_MEMORY,
     IMAGE_TRANSPORT_STORAGE,
+    build_local_image_payload,
+    build_memory_image_payload,
     build_preview_response_image_payload,
     build_response_image_payload,
-    build_memory_image_payload,
     build_storage_image_payload,
     copy_image_payload,
     load_image_bytes,
@@ -30,7 +32,9 @@ from backend.nodes.runtime_support import (
     resolve_image_reference,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeExecutionRequest,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -46,7 +50,9 @@ RUNTIME_SUPPORT_TEST_NODE_DEFINITION = NodeDefinition(
 )
 
 
-def test_require_image_payload_accepts_storage_payload_and_backfills_transport_kind() -> None:
+def test_require_image_payload_accepts_storage_payload_and_backfills_transport_kind() -> (
+    None
+):
     """验证 storage 模式 payload 仍兼容旧 object_key 写法。"""
 
     payload = require_image_payload({"object_key": "inputs/demo.png"})
@@ -73,6 +79,37 @@ def test_require_image_payload_accepts_memory_payload() -> None:
     assert payload["image_handle"] == "img-1"
     assert payload["width"] == 64
     assert payload["height"] == 32
+
+
+def test_require_image_payload_accepts_absolute_local_path_and_infers_media_type(
+    tmp_path: Path,
+) -> None:
+    """验证 local-path 模式保留当前系统绝对路径并按扩展名推断类型。"""
+
+    source_path = tmp_path / "现场图片" / "治具空盘.bmp"
+    payload = require_image_payload(
+        {
+            "transport_kind": "local-path",
+            "local_path": str(source_path),
+        }
+    )
+
+    assert payload["transport_kind"] == IMAGE_TRANSPORT_LOCAL_PATH
+    assert payload["local_path"] == str(source_path.resolve())
+    assert payload["media_type"] == "image/bmp"
+    assert "object_key" not in payload
+
+
+def test_require_image_payload_rejects_relative_local_path() -> None:
+    """验证 local-path 不会与 ObjectStore 相对路径语义混用。"""
+
+    with pytest.raises(InvalidRequestError, match="绝对路径"):
+        require_image_payload(
+            {
+                "transport_kind": "local-path",
+                "local_path": "inputs/source.png",
+            }
+        )
 
 
 def test_execution_image_registry_registers_reads_and_releases_bytes() -> None:
@@ -115,12 +152,16 @@ def test_memory_image_content_sha_is_stable_across_execution_registries() -> Non
     )
 
 
-def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_response(tmp_path: Path) -> None:
+def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_response(
+    tmp_path: Path,
+) -> None:
     """验证 raw BGR24 图片在节点内存中流转，对外响应时才编码为 JSON 安全图片。"""
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -147,9 +188,10 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert memory_payload["dtype"] == "uint8"
     assert memory_payload["layout"] == "HWC"
     assert memory_payload["pixel_format"] == "bgr24"
-    assert memory_payload["content_sha256"] == registry.get_entry(
-        str(memory_payload["image_handle"])
-    ).content_sha256
+    assert (
+        memory_payload["content_sha256"]
+        == registry.get_entry(str(memory_payload["image_handle"])).content_sha256
+    )
     assert loaded_payload["media_type"] == "image/raw"
     assert np.array_equal(loaded_matrix, image_matrix)
     assert response_image["transport_kind"] == "inline-base64"
@@ -160,11 +202,15 @@ def test_register_image_matrix_keeps_raw_bgr24_in_memory_and_encodes_only_for_re
     assert "shape" not in response_image
 
 
-def test_register_image_matrix_content_sha_is_stable_across_runs(tmp_path: Path) -> None:
+def test_register_image_matrix_content_sha_is_stable_across_runs(
+    tmp_path: Path,
+) -> None:
     """验证相同 raw BGR24 矩阵跨执行生成相同内容 SHA。"""
 
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     image_matrix = np.arange(18, dtype=np.uint8).reshape((2, 3, 3))
     first_request = _build_request(
         dataset_storage=dataset_storage,
@@ -178,7 +224,9 @@ def test_register_image_matrix_content_sha_is_stable_across_runs(tmp_path: Path)
     )
 
     first_payload = register_image_matrix(first_request, image_matrix=image_matrix)
-    second_payload = register_image_matrix(second_request, image_matrix=image_matrix.copy())
+    second_payload = register_image_matrix(
+        second_request, image_matrix=image_matrix.copy()
+    )
 
     assert first_payload["image_handle"] != second_payload["image_handle"]
     assert first_payload["content_sha256"] == second_payload["content_sha256"]
@@ -187,7 +235,9 @@ def test_register_image_matrix_content_sha_is_stable_across_runs(tmp_path: Path)
 def test_load_image_bytes_supports_storage_and_memory_modes(tmp_path: Path) -> None:
     """验证 load_image_bytes 可以统一读取 storage 与 memory 两种图片来源。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     dataset_storage.write_bytes("inputs/source.png", b"storage-png")
     registry = ExecutionImageRegistry()
     memory_entry = registry.register_image_bytes(
@@ -223,6 +273,41 @@ def test_load_image_bytes_supports_storage_and_memory_modes(tmp_path: Path) -> N
     assert memory_bytes == b"memory-png"
 
 
+def test_load_image_bytes_and_matrix_support_absolute_local_path(
+    tmp_path: Path,
+) -> None:
+    """验证中文绝对路径可直接进入通用图片与 OpenCV 读取链路。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+    )
+    source_path = tmp_path / "外部目录" / "摆盘机" / "空盘.bmp"
+    source_path.parent.mkdir(parents=True)
+    expected_matrix = np.full((9, 13, 3), 147, dtype=np.uint8)
+    encoded, encoded_matrix = cv2.imencode(".bmp", expected_matrix)
+    assert encoded is True
+    source_path.write_bytes(encoded_matrix.tobytes())
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=ExecutionImageRegistry(),
+        payload=build_local_image_payload(local_path=str(source_path)),
+    )
+
+    normalized_payload, image_bytes = load_image_bytes(request)
+    _, image_matrix = load_image_matrix(
+        request,
+        cv2_module=cv2,
+        np_module=np,
+    )
+
+    assert normalized_payload["transport_kind"] == IMAGE_TRANSPORT_LOCAL_PATH
+    assert normalized_payload["local_path"] == str(source_path.resolve())
+    assert image_bytes == encoded_matrix.tobytes()
+    assert np.array_equal(image_matrix, expected_matrix)
+
+
 def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -231,7 +316,9 @@ def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     image_matrix = np.full((24, 32, 3), 127, dtype=np.uint8)
     encoded, encoded_matrix = cv2.imencode(".png", image_matrix)
@@ -252,7 +339,9 @@ def test_load_image_matrix_reuses_decoded_storage_image_within_one_run(
         decode_count += 1
         return original_decoder(**kwargs)
 
-    monkeypatch.setattr(runtime_support, "decode_image_bytes_to_matrix", counting_decoder)
+    monkeypatch.setattr(
+        runtime_support, "decode_image_bytes_to_matrix", counting_decoder
+    )
 
     _, first_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
     _, second_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
@@ -362,12 +451,16 @@ def test_load_image_matrix_reuses_unchanged_storage_image_across_runs_and_invali
     assert np.array_equal(changed_matrix, changed_image)
 
 
-def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(tmp_path: Path) -> None:
+def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(
+    tmp_path: Path,
+) -> None:
     """验证要求可写副本时不会让节点修改执行期共享解码缓存。"""
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     image_matrix = np.full((8, 10, 3), 64, dtype=np.uint8)
     encoded, encoded_matrix = cv2.imencode(".png", image_matrix)
@@ -400,7 +493,9 @@ def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry(decoded_cache_max_bytes=8)
     raw_pixels = bytearray(range(18))
 
@@ -478,7 +573,9 @@ def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
     assert int(first_matrix[0, 0, 0]) == 99
 
 
-def test_execution_image_registry_single_flight_decodes_once_for_parallel_readers() -> None:
+def test_execution_image_registry_single_flight_decodes_once_for_parallel_readers() -> (
+    None
+):
     """验证并行分支同时读取同一输入时只允许一个 decoder 执行。"""
 
     np = pytest.importorskip("numpy")
@@ -501,7 +598,9 @@ def test_execution_image_registry_single_flight_decodes_once_for_parallel_reader
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
-            executor.submit(registry.get_or_decode_matrix, cache_key="same-image", decoder=decoder)
+            executor.submit(
+                registry.get_or_decode_matrix, cache_key="same-image", decoder=decoder
+            )
             for _ in range(4)
         ]
         assert decoder_started.wait(timeout=2.0)
@@ -579,7 +678,9 @@ def test_execution_image_registry_bounds_lru_cache_and_releases_matrices() -> No
     """验证解码缓存按条目和字节软上限回收，clear 后立即断开矩阵引用。"""
 
     np = pytest.importorskip("numpy")
-    registry = ExecutionImageRegistry(decoded_cache_max_entries=2, decoded_cache_max_bytes=24)
+    registry = ExecutionImageRegistry(
+        decoded_cache_max_entries=2, decoded_cache_max_bytes=24
+    )
 
     first = registry.get_or_decode_matrix(
         cache_key="first",
@@ -613,7 +714,9 @@ def test_execution_image_registry_does_not_retain_matrix_over_hard_byte_limit() 
     """验证单张超大解码矩阵只服务当前调用，不突破 Run 缓存硬上限。"""
 
     np = pytest.importorskip("numpy")
-    registry = ExecutionImageRegistry(decoded_cache_max_entries=2, decoded_cache_max_bytes=8)
+    registry = ExecutionImageRegistry(
+        decoded_cache_max_entries=2, decoded_cache_max_bytes=8
+    )
     decode_count = 0
 
     def decode_matrix():
@@ -652,7 +755,9 @@ def test_execution_image_registry_clear_releases_last_matrix_reference() -> None
     assert matrix_reference() is None
 
 
-def test_execution_image_registry_clear_during_decode_does_not_repopulate_cache() -> None:
+def test_execution_image_registry_clear_during_decode_does_not_repopulate_cache() -> (
+    None
+):
     """验证 Run 结束清理与在途 decode 竞争时不会把矩阵重新放回缓存。"""
 
     np = pytest.importorskip("numpy")
@@ -704,12 +809,16 @@ def test_execution_image_registry_failed_decode_allows_clean_retry() -> None:
     assert int(recovered[0, 0, 0]) == 1
 
 
-def test_load_image_matrix_invalidates_storage_cache_after_file_overwrite(tmp_path: Path) -> None:
+def test_load_image_matrix_invalidates_storage_cache_after_file_overwrite(
+    tmp_path: Path,
+) -> None:
     """验证同一 object key 在 Run 内被覆盖后不会继续返回旧矩阵。"""
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -733,10 +842,14 @@ def test_load_image_matrix_invalidates_storage_cache_after_file_overwrite(tmp_pa
     assert first_matrix is not second_matrix
 
 
-def test_register_image_bytes_and_copy_image_payload_support_memory_source(tmp_path: Path) -> None:
+def test_register_image_bytes_and_copy_image_payload_support_memory_source(
+    tmp_path: Path,
+) -> None:
     """验证 memory 模式图片可以注册后再显式保存到本地存储。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -766,13 +879,17 @@ def test_register_image_bytes_and_copy_image_payload_support_memory_source(tmp_p
         object_key="outputs/result.png",
         source_payload=memory_payload,
     )
-    assert dataset_storage.resolve("outputs/result.png").read_bytes() == b"memory-result"
+    assert (
+        dataset_storage.resolve("outputs/result.png").read_bytes() == b"memory-result"
+    )
 
 
 def test_resolve_image_reference_returns_unified_view_for_memory_payload() -> None:
     """验证 resolve_image_reference 会返回统一轻量视图。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir="./data/files"))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir="./data/files")
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -798,7 +915,9 @@ def test_resolve_image_reference_returns_unified_view_for_memory_payload() -> No
 def test_build_response_image_payload_defaults_to_inline_base64(tmp_path: Path) -> None:
     """验证响应适配默认返回 inline-base64，不泄露内部图片引用。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     dataset_storage.write_bytes("inputs/source.png", b"png-response")
     registry = ExecutionImageRegistry()
     request = _build_request(
@@ -825,7 +944,9 @@ def test_preview_detects_unknown_dimensions_before_selecting_high_resolution_tra
 
     cv2 = pytest.importorskip("cv2")
     np = pytest.importorskip("numpy")
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -857,10 +978,14 @@ def test_preview_detects_unknown_dimensions_before_selecting_high_resolution_tra
     assert response_image["preview_image_kind"] == "display"
 
 
-def test_build_response_image_payload_supports_explicit_storage_ref(tmp_path: Path) -> None:
+def test_build_response_image_payload_supports_explicit_storage_ref(
+    tmp_path: Path,
+) -> None:
     """验证响应适配在显式 storage-ref 模式下会返回 object_key。"""
 
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
     registry = ExecutionImageRegistry()
     request = _build_request(
         dataset_storage=dataset_storage,
@@ -884,7 +1009,10 @@ def test_build_response_image_payload_supports_explicit_storage_ref(tmp_path: Pa
 
     assert response_image["transport_kind"] == "storage-ref"
     assert response_image["object_key"] == "outputs/preview.png"
-    assert dataset_storage.resolve("outputs/preview.png").read_bytes() == b"response-storage"
+    assert (
+        dataset_storage.resolve("outputs/preview.png").read_bytes()
+        == b"response-storage"
+    )
 
 
 def _build_request(

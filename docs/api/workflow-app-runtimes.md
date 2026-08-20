@@ -376,7 +376,8 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 ## invoke 输入输出约定
 
 - invoke 请求体中的 `input_bindings` 按 application `binding_id` 组织，而不是按 template `input_id` 或节点 id 组织。
-- `image-ref.v1` 常见 JSON 形状是 `{"object_key": "projects/{project_id}/inputs/source.jpg", "media_type": "image/png"}`；长期输入资产应进入 `projects/{project_id}/inputs/...`，请求期临时输入应进入 `runtime/inputs/{consumer}/{request_id}/...`。如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
+- `image-ref.v1` 的 ObjectStore 形状是 `{"transport_kind": "storage", "object_key": "projects/{project_id}/inputs/source.jpg", "media_type": "image/jpeg"}`；长期输入资产应进入 `projects/{project_id}/inputs/...`，请求期临时输入应进入 `runtime/inputs/{consumer}/{request_id}/...`。如果省略 `transport_kind`，当前实现会按 `object_key` 自动识别为 storage 引用。
+- 本机磁盘图片使用显式形状 `{"transport_kind": "local-path", "local_path": "C:\\vision\\inputs\\source.bmp", "media_type": "image/bmp"}`。`local_path` 必须是 Runtime worker 所在系统可读的绝对文件路径；该文件只读，不会被 Runtime 清理。多机部署时路径必须在实际执行节点上存在，不能把绝对路径当作 ObjectStore key。
 - `image-base64.v1` 常见 JSON 形状是 `{"image_base64": "<base64>", "media_type": "image/png"}`；也支持单行 data URL。
 - `image-ref.v1` 在本机受控 adapter 或 TriggerSource 场景下也可以携带 `buffer_ref` 或 `frame_ref`，用于复用 LocalBufferBroker 的 direct mmap 数据面；这类引用只在同机短期有效，不作为长期公开文件引用。
 - `value.v1` 常见 JSON 形状是 `{"value": {...}}`。

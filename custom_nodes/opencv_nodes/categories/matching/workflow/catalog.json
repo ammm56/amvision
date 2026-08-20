@@ -17,11 +17,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -73,6 +77,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -205,11 +219,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -261,6 +279,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -415,11 +443,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -471,6 +503,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -599,11 +641,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -655,6 +701,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -814,11 +870,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -870,6 +930,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -1035,11 +1105,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -1091,6 +1165,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -1133,11 +1217,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -1189,6 +1277,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -1319,11 +1417,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -1375,6 +1477,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {
@@ -1417,11 +1529,15 @@
                 "enum": [
                   "memory",
                   "storage",
+                  "local-path",
                   "buffer",
                   "frame"
                 ]
               },
               "object_key": {
+                "type": "string"
+              },
+              "local_path": {
                 "type": "string"
               },
               "image_handle": {
@@ -1473,6 +1589,16 @@
                 },
                 "required": [
                   "object_key"
+                ]
+              },
+              {
+                "properties": {
+                  "transport_kind": {
+                    "const": "local-path"
+                  }
+                },
+                "required": [
+                  "local_path"
                 ]
               },
               {

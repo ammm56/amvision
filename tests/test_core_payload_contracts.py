@@ -23,11 +23,19 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     assert image_ref_schema["properties"]["transport_kind"]["enum"] == [
         "memory",
         "storage",
+        "local-path",
         "buffer",
         "frame",
     ]
     assert "buffer_ref" in image_ref_schema["properties"]
     assert "frame_ref" in image_ref_schema["properties"]
+    assert "local_path" in image_ref_schema["properties"]
+    assert any(
+        item.get("properties", {}).get("transport_kind", {}).get("const")
+        == "local-path"
+        and item.get("required") == ["local_path"]
+        for item in image_ref_schema["oneOf"]
+    )
 
     image_base64_contract = payload_contracts["image-base64.v1"]
     assert image_base64_contract.transport_kind == "inline-json"
@@ -39,6 +47,7 @@ def test_core_payload_contracts_include_image_base64_and_local_buffer_image_refs
     assert item_schema["properties"]["transport_kind"]["enum"] == [
         "memory",
         "storage",
+        "local-path",
         "buffer",
         "frame",
     ]

@@ -305,6 +305,41 @@ def test_deployment_worker_preserves_mmap_view_for_every_task(
     assert prediction_request.input_image_payload["transport_kind"] == "buffer"
 
 
+def test_deployment_worker_reads_absolute_local_path_image(tmp_path: Path) -> None:
+    """验证直达 deployment worker 的 local-path 图片会在 worker 内读取。"""
+
+    source_path = tmp_path / "现场图片" / "治具空盘.bmp"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(b"bmp-image-bytes")
+
+    prediction_request = _build_prediction_request(
+        payload={
+            "task_type": "classification",
+            "prediction_request": {
+                "save_result_image": False,
+                "input_uri": None,
+                "input_image_bytes_base64": None,
+                "input_image_payload": {
+                    "transport_kind": "local-path",
+                    "local_path": str(source_path),
+                    "media_type": "image/bmp",
+                },
+                "top_k": 1,
+                "extra_options": {},
+            },
+        },
+        local_buffer_reader=None,
+        local_buffer_health=_LocalBufferBrokerRuntimeHealth(
+            connected=False,
+            channel_id=None,
+        ),
+    )
+
+    assert prediction_request.input_uri is None
+    assert prediction_request.input_image_bytes == b"bmp-image-bytes"
+    assert prediction_request.input_image_payload["transport_kind"] == "local-path"
+
+
 class _BorrowedViewReader:
     """只允许 borrowed view 读取的测试 reader。"""
 

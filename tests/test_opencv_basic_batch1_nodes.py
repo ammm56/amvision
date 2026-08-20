@@ -25,20 +25,26 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
-    """验证 grayscale、resize、adaptive-threshold 与 otsu-threshold 节点可执行。"""
+    """验证绝对路径图片可执行 grayscale、resize 与 threshold 节点链。"""
 
     executor = _create_repository_executor()
     dataset_storage = _create_dataset_storage(tmp_path)
     image_registry = ExecutionImageRegistry()
-    dataset_storage.write_bytes("inputs/preprocess.png", _build_preprocess_test_png_bytes())
+    source_path = tmp_path / "现场图片" / "摆盘机" / "治具空盘.png"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(_build_preprocess_test_png_bytes())
 
     template = WorkflowGraphTemplate(
         template_id="opencv-batch1-preprocess",
         template_version="1.0.0",
         display_name="OpenCV Batch1 Preprocess",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
-            WorkflowGraphNode(node_id="grayscale", node_type_id="custom.opencv.grayscale"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
+            WorkflowGraphNode(
+                node_id="grayscale", node_type_id="custom.opencv.grayscale"
+            ),
             WorkflowGraphNode(
                 node_id="resize",
                 node_type_id="custom.opencv.resize",
@@ -135,7 +141,8 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
         template=template,
         input_values={
             "request_image_base64": {
-                "object_key": "inputs/preprocess.png",
+                "transport_kind": "local-path",
+                "local_path": str(source_path),
                 "width": 80,
                 "height": 40,
                 "media_type": "image/png",
@@ -166,7 +173,9 @@ def test_opencv_basic_batch1_preprocess_nodes_execute(tmp_path: Path) -> None:
     _assert_bgr24_image_payload(image_registry, resized_image)
     _assert_bgr24_image_payload(image_registry, adaptive_image)
     _assert_bgr24_image_payload(image_registry, otsu_image)
-    grayscale_matrix = image_registry.get_entry(str(grayscale_image["image_handle"])).matrix
+    grayscale_matrix = image_registry.get_entry(
+        str(grayscale_image["image_handle"])
+    ).matrix
     assert (grayscale_matrix[:, :, 0] == grayscale_matrix[:, :, 1]).all()
     assert (grayscale_matrix[:, :, 1] == grayscale_matrix[:, :, 2]).all()
 
@@ -184,7 +193,9 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
         template_version="1.0.0",
         display_name="OpenCV Batch1 Contour Bridge",
         nodes=(
-            WorkflowGraphNode(node_id="input", node_type_id="core.io.template-input.image"),
+            WorkflowGraphNode(
+                node_id="input", node_type_id="core.io.template-input.image"
+            ),
             WorkflowGraphNode(
                 node_id="otsu",
                 node_type_id="custom.opencv.otsu-threshold",
@@ -431,10 +442,18 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     regions = execution_result.outputs["regions"]
     regions_summary = execution_result.outputs["regions_summary"]
     rotated_rects_value = execution_result.outputs["rotated_rects_value"]
-    contour_debug_preview = _read_record_output(execution_result, node_id="contour", output_name="debug_preview")
-    filter_debug_preview = _read_record_output(execution_result, node_id="filter", output_name="debug_preview")
-    rect_debug_preview = _read_record_output(execution_result, node_id="rect", output_name="debug_preview")
-    rect_roi_debug_preview = _read_record_output(execution_result, node_id="rect_roi", output_name="debug_preview")
+    contour_debug_preview = _read_record_output(
+        execution_result, node_id="contour", output_name="debug_preview"
+    )
+    filter_debug_preview = _read_record_output(
+        execution_result, node_id="filter", output_name="debug_preview"
+    )
+    rect_debug_preview = _read_record_output(
+        execution_result, node_id="rect", output_name="debug_preview"
+    )
+    rect_roi_debug_preview = _read_record_output(
+        execution_result, node_id="rect_roi", output_name="debug_preview"
+    )
 
     assert filtered_contours["count"] == 2
     assert contour_summary["value"]["filtered_count"] == 2
@@ -443,12 +462,18 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert measurements["items"][0]["area"] >= measurements["items"][1]["area"]
     assert rotated_rects["count"] == 2
     assert len(rotated_rects["items"][0]["box_points"]) == 4
-    assert rotated_rects["items"][0]["rect_area"] >= rotated_rects["items"][0]["contour_area"]
+    assert (
+        rotated_rects["items"][0]["rect_area"]
+        >= rotated_rects["items"][0]["contour_area"]
+    )
     assert rect_summary["value"]["count"] == 2
     assert rect_roi["roi_kind"] == "polygon"
     assert len(rect_roi["polygon_xy"]) == 4
     assert rect_roi["roi_id"].startswith("rect-roi-")
-    assert rect_roi_summary["value"]["selected_contour_index"] == rotated_rects["items"][0]["contour_index"]
+    assert (
+        rect_roi_summary["value"]["selected_contour_index"]
+        == rotated_rects["items"][0]["contour_index"]
+    )
     assert regions["count"] == 2
     assert regions["source_image"]["object_key"] == "inputs/contours.png"
     assert regions["items"][0]["region_id"].startswith("ctr-")
@@ -457,10 +482,12 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert regions["items"][0]["score"] == 0.95
     assert regions_summary["value"]["region_count"] == 2
     assert rotated_rects_value["value"]["count"] == 2
-    assert rotated_rects_value["value"]["items"][0]["contour_index"] == rotated_rects["items"][0]["contour_index"]
+    assert (
+        rotated_rects_value["value"]["items"][0]["contour_index"]
+        == rotated_rects["items"][0]["contour_index"]
+    )
     contour_tools_by_name = {
-        tool["tool"]: tool
-        for tool in contour_debug_preview["interaction"]["tools"]
+        tool["tool"]: tool for tool in contour_debug_preview["interaction"]["tools"]
     }
     contour_controls_by_name = {
         control["parameter_name"]: control
@@ -513,7 +540,9 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert contour_controls_by_name["retrieval_mode"]["control"] == "select"
     assert contour_controls_by_name["approximation"]["control"] == "select"
     assert isinstance(contour_pick_overlay["parameters"]["selected_contour_index"], int)
-    assert filter_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert filter_debug_preview["interaction"]["tools"][0]["target_parameters"] == [
+        "selected_contour_index"
+    ]
     assert {
         "min_area",
         "max_area",
@@ -530,13 +559,19 @@ def test_opencv_basic_batch1_contour_bridge_nodes_execute(tmp_path: Path) -> Non
     assert filter_controls_by_name["sort_by"]["control"] == "select"
     assert filter_controls_by_name["descending"]["control"] == "checkbox"
     assert isinstance(filter_pick_overlay["parameters"]["selected_contour_index"], int)
-    assert rect_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
+    assert rect_debug_preview["interaction"]["tools"][0]["target_parameters"] == [
+        "selected_contour_index"
+    ]
     assert {"sort_by", "descending", "limit"} <= set(rect_controls_by_name)
     assert rect_controls_by_name["sort_by"]["control"] == "select"
     assert rect_controls_by_name["descending"]["control"] == "checkbox"
     assert isinstance(rect_pick_overlay["parameters"]["selected_contour_index"], int)
-    assert rect_roi_debug_preview["interaction"]["tools"][0]["target_parameters"] == ["selected_contour_index"]
-    assert isinstance(rect_roi_pick_overlay["parameters"]["selected_contour_index"], int)
+    assert rect_roi_debug_preview["interaction"]["tools"][0]["target_parameters"] == [
+        "selected_contour_index"
+    ]
+    assert isinstance(
+        rect_roi_pick_overlay["parameters"]["selected_contour_index"], int
+    )
 
 
 def _create_repository_executor() -> WorkflowGraphExecutor:
@@ -550,7 +585,9 @@ def _create_repository_executor() -> WorkflowGraphExecutor:
         node_pack_loader=node_pack_loader,
     )
     runtime_registry_loader.refresh()
-    return WorkflowGraphExecutor(registry=runtime_registry_loader.get_runtime_registry())
+    return WorkflowGraphExecutor(
+        registry=runtime_registry_loader.get_runtime_registry()
+    )
 
 
 def _read_record_output(
@@ -572,10 +609,14 @@ def _read_record_output(
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建本地 dataset storage。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
 
 
-def _assert_bgr24_image_payload(image_registry: ExecutionImageRegistry, image_payload: dict[str, object]) -> None:
+def _assert_bgr24_image_payload(
+    image_registry: ExecutionImageRegistry, image_payload: dict[str, object]
+) -> None:
     """验证节点输出保留为内存 bgr24 图片，不做额外 PNG 编码。"""
 
     assert image_payload["transport_kind"] == "memory"
@@ -583,7 +624,10 @@ def _assert_bgr24_image_payload(image_registry: ExecutionImageRegistry, image_pa
     assert image_payload["pixel_format"] == "bgr24"
     assert image_payload["layout"] == "HWC"
     image_bytes = image_registry.read_bytes(str(image_payload["image_handle"]))
-    assert len(image_bytes) == int(image_payload["width"]) * int(image_payload["height"]) * 3
+    assert (
+        len(image_bytes)
+        == int(image_payload["width"]) * int(image_payload["height"]) * 3
+    )
 
 
 def _build_preprocess_test_png_bytes() -> bytes:

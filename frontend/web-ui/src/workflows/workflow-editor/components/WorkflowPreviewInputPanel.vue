@@ -60,6 +60,10 @@
           <span>{{ t('workflowEditor.editor.storagePath') }}</span>
           <input v-model="states[binding.binding_id].objectKey" placeholder="project/files/image.jpg" />
         </label>
+        <label v-else-if="states[binding.binding_id].imageRefTransportKind === 'local-path'" class="workflow-graph-preview-field">
+          <span>{{ t('workflowEditor.editor.localPath') }}</span>
+          <input v-model="states[binding.binding_id].localPath" :placeholder="t('workflowEditor.editor.localPathPlaceholder')" />
+        </label>
         <label v-else class="workflow-graph-preview-field">
           <span>{{ t('workflowEditor.editor.imageHandle') }}</span>
           <input v-model="states[binding.binding_id].imageHandle" placeholder="execution-scoped image handle" />

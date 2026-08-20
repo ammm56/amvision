@@ -20,15 +20,16 @@ def _build_image_ref_json_schema(
     - extra_properties：调用方需要额外挂到 schema 上的字段。
 
     返回：
-    - dict[str, object]：支持 memory、storage、buffer、frame 和 raw image metadata 的 schema。
+    - dict[str, object]：支持 memory、storage、local-path、buffer、frame 和 raw image metadata 的 schema。
     """
 
     properties: dict[str, object] = {
         "transport_kind": {
             "type": "string",
-            "enum": ["memory", "storage", "buffer", "frame"],
+            "enum": ["memory", "storage", "local-path", "buffer", "frame"],
         },
         "object_key": {"type": "string"},
+        "local_path": {"type": "string"},
         "image_handle": {"type": "string"},
         "buffer_ref": {"type": "object"},
         "frame_ref": {"type": "object"},
@@ -63,6 +64,12 @@ def _build_image_ref_json_schema(
                     "transport_kind": {"const": "memory"},
                 },
                 "required": ["image_handle"],
+            },
+            {
+                "properties": {
+                    "transport_kind": {"const": "local-path"},
+                },
+                "required": ["local_path"],
             },
             {
                 "properties": {

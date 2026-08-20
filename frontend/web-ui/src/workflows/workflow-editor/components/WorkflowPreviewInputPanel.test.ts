@@ -23,18 +23,27 @@ const state: PreviewInputState = {
   mediaType: '',
   imageRefTransportKind: 'storage',
   objectKey: '',
+  localPath: '',
   imageHandle: '',
   plainValue: '',
 }
 
-function mountPanel(blockingMessages: string[] = []) {
+function mountPanel(
+  blockingMessages: string[] = [],
+  imageRefTransportKind: PreviewInputState['imageRefTransportKind'] = 'storage',
+) {
   return mount(WorkflowPreviewInputPanel, {
     global: { plugins: [i18n] },
     props: {
       bindings: [binding],
-      states: { request_image_ref: state },
+      states: {
+        request_image_ref: { ...state, imageRefTransportKind },
+      },
       blockingMessages,
-      imageRefTransportKindOptions: [{ label: 'ObjectStore 图片', value: 'storage' }],
+      imageRefTransportKindOptions: [
+        { label: 'ObjectStore 图片', value: 'storage' },
+        { label: '本地磁盘图片', value: 'local-path' },
+      ],
       getPayloadTypeId: () => 'image-ref.v1',
     },
   })
@@ -72,5 +81,13 @@ describe('WorkflowPreviewInputPanel', () => {
     expect(wrapper.text()).not.toContain('object_key')
     expect(wrapper.text()).not.toContain('media_type')
     expect(wrapper.text()).not.toContain('image-ref.v1')
+  })
+
+  it('为 local-path 输入显示本地绝对路径字段', () => {
+    const wrapper = mountPanel([], 'local-path')
+
+    expect(wrapper.text()).toContain('本地绝对路径')
+    expect(wrapper.get('input').attributes('placeholder')).toBe('C:\\vision\\inputs\\image.bmp')
+    expect(wrapper.text()).not.toContain('存储路径')
   })
 })

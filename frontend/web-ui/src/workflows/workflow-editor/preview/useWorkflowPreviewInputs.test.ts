@@ -27,6 +27,29 @@ describe('workflow Preview image inputs', () => {
       { bindingId: 'request_image_ref', file: imageFile },
     ])
   })
+
+  it('builds an explicit local-path image-ref preview input', async () => {
+    const bindings = [buildBinding('request_image_ref', 'image-ref.v1')]
+    const previewInputs = useWorkflowPreviewInputs({
+      getBindingPayloadTypeId: (binding) => String(binding.config.payload_type_id),
+    })
+    previewInputs.initializePreviewInputs(bindings)
+    const state = previewInputs.previewInputState.value.request_image_ref
+    state.imageRefTransportKind = 'local-path'
+    state.localPath = 'W:\\vision\\inputs\\tray.bmp'
+    state.mediaType = 'image/bmp'
+
+    const payload = await previewInputs.buildPreviewInputBindings(bindings)
+
+    expect(payload.inputBindings).toEqual({
+      request_image_ref: {
+        transport_kind: 'local-path',
+        local_path: 'W:\\vision\\inputs\\tray.bmp',
+        media_type: 'image/bmp',
+      },
+    })
+    expect(payload.imageUploads).toEqual([])
+  })
 })
 
 function buildBinding(

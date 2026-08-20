@@ -163,6 +163,22 @@
 }
 ```
 
+同机调试也可以显式使用磁盘绝对路径：
+
+```json
+{
+  "input_bindings": {
+    "request_image_ref": {
+      "transport_kind": "local-path",
+      "local_path": "C:\\vision\\inputs\\source.bmp",
+      "media_type": "image/bmp"
+    }
+  }
+}
+```
+
+`local-path` 只读取 Preview/Runtime worker 当前主机上的文件，不会把该路径映射到 ObjectStore，也不会删除源文件。
+
 该请求用于画布右键 `Preview Node Run`。响应中的 `outputs` 和 `template_outputs`
 为空，目标节点与已执行祖先的结果位于 `node_records`。
 

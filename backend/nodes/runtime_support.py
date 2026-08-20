@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import mimetypes
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from threading import RLock
 from typing import Any
 from uuid import uuid4
@@ -47,6 +47,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 IMAGE_TRANSPORT_MEMORY = "memory"
 IMAGE_TRANSPORT_STORAGE = "storage"
+IMAGE_TRANSPORT_LOCAL_PATH = "local-path"
 IMAGE_TRANSPORT_BUFFER = "buffer"
 IMAGE_TRANSPORT_FRAME = "frame"
 RESPONSE_IMAGE_TRANSPORT_INLINE_BASE64 = "inline-base64"
@@ -100,11 +101,12 @@ class ResolvedImageInput:
 
     字段：
     - payload：规范化后的 image-ref payload。
-    - transport_kind：图片传输方式，支持 memory、storage、buffer 或 frame。
+    - transport_kind：图片传输方式，支持 memory、storage、local-path、buffer 或 frame。
     - media_type：图片媒体类型。
     - width：图片宽度。
     - height：图片高度。
     - object_key：storage 模式下的本地 object key。
+    - local_path：local-path 模式下当前主机可读的绝对路径。
     - image_handle：memory 模式下的执行期图片句柄。
     - buffer_ref：buffer 模式下的 LocalBufferBroker 引用。
     - frame_ref：frame 模式下的 LocalBufferBroker 帧引用。
@@ -120,6 +122,7 @@ class ResolvedImageInput:
     width: int | None = None
     height: int | None = None
     object_key: str | None = None
+    local_path: str | None = None
     image_handle: str | None = None
     buffer_ref: BufferRef | None = None
     frame_ref: FrameRef | None = None
@@ -602,12 +605,15 @@ def require_image_payload(payload: object) -> dict[str, object]:
         transport_kind.strip() if isinstance(transport_kind, str) else ""
     )
     object_key = normalized_payload.get("object_key")
+    local_path = normalized_payload.get("local_path")
     image_handle = normalized_payload.get("image_handle")
     buffer_ref_value = normalized_payload.get("buffer_ref")
     frame_ref_value = normalized_payload.get("frame_ref")
 
     if not normalized_transport_kind:
-        if isinstance(object_key, str) and object_key.strip():
+        if isinstance(local_path, str) and local_path.strip():
+            normalized_transport_kind = IMAGE_TRANSPORT_LOCAL_PATH
+        elif isinstance(object_key, str) and object_key.strip():
             normalized_transport_kind = IMAGE_TRANSPORT_STORAGE
         elif isinstance(image_handle, str) and image_handle.strip():
             normalized_transport_kind = IMAGE_TRANSPORT_MEMORY
@@ -619,6 +625,7 @@ def require_image_payload(payload: object) -> dict[str, object]:
     if normalized_transport_kind not in {
         IMAGE_TRANSPORT_MEMORY,
         IMAGE_TRANSPORT_STORAGE,
+        IMAGE_TRANSPORT_LOCAL_PATH,
         IMAGE_TRANSPORT_BUFFER,
         IMAGE_TRANSPORT_FRAME,
     }:
@@ -629,17 +636,35 @@ def require_image_payload(payload: object) -> dict[str, object]:
         if not isinstance(object_key, str) or not object_key.strip():
             raise InvalidRequestError("storage image-ref payload 缺少有效 object_key")
         normalized_payload["object_key"] = object_key.strip()
+        normalized_payload.pop("local_path", None)
         normalized_payload.pop("image_handle", None)
+        normalized_payload.pop("buffer_ref", None)
+        normalized_payload.pop("frame_ref", None)
         media_type = normalized_payload.get("media_type")
         if not isinstance(media_type, str) or not media_type.strip():
             normalized_payload["media_type"] = infer_media_type(
                 normalized_payload["object_key"]
             )
+    elif normalized_transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+        normalized_local_path = _normalize_local_image_path(local_path)
+        normalized_payload["local_path"] = normalized_local_path
+        normalized_payload.pop("object_key", None)
+        normalized_payload.pop("image_handle", None)
+        normalized_payload.pop("buffer_ref", None)
+        normalized_payload.pop("frame_ref", None)
+        media_type = normalized_payload.get("media_type")
+        if not isinstance(media_type, str) or not media_type.strip():
+            normalized_payload["media_type"] = infer_media_type(normalized_local_path)
+        else:
+            normalized_payload["media_type"] = media_type.strip()
     elif normalized_transport_kind == IMAGE_TRANSPORT_MEMORY:
         if not isinstance(image_handle, str) or not image_handle.strip():
             raise InvalidRequestError("memory image-ref payload 缺少有效 image_handle")
         normalized_payload["image_handle"] = image_handle.strip()
         normalized_payload.pop("object_key", None)
+        normalized_payload.pop("local_path", None)
+        normalized_payload.pop("buffer_ref", None)
+        normalized_payload.pop("frame_ref", None)
         media_type = normalized_payload.get("media_type")
         if not isinstance(media_type, str) or not media_type.strip():
             raise InvalidRequestError("memory image-ref payload 缺少有效 media_type")
@@ -665,6 +690,7 @@ def require_image_payload(payload: object) -> dict[str, object]:
         )
         normalized_payload["buffer_ref"] = buffer_ref.model_dump(mode="json")
         normalized_payload.pop("object_key", None)
+        normalized_payload.pop("local_path", None)
         normalized_payload.pop("image_handle", None)
         normalized_payload.pop("frame_ref", None)
     else:
@@ -688,6 +714,7 @@ def require_image_payload(payload: object) -> dict[str, object]:
         )
         normalized_payload["frame_ref"] = frame_ref.model_dump(mode="json")
         normalized_payload.pop("object_key", None)
+        normalized_payload.pop("local_path", None)
         normalized_payload.pop("image_handle", None)
         normalized_payload.pop("buffer_ref", None)
 
@@ -816,6 +843,7 @@ def resolve_image_reference(
         width=_normalize_optional_dimension(payload.get("width")),
         height=_normalize_optional_dimension(payload.get("height")),
         object_key=_normalize_optional_text(payload.get("object_key")),
+        local_path=_normalize_optional_text(payload.get("local_path")),
         image_handle=_normalize_optional_text(payload.get("image_handle")),
         buffer_ref=BufferRef.model_validate(payload["buffer_ref"])
         if payload.get("buffer_ref") is not None
@@ -852,7 +880,7 @@ def resolve_image_input(
         or resolved_image.object_key is None
     ):
         raise InvalidRequestError(
-            "当前节点尚未支持 memory image-ref payload，请改用双模式 helper",
+            "当前节点只支持 storage image-ref payload，请改用通用图片读取 helper",
             details={"node_id": request.node_id, "input_name": input_name},
         )
     object_key = resolved_image.object_key
@@ -870,7 +898,7 @@ def load_image_bytes(
     *,
     input_name: str = "image",
 ) -> tuple[dict[str, object], bytes]:
-    """按双模式规则读取图片编码后字节。
+    """按统一 image-ref 规则读取图片编码后字节。
 
     参数：
     - request：当前节点执行请求。
@@ -891,7 +919,7 @@ def load_image_bytes_from_payload(
     *,
     image_payload: object,
 ) -> tuple[dict[str, object], bytes]:
-    """按双模式规则读取任意 image-ref payload 对应的图片字节。
+    """按统一 image-ref 规则读取任意 payload 对应的图片字节。
 
     参数：
     - request：当前节点执行请求。
@@ -910,6 +938,7 @@ def load_image_bytes_from_payload(
         width=_normalize_optional_dimension(normalized_payload.get("width")),
         height=_normalize_optional_dimension(normalized_payload.get("height")),
         object_key=_normalize_optional_text(normalized_payload.get("object_key")),
+        local_path=_normalize_optional_text(normalized_payload.get("local_path")),
         image_handle=_normalize_optional_text(normalized_payload.get("image_handle")),
         buffer_ref=BufferRef.model_validate(normalized_payload["buffer_ref"])
         if normalized_payload.get("buffer_ref") is not None
@@ -935,6 +964,23 @@ def load_image_bytes_from_payload(
                 },
             )
         return dict(resolved_image.payload), source_path.read_bytes()
+
+    if resolved_image.transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+        assert resolved_image.local_path is not None
+        source_path = _require_local_image_file(
+            resolved_image.local_path,
+            node_id=request.node_id,
+        )
+        try:
+            return dict(resolved_image.payload), source_path.read_bytes()
+        except OSError as error:
+            raise InvalidRequestError(
+                "本地图片文件无法读取",
+                details={
+                    "node_id": request.node_id,
+                    "local_path": str(source_path),
+                },
+            ) from error
 
     if resolved_image.transport_kind == IMAGE_TRANSPORT_MEMORY:
         image_registry = require_execution_image_registry(request)
@@ -1164,6 +1210,50 @@ def build_storage_image_payload(
         "transport_kind": IMAGE_TRANSPORT_STORAGE,
         "object_key": normalized_object_key,
         "media_type": resolved_media_type or infer_media_type(normalized_object_key),
+    }
+    normalized_width = _normalize_optional_dimension(resolved_width)
+    normalized_height = _normalize_optional_dimension(resolved_height)
+    if normalized_width is not None:
+        image_payload["width"] = normalized_width
+    if normalized_height is not None:
+        image_payload["height"] = normalized_height
+    return image_payload
+
+
+def build_local_image_payload(
+    *,
+    local_path: str,
+    source_payload: dict[str, object] | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    media_type: str | None = None,
+) -> dict[str, object]:
+    """构建 local-path 模式 image-ref payload。
+
+    参数：
+    - local_path：当前主机可读的图片绝对路径。
+    - source_payload：可选源图片 payload。
+    - width：图片宽度。
+    - height：图片高度。
+    - media_type：图片媒体类型。
+
+    返回：
+    - dict[str, object]：local-path 模式图片引用。
+    """
+
+    normalized_local_path = _normalize_local_image_path(local_path)
+    base_payload = (
+        require_image_payload(source_payload) if source_payload is not None else {}
+    )
+    resolved_width = width if width is not None else base_payload.get("width")
+    resolved_height = height if height is not None else base_payload.get("height")
+    resolved_media_type = media_type or _normalize_optional_text(
+        base_payload.get("media_type")
+    )
+    image_payload: dict[str, object] = {
+        "transport_kind": IMAGE_TRANSPORT_LOCAL_PATH,
+        "local_path": normalized_local_path,
+        "media_type": resolved_media_type or infer_media_type(normalized_local_path),
     }
     normalized_width = _normalize_optional_dimension(resolved_width)
     normalized_height = _normalize_optional_dimension(resolved_height)
@@ -1408,7 +1498,8 @@ def load_image_matrix_from_payload(
         cache_key=decode_cache_key,
         decoder=decode_matrix,
         share_across_runs=(
-            normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_STORAGE
+            normalized_payload.get("transport_kind")
+            in {IMAGE_TRANSPORT_STORAGE, IMAGE_TRANSPORT_LOCAL_PATH}
         ),
     )
     return normalized_payload, matrix.copy() if copy_raw else matrix
@@ -1487,7 +1578,7 @@ def _build_decoded_matrix_cache_key(
 ) -> str:
     """为单次执行中的图片版本构造紧凑的解码缓存 key。
 
-    storage 输入包含文件版本指纹，避免同一 Run 覆盖 object key 后仍读取旧矩阵；
+    storage/local-path 输入包含文件版本指纹，避免文件覆盖后仍读取旧矩阵；
     其他传输模式只使用稳定引用和解码相关元数据，不把任意扩展字段或大文本复制到 key。
     """
 
@@ -1508,6 +1599,20 @@ def _build_decoded_matrix_cache_key(
             # 实际读取路径继续负责返回统一的“文件不存在/无法读取”业务错误。
             storage_version = None
         reference = (object_key, storage_version)
+    elif transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+        local_path = str(image_payload.get("local_path") or "")
+        local_path_version: tuple[int, int, int] | None = None
+        try:
+            file_stat = Path(local_path).stat()
+            local_path_version = (
+                int(file_stat.st_size),
+                int(file_stat.st_mtime_ns),
+                int(file_stat.st_ctime_ns),
+            )
+        except OSError:
+            # 实际读取路径继续负责返回统一的文件业务错误。
+            local_path_version = None
+        reference = (local_path, local_path_version)
     elif transport_kind == IMAGE_TRANSPORT_MEMORY:
         reference = str(image_payload.get("image_handle") or "")
     elif transport_kind == IMAGE_TRANSPORT_BUFFER:
@@ -2267,3 +2372,35 @@ def _normalize_optional_text(value: object) -> str | None:
         return None
     normalized_value = value.strip()
     return normalized_value or None
+
+
+def _normalize_local_image_path(value: object) -> str:
+    """规范化当前主机的图片绝对路径。"""
+
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidRequestError("local-path image-ref payload 缺少有效 local_path")
+    local_path = Path(value.strip())
+    if not local_path.is_absolute():
+        raise InvalidRequestError(
+            "local-path image-ref payload 要求 local_path 是当前系统绝对路径",
+            details={"local_path": value},
+        )
+    try:
+        return str(local_path.resolve(strict=False))
+    except OSError as error:
+        raise InvalidRequestError(
+            "local-path image-ref payload 的 local_path 无法解析",
+            details={"local_path": value},
+        ) from error
+
+
+def _require_local_image_file(local_path: str, *, node_id: str) -> Path:
+    """解析并校验 local-path 图片文件。"""
+
+    source_path = Path(_normalize_local_image_path(local_path))
+    if not source_path.is_file():
+        raise InvalidRequestError(
+            "本地图片文件不存在",
+            details={"node_id": node_id, "local_path": str(source_path)},
+        )
+    return source_path

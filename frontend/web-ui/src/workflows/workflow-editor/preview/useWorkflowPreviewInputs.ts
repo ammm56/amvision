@@ -22,8 +22,9 @@ export interface PreviewInputState {
   valueFields: PreviewValueField[]
   file: File | null
   mediaType: string
-  imageRefTransportKind: 'storage' | 'memory'
+  imageRefTransportKind: 'storage' | 'local-path' | 'memory'
   objectKey: string
+  localPath: string
   imageHandle: string
   plainValue: string
 }
@@ -41,6 +42,7 @@ export interface WorkflowPreviewInputPayload {
 export function getPreviewImageRefTransportKindOptions(): PreviewSelectOption[] {
   return [
     { label: translate('workflowEditor.feedback.objectStoreImage'), value: 'storage' },
+    { label: translate('workflowEditor.feedback.localDiskImage'), value: 'local-path' },
     { label: translate('workflowEditor.feedback.memoryImageHandle'), value: 'memory' },
   ]
 }
@@ -66,6 +68,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
     if (payloadTypeId === 'image-base64.v1') return state.file !== null
     if (payloadTypeId === 'image-ref.v1') {
       if (state.imageRefTransportKind === 'storage') return Boolean(state.objectKey.trim())
+      if (state.imageRefTransportKind === 'local-path') return Boolean(state.localPath.trim())
       return Boolean(state.imageHandle.trim() && state.mediaType.trim())
     }
     return Boolean(state.plainValue.trim())
@@ -88,6 +91,7 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
       mediaType: '',
       imageRefTransportKind: 'storage',
       objectKey: '',
+      localPath: '',
       imageHandle: '',
       plainValue: '',
     }
@@ -155,7 +159,10 @@ export function useWorkflowPreviewInputs(options: WorkflowPreviewInputsOptions) 
   function setPreviewImageRefTransportKind(bindingId: string, value: PreviewSelectValue): void {
     const state = previewInputState.value[bindingId]
     if (!state) return
-    state.imageRefTransportKind = selectValueToString(value) === 'memory' ? 'memory' : 'storage'
+    const normalizedValue = selectValueToString(value)
+    state.imageRefTransportKind = normalizedValue === 'memory'
+      ? 'memory'
+      : normalizedValue === 'local-path' ? 'local-path' : 'storage'
   }
 
   async function buildPreviewInputBindings(bindings: FlowApplicationBinding[]): Promise<WorkflowPreviewInputPayload> {
@@ -245,6 +252,14 @@ function buildImageRefPreviewPayload(state: PreviewInputState): Record<string, u
       image_handle: state.imageHandle.trim(),
       media_type: state.mediaType.trim(),
     }
+  }
+  if (state.imageRefTransportKind === 'local-path') {
+    const payload: Record<string, unknown> = {
+      transport_kind: 'local-path',
+      local_path: state.localPath.trim(),
+    }
+    if (state.mediaType.trim()) payload.media_type = state.mediaType.trim()
+    return payload
   }
   const payload: Record<string, unknown> = {
     transport_kind: 'storage',

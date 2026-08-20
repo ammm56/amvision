@@ -17,6 +17,7 @@ def build_image_reference_identity(image_payload: object) -> str:
         "source_sha256",
         "image_handle",
         "object_key",
+        "local_path",
     ):
         field_value = str(image_payload.get(field_name) or "").strip()
         if field_value:

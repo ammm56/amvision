@@ -16,6 +16,7 @@ from backend.nodes.core_nodes.support.service import (
 )
 from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
+    IMAGE_TRANSPORT_LOCAL_PATH,
     IMAGE_TRANSPORT_MEMORY,
     load_image_content,
     require_image_payload,
@@ -161,7 +162,10 @@ def _build_gateway_image_payload(
 ) -> tuple[dict[str, object], bytes | None, _TemporaryLocalBufferInput | None]:
     """构造 PublishedInferenceGateway 使用的图片 payload。"""
 
-    if resolved_image.transport_kind != IMAGE_TRANSPORT_MEMORY:
+    if resolved_image.transport_kind not in {
+        IMAGE_TRANSPORT_MEMORY,
+        IMAGE_TRANSPORT_LOCAL_PATH,
+    }:
         return dict(resolved_image.payload), None, None
     normalized_payload, image_bytes = load_image_content(request)
     temporary_input = _try_write_memory_image_to_local_buffer(
@@ -218,6 +222,7 @@ def _try_write_memory_image_to_local_buffer(
     buffer_payload["buffer_ref"] = write_result.buffer_ref.model_dump(mode="json")
     buffer_payload.pop("image_handle", None)
     buffer_payload.pop("object_key", None)
+    buffer_payload.pop("local_path", None)
     buffer_payload.pop("frame_ref", None)
     lease = getattr(write_result, "lease", None)
     lease_id = getattr(lease, "lease_id", None)
@@ -351,6 +356,7 @@ def _try_reuse_local_buffer_input(
     buffer_payload["buffer_ref"] = dict(cached.buffer_ref_payload)
     buffer_payload.pop("image_handle", None)
     buffer_payload.pop("object_key", None)
+    buffer_payload.pop("local_path", None)
     buffer_payload.pop("frame_ref", None)
     lease_id = cached.buffer_ref_payload.get("lease_id")
     return _TemporaryLocalBufferInput(
