@@ -90,10 +90,13 @@ class RfdetrPlatformTrainingRequest:
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[RfdetrPlatformBatchProgress], None] | None = None
-    epoch_callback: Callable[
-        [RfdetrPlatformEpochProgress],
-        RfdetrPlatformTrainingControlCommand | None,
-    ] | None = None
+    epoch_callback: (
+        Callable[
+            [RfdetrPlatformEpochProgress],
+            RfdetrPlatformTrainingControlCommand | None,
+        ]
+        | None
+    ) = None
     savepoint_callback: Callable[[RfdetrPlatformTrainingSavePoint], None] | None = None
 
 
@@ -130,7 +133,6 @@ def run_rfdetr_platform_training(
         model_scale=request.model_scale,
         input_size=request.input_size,
     )
-    resolution = max(aligned_input_size)
     device_selection = _resolve_device_selection(extra_options)
     device_name = device_selection.device_name
     amp_runtime = resolve_training_amp_runtime(
@@ -164,7 +166,9 @@ def run_rfdetr_platform_training(
                 temporary_dir,
             )
             warm_start_checkpoint_path = (
-                None if resume_checkpoint_path is not None else request.warm_start_checkpoint_path
+                None
+                if resume_checkpoint_path is not None
+                else request.warm_start_checkpoint_path
             )
             pretrain_checkpoint_path = prepare_pretrain_checkpoint(
                 warm_start_checkpoint_path,
@@ -180,10 +184,10 @@ def run_rfdetr_platform_training(
                 task_type=request.task_type,
                 model_scale=request.model_scale,
                 num_classes=len(prepared_dataset.labels),
+                input_size=aligned_input_size,
                 pretrained_path=pretrain_checkpoint_path,
                 device=device_name,
             )
-            model_config.resolution = resolution
             model_config.amp = amp_runtime.enabled
 
             train_config = _build_train_config(
@@ -200,9 +204,7 @@ def run_rfdetr_platform_training(
                 _load_rfdetr_lightning_training_components()
             )
             module = RFDETRModelModule(model_config, train_config)
-            batch_mode = str(
-                extra_options.get("batch_mode", "auto")
-            ).strip().lower()
+            batch_mode = str(extra_options.get("batch_mode", "auto")).strip().lower()
             if (
                 batch_mode == "auto"
                 and device_selection.is_cuda
@@ -216,14 +218,10 @@ def run_rfdetr_platform_training(
                     safety_margin=float(
                         extra_options.get("batch_target_memory_fraction", 0.6)
                     ),
-                    max_micro_batch=int(
-                        extra_options.get("batch_maximum_size") or 128
-                    ),
+                    max_micro_batch=int(extra_options.get("batch_maximum_size") or 128),
                 )
                 train_config.batch_size = auto_batch.safe_micro_batch
-                train_config.grad_accum_steps = (
-                    auto_batch.recommended_grad_accum_steps
-                )
+                train_config.grad_accum_steps = auto_batch.recommended_grad_accum_steps
             record_active_training_batch_resolution(
                 batch_size=int(train_config.batch_size),
                 mode=(
@@ -232,11 +230,7 @@ def run_rfdetr_platform_training(
                     else (
                         "auto-cuda-profile"
                         if batch_mode == "auto" and device_selection.is_cuda
-                        else (
-                            "auto-cpu-fallback"
-                            if batch_mode == "auto"
-                            else "fixed"
-                        )
+                        else ("auto-cpu-fallback" if batch_mode == "auto" else "fixed")
                     )
                 ),
                 device_name=device_name,
@@ -253,15 +247,15 @@ def run_rfdetr_platform_training(
                 train_config,
                 model_config,
                 accelerator=device_selection.lightning_accelerator,
-                extra_callbacks=(control_callback,) if control_callback is not None else (),
+                extra_callbacks=(control_callback,)
+                if control_callback is not None
+                else (),
                 num_sanity_val_steps=0,
                 precision=(
                     "32-true"
                     if not amp_runtime.enabled
                     else (
-                        "bf16-mixed"
-                        if amp_runtime.precision == "bf16"
-                        else "16-mixed"
+                        "bf16-mixed" if amp_runtime.precision == "bf16" else "16-mixed"
                     )
                 ),
                 enable_model_summary=False,
@@ -533,7 +527,9 @@ def _build_train_config(
         "bbox_loss_coef": float(extra_options.get("bbox_loss_weight", 5.0)),
         "giou_loss_coef": float(extra_options.get("giou_loss_weight", 2.0)),
         "eval_interval": max(1, int(extra_options.get("evaluation_interval", 1))),
-        "eval_max_dets": max(100, int(extra_options.get("evaluation_max_detections", 500))),
+        "eval_max_dets": max(
+            100, int(extra_options.get("evaluation_max_detections", 500))
+        ),
         "accelerator": device_selection.lightning_accelerator,
         "devices": device_selection.lightning_devices,
         # 与 RF-DETR core 默认值一致；仍可显式设为 0 以兼容受限现场环境。
@@ -562,7 +558,9 @@ def _build_train_config(
         config_options.update(
             {
                 "mask_ce_loss_coef": float(extra_options.get("mask_ce_weight", 5.0)),
-                "mask_dice_loss_coef": float(extra_options.get("mask_dice_weight", 5.0)),
+                "mask_dice_loss_coef": float(
+                    extra_options.get("mask_dice_weight", 5.0)
+                ),
             }
         )
 
@@ -598,7 +596,9 @@ def _resolve_rfdetr_aug_config(
     if isinstance(custom_config, dict):
         return dict(custom_config)
 
-    preset = str(extra_options.get("rfdetr_augmentation_preset", "default")).strip().lower()
+    preset = (
+        str(extra_options.get("rfdetr_augmentation_preset", "default")).strip().lower()
+    )
     presets: dict[str, dict[str, object] | None] = {
         "default": None,
         "conservative": AUG_CONSERVATIVE,

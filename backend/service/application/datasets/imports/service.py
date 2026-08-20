@@ -57,6 +57,7 @@ from backend.service.application.errors import (
     ServiceError,
     UnsupportedDatasetFormatError,
 )
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
@@ -107,6 +108,7 @@ class SqlAlchemyDatasetImportService(
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.task_service = SqlAlchemyTaskService(session_factory)
+        self.project_mutations = ProjectMutationAdmissionService(session_factory)
 
     def import_dataset(
         self,
@@ -196,15 +198,25 @@ class SqlAlchemyDatasetImportService(
                 **request.metadata,
             },
         )
-        self._save_dataset_import_and_task(
-            initial_import,
-            self._build_dataset_import_task(
-                task_id=task_id,
-                created_at=created_at,
-                request=request,
-                dataset_import=initial_import,
-            ),
-        )
+        try:
+            with self.project_mutations.operation(
+                project_id=request.project_id,
+                mutation_kind="dataset-import-submit",
+                resource_id=dataset_import_id,
+            ):
+                self._save_dataset_import_and_task(
+                    initial_import,
+                    self._build_dataset_import_task(
+                        task_id=task_id,
+                        created_at=created_at,
+                        request=request,
+                        dataset_import=initial_import,
+                    ),
+                )
+        except Exception:
+            # 上传包先写入 staging，最终登记被 Project tombstone 拒绝时必须清理。
+            self.dataset_storage.delete_tree(import_layout.import_path)
+            raise
 
         return initial_import
 

@@ -43,6 +43,18 @@ class WorkflowTriggerSourceRepository(Protocol):
 
         ...
 
+    def list_trigger_sources_by_runtime(
+        self, workflow_runtime_id: str
+    ) -> tuple[WorkflowTriggerSource, ...]:
+        """按 Runtime id 列出绑定的 TriggerSource。"""
+
+        ...
+
+    def has_trigger_sources_for_runtime(self, workflow_runtime_id: str) -> bool:
+        """判断 Runtime 是否仍绑定任意 TriggerSource。"""
+
+        ...
+
     def delete_trigger_source(self, trigger_source_id: str) -> bool:
         """按 id 删除一条 WorkflowTriggerSource。
 

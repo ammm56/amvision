@@ -90,12 +90,14 @@ def list_obb_evaluation_task_responses(
 
 def get_obb_evaluation_task_response(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
 ) -> ObbEvaluationDetailResponse:
     """读取 OBB evaluation 任务详情响应。"""
 
     task = get_evaluation_task_record(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
         expected_task_kind=OBB_EVALUATION_TASK_KIND,
@@ -105,12 +107,14 @@ def get_obb_evaluation_task_response(
 
 def delete_obb_evaluation_task_response(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
 ):
     """删除已完成的 OBB evaluation 任务。"""
 
     return delete_finished_evaluation_task(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
         expected_task_kind=OBB_EVALUATION_TASK_KIND,

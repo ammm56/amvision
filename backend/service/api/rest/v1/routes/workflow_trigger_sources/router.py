@@ -92,12 +92,17 @@ def list_workflow_trigger_sources(
     limit: Annotated[
         int, Query(ge=1, le=MAX_LIST_LIMIT, description="最大返回数量")
     ] = DEFAULT_LIST_LIMIT,
+    workflow_runtime_id: Annotated[
+        str | None,
+        Query(description="可选 WorkflowAppRuntime id 精确过滤"),
+    ] = None,
 ) -> list[WorkflowTriggerSourceContract]:
-    """按 Project id 列出 WorkflowTriggerSource。"""
+    """按 Project id 和可选 Runtime id 列出 WorkflowTriggerSource。"""
 
     ensure_project_visible(principal=principal, project_id=project_id)
     trigger_sources = build_trigger_source_service(request).list_trigger_sources(
-        project_id=project_id
+        project_id=project_id,
+        workflow_runtime_id=workflow_runtime_id,
     )
     paged_items = paginate_sequence(
         trigger_sources, response=response, offset=offset, limit=limit
@@ -220,4 +225,3 @@ def get_workflow_trigger_source_health(
     return build_trigger_source_health_response(
         trigger_source_service.get_trigger_source_health(trigger_source_id)
     )
-

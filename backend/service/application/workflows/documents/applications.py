@@ -22,6 +22,7 @@ from backend.service.application.workflows.documents.storage import (
     build_application_directory_key,
     build_application_object_key,
     build_applications_dir_key,
+    normalize_application_identifier,
     normalize_identifier,
     normalize_optional_non_empty_text,
     read_resource_summary,
@@ -66,6 +67,7 @@ class WorkflowApplicationDocumentStore:
         """校验流程应用与图模板绑定关系。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
+        normalize_application_identifier(application.application_id, "application_id")
         template = template_override
         if template is not None:
             self.template_documents.validate_template(template)
@@ -133,7 +135,7 @@ class WorkflowApplicationDocumentStore:
         """删除一份已保存的流程应用。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(
+        normalized_application_id = normalize_application_identifier(
             application_id, "application_id"
         )
         object_key = build_application_object_key(
@@ -167,10 +169,12 @@ class WorkflowApplicationDocumentStore:
         project_id: str,
         application: FlowApplication,
         actor_id: str | None = None,
+        prune_unreferenced_prompt_masks: bool = True,
     ) -> WorkflowApplicationDocument:
         """保存流程应用 JSON。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
+        normalize_application_identifier(application.application_id, "application_id")
         template_document = self.template_documents.get_template(
             project_id=normalized_project_id,
             template_id=application.template_ref.template_id,
@@ -213,11 +217,12 @@ class WorkflowApplicationDocumentStore:
             object_key=object_key,
             summary=resource_summary,
         )
-        self._prune_unreferenced_prompt_masks(
-            project_id=normalized_project_id,
-            application_id=normalized_application.application_id,
-            template=template_document.template,
-        )
+        if prune_unreferenced_prompt_masks:
+            self._prune_unreferenced_prompt_masks(
+                project_id=normalized_project_id,
+                application_id=normalized_application.application_id,
+                template=template_document.template,
+            )
         return WorkflowApplicationDocument(
             project_id=normalized_project_id,
             object_key=object_key,
@@ -238,7 +243,7 @@ class WorkflowApplicationDocumentStore:
         """只更新流程应用的基础显示信息，不修改图模板引用和绑定。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(
+        normalized_application_id = normalize_application_identifier(
             application_id, "application_id"
         )
         object_key = build_application_object_key(
@@ -316,7 +321,7 @@ class WorkflowApplicationDocumentStore:
         """读取单个流程应用摘要。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(
+        normalized_application_id = normalize_application_identifier(
             application_id,
             "application_id",
         )
@@ -346,7 +351,7 @@ class WorkflowApplicationDocumentStore:
         """读取已保存的流程应用 JSON。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_application_id = normalize_identifier(
+        normalized_application_id = normalize_application_identifier(
             application_id, "application_id"
         )
         object_key = build_application_object_key(
@@ -401,10 +406,10 @@ class WorkflowApplicationDocumentStore:
         """复制一份流程应用到新的 application_id。"""
 
         normalized_project_id = normalize_identifier(project_id, "project_id")
-        normalized_source_application_id = normalize_identifier(
+        normalized_source_application_id = normalize_application_identifier(
             source_application_id, "source_application_id"
         )
-        normalized_target_application_id = normalize_identifier(
+        normalized_target_application_id = normalize_application_identifier(
             target_application_id, "target_application_id"
         )
         if normalized_source_application_id == normalized_target_application_id:

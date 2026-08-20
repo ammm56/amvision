@@ -19,12 +19,14 @@ from backend.service.application.models.rfdetr_core.config import (
 )
 from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_config,
+    build_rfdetr_full_core_model,
 )
 from backend.service.application.models.rfdetr_core.export.execution import (
     resolve_rfdetr_export_input_size_summary,
 )
 from backend.service.application.models.rfdetr_core.training.platform_artifacts import (
     prepare_resume_checkpoint,
+    read_or_build_checkpoint_artifacts,
 )
 from backend.service.application.models.rfdetr_core.training.platform_dataset import (
     _build_rfdetr_roboflow_file_name,
@@ -41,6 +43,9 @@ from backend.service.application.models.rfdetr_core.training.platform_runner imp
 )
 from backend.service.application.models.rfdetr_core.training import (
     platform_runner as platform_runner_module,
+)
+from backend.service.application.models.rfdetr_core.training import (
+    trainer as trainer_module,
 )
 from backend.service.application.models.training.device_selection import (
     SingleTrainingDeviceSelection,
@@ -74,14 +79,20 @@ def test_rfdetr_pretrain_compatibility_warning_is_not_repeated_on_assignment() -
 def test_rfdetr_platform_dataset_preserves_nested_image_paths() -> None:
     """验证同名图片不会因压平路径而在 RF-DETR 临时数据集中互相覆盖。"""
 
-    assert _build_rfdetr_roboflow_file_name(
-        split_name="train",
-        file_name="train/camera-a/shared.jpg",
-    ) == "camera-a/shared.jpg"
-    assert _build_rfdetr_roboflow_file_name(
-        split_name="train",
-        file_name="camera-b/shared.jpg",
-    ) == "camera-b/shared.jpg"
+    assert (
+        _build_rfdetr_roboflow_file_name(
+            split_name="train",
+            file_name="train/camera-a/shared.jpg",
+        )
+        == "camera-a/shared.jpg"
+    )
+    assert (
+        _build_rfdetr_roboflow_file_name(
+            split_name="train",
+            file_name="camera-b/shared.jpg",
+        )
+        == "camera-b/shared.jpg"
+    )
 
 
 def test_rfdetr_platform_dataset_reads_extended_length_source_paths(
@@ -92,9 +103,7 @@ def test_rfdetr_platform_dataset_reads_extended_length_source_paths(
     storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
     )
-    long_image_root = "/".join(
-        f"segment-{index}-{'x' * 40}" for index in range(6)
-    )
+    long_image_root = "/".join(f"segment-{index}-{'x' * 40}" for index in range(6))
     splits: list[dict[str, object]] = []
     for split_index, split_name in enumerate(("train", "val"), start=1):
         image_key = f"{long_image_root}/{split_name}/sample.jpg"
@@ -138,8 +147,12 @@ def test_rfdetr_platform_dataset_reads_extended_length_source_paths(
     )
 
     assert prepared.labels == ("part",)
-    assert (prepared.dataset_dir / "train" / "sample.jpg").read_bytes() == b"image-train"
-    assert (prepared.dataset_dir / "valid" / "val" / "sample.jpg").read_bytes() == b"image-val"
+    assert (
+        prepared.dataset_dir / "train" / "sample.jpg"
+    ).read_bytes() == b"image-train"
+    assert (
+        prepared.dataset_dir / "valid" / "val" / "sample.jpg"
+    ).read_bytes() == b"image-val"
 
 
 def test_rfdetr_export_rejects_implicit_input_alignment() -> None:
@@ -170,6 +183,49 @@ def test_rfdetr_export_keeps_aligned_non_square_input() -> None:
 
     assert effective == (384, 640)
     assert summary["effective"] == {"width": 640, "height": 384}
+
+
+def test_rfdetr_factory_uses_aligned_input_size_for_position_embeddings() -> None:
+    """训练和转换必须按同一 input_size 重建 positional embeddings。"""
+
+    model = build_rfdetr_full_core_model(
+        task_type=SEGMENTATION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=1,
+        input_size=(72, 72),
+        load_pretrained=False,
+    )
+
+    position_embeddings = model.state_dict()[
+        "backbone.0.encoder.encoder.embeddings.position_embeddings"
+    ]
+    assert tuple(position_embeddings.shape) == (1, 37, 384)
+
+
+def test_rfdetr_factory_non_square_input_uses_training_square_resolution() -> None:
+    """合法非方形输入按训练链规则使用最大边构建模型。"""
+
+    config = build_rfdetr_full_core_config(
+        task_type=SEGMENTATION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=1,
+        input_size=(72, 96),
+    )
+
+    assert config.resolution == 96
+    assert config.positional_encoding_size == 8
+
+
+def test_rfdetr_factory_rejects_unaligned_input_size() -> None:
+    """factory 不得把训练或转换 input_size 静默改成另一套模型配置。"""
+
+    with pytest.raises(ValueError, match="禁止静默对齐"):
+        build_rfdetr_full_core_config(
+            task_type=SEGMENTATION_TASK_TYPE,
+            model_scale="nano",
+            num_classes=1,
+            input_size=(64, 64),
+        )
 
 
 def test_rfdetr_final_learning_rate_uses_actual_optimizer_state() -> None:
@@ -276,6 +332,42 @@ def test_rfdetr_platform_uses_requested_checkpoint_interval(tmp_path: Path) -> N
         extra_options={"checkpoint_interval": 7},
     )
     assert train_config.checkpoint_interval == 7
+
+
+def test_rfdetr_checkpoint_interval_one_writes_last_before_train_end(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """每轮 checkpoint 模式必须由 ModelCheckpoint 直接维护 last.ckpt。"""
+
+    captured: dict[str, object] = {}
+
+    class _Trainer:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(trainer_module, "Trainer", _Trainer)
+    train_config = _build_config(
+        tmp_path,
+        task_type=DETECTION_TASK_TYPE,
+        extra_options={"checkpoint_interval": 1, "use_ema": True},
+    )
+    model_config = build_rfdetr_full_core_config(
+        task_type=DETECTION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=1,
+        device="cpu",
+    )
+
+    trainer_module.build_trainer(train_config, model_config)
+
+    periodic_callbacks = [
+        callback
+        for callback in captured["callbacks"]
+        if getattr(callback, "filename", None) == "checkpoint_{epoch}"
+    ]
+    assert len(periodic_callbacks) == 1
+    assert periodic_callbacks[0].save_last is True
 
 
 def test_rfdetr_platform_exposes_scale_jitter_as_an_independent_option(
@@ -388,6 +480,8 @@ def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(
         "state_dict": {"model.weight": torch.tensor([1.0])},
         "optimizer_states": [{"state": {}, "param_groups": []}],
         "lr_schedulers": [{"last_epoch": 4}],
+        "callbacks": {"callback": {"best": 0.8}},
+        "loops": {"fit_loop": {"state_dict": {}}},
         "epoch": 4,
         "global_step": 20,
         "pytorch-lightning_version": "2.6.5",
@@ -404,10 +498,10 @@ def test_prepare_rfdetr_resume_checkpoint_preserves_full_lightning_state(
     assert restored["global_step"] == 20
 
 
-def test_prepare_rfdetr_resume_checkpoint_converts_legacy_model_payload(
+def test_prepare_rfdetr_resume_checkpoint_rejects_legacy_model_payload(
     tmp_path: Path,
 ) -> None:
-    """旧 ModelVersion 仍可恢复模型与 epoch，但不伪造不存在的优化器状态。"""
+    """weights-only checkpoint 不能伪装成 resume，必须显式改走 warm-start。"""
 
     checkpoint_path = tmp_path / "legacy.pth"
     torch.save(
@@ -419,13 +513,35 @@ def test_prepare_rfdetr_resume_checkpoint_converts_legacy_model_payload(
         checkpoint_path,
     )
 
-    resolved = prepare_resume_checkpoint(checkpoint_path, tmp_path)
+    with pytest.raises(InvalidRequestError) as error_info:
+        prepare_resume_checkpoint(checkpoint_path, tmp_path)
 
-    assert resolved is not None
-    restored = torch.load(resolved, map_location="cpu", weights_only=False)
-    assert torch.equal(restored["state_dict"]["model.weight"], torch.tensor([2.0]))
-    assert restored["epoch"] == 2
-    assert restored["optimizer_states"] == []
+    assert "只接受完整 Lightning checkpoint" in str(error_info.value)
+    assert (
+        error_info.value.details["hint"]
+        == "weights-only checkpoint 必须改用 warm-start"
+    )
+
+
+def test_rfdetr_real_trainer_cannot_rebuild_missing_last_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """真实 Trainer 缺少 last.ckpt 时必须失败，不能从训练终态补造 resume。"""
+
+    best_checkpoint_path = tmp_path / "checkpoint_best_total.pth"
+    best_checkpoint_path.write_bytes(b"best")
+    trainer = SimpleNamespace(current_epoch=1, save_checkpoint=Mock())
+
+    with pytest.raises(InvalidRequestError, match="缺少 last.ckpt"):
+        read_or_build_checkpoint_artifacts(
+            output_dir=tmp_path,
+            module=SimpleNamespace(),
+            model_config=SimpleNamespace(),
+            train_config=SimpleNamespace(),
+            trainer=trainer,
+        )
+
+    trainer.save_checkpoint.assert_not_called()
 
 
 def test_rfdetr_platform_records_effective_square_training_input() -> None:

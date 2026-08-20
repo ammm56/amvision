@@ -301,6 +301,7 @@ class SqlAlchemySegmentationTrainingService:
         )
         if resolved_model_type == "rfdetr":
             warm_start_reference = resolve_rfdetr_warm_start_reference(
+                project_id=task_record.project_id,
                 model_version_id=requested_warm_start_model_version_id,
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
@@ -314,6 +315,7 @@ class SqlAlchemySegmentationTrainingService:
             )
         else:
             warm_start_reference = resolve_yolo_warm_start_reference(
+                project_id=task_record.project_id,
                 model_version_id=requested_warm_start_model_version_id,
                 model_service_cls=SEGMENTATION_TRAINING_MODEL_SERVICE_MAP[
                     resolved_model_type

@@ -119,12 +119,11 @@ def require_visible_inference_task(
     """读取并校验当前主体可见的 inference task。"""
 
     service = SqlAlchemyTaskService(session_factory)
-    task_detail = service.get_task(task_id, include_events=include_events)
-    if principal.project_ids and task_detail.task.project_id not in principal.project_ids:
-        raise ResourceNotFoundError(
-            f"找不到指定的{resource_label}",
-            details={"task_id": task_id},
-        )
+    task_detail = service.get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+        include_events=include_events,
+    )
     if task_detail.task.task_kind != task_kind:
         raise ResourceNotFoundError(
             f"找不到指定的{resource_label}",

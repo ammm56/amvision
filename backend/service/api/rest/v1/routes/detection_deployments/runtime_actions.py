@@ -11,7 +11,6 @@ from backend.service.api.rest.v1.routes.detection_deployments.responses import (
 )
 from backend.service.api.rest.v1.routes.detection_deployments.services import (
     build_detection_deployment_service,
-    ensure_detection_deployment_visible,
 )
 from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
     is_persisted_stopped_state,
@@ -51,8 +50,10 @@ def run_detection_process_status_action(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    view = service.get_deployment_instance(deployment_instance_id)
-    ensure_detection_deployment_visible(principal=principal, view=view)
+    view = service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
+    )
     process_config = service.resolve_process_config(deployment_instance_id)
     state_service = DeploymentRuntimeStateService(session_factory=session_factory)
     runtime_state = state_service.get_runtime_state(
@@ -166,8 +167,10 @@ def run_detection_process_health_action(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    view = service.get_deployment_instance(deployment_instance_id)
-    ensure_detection_deployment_visible(principal=principal, view=view)
+    view = service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
+    )
     process_config = service.resolve_process_config(deployment_instance_id)
     state_service = DeploymentRuntimeStateService(session_factory=session_factory)
     runtime_state = state_service.get_runtime_state(

@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,3 +233,113 @@ def test_netmq_runtime_dependencies_are_packaged() -> None:
     assert "<Private>true</Private>" in project_text
     assert "AssemblyVersion 6.0.3.0" in readme_text
     assert "AssemblyVersion 4.0.5.0" in readme_text
+
+
+def test_dotnet_runtime_contract_exposes_version_revision_and_provenance() -> None:
+    """控制面 SDK 必须跟随 Runtime 版本接口，调用配置仍只保存稳定 id。"""
+
+    request_text = (
+        SDK_ROOT / "Http" / "Requests" / "WorkflowAppRuntimeCreateRequest.cs"
+    ).read_text(encoding="utf-8")
+    select_text = (
+        SDK_ROOT
+        / "Http"
+        / "Requests"
+        / "WorkflowAppRuntimeSelectVersionRequest.cs"
+    ).read_text(encoding="utf-8")
+    runtime_response_text = (
+        SDK_ROOT / "Http" / "Responses" / "WorkflowAppRuntimeResponse.cs"
+    ).read_text(encoding="utf-8")
+    run_response_text = (
+        SDK_ROOT / "Http" / "Responses" / "WorkflowRunResponse.cs"
+    ).read_text(encoding="utf-8")
+    client_text = (SDK_ROOT / "Http" / "AMVisionClient.Runtime.cs").read_text(
+        encoding="utf-8"
+    )
+    harness_project_text = (
+        ROOT
+        / "sdks"
+        / "dotnet"
+        / "tests"
+        / "Amvar.Vision.ContractTests"
+        / "Amvar.Vision.ContractTests.vs2019.net472.csproj"
+    ).read_text(encoding="utf-8")
+
+    assert 'JsonProperty("workflow_app_version_id")' in request_text
+    assert 'JsonProperty("expected_generation")' in select_text
+    assert 'JsonProperty("active_revision_id")' in runtime_response_text
+    assert 'JsonProperty("desired_revision_id")' in runtime_response_text
+    assert 'JsonProperty("revision_generation")' in runtime_response_text
+    assert 'JsonProperty("worker_instance_id")' in runtime_response_text
+    assert 'JsonProperty("loaded_snapshot_fingerprint")' in runtime_response_text
+    assert "WorkflowRuntimeRevisionResponse" in runtime_response_text
+    assert 'JsonProperty("workflow_runtime_revision_id")' in run_response_text
+    assert 'JsonProperty("workflow_app_version_id")' in run_response_text
+    assert 'JsonProperty("runtime_generation")' in run_response_text
+    assert 'JsonProperty("snapshot_fingerprint")' in run_response_text
+    assert 'JsonProperty("worker_instance_id")' in run_response_text
+    assert "SelectWorkflowAppRuntimeVersionResponseAsync" in client_text
+    assert "ListWorkflowRuntimeRevisionResponsesAsync" in client_text
+    assert '<Project ToolsVersion="15.0"' in harness_project_text
+    assert "<TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>" in harness_project_text
+    assert "PackageReference" not in harness_project_text
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="net472 可执行契约测试需要 Windows .NET Framework 运行时",
+)
+def test_dotnet_workflow_version_json_contracts_compile_and_run() -> None:
+    """真实编译 SDK，并验证版本请求、响应和 409 details 的 JSON 行为。"""
+
+    dotnet = shutil.which("dotnet")
+    if dotnet is None:
+        pytest.skip("未安装 dotnet/MSBuild，无法编译 net472 SDK 契约测试")
+
+    project = (
+        ROOT
+        / "sdks"
+        / "dotnet"
+        / "tests"
+        / "Amvar.Vision.ContractTests"
+        / "Amvar.Vision.ContractTests.vs2019.net472.csproj"
+    )
+    build = subprocess.run(
+        [
+            dotnet,
+            "msbuild",
+            str(project),
+            "/t:Rebuild",
+            "/p:Configuration=Release",
+            "/p:TreatWarningsAsErrors=true",
+            "/v:minimal",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+        check=False,
+    )
+    assert build.returncode == 0, build.stdout + build.stderr
+
+    executable = (
+        project.parent
+        / "bin"
+        / "Release"
+        / "net472"
+        / "Amvar.Vision.ContractTests.exe"
+    )
+    run = subprocess.run(
+        [str(executable)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "Workflow App version JSON contracts passed." in run.stdout

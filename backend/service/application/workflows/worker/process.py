@@ -8,35 +8,54 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any
 import multiprocessing
 
+from backend.contracts.workflows.workflow_graph import (
+    FlowApplication,
+    WorkflowGraphTemplate,
+)
 from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.local_buffers import LocalBufferBrokerClient, LocalBufferBrokerEventChannel
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
-from backend.service.application.workflows.service_runtime.lazy_supervisor import LazyDeploymentProcessSupervisor
+from backend.service.application.local_buffers import (
+    LocalBufferBrokerClient,
+    LocalBufferBrokerEventChannel,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.service_runtime.lazy_supervisor import (
+    LazyDeploymentProcessSupervisor,
+)
 from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
-    build_snapshot_fingerprint,
 )
-from backend.service.application.workflows.runtime_registry_loader import WorkflowNodeRuntimeRegistryLoader
-from backend.service.application.workflows.process_threads import configure_workflow_process_threads
+from backend.service.application.workflows.app_version_service import (
+    compute_workflow_app_content_fingerprint,
+)
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
+from backend.service.application.workflows.process_threads import (
+    configure_workflow_process_threads,
+)
 from backend.service.application.workflows.model_sessions import (
     WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
     WorkflowModelSessionManager,
 )
 from backend.service.application.workflows.worker.health import (
     build_runtime_health_summary,
-    build_runtime_instance_id,
     build_runtime_state_message,
     now_isoformat,
     require_payload_dict,
     require_payload_str,
+    read_optional_int,
     read_optional_str,
 )
-from backend.service.application.workflows.worker.heartbeat import run_workflow_runtime_heartbeat_loop
+from backend.service.application.workflows.worker.heartbeat import (
+    run_workflow_runtime_heartbeat_loop,
+)
 from backend.service.application.workflows.worker.messages import (
     build_worker_error_message,
     read_heartbeat_interval_seconds,
@@ -46,7 +65,9 @@ from backend.service.application.workflows.worker.messages import (
     serialize_node_records,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.settings import BackendServiceSettings
 
 if TYPE_CHECKING:
@@ -63,7 +84,8 @@ def run_workflow_runtime_worker_process(
     request_queue: Queue[Any],
     response_queue: Queue[Any],
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
-    published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel | None = None,
+    published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel
+    | None = None,
 ) -> None:
     """workflow runtime worker 子进程入口。"""
 
@@ -75,12 +97,18 @@ def run_workflow_runtime_worker_process(
     storage_image_cache: ExecutionImageRegistry | None = None
     try:
         settings = BackendServiceSettings.model_validate(settings_payload)
-        configure_workflow_process_threads(settings.workflow_runtime.operator_thread_count)
+        configure_workflow_process_threads(
+            settings.workflow_runtime.operator_thread_count
+        )
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
         queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
-        local_buffer_reader = build_local_buffer_reader(local_buffer_broker_event_channel)
-        published_inference_gateway = build_published_inference_gateway(published_inference_gateway_event_channel)
+        local_buffer_reader = build_local_buffer_reader(
+            local_buffer_broker_event_channel
+        )
+        published_inference_gateway = build_published_inference_gateway(
+            published_inference_gateway_event_channel
+        )
         node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
         node_pack_loader.refresh()
         node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
@@ -91,9 +119,7 @@ def run_workflow_runtime_worker_process(
         runtime_registry_loader.refresh()
         model_session_manager = WorkflowModelSessionManager(
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
-            max_parallel_loads=(
-                settings.workflow_runtime.model_startup_parallelism
-            ),
+            max_parallel_loads=(settings.workflow_runtime.model_startup_parallelism),
         )
         storage_image_cache = ExecutionImageRegistry(
             decoded_cache_max_entries=(
@@ -107,13 +133,17 @@ def run_workflow_runtime_worker_process(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="sync",
             settings=settings.deployment_process_supervisor,
-            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
+            local_buffer_broker_event_channel=local_buffer_reader.channel
+            if local_buffer_reader is not None
+            else None,
         )
         async_supervisor = LazyDeploymentProcessSupervisor(
             dataset_storage_root_dir=str(dataset_storage.root_dir),
             runtime_mode="async",
             settings=settings.deployment_process_supervisor,
-            local_buffer_broker_event_channel=local_buffer_reader.channel if local_buffer_reader is not None else None,
+            local_buffer_broker_event_channel=local_buffer_reader.channel
+            if local_buffer_reader is not None
+            else None,
         )
         runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
@@ -135,15 +165,54 @@ def run_workflow_runtime_worker_process(
             workflow_model_session_manager=model_session_manager,
             workflow_storage_image_cache=storage_image_cache,
         )
-        workflow_runtime_id = require_payload_str(runtime_payload, "workflow_runtime_id")
-        application_id = require_payload_str(runtime_payload, "application_id")
-        application_snapshot_object_key = require_payload_str(runtime_payload, "application_snapshot_object_key")
-        template_snapshot_object_key = require_payload_str(runtime_payload, "template_snapshot_object_key")
-        snapshot_fingerprint = build_snapshot_fingerprint(
-            dataset_storage=dataset_storage,
-            application_snapshot_object_key=application_snapshot_object_key,
-            template_snapshot_object_key=template_snapshot_object_key,
+        workflow_runtime_id = require_payload_str(
+            runtime_payload, "workflow_runtime_id"
         )
+        workflow_runtime_revision_id = require_payload_str(
+            runtime_payload,
+            "workflow_runtime_revision_id",
+        )
+        runtime_generation = read_optional_int(runtime_payload, "runtime_generation")
+        if runtime_generation is None or runtime_generation < 0:
+            raise InvalidRequestError("workflow runtime worker 缺少有效 generation")
+        expected_snapshot_fingerprint = read_optional_str(
+            runtime_payload,
+            "expected_snapshot_fingerprint",
+        )
+        runtime_instance_id = require_payload_str(
+            runtime_payload,
+            "worker_instance_id",
+        )
+        application_id = require_payload_str(runtime_payload, "application_id")
+        application_snapshot_object_key = require_payload_str(
+            runtime_payload, "application_snapshot_object_key"
+        )
+        template_snapshot_object_key = require_payload_str(
+            runtime_payload, "template_snapshot_object_key"
+        )
+        snapshot_application = FlowApplication.model_validate(
+            dataset_storage.read_json(application_snapshot_object_key)
+        )
+        snapshot_template = WorkflowGraphTemplate.model_validate(
+            dataset_storage.read_json(template_snapshot_object_key)
+        )
+        snapshot_fingerprint = compute_workflow_app_content_fingerprint(
+            application=snapshot_application,
+            template=snapshot_template,
+            node_catalog_registry=node_catalog_registry,
+        )
+        if (
+            expected_snapshot_fingerprint is not None
+            and snapshot_fingerprint != expected_snapshot_fingerprint
+        ):
+            raise InvalidRequestError(
+                "workflow runtime worker 加载的 snapshot 指纹不匹配",
+                details={
+                    "expected": expected_snapshot_fingerprint,
+                    "actual": snapshot_fingerprint,
+                },
+            )
+        expected_snapshot_fingerprint = snapshot_fingerprint
         # snapshot 在 runtime worker 生命周期内不可变，所属 project 只需在启动时读取一次。
         # 避免每次 Workflow Run 都重复读取、解析 application snapshot。
         snapshot_project_id = read_project_id_from_snapshot(
@@ -177,7 +246,6 @@ def run_workflow_runtime_worker_process(
             )
         )
         worker_started_at = now_isoformat()
-        runtime_instance_id = build_runtime_instance_id(workflow_runtime_id)
         current_observed_state = "running"
         current_last_error: str | None = None
         current_run_id: str | None = None
@@ -195,23 +263,38 @@ def run_workflow_runtime_worker_process(
                 storage_image_cache.build_decoded_cache_summary(),
             )
 
-        def build_state_message(*, message_type: str, request_id: str | None = None) -> dict[str, object]:
+        def attach_worker_identity(payload: dict[str, object]) -> dict[str, object]:
+            """给执行响应附加不可变的 worker revision 与 epoch 身份。"""
+
+            return {
+                **payload,
+                "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                "runtime_generation": runtime_generation,
+                "snapshot_fingerprint": snapshot_fingerprint,
+                "worker_instance_id": runtime_instance_id,
+            }
+
+        def build_state_message(
+            *, message_type: str, request_id: str | None = None
+        ) -> dict[str, object]:
             """按当前 worker 共享状态构造状态消息。"""
 
             with state_lock:
-                return build_runtime_state_message(
-                    workflow_runtime_id=workflow_runtime_id,
-                    observed_state=current_observed_state,
-                    instance_id=runtime_instance_id,
-                    process_id=multiprocessing.current_process().pid,
-                    current_run_id=current_run_id,
-                    started_at=worker_started_at,
-                    heartbeat_at=now_isoformat(),
-                    loaded_snapshot_fingerprint=snapshot_fingerprint,
-                    last_error=current_last_error,
-                    health_summary=build_current_health_summary(),
-                    message_type=message_type,
-                    request_id=request_id,
+                return attach_worker_identity(
+                    build_runtime_state_message(
+                        workflow_runtime_id=workflow_runtime_id,
+                        observed_state=current_observed_state,
+                        instance_id=runtime_instance_id,
+                        process_id=multiprocessing.current_process().pid,
+                        current_run_id=current_run_id,
+                        started_at=worker_started_at,
+                        heartbeat_at=now_isoformat(),
+                        loaded_snapshot_fingerprint=snapshot_fingerprint,
+                        last_error=current_last_error,
+                        health_summary=build_current_health_summary(),
+                        message_type=message_type,
+                        request_id=request_id,
+                    )
                 )
 
         heartbeat_thread = Thread(
@@ -232,40 +315,88 @@ def run_workflow_runtime_worker_process(
             message_type = read_message_type(command)
             message_id = read_optional_str(command, "message_id")
             if message_type == "health-check":
-                response_queue.put(build_state_message(message_type="runtime-state", request_id=message_id))
+                response_queue.put(
+                    build_state_message(
+                        message_type="runtime-state", request_id=message_id
+                    )
+                )
                 continue
             if message_type == "stop-runtime":
                 with state_lock:
                     current_observed_state = "stopped"
                     current_run_id = None
-                response_queue.put(build_state_message(message_type="runtime-state", request_id=message_id))
+                response_queue.put(
+                    build_state_message(
+                        message_type="runtime-state", request_id=message_id
+                    )
+                )
                 break
             if message_type != "invoke-run":
                 response_queue.put(
-                    build_worker_error_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        workflow_run_id=None,
-                        request_id=message_id,
-                        error_message="workflow runtime worker 收到未支持的消息类型",
-                        error_details={"message_type": message_type},
-                        state="failed",
-                        instance_id=runtime_instance_id,
-                        current_run_id=current_run_id,
-                        started_at=worker_started_at,
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        health_summary=build_current_health_summary(),
+                    attach_worker_identity(
+                        build_worker_error_message(
+                            workflow_runtime_id=workflow_runtime_id,
+                            workflow_run_id=None,
+                            request_id=message_id,
+                            error_message="workflow runtime worker 收到未支持的消息类型",
+                            error_details={"message_type": message_type},
+                            state="failed",
+                            instance_id=runtime_instance_id,
+                            current_run_id=current_run_id,
+                            started_at=worker_started_at,
+                            loaded_snapshot_fingerprint=snapshot_fingerprint,
+                            health_summary=build_current_health_summary(),
+                        )
                     )
                 )
                 continue
 
             workflow_run_id = require_payload_str(command, "workflow_run_id")
+            command_identity = (
+                read_optional_str(command, "workflow_runtime_revision_id"),
+                read_optional_int(command, "runtime_generation"),
+                read_optional_str(command, "expected_snapshot_fingerprint"),
+                read_optional_str(command, "worker_instance_id"),
+            )
+            expected_command_identity = (
+                workflow_runtime_revision_id,
+                runtime_generation,
+                snapshot_fingerprint,
+                runtime_instance_id,
+            )
+            if command_identity != expected_command_identity:
+                response_queue.put(
+                    attach_worker_identity(
+                        build_worker_error_message(
+                            workflow_runtime_id=workflow_runtime_id,
+                            workflow_run_id=workflow_run_id,
+                            request_id=message_id,
+                            error_message=(
+                                "workflow runtime worker 拒绝执行来源不匹配的请求"
+                            ),
+                            error_details={
+                                "expected_identity": list(expected_command_identity),
+                                "actual_identity": list(command_identity),
+                            },
+                            state="failed",
+                            instance_id=runtime_instance_id,
+                            current_run_id=current_run_id,
+                            started_at=worker_started_at,
+                            loaded_snapshot_fingerprint=snapshot_fingerprint,
+                            observed_state=current_observed_state,
+                            worker_last_error=current_last_error,
+                            health_summary=build_current_health_summary(),
+                        )
+                    )
+                )
+                continue
             requested_timeout_seconds = read_timeout_seconds(command)
             input_bindings = require_payload_dict(command, "input_bindings")
             execution_metadata = require_payload_dict(command, "execution_metadata")
             execution_metadata.setdefault("workflow_run_id", workflow_run_id)
-            execution_metadata[
-                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
-            ] = model_session_scope_id
+            execution_metadata[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY] = (
+                model_session_scope_id
+            )
             with state_lock:
                 current_run_id = workflow_run_id
             try:
@@ -286,38 +417,42 @@ def run_workflow_runtime_worker_process(
                     current_last_error = None
                     current_run_id = None
                 response_queue.put(
-                    {
-                        "message_type": "run-result",
-                        "request_id": message_id,
-                        "workflow_runtime_id": workflow_runtime_id,
-                        "workflow_run_id": workflow_run_id,
-                        "state": "succeeded",
-                        "outputs": dict(execution_result.outputs),
-                        "template_outputs": dict(execution_result.template_outputs),
-                        "node_records": [
-                            dict(item)
-                            for item in serialize_node_records(
-                                execution_result.node_records,
-                                retain_payloads=_should_return_full_node_records(execution_metadata),
-                            )
-                        ],
-                        "timings": {"worker_execute_ms": worker_execute_ms},
-                        "error_message": None,
-                        "worker_state": {
-                            "observed_state": current_observed_state,
-                            "instance_id": runtime_instance_id,
-                            "process_id": multiprocessing.current_process().pid,
-                            "current_run_id": None,
-                            "started_at": worker_started_at,
-                            "heartbeat_at": now_isoformat(),
-                            "loaded_snapshot_fingerprint": snapshot_fingerprint,
-                            "last_error": None,
-                            "health_summary": {
-                                **build_current_health_summary(),
-                                "last_requested_timeout_seconds": requested_timeout_seconds,
+                    attach_worker_identity(
+                        {
+                            "message_type": "run-result",
+                            "request_id": message_id,
+                            "workflow_runtime_id": workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                            "state": "succeeded",
+                            "outputs": dict(execution_result.outputs),
+                            "template_outputs": dict(execution_result.template_outputs),
+                            "node_records": [
+                                dict(item)
+                                for item in serialize_node_records(
+                                    execution_result.node_records,
+                                    retain_payloads=_should_return_full_node_records(
+                                        execution_metadata
+                                    ),
+                                )
+                            ],
+                            "timings": {"worker_execute_ms": worker_execute_ms},
+                            "error_message": None,
+                            "worker_state": {
+                                "observed_state": current_observed_state,
+                                "instance_id": runtime_instance_id,
+                                "process_id": multiprocessing.current_process().pid,
+                                "current_run_id": None,
+                                "started_at": worker_started_at,
+                                "heartbeat_at": now_isoformat(),
+                                "loaded_snapshot_fingerprint": snapshot_fingerprint,
+                                "last_error": None,
+                                "health_summary": {
+                                    **build_current_health_summary(),
+                                    "last_requested_timeout_seconds": requested_timeout_seconds,
+                                },
                             },
-                        },
-                    }
+                        }
+                    )
                 )
             except InvalidRequestError as exc:
                 with state_lock:
@@ -325,20 +460,22 @@ def run_workflow_runtime_worker_process(
                     current_last_error = None
                     current_run_id = None
                 response_queue.put(
-                    build_worker_error_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        workflow_run_id=workflow_run_id,
-                        request_id=message_id,
-                        error_message=exc.message,
-                        error_details={"error_code": exc.code, **dict(exc.details)},
-                        state="failed",
-                        instance_id=runtime_instance_id,
-                        current_run_id=None,
-                        started_at=worker_started_at,
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        observed_state=current_observed_state,
-                        worker_last_error=current_last_error,
-                        health_summary=build_current_health_summary(),
+                    attach_worker_identity(
+                        build_worker_error_message(
+                            workflow_runtime_id=workflow_runtime_id,
+                            workflow_run_id=workflow_run_id,
+                            request_id=message_id,
+                            error_message=exc.message,
+                            error_details={"error_code": exc.code, **dict(exc.details)},
+                            state="failed",
+                            instance_id=runtime_instance_id,
+                            current_run_id=None,
+                            started_at=worker_started_at,
+                            loaded_snapshot_fingerprint=snapshot_fingerprint,
+                            observed_state=current_observed_state,
+                            worker_last_error=current_last_error,
+                            health_summary=build_current_health_summary(),
+                        )
                     )
                 )
             except ServiceError as exc:
@@ -349,20 +486,22 @@ def run_workflow_runtime_worker_process(
                     current_last_error = None
                     current_run_id = None
                 response_queue.put(
-                    build_worker_error_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        workflow_run_id=workflow_run_id,
-                        request_id=message_id,
-                        error_message=exc.message,
-                        error_details={"error_code": exc.code, **dict(exc.details)},
-                        state="failed",
-                        instance_id=runtime_instance_id,
-                        current_run_id=None,
-                        started_at=worker_started_at,
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        observed_state=current_observed_state,
-                        worker_last_error=current_last_error,
-                        health_summary=build_current_health_summary(),
+                    attach_worker_identity(
+                        build_worker_error_message(
+                            workflow_runtime_id=workflow_runtime_id,
+                            workflow_run_id=workflow_run_id,
+                            request_id=message_id,
+                            error_message=exc.message,
+                            error_details={"error_code": exc.code, **dict(exc.details)},
+                            state="failed",
+                            instance_id=runtime_instance_id,
+                            current_run_id=None,
+                            started_at=worker_started_at,
+                            loaded_snapshot_fingerprint=snapshot_fingerprint,
+                            observed_state=current_observed_state,
+                            worker_last_error=current_last_error,
+                            health_summary=build_current_health_summary(),
+                        )
                     )
                 )
             except Exception as exc:  # pragma: no cover - 子进程兜底错误封装
@@ -371,21 +510,23 @@ def run_workflow_runtime_worker_process(
                     current_last_error = "workflow runtime worker 执行失败"
                     current_run_id = None
                 response_queue.put(
-                    build_worker_error_message(
-                        workflow_runtime_id=workflow_runtime_id,
-                        workflow_run_id=workflow_run_id,
-                        request_id=message_id,
-                        error_message="workflow runtime worker 执行失败",
-                        error_details={
-                            "error_type": type(exc).__name__,
-                            "error_message": str(exc) or type(exc).__name__,
-                        },
-                        state="failed",
-                        instance_id=runtime_instance_id,
-                        current_run_id=None,
-                        started_at=worker_started_at,
-                        loaded_snapshot_fingerprint=snapshot_fingerprint,
-                        health_summary=build_current_health_summary(),
+                    attach_worker_identity(
+                        build_worker_error_message(
+                            workflow_runtime_id=workflow_runtime_id,
+                            workflow_run_id=workflow_run_id,
+                            request_id=message_id,
+                            error_message="workflow runtime worker 执行失败",
+                            error_details={
+                                "error_type": type(exc).__name__,
+                                "error_message": str(exc) or type(exc).__name__,
+                            },
+                            state="failed",
+                            instance_id=runtime_instance_id,
+                            current_run_id=None,
+                            started_at=worker_started_at,
+                            loaded_snapshot_fingerprint=snapshot_fingerprint,
+                            health_summary=build_current_health_summary(),
+                        )
                     )
                 )
     finally:
@@ -433,7 +574,9 @@ def build_published_inference_gateway(
     return PublishedInferenceGatewayClient(channel)
 
 
-def close_published_inference_gateway_channel(channel: PublishedInferenceGatewayEventChannel | None) -> None:
+def close_published_inference_gateway_channel(
+    channel: PublishedInferenceGatewayEventChannel | None,
+) -> None:
     """关闭父进程持有的 gateway 事件队列。"""
 
     if channel is None:
@@ -443,7 +586,9 @@ def close_published_inference_gateway_channel(channel: PublishedInferenceGateway
         queue.join_thread()
 
 
-def close_local_buffer_broker_channel(channel: LocalBufferBrokerEventChannel | None) -> None:
+def close_local_buffer_broker_channel(
+    channel: LocalBufferBrokerEventChannel | None,
+) -> None:
     """关闭父进程持有的 LocalBufferBroker client channel。"""
 
     if channel is None:

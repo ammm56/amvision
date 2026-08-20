@@ -37,11 +37,15 @@ def request_training_control(
     queue_backend: LocalFileQueueBackend,
     task_id: str,
     action: str,
+    visible_project_ids: tuple[str, ...],
 ) -> TrainingTaskDetailResponse:
     """执行训练控制操作（save / pause / terminate）。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+    )
     task = detail.task
     require_non_detection_training_task(task)
     service = build_service_for_task(
@@ -82,11 +86,15 @@ def resume_training_task(
     dataset_storage: LocalDatasetStorage,
     queue_backend: LocalFileQueueBackend,
     task_id: str,
+    visible_project_ids: tuple[str, ...],
 ) -> TrainingTaskSubmissionResponse:
     """把存在完整 latest checkpoint 的 paused/failed 训练任务重新入队。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+    )
     task = detail.task
     require_non_detection_training_task(task)
     if task.state not in {"paused", "failed"}:

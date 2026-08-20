@@ -14,6 +14,7 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.models.postprocess.detection_operation_rules import (
     build_detection_deployment_runtime_summary,
 )
@@ -163,6 +164,7 @@ class SqlAlchemyDeploymentInstanceService:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
+        self.project_mutations = ProjectMutationAdmissionService(session_factory)
 
     def create_deployment_instance(
         self,
@@ -208,18 +210,23 @@ class SqlAlchemyDeploymentInstanceService:
                 runtime_target=runtime_target,
             ),
         )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.deployments.save_deployment_instance(deployment_instance)
-            for runtime_mode in DEPLOYMENT_RUNTIME_MODES:
-                unit_of_work.deployment_runtime_states.save_deployment_runtime_state(
-                    DeploymentRuntimeState(
-                        deployment_instance_id=deployment_instance.deployment_instance_id,
-                        runtime_mode=runtime_mode,
-                        created_at=now,
-                        updated_at=now,
+        with self.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="deployment-create",
+            resource_id=deployment_instance.deployment_instance_id,
+        ):
+            with self._open_unit_of_work() as unit_of_work:
+                unit_of_work.deployments.save_deployment_instance(deployment_instance)
+                for runtime_mode in DEPLOYMENT_RUNTIME_MODES:
+                    unit_of_work.deployment_runtime_states.save_deployment_runtime_state(
+                        DeploymentRuntimeState(
+                            deployment_instance_id=deployment_instance.deployment_instance_id,
+                            runtime_mode=runtime_mode,
+                            created_at=now,
+                            updated_at=now,
+                        )
                     )
-                )
-            unit_of_work.commit()
+                unit_of_work.commit()
 
         return self._build_view(deployment_instance, runtime_target)
 
@@ -229,6 +236,31 @@ class SqlAlchemyDeploymentInstanceService:
         """按 id 读取 DeploymentInstance。"""
 
         deployment_instance = self._require_deployment_instance(deployment_instance_id)
+        return self._build_view(
+            deployment_instance,
+            self._resolve_target_from_instance(deployment_instance),
+        )
+
+    def get_visible_deployment_instance(
+        self,
+        deployment_instance_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> DeploymentInstanceView:
+        """在 Repository 查询阶段按 Project 可见范围读取部署实例。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            deployment_instance = (
+                unit_of_work.deployments.get_visible_deployment_instance(
+                    deployment_instance_id,
+                    visible_project_ids,
+                )
+            )
+        if deployment_instance is None:
+            raise ResourceNotFoundError(
+                "找不到指定的 DeploymentInstance",
+                details={"deployment_instance_id": deployment_instance_id},
+            )
         return self._build_view(
             deployment_instance,
             self._resolve_target_from_instance(deployment_instance),

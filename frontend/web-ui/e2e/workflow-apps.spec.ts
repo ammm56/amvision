@@ -205,3 +205,202 @@ test('workflow apps 页面完成鉴权、加载、健康刷新和手动刷新', 
   expect(consoleErrors).toEqual([])
   expect(pageErrors).toEqual([])
 })
+
+test('workflow app 详情使用不可变版本创建 Runtime 并以 generation CAS 切换版本', async ({ page }) => {
+  const versionV1 = {
+    format_id: 'amvision.workflow-app-version.v1',
+    workflow_app_version_id: 'workflow-app-version-v1',
+    project_id: 'project-1',
+    application_id: 'app-e2e',
+    version_number: 1,
+    display_version: 'v1',
+    release_notes: 'initial',
+    application_snapshot_object_key: 'workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1/application.snapshot.json',
+    template_snapshot_object_key: 'workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1/template.snapshot.json',
+    contract_snapshot_object_key: 'workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1/contract.snapshot.json',
+    dependency_manifest_object_key: 'workflows/projects/project-1/applications/app-e2e/versions/workflow-app-version-v1/dependencies.json',
+    content_fingerprint: 'sha256:v1',
+    contract_fingerprint: 'sha256:contract',
+    state: 'published',
+    created_at: '2026-08-18T01:00:00+08:00',
+    completed_at: '2026-08-18T01:00:01+08:00',
+    created_by: 'user-e2e',
+    error: null,
+  }
+  const versionV2 = {
+    ...versionV1,
+    workflow_app_version_id: 'workflow-app-version-v2',
+    version_number: 2,
+    display_version: 'v2',
+    release_notes: 'compatible update',
+    content_fingerprint: 'sha256:v2',
+    created_at: '2026-08-19T01:00:00+08:00',
+    completed_at: '2026-08-19T01:00:01+08:00',
+  }
+  const applicationDocument = {
+    ...application,
+    valid: true,
+    draft_fingerprint: 'sha256:draft-v2',
+    application: {
+      format_id: 'amvision.flow-application.v1',
+      application_id: 'app-e2e',
+      display_name: 'E2E Inspection App',
+      description: 'Playwright workflow version gate',
+      runtime_mode: 'python-json-workflow',
+      template_ref: {
+        template_id: 'template-e2e',
+        template_version: '1.0.0',
+        source_kind: 'json-file',
+        metadata: {},
+      },
+      bindings: [],
+      metadata: {},
+    },
+  }
+  const templateDocument = {
+    valid: true,
+    project_id: 'project-1',
+    object_key: 'workflows/projects/project-1/templates/template-e2e/versions/1.0.0/template.json',
+    template_id: 'template-e2e',
+    template_version: '1.0.0',
+    node_count: 0,
+    edge_count: 0,
+    template_input_ids: [],
+    template_output_ids: [],
+    referenced_node_type_ids: [],
+    created_at: '2026-08-18T01:00:00+08:00',
+    updated_at: '2026-08-19T01:00:00+08:00',
+    template: {
+      format_id: 'amvision.workflow-graph-template.v1',
+      template_id: 'template-e2e',
+      template_version: '1.0.0',
+      display_name: 'E2E graph',
+      description: '',
+      nodes: [],
+      edges: [],
+      template_inputs: [],
+      template_outputs: [],
+      groups: [],
+      metadata: {},
+    },
+  }
+  let runtimeState = {
+    ...runtime,
+    desired_state: 'stopped',
+    observed_state: 'stopped',
+    active_revision_id: 'workflow-runtime-revision-v1',
+    desired_revision_id: 'workflow-runtime-revision-v1',
+    revision_generation: 1,
+    heartbeat_at: null,
+    worker_process_id: null,
+  }
+  let revisions = [
+    {
+      format_id: 'amvision.workflow-runtime-revision.v1',
+      workflow_runtime_revision_id: 'workflow-runtime-revision-v1',
+      workflow_runtime_id: 'runtime-e2e',
+      generation: 1,
+      workflow_app_version_id: 'workflow-app-version-v1',
+      execution_policy_snapshot_object_key: null,
+      expected_snapshot_fingerprint: 'sha256:v1',
+      state: 'active',
+      created_at: '2026-08-18T01:00:00+08:00',
+      activated_at: '2026-08-18T01:00:01+08:00',
+      failed_at: null,
+      error: null,
+      created_by: 'user-e2e',
+    },
+  ]
+  const selectVersionBodies: Record<string, unknown>[] = []
+  const createRuntimeBodies: Record<string, unknown>[] = []
+
+  await page.addInitScript(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    localStorage.setItem('amvision.web-ui.locale', 'zh-CN')
+  })
+  await page.route(`${API_ORIGIN}${API_PREFIX}/**`, async (route) => {
+    const request = route.request()
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: responseHeaders() })
+      return
+    }
+    const path = new URL(request.url()).pathname.slice(API_PREFIX.length)
+    if (path === '/system/bootstrap') return fulfillJson(route, bootstrap)
+    if (path === '/system/me') return fulfillJson(route, currentUser)
+    if (path === '/projects') return fulfillJson(route, bootstrap.visible_projects)
+    if (path === '/workflows/projects/project-1/applications/app-e2e') return fulfillJson(route, applicationDocument)
+    if (path === '/workflows/projects/project-1/applications/app-e2e/versions') return fulfillJson(route, [versionV2, versionV1])
+    if (path === '/workflows/projects/project-1/templates/template-e2e/versions/1.0.0') return fulfillJson(route, templateDocument)
+    if (path === '/workflows/trigger-sources') return fulfillJson(route, [])
+    if (path === '/workflows/app-runtimes' && request.method() === 'GET') return fulfillJson(route, [runtimeState])
+    if (path === '/workflows/app-runtimes/runtime-e2e/health') return fulfillJson(route, runtimeState)
+    if (path === '/workflows/app-runtimes/runtime-e2e/revisions') return fulfillJson(route, revisions)
+    if (path === '/workflows/app-runtimes/runtime-e2e/select-version') {
+      const body = request.postDataJSON() as Record<string, unknown>
+      selectVersionBodies.push(body)
+      const nextRevision = {
+        ...revisions[0],
+        workflow_runtime_revision_id: 'workflow-runtime-revision-v2',
+        generation: 2,
+        workflow_app_version_id: 'workflow-app-version-v2',
+        expected_snapshot_fingerprint: 'sha256:v2',
+        state: 'staged',
+        activated_at: null,
+        created_at: '2026-08-19T02:00:00+08:00',
+      }
+      revisions = [nextRevision, ...revisions]
+      runtimeState = {
+        ...runtimeState,
+        desired_revision_id: nextRevision.workflow_runtime_revision_id,
+        revision_generation: 2,
+      }
+      return fulfillJson(route, runtimeState)
+    }
+    if (path === '/workflows/app-runtimes' && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>
+      createRuntimeBodies.push(body)
+      return fulfillJson(route, {
+        ...runtimeState,
+        workflow_runtime_id: 'runtime-created-from-v2',
+        active_revision_id: null,
+        desired_revision_id: 'workflow-runtime-revision-created',
+        revision_generation: 1,
+      })
+    }
+    if (path === '/workflows/app-runtimes/runtime-created-from-v2/revisions') {
+      return fulfillJson(route, [{ ...revisions[0], workflow_runtime_id: 'runtime-created-from-v2' }])
+    }
+    await route.fulfill({
+      status: 404,
+      headers: responseHeaders(),
+      body: JSON.stringify({ error: { code: 'e2e_mock_missing', message: path } }),
+    })
+  })
+
+  await page.goto('/workflows/apps/app-e2e')
+
+  await expect(page.getByRole('heading', { level: 2, name: '发布版本' })).toBeVisible()
+  await expect(page.getByText('v2', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('generation 1', { exact: true })).toBeVisible()
+
+  await page.locator('.runtime-version-switch .ui-select__button').click()
+  await page.getByRole('option', { name: /v2 \(#2\)/ }).click()
+  await page.getByRole('button', { name: '选择此版本' }).click()
+  await expect.poll(() => selectVersionBodies.length).toBe(1)
+  expect(selectVersionBodies[0]).toEqual({
+    workflow_app_version_id: 'workflow-app-version-v2',
+    expected_generation: 1,
+    allow_breaking_contract: false,
+    breaking_change_reason: null,
+  })
+  await expect(page.getByText('generation 2', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '创建 runtime' }).click()
+  await expect.poll(() => createRuntimeBodies.length).toBe(1)
+  expect(createRuntimeBodies[0]).toMatchObject({
+    project_id: 'project-1',
+    application_id: null,
+    workflow_app_version_id: 'workflow-app-version-v2',
+  })
+})

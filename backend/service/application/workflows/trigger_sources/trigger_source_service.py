@@ -10,19 +10,41 @@ from typing import TYPE_CHECKING
 
 from backend.service.application.errors import (
     InvalidRequestError,
+    ResourceConflictError,
     ResourceNotFoundError,
     ServiceConfigurationError,
     ServiceError,
 )
+from backend.service.application.workflows.app_version_service import (
+    WORKFLOW_APP_CONTRACT_FORMAT,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    build_workflow_lifecycle_resource_key,
+)
+from backend.service.application.workflows.trigger_sources.contract_mapping import (
+    find_unknown_result_binding,
+)
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
+)
+from backend.service.domain.workflows.workflow_runtime_records import (
+    WorkflowAppRuntime,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 if TYPE_CHECKING:
+    from backend.service.application.workflows.worker.manager import (
+        WorkflowRuntimeWorkerManager,
+    )
     from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
         TriggerSourceSupervisor,
+    )
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        LocalDatasetStorage,
     )
 
 
@@ -55,6 +77,16 @@ _ZEROMQ_PROCESS_CONFIG_KEYS = frozenset(
         "max_message_size_bytes",
     }
 )
+
+
+@dataclass(frozen=True)
+class _ValidatedRuntimeContract:
+    """记录本次 Trigger 映射校验固定的 Runtime version token。"""
+
+    workflow_runtime_revision_id: str
+    workflow_app_version_id: str
+    revision_generation: int
+    contract_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -110,16 +142,30 @@ class WorkflowTriggerSourceService:
         *,
         session_factory: SessionFactory,
         trigger_source_supervisor: "TriggerSourceSupervisor | None" = None,
+        dataset_storage: "LocalDatasetStorage | None" = None,
+        workflow_runtime_worker_manager: "WorkflowRuntimeWorkerManager | None" = None,
     ) -> None:
         """初始化 WorkflowTriggerSourceService。
 
         参数：
         - session_factory：数据库 SessionFactory。
         - trigger_source_supervisor：可选的 TriggerSource 运行期 supervisor。
+        - dataset_storage：版本化 Runtime contract snapshot 存储。
+        - workflow_runtime_worker_manager：与 Runtime 选版共享的生命周期锁管理器。
         """
 
         self.session_factory = session_factory
         self.trigger_source_supervisor = trigger_source_supervisor
+        self.dataset_storage = dataset_storage
+        self.workflow_runtime_worker_manager = workflow_runtime_worker_manager
+        self.application_lifecycle = (
+            WorkflowApplicationLifecycleService(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+            )
+            if dataset_storage is not None
+            else None
+        )
 
     def create_trigger_source(
         self,
@@ -130,70 +176,104 @@ class WorkflowTriggerSourceService:
         """创建一条 WorkflowTriggerSource。"""
 
         normalized_request = self._normalize_create_request(request)
+        with self._project_control_mutation(
+            project_id=normalized_request.project_id,
+            trigger_source_id=normalized_request.trigger_source_id,
+        ):
+            with self._runtime_lifecycle_guard(normalized_request.workflow_runtime_id):
+                return self._create_trigger_source_locked(
+                    normalized_request,
+                    created_by=created_by,
+                )
+
+    def _create_trigger_source_locked(
+        self,
+        request: WorkflowTriggerSourceCreateRequest,
+        *,
+        created_by: str | None,
+    ) -> WorkflowTriggerSource:
+        """在 Runtime 生命周期锁内创建 TriggerSource。"""
+
         with self._open_unit_of_work() as unit_of_work:
             existing_trigger_source = (
                 unit_of_work.workflow_trigger_sources.get_trigger_source(
-                    normalized_request.trigger_source_id
+                    request.trigger_source_id
                 )
             )
             if existing_trigger_source is not None:
                 raise InvalidRequestError(
                     "trigger_source_id 已存在",
-                    details={"trigger_source_id": normalized_request.trigger_source_id},
+                    details={"trigger_source_id": request.trigger_source_id},
                 )
             workflow_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
-                normalized_request.workflow_runtime_id
+                request.workflow_runtime_id
             )
             if workflow_runtime is None:
                 raise ResourceNotFoundError(
                     "绑定的 WorkflowAppRuntime 不存在",
-                    details={
-                        "workflow_runtime_id": normalized_request.workflow_runtime_id
-                    },
+                    details={"workflow_runtime_id": request.workflow_runtime_id},
                 )
-            if workflow_runtime.project_id != normalized_request.project_id:
+            if workflow_runtime.project_id != request.project_id:
                 raise InvalidRequestError(
                     "TriggerSource 与 WorkflowAppRuntime 不属于同一 Project",
                     details={
-                        "project_id": normalized_request.project_id,
+                        "project_id": request.project_id,
                         "workflow_runtime_project_id": workflow_runtime.project_id,
                     },
                 )
+            if request.enabled and workflow_runtime.observed_state != "running":
+                raise InvalidRequestError(
+                    "启用 TriggerSource 前必须先启动绑定的 WorkflowAppRuntime",
+                    details={
+                        "trigger_source_id": request.trigger_source_id,
+                        "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                        "observed_state": workflow_runtime.observed_state,
+                    },
+                )
+            validated_contract = self._validate_runtime_version_contract(
+                unit_of_work=unit_of_work,
+                workflow_runtime=workflow_runtime,
+                input_binding_mapping=request.input_binding_mapping or {},
+                result_mapping=request.result_mapping or {},
+                result_mode=request.result_mode,
+                require_active=request.enabled,
+            )
             self._validate_trigger_source_resource_binding(
                 unit_of_work=unit_of_work,
-                request=normalized_request,
+                request=request,
                 existing_trigger_source_id=None,
             )
 
             now = _now_isoformat()
-            desired_state = "running" if normalized_request.enabled else "stopped"
+            desired_state = "running" if request.enabled else "stopped"
             trigger_source = WorkflowTriggerSource(
-                trigger_source_id=normalized_request.trigger_source_id,
-                project_id=normalized_request.project_id,
-                display_name=normalized_request.display_name,
-                trigger_kind=normalized_request.trigger_kind,
-                workflow_runtime_id=normalized_request.workflow_runtime_id,
-                submit_mode=normalized_request.submit_mode,
-                enabled=normalized_request.enabled,
+                trigger_source_id=request.trigger_source_id,
+                project_id=request.project_id,
+                display_name=request.display_name,
+                trigger_kind=request.trigger_kind,
+                workflow_runtime_id=request.workflow_runtime_id,
+                submit_mode=request.submit_mode,
+                enabled=request.enabled,
                 desired_state=desired_state,
                 observed_state="stopped",
-                transport_config=dict(normalized_request.transport_config or {}),
-                match_rule=dict(normalized_request.match_rule or {}),
-                input_binding_mapping=dict(
-                    normalized_request.input_binding_mapping or {}
-                ),
-                result_mapping=dict(normalized_request.result_mapping or {}),
+                transport_config=dict(request.transport_config or {}),
+                match_rule=dict(request.match_rule or {}),
+                input_binding_mapping=dict(request.input_binding_mapping or {}),
+                result_mapping=dict(request.result_mapping or {}),
                 default_execution_metadata=dict(
-                    normalized_request.default_execution_metadata or {}
+                    request.default_execution_metadata or {}
                 ),
-                ack_policy=normalized_request.ack_policy,
-                result_mode=normalized_request.result_mode,
-                reply_timeout_seconds=normalized_request.reply_timeout_seconds,
-                debounce_window_ms=normalized_request.debounce_window_ms,
-                idempotency_key_path=normalized_request.idempotency_key_path,
+                ack_policy=request.ack_policy,
+                result_mode=request.result_mode,
+                reply_timeout_seconds=request.reply_timeout_seconds,
+                debounce_window_ms=request.debounce_window_ms,
+                idempotency_key_path=request.idempotency_key_path,
                 health_summary=_build_adapter_pending_health_summary(),
                 metadata=_with_resource_updated_by(
-                    dict(normalized_request.metadata or {}),
+                    _with_validated_runtime_contract(
+                        dict(request.metadata or {}),
+                        validated_contract,
+                    ),
                     created_by,
                 ),
                 created_at=now,
@@ -202,7 +282,7 @@ class WorkflowTriggerSourceService:
             )
             unit_of_work.workflow_trigger_sources.save_trigger_source(trigger_source)
             unit_of_work.commit()
-        if normalized_request.enabled:
+        if request.enabled:
             return self._start_trigger_source_if_supported(
                 trigger_source,
                 raise_on_error=True,
@@ -210,12 +290,27 @@ class WorkflowTriggerSourceService:
         return trigger_source
 
     def list_trigger_sources(
-        self, *, project_id: str
+        self,
+        *,
+        project_id: str,
+        workflow_runtime_id: str | None = None,
     ) -> tuple[WorkflowTriggerSource, ...]:
-        """按 Project id 列出 WorkflowTriggerSource。"""
+        """按 Project id 和可选 Runtime id 列出 WorkflowTriggerSource。"""
 
         normalized_project_id = _require_stripped_text(project_id, "project_id")
         with self._open_unit_of_work() as unit_of_work:
+            if workflow_runtime_id is not None:
+                normalized_runtime_id = _require_stripped_text(
+                    workflow_runtime_id,
+                    "workflow_runtime_id",
+                )
+                return tuple(
+                    item
+                    for item in unit_of_work.workflow_trigger_sources.list_trigger_sources_by_runtime(
+                        normalized_runtime_id
+                    )
+                    if item.project_id == normalized_project_id
+                )
             return unit_of_work.workflow_trigger_sources.list_trigger_sources(
                 normalized_project_id
             )
@@ -248,14 +343,33 @@ class WorkflowTriggerSourceService:
         normalized_trigger_source_id = _require_stripped_text(
             trigger_source_id, "trigger_source_id"
         )
+        trigger_source = self.get_trigger_source(normalized_trigger_source_id)
+        with self._project_control_mutation(
+            project_id=trigger_source.project_id,
+            trigger_source_id=trigger_source.trigger_source_id,
+        ):
+            with self._runtime_lifecycle_guard(trigger_source.workflow_runtime_id):
+                return self._enable_trigger_source_locked(
+                    normalized_trigger_source_id,
+                    updated_by=updated_by,
+                )
+
+    def _enable_trigger_source_locked(
+        self,
+        trigger_source_id: str,
+        *,
+        updated_by: str | None,
+    ) -> WorkflowTriggerSource:
+        """在 Runtime 生命周期锁内重新读取并启用 TriggerSource。"""
+
         with self._open_unit_of_work() as unit_of_work:
             trigger_source = unit_of_work.workflow_trigger_sources.get_trigger_source(
-                normalized_trigger_source_id
+                trigger_source_id
             )
             if trigger_source is None:
                 raise ResourceNotFoundError(
                     "请求的 WorkflowTriggerSource 不存在",
-                    details={"trigger_source_id": normalized_trigger_source_id},
+                    details={"trigger_source_id": trigger_source_id},
                 )
             workflow_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
                 trigger_source.workflow_runtime_id
@@ -269,11 +383,19 @@ class WorkflowTriggerSourceService:
                 raise InvalidRequestError(
                     "启用 TriggerSource 前必须先启动绑定的 WorkflowAppRuntime",
                     details={
-                        "trigger_source_id": normalized_trigger_source_id,
+                        "trigger_source_id": trigger_source_id,
                         "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
                         "observed_state": workflow_runtime.observed_state,
                     },
                 )
+            validated_contract = self._validate_runtime_version_contract(
+                unit_of_work=unit_of_work,
+                workflow_runtime=workflow_runtime,
+                input_binding_mapping=trigger_source.input_binding_mapping,
+                result_mapping=trigger_source.result_mapping,
+                result_mode=trigger_source.result_mode,
+                require_active=True,
+            )
             self._validate_trigger_source_resource_binding(
                 unit_of_work=unit_of_work,
                 request=WorkflowTriggerSourceCreateRequest(
@@ -309,7 +431,10 @@ class WorkflowTriggerSourceService:
                 health_summary=_build_adapter_pending_health_summary(),
                 updated_at=_now_isoformat(),
                 metadata=_with_resource_updated_by(
-                    dict(trigger_source.metadata),
+                    _with_validated_runtime_contract(
+                        dict(trigger_source.metadata),
+                        validated_contract,
+                    ),
                     updated_by,
                 ),
             )
@@ -331,14 +456,33 @@ class WorkflowTriggerSourceService:
         normalized_trigger_source_id = _require_stripped_text(
             trigger_source_id, "trigger_source_id"
         )
+        trigger_source = self.get_trigger_source(normalized_trigger_source_id)
+        with self._project_control_mutation(
+            project_id=trigger_source.project_id,
+            trigger_source_id=trigger_source.trigger_source_id,
+        ):
+            with self._runtime_lifecycle_guard(trigger_source.workflow_runtime_id):
+                return self._disable_trigger_source_locked(
+                    normalized_trigger_source_id,
+                    updated_by=updated_by,
+                )
+
+    def _disable_trigger_source_locked(
+        self,
+        trigger_source_id: str,
+        *,
+        updated_by: str | None,
+    ) -> WorkflowTriggerSource:
+        """在 Runtime 生命周期锁内停用 TriggerSource 及 adapter。"""
+
         with self._open_unit_of_work() as unit_of_work:
             trigger_source = unit_of_work.workflow_trigger_sources.get_trigger_source(
-                normalized_trigger_source_id
+                trigger_source_id
             )
             if trigger_source is None:
                 raise ResourceNotFoundError(
                     "请求的 WorkflowTriggerSource 不存在",
-                    details={"trigger_source_id": normalized_trigger_source_id},
+                    details={"trigger_source_id": trigger_source_id},
                 )
             updated_source = replace(
                 trigger_source,
@@ -366,23 +510,34 @@ class WorkflowTriggerSourceService:
         normalized_trigger_source_id = _require_stripped_text(
             trigger_source_id, "trigger_source_id"
         )
+        trigger_source = self.get_trigger_source(normalized_trigger_source_id)
+        with self._project_control_mutation(
+            project_id=trigger_source.project_id,
+            trigger_source_id=trigger_source.trigger_source_id,
+        ):
+            with self._runtime_lifecycle_guard(trigger_source.workflow_runtime_id):
+                self._delete_trigger_source_locked(normalized_trigger_source_id)
+
+    def _delete_trigger_source_locked(self, trigger_source_id: str) -> None:
+        """在 Runtime 生命周期锁内停止 adapter 并删除 TriggerSource。"""
+
         with self._open_unit_of_work() as unit_of_work:
             trigger_source = unit_of_work.workflow_trigger_sources.get_trigger_source(
-                normalized_trigger_source_id
+                trigger_source_id
             )
             if trigger_source is None:
                 raise ResourceNotFoundError(
                     "请求的 WorkflowTriggerSource 不存在",
-                    details={"trigger_source_id": normalized_trigger_source_id},
+                    details={"trigger_source_id": trigger_source_id},
                 )
             self._stop_trigger_source_runtime_if_supported(trigger_source)
             deleted = unit_of_work.workflow_trigger_sources.delete_trigger_source(
-                normalized_trigger_source_id
+                trigger_source_id
             )
             if not deleted:
                 raise ResourceNotFoundError(
                     "请求的 WorkflowTriggerSource 不存在",
-                    details={"trigger_source_id": normalized_trigger_source_id},
+                    details={"trigger_source_id": trigger_source_id},
                 )
             unit_of_work.commit()
 
@@ -426,10 +581,7 @@ class WorkflowTriggerSourceService:
             if self.trigger_source_supervisor is None:
                 skipped_count += 1
                 continue
-            updated_source = self._start_trigger_source_if_supported(
-                trigger_source,
-                raise_on_error=False,
-            )
+            updated_source = self._restore_enabled_trigger_source(trigger_source)
             if updated_source.observed_state == "running":
                 started_count += 1
             elif updated_source.observed_state == "failed":
@@ -441,6 +593,90 @@ class WorkflowTriggerSourceService:
             "skipped_count": skipped_count,
             "failed_count": failed_count,
         }
+
+    def _restore_enabled_trigger_source(
+        self,
+        trigger_source: WorkflowTriggerSource,
+    ) -> WorkflowTriggerSource:
+        """在恢复 adapter 前重新固定 active Runtime revision 并校验映射。"""
+
+        try:
+            with self._runtime_lifecycle_guard(trigger_source.workflow_runtime_id):
+                with self._open_unit_of_work() as unit_of_work:
+                    current = unit_of_work.workflow_trigger_sources.get_trigger_source(
+                        trigger_source.trigger_source_id
+                    )
+                    if current is None or not current.enabled:
+                        return trigger_source
+                    workflow_runtime = (
+                        unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                            current.workflow_runtime_id
+                        )
+                    )
+                    if workflow_runtime is None:
+                        raise ResourceNotFoundError(
+                            "绑定的 WorkflowAppRuntime 不存在",
+                            details={
+                                "workflow_runtime_id": current.workflow_runtime_id
+                            },
+                        )
+                    if workflow_runtime.desired_state != "running":
+                        raise ResourceConflictError(
+                            "恢复 TriggerSource 前绑定的 WorkflowAppRuntime 必须处于期望运行状态",
+                            details={
+                                "trigger_source_id": current.trigger_source_id,
+                                "workflow_runtime_id": (
+                                    workflow_runtime.workflow_runtime_id
+                                ),
+                                "desired_state": workflow_runtime.desired_state,
+                                "observed_state": workflow_runtime.observed_state,
+                            },
+                        )
+                    if workflow_runtime.observed_state == "failed":
+                        raise ResourceConflictError(
+                            "恢复 TriggerSource 前绑定的 WorkflowAppRuntime 不能处于失败状态",
+                            details={
+                                "trigger_source_id": current.trigger_source_id,
+                                "workflow_runtime_id": (
+                                    workflow_runtime.workflow_runtime_id
+                                ),
+                                "desired_state": workflow_runtime.desired_state,
+                                "observed_state": workflow_runtime.observed_state,
+                            },
+                        )
+                    require_active = workflow_runtime.observed_state == "running"
+                    validated_contract = self._validate_runtime_version_contract(
+                        unit_of_work=unit_of_work,
+                        workflow_runtime=workflow_runtime,
+                        input_binding_mapping=current.input_binding_mapping,
+                        result_mapping=current.result_mapping,
+                        result_mode=current.result_mode,
+                        require_active=require_active,
+                    )
+                    current = replace(
+                        current,
+                        metadata=_with_validated_runtime_contract(
+                            dict(current.metadata),
+                            validated_contract,
+                        ),
+                        updated_at=_now_isoformat(),
+                    )
+                return self._start_trigger_source_if_supported(
+                    current,
+                    raise_on_error=False,
+                )
+        except ServiceError as error:
+            return self._mark_trigger_source_failed(
+                trigger_source,
+                error_message=error.message,
+                error_details={"error_code": error.code, **dict(error.details)},
+            )
+        except Exception as error:
+            return self._mark_trigger_source_failed(
+                trigger_source,
+                error_message=error.__class__.__name__,
+                error_details={"error_type": error.__class__.__name__},
+            )
 
     def _normalize_create_request(
         self,
@@ -709,6 +945,183 @@ class WorkflowTriggerSourceService:
         finally:
             unit_of_work.close()
 
+    @contextmanager
+    def _project_control_mutation(
+        self,
+        *,
+        project_id: str,
+        trigger_source_id: str,
+    ) -> Iterator[None]:
+        """用持久 reserved claim 保护 Trigger 控制写。"""
+
+        lifecycle = self.application_lifecycle
+        if lifecycle is None:
+            raise ServiceConfigurationError(
+                "TriggerSource 控制写需要配置 dataset_storage"
+            )
+        resource_key = build_workflow_lifecycle_resource_key(
+            "trigger",
+            trigger_source_id,
+        )
+        with lifecycle.operation(
+            project_id=project_id,
+            application_id=resource_key,
+            operation="saving",
+            allow_deleted=True,
+            deleted_on_success=None,
+        ):
+            yield
+
+    @contextmanager
+    def _runtime_lifecycle_guard(self, workflow_runtime_id: str) -> Iterator[None]:
+        """与 Runtime 选版、启停共享同一把进程内生命周期锁。"""
+
+        worker_manager = self.workflow_runtime_worker_manager
+        if worker_manager is None:
+            yield
+            return
+        with worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+            yield
+
+    def _validate_runtime_version_contract(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        workflow_runtime: WorkflowAppRuntime,
+        input_binding_mapping: dict[str, object],
+        result_mapping: dict[str, object],
+        result_mode: str,
+        require_active: bool,
+    ) -> _ValidatedRuntimeContract | None:
+        """校验 Trigger 映射与固定 Runtime revision 的公开契约兼容。"""
+
+        generation = workflow_runtime.revision_generation
+        if generation <= 0:
+            # 旧 Runtime 会由启动迁移补齐版本来源；保留对迁移前测试和恢复期的兼容。
+            return None
+        dataset_storage = self.dataset_storage
+        if dataset_storage is None:
+            raise ServiceConfigurationError(
+                "版本化 TriggerSource 校验缺少 dataset_storage 装配"
+            )
+        active_revision_id = workflow_runtime.active_revision_id
+        desired_revision_id = workflow_runtime.desired_revision_id
+        revision_id = (
+            active_revision_id
+            if require_active
+            else (desired_revision_id or active_revision_id)
+        )
+        if not isinstance(revision_id, str) or not revision_id:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 尚未选择可供 Trigger 使用的版本",
+                details={
+                    "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                    "revision_generation": generation,
+                },
+            )
+        if require_active and desired_revision_id != active_revision_id:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 当前 active 与 desired revision 不一致",
+                details={
+                    "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                    "active_revision_id": active_revision_id,
+                    "desired_revision_id": desired_revision_id,
+                    "revision_generation": generation,
+                },
+            )
+        revision = unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+            revision_id
+        )
+        expected_states = {"active"} if require_active else {"staged", "active"}
+        if (
+            revision is None
+            or revision.workflow_runtime_id != workflow_runtime.workflow_runtime_id
+            or revision.generation != generation
+            or revision.state not in expected_states
+        ):
+            raise ResourceConflictError(
+                "WorkflowAppRuntime revision 与当前代次不一致",
+                details={
+                    "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                    "workflow_runtime_revision_id": revision_id,
+                    "revision_generation": generation,
+                    "stored_generation": revision.generation if revision else None,
+                    "revision_state": revision.state if revision else None,
+                },
+            )
+        if require_active and (
+            workflow_runtime.loaded_snapshot_fingerprint
+            != revision.expected_snapshot_fingerprint
+        ):
+            raise ResourceConflictError(
+                "WorkflowAppRuntime worker 尚未加载当前 active revision",
+                details={
+                    "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                    "workflow_runtime_revision_id": revision_id,
+                    "expected_snapshot_fingerprint": (
+                        revision.expected_snapshot_fingerprint
+                    ),
+                    "loaded_snapshot_fingerprint": (
+                        workflow_runtime.loaded_snapshot_fingerprint
+                    ),
+                },
+            )
+        version = unit_of_work.workflow_runtime.get_workflow_app_version(
+            revision.workflow_app_version_id
+        )
+        if (
+            version is None
+            or version.state not in {"published", "archived"}
+            or version.project_id != workflow_runtime.project_id
+            or version.application_id != workflow_runtime.application_id
+        ):
+            raise ResourceConflictError(
+                "WorkflowAppRuntime revision 引用的 Workflow App 版本无效",
+                details={
+                    "workflow_runtime_revision_id": revision_id,
+                    "workflow_app_version_id": revision.workflow_app_version_id,
+                    "version_state": version.state if version else None,
+                },
+            )
+        contract = dataset_storage.read_json(version.contract_snapshot_object_key)
+        if (
+            not isinstance(contract, dict)
+            or contract.get("format_id") != WORKFLOW_APP_CONTRACT_FORMAT
+            or contract.get("application_id") != version.application_id
+        ):
+            raise ResourceConflictError(
+                "Workflow App 版本的公开契约快照无效",
+                details={
+                    "workflow_app_version_id": version.workflow_app_version_id,
+                    "contract_snapshot_object_key": (
+                        version.contract_snapshot_object_key
+                    ),
+                },
+            )
+        mapping_issues = _find_trigger_contract_mapping_issues(
+            contract=contract,
+            input_binding_mapping=input_binding_mapping,
+            result_mapping=result_mapping,
+            result_mode=result_mode,
+        )
+        if mapping_issues:
+            raise InvalidRequestError(
+                "TriggerSource 映射与 Workflow App 版本契约不兼容",
+                details={
+                    "workflow_runtime_id": workflow_runtime.workflow_runtime_id,
+                    "workflow_runtime_revision_id": revision_id,
+                    "workflow_app_version_id": version.workflow_app_version_id,
+                    "revision_generation": generation,
+                    "mapping_issues": mapping_issues,
+                },
+            )
+        return _ValidatedRuntimeContract(
+            workflow_runtime_revision_id=revision_id,
+            workflow_app_version_id=version.workflow_app_version_id,
+            revision_generation=generation,
+            contract_fingerprint=version.contract_fingerprint,
+        )
+
     def _validate_trigger_source_resource_binding(
         self,
         *,
@@ -747,6 +1160,106 @@ class WorkflowTriggerSourceService:
                     "conflict_observed_state": trigger_source.observed_state,
                 },
             )
+
+
+def _find_trigger_contract_mapping_issues(
+    *,
+    contract: dict[str, object],
+    input_binding_mapping: dict[str, object],
+    result_mapping: dict[str, object],
+    result_mode: str,
+) -> list[dict[str, object]]:
+    """返回 Trigger 映射相对公开契约的稳定问题列表。"""
+
+    input_contracts = _index_contract_bindings(contract.get("inputs"))
+    output_contracts = _index_contract_bindings(contract.get("outputs"))
+    issues: list[dict[str, object]] = []
+    for binding_id in sorted(set(input_binding_mapping) - set(input_contracts)):
+        issues.append({"kind": "unknown_input_binding", "binding_id": binding_id})
+    for binding_id in sorted(input_contracts):
+        input_contract = input_contracts[binding_id]
+        mapping_present = binding_id in input_binding_mapping
+        mapping_rule = input_binding_mapping.get(binding_id)
+        if bool(input_contract.get("required", True)) and not mapping_present:
+            issues.append({"kind": "missing_required_input", "binding_id": binding_id})
+            continue
+        if not isinstance(mapping_rule, dict):
+            continue
+        if (
+            bool(input_contract.get("required", True))
+            and mapping_rule.get("required") is False
+        ):
+            issues.append(
+                {
+                    "kind": "required_input_mapped_as_optional",
+                    "binding_id": binding_id,
+                }
+            )
+        declared_payload_type = mapping_rule.get("payload_type_id")
+        expected_payload_type = input_contract.get("payload_type_id")
+        if (
+            isinstance(declared_payload_type, str)
+            and declared_payload_type.strip()
+            and declared_payload_type != expected_payload_type
+        ):
+            issues.append(
+                {
+                    "kind": "input_payload_type_mismatch",
+                    "binding_id": binding_id,
+                    "expected_payload_type_id": expected_payload_type,
+                    "actual_payload_type_id": declared_payload_type,
+                }
+            )
+    result_binding = find_unknown_result_binding(
+        output_binding_ids=output_contracts,
+        result_mapping=result_mapping,
+        result_mode=result_mode,
+    )
+    if result_binding is not None:
+        issues.append({"kind": "unknown_output_binding", "binding_id": result_binding})
+    return issues
+
+
+def _index_contract_bindings(value: object) -> dict[str, dict[str, object]]:
+    """按 binding_id 索引公开契约中的输入或输出项。"""
+
+    if not isinstance(value, list):
+        return {}
+    return {
+        binding_id: dict(item)
+        for item in value
+        if isinstance(item, dict)
+        and isinstance((binding_id := item.get("binding_id")), str)
+        and binding_id
+    }
+
+
+def _with_validated_runtime_contract(
+    metadata: dict[str, object],
+    validated_contract: _ValidatedRuntimeContract | None,
+) -> dict[str, object]:
+    """把最近一次成功校验的 Runtime version token 写入 Trigger 元数据。"""
+
+    payload = dict(metadata)
+    if validated_contract is None:
+        return payload
+    payload.update(
+        {
+            "validated_workflow_runtime_revision_id": (
+                validated_contract.workflow_runtime_revision_id
+            ),
+            "validated_workflow_app_version_id": (
+                validated_contract.workflow_app_version_id
+            ),
+            "validated_workflow_runtime_generation": (
+                validated_contract.revision_generation
+            ),
+            "validated_workflow_contract_fingerprint": (
+                validated_contract.contract_fingerprint
+            ),
+        }
+    )
+    return payload
 
 
 def _build_adapter_pending_health_summary() -> dict[str, object]:

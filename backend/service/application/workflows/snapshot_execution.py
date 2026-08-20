@@ -7,8 +7,6 @@ from dataclasses import dataclass, field
 from typing import Callable
 from threading import Lock
 from uuid import uuid4
-import json
-import hashlib
 import logging
 
 from backend.contracts.workflows.workflow_graph import (
@@ -646,33 +644,6 @@ def _resolve_cleanup_task_type(cleanup: WorkflowExecutionCleanupItem) -> str:
             "resource_id": cleanup.resource_id,
         },
     )
-
-
-def build_snapshot_fingerprint(
-    *,
-    dataset_storage: LocalDatasetStorage,
-    application_snapshot_object_key: str,
-    template_snapshot_object_key: str,
-) -> str:
-    """根据 application 和 template snapshot 构建稳定 fingerprint。"""
-
-    application_payload = dataset_storage.read_json(application_snapshot_object_key)
-    template_payload = dataset_storage.read_json(template_snapshot_object_key)
-    digest = hashlib.sha256()
-    digest.update(
-        json.dumps(
-            application_payload,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-    digest.update(
-        json.dumps(
-            template_payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-    )
-    return f"sha256:{digest.hexdigest()}"
 
 
 def _build_template_input_values(

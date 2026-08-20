@@ -14,10 +14,7 @@ async function mountSidebar(collapsed: boolean) {
   setActivePinia(pinia)
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [
-      { path: '/projects', component: RouteStub },
-      { path: '/tasks', component: RouteStub },
-    ],
+    routes: [{ path: '/:pathMatch(.*)*', component: RouteStub }],
   })
   await router.push('/projects')
   await router.isReady()

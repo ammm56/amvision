@@ -6,7 +6,7 @@
 
 SDK 和 `sdks/dotnet/apps/Amvision.Workflows.Console` 面向现场使用，不负责创建平台资源。WorkflowAppRuntime、TriggerSource 和模型 DeploymentInstance 仍由前端图形化界面创建和维护；配置包只是把当前项目已经创建好的可调用资源导出成第三方程序可直接使用的 `Config/config_*.json`。
 
-规划中的 Workflow App 版本切换不会改变 `workflow_runtime_id`、TriggerSource id 或 endpoint，因此兼容契约更新后不需要重新导出配置包。配置包不保存 `latest` 版本选择，也不让 SDK 直接指定 Runtime revision；版本由 Runtime 控制面选择。破坏性契约变化仍需要更新 SDK 输入输出配置或创建新的 Runtime。完整规划见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
+Workflow App 版本切换不会改变 `workflow_runtime_id`、TriggerSource id 或 endpoint，因此兼容契约更新后不需要重新导出配置包。配置包不保存 `latest` 版本选择，也不让调用 SDK 直接指定 Runtime revision；版本由 Runtime 控制面选择。破坏性契约变化仍需要更新 SDK 输入输出配置或创建新的 Runtime。完整规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
 
 ## 总结
 

@@ -185,8 +185,14 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
         def __init__(self, session_factory: object) -> None:
             del session_factory
 
-        def get_task(self, task_id: str):
+        def get_visible_task(
+            self,
+            task_id: str,
+            *,
+            visible_project_ids: tuple[str, ...],
+        ):
             assert task_id == task.task_id
+            assert visible_project_ids == ()
             return SimpleNamespace(task=task)
 
         def append_task_event(self, event):
@@ -209,6 +215,7 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
         dataset_storage=storage,
         queue_backend=_FakeQueueBackend(),
         task_id=task.task_id,
+        visible_project_ids=(),
     )
 
     assert response.status == "queued"

@@ -16,7 +16,10 @@ from backend.service.application.project_summary import (
     publish_project_summary_event,
     should_publish_project_summary_for_workflow_run_event,
 )
-from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    FlowApplication,
+    WorkflowGraphTemplate,
+)
 from backend.contracts.workflows.resource_semantics import (
     WorkflowPreviewRunState,
     build_workflow_app_runtime_storage_dir,
@@ -25,8 +28,10 @@ from backend.contracts.workflows.resource_semantics import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     OperationTimeoutError,
     ResourceNotFoundError,
+    ResourceConflictError,
     ServiceConfigurationError,
     ServiceError,
 )
@@ -35,7 +40,9 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunExecutionRequest,
     WorkflowPreviewRunManager,
 )
-from backend.service.application.workflows.preview_display_outputs import WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY
+from backend.service.application.workflows.preview_display_outputs import (
+    WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY,
+)
 from backend.service.application.workflows.preview_partial_results import (
     build_completed_node_records_from_events,
 )
@@ -62,7 +69,9 @@ from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
     WorkflowRuntimeWorkerState,
 )
-from backend.service.application.workflows.worker.manager import WorkflowRuntimeWorkerManager
+from backend.service.application.workflows.worker.manager import (
+    WorkflowRuntimeWorkerManager,
+)
 from backend.service.application.workflows.worker.messages import (
     WorkflowRuntimeAsyncRunCallbacks,
     WorkflowRuntimeWorkerRunResult,
@@ -96,8 +105,10 @@ from backend.service.application.workflows.runtime.policies import (
 )
 from backend.service.application.workflows.runtime.app_runtimes import (
     WorkflowAppRuntimeCreateRequest,
+    WorkflowAppRuntimeSelectVersionRequest,
     apply_worker_state,
     normalize_app_runtime_create_request,
+    normalize_select_version_request,
     with_runtime_resource_updated_by,
 )
 from backend.service.application.workflows.runtime.preview_runs import (
@@ -131,10 +142,25 @@ from backend.service.application.workflows.runtime.persistence import (
     read_workflow_run_events,
     with_input_buffer_ref_cleanups,
 )
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
+from backend.service.application.workflows.app_version_service import (
+    WorkflowAppVersionService,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    build_workflow_lifecycle_resource_key,
+)
+from backend.service.application.workflows.trigger_sources.contract_mapping import (
+    find_unknown_result_binding,
+)
 from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowAppRuntime,
     WorkflowAppRuntimeEvent,
+    WorkflowRuntimeRevision,
     WorkflowExecutionPolicy,
     WorkflowPreviewRun,
     WorkflowPreviewRunEvent,
@@ -143,14 +169,20 @@ from backend.service.domain.workflows.workflow_runtime_records import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.settings import BackendServiceSettings
 
 if TYPE_CHECKING:
     from backend.service.application.deployments import PublishedInferenceGateway
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.service.application.workflows.graph_executor import WorkflowNodeRuntimeRegistry
-from backend.service.application.workflows.service_runtime.context import WorkflowServiceNodeRuntimeContext
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
 
 
 @dataclass(frozen=True)
@@ -163,6 +195,38 @@ class _RawWorkflowRunResult:
 
     outputs: dict[str, object]
     created_monotonic: float
+
+
+@dataclass(frozen=True)
+class _WorkflowRuntimeSyncAdmission:
+    """描述生命周期锁内固定并登记的一次同步调用。"""
+
+    workflow_app_runtime: WorkflowAppRuntime
+    active_revision: WorkflowRuntimeRevision
+    execution_policy: WorkflowExecutionPolicy | None
+    normalized_request: WorkflowRuntimeInvokeRequest
+    created_at: str
+    execution_metadata: dict[str, object]
+    record_mode: str
+    timing_started_at: float
+    timings: dict[str, object]
+    workflow_run: WorkflowRun
+    dispatch_record_persisted: bool
+
+
+def _read_contract_binding_ids(contract: dict[str, object], direction: str) -> set[str]:
+    """读取公开契约指定方向的 binding id。"""
+
+    items = contract.get(direction)
+    if not isinstance(items, list):
+        return set()
+    return {
+        binding_id
+        for item in items
+        if isinstance(item, dict)
+        and isinstance((binding_id := item.get("binding_id")), str)
+        and binding_id
+    }
 
 
 class WorkflowRuntimeService:
@@ -183,7 +247,8 @@ class WorkflowRuntimeService:
         node_catalog_registry: NodeCatalogRegistry,
         worker_manager: WorkflowRuntimeWorkerManager,
         workflow_node_runtime_registry: WorkflowNodeRuntimeRegistry | None = None,
-        workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext | None = None,
+        workflow_service_node_runtime_context: WorkflowServiceNodeRuntimeContext
+        | None = None,
         preview_run_manager: WorkflowPreviewRunManager | None = None,
         local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
         published_inference_gateway: PublishedInferenceGateway | None = None,
@@ -195,12 +260,18 @@ class WorkflowRuntimeService:
         self.dataset_storage = dataset_storage
         self.node_catalog_registry = node_catalog_registry
         self.workflow_node_runtime_registry = workflow_node_runtime_registry
-        self.workflow_service_node_runtime_context = workflow_service_node_runtime_context
+        self.workflow_service_node_runtime_context = (
+            workflow_service_node_runtime_context
+        )
         self.worker_manager = worker_manager
         self.preview_run_manager = preview_run_manager
         self.local_buffer_broker_event_channel = local_buffer_broker_event_channel
         self.published_inference_gateway = published_inference_gateway
         self.service_event_bus = getattr(session_factory, "service_event_bus", None)
+        self.application_lifecycle = WorkflowApplicationLifecycleService(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+        )
 
     def create_execution_policy(
         self,
@@ -211,12 +282,32 @@ class WorkflowRuntimeService:
         """创建一条 WorkflowExecutionPolicy。"""
 
         normalized_request = normalize_execution_policy_create_request(request)
+        with self._project_control_mutation(
+            project_id=normalized_request.project_id,
+            resource_kind="execution-policy",
+            identity_parts=(normalized_request.execution_policy_id,),
+        ):
+            return self._create_execution_policy(request, created_by=created_by)
+
+    def _create_execution_policy(
+        self,
+        request: WorkflowExecutionPolicyCreateRequest,
+        *,
+        created_by: str | None,
+    ) -> WorkflowExecutionPolicy:
+        """在 Project mutation claim 内创建执行策略。"""
+
+        normalized_request = normalize_execution_policy_create_request(request)
         with self._open_unit_of_work() as unit_of_work:
-            existing_policy = unit_of_work.workflow_runtime.get_execution_policy(normalized_request.execution_policy_id)
+            existing_policy = unit_of_work.workflow_runtime.get_execution_policy(
+                normalized_request.execution_policy_id
+            )
             if existing_policy is not None:
                 raise InvalidRequestError(
                     "execution_policy_id 已存在",
-                    details={"execution_policy_id": normalized_request.execution_policy_id},
+                    details={
+                        "execution_policy_id": normalized_request.execution_policy_id
+                    },
                 )
 
             now = _now_isoformat()
@@ -239,20 +330,28 @@ class WorkflowRuntimeService:
             unit_of_work.commit()
         return execution_policy
 
-    def list_execution_policies(self, *, project_id: str) -> tuple[WorkflowExecutionPolicy, ...]:
+    def list_execution_policies(
+        self, *, project_id: str
+    ) -> tuple[WorkflowExecutionPolicy, ...]:
         """按 Project id 列出 WorkflowExecutionPolicy。"""
 
         normalized_project_id = project_id.strip()
         if not normalized_project_id:
-            raise InvalidRequestError("查询 WorkflowExecutionPolicy 列表时 project_id 不能为空")
+            raise InvalidRequestError(
+                "查询 WorkflowExecutionPolicy 列表时 project_id 不能为空"
+            )
         with self._open_unit_of_work() as unit_of_work:
-            return unit_of_work.workflow_runtime.list_execution_policies(normalized_project_id)
+            return unit_of_work.workflow_runtime.list_execution_policies(
+                normalized_project_id
+            )
 
     def get_execution_policy(self, execution_policy_id: str) -> WorkflowExecutionPolicy:
         """按 id 读取一条 WorkflowExecutionPolicy。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            execution_policy = unit_of_work.workflow_runtime.get_execution_policy(execution_policy_id)
+            execution_policy = unit_of_work.workflow_runtime.get_execution_policy(
+                execution_policy_id
+            )
         if execution_policy is None:
             raise ResourceNotFoundError(
                 "请求的 WorkflowExecutionPolicy 不存在",
@@ -268,19 +367,46 @@ class WorkflowRuntimeService:
     ) -> WorkflowPreviewRun:
         """创建并在当前服务进程直接执行一条 Preview Run。"""
 
-        if self.preview_run_manager is None:
-            raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
-
         normalized_request = normalize_preview_run_create_request(request)
         preview_run_id = f"preview-run-{uuid4().hex}"
+        with self._project_control_mutation(
+            project_id=normalized_request.project_id,
+            resource_kind="preview",
+            identity_parts=(preview_run_id,),
+        ):
+            return self._create_preview_run(
+                normalized_request,
+                preview_run_id=preview_run_id,
+                created_by=created_by,
+            )
+
+    def _create_preview_run(
+        self,
+        request: WorkflowPreviewRunCreateRequest,
+        *,
+        preview_run_id: str,
+        created_by: str | None,
+    ) -> WorkflowPreviewRun:
+        """在 Project mutation claim 内创建并执行 Preview Run。"""
+
+        if self.preview_run_manager is None:
+            raise ServiceConfigurationError(
+                "当前服务尚未完成 workflow_preview_run_manager 装配"
+            )
+
+        normalized_request = normalize_preview_run_create_request(request)
         execution_policy = self._resolve_execution_policy_for_project(
             project_id=normalized_request.project_id,
             execution_policy_id=normalized_request.execution_policy_id,
         )
-        application_id, application, template, source_kind = self._resolve_preview_source(normalized_request)
-        application_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
-            preview_run_id,
-            "application.snapshot.json",
+        application_id, application, template, source_kind = (
+            self._resolve_preview_source(normalized_request)
+        )
+        application_snapshot_object_key = (
+            build_workflow_preview_run_snapshot_object_key(
+                preview_run_id,
+                "application.snapshot.json",
+            )
         )
         template_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
             preview_run_id,
@@ -288,9 +414,11 @@ class WorkflowRuntimeService:
         )
         execution_policy_snapshot_object_key = None
         if execution_policy is not None:
-            execution_policy_snapshot_object_key = build_workflow_preview_run_snapshot_object_key(
-                preview_run_id,
-                "execution-policy.snapshot.json",
+            execution_policy_snapshot_object_key = (
+                build_workflow_preview_run_snapshot_object_key(
+                    preview_run_id,
+                    "execution-policy.snapshot.json",
+                )
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,
@@ -298,7 +426,9 @@ class WorkflowRuntimeService:
             )
         self.dataset_storage.write_json(
             application_snapshot_object_key,
-            self._with_project_metadata(application, project_id=normalized_request.project_id).model_dump(mode="json"),
+            self._with_project_metadata(
+                application, project_id=normalized_request.project_id
+            ).model_dump(mode="json"),
         )
         self.dataset_storage.write_json(
             template_snapshot_object_key,
@@ -316,19 +446,15 @@ class WorkflowRuntimeService:
             execution_policy=execution_policy,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
         )
-        preview_model_session_scope_id = (
-            build_workflow_preview_model_session_scope_id(
-                project_id=normalized_request.project_id,
-                application_id=application_id,
-            )
+        preview_model_session_scope_id = build_workflow_preview_model_session_scope_id(
+            project_id=normalized_request.project_id,
+            application_id=application_id,
         )
         # scope 和并发策略属于服务端所有权边界，不能接受浏览器 metadata 覆盖。
-        preview_metadata[
-            WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY
-        ] = preview_model_session_scope_id
-        preview_metadata[
-            WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY
-        ] = False
+        preview_metadata[WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY] = (
+            preview_model_session_scope_id
+        )
+        preview_metadata[WORKFLOW_MODEL_SESSION_SCOPE_WAIT_ENABLED_METADATA_KEY] = False
         preview_metadata["preview_execution_scope"] = {
             "kind": normalized_request.execution_scope_kind,
             "target_node_id": normalized_request.target_node_id,
@@ -395,20 +521,23 @@ class WorkflowRuntimeService:
         runtime registry 和 runtime context，让 Preview Run 更接近节点本身耗时。
         """
 
-        if self.workflow_node_runtime_registry is None or self.workflow_service_node_runtime_context is None:
+        if (
+            self.workflow_node_runtime_registry is None
+            or self.workflow_service_node_runtime_context is None
+        ):
             raise ServiceConfigurationError("当前服务缺少 Preview 直接执行资源")
 
         inline_started_at = monotonic()
         execution_metadata = dict(execution_request.execution_metadata)
-        execution_metadata.setdefault(WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, preview_run_id)
+        execution_metadata.setdefault(
+            WORKFLOW_PREVIEW_RUN_ID_METADATA_KEY, preview_run_id
+        )
         execution_metadata.setdefault("return_timing_metadata_enabled", True)
         model_session_manager = (
             self.workflow_service_node_runtime_context.workflow_model_session_manager
         )
         model_session_scope_id = str(
-            execution_metadata.get(
-                WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY, ""
-            )
+            execution_metadata.get(WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY, "")
         ).strip()
         event_persist_ms = 0.0
         event_persist_ms += self.preview_run_manager.initialize_event_stream(
@@ -422,7 +551,11 @@ class WorkflowRuntimeService:
             _, persist_ms = self.preview_run_manager.append_event(
                 preview_run_id,
                 event_type=str(raw_event.get("event_type") or "workflow.event"),
-                message=str(raw_event.get("message") or raw_event.get("event_type") or "workflow event"),
+                message=str(
+                    raw_event.get("message")
+                    or raw_event.get("event_type")
+                    or "workflow event"
+                ),
                 payload=(
                     dict(raw_event["payload"])
                     if isinstance(raw_event.get("payload"), dict)
@@ -460,14 +593,10 @@ class WorkflowRuntimeService:
                         self.settings.workflow_runtime.preview_model_session_scope_limit
                     ),
                 )
-                storage_image_cache = (
-                    self.workflow_service_node_runtime_context.workflow_storage_image_cache
-                )
+                storage_image_cache = self.workflow_service_node_runtime_context.workflow_storage_image_cache
                 if storage_image_cache is not None:
                     for evicted_scope_id in evicted_scope_ids:
-                        storage_image_cache.clear_shared_scope(
-                            evicted_scope_id
-                        )
+                        storage_image_cache.clear_shared_scope(evicted_scope_id)
             execution_result = SnapshotExecutionService(
                 dataset_storage=self.dataset_storage,
                 node_catalog_registry=self.node_catalog_registry,
@@ -529,7 +658,10 @@ class WorkflowRuntimeService:
             graph_execute_ms = read_graph_execute_ms()
             wrapped_error = ServiceConfigurationError(
                 "workflow preview run 直接执行失败",
-                details={"error_type": type(exc).__name__, "error_message": str(exc) or type(exc).__name__},
+                details={
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc) or type(exc).__name__,
+                },
             )
             failed_preview_run = self._finish_inline_preview_run_failed(
                 preview_run_id,
@@ -549,17 +681,16 @@ class WorkflowRuntimeService:
                 preview_run_id,
                 event_type="preview.failed",
                 message="preview run failed",
-                payload={"state": "failed", "error_message": failed_preview_run.error_message},
+                payload={
+                    "state": "failed",
+                    "error_message": failed_preview_run.error_message,
+                },
             )
             return failed_preview_run
-        event_persist_ms += self.preview_run_manager.flush_event_stream(
-            preview_run_id
-        )
+        event_persist_ms += self.preview_run_manager.flush_event_stream(preview_run_id)
         graph_execute_ms = read_graph_execute_ms()
         model_session_health = (
-            model_session_manager.build_health_summary(
-                scope_id=model_session_scope_id
-            )
+            model_session_manager.build_health_summary(scope_id=model_session_scope_id)
             if model_session_manager is not None and model_session_scope_id
             else None
         )
@@ -710,7 +841,9 @@ class WorkflowRuntimeService:
         )
 
     @staticmethod
-    def _require_preview_run(unit_of_work: SqlAlchemyUnitOfWork, preview_run_id: str) -> WorkflowPreviewRun:
+    def _require_preview_run(
+        unit_of_work: SqlAlchemyUnitOfWork, preview_run_id: str
+    ) -> WorkflowPreviewRun:
         """从持久化层读取一条必然存在的 PreviewRun。"""
 
         preview_run = unit_of_work.workflow_runtime.get_preview_run(preview_run_id)
@@ -752,7 +885,9 @@ class WorkflowRuntimeService:
         """
 
         if self.preview_run_manager is None:
-            raise ServiceConfigurationError("当前服务尚未完成 workflow_preview_run_manager 装配")
+            raise ServiceConfigurationError(
+                "当前服务尚未完成 workflow_preview_run_manager 装配"
+            )
         self.get_preview_run(preview_run_id)
         return self.preview_run_manager.list_events(
             preview_run_id,
@@ -772,7 +907,9 @@ class WorkflowRuntimeService:
 
         normalized_project_id = project_id.strip()
         if not normalized_project_id:
-            raise InvalidRequestError("查询 WorkflowPreviewRun 列表时 project_id 不能为空")
+            raise InvalidRequestError(
+                "查询 WorkflowPreviewRun 列表时 project_id 不能为空"
+            )
         return self._list_preview_runs(
             project_id=normalized_project_id,
             state=None,
@@ -802,7 +939,9 @@ class WorkflowRuntimeService:
 
         normalized_project_id = project_id.strip()
         if not normalized_project_id:
-            raise InvalidRequestError("查询 WorkflowPreviewRun 列表时 project_id 不能为空")
+            raise InvalidRequestError(
+                "查询 WorkflowPreviewRun 列表时 project_id 不能为空"
+            )
         return self._list_preview_runs(
             project_id=normalized_project_id,
             state=state,
@@ -840,6 +979,17 @@ class WorkflowRuntimeService:
         """
 
         preview_run = self.get_preview_run(preview_run_id)
+        with self._project_control_mutation(
+            project_id=preview_run.project_id,
+            resource_kind="preview",
+            identity_parts=(preview_run.preview_run_id,),
+        ):
+            self._delete_preview_run(preview_run.preview_run_id)
+
+    def _delete_preview_run(self, preview_run_id: str) -> None:
+        """在 Project mutation claim 内删除 Preview Run。"""
+
+        preview_run = self.get_preview_run(preview_run_id)
         if preview_run.state == "running":
             raise InvalidRequestError(
                 "正在执行的同步 Preview 不能删除",
@@ -851,7 +1001,9 @@ class WorkflowRuntimeService:
         )
         try:
             with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.delete_preview_run(preview_run.preview_run_id)
+                unit_of_work.workflow_runtime.delete_preview_run(
+                    preview_run.preview_run_id
+                )
                 unit_of_work.commit()
         except Exception:
             restore_staged_preview_run_storage(
@@ -871,54 +1023,74 @@ class WorkflowRuntimeService:
         *,
         created_by: str | None,
     ) -> WorkflowAppRuntime:
-        """创建一个最小 WorkflowAppRuntime。"""
+        """创建稳定 Runtime，并为明确版本建立 generation 1 revision。"""
 
         normalized_request = normalize_app_runtime_create_request(request)
+        workflow_runtime_id = f"workflow-runtime-{uuid4().hex}"
+        with self._project_control_mutation(
+            project_id=normalized_request.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            return self._create_workflow_app_runtime(
+                normalized_request,
+                workflow_runtime_id=workflow_runtime_id,
+                created_by=created_by,
+            )
+
+    def _create_workflow_app_runtime(
+        self,
+        request: WorkflowAppRuntimeCreateRequest,
+        *,
+        workflow_runtime_id: str,
+        created_by: str | None,
+    ) -> WorkflowAppRuntime:
+        """在 Project mutation claim 内创建稳定 Runtime。"""
+
+        normalized_request = normalize_app_runtime_create_request(request)
+        version_service = self._build_workflow_app_version_service()
+        if normalized_request.workflow_app_version_id is not None:
+            app_version = version_service.get_version_by_id(
+                project_id=normalized_request.project_id,
+                workflow_app_version_id=normalized_request.workflow_app_version_id,
+                require_published=True,
+            )
+            legacy_application_create = False
+        else:
+            if normalized_request.application_id is None:
+                raise InvalidRequestError("application_id 不能为空")
+            app_version = version_service.ensure_legacy_draft_version(
+                project_id=normalized_request.project_id,
+                application_id=normalized_request.application_id,
+                created_by=created_by,
+            )
+            legacy_application_create = True
+        version_detail = version_service.get_version_detail(
+            project_id=app_version.project_id,
+            application_id=app_version.application_id,
+            workflow_app_version_id=app_version.workflow_app_version_id,
+        )
+        application = FlowApplication.model_validate(version_detail.application)
         execution_policy = self._resolve_execution_policy_for_project(
             project_id=normalized_request.project_id,
             execution_policy_id=normalized_request.execution_policy_id,
         )
-        workflow_service = self._build_workflow_json_service()
-        application_document = workflow_service.get_application(
-            project_id=normalized_request.project_id,
-            application_id=normalized_request.application_id,
-        )
-        application = self._with_project_metadata(
-            application_document.application,
-            project_id=normalized_request.project_id,
-        )
-        template_document = workflow_service.get_template(
-            project_id=normalized_request.project_id,
-            template_id=application.template_ref.template_id,
-            template_version=application.template_ref.template_version,
-        )
-        workflow_runtime_id = f"workflow-runtime-{uuid4().hex}"
-        application_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
-            workflow_runtime_id,
-            "application.snapshot.json",
-        )
-        template_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
-            workflow_runtime_id,
-            "template.snapshot.json",
-        )
+        workflow_runtime_revision_id = f"workflow-runtime-revision-{uuid4().hex}"
+        application_snapshot_object_key = app_version.application_snapshot_object_key
+        template_snapshot_object_key = app_version.template_snapshot_object_key
         execution_policy_snapshot_object_key = None
         if execution_policy is not None:
-            execution_policy_snapshot_object_key = build_workflow_app_runtime_snapshot_object_key(
-                workflow_runtime_id,
-                "execution-policy.snapshot.json",
+            execution_policy_snapshot_object_key = (
+                build_workflow_app_runtime_snapshot_object_key(
+                    workflow_runtime_id,
+                    "execution-policy.snapshot.json",
+                )
             )
             self.dataset_storage.write_json(
                 execution_policy_snapshot_object_key,
                 serialize_execution_policy_snapshot(execution_policy),
             )
-        self.dataset_storage.write_json(
-            application_snapshot_object_key,
-            application.model_dump(mode="json"),
-        )
-        self.dataset_storage.write_json(
-            template_snapshot_object_key,
-            template_document.template.model_dump(mode="json"),
-        )
+        expected_snapshot_fingerprint = app_version.content_fingerprint
         request_timeout_seconds = resolve_effective_timeout_seconds(
             requested_timeout_seconds=normalized_request.request_timeout_seconds,
             fallback_timeout_seconds=60,
@@ -929,30 +1101,57 @@ class WorkflowRuntimeService:
         workflow_app_runtime = WorkflowAppRuntime(
             workflow_runtime_id=workflow_runtime_id,
             project_id=normalized_request.project_id,
-            application_id=normalized_request.application_id,
+            application_id=app_version.application_id,
             display_name=normalized_request.display_name or application.display_name,
             application_snapshot_object_key=application_snapshot_object_key,
             template_snapshot_object_key=template_snapshot_object_key,
             execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
+            active_revision_id=None,
+            desired_revision_id=workflow_runtime_revision_id,
+            revision_generation=1,
             desired_state="stopped",
             observed_state="stopped",
             request_timeout_seconds=request_timeout_seconds,
-            heartbeat_interval_seconds=normalized_request.heartbeat_interval_seconds or 5,
-            heartbeat_timeout_seconds=normalized_request.heartbeat_timeout_seconds or 15,
+            heartbeat_interval_seconds=normalized_request.heartbeat_interval_seconds
+            or 5,
+            heartbeat_timeout_seconds=normalized_request.heartbeat_timeout_seconds
+            or 15,
             created_at=now,
             updated_at=now,
             created_by=_normalize_optional_str(created_by),
             metadata=with_runtime_resource_updated_by(
                 apply_execution_policy_metadata(
-                    dict(normalized_request.metadata or {}),
+                    {
+                        **dict(normalized_request.metadata or {}),
+                        "workflow_app_version_id": app_version.workflow_app_version_id,
+                        "legacy_application_create": legacy_application_create,
+                    },
                     execution_policy=execution_policy,
                     execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
                 ),
                 created_by,
             ),
         )
+        revision = WorkflowRuntimeRevision(
+            workflow_runtime_revision_id=workflow_runtime_revision_id,
+            workflow_runtime_id=workflow_runtime_id,
+            generation=1,
+            workflow_app_version_id=app_version.workflow_app_version_id,
+            execution_policy_snapshot_object_key=execution_policy_snapshot_object_key,
+            expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            state="staged",
+            created_at=now,
+            created_by=_normalize_optional_str(created_by),
+        )
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
+            self._require_published_version_reference_fence(
+                unit_of_work=unit_of_work,
+                workflow_app_version_id=app_version.workflow_app_version_id,
+            )
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                workflow_app_runtime
+            )
+            unit_of_work.workflow_runtime.add_workflow_runtime_revision(revision)
             unit_of_work.commit()
         self._append_workflow_app_runtime_event(
             workflow_app_runtime,
@@ -961,19 +1160,50 @@ class WorkflowRuntimeService:
         )
         return workflow_app_runtime
 
-    def list_workflow_app_runtimes(self, *, project_id: str) -> tuple[WorkflowAppRuntime, ...]:
-        """按 Project id 列出 WorkflowAppRuntime。"""
+    def list_workflow_app_runtimes(
+        self,
+        *,
+        project_id: str,
+        application_id: str | None = None,
+        application_ids: tuple[str, ...] | None = None,
+    ) -> tuple[WorkflowAppRuntime, ...]:
+        """按 Project id 和可选 Application 过滤条件列出 Runtime。"""
 
-        if not project_id.strip():
-            raise InvalidRequestError("查询 WorkflowAppRuntime 列表时 project_id 不能为空")
+        normalized_project_id = project_id.strip()
+        if not normalized_project_id:
+            raise InvalidRequestError(
+                "查询 WorkflowAppRuntime 列表时 project_id 不能为空"
+            )
+        normalized_application_id = (
+            application_id.strip() if application_id is not None else None
+        )
+        if application_id is not None and not normalized_application_id:
+            raise InvalidRequestError("application_id 不能为空字符串")
+        if application_id is not None and application_ids is not None:
+            raise InvalidRequestError("application_id 与 application_ids 不能同时使用")
+        normalized_application_ids: tuple[str, ...] | None = None
+        if application_ids is not None:
+            normalized_application_ids = tuple(
+                dict.fromkeys(item.strip() for item in application_ids if item.strip())
+            )
+            if not normalized_application_ids:
+                raise InvalidRequestError("application_ids 至少需要一个有效 id")
         with self._open_unit_of_work() as unit_of_work:
-            return unit_of_work.workflow_runtime.list_workflow_app_runtimes(project_id.strip())
+            return unit_of_work.workflow_runtime.list_workflow_app_runtimes(
+                normalized_project_id,
+                application_id=normalized_application_id,
+                application_ids=normalized_application_ids,
+            )
 
     def get_workflow_app_runtime(self, workflow_runtime_id: str) -> WorkflowAppRuntime:
         """按 id 读取一个 WorkflowAppRuntime。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
         if workflow_app_runtime is None:
             raise ResourceNotFoundError(
                 "请求的 WorkflowAppRuntime 不存在",
@@ -1007,6 +1237,243 @@ class WorkflowRuntimeService:
             limit=limit,
         )
 
+    def list_workflow_runtime_revisions(
+        self, workflow_runtime_id: str
+    ) -> tuple[WorkflowRuntimeRevision, ...]:
+        """列出 Runtime 全部历史 revision。"""
+
+        self.get_workflow_app_runtime(workflow_runtime_id)
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.workflow_runtime.list_workflow_runtime_revisions(
+                workflow_runtime_id
+            )
+
+    def get_workflow_runtime_revision(
+        self,
+        workflow_runtime_id: str,
+        workflow_runtime_revision_id: str,
+    ) -> WorkflowRuntimeRevision:
+        """读取属于指定稳定 Runtime 的一条 revision。"""
+
+        self.get_workflow_app_runtime(workflow_runtime_id)
+        with self._open_unit_of_work() as unit_of_work:
+            revision = unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                workflow_runtime_revision_id
+            )
+        if revision is None or revision.workflow_runtime_id != workflow_runtime_id:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowRuntimeRevision 不存在",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                },
+            )
+        return revision
+
+    def select_workflow_app_runtime_version(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowAppRuntimeSelectVersionRequest,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在 stopped 状态下以 generation CAS 选择另一已发布版本。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                return self._select_workflow_app_runtime_version(
+                    workflow_runtime_id,
+                    request,
+                    updated_by=updated_by,
+                )
+
+    def _select_workflow_app_runtime_version(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowAppRuntimeSelectVersionRequest,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在已持有本地生命周期锁时选择另一已发布版本。"""
+
+        normalized_request = normalize_select_version_request(request)
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        live_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
+        if (
+            live_state.observed_state != "stopped"
+            or live_state.current_run_id is not None
+        ):
+            raise ResourceConflictError(
+                "选择版本前必须确认 Runtime worker 已完全停止",
+                details={
+                    "observed_state": live_state.observed_state,
+                    "current_run_id": live_state.current_run_id,
+                },
+            )
+        version_service = self._build_workflow_app_version_service()
+        target_version = version_service.get_version_by_id(
+            project_id=workflow_app_runtime.project_id,
+            workflow_app_version_id=normalized_request.workflow_app_version_id,
+            require_published=True,
+        )
+        if target_version.application_id != workflow_app_runtime.application_id:
+            raise InvalidRequestError(
+                "目标 WorkflowAppVersion 不属于当前 Runtime 的 Application",
+                details={
+                    "runtime_application_id": workflow_app_runtime.application_id,
+                    "version_application_id": target_version.application_id,
+                },
+            )
+        target_detail = version_service.get_version_detail(
+            project_id=target_version.project_id,
+            application_id=target_version.application_id,
+            workflow_app_version_id=target_version.workflow_app_version_id,
+        )
+
+        comparison: dict[str, object] | None = None
+        active_revision: WorkflowRuntimeRevision | None = None
+        with self._open_unit_of_work() as unit_of_work:
+            if workflow_app_runtime.active_revision_id is not None:
+                active_revision = (
+                    unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                        workflow_app_runtime.active_revision_id
+                    )
+                )
+        if active_revision is not None:
+            comparison = version_service.compare_versions(
+                project_id=workflow_app_runtime.project_id,
+                application_id=workflow_app_runtime.application_id,
+                source_workflow_app_version_id=active_revision.workflow_app_version_id,
+                target_workflow_app_version_id=target_version.workflow_app_version_id,
+            )
+            breaking_changes = comparison.get("breaking_changes")
+            if (
+                isinstance(breaking_changes, list)
+                and breaking_changes
+                and not normalized_request.allow_breaking_contract
+            ):
+                raise ResourceConflictError(
+                    "目标版本包含破坏性公开契约变化",
+                    details={"breaking_changes": breaking_changes},
+                )
+
+        expected_snapshot_fingerprint = target_version.content_fingerprint
+        now = _now_isoformat()
+        new_generation = normalized_request.expected_generation + 1
+        revision = WorkflowRuntimeRevision(
+            workflow_runtime_revision_id=f"workflow-runtime-revision-{uuid4().hex}",
+            workflow_runtime_id=workflow_runtime_id,
+            generation=new_generation,
+            workflow_app_version_id=target_version.workflow_app_version_id,
+            execution_policy_snapshot_object_key=(
+                workflow_app_runtime.execution_policy_snapshot_object_key
+            ),
+            expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            state="staged",
+            created_at=now,
+            created_by=_normalize_optional_str(updated_by),
+        )
+        selected_runtime = replace(
+            workflow_app_runtime,
+            application_snapshot_object_key=target_version.application_snapshot_object_key,
+            template_snapshot_object_key=target_version.template_snapshot_object_key,
+            desired_revision_id=revision.workflow_runtime_revision_id,
+            revision_generation=new_generation,
+            updated_at=now,
+            last_error=None,
+            metadata=with_runtime_resource_updated_by(
+                {
+                    **dict(workflow_app_runtime.metadata),
+                    "workflow_app_version_id": target_version.workflow_app_version_id,
+                    "last_contract_comparison": comparison or {"compatible": True},
+                    "breaking_change_reason": normalized_request.breaking_change_reason,
+                },
+                updated_by,
+            ),
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            current_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                workflow_runtime_id
+            )
+            if current_runtime is None:
+                raise ResourceNotFoundError("请求的 WorkflowAppRuntime 不存在")
+            self._validate_runtime_version_selection_state(
+                unit_of_work=unit_of_work,
+                workflow_app_runtime=current_runtime,
+                target_contract=target_detail.contract,
+                expected_generation=normalized_request.expected_generation,
+            )
+            self._require_published_version_reference_fence(
+                unit_of_work=unit_of_work,
+                workflow_app_version_id=target_version.workflow_app_version_id,
+            )
+            updated = unit_of_work.workflow_runtime.compare_and_set_workflow_app_runtime_revision(
+                selected_runtime,
+                expected_generation=normalized_request.expected_generation,
+            )
+            if not updated:
+                unit_of_work.rollback()
+                with self._open_unit_of_work() as latest_unit_of_work:
+                    latest_runtime = (
+                        latest_unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                            workflow_runtime_id
+                        )
+                    )
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime generation 或运行状态已发生变化",
+                    details={
+                        "expected_generation": normalized_request.expected_generation,
+                        "current_generation": (
+                            latest_runtime.revision_generation
+                            if latest_runtime is not None
+                            else None
+                        ),
+                    },
+                )
+            unit_of_work.workflow_runtime.add_workflow_runtime_revision(revision)
+            unit_of_work.commit()
+        self._append_workflow_app_runtime_event(
+            selected_runtime,
+            event_type="runtime.version_selected",
+            message="workflow app runtime 已选择新的待启动版本",
+            payload={
+                "workflow_app_version_id": target_version.workflow_app_version_id,
+                "workflow_runtime_revision_id": revision.workflow_runtime_revision_id,
+                "generation": new_generation,
+            },
+        )
+        return selected_runtime
+
+    @staticmethod
+    def _require_published_version_reference_fence(
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        workflow_app_version_id: str,
+    ) -> None:
+        """在 Runtime/revision 写事务内固定目标版本仍为 published。"""
+
+        fenced = unit_of_work.workflow_runtime.fence_published_workflow_app_version(
+            workflow_app_version_id
+        )
+        if fenced:
+            return
+        current = unit_of_work.workflow_runtime.get_workflow_app_version(
+            workflow_app_version_id
+        )
+        raise ResourceConflictError(
+            "目标 WorkflowAppVersion 当前不可供 Runtime 引用",
+            details={
+                "workflow_app_version_id": workflow_app_version_id,
+                "required_state": "published",
+                "current_state": current.state if current is not None else None,
+            },
+        )
+
     def start_workflow_app_runtime(
         self,
         workflow_runtime_id: str,
@@ -1016,55 +1483,205 @@ class WorkflowRuntimeService:
         """启动一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
-        workflow_app_runtime = replace(
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                return self._start_workflow_app_runtime(
+                    workflow_runtime_id,
+                    updated_by=updated_by,
+                )
+
+    def _start_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在已持有本地生命周期锁时启动 Runtime worker。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        if workflow_app_runtime.desired_revision_id is None:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 尚未选择可启动的版本",
+                details={"workflow_runtime_id": workflow_runtime_id},
+            )
+        with self._open_unit_of_work() as unit_of_work:
+            desired_revision = (
+                unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                    workflow_app_runtime.desired_revision_id
+                )
+            )
+        if desired_revision is None or desired_revision.state not in {
+            "staged",
+            "active",
+        }:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 的目标 revision 当前不可启动",
+                details={
+                    "desired_revision_id": workflow_app_runtime.desired_revision_id,
+                    "revision_state": (
+                        desired_revision.state if desired_revision is not None else None
+                    ),
+                },
+            )
+        starting_runtime = replace(
             workflow_app_runtime,
             desired_state="running",
             observed_state="starting",
             updated_at=_now_isoformat(),
+            heartbeat_at=None,
+            worker_instance_id=None,
+            worker_process_id=None,
+            loaded_snapshot_fingerprint=None,
             last_error=None,
+            health_summary={},
             metadata=with_runtime_resource_updated_by(
                 dict(workflow_app_runtime.metadata),
                 updated_by,
             ),
         )
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                workflow_app_runtime
+            updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                starting_runtime,
+                expected_generation=workflow_app_runtime.revision_generation,
+                expected_revision_id=desired_revision.workflow_runtime_revision_id,
+                expected_worker_instance_id=workflow_app_runtime.worker_instance_id,
+                expected_desired_state=workflow_app_runtime.desired_state,
+                expected_observed_state=workflow_app_runtime.observed_state,
             )
+            if not updated:
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime 状态已发生变化，不能启动"
+                )
             unit_of_work.commit()
         try:
-            runtime_state = self.worker_manager.start_runtime(workflow_app_runtime)
+            runtime_state = self.worker_manager.start_runtime(
+                starting_runtime,
+                workflow_runtime_revision_id=(
+                    desired_revision.workflow_runtime_revision_id
+                ),
+                runtime_generation=desired_revision.generation,
+                expected_snapshot_fingerprint=(
+                    desired_revision.expected_snapshot_fingerprint
+                ),
+            )
+            if runtime_state.observed_state != "running":
+                raise ServiceConfigurationError(
+                    "workflow runtime worker 未进入 running 状态",
+                    details={"observed_state": runtime_state.observed_state},
+                )
+            if (
+                runtime_state.loaded_snapshot_fingerprint
+                != desired_revision.expected_snapshot_fingerprint
+            ):
+                self.worker_manager.stop_runtime(workflow_runtime_id)
+                raise ServiceConfigurationError(
+                    "workflow runtime worker 加载的快照指纹不匹配",
+                    details={
+                        "expected": desired_revision.expected_snapshot_fingerprint,
+                        "actual": runtime_state.loaded_snapshot_fingerprint,
+                    },
+                )
         except Exception as error:
             failed_runtime = replace(
-                workflow_app_runtime,
+                starting_runtime,
+                desired_state="stopped",
                 observed_state="failed",
                 updated_at=_now_isoformat(),
+                worker_instance_id=None,
+                worker_process_id=None,
                 last_error=str(error),
             )
             with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(failed_runtime)
+                failed_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                    failed_runtime,
+                    expected_generation=desired_revision.generation,
+                    expected_revision_id=(
+                        desired_revision.workflow_runtime_revision_id
+                    ),
+                    expected_worker_instance_id=None,
+                    expected_desired_state="running",
+                    expected_observed_state="starting",
+                )
+                if failed_updated and desired_revision.state == "staged":
+                    unit_of_work.workflow_runtime.update_workflow_runtime_revision_state(
+                        desired_revision.workflow_runtime_revision_id,
+                        state="failed",
+                        activated_at=None,
+                        failed_at=_now_isoformat(),
+                        error=str(error)[:2048],
+                    )
                 unit_of_work.commit()
-            self._append_workflow_app_runtime_event(
-                failed_runtime,
-                event_type="runtime.failed",
-                message="workflow app runtime 启动失败，将按期望状态自动重试",
-            )
+            if failed_updated:
+                self._append_workflow_app_runtime_event(
+                    failed_runtime,
+                    event_type="runtime.failed",
+                    message="workflow app runtime 目标版本启动失败",
+                )
             raise
         updated_runtime = apply_worker_state(
             replace(
-                workflow_app_runtime,
+                starting_runtime,
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_started_at=_now_isoformat(),
             ),
             runtime_state,
         )
+        activated_at = _now_isoformat()
+        updated_runtime = replace(
+            updated_runtime,
+            active_revision_id=desired_revision.workflow_runtime_revision_id,
+            desired_revision_id=desired_revision.workflow_runtime_revision_id,
+        )
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            activated = unit_of_work.workflow_runtime.activate_workflow_app_runtime_revision_if_current(
+                updated_runtime,
+                expected_generation=desired_revision.generation,
+                expected_revision_id=desired_revision.workflow_runtime_revision_id,
+                expected_worker_instance_id=None,
+            )
+            if not activated:
+                unit_of_work.rollback()
+                self.worker_manager.stop_runtime(workflow_runtime_id)
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime 在 worker 启动期间已发生变化"
+                )
+            if desired_revision.state == "staged":
+                if (
+                    workflow_app_runtime.active_revision_id is not None
+                    and workflow_app_runtime.active_revision_id
+                    != desired_revision.workflow_runtime_revision_id
+                ):
+                    old_revision = (
+                        unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                            workflow_app_runtime.active_revision_id
+                        )
+                    )
+                    if old_revision is not None:
+                        unit_of_work.workflow_runtime.update_workflow_runtime_revision_state(
+                            old_revision.workflow_runtime_revision_id,
+                            state="retired",
+                            activated_at=old_revision.activated_at,
+                            failed_at=old_revision.failed_at,
+                            error=old_revision.error,
+                        )
+                unit_of_work.workflow_runtime.update_workflow_runtime_revision_state(
+                    desired_revision.workflow_runtime_revision_id,
+                    state="active",
+                    activated_at=activated_at,
+                    failed_at=None,
+                    error=None,
+                )
             unit_of_work.commit()
         self._append_workflow_app_runtime_event(
             updated_runtime,
-            event_type="runtime.started" if updated_runtime.observed_state == "running" else "runtime.failed",
+            event_type="runtime.started"
+            if updated_runtime.observed_state == "running"
+            else "runtime.failed",
             message=(
                 "workflow app runtime 已启动"
                 if updated_runtime.observed_state == "running"
@@ -1082,7 +1699,27 @@ class WorkflowRuntimeService:
         """停止一个 WorkflowAppRuntime 对应的 worker。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
-        workflow_app_runtime = replace(
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                return self._stop_workflow_app_runtime(
+                    workflow_runtime_id,
+                    updated_by=updated_by,
+                )
+
+    def _stop_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        updated_by: str | None = None,
+    ) -> WorkflowAppRuntime:
+        """在已持有本地生命周期锁时停止 Runtime worker。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        stopping_runtime = replace(
             workflow_app_runtime,
             desired_state="stopped",
             observed_state="stopping",
@@ -1092,15 +1729,30 @@ class WorkflowRuntimeService:
                 updated_by,
             ),
         )
+        expected_revision_id = (
+            workflow_app_runtime.desired_revision_id
+            or workflow_app_runtime.active_revision_id
+        )
+        if expected_revision_id is None:
+            raise ResourceConflictError("WorkflowAppRuntime 缺少可停止的 revision")
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                workflow_app_runtime
+            updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                stopping_runtime,
+                expected_generation=workflow_app_runtime.revision_generation,
+                expected_revision_id=expected_revision_id,
+                expected_worker_instance_id=workflow_app_runtime.worker_instance_id,
+                expected_desired_state=workflow_app_runtime.desired_state,
+                expected_observed_state=workflow_app_runtime.observed_state,
             )
+            if not updated:
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime 状态已发生变化，不能停止"
+                )
             unit_of_work.commit()
         runtime_state = self.worker_manager.stop_runtime(workflow_runtime_id)
         updated_runtime = apply_worker_state(
             replace(
-                workflow_app_runtime,
+                stopping_runtime,
                 observed_state=runtime_state.observed_state,
                 updated_at=_now_isoformat(),
                 last_stopped_at=_now_isoformat(),
@@ -1109,11 +1761,23 @@ class WorkflowRuntimeService:
         )
         updated_runtime = replace(
             updated_runtime,
+            worker_instance_id=None,
             worker_process_id=None,
             heartbeat_at=runtime_state.heartbeat_at,
         )
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                updated_runtime,
+                expected_generation=workflow_app_runtime.revision_generation,
+                expected_revision_id=expected_revision_id,
+                expected_worker_instance_id=workflow_app_runtime.worker_instance_id,
+                expected_desired_state="stopped",
+                expected_observed_state="stopping",
+            )
+            if not updated:
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime 在 worker 停止期间已发生变化"
+                )
             unit_of_work.commit()
         self._append_workflow_app_runtime_event(
             updated_runtime,
@@ -1131,6 +1795,72 @@ class WorkflowRuntimeService:
         """删除一个 WorkflowAppRuntime 及其 snapshot 目录。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                self._delete_workflow_app_runtime(
+                    workflow_runtime_id,
+                    deleted_by=deleted_by,
+                )
+
+    def _delete_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        deleted_by: str | None,
+    ) -> None:
+        """在生命周期锁内删除未绑定 TriggerSource 的 Runtime。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
+        sync_admission_run_ids = self.worker_manager.list_sync_admission_run_ids(
+            workflow_runtime_id
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            bound_trigger_sources = (
+                unit_of_work.workflow_trigger_sources.list_trigger_sources_by_runtime(
+                    workflow_runtime_id
+                )
+            )
+            active_runs = (
+                unit_of_work.workflow_runtime.list_active_workflow_runs_for_runtime(
+                    workflow_runtime_id
+                )
+            )
+        if bound_trigger_sources:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 仍被 TriggerSource 引用，不能删除",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "trigger_source_ids": [
+                        item.trigger_source_id for item in bound_trigger_sources
+                    ],
+                },
+            )
+        blocked_run_ids = tuple(
+            sorted(
+                {
+                    *(item.workflow_run_id for item in active_runs),
+                    *sync_admission_run_ids,
+                }
+            )
+        )
+        if blocked_run_ids:
+            workflow_run_states = {
+                item.workflow_run_id: item.state for item in active_runs
+            }
+            for workflow_run_id in sync_admission_run_ids:
+                workflow_run_states.setdefault(workflow_run_id, "sync-admission")
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 仍有活动 WorkflowRun，不能删除",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "workflow_run_ids": list(blocked_run_ids),
+                    "workflow_run_states": workflow_run_states,
+                },
+            )
         runtime_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
         if runtime_state.current_run_id is not None:
             raise InvalidRequestError(
@@ -1141,7 +1871,7 @@ class WorkflowRuntimeService:
                 },
             )
         if runtime_state.observed_state != "stopped":
-            workflow_app_runtime = self.stop_workflow_app_runtime(
+            workflow_app_runtime = self._stop_workflow_app_runtime(
                 workflow_runtime_id,
                 updated_by=deleted_by,
             )
@@ -1162,9 +1892,13 @@ class WorkflowRuntimeService:
             message="workflow app runtime 已删除",
         )
         with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.delete_workflow_app_runtime(workflow_runtime_id)
+            unit_of_work.workflow_runtime.delete_workflow_app_runtime(
+                workflow_runtime_id
+            )
             unit_of_work.commit()
-        self.dataset_storage.delete_tree(build_workflow_app_runtime_storage_dir(workflow_runtime_id))
+        self.dataset_storage.delete_tree(
+            build_workflow_app_runtime_storage_dir(workflow_runtime_id)
+        )
 
     def restart_workflow_app_runtime(
         self,
@@ -1182,68 +1916,37 @@ class WorkflowRuntimeService:
         """
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
-        stopped_at = _now_isoformat()
-        restarting_runtime = replace(
-            workflow_app_runtime,
-            desired_state="running",
-            observed_state="starting",
-            updated_at=stopped_at,
-            last_error=None,
-            metadata=with_runtime_resource_updated_by(
-                dict(workflow_app_runtime.metadata),
-                updated_by,
-            ),
-        )
-        # 先持久化期望状态。即使 service 在 stop/start 之间退出，monitor 也会恢复它。
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                restarting_runtime
-            )
-            unit_of_work.commit()
-        try:
-            runtime_state = self.worker_manager.restart_runtime(restarting_runtime)
-        except Exception as error:
-            failed_runtime = replace(
-                restarting_runtime,
-                observed_state="failed",
-                updated_at=_now_isoformat(),
-                last_stopped_at=stopped_at,
-                last_error=str(error),
-            )
-            with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(failed_runtime)
-                unit_of_work.commit()
-            self._append_workflow_app_runtime_event(
-                failed_runtime,
-                event_type="runtime.recovery_failed",
-                message="workflow app runtime 重启失败，将按期望状态自动重试",
-            )
-            raise
-        updated_runtime = apply_worker_state(
-            replace(
-                restarting_runtime,
-                observed_state=runtime_state.observed_state,
-                updated_at=_now_isoformat(),
-                last_started_at=_now_isoformat(),
-                last_stopped_at=stopped_at,
-            ),
-            runtime_state,
-        )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
-            unit_of_work.commit()
+        with self._project_control_mutation(
+            project_id=workflow_app_runtime.project_id,
+            resource_kind="runtime",
+            identity_parts=(workflow_runtime_id,),
+        ):
+            with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+                live_state = self.worker_manager.get_runtime_health(workflow_runtime_id)
+                if live_state.current_run_id is not None:
+                    raise ResourceConflictError(
+                        "WorkflowAppRuntime 仍有活动 WorkflowRun，不能重启",
+                        details={"workflow_run_id": live_state.current_run_id},
+                    )
+                if live_state.observed_state != "stopped":
+                    self._stop_workflow_app_runtime(
+                        workflow_runtime_id,
+                        updated_by=updated_by,
+                    )
+                updated_runtime = self._start_workflow_app_runtime(
+                    workflow_runtime_id,
+                    updated_by=updated_by,
+                )
         self._append_workflow_app_runtime_event(
             updated_runtime,
-            event_type="runtime.restarted" if updated_runtime.observed_state == "running" else "runtime.failed",
-            message=(
-                "workflow app runtime 已重启"
-                if updated_runtime.observed_state == "running"
-                else "workflow app runtime 重启后进入失败状态"
-            ),
+            event_type="runtime.restarted",
+            message="workflow app runtime 已重启并校验版本指纹",
         )
         return updated_runtime
 
-    def get_workflow_app_runtime_health(self, workflow_runtime_id: str) -> WorkflowAppRuntime:
+    def get_workflow_app_runtime_health(
+        self, workflow_runtime_id: str
+    ) -> WorkflowAppRuntime:
         """查询一个 WorkflowAppRuntime 的当前健康状态。"""
 
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
@@ -1256,9 +1959,6 @@ class WorkflowRuntimeService:
             ),
             runtime_state,
         )
-        with self._open_unit_of_work() as unit_of_work:
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
-            unit_of_work.commit()
         return updated_runtime
 
     def list_workflow_app_runtime_instances(
@@ -1321,8 +2021,27 @@ class WorkflowRuntimeService:
         - WorkflowRun：已持久化的异步 WorkflowRun，创建返回时通常为 queued。
         """
 
+        with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+            return self._create_workflow_run(
+                workflow_runtime_id,
+                request,
+                created_by=created_by,
+            )
+
+    def _create_workflow_run(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowRuntimeInvokeRequest,
+        *,
+        created_by: str | None,
+    ) -> WorkflowRun:
+        """在生命周期锁内固定版本、持久化 queued 并登记异步执行句柄。"""
+
         workflow_app_runtime = self.get_workflow_app_runtime(workflow_runtime_id)
-        if workflow_app_runtime.observed_state != "running" or not self.worker_manager.is_runtime_available(workflow_runtime_id):
+        if (
+            workflow_app_runtime.observed_state != "running"
+            or not self.worker_manager.is_runtime_available(workflow_runtime_id)
+        ):
             raise InvalidRequestError(
                 "当前 WorkflowAppRuntime 未处于 running 状态",
                 details={
@@ -1331,6 +2050,7 @@ class WorkflowRuntimeService:
                 },
             )
 
+        active_revision = self._require_active_runtime_revision(workflow_app_runtime)
         execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
         normalized_request = normalize_runtime_invoke_request(request)
         metadata = _build_runtime_default_execution_metadata(workflow_app_runtime)
@@ -1353,6 +2073,11 @@ class WorkflowRuntimeService:
             workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
             project_id=workflow_app_runtime.project_id,
             application_id=workflow_app_runtime.application_id,
+            workflow_runtime_revision_id=active_revision.workflow_runtime_revision_id,
+            workflow_app_version_id=active_revision.workflow_app_version_id,
+            runtime_generation=active_revision.generation,
+            snapshot_fingerprint=active_revision.expected_snapshot_fingerprint,
+            worker_instance_id=workflow_app_runtime.worker_instance_id,
             state="queued",
             created_at=now,
             created_by=_normalize_optional_str(created_by),
@@ -1364,7 +2089,9 @@ class WorkflowRuntimeService:
             ),
             input_payload=(
                 sanitize_runtime_mapping(normalized_request.input_bindings or {})
-                if _should_retain_runtime_payload(metadata, "retain_input_payload_enabled")
+                if _should_retain_runtime_payload(
+                    metadata, "retain_input_payload_enabled"
+                )
                 else {}
             ),
             metadata=metadata,
@@ -1389,13 +2116,20 @@ class WorkflowRuntimeService:
                 input_bindings=dict(normalized_request.input_bindings or {}),
                 execution_metadata=worker_execution_metadata,
                 timeout_seconds=workflow_run.requested_timeout_seconds,
+                expected_revision_id=(active_revision.workflow_runtime_revision_id),
+                expected_generation=active_revision.generation,
+                expected_snapshot_fingerprint=(
+                    active_revision.expected_snapshot_fingerprint
+                ),
                 callbacks=self._build_async_run_callbacks(
                     workflow_app_runtime.workflow_runtime_id,
                     workflow_run.workflow_run_id,
                 ),
             )
         except ServiceError as error:
-            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+            self.worker_manager.cleanup_parent_local_buffer_leases(
+                worker_execution_metadata
+            )
             workflow_run = replace(
                 workflow_run,
                 state="failed",
@@ -1454,68 +2188,41 @@ class WorkflowRuntimeService:
         - WorkflowRuntimeSyncInvokeResult：包含持久化 WorkflowRun 和未脱敏 outputs。
         """
 
-        workflow_app_runtime = self.get_workflow_app_runtime_health(workflow_runtime_id)
-        if workflow_app_runtime.observed_state != "running":
-            raise InvalidRequestError(
-                "当前 WorkflowAppRuntime 未处于 running 状态",
-                details={
-                    "workflow_runtime_id": workflow_runtime_id,
-                    "observed_state": workflow_app_runtime.observed_state,
-                },
+        with self.worker_manager.runtime_lifecycle_guard(workflow_runtime_id):
+            admission = self._admit_sync_workflow_run(
+                workflow_runtime_id,
+                request,
+                created_by=created_by,
+            )
+        try:
+            return self._invoke_admitted_sync_workflow_run(
+                workflow_runtime_id,
+                admission,
+            )
+        finally:
+            self.worker_manager.release_sync_admission(
+                workflow_runtime_id,
+                admission.workflow_run.workflow_run_id,
             )
 
-        execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
-        normalized_request = normalize_runtime_invoke_request(request)
-        now = _now_isoformat()
-        execution_metadata = _build_runtime_default_execution_metadata(workflow_app_runtime)
-        execution_metadata.update(dict(normalized_request.execution_metadata or {}))
-        execution_metadata = apply_execution_policy_metadata(
-            execution_metadata,
-            execution_policy=execution_policy,
-            execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
-        )
-        execution_metadata = apply_workflow_run_persistence_defaults(
-            execution_metadata,
-            execution_policy=execution_policy,
-        )
-        record_mode = resolve_workflow_run_record_mode(execution_metadata)
-        sync_timing_started_at = monotonic()
-        sync_timings: dict[str, object] = {}
-        workflow_run = WorkflowRun(
-            workflow_run_id=f"workflow-run-{uuid4().hex}",
-            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
-            project_id=workflow_app_runtime.project_id,
-            application_id=workflow_app_runtime.application_id,
-            state="dispatching",
-            created_at=now,
-            created_by=_normalize_optional_str(created_by),
-            requested_timeout_seconds=resolve_effective_timeout_seconds(
-                requested_timeout_seconds=normalized_request.timeout_seconds,
-                fallback_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
-                execution_policy=execution_policy,
-                field_name="timeout_seconds",
-            ),
-            input_payload=sanitize_runtime_mapping(normalized_request.input_bindings or {})
-            if _should_retain_runtime_payload(execution_metadata, "retain_input_payload_enabled")
-            else {},
-            metadata=execution_metadata,
-        )
-        if should_persist_workflow_run_dispatch_record(execution_metadata):
-            db_create_started_at = monotonic()
-            with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-                unit_of_work.commit()
-            sync_timings["workflow_run_db_create_ms"] = _elapsed_ms(db_create_started_at)
-            event_append_started_at = monotonic()
-            self._append_workflow_run_event(
-                workflow_run,
-                event_type="run.dispatching",
-                message="workflow run 已提交到 runtime",
-            )
-            sync_timings["workflow_run_dispatch_event_ms"] = _elapsed_ms(event_append_started_at)
-        else:
-            sync_timings["workflow_run_db_create_ms"] = 0.0
-            sync_timings["workflow_run_dispatch_event_ms"] = 0.0
+    def _invoke_admitted_sync_workflow_run(
+        self,
+        workflow_runtime_id: str,
+        admission: _WorkflowRuntimeSyncAdmission,
+    ) -> WorkflowRuntimeSyncInvokeResult:
+        """执行已固定来源并登记轻量占用的同步调用。"""
+
+        workflow_app_runtime = admission.workflow_app_runtime
+        active_revision = admission.active_revision
+        execution_policy = admission.execution_policy
+        normalized_request = admission.normalized_request
+        now = admission.created_at
+        execution_metadata = admission.execution_metadata
+        record_mode = admission.record_mode
+        sync_timing_started_at = admission.timing_started_at
+        sync_timings = admission.timings
+        workflow_run = admission.workflow_run
+        dispatch_record_persisted = admission.dispatch_record_persisted
 
         raw_outputs: dict[str, object] = {}
         raw_template_outputs: dict[str, object] = {}
@@ -1525,6 +2232,7 @@ class WorkflowRuntimeService:
             execution_metadata,
             normalized_request.input_bindings or {},
         )
+        invoked_worker_instance_id = workflow_app_runtime.worker_instance_id
         try:
             worker_invoke_started_at = monotonic()
             worker_result = self.worker_manager.invoke_runtime(
@@ -1533,17 +2241,30 @@ class WorkflowRuntimeService:
                 input_bindings=dict(normalized_request.input_bindings or {}),
                 execution_metadata=worker_execution_metadata,
                 timeout_seconds=workflow_run.requested_timeout_seconds,
+                expected_revision_id=(active_revision.workflow_runtime_revision_id),
+                expected_generation=active_revision.generation,
+                expected_snapshot_fingerprint=(
+                    active_revision.expected_snapshot_fingerprint
+                ),
             )
-            sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(worker_invoke_started_at)
+            sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(
+                worker_invoke_started_at
+            )
             sanitized_outputs = _strip_output_diagnostic_timings(
                 worker_result.outputs,
-                return_timings_enabled=should_return_workflow_timing_metadata(execution_metadata),
+                return_timings_enabled=should_return_workflow_timing_metadata(
+                    execution_metadata
+                ),
             )
             sanitized_template_outputs = _strip_output_diagnostic_timings(
                 worker_result.template_outputs,
-                return_timings_enabled=should_return_workflow_timing_metadata(execution_metadata),
+                return_timings_enabled=should_return_workflow_timing_metadata(
+                    execution_metadata
+                ),
             )
-            raw_outputs = dict(sanitized_outputs) if isinstance(sanitized_outputs, dict) else {}
+            raw_outputs = (
+                dict(sanitized_outputs) if isinstance(sanitized_outputs, dict) else {}
+            )
             raw_template_outputs = (
                 dict(sanitized_template_outputs)
                 if isinstance(sanitized_template_outputs, dict)
@@ -1566,7 +2287,9 @@ class WorkflowRuntimeService:
                 worker_result.worker_state,
             )
         except OperationTimeoutError as exc:
-            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+            self.worker_manager.cleanup_parent_local_buffer_leases(
+                worker_execution_metadata
+            )
             workflow_run = replace(
                 workflow_run,
                 state="timed_out",
@@ -1575,21 +2298,45 @@ class WorkflowRuntimeService:
                 error_message=exc.message,
             )
             with self._open_unit_of_work() as unit_of_work:
-                current_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
-                    workflow_runtime_id
+                current_runtime = (
+                    unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                        workflow_runtime_id
+                    )
                 )
             workflow_app_runtime = self._apply_worker_failure_unless_recovered(
                 current_runtime or workflow_app_runtime,
                 error=exc,
             )
-        except ServiceError:
-            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+        except ServiceError as exc:
+            self.worker_manager.cleanup_parent_local_buffer_leases(
+                worker_execution_metadata
+            )
+            if dispatch_record_persisted:
+                self._finish_sync_dispatch_error(
+                    workflow_run,
+                    error=exc,
+                    state=(
+                        "cancelled"
+                        if isinstance(exc, OperationCancelledError)
+                        else "failed"
+                    ),
+                )
             raise
-        except Exception:
-            self.worker_manager.cleanup_parent_local_buffer_leases(worker_execution_metadata)
+        except Exception as exc:
+            self.worker_manager.cleanup_parent_local_buffer_leases(
+                worker_execution_metadata
+            )
+            if dispatch_record_persisted:
+                self._finish_sync_dispatch_error(
+                    workflow_run,
+                    error=exc,
+                    state="failed",
+                )
             raise
 
-        sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(sync_timing_started_at)
+        sync_timings["workflow_runtime_sync_total_before_persist_ms"] = _elapsed_ms(
+            sync_timing_started_at
+        )
         workflow_run = replace(
             workflow_run,
             metadata=_merge_workflow_run_diagnostic_metadata(
@@ -1600,23 +2347,43 @@ class WorkflowRuntimeService:
         )
         if record_mode == WORKFLOW_RUN_RECORD_MODE_MINIMAL:
             workflow_run = _build_minimal_workflow_run_record(workflow_run)
+        runtime_state_updated = False
         if should_persist_workflow_run(execution_metadata):
             with self._open_unit_of_work() as unit_of_work:
                 unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
-                if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL or workflow_app_runtime.observed_state == "failed":
-                    unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
+                if (
+                    record_mode == WORKFLOW_RUN_RECORD_MODE_FULL
+                    or workflow_app_runtime.observed_state == "failed"
+                ):
+                    runtime_state_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                        workflow_app_runtime,
+                        expected_generation=active_revision.generation,
+                        expected_revision_id=(
+                            active_revision.workflow_runtime_revision_id
+                        ),
+                        expected_worker_instance_id=invoked_worker_instance_id,
+                        expected_desired_state="running",
+                    )
                 unit_of_work.commit()
             if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL:
                 self._append_workflow_run_event(
                     workflow_run,
-                    event_type=self._event_type_for_workflow_run_state(workflow_run.state),
+                    event_type=self._event_type_for_workflow_run_state(
+                        workflow_run.state
+                    ),
                     message=self._message_for_workflow_run_state(workflow_run.state),
                 )
         elif workflow_app_runtime.observed_state == "failed":
             with self._open_unit_of_work() as unit_of_work:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(workflow_app_runtime)
+                runtime_state_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                    workflow_app_runtime,
+                    expected_generation=active_revision.generation,
+                    expected_revision_id=(active_revision.workflow_runtime_revision_id),
+                    expected_worker_instance_id=invoked_worker_instance_id,
+                    expected_desired_state="running",
+                )
                 unit_of_work.commit()
-        if workflow_app_runtime.observed_state == "failed":
+        if runtime_state_updated and workflow_app_runtime.observed_state == "failed":
             self._append_workflow_app_runtime_event(
                 workflow_app_runtime,
                 event_type="runtime.failed",
@@ -1630,11 +2397,182 @@ class WorkflowRuntimeService:
             raw_node_records=raw_node_records,
         )
 
+    def _admit_sync_workflow_run(
+        self,
+        workflow_runtime_id: str,
+        request: WorkflowRuntimeInvokeRequest,
+        *,
+        created_by: str | None,
+    ) -> _WorkflowRuntimeSyncAdmission:
+        """在生命周期锁内固定执行来源并持久化同步 dispatching 记录。"""
+
+        workflow_app_runtime = self.get_workflow_app_runtime_health(workflow_runtime_id)
+        if workflow_app_runtime.observed_state != "running":
+            raise InvalidRequestError(
+                "当前 WorkflowAppRuntime 未处于 running 状态",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "observed_state": workflow_app_runtime.observed_state,
+                },
+            )
+        active_revision = self._require_active_runtime_revision(workflow_app_runtime)
+        execution_policy = self._load_runtime_execution_policy(workflow_app_runtime)
+        normalized_request = normalize_runtime_invoke_request(request)
+        now = _now_isoformat()
+        execution_metadata = _build_runtime_default_execution_metadata(
+            workflow_app_runtime
+        )
+        execution_metadata.update(dict(normalized_request.execution_metadata or {}))
+        execution_metadata = apply_execution_policy_metadata(
+            execution_metadata,
+            execution_policy=execution_policy,
+            execution_policy_snapshot_object_key=(
+                workflow_app_runtime.execution_policy_snapshot_object_key
+            ),
+        )
+        execution_metadata = apply_workflow_run_persistence_defaults(
+            execution_metadata,
+            execution_policy=execution_policy,
+        )
+        record_mode = resolve_workflow_run_record_mode(execution_metadata)
+        sync_timing_started_at = monotonic()
+        sync_timings: dict[str, object] = {}
+        workflow_run = WorkflowRun(
+            workflow_run_id=f"workflow-run-{uuid4().hex}",
+            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+            project_id=workflow_app_runtime.project_id,
+            application_id=workflow_app_runtime.application_id,
+            workflow_runtime_revision_id=(active_revision.workflow_runtime_revision_id),
+            workflow_app_version_id=active_revision.workflow_app_version_id,
+            runtime_generation=active_revision.generation,
+            snapshot_fingerprint=active_revision.expected_snapshot_fingerprint,
+            worker_instance_id=workflow_app_runtime.worker_instance_id,
+            state="dispatching",
+            created_at=now,
+            created_by=_normalize_optional_str(created_by),
+            requested_timeout_seconds=resolve_effective_timeout_seconds(
+                requested_timeout_seconds=normalized_request.timeout_seconds,
+                fallback_timeout_seconds=(workflow_app_runtime.request_timeout_seconds),
+                execution_policy=execution_policy,
+                field_name="timeout_seconds",
+            ),
+            input_payload=(
+                sanitize_runtime_mapping(normalized_request.input_bindings or {})
+                if _should_retain_runtime_payload(
+                    execution_metadata,
+                    "retain_input_payload_enabled",
+                )
+                else {}
+            ),
+            metadata=execution_metadata,
+        )
+        dispatch_record_persisted = should_persist_workflow_run_dispatch_record(
+            execution_metadata
+        )
+        try:
+            self.worker_manager.reserve_sync_admission(
+                workflow_runtime_id,
+                workflow_run.workflow_run_id,
+            )
+            if dispatch_record_persisted:
+                db_create_started_at = monotonic()
+                with self._open_unit_of_work() as unit_of_work:
+                    unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+                    unit_of_work.commit()
+                sync_timings["workflow_run_db_create_ms"] = _elapsed_ms(
+                    db_create_started_at
+                )
+                event_append_started_at = monotonic()
+                self._append_workflow_run_event(
+                    workflow_run,
+                    event_type="run.dispatching",
+                    message="workflow run 已提交到 runtime",
+                )
+                sync_timings["workflow_run_dispatch_event_ms"] = _elapsed_ms(
+                    event_append_started_at
+                )
+            else:
+                sync_timings["workflow_run_db_create_ms"] = 0.0
+                sync_timings["workflow_run_dispatch_event_ms"] = 0.0
+        except Exception:
+            self.worker_manager.release_sync_admission(
+                workflow_runtime_id,
+                workflow_run.workflow_run_id,
+            )
+            raise
+        return _WorkflowRuntimeSyncAdmission(
+            workflow_app_runtime=workflow_app_runtime,
+            active_revision=active_revision,
+            execution_policy=execution_policy,
+            normalized_request=normalized_request,
+            created_at=now,
+            execution_metadata=execution_metadata,
+            record_mode=record_mode,
+            timing_started_at=sync_timing_started_at,
+            timings=sync_timings,
+            workflow_run=workflow_run,
+            dispatch_record_persisted=dispatch_record_persisted,
+        )
+
+    def _finish_sync_dispatch_error(
+        self,
+        workflow_run: WorkflowRun,
+        *,
+        error: Exception,
+        state: str,
+    ) -> WorkflowRun:
+        """把同步 manager 调用异常对应的 dispatching Run 收敛到终态。
+
+        该方法只更新调用开始前已经持久化的 full 记录，不修改 Runtime 状态。
+        Runtime 的 worker 状态由携带 revision、generation、fingerprint 和
+        worker_instance_id 的 CAS 路径回写，避免旧 worker epoch 的迟到异常污染新实例。
+        """
+
+        if isinstance(error, ServiceError):
+            error_message = error.message
+            error_details: dict[str, object] = {
+                "error_code": error.code,
+                **dict(error.details),
+            }
+        else:
+            error_message = str(error) or type(error).__name__
+            error_details = {
+                "error_type": type(error).__name__,
+                "error_message": error_message,
+            }
+        terminal_state = "cancelled" if state == "cancelled" else "failed"
+        metadata = dict(workflow_run.metadata)
+        metadata["error_details"] = sanitize_runtime_mapping(error_details)
+        updated_run = replace(
+            workflow_run,
+            state=terminal_state,
+            finished_at=_now_isoformat(),
+            error_message=error_message,
+            metadata=metadata,
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            unit_of_work.commit()
+        self._append_workflow_run_event(
+            updated_run,
+            event_type=(
+                "run.cancelled" if terminal_state == "cancelled" else "run.failed"
+            ),
+            message=(
+                "workflow run 已取消"
+                if terminal_state == "cancelled"
+                else "workflow run 在分发期间失败"
+            ),
+        )
+        return updated_run
+
     def get_workflow_run(self, workflow_run_id: str) -> WorkflowRun:
         """按 id 读取一个 WorkflowRun。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
         if workflow_run is None:
             raise ResourceNotFoundError(
                 "请求的 WorkflowRun 不存在",
@@ -1642,7 +2580,9 @@ class WorkflowRuntimeService:
             )
         return workflow_run
 
-    def get_raw_workflow_run_outputs(self, workflow_run_id: str) -> dict[str, object] | None:
+    def get_raw_workflow_run_outputs(
+        self, workflow_run_id: str
+    ) -> dict[str, object] | None:
         """读取异步 WorkflowRun 的短期原始公开输出。
 
         返回：
@@ -1659,7 +2599,9 @@ class WorkflowRuntimeService:
                 return None
             return dict(cached_result.outputs)
 
-    def cancel_workflow_run(self, workflow_run_id: str, *, cancelled_by: str | None) -> WorkflowRun:
+    def cancel_workflow_run(
+        self, workflow_run_id: str, *, cancelled_by: str | None
+    ) -> WorkflowRun:
         """取消一条异步 WorkflowRun。
 
         参数：
@@ -1691,7 +2633,9 @@ class WorkflowRuntimeService:
 
         self.worker_manager.cancel_async_run(
             workflow_run_id,
-            timeout_seconds=min(max(float(workflow_run.requested_timeout_seconds), 1.0), 10.0),
+            timeout_seconds=min(
+                max(float(workflow_run.requested_timeout_seconds), 1.0), 10.0
+            ),
         )
         return self.get_workflow_run(workflow_run_id)
 
@@ -1723,7 +2667,9 @@ class WorkflowRuntimeService:
                 "saved-application",
             )
         if request.application is not None and request.template is not None:
-            application = self._with_project_metadata(request.application, project_id=request.project_id)
+            application = self._with_project_metadata(
+                request.application, project_id=request.project_id
+            )
             workflow_service.validate_application(
                 project_id=request.project_id,
                 application=application,
@@ -1735,7 +2681,9 @@ class WorkflowRuntimeService:
                 request.template,
                 "inline-snapshot",
             )
-        raise InvalidRequestError("preview run 需要 application_ref_id 或 application + template")
+        raise InvalidRequestError(
+            "preview run 需要 application_ref_id 或 application + template"
+        )
 
     def _build_async_run_callbacks(
         self,
@@ -1746,15 +2694,19 @@ class WorkflowRuntimeService:
 
         return WorkflowRuntimeAsyncRunCallbacks(
             on_started=lambda: self._mark_async_workflow_run_started(workflow_run_id),
-            on_completed=lambda worker_result: self._finish_async_workflow_run_with_result(
-                workflow_run_id,
-                workflow_runtime_id,
-                worker_result,
+            on_completed=lambda worker_result: (
+                self._finish_async_workflow_run_with_result(
+                    workflow_run_id,
+                    workflow_runtime_id,
+                    worker_result,
+                )
             ),
-            on_cancelled=lambda runtime_state: self._finish_async_workflow_run_cancelled(
-                workflow_run_id,
-                workflow_runtime_id,
-                runtime_state,
+            on_cancelled=lambda runtime_state: (
+                self._finish_async_workflow_run_cancelled(
+                    workflow_run_id,
+                    workflow_runtime_id,
+                    runtime_state,
+                )
             ),
             on_failed=lambda error: self._finish_async_workflow_run_failed(
                 workflow_run_id,
@@ -1772,7 +2724,9 @@ class WorkflowRuntimeService:
         """把异步 WorkflowRun 从 queued 推进到 running。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
             if workflow_run is None or workflow_run.state != "queued":
                 return
             unit_of_work.workflow_runtime.save_workflow_run(
@@ -1783,7 +2737,9 @@ class WorkflowRuntimeService:
                 )
             )
             unit_of_work.commit()
-            updated_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
+            updated_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
         if updated_run is not None:
             self._append_workflow_run_event(
                 updated_run,
@@ -1800,14 +2756,22 @@ class WorkflowRuntimeService:
         """把异步 WorkflowRun 的完成结果回写到持久化层。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
             if workflow_run is None or workflow_app_runtime is None:
                 return
             updated_run = apply_workflow_run_result(
                 workflow_run,
                 worker_result,
-                execution_policy=self._load_runtime_execution_policy(workflow_app_runtime),
+                execution_policy=self._load_runtime_execution_policy(
+                    workflow_app_runtime
+                ),
             )
             record_mode = resolve_workflow_run_record_mode(updated_run.metadata)
             if record_mode == WORKFLOW_RUN_RECORD_MODE_MINIMAL:
@@ -1817,8 +2781,26 @@ class WorkflowRuntimeService:
                 worker_result.worker_state,
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
-            if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL or updated_runtime.observed_state == "failed":
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            runtime_updated = False
+            if (
+                record_mode == WORKFLOW_RUN_RECORD_MODE_FULL
+                or updated_runtime.observed_state == "failed"
+            ):
+                if (
+                    workflow_run.runtime_generation is not None
+                    and workflow_run.workflow_runtime_revision_id is not None
+                ):
+                    runtime_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                        updated_runtime,
+                        expected_generation=workflow_run.runtime_generation,
+                        expected_revision_id=(
+                            workflow_run.workflow_runtime_revision_id
+                        ),
+                        expected_worker_instance_id=(
+                            worker_result.worker_state.instance_id
+                        ),
+                        expected_desired_state="running",
+                    )
             unit_of_work.commit()
         self._remember_raw_workflow_run_outputs(workflow_run_id, worker_result.outputs)
         self._append_workflow_run_event(
@@ -1826,7 +2808,11 @@ class WorkflowRuntimeService:
             event_type=self._event_type_for_workflow_run_state(updated_run.state),
             message=self._message_for_workflow_run_state(updated_run.state),
         )
-        if updated_runtime.observed_state == "failed" and workflow_app_runtime.observed_state != "failed":
+        if (
+            runtime_updated
+            and updated_runtime.observed_state == "failed"
+            and workflow_app_runtime.observed_state != "failed"
+        ):
             self._append_workflow_app_runtime_event(
                 updated_runtime,
                 event_type="runtime.failed",
@@ -1834,7 +2820,9 @@ class WorkflowRuntimeService:
                 payload={"reason": updated_run.state},
             )
 
-    def _remember_raw_workflow_run_outputs(self, workflow_run_id: str, outputs: dict[str, object]) -> None:
+    def _remember_raw_workflow_run_outputs(
+        self, workflow_run_id: str, outputs: dict[str, object]
+    ) -> None:
         """短期保留异步 run 的原始公开输出，供外部调用立即读取。"""
 
         if not outputs:
@@ -1855,12 +2843,16 @@ class WorkflowRuntimeService:
             while len(self._raw_workflow_run_results) > max_items:
                 oldest_run_id = min(
                     self._raw_workflow_run_results,
-                    key=lambda item: self._raw_workflow_run_results[item].created_monotonic,
+                    key=lambda item: (
+                        self._raw_workflow_run_results[item].created_monotonic
+                    ),
                 )
                 self._raw_workflow_run_results.pop(oldest_run_id, None)
 
     @classmethod
-    def _prune_raw_workflow_run_results_locked(cls, now: float, ttl_seconds: float) -> None:
+    def _prune_raw_workflow_run_results_locked(
+        cls, now: float, ttl_seconds: float
+    ) -> None:
         """清理过期的异步 run 原始输出缓存。"""
 
         if ttl_seconds <= 0:
@@ -1883,8 +2875,14 @@ class WorkflowRuntimeService:
         """把异步 WorkflowRun 的失败结果回写到持久化层。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
             if workflow_run is None:
                 return
             metadata = dict(workflow_run.metadata)
@@ -1898,8 +2896,15 @@ class WorkflowRuntimeService:
                 metadata=metadata,
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
-            if workflow_app_runtime is not None:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(
+            runtime_updated = False
+            if (
+                workflow_app_runtime is not None
+                and workflow_run.runtime_generation is not None
+                and workflow_run.workflow_runtime_revision_id is not None
+                and not isinstance(error, ResourceConflictError)
+            ):
+                error_worker_instance_id = error.details.get("worker_instance_id")
+                runtime_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
                     replace(
                         workflow_app_runtime,
                         observed_state="failed",
@@ -1910,10 +2915,25 @@ class WorkflowRuntimeService:
                             "worker_state": "failed",
                             "last_error": error.message,
                         },
-                    )
+                    ),
+                    expected_generation=workflow_run.runtime_generation,
+                    expected_revision_id=(workflow_run.workflow_runtime_revision_id),
+                    expected_worker_instance_id=(
+                        error_worker_instance_id
+                        if isinstance(error_worker_instance_id, str)
+                        and error_worker_instance_id
+                        else workflow_app_runtime.worker_instance_id
+                    ),
+                    expected_desired_state="running",
                 )
             unit_of_work.commit()
-            updated_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            updated_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+                if runtime_updated
+                else None
+            )
         self._append_workflow_run_event(
             updated_run,
             event_type="run.failed",
@@ -1936,8 +2956,14 @@ class WorkflowRuntimeService:
         """把异步 WorkflowRun 的超时结果回写到持久化层。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
             if workflow_run is None:
                 return
             updated_run = replace(
@@ -1948,14 +2974,39 @@ class WorkflowRuntimeService:
                 error_message=error.message,
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            runtime_updated = False
             if workflow_app_runtime is not None:
                 updated_runtime = self._apply_worker_failure_unless_recovered(
                     workflow_app_runtime,
                     error=error,
                 )
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+                if (
+                    workflow_run.runtime_generation is not None
+                    and workflow_run.workflow_runtime_revision_id is not None
+                ):
+                    timeout_worker_instance_id = error.details.get("worker_instance_id")
+                    runtime_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                        updated_runtime,
+                        expected_generation=workflow_run.runtime_generation,
+                        expected_revision_id=(
+                            workflow_run.workflow_runtime_revision_id
+                        ),
+                        expected_worker_instance_id=(
+                            timeout_worker_instance_id
+                            if isinstance(timeout_worker_instance_id, str)
+                            and timeout_worker_instance_id
+                            else workflow_app_runtime.worker_instance_id
+                        ),
+                        expected_desired_state="running",
+                    )
             unit_of_work.commit()
-            updated_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            updated_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+                if runtime_updated
+                else None
+            )
         self._append_workflow_run_event(
             updated_run,
             event_type="run.timed_out",
@@ -1986,13 +3037,24 @@ class WorkflowRuntimeService:
           新进程时保留新一代 running 状态，避免迟到回调覆盖恢复结果。
         """
 
+        failed_worker_instance_id = error.details.get("worker_instance_id")
+        current_worker_instance_id = workflow_app_runtime.worker_instance_id
         failed_worker_process_id = error.details.get("worker_process_id")
         current_worker_process_id = workflow_app_runtime.worker_process_id
-        recovered_by_new_worker = (
-            isinstance(failed_worker_process_id, int)
-            and isinstance(current_worker_process_id, int)
-            and current_worker_process_id != failed_worker_process_id
-            and workflow_app_runtime.observed_state == "running"
+        recovered_by_new_worker = workflow_app_runtime.observed_state == "running" and (
+            (
+                isinstance(failed_worker_instance_id, str)
+                and bool(failed_worker_instance_id)
+                and isinstance(current_worker_instance_id, str)
+                and bool(current_worker_instance_id)
+                and current_worker_instance_id != failed_worker_instance_id
+            )
+            or (
+                failed_worker_instance_id is None
+                and isinstance(failed_worker_process_id, int)
+                and isinstance(current_worker_process_id, int)
+                and current_worker_process_id != failed_worker_process_id
+            )
         )
         if recovered_by_new_worker:
             return workflow_app_runtime
@@ -2005,6 +3067,7 @@ class WorkflowRuntimeService:
                 "mode": "single-instance-sync",
                 "worker_state": "failed",
                 "last_error": error.message,
+                "failed_worker_instance_id": failed_worker_instance_id,
                 "failed_worker_process_id": failed_worker_process_id,
             },
         )
@@ -2018,8 +3081,14 @@ class WorkflowRuntimeService:
         """把异步 WorkflowRun 的取消结果回写到持久化层。"""
 
         with self._open_unit_of_work() as unit_of_work:
-            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(workflow_run_id)
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
+                workflow_run_id
+            )
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
             if workflow_run is None:
                 return
             updated_run = replace(
@@ -2029,15 +3098,37 @@ class WorkflowRuntimeService:
                 error_message="workflow run 已取消",
             )
             unit_of_work.workflow_runtime.save_workflow_run(updated_run)
+            runtime_updated = False
             if workflow_app_runtime is not None and runtime_state is not None:
-                unit_of_work.workflow_runtime.save_workflow_app_runtime(
-                    apply_worker_state(
-                        replace(workflow_app_runtime, updated_at=_now_isoformat()),
-                        runtime_state,
+                if (
+                    workflow_run.runtime_generation is not None
+                    and workflow_run.workflow_runtime_revision_id is not None
+                ):
+                    runtime_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                        apply_worker_state(
+                            replace(
+                                workflow_app_runtime,
+                                updated_at=_now_isoformat(),
+                            ),
+                            runtime_state,
+                        ),
+                        expected_generation=workflow_run.runtime_generation,
+                        expected_revision_id=(
+                            workflow_run.workflow_runtime_revision_id
+                        ),
+                        expected_worker_instance_id=(
+                            workflow_app_runtime.worker_instance_id
+                        ),
+                        expected_desired_state="running",
                     )
-                )
             unit_of_work.commit()
-            updated_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
+            updated_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+                if runtime_updated
+                else None
+            )
         self._append_workflow_run_event(
             updated_run,
             event_type="run.cancelled",
@@ -2046,7 +3137,11 @@ class WorkflowRuntimeService:
         if updated_runtime is not None and runtime_state is not None:
             self._append_workflow_app_runtime_event(
                 updated_runtime,
-                event_type=("runtime.restarted" if updated_runtime.observed_state == "running" else "runtime.failed"),
+                event_type=(
+                    "runtime.restarted"
+                    if updated_runtime.observed_state == "running"
+                    else "runtime.failed"
+                ),
                 message=(
                     "workflow app runtime 已在取消后恢复运行"
                     if updated_runtime.observed_state == "running"
@@ -2112,7 +3207,9 @@ class WorkflowRuntimeService:
         """向 WorkflowAppRuntime 的 events.json 追加一条事件。"""
 
         if not workflow_app_runtime.updated_at:
-            workflow_app_runtime = replace(workflow_app_runtime, updated_at=_now_isoformat())
+            workflow_app_runtime = replace(
+                workflow_app_runtime, updated_at=_now_isoformat()
+            )
         return append_workflow_app_runtime_event(
             dataset_storage=self.dataset_storage,
             service_event_bus=self.service_event_bus,
@@ -2208,13 +3305,194 @@ class WorkflowRuntimeService:
         finally:
             unit_of_work.close()
 
+    @contextmanager
+    def _project_control_mutation(
+        self,
+        *,
+        project_id: str,
+        resource_kind: str,
+        identity_parts: tuple[str, ...],
+    ) -> Iterator[None]:
+        """用持久 reserved claim 保护 Project 控制写，body 不持 DB 锁。"""
+
+        resource_key = build_workflow_lifecycle_resource_key(
+            resource_kind,
+            *identity_parts,
+        )
+        with self.application_lifecycle.operation(
+            project_id=project_id,
+            application_id=resource_key,
+            operation="saving",
+            allow_deleted=True,
+            deleted_on_success=None,
+        ):
+            yield
+
     @staticmethod
-    def _with_project_metadata(application: FlowApplication, *, project_id: str) -> FlowApplication:
+    def _with_project_metadata(
+        application: FlowApplication, *, project_id: str
+    ) -> FlowApplication:
         """把 project_id 写入 application metadata，供 runtime snapshot 读取。"""
 
         metadata = dict(application.metadata)
         metadata["project_id"] = project_id
         return application.model_copy(update={"metadata": metadata})
+
+    def _build_workflow_app_version_service(self) -> WorkflowAppVersionService:
+        """构建复用当前数据库、对象存储和节点目录的版本服务。"""
+
+        return WorkflowAppVersionService(
+            session_factory=self.session_factory,
+            dataset_storage=self.dataset_storage,
+            node_catalog_registry=self.node_catalog_registry,
+        )
+
+    def _require_active_runtime_revision(
+        self, workflow_app_runtime: WorkflowAppRuntime
+    ) -> WorkflowRuntimeRevision:
+        """固定当前 active revision，并校验 worker 实际快照与 epoch。"""
+
+        if workflow_app_runtime.active_revision_id is None:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 尚未激活可执行版本",
+                details={
+                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id
+                },
+            )
+        with self._open_unit_of_work() as unit_of_work:
+            revision = unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                workflow_app_runtime.active_revision_id
+            )
+        if revision is None or revision.state != "active":
+            raise ResourceConflictError(
+                "WorkflowAppRuntime active revision 状态无效",
+                details={
+                    "active_revision_id": workflow_app_runtime.active_revision_id,
+                    "revision_state": revision.state if revision is not None else None,
+                },
+            )
+        if revision.generation != workflow_app_runtime.revision_generation:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime generation 与 active revision 不一致",
+                details={
+                    "runtime_generation": workflow_app_runtime.revision_generation,
+                    "revision_generation": revision.generation,
+                },
+            )
+        if (
+            workflow_app_runtime.loaded_snapshot_fingerprint
+            != revision.expected_snapshot_fingerprint
+        ):
+            raise ResourceConflictError(
+                "WorkflowAppRuntime worker 快照与 active revision 不一致",
+                details={
+                    "expected": revision.expected_snapshot_fingerprint,
+                    "actual": workflow_app_runtime.loaded_snapshot_fingerprint,
+                },
+            )
+        if not workflow_app_runtime.worker_instance_id:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 当前 worker epoch 无效",
+                details={
+                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                    "worker_instance_id": workflow_app_runtime.worker_instance_id,
+                },
+            )
+        return revision
+
+    def _validate_runtime_version_selection_state(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        workflow_app_runtime: WorkflowAppRuntime,
+        target_contract: dict[str, object],
+        expected_generation: int,
+    ) -> None:
+        """在选版事务内校验 stopped、活动 run、Trigger 和 generation。"""
+
+        if workflow_app_runtime.revision_generation != expected_generation:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime generation 已发生变化",
+                details={
+                    "expected_generation": expected_generation,
+                    "current_generation": workflow_app_runtime.revision_generation,
+                },
+            )
+        if (
+            workflow_app_runtime.desired_state != "stopped"
+            or workflow_app_runtime.observed_state != "stopped"
+        ):
+            raise ResourceConflictError(
+                "选择版本前必须停止 WorkflowAppRuntime",
+                details={
+                    "desired_state": workflow_app_runtime.desired_state,
+                    "observed_state": workflow_app_runtime.observed_state,
+                },
+            )
+        active_runs = (
+            unit_of_work.workflow_runtime.list_active_workflow_runs_for_runtime(
+                workflow_app_runtime.workflow_runtime_id
+            )
+        )
+        if active_runs:
+            raise ResourceConflictError(
+                "WorkflowAppRuntime 仍有活动 WorkflowRun",
+                details={
+                    "workflow_run_ids": [item.workflow_run_id for item in active_runs]
+                },
+            )
+        trigger_sources = (
+            unit_of_work.workflow_trigger_sources.list_trigger_sources_by_runtime(
+                workflow_app_runtime.workflow_runtime_id
+            )
+        )
+        active_triggers = [
+            item
+            for item in trigger_sources
+            if item.enabled
+            or item.desired_state != "stopped"
+            or item.observed_state != "stopped"
+        ]
+        if active_triggers:
+            raise ResourceConflictError(
+                "选择版本前必须停用全部绑定 TriggerSource",
+                details={
+                    "trigger_source_ids": [
+                        item.trigger_source_id for item in active_triggers
+                    ]
+                },
+            )
+        input_ids = _read_contract_binding_ids(target_contract, "inputs")
+        output_ids = _read_contract_binding_ids(target_contract, "outputs")
+        mapping_issues: list[dict[str, object]] = []
+        for trigger_source in trigger_sources:
+            missing_inputs = sorted(
+                set(trigger_source.input_binding_mapping) - input_ids
+            )
+            if missing_inputs:
+                mapping_issues.append(
+                    {
+                        "trigger_source_id": trigger_source.trigger_source_id,
+                        "missing_input_binding_ids": missing_inputs,
+                    }
+                )
+            result_binding = find_unknown_result_binding(
+                output_binding_ids=output_ids,
+                result_mapping=trigger_source.result_mapping,
+                result_mode=trigger_source.result_mode,
+            )
+            if result_binding is not None:
+                mapping_issues.append(
+                    {
+                        "trigger_source_id": trigger_source.trigger_source_id,
+                        "missing_output_binding_id": result_binding,
+                    }
+                )
+        if mapping_issues:
+            raise ResourceConflictError(
+                "目标版本与已有 TriggerSource 映射不兼容",
+                details={"mapping_issues": mapping_issues},
+            )
 
     def _resolve_execution_policy_for_project(
         self,
@@ -2248,12 +3526,16 @@ class WorkflowRuntimeService:
             raise ServiceError("WorkflowExecutionPolicy snapshot 内容无效")
         return WorkflowExecutionPolicy(
             execution_policy_id=str(payload.get("execution_policy_id") or ""),
-            project_id=str(payload.get("project_id") or workflow_app_runtime.project_id),
+            project_id=str(
+                payload.get("project_id") or workflow_app_runtime.project_id
+            ),
             display_name=str(payload.get("display_name") or ""),
             policy_kind=str(payload.get("policy_kind") or "runtime-default"),
             default_timeout_seconds=int(payload.get("default_timeout_seconds") or 30),
             max_run_timeout_seconds=int(payload.get("max_run_timeout_seconds") or 30),
-            trace_level=str(payload.get("trace_level") or WORKFLOW_RUN_DEFAULT_TRACE_LEVEL),
+            trace_level=str(
+                payload.get("trace_level") or WORKFLOW_RUN_DEFAULT_TRACE_LEVEL
+            ),
             retain_node_records_enabled=bool(
                 payload.get(
                     "retain_node_records_enabled",
@@ -2268,6 +3550,10 @@ class WorkflowRuntimeService:
             ),
             created_at=str(payload.get("created_at") or ""),
             updated_at=str(payload.get("updated_at") or ""),
-            created_by=_normalize_optional_str(payload.get("created_by") if isinstance(payload.get("created_by"), str) else None),
+            created_by=_normalize_optional_str(
+                payload.get("created_by")
+                if isinstance(payload.get("created_by"), str)
+                else None
+            ),
             metadata=dict(payload.get("metadata") or {}),
         )

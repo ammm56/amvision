@@ -8,7 +8,7 @@ WebSocket 资源流的统一消息结构、控制事件和重连规则见 [docs/
 
 本文档只描述当前真实实现，不展开未来接口规划。
 
-Workflow App 不可变发布版本和 Runtime 版本切换尚未公开。当前 API 仍以 `application_id` 创建 Runtime 并固定当时 snapshot；未来设计见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)，其中的规划端点不得视为当前 API。
+Workflow App 不可变发布版本、Runtime revision、stopped-only 版本切换和运行来源记录已经公开。新 Runtime 使用准确 `workflow_app_version_id`；`application_id` 仅保留为 v1 兼容字段。接口见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)。
 
 ## 统一鉴权输入
 
@@ -264,10 +264,14 @@ Workflow App 不可变发布版本和 Runtime 版本切换尚未公开。当前 
 | DELETE | /api/v1/workflows/projects/{project_id}/templates/{template_id}/versions/{template_version} | workflows:write | 删除一份已保存的 workflow template 版本。 |
 | POST | /api/v1/workflows/applications/validate | workflows:read | 校验一份 FlowApplication 与 template 绑定关系。 |
 | GET | /api/v1/workflows/projects/{project_id}/applications | workflows:read | 列出指定 Project 下的 FlowApplication 摘要；支持 offset、limit 和统一分页响应头。 |
-| PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存一份 FlowApplication JSON。 |
+| PUT | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 保存 FlowApplication；可同时提交 template，以单请求、可回滚 bundle 语义保存编辑器草稿。 |
 | GET | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:read | 读取一份已保存的 FlowApplication JSON。 |
 | POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/copy | workflows:write | 复制一份已保存的 FlowApplication。 |
 | DELETE | /api/v1/workflows/projects/{project_id}/applications/{application_id} | workflows:write | 删除一份已保存的 FlowApplication。 |
+| POST | /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions | workflows:write | 把当前草稿按 expected_draft_fingerprint 发布为不可变 WorkflowAppVersion。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions | workflows:read | 列出 Workflow App 发布版本；支持统一分页。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id} | workflows:read | 读取版本详情和完整不可变发布内容。 |
+| GET | /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/compare | workflows:read | 比较指定版本与当前草稿的公开契约。 |
 | POST | /api/v1/workflows/execution-policies | workflows:write | 创建一条 WorkflowExecutionPolicy。 |
 | GET | /api/v1/workflows/execution-policies | workflows:read | 按 Project 列出 WorkflowExecutionPolicy；支持 offset、limit 和统一分页响应头。 |
 | GET | /api/v1/workflows/execution-policies/{execution_policy_id} | workflows:read | 读取一条 WorkflowExecutionPolicy。 |
@@ -286,6 +290,9 @@ Workflow App 不可变发布版本和 Runtime 版本切换尚未公开。当前 
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/events | workflows:read | 读取一条 WorkflowAppRuntime 的事件列表；支持 after_sequence 和 limit。 |
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health | workflows:read | 查询 runtime 当前健康状态。 |
 | GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances | workflows:read | 列出 runtime 当前可观测的 instance 摘要。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions | workflows:read | 列出稳定 Runtime 的版本选择历史。 |
+| GET | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions/{workflow_runtime_revision_id} | workflows:read | 读取一条不可变 Runtime revision。 |
+| POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/select-version | workflows:write | 在 stopped 状态下使用 generation CAS 选择准确发布版本。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs | workflows:write | 为已启动 runtime 创建一条异步 WorkflowRun。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs/upload | workflows:write | 通过 multipart/form-data 为已启动 runtime 创建一条异步 WorkflowRun；当前只支持 dataset-package.v1 文件输入。 |
 | POST | /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke | workflows:write | 通过 runtime 发起一次同步调用。 |
@@ -1723,6 +1730,7 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 - Content-Type：application/json
 - 需要 workflows:write
 - 路径参数中的 template_id 与 template_version 必须和请求体中的 template 一致
+- Template PUT/COPY/DELETE 与引用该 Template 的发布共享持久化 Template resource claim；竞争直接返回 409
 - 成功响应会同时返回：
   - project_id
   - object_key
@@ -1749,11 +1757,14 @@ classification、segmentation、pose 和 obb 四种任务类型各自提供与 d
 - Content-Type：application/json
 - 需要 workflows:write
 - 路径参数中的 application_id 必须和请求体中的 application.application_id 一致
+- 请求体中的 template 可选；提供时必须与 application.template_ref 一致，并以 Application→Template 固定 claim 顺序完成单请求 bundle 保存
+- bundle 任一步失败会恢复保存前的 Application、Template 及双方 sidecar；不提供 template 时保持只保存 Application 的旧行为
 - 保存时会把 application.template_ref.source_uri 规范化为真实 template object key
 - 成功响应会同时返回：
   - project_id
   - object_key
   - application
+  - saved_template，仅 bundle 保存响应存在
   - 校验摘要字段
 
 ### GET /api/v1/workflows/projects/{project_id}/applications/{application_id}

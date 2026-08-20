@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from backend.contracts.nodes import NodePackManifest
@@ -11,6 +13,7 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphTemplate,
     WorkflowPayloadContract,
 )
+
 
 class WorkflowTemplateValidateRequestBody(BaseModel):
     """描述图模板校验请求体。"""
@@ -39,6 +42,10 @@ class WorkflowApplicationSaveRequestBody(BaseModel):
     """描述流程应用保存请求体。"""
 
     application: FlowApplication = Field(description="待保存的流程应用")
+    template: WorkflowGraphTemplate | None = Field(
+        default=None,
+        description="可选的同请求 Template；提供时与 Application 作为一个 bundle 保存",
+    )
 
 
 class WorkflowApplicationUpdateRequestBody(BaseModel):
@@ -53,16 +60,24 @@ class WorkflowTemplateCopyRequestBody(BaseModel):
 
     target_template_id: str = Field(description="目标模板 id")
     target_template_version: str = Field(description="目标模板版本")
-    display_name: str | None = Field(default=None, description="可选目标显示名称；未提供时复用源模板")
-    description: str | None = Field(default=None, description="可选目标说明；未提供时复用源模板")
+    display_name: str | None = Field(
+        default=None, description="可选目标显示名称；未提供时复用源模板"
+    )
+    description: str | None = Field(
+        default=None, description="可选目标说明；未提供时复用源模板"
+    )
 
 
 class WorkflowApplicationCopyRequestBody(BaseModel):
     """描述流程应用复制请求体。"""
 
     target_application_id: str = Field(description="目标流程应用 id")
-    display_name: str | None = Field(default=None, description="可选目标显示名称；未提供时复用源应用")
-    description: str | None = Field(default=None, description="可选目标说明；未提供时复用源应用")
+    display_name: str | None = Field(
+        default=None, description="可选目标显示名称；未提供时复用源应用"
+    )
+    description: str | None = Field(
+        default=None, description="可选目标说明；未提供时复用源应用"
+    )
 
 
 class WorkflowTemplateValidationResponse(BaseModel):
@@ -73,9 +88,15 @@ class WorkflowTemplateValidationResponse(BaseModel):
     template_version: str = Field(description="模板版本")
     node_count: int = Field(description="节点数量")
     edge_count: int = Field(description="边数量")
-    template_input_ids: list[str] = Field(default_factory=list, description="逻辑输入 id 列表")
-    template_output_ids: list[str] = Field(default_factory=list, description="逻辑输出 id 列表")
-    referenced_node_type_ids: list[str] = Field(default_factory=list, description="引用的节点类型 id 列表")
+    template_input_ids: list[str] = Field(
+        default_factory=list, description="逻辑输入 id 列表"
+    )
+    template_output_ids: list[str] = Field(
+        default_factory=list, description="逻辑输出 id 列表"
+    )
+    referenced_node_type_ids: list[str] = Field(
+        default_factory=list, description="引用的节点类型 id 列表"
+    )
 
 
 class WorkflowApplicationValidationResponse(BaseModel):
@@ -86,8 +107,12 @@ class WorkflowApplicationValidationResponse(BaseModel):
     template_id: str = Field(description="引用的模板 id")
     template_version: str = Field(description="引用的模板版本")
     binding_count: int = Field(description="绑定数量")
-    input_binding_ids: list[str] = Field(default_factory=list, description="输入绑定 id 列表")
-    output_binding_ids: list[str] = Field(default_factory=list, description="输出绑定 id 列表")
+    input_binding_ids: list[str] = Field(
+        default_factory=list, description="输入绑定 id 列表"
+    )
+    output_binding_ids: list[str] = Field(
+        default_factory=list, description="输出绑定 id 列表"
+    )
 
 
 class WorkflowTemplateDocumentResponse(WorkflowTemplateValidationResponse):
@@ -111,11 +136,98 @@ class WorkflowApplicationDocumentResponse(WorkflowApplicationValidationResponse)
     updated_at: str = Field(description="流程应用更新时间")
     created_by: str | None = Field(default=None, description="流程应用创建主体 id")
     updated_by: str | None = Field(default=None, description="流程应用最近修改主体 id")
+    draft_fingerprint: str = Field(
+        description="当前 Application 与 Template 草稿的稳定指纹"
+    )
     template_summary: "WorkflowTemplateReferenceSummaryResponse | None" = Field(
         default=None,
         description="引用模板的一跳摘要",
     )
     application: FlowApplication = Field(description="流程应用内容")
+
+
+class WorkflowApplicationBundleSaveResponse(WorkflowApplicationDocumentResponse):
+    """描述 Application 与 Template bundle 保存结果。"""
+
+    saved_template: WorkflowTemplateDocumentResponse = Field(
+        description="与 Application 在同一状态门内保存的 Template"
+    )
+
+
+class WorkflowAppVersionPublishRequestBody(BaseModel):
+    """描述一次 Workflow App 版本发布请求。"""
+
+    expected_draft_fingerprint: str = Field(description="发布前读取的草稿指纹")
+    release_notes: str = Field(default="", max_length=4096, description="版本说明")
+    display_version: str | None = Field(
+        default=None, max_length=128, description="可选显示版本"
+    )
+    allow_duplicate_content: bool = Field(
+        default=False, description="是否允许重复发布相同内容"
+    )
+
+
+class WorkflowAppVersionArchiveRequestBody(BaseModel):
+    """描述已发布版本的归档 CAS 请求。"""
+
+    expected_state: Literal["published"] = Field(
+        default="published",
+        description="调用方读取到的预期状态",
+    )
+
+
+class WorkflowAppVersionRestoreRequestBody(BaseModel):
+    """描述归档版本的恢复 CAS 请求。"""
+
+    expected_state: Literal["archived"] = Field(
+        default="archived",
+        description="调用方读取到的预期状态",
+    )
+
+
+class WorkflowAppVersionResponse(BaseModel):
+    """描述一条不可变 Workflow App 版本记录。"""
+
+    format_id: Literal["amvision.workflow-app-version.v1"] = (
+        "amvision.workflow-app-version.v1"
+    )
+    workflow_app_version_id: str
+    project_id: str
+    application_id: str
+    version_number: int
+    display_version: str
+    release_notes: str
+    application_snapshot_object_key: str
+    template_snapshot_object_key: str
+    contract_snapshot_object_key: str
+    dependency_manifest_object_key: str
+    content_fingerprint: str
+    contract_fingerprint: str
+    state: str
+    created_at: str
+    created_by: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+
+
+class WorkflowAppVersionDetailResponse(WorkflowAppVersionResponse):
+    """描述版本记录和完整不可变发布内容。"""
+
+    application: dict[str, object]
+    template: dict[str, object]
+    contract: dict[str, object]
+    dependencies: dict[str, object]
+    manifest: dict[str, object]
+
+
+class WorkflowAppVersionComparisonResponse(BaseModel):
+    """描述已发布版本与当前草稿的契约差异。"""
+
+    compatible: bool
+    changes: list[dict[str, object]] = Field(default_factory=list)
+    breaking_changes: list[dict[str, object]] = Field(default_factory=list)
+    source_contract_fingerprint: str
+    target_contract_fingerprint: str
 
 
 class WorkflowTemplateReferenceSummaryResponse(BaseModel):
@@ -142,12 +254,16 @@ class WorkflowNodeCatalogResponse(BaseModel):
     - palette_groups：按节点分类整理后的 palette 分组结果。
     """
 
-    node_pack_manifests: list[NodePackManifest] = Field(default_factory=list, description="节点包 manifest 列表")
+    node_pack_manifests: list[NodePackManifest] = Field(
+        default_factory=list, description="节点包 manifest 列表"
+    )
     payload_contracts: list[WorkflowPayloadContract] = Field(
         default_factory=list,
         description="payload 规则 列表",
     )
-    node_definitions: list[NodeDefinition] = Field(default_factory=list, description="节点定义列表")
+    node_definitions: list[NodeDefinition] = Field(
+        default_factory=list, description="节点定义列表"
+    )
     palette_groups: list["WorkflowNodePaletteGroupResponse"] = Field(
         default_factory=list,
         description="按分类分组后的 palette 结果",
@@ -160,7 +276,9 @@ class WorkflowNodePaletteGroupResponse(BaseModel):
     category: str = Field(description="节点分类 id")
     display_name: str = Field(description="分组显示名称")
     item_count: int = Field(description="当前分组的节点数量")
-    node_definitions: list[NodeDefinition] = Field(default_factory=list, description="当前分组下的节点定义列表")
+    node_definitions: list[NodeDefinition] = Field(
+        default_factory=list, description="当前分组下的节点定义列表"
+    )
 
 
 class WorkflowNodePackStatusIssueResponse(BaseModel):
@@ -202,7 +320,9 @@ class WorkflowNodePackStatusItemResponse(BaseModel):
     enabled: bool = Field(description="manifest 当前是否启用")
     source_dir: str = Field(description="来源目录")
     manifest_path: str | None = Field(default=None, description="manifest 文件路径")
-    custom_node_catalog_path: str | None = Field(default=None, description="自定义节点目录文件路径")
+    custom_node_catalog_path: str | None = Field(
+        default=None, description="自定义节点目录文件路径"
+    )
     loaded_at: str | None = Field(default=None, description="最近一次 loader 扫描时间")
     node_count: int = Field(description="当前成功加载的节点数量")
     capabilities: list[str] = Field(default_factory=list, description="能力标签")
@@ -210,9 +330,15 @@ class WorkflowNodePackStatusItemResponse(BaseModel):
         default_factory=list,
         description="依赖状态列表",
     )
-    issues: list[WorkflowNodePackStatusIssueResponse] = Field(default_factory=list, description="问题列表")
-    logs: list[WorkflowNodePackStatusLogResponse] = Field(default_factory=list, description="状态日志")
-    manifest: dict[str, object] | None = Field(default=None, description="manifest JSON 摘要")
+    issues: list[WorkflowNodePackStatusIssueResponse] = Field(
+        default_factory=list, description="问题列表"
+    )
+    logs: list[WorkflowNodePackStatusLogResponse] = Field(
+        default_factory=list, description="状态日志"
+    )
+    manifest: dict[str, object] | None = Field(
+        default=None, description="manifest JSON 摘要"
+    )
 
 
 class WorkflowNodePackStatusResponse(BaseModel):
@@ -220,8 +346,12 @@ class WorkflowNodePackStatusResponse(BaseModel):
 
     generated_at: str = Field(description="快照生成时间")
     custom_nodes_root_dir: str = Field(description="custom_nodes 根目录")
-    items: list[WorkflowNodePackStatusItemResponse] = Field(default_factory=list, description="node pack 状态列表")
-    logs: list[WorkflowNodePackStatusLogResponse] = Field(default_factory=list, description="聚合日志")
+    items: list[WorkflowNodePackStatusItemResponse] = Field(
+        default_factory=list, description="node pack 状态列表"
+    )
+    logs: list[WorkflowNodePackStatusLogResponse] = Field(
+        default_factory=list, description="聚合日志"
+    )
 
 
 class WorkflowNodePackVersionResponse(BaseModel):
@@ -241,7 +371,9 @@ class WorkflowNodePackAuditResponse(BaseModel):
     """描述节点包生命周期审计事件。"""
 
     event_id: str = Field(description="审计事件 id")
-    action: str = Field(description="install、upgrade、rollback、enable、disable 等动作")
+    action: str = Field(
+        description="install、upgrade、rollback、enable、disable 等动作"
+    )
     status: str = Field(description="succeeded 或 failed")
     created_at: str = Field(description="事件时间")
     actor_id: str = Field(description="操作主体 id")
@@ -280,7 +412,9 @@ class WorkflowTemplateSummaryResponse(BaseModel):
     updated_by: str | None = Field(default=None, description="模板最近修改主体 id")
     latest_template_version: str = Field(description="当前最新模板版本")
     version_count: int = Field(description="当前模板版本数量")
-    versions: list[str] = Field(default_factory=list, description="全部模板版本 id 列表")
+    versions: list[str] = Field(
+        default_factory=list, description="全部模板版本 id 列表"
+    )
 
 
 class WorkflowTemplateVersionSummaryResponse(BaseModel):
@@ -298,9 +432,15 @@ class WorkflowTemplateVersionSummaryResponse(BaseModel):
     updated_by: str | None = Field(default=None, description="模板版本最近修改主体 id")
     node_count: int = Field(description="节点数量")
     edge_count: int = Field(description="边数量")
-    template_input_ids: list[str] = Field(default_factory=list, description="逻辑输入 id 列表")
-    template_output_ids: list[str] = Field(default_factory=list, description="逻辑输出 id 列表")
-    referenced_node_type_ids: list[str] = Field(default_factory=list, description="引用的节点类型 id 列表")
+    template_input_ids: list[str] = Field(
+        default_factory=list, description="逻辑输入 id 列表"
+    )
+    template_output_ids: list[str] = Field(
+        default_factory=list, description="逻辑输出 id 列表"
+    )
+    referenced_node_type_ids: list[str] = Field(
+        default_factory=list, description="引用的节点类型 id 列表"
+    )
 
 
 class WorkflowApplicationSummaryResponse(BaseModel):
@@ -322,5 +462,9 @@ class WorkflowApplicationSummaryResponse(BaseModel):
         description="引用模板的一跳摘要",
     )
     binding_count: int = Field(description="绑定数量")
-    input_binding_ids: list[str] = Field(default_factory=list, description="输入绑定 id 列表")
-    output_binding_ids: list[str] = Field(default_factory=list, description="输出绑定 id 列表")
+    input_binding_ids: list[str] = Field(
+        default_factory=list, description="输入绑定 id 列表"
+    )
+    output_binding_ids: list[str] = Field(
+        default_factory=list, description="输出绑定 id 列表"
+    )

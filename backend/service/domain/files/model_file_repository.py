@@ -43,6 +43,15 @@ class ModelFileRepository(Protocol):
 
         ...
 
+    def get_visible_model_file(
+        self,
+        file_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelFile | None:
+        """按 id 和 Project 可见范围读取 ModelFile；平台文件始终可见。"""
+
+        ...
+
     def list_model_files(
         self,
         *,
@@ -58,5 +67,16 @@ class ModelFileRepository(Protocol):
         返回：
         - 满足过滤条件的 ModelFile 列表。
         """
+
+        ...
+
+    def list_visible_model_files(
+        self,
+        *,
+        visible_project_ids: tuple[str, ...],
+        model_version_id: str | None = None,
+        model_build_id: str | None = None,
+    ) -> tuple[ModelFile, ...]:
+        """按关联资源和 Project 可见范围列出 ModelFile。"""
 
         ...

@@ -96,7 +96,7 @@ FlowApplication 中 `bindings.config.route` 在现阶段主要用于描述绑定
 
 `WorkflowGraphTemplate.template_version` 是模板文档的保存和引用版本，FlowApplication 是可继续编辑的应用文档。两者都不能单独代表完整、不可变的生产发布版本。
 
-规划中的 `WorkflowAppVersion` 会在发布时同时固定 Application、实际解析出的 Template、公开输入输出契约、ExecutionPolicy 和节点/节点包依赖。WorkflowAppRuntime 再通过 revision 选择这个不可变整体。当前实现仍是创建 Runtime 时直接复制 Application/Template snapshot，版本发布和切换尚未落地。完整规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。
+`WorkflowAppVersion` 在发布时同时固定 Application、实际解析出的 Template、公开输入输出契约和节点/节点包依赖。WorkflowAppRuntime 通过 revision 选择这个不可变整体，ExecutionPolicy 按 revision 单独固定。完整规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。
 
 ## service 节点语义分组
 

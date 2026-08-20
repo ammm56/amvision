@@ -80,6 +80,10 @@
           <Play :size="16" />
           {{ t('workflowEditor.actions.previewRun') }}
         </Button>
+        <Button variant="secondary" :disabled="publishDisabled" :loading="publishing" @click="emit('publish')">
+          <Upload :size="16" />
+          {{ t('workflowEditor.actions.publishWorkflowApp') }}
+        </Button>
       </div>
       <div class="workflow-graph-toolbar__group">
         <Button
@@ -106,7 +110,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { BoxSelect, Check, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, SquarePen, X } from '@lucide/vue'
+import { BoxSelect, Check, PanelRightClose, PanelRightOpen, Play, RefreshCw, Save, SquarePen, Upload, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/shared/ui/components/Button.vue'
@@ -122,6 +126,8 @@ const props = defineProps<{
   loading: boolean
   previewDisabled: boolean
   previewing: boolean
+  publishDisabled: boolean
+  publishing: boolean
   saveDisabled: boolean
   saving: boolean
   groupCreateMode: boolean
@@ -136,6 +142,7 @@ const emit = defineEmits<{
   refresh: []
   toggleGroupCreateMode: []
   preview: []
+  publish: []
   save: []
   toggleInspector: []
 }>()

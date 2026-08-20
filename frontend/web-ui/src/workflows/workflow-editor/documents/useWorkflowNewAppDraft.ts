@@ -76,6 +76,15 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       graphDocument: createLocalWorkflowTemplateDocument(template, now),
       runtimes: [],
       primaryRuntime: null,
+      versions: [],
+      versionPagination: {
+        offset: 0,
+        limit: 25,
+        totalCount: 0,
+        hasMore: false,
+        nextOffset: null,
+      },
+      latestVersion: null,
     }
   }
 
@@ -153,6 +162,7 @@ export function useWorkflowNewAppDraft(options: WorkflowNewAppDraftOptions) {
       updated_at: now,
       created_by: null,
       updated_by: null,
+      draft_fingerprint: '',
       template_summary: null,
       application,
     }

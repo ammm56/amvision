@@ -23,14 +23,11 @@ from backend.service.api.rest.v1.routes.task_training.schemas import (
     TrainingTaskDetailResponse,
     TrainingTaskSummaryResponse,
 )
-from backend.service.application.errors import (
-    InvalidRequestError,
-    PermissionDeniedError,
-    ResourceNotFoundError,
-)
+from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
 from backend.service.application.model_type_support import (
     require_optional_supported_platform_model_type,
 )
+from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
     TaskQueryFilters,
@@ -49,10 +46,10 @@ def require_project_access(
 ) -> None:
     """校验当前主体是否允许访问 Project。"""
 
-    if principal_project_ids and project_id not in principal_project_ids:
-        raise PermissionDeniedError(
-            "无权访问该 Project", details={"project_id": project_id}
-        )
+    require_explicit_project_access(
+        visible_project_ids=principal_project_ids,
+        project_id=project_id,
+    )
 
 
 def list_training_tasks(
@@ -118,11 +115,16 @@ def get_training_task_detail(
     *,
     session_factory: SessionFactory,
     task_id: str,
+    visible_project_ids: tuple[str, ...],
 ) -> TrainingTaskDetailResponse:
     """获取非 detection 训练任务详情。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id, include_events=True)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+        include_events=True,
+    )
     require_non_detection_training_task(detail.task)
     return build_detail_response(detail.task, detail.events)
 
@@ -131,11 +133,15 @@ def delete_training_task(
     *,
     session_factory: SessionFactory,
     task_id: str,
+    visible_project_ids: tuple[str, ...],
 ) -> None:
     """删除已停止的非 detection 训练任务。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+    )
     task = detail.task
     require_non_detection_training_task(task)
     if task.state in {"queued", "running"}:
@@ -151,11 +157,15 @@ def list_training_task_output_files(
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
     task_id: str,
+    visible_project_ids: tuple[str, ...],
 ) -> list[TrainingOutputFileSummaryResponse]:
     """列出非 detection 训练任务输出文件。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+    )
     task = detail.task
     require_non_detection_training_task(task)
     return build_training_output_file_list(task=task, dataset_storage=dataset_storage)
@@ -167,11 +177,15 @@ def get_training_task_output_file(
     dataset_storage: LocalDatasetStorage,
     task_id: str,
     file_name: str,
+    visible_project_ids: tuple[str, ...],
 ) -> TrainingOutputFileDetailResponse:
     """读取非 detection 训练任务输出文件详情。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=visible_project_ids,
+    )
     task = detail.task
     require_non_detection_training_task(task)
     return read_training_output_file_detail(

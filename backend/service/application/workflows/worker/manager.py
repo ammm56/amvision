@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from queue import Empty
 from threading import Event, Lock, RLock, Thread
 from time import monotonic
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
 from uuid import uuid4
 import logging
 import multiprocessing
@@ -16,6 +17,7 @@ from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
     OperationTimeoutError,
+    ResourceConflictError,
     ServiceConfigurationError,
     ServiceError,
 )
@@ -29,7 +31,9 @@ from backend.service.application.workflows.execution_cleanup import (
     build_process_safe_execution_metadata,
     list_registered_execution_cleanups,
 )
-from backend.service.application.workflows.runtime_app_events import append_workflow_app_runtime_event
+from backend.service.application.workflows.runtime_app_events import (
+    append_workflow_app_runtime_event,
+)
 from backend.service.application.workflows.worker.health import (
     WorkflowRuntimeWorkerInstance,
     WorkflowRuntimeWorkerState,
@@ -51,7 +55,9 @@ from backend.service.application.workflows.worker import process as worker_proce
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.service.settings import BackendServiceSettings
 
 if TYPE_CHECKING:
@@ -73,14 +79,24 @@ class _WorkflowRuntimeProcessHandle:
     process: Any
     request_queue: Any
     response_queue: Any
+    workflow_runtime_revision_id: str | None = None
+    runtime_generation: int = 0
+    expected_snapshot_fingerprint: str | None = None
+    worker_instance_id: str | None = None
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None
-    published_inference_gateway_channel: PublishedInferenceGatewayEventChannel | None = None
-    published_inference_gateway_dispatcher: PublishedInferenceGatewayDispatcher | None = None
+    published_inference_gateway_channel: (
+        PublishedInferenceGatewayEventChannel | None
+    ) = None
+    published_inference_gateway_dispatcher: (
+        PublishedInferenceGatewayDispatcher | None
+    ) = None
     heartbeat_interval_seconds: int = 5
     heartbeat_timeout_seconds: int = 15
     response_thread: Thread | None = None
     response_stop_event: Event = field(default_factory=Event, repr=False)
-    pending_responses: dict[str, _WorkflowRuntimePendingResponse] = field(default_factory=dict, repr=False)
+    pending_responses: dict[str, _WorkflowRuntimePendingResponse] = field(
+        default_factory=dict, repr=False
+    )
     started_event: Event = field(default_factory=Event, repr=False)
     request_lock: Lock = field(default_factory=Lock, repr=False)
     state_lock: Lock = field(default_factory=Lock, repr=False)
@@ -102,6 +118,9 @@ class _WorkflowRuntimeAsyncRunHandle:
     input_bindings: dict[str, object]
     execution_metadata: dict[str, object]
     timeout_seconds: int
+    expected_revision_id: str | None
+    expected_generation: int | None
+    expected_snapshot_fingerprint: str | None
     callbacks: WorkflowRuntimeAsyncRunCallbacks = field(repr=False)
     cancel_event: Event = field(default_factory=Event, repr=False)
     completion_event: Event = field(default_factory=Event, repr=False)
@@ -118,7 +137,10 @@ class WorkflowRuntimeWorkerManager:
         settings: BackendServiceSettings,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
-        local_buffer_broker_event_channel_provider: Callable[[], LocalBufferBrokerEventChannel | None] | None = None,
+        local_buffer_broker_event_channel_provider: Callable[
+            [], LocalBufferBrokerEventChannel | None
+        ]
+        | None = None,
         published_inference_gateway: PublishedInferenceGateway | None = None,
     ) -> None:
         """初始化 workflow runtime worker 管理器。
@@ -135,11 +157,14 @@ class WorkflowRuntimeWorkerManager:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.service_event_bus = session_factory.service_event_bus
-        self.local_buffer_broker_event_channel_provider = local_buffer_broker_event_channel_provider
+        self.local_buffer_broker_event_channel_provider = (
+            local_buffer_broker_event_channel_provider
+        )
         self.published_inference_gateway = published_inference_gateway
         self._context = multiprocessing.get_context("spawn")
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
+        self._sync_admissions: dict[str, set[str]] = {}
         self._lock = Lock()
         self._stopping = Event()
         self._monitor_stop_event = Event()
@@ -156,11 +181,13 @@ class WorkflowRuntimeWorkerManager:
     def start(self) -> None:
         """启动管理器本身。
 
-        异步 WorkflowRun 线程按需创建，因此这里只负责清理停止标记。
+        启动返回前先恢复持久化为 desired=running 的 Runtime，确保随后启动的
+        TriggerSource 不会在 worker 尚未就绪时接收首批外部请求。
         """
 
         self._stopping.clear()
         if self._monitor_thread is None or not self._monitor_thread.is_alive():
+            self._recover_desired_runtimes_before_monitor()
             self._monitor_stop_event.clear()
             self._monitor_thread = Thread(
                 target=self._run_monitor_loop,
@@ -168,6 +195,35 @@ class WorkflowRuntimeWorkerManager:
                 daemon=True,
             )
             self._monitor_thread.start()
+
+    def _recover_desired_runtimes_before_monitor(self) -> None:
+        """按配置并行度完成一次有界启动恢复，并等待每个恢复任务结束。"""
+
+        pending = list(self._load_recoverable_desired_runtimes())
+        max_parallel = max(
+            1,
+            self.settings.workflow_runtime.model_startup_parallelism,
+        )
+        while pending and not self._stopping.is_set():
+            batch = pending[:max_parallel]
+            del pending[:max_parallel]
+            threads: list[Thread] = []
+            for workflow_app_runtime in batch:
+                runtime_id = workflow_app_runtime.workflow_runtime_id
+                if self.is_runtime_available(runtime_id):
+                    continue
+                recovery_thread = Thread(
+                    target=self._recover_desired_runtime,
+                    args=(workflow_app_runtime,),
+                    name=f"workflow-runtime-startup-recovery-{runtime_id}",
+                    daemon=True,
+                )
+                with self._lock:
+                    self._recovery_threads[runtime_id] = recovery_thread
+                recovery_thread.start()
+                threads.append(recovery_thread)
+            for recovery_thread in threads:
+                recovery_thread.join()
 
     def stop(self) -> None:
         """停止全部 runtime worker 进程。"""
@@ -211,37 +267,108 @@ class WorkflowRuntimeWorkerManager:
             handle = self._handles.get(workflow_runtime_id)
         return handle is not None and handle.process.is_alive()
 
-    def start_runtime(self, workflow_app_runtime: WorkflowAppRuntime) -> WorkflowRuntimeWorkerState:
+    def start_runtime(
+        self,
+        workflow_app_runtime: WorkflowAppRuntime,
+        *,
+        workflow_runtime_revision_id: str | None = None,
+        runtime_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
+    ) -> WorkflowRuntimeWorkerState:
         """拉起一个 runtime 对应的单实例 worker 进程。"""
 
         with self._resolve_runtime_lifecycle_lock(
             workflow_app_runtime.workflow_runtime_id
         ):
-            return self._start_runtime(workflow_app_runtime)
+            return self._start_runtime(
+                workflow_app_runtime,
+                workflow_runtime_revision_id=workflow_runtime_revision_id,
+                runtime_generation=runtime_generation,
+                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            )
 
     def _start_runtime(
         self,
         workflow_app_runtime: WorkflowAppRuntime,
+        *,
+        workflow_runtime_revision_id: str | None = None,
+        runtime_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
     ) -> WorkflowRuntimeWorkerState:
         """在当前 runtime 生命周期锁内拉起 worker 进程。"""
 
+        resolved_revision_id = (
+            workflow_runtime_revision_id
+            or workflow_app_runtime.desired_revision_id
+            or workflow_app_runtime.active_revision_id
+        )
+        if resolved_revision_id is None:
+            raise ServiceConfigurationError(
+                "workflow runtime worker 启动时缺少 revision id"
+            )
+        resolved_generation = (
+            workflow_app_runtime.revision_generation
+            if runtime_generation is None
+            else runtime_generation
+        )
+        resolved_fingerprint = (
+            expected_snapshot_fingerprint
+            or workflow_app_runtime.loaded_snapshot_fingerprint
+        )
+        worker_instance_id = f"{workflow_app_runtime.workflow_runtime_id}-{uuid4().hex}"
+
         with self._lock:
-            existing_handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
+            existing_handle = self._handles.get(
+                workflow_app_runtime.workflow_runtime_id
+            )
             if existing_handle is not None and existing_handle.process.is_alive():
-                existing_state = self._read_cached_runtime_state(existing_handle) or self._request_runtime_state(existing_handle)
+                existing_state = self._read_cached_runtime_state(
+                    existing_handle
+                ) or self._request_runtime_state(existing_handle)
                 if existing_state.observed_state == "running":
+                    if (
+                        existing_handle.workflow_runtime_revision_id
+                        != resolved_revision_id
+                        or existing_handle.runtime_generation != resolved_generation
+                        or (
+                            resolved_fingerprint is not None
+                            and existing_handle.expected_snapshot_fingerprint
+                            != resolved_fingerprint
+                        )
+                    ):
+                        raise ResourceConflictError(
+                            "WorkflowAppRuntime 已由另一版本的 worker 占用"
+                        )
                     return existing_state
                 self._cleanup_handle(existing_handle)
-                self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
+                if (
+                    self._handles.get(workflow_app_runtime.workflow_runtime_id)
+                    is existing_handle
+                ):
+                    self._handles.pop(
+                        workflow_app_runtime.workflow_runtime_id,
+                        None,
+                    )
             elif existing_handle is not None:
                 self._cleanup_handle(existing_handle)
-                self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
+                if (
+                    self._handles.get(workflow_app_runtime.workflow_runtime_id)
+                    is existing_handle
+                ):
+                    self._handles.pop(
+                        workflow_app_runtime.workflow_runtime_id,
+                        None,
+                    )
 
             request_queue = self._context.Queue()
             response_queue = self._context.Queue()
-            local_buffer_broker_event_channel = self._resolve_local_buffer_broker_event_channel()
+            local_buffer_broker_event_channel = (
+                self._resolve_local_buffer_broker_event_channel()
+            )
             gateway_channel = self._build_published_inference_gateway_channel()
-            gateway_dispatcher = self._build_published_inference_gateway_dispatcher(gateway_channel)
+            gateway_dispatcher = self._build_published_inference_gateway_dispatcher(
+                gateway_channel
+            )
             if gateway_dispatcher is not None:
                 gateway_dispatcher.start()
             process = self._context.Process(
@@ -254,6 +381,10 @@ class WorkflowRuntimeWorkerManager:
                         "application_snapshot_object_key": workflow_app_runtime.application_snapshot_object_key,
                         "template_snapshot_object_key": workflow_app_runtime.template_snapshot_object_key,
                         "heartbeat_interval_seconds": workflow_app_runtime.heartbeat_interval_seconds,
+                        "workflow_runtime_revision_id": resolved_revision_id,
+                        "runtime_generation": resolved_generation,
+                        "expected_snapshot_fingerprint": resolved_fingerprint,
+                        "worker_instance_id": worker_instance_id,
                     },
                     "local_buffer_broker_event_channel": local_buffer_broker_event_channel,
                     "published_inference_gateway_event_channel": gateway_channel,
@@ -269,6 +400,10 @@ class WorkflowRuntimeWorkerManager:
                 process=process,
                 request_queue=request_queue,
                 response_queue=response_queue,
+                workflow_runtime_revision_id=resolved_revision_id,
+                runtime_generation=resolved_generation,
+                expected_snapshot_fingerprint=resolved_fingerprint,
+                worker_instance_id=worker_instance_id,
                 local_buffer_broker_event_channel=local_buffer_broker_event_channel,
                 published_inference_gateway_channel=gateway_channel,
                 published_inference_gateway_dispatcher=gateway_dispatcher,
@@ -282,10 +417,9 @@ class WorkflowRuntimeWorkerManager:
                 daemon=True,
             )
             handle.response_thread.start()
-            self._handles[workflow_app_runtime.workflow_runtime_id] = handle
 
         try:
-            return self._wait_for_startup_state(
+            runtime_state = self._wait_for_startup_state(
                 handle,
                 timeout_seconds=self._resolve_runtime_start_timeout_seconds(
                     has_model_loaders=self._snapshot_has_model_loaders(
@@ -293,9 +427,47 @@ class WorkflowRuntimeWorkerManager:
                     )
                 ),
             )
-        except Exception:
+            if runtime_state.instance_id != worker_instance_id:
+                raise ServiceConfigurationError(
+                    "workflow runtime worker instance id 不匹配"
+                )
+            if (
+                resolved_fingerprint is not None
+                and runtime_state.loaded_snapshot_fingerprint != resolved_fingerprint
+            ):
+                raise ServiceConfigurationError(
+                    "workflow runtime worker snapshot 指纹不匹配",
+                    details={
+                        "expected": resolved_fingerprint,
+                        "actual": runtime_state.loaded_snapshot_fingerprint,
+                    },
+                )
+            if handle.expected_snapshot_fingerprint is None:
+                handle.expected_snapshot_fingerprint = (
+                    runtime_state.loaded_snapshot_fingerprint
+                )
+            # worker 只有在 startup 状态、epoch 和快照指纹全部校验通过后才可见。
+            # 否则取消后的重建窗口会暴露“进程存活但尚未 ready”的 handle，
+            # health 可能向仍在初始化的子进程发送请求并误报 504。
             with self._lock:
-                self._handles.pop(workflow_app_runtime.workflow_runtime_id, None)
+                if self._stopping.is_set():
+                    raise ServiceConfigurationError(
+                        "workflow runtime worker manager 已在启动期间停止"
+                    )
+                if (
+                    self._handles.get(workflow_app_runtime.workflow_runtime_id)
+                    is not None
+                ):
+                    raise ResourceConflictError(
+                        "WorkflowAppRuntime worker 启动完成前已被另一进程接管"
+                    )
+                self._handles[workflow_app_runtime.workflow_runtime_id] = handle
+            return runtime_state
+        except Exception:
+            self._remove_handle_if_current(
+                workflow_app_runtime.workflow_runtime_id,
+                handle,
+            )
             self._cleanup_handle(handle)
             raise
 
@@ -314,8 +486,7 @@ class WorkflowRuntimeWorkerManager:
             return WorkflowRuntimeWorkerState(observed_state="stopped")
 
         if not handle.process.is_alive():
-            with self._lock:
-                self._handles.pop(workflow_runtime_id, None)
+            self._remove_handle_if_current(workflow_runtime_id, handle)
             self._cleanup_handle(handle)
             return WorkflowRuntimeWorkerState(observed_state="stopped")
 
@@ -333,43 +504,69 @@ class WorkflowRuntimeWorkerManager:
                     "workflow_runtime_id": workflow_runtime_id,
                 },
             )
-        with self._lock:
-            self._handles.pop(workflow_runtime_id, None)
+        self._remove_handle_if_current(workflow_runtime_id, handle)
         self._cleanup_handle(handle)
         return runtime_state
 
     def restart_runtime(
         self,
         workflow_app_runtime: WorkflowAppRuntime,
+        *,
+        workflow_runtime_revision_id: str | None = None,
+        runtime_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
     ) -> WorkflowRuntimeWorkerState:
         """在同一生命周期临界区内停止并重新拉起 runtime worker。"""
 
         workflow_runtime_id = workflow_app_runtime.workflow_runtime_id
         with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
             self._stop_runtime(workflow_runtime_id)
-            return self._start_runtime(workflow_app_runtime)
+            return self._start_runtime(
+                workflow_app_runtime,
+                workflow_runtime_revision_id=workflow_runtime_revision_id,
+                runtime_generation=runtime_generation,
+                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            )
 
-    def get_runtime_health(self, workflow_runtime_id: str) -> WorkflowRuntimeWorkerState:
+    def get_runtime_health(
+        self, workflow_runtime_id: str
+    ) -> WorkflowRuntimeWorkerState:
         """查询一个 runtime 对应 worker 的健康状态。"""
 
-        with self._lock:
-            handle = self._handles.get(workflow_runtime_id)
-        if handle is None:
-            return WorkflowRuntimeWorkerState(observed_state="stopped")
-        if not handle.process.is_alive():
-            with self._lock:
-                self._handles.pop(workflow_runtime_id, None)
-            self._cleanup_handle(handle)
-            return WorkflowRuntimeWorkerState(
-                observed_state="failed",
-                last_error="workflow runtime worker 进程已退出",
-            )
-        cached_state = self._read_cached_runtime_state(handle)
-        if cached_state is not None:
-            return cached_state
-        return self._request_runtime_state(handle)
+        # start/restart/recovery 会在同一 lifecycle 锁内等待 worker startup-ready。
+        # health 也经过该栅栏，既不会把尚未发布的新 worker 当成 stopped，也不会
+        # 对初始化中的进程发 health-check；正常运行时这里只是一次无竞争 RLock。
+        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+            while True:
+                with self._lock:
+                    handle = self._handles.get(workflow_runtime_id)
+                if handle is None:
+                    return WorkflowRuntimeWorkerState(observed_state="stopped")
+                if not handle.process.is_alive():
+                    removed = self._remove_handle_if_current(
+                        workflow_runtime_id,
+                        handle,
+                    )
+                    self._cleanup_handle(handle)
+                    if not removed:
+                        # 旧 handle 检查期间已有新 worker 接管稳定 runtime id；
+                        # 重新读取新句柄，不能把旧进程失败返回成当前健康状态。
+                        continue
+                    return WorkflowRuntimeWorkerState(
+                        observed_state="failed",
+                        last_error="workflow runtime worker 进程已退出",
+                    )
+                cached_state = self._read_cached_runtime_state(handle)
+                with self._lock:
+                    if self._handles.get(workflow_runtime_id) is not handle:
+                        continue
+                if cached_state is not None:
+                    return cached_state
+                return self._request_runtime_state(handle)
 
-    def list_runtime_instances(self, workflow_runtime_id: str) -> tuple[WorkflowRuntimeWorkerInstance, ...]:
+    def list_runtime_instances(
+        self, workflow_runtime_id: str
+    ) -> tuple[WorkflowRuntimeWorkerInstance, ...]:
         """列出一个 runtime 当前可观测的 instance 摘要。
 
         参数：
@@ -407,6 +604,9 @@ class WorkflowRuntimeWorkerManager:
         input_bindings: dict[str, object],
         execution_metadata: dict[str, object],
         timeout_seconds: int,
+        expected_revision_id: str | None = None,
+        expected_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
         callbacks: WorkflowRuntimeAsyncRunCallbacks,
     ) -> None:
         """提交一条异步 WorkflowRun，并在后台线程里串行进入单实例 worker。
@@ -422,12 +622,16 @@ class WorkflowRuntimeWorkerManager:
 
         if self._stopping.is_set():
             self.cleanup_parent_local_buffer_leases(execution_metadata)
-            raise ServiceConfigurationError("workflow runtime worker manager 当前已停止")
+            raise ServiceConfigurationError(
+                "workflow runtime worker manager 当前已停止"
+            )
         if not self.is_runtime_available(workflow_app_runtime.workflow_runtime_id):
             self.cleanup_parent_local_buffer_leases(execution_metadata)
             raise ServiceConfigurationError(
                 "workflow runtime worker 当前未运行",
-                details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+                details={
+                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id
+                },
             )
 
         async_handle = _WorkflowRuntimeAsyncRunHandle(
@@ -436,6 +640,9 @@ class WorkflowRuntimeWorkerManager:
             input_bindings=dict(input_bindings),
             execution_metadata=dict(execution_metadata),
             timeout_seconds=timeout_seconds,
+            expected_revision_id=expected_revision_id,
+            expected_generation=expected_generation,
+            expected_snapshot_fingerprint=expected_snapshot_fingerprint,
             callbacks=callbacks,
         )
         async_thread = Thread(
@@ -463,7 +670,9 @@ class WorkflowRuntimeWorkerManager:
                 },
             ) from exc
 
-    def cancel_async_run(self, workflow_run_id: str, *, timeout_seconds: float = 10.0) -> bool:
+    def cancel_async_run(
+        self, workflow_run_id: str, *, timeout_seconds: float = 10.0
+    ) -> bool:
         """取消一条已经提交的异步 WorkflowRun。
 
         参数：
@@ -489,43 +698,88 @@ class WorkflowRuntimeWorkerManager:
         input_bindings: dict[str, object],
         execution_metadata: dict[str, object],
         timeout_seconds: int,
+        expected_revision_id: str | None = None,
+        expected_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
         cancel_event: Event | None = None,
         on_dispatched: Callable[[], None] | None = None,
     ) -> WorkflowRuntimeWorkerRunResult:
         """通过已运行的 worker 发起一次同步调用。"""
 
         invoke_started_at = monotonic()
-        with self._lock:
-            handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
-        if handle is None or not handle.process.is_alive():
-            raise ServiceConfigurationError(
-                "workflow runtime worker 当前未运行",
-                details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
-            )
-        worker_process_id = handle.process.pid
-
         lock_acquired = False
         lock_wait_started_at = monotonic()
-        while not lock_acquired:
-            if cancel_event is not None and cancel_event.is_set():
-                raise OperationCancelledError(
-                    "workflow run 已取消",
-                    details={
-                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
-                        "workflow_run_id": workflow_run_id,
-                    },
-                )
-            if not handle.process.is_alive():
-                self._terminate_failed_handle(
-                    workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
-                    handle=handle,
-                )
+        lifecycle_lock = self._resolve_runtime_lifecycle_lock(
+            workflow_app_runtime.workflow_runtime_id
+        )
+        with lifecycle_lock:
+            with self._lock:
+                handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
+            if handle is None or not handle.process.is_alive():
                 raise ServiceConfigurationError(
                     "workflow runtime worker 当前未运行",
-                    details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+                    details={
+                        "workflow_runtime_id": (
+                            workflow_app_runtime.workflow_runtime_id
+                        )
+                    },
                 )
-            lock_acquired = handle.request_lock.acquire(timeout=0.1)
+            self._validate_handle_identity(
+                handle,
+                workflow_app_runtime=workflow_app_runtime,
+                expected_revision_id=expected_revision_id,
+                expected_generation=expected_generation,
+                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            )
+            while not lock_acquired:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise OperationCancelledError(
+                        "workflow run 已取消",
+                        details={
+                            "workflow_runtime_id": (
+                                workflow_app_runtime.workflow_runtime_id
+                            ),
+                            "workflow_run_id": workflow_run_id,
+                        },
+                    )
+                if not handle.process.is_alive():
+                    self._terminate_failed_handle(
+                        workflow_runtime_id=(workflow_app_runtime.workflow_runtime_id),
+                        handle=handle,
+                    )
+                    raise ServiceConfigurationError(
+                        "workflow runtime worker 当前未运行",
+                        details={
+                            "workflow_runtime_id": (
+                                workflow_app_runtime.workflow_runtime_id
+                            )
+                        },
+                    )
+                lock_acquired = handle.request_lock.acquire(timeout=0.1)
+            with self._lock:
+                current_handle = self._handles.get(
+                    workflow_app_runtime.workflow_runtime_id
+                )
+            if current_handle is not handle:
+                handle.request_lock.release()
+                lock_acquired = False
+                raise ResourceConflictError(
+                    "WorkflowAppRuntime worker 已在调用前切换版本",
+                    details={
+                        "workflow_runtime_id": (
+                            workflow_app_runtime.workflow_runtime_id
+                        )
+                    },
+                )
+            self._validate_handle_identity(
+                handle,
+                workflow_app_runtime=workflow_app_runtime,
+                expected_revision_id=expected_revision_id,
+                expected_generation=expected_generation,
+                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+            )
         request_lock_wait_ms = _elapsed_ms(lock_wait_started_at)
+        worker_process_id = handle.process.pid
 
         try:
             if cancel_event is not None and cancel_event.is_set():
@@ -553,7 +807,9 @@ class WorkflowRuntimeWorkerManager:
                     )
                     raise ServiceConfigurationError(
                         "workflow runtime worker 当前未运行",
-                        details={"workflow_runtime_id": workflow_app_runtime.workflow_runtime_id},
+                        details={
+                            "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id
+                        },
                     )
                 handle.pending_responses[message_id] = pending
                 queue_put_started_at = monotonic()
@@ -563,6 +819,20 @@ class WorkflowRuntimeWorkerManager:
                         "message_id": message_id,
                         "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
                         "workflow_run_id": workflow_run_id,
+                        "workflow_runtime_revision_id": (
+                            expected_revision_id
+                            or workflow_app_runtime.active_revision_id
+                        ),
+                        "runtime_generation": (
+                            workflow_app_runtime.revision_generation
+                            if expected_generation is None
+                            else expected_generation
+                        ),
+                        "expected_snapshot_fingerprint": (
+                            expected_snapshot_fingerprint
+                            or workflow_app_runtime.loaded_snapshot_fingerprint
+                        ),
+                        "worker_instance_id": handle.worker_instance_id,
                         "requested_timeout_seconds": timeout_seconds,
                         "input_bindings": dict(input_bindings),
                         "execution_metadata": process_execution_metadata,
@@ -599,10 +869,21 @@ class WorkflowRuntimeWorkerManager:
                             "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
                             "workflow_run_id": workflow_run_id,
                             "worker_process_id": worker_process_id,
+                            "worker_instance_id": handle.worker_instance_id,
                             "timeout_seconds": timeout_seconds,
                         },
                     )
                 if pending.event.wait(timeout=max(0.1, min(0.2, remaining_seconds))):
+                    if pending.error_message is not None:
+                        raise ServiceConfigurationError(
+                            pending.error_message,
+                            details={
+                                "workflow_runtime_id": (
+                                    workflow_app_runtime.workflow_runtime_id
+                                ),
+                                "workflow_run_id": workflow_run_id,
+                            },
+                        )
                     message = pending.response or {}
                     worker_response_received = True
                     worker_reply_wait_ms = _elapsed_ms(reply_wait_started_at)
@@ -628,7 +909,9 @@ class WorkflowRuntimeWorkerManager:
                 except RuntimeError:
                     pass
             with handle.state_lock:
-                handle.pending_responses.pop(message_id if 'message_id' in locals() else "", None)
+                handle.pending_responses.pop(
+                    message_id if "message_id" in locals() else "", None
+                )
             if "message_id" in locals():
                 self.cleanup_workflow_run_local_buffer_owner(workflow_run_id)
             if not locals().get("worker_response_received", False):
@@ -636,13 +919,18 @@ class WorkflowRuntimeWorkerManager:
                 # 超时和进程硬退出，释放 TriggerSource 输入等父进程已知 lease。
                 self.cleanup_parent_local_buffer_leases(execution_metadata)
 
+        self._validate_worker_response_identity(message, handle)
         worker_result = deserialize_run_result(message)
         timings = dict(worker_result.timings)
         timings.update(
             {
                 "worker_request_lock_wait_ms": request_lock_wait_ms,
-                "worker_request_queue_put_ms": request_queue_put_ms if "request_queue_put_ms" in locals() else None,
-                "worker_reply_wait_ms": worker_reply_wait_ms if "worker_reply_wait_ms" in locals() else None,
+                "worker_request_queue_put_ms": request_queue_put_ms
+                if "request_queue_put_ms" in locals()
+                else None,
+                "worker_reply_wait_ms": worker_reply_wait_ms
+                if "worker_reply_wait_ms" in locals()
+                else None,
                 "worker_manager_invoke_total_ms": _elapsed_ms(invoke_started_at),
                 "worker_runtime_mode": "single-instance-sync",
             }
@@ -659,6 +947,11 @@ class WorkflowRuntimeWorkerManager:
                 input_bindings=async_handle.input_bindings,
                 execution_metadata=async_handle.execution_metadata,
                 timeout_seconds=async_handle.timeout_seconds,
+                expected_revision_id=async_handle.expected_revision_id,
+                expected_generation=async_handle.expected_generation,
+                expected_snapshot_fingerprint=(
+                    async_handle.expected_snapshot_fingerprint
+                ),
                 cancel_event=async_handle.cancel_event,
                 on_dispatched=lambda: self._mark_async_run_dispatched(async_handle),
             )
@@ -674,34 +967,8 @@ class WorkflowRuntimeWorkerManager:
                     "workflow run 取消状态回写失败: workflow_run_id=%s",
                     async_handle.workflow_run_id,
                 )
-            runtime_state: WorkflowRuntimeWorkerState | None = None
             if async_handle.dispatched_event.is_set() and not self._stopping.is_set():
-                try:
-                    runtime_state = self.start_runtime(async_handle.workflow_app_runtime)
-                except ServiceError as error:
-                    runtime_state = WorkflowRuntimeWorkerState(
-                        observed_state="failed",
-                        last_error=error.message,
-                        health_summary={
-                            "mode": "single-instance-sync",
-                            "worker_state": "failed",
-                            "last_error": error.message,
-                        },
-                    )
-                self._persist_runtime_state_event(
-                    workflow_runtime_id=async_handle.workflow_app_runtime.workflow_runtime_id,
-                    runtime_state=runtime_state,
-                    event_type=(
-                        "runtime.restarted"
-                        if runtime_state.observed_state == "running"
-                        else "runtime.failed"
-                    ),
-                    message=(
-                        "workflow app runtime 已在取消后恢复运行"
-                        if runtime_state.observed_state == "running"
-                        else "workflow app runtime 在取消后进入失败状态"
-                    ),
-                )
+                self._recover_cancelled_async_runtime(async_handle)
         except OperationTimeoutError as error:
             self.cleanup_parent_local_buffer_leases(async_handle.execution_metadata)
             async_handle.callbacks.on_timed_out(error)
@@ -726,8 +993,101 @@ class WorkflowRuntimeWorkerManager:
             with self._lock:
                 self._async_runs.pop(async_handle.workflow_run_id, None)
 
+    def _recover_cancelled_async_runtime(
+        self,
+        async_handle: _WorkflowRuntimeAsyncRunHandle,
+    ) -> None:
+        """仅在 Runtime 仍固定到本次异步请求版本时恢复被取消的 worker。"""
+
+        workflow_runtime_id = async_handle.workflow_app_runtime.workflow_runtime_id
+        expected_revision_id = (
+            async_handle.expected_revision_id
+            or async_handle.workflow_app_runtime.active_revision_id
+        )
+        expected_generation = (
+            async_handle.workflow_app_runtime.revision_generation
+            if async_handle.expected_generation is None
+            else async_handle.expected_generation
+        )
+        expected_fingerprint = (
+            async_handle.expected_snapshot_fingerprint
+            or async_handle.workflow_app_runtime.loaded_snapshot_fingerprint
+        )
+        if expected_revision_id is None or expected_fingerprint is None:
+            return
+
+        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+            recovery_target = self._get_recoverable_runtime_target(workflow_runtime_id)
+            if recovery_target is None:
+                return
+            latest, revision_fingerprint = recovery_target
+            if (
+                latest.active_revision_id != expected_revision_id
+                or latest.desired_revision_id != expected_revision_id
+                or latest.revision_generation != expected_generation
+                or revision_fingerprint != expected_fingerprint
+            ):
+                # 旧异步任务的取消不能接管已经切换版本的稳定 Runtime id。
+                return
+            with self._lock:
+                current_handle = self._handles.get(workflow_runtime_id)
+            if current_handle is not None and current_handle.process.is_alive():
+                return
+
+            stored_worker_instance_id = latest.worker_instance_id
+            try:
+                runtime_state = self._start_runtime(
+                    latest,
+                    workflow_runtime_revision_id=expected_revision_id,
+                    runtime_generation=expected_generation,
+                    expected_snapshot_fingerprint=expected_fingerprint,
+                )
+            except ServiceError as error:
+                failed_state = WorkflowRuntimeWorkerState(
+                    observed_state="failed",
+                    instance_id=stored_worker_instance_id,
+                    loaded_snapshot_fingerprint=expected_fingerprint,
+                    last_error=error.message,
+                    health_summary={
+                        "mode": "single-instance-sync",
+                        "worker_state": "failed",
+                        "last_error": error.message,
+                    },
+                )
+                self._persist_runtime_state_event(
+                    workflow_runtime_id=workflow_runtime_id,
+                    runtime_state=failed_state,
+                    event_type="runtime.failed",
+                    message="workflow app runtime 在取消后进入失败状态",
+                    expected_revision_id=expected_revision_id,
+                    expected_generation=expected_generation,
+                    expected_snapshot_fingerprint=expected_fingerprint,
+                    expected_worker_instance_id=stored_worker_instance_id,
+                    source_worker_instance_id=stored_worker_instance_id,
+                )
+                return
+
+            with self._lock:
+                recovered_handle = self._handles.get(workflow_runtime_id)
+            persisted = self._persist_runtime_state_event(
+                workflow_runtime_id=workflow_runtime_id,
+                runtime_state=runtime_state,
+                event_type="runtime.restarted",
+                message="workflow app runtime 已在取消后恢复运行",
+                expected_revision_id=expected_revision_id,
+                expected_generation=expected_generation,
+                expected_snapshot_fingerprint=expected_fingerprint,
+                expected_worker_instance_id=stored_worker_instance_id,
+                source_worker_instance_id=runtime_state.instance_id,
+                source_handle=recovered_handle,
+            )
+            if not persisted:
+                self._stop_runtime(workflow_runtime_id)
+
     @staticmethod
-    def _mark_async_run_dispatched(async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
+    def _mark_async_run_dispatched(
+        async_handle: _WorkflowRuntimeAsyncRunHandle,
+    ) -> None:
         """标记一条异步 WorkflowRun 已进入 worker 执行。"""
 
         if async_handle.dispatched_event.is_set():
@@ -761,7 +1121,9 @@ class WorkflowRuntimeWorkerManager:
             try:
                 client.release(
                     cleanup_item.resource_id,
-                    pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
+                    pool_name=pool_name_value
+                    if isinstance(pool_name_value, str)
+                    else None,
                 )
                 released_count += 1
             except InvalidRequestError:
@@ -861,7 +1223,9 @@ class WorkflowRuntimeWorkerManager:
         except Exception as exc:  # pragma: no cover - 仅记录关闭兜底失败
             LOGGER.warning("关闭失效 LocalBufferBroker cleanup client 失败: %s", exc)
 
-    def _request_runtime_state(self, handle: _WorkflowRuntimeProcessHandle) -> WorkflowRuntimeWorkerState:
+    def _request_runtime_state(
+        self, handle: _WorkflowRuntimeProcessHandle
+    ) -> WorkflowRuntimeWorkerState:
         """向指定 worker 请求当前状态。"""
 
         with handle.request_lock:
@@ -939,7 +1303,14 @@ class WorkflowRuntimeWorkerManager:
                 },
             )
         message = pending.response or {}
-        return self._attach_parent_health_summary(handle, deserialize_runtime_state(message))
+        if pending.error_message is not None:
+            raise ServiceConfigurationError(
+                pending.error_message,
+                details={"workflow_runtime_id": handle.workflow_runtime_id},
+            )
+        return self._attach_parent_health_summary(
+            handle, deserialize_runtime_state(message)
+        )
 
     def _read_cached_runtime_state(
         self,
@@ -958,8 +1329,10 @@ class WorkflowRuntimeWorkerManager:
         """把父进程持有的 broker channel 状态合并到 worker health。"""
 
         health_summary = dict(runtime_state.health_summary)
-        health_summary["parent_local_buffer_broker_channel"] = build_parent_broker_channel_summary(
-            handle.local_buffer_broker_event_channel
+        health_summary["parent_local_buffer_broker_channel"] = (
+            build_parent_broker_channel_summary(
+                handle.local_buffer_broker_event_channel
+            )
         )
         return replace(runtime_state, health_summary=health_summary)
 
@@ -971,11 +1344,23 @@ class WorkflowRuntimeWorkerManager:
     ) -> None:
         """在同步调用超时或崩溃后强制清理句柄。"""
 
-        with self._lock:
-            self._handles.pop(workflow_runtime_id, None)
+        self._remove_handle_if_current(workflow_runtime_id, handle)
         with handle.state_lock:
             handle.expected_shutdown = True
         self._cleanup_handle(handle)
+
+    def _remove_handle_if_current(
+        self,
+        workflow_runtime_id: str,
+        handle: _WorkflowRuntimeProcessHandle,
+    ) -> bool:
+        """只移除调用方实际观察到的 handle，避免误删后继 worker。"""
+
+        with self._lock:
+            if self._handles.get(workflow_runtime_id) is not handle:
+                return False
+            self._handles.pop(workflow_runtime_id, None)
+            return True
 
     def _cleanup_handle(self, handle: _WorkflowRuntimeProcessHandle) -> None:
         """按单一所有权关闭并回收一个 worker 句柄。"""
@@ -1031,10 +1416,28 @@ class WorkflowRuntimeWorkerManager:
             message_type = str(message.get("message_type") or "")
             request_id = str(message.get("request_id") or "")
             pending: _WorkflowRuntimePendingResponse | None = None
+            try:
+                self._validate_worker_response_identity(message, handle)
+            except ServiceError as error:
+                LOGGER.warning(
+                    "丢弃身份不匹配的 workflow worker 消息: runtime_id=%s type=%s error=%s",
+                    handle.workflow_runtime_id,
+                    message_type,
+                    error.message,
+                )
+                if request_id:
+                    with handle.state_lock:
+                        pending = handle.pending_responses.pop(request_id, None)
+                    if pending is not None:
+                        pending.error_message = error.message
+                        pending.event.set()
+                continue
 
             runtime_state = try_deserialize_runtime_state_message(message)
             if runtime_state is not None:
-                runtime_state = self._attach_parent_health_summary(handle, runtime_state)
+                runtime_state = self._attach_parent_health_summary(
+                    handle, runtime_state
+                )
                 should_persist = False
                 event_type = "runtime.heartbeat"
                 event_message = "workflow app runtime heartbeat"
@@ -1051,7 +1454,10 @@ class WorkflowRuntimeWorkerManager:
                         should_persist = True
                     if request_id:
                         pending = handle.pending_responses.pop(request_id, None)
-                    elif message_type == "runtime-state" and not handle.started_event.is_set():
+                    elif (
+                        message_type == "runtime-state"
+                        and not handle.started_event.is_set()
+                    ):
                         handle.started_event.set()
                 if pending is not None:
                     pending.response = message
@@ -1062,6 +1468,14 @@ class WorkflowRuntimeWorkerManager:
                         runtime_state=runtime_state,
                         event_type=event_type,
                         message=event_message,
+                        expected_revision_id=(handle.workflow_runtime_revision_id),
+                        expected_generation=handle.runtime_generation,
+                        expected_snapshot_fingerprint=(
+                            handle.expected_snapshot_fingerprint
+                        ),
+                        expected_worker_instance_id=handle.worker_instance_id,
+                        source_worker_instance_id=handle.worker_instance_id,
+                        source_handle=handle,
                     )
                 continue
 
@@ -1094,7 +1508,9 @@ class WorkflowRuntimeWorkerManager:
                 with handle.state_lock:
                     process_alive = handle.process.is_alive()
                     latest_runtime_state = handle.latest_runtime_state
-                    latest_runtime_state_monotonic = handle.latest_runtime_state_monotonic
+                    latest_runtime_state_monotonic = (
+                        handle.latest_runtime_state_monotonic
+                    )
                     if not process_alive:
                         if handle.expected_shutdown:
                             # stop/restart 调用方持有生命周期锁并负责移除、回收句柄；
@@ -1116,7 +1532,8 @@ class WorkflowRuntimeWorkerManager:
                         latest_runtime_state is not None
                         and latest_runtime_state_monotonic is not None
                         and not handle.heartbeat_timeout_reported
-                        and now - latest_runtime_state_monotonic > float(handle.heartbeat_timeout_seconds)
+                        and now - latest_runtime_state_monotonic
+                        > float(handle.heartbeat_timeout_seconds)
                     ):
                         handle.heartbeat_timeout_reported = True
                         runtime_state_to_persist = build_synthetic_runtime_state(
@@ -1128,12 +1545,24 @@ class WorkflowRuntimeWorkerManager:
                         handle.latest_runtime_state_monotonic = now
                         event_type = "runtime.heartbeat_timed_out"
                         message = "workflow app runtime heartbeat 超时"
-                if runtime_state_to_persist is not None and event_type is not None and message is not None:
+                if (
+                    runtime_state_to_persist is not None
+                    and event_type is not None
+                    and message is not None
+                ):
                     self._persist_runtime_state_event(
                         workflow_runtime_id=workflow_runtime_id,
                         runtime_state=runtime_state_to_persist,
                         event_type=event_type,
                         message=message,
+                        expected_revision_id=(handle.workflow_runtime_revision_id),
+                        expected_generation=handle.runtime_generation,
+                        expected_snapshot_fingerprint=(
+                            handle.expected_snapshot_fingerprint
+                        ),
+                        expected_worker_instance_id=handle.worker_instance_id,
+                        source_worker_instance_id=handle.worker_instance_id,
+                        source_handle=handle,
                     )
                 if remove_handle:
                     with self._lock:
@@ -1152,18 +1581,10 @@ class WorkflowRuntimeWorkerManager:
 
         if self._stopping.is_set():
             return
-        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
-        try:
-            runtimes = (
-                unit_of_work.workflow_runtime.list_workflow_app_runtimes_by_desired_state(
-                    "running"
-                )
-            )
-        finally:
-            unit_of_work.close()
+        recoverable_runtimes = self._load_recoverable_desired_runtimes()
         now = monotonic()
         max_parallel = max(1, self.settings.workflow_runtime.model_startup_parallelism)
-        for workflow_app_runtime in runtimes:
+        for workflow_app_runtime in recoverable_runtimes:
             runtime_id = workflow_app_runtime.workflow_runtime_id
             if self.is_runtime_available(runtime_id):
                 continue
@@ -1172,8 +1593,7 @@ class WorkflowRuntimeWorkerManager:
                 # 再恢复 worker，避免 runtime.recovered 先于 runtime.failed 发布，
                 # 也避免请求上下文结束时仍有后台线程写临时存储。
                 if any(
-                    async_handle.workflow_app_runtime.workflow_runtime_id
-                    == runtime_id
+                    async_handle.workflow_app_runtime.workflow_runtime_id == runtime_id
                     for async_handle in self._async_runs.values()
                 ):
                     continue
@@ -1196,6 +1616,38 @@ class WorkflowRuntimeWorkerManager:
                 self._recovery_threads[runtime_id] = recovery_thread
                 recovery_thread.start()
 
+    def _load_recoverable_desired_runtimes(
+        self,
+    ) -> tuple[WorkflowAppRuntime, ...]:
+        """读取 active revision 与当前 generation 一致的期望运行 Runtime。"""
+
+        unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        try:
+            desired_runtimes = unit_of_work.workflow_runtime.list_workflow_app_runtimes_by_desired_state(
+                "running"
+            )
+            recoverable_runtimes: list[WorkflowAppRuntime] = []
+            for workflow_app_runtime in desired_runtimes:
+                if workflow_app_runtime.desired_revision_id is None:
+                    continue
+                desired_revision = (
+                    unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                        workflow_app_runtime.desired_revision_id
+                    )
+                )
+                if (
+                    desired_revision is not None
+                    and desired_revision.state == "active"
+                    and workflow_app_runtime.active_revision_id
+                    == desired_revision.workflow_runtime_revision_id
+                    and workflow_app_runtime.revision_generation
+                    == desired_revision.generation
+                ):
+                    recoverable_runtimes.append(workflow_app_runtime)
+        finally:
+            unit_of_work.close()
+        return tuple(recoverable_runtimes)
+
     def _recover_desired_runtime(
         self,
         workflow_app_runtime: WorkflowAppRuntime,
@@ -1203,30 +1655,66 @@ class WorkflowRuntimeWorkerManager:
         """恢复一个缺失的 desired=running runtime，并记录结果和退避。"""
 
         runtime_id = workflow_app_runtime.workflow_runtime_id
+        failure_context: tuple[WorkflowAppRuntime, str] | None = None
+        recovery_worker_instance_id: str | None = None
         try:
             if self._stopping.is_set():
                 return
-            latest = self._get_workflow_app_runtime(runtime_id)
-            if latest is None or latest.desired_state != "running":
-                return
-            runtime_state = self.start_runtime(latest)
-            if self._stopping.is_set():
-                self.stop_runtime(runtime_id)
-                return
-            latest = self._get_workflow_app_runtime(runtime_id)
-            if latest is None or latest.desired_state != "running":
-                self.stop_runtime(runtime_id)
-                return
-            self._persist_runtime_state_event(
-                workflow_runtime_id=runtime_id,
-                runtime_state=runtime_state,
-                event_type="runtime.recovered",
-                message="workflow app runtime 已按持久化期望状态恢复",
-            )
+            with self._resolve_runtime_lifecycle_lock(runtime_id):
+                recovery_target = self._get_recoverable_runtime_target(runtime_id)
+                if recovery_target is None:
+                    return
+                latest, expected_fingerprint = recovery_target
+                failure_context = recovery_target
+                expected_revision_id = latest.active_revision_id
+                if expected_revision_id is None:
+                    return
+                expected_generation = latest.revision_generation
+                stored_worker_instance_id = latest.worker_instance_id
+                runtime_state = self._start_runtime(
+                    latest,
+                    workflow_runtime_revision_id=expected_revision_id,
+                    runtime_generation=expected_generation,
+                    expected_snapshot_fingerprint=expected_fingerprint,
+                )
+                recovery_worker_instance_id = runtime_state.instance_id
+                if self._stopping.is_set():
+                    self._stop_runtime(runtime_id)
+                    return
+                with self._lock:
+                    recovered_handle = self._handles.get(runtime_id)
+                persisted = self._persist_runtime_state_event(
+                    workflow_runtime_id=runtime_id,
+                    runtime_state=runtime_state,
+                    event_type="runtime.recovered",
+                    message="workflow app runtime 已按持久化期望状态恢复",
+                    expected_revision_id=expected_revision_id,
+                    expected_generation=expected_generation,
+                    expected_snapshot_fingerprint=expected_fingerprint,
+                    expected_worker_instance_id=stored_worker_instance_id,
+                    source_worker_instance_id=runtime_state.instance_id,
+                    source_handle=recovered_handle,
+                )
+                if not persisted:
+                    self._stop_runtime(runtime_id)
+                    return
             with self._lock:
                 self._recovery_failures.pop(runtime_id, None)
                 self._recovery_next_attempt_at.pop(runtime_id, None)
         except Exception as error:  # noqa: BLE001 - 单个 runtime 失败不能终止恢复线程
+            if recovery_worker_instance_id is not None:
+                try:
+                    with self._resolve_runtime_lifecycle_lock(runtime_id):
+                        with self._lock:
+                            failed_handle = self._handles.get(runtime_id)
+                        if (
+                            failed_handle is not None
+                            and failed_handle.worker_instance_id
+                            == recovery_worker_instance_id
+                        ):
+                            self._stop_runtime(runtime_id)
+                except Exception:  # noqa: BLE001 - 恢复失败后的清理不能覆盖原错误
+                    pass
             with self._lock:
                 failure_count = self._recovery_failures.get(runtime_id, 0) + 1
                 self._recovery_failures[runtime_id] = failure_count
@@ -1234,10 +1722,21 @@ class WorkflowRuntimeWorkerManager:
                     60.0,
                     float(2 ** min(failure_count - 1, 6)),
                 )
+            if failure_context is None:
+                return
+            failed_runtime, expected_fingerprint = failure_context
+            expected_revision_id = failed_runtime.active_revision_id
+            if expected_revision_id is None:
+                return
             runtime_state = build_synthetic_runtime_state(
                 previous_state=None,
                 observed_state="failed",
                 last_error=f"workflow runtime 自动恢复失败: {error}",
+            )
+            runtime_state = replace(
+                runtime_state,
+                instance_id=failed_runtime.worker_instance_id,
+                loaded_snapshot_fingerprint=expected_fingerprint,
             )
             try:
                 self._persist_runtime_state_event(
@@ -1245,6 +1744,11 @@ class WorkflowRuntimeWorkerManager:
                     runtime_state=runtime_state,
                     event_type="runtime.recovery_failed",
                     message="workflow app runtime 自动恢复失败，将按退避策略重试",
+                    expected_revision_id=expected_revision_id,
+                    expected_generation=failed_runtime.revision_generation,
+                    expected_snapshot_fingerprint=expected_fingerprint,
+                    expected_worker_instance_id=(failed_runtime.worker_instance_id),
+                    source_worker_instance_id=failed_runtime.worker_instance_id,
                 )
             except Exception:  # noqa: BLE001 - 数据库暂时不可用时保持恢复循环存活
                 pass
@@ -1252,16 +1756,39 @@ class WorkflowRuntimeWorkerManager:
             with self._lock:
                 self._recovery_threads.pop(runtime_id, None)
 
-    def _get_workflow_app_runtime(
+    def _get_recoverable_runtime_target(
         self,
         workflow_runtime_id: str,
-    ) -> WorkflowAppRuntime | None:
-        """使用短事务读取最新 WorkflowAppRuntime。"""
+    ) -> tuple[WorkflowAppRuntime, str] | None:
+        """读取仍可恢复的 active revision 及其不可变 snapshot 指纹。"""
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            return unit_of_work.workflow_runtime.get_workflow_app_runtime(
-                workflow_runtime_id
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
+            if (
+                workflow_app_runtime is None
+                or workflow_app_runtime.desired_state != "running"
+                or workflow_app_runtime.active_revision_id is None
+                or workflow_app_runtime.desired_revision_id
+                != workflow_app_runtime.active_revision_id
+            ):
+                return None
+            revision = unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                workflow_app_runtime.active_revision_id
+            )
+            if (
+                revision is None
+                or revision.state != "active"
+                or revision.generation != workflow_app_runtime.revision_generation
+            ):
+                return None
+            return (
+                workflow_app_runtime,
+                revision.expected_snapshot_fingerprint,
             )
         finally:
             unit_of_work.close()
@@ -1273,28 +1800,96 @@ class WorkflowRuntimeWorkerManager:
         runtime_state: WorkflowRuntimeWorkerState,
         event_type: str,
         message: str,
-    ) -> None:
-        """把后台 runtime 状态变化回写到 DB 和 events.json。"""
+        expected_revision_id: str | None,
+        expected_generation: int,
+        expected_snapshot_fingerprint: str | None,
+        expected_worker_instance_id: str | None,
+        source_worker_instance_id: str | None,
+        source_handle: _WorkflowRuntimeProcessHandle | None = None,
+    ) -> bool:
+        """仅在 revision 与 worker epoch 未变化时回写后台状态和事件。"""
+
+        if expected_revision_id is None or expected_snapshot_fingerprint is None:
+            return False
+        if (
+            runtime_state.instance_id is not None
+            and runtime_state.instance_id != source_worker_instance_id
+        ):
+            return False
+        if (
+            runtime_state.loaded_snapshot_fingerprint is not None
+            and runtime_state.loaded_snapshot_fingerprint
+            != expected_snapshot_fingerprint
+        ):
+            return False
+        if source_handle is not None:
+            with self._lock:
+                current_handle = self._handles.get(workflow_runtime_id)
+            if (
+                current_handle is not source_handle
+                or source_handle.workflow_runtime_revision_id != expected_revision_id
+                or source_handle.runtime_generation != expected_generation
+                or source_handle.expected_snapshot_fingerprint
+                != expected_snapshot_fingerprint
+                or source_handle.worker_instance_id != source_worker_instance_id
+            ):
+                return False
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
+        updated_runtime: WorkflowAppRuntime | None = None
         try:
-            workflow_app_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(workflow_runtime_id)
-            if workflow_app_runtime is None:
-                return
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_workflow_app_runtime(
+                    workflow_runtime_id
+                )
+            )
+            if (
+                workflow_app_runtime is None
+                or workflow_app_runtime.desired_state != "running"
+                or workflow_app_runtime.active_revision_id != expected_revision_id
+                or workflow_app_runtime.desired_revision_id != expected_revision_id
+                or workflow_app_runtime.revision_generation != expected_generation
+                or workflow_app_runtime.worker_instance_id
+                != expected_worker_instance_id
+            ):
+                return False
+            revision = unit_of_work.workflow_runtime.get_workflow_runtime_revision(
+                expected_revision_id
+            )
+            if (
+                revision is None
+                or revision.state != "active"
+                or revision.generation != expected_generation
+                or revision.expected_snapshot_fingerprint
+                != expected_snapshot_fingerprint
+            ):
+                return False
             updated_runtime = replace(
                 workflow_app_runtime,
                 observed_state=runtime_state.observed_state,
                 updated_at=now_isoformat(),
                 heartbeat_at=runtime_state.heartbeat_at,
+                worker_instance_id=source_worker_instance_id,
                 worker_process_id=runtime_state.process_id,
-                loaded_snapshot_fingerprint=runtime_state.loaded_snapshot_fingerprint,
+                loaded_snapshot_fingerprint=expected_snapshot_fingerprint,
                 last_error=runtime_state.last_error,
                 health_summary=dict(runtime_state.health_summary),
             )
-            unit_of_work.workflow_runtime.save_workflow_app_runtime(updated_runtime)
+            updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                updated_runtime,
+                expected_generation=expected_generation,
+                expected_revision_id=expected_revision_id,
+                expected_worker_instance_id=expected_worker_instance_id,
+                expected_desired_state="running",
+            )
+            if not updated:
+                unit_of_work.rollback()
+                return False
             unit_of_work.commit()
         finally:
             unit_of_work.close()
+        if updated_runtime is None:
+            return False
         append_workflow_app_runtime_event(
             dataset_storage=self.dataset_storage,
             service_event_bus=self.service_event_bus,
@@ -1303,6 +1898,7 @@ class WorkflowRuntimeWorkerManager:
             event_type=event_type,
             message=message,
         )
+        return True
 
     def _resolve_runtime_start_timeout_seconds(
         self, *, has_model_loaders: bool = False
@@ -1329,6 +1925,134 @@ class WorkflowRuntimeWorkerManager:
         lock_index = hash(workflow_runtime_id) % len(self._runtime_lifecycle_locks)
         return self._runtime_lifecycle_locks[lock_index]
 
+    @contextmanager
+    def runtime_lifecycle_guard(self, workflow_runtime_id: str) -> Iterator[None]:
+        """串行化同一 Runtime 的控制面动作和调用句柄接管。"""
+
+        with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
+            yield
+
+    def reserve_sync_admission(
+        self,
+        workflow_runtime_id: str,
+        workflow_run_id: str,
+    ) -> None:
+        """登记一条轻量同步调用占用，仅用于关闭 Runtime 删除窗口。"""
+
+        with self._lock:
+            self._sync_admissions.setdefault(workflow_runtime_id, set()).add(
+                workflow_run_id
+            )
+
+    def release_sync_admission(
+        self,
+        workflow_runtime_id: str,
+        workflow_run_id: str,
+    ) -> None:
+        """释放同步调用占用；重复释放保持幂等。"""
+
+        with self._lock:
+            workflow_run_ids = self._sync_admissions.get(workflow_runtime_id)
+            if workflow_run_ids is None:
+                return
+            workflow_run_ids.discard(workflow_run_id)
+            if not workflow_run_ids:
+                self._sync_admissions.pop(workflow_runtime_id, None)
+
+    def list_sync_admission_run_ids(
+        self,
+        workflow_runtime_id: str,
+    ) -> tuple[str, ...]:
+        """读取当前同步调用占用，不参与执行调度或排队。"""
+
+        with self._lock:
+            return tuple(sorted(self._sync_admissions.get(workflow_runtime_id, ())))
+
+    @staticmethod
+    def _validate_handle_identity(
+        handle: _WorkflowRuntimeProcessHandle,
+        *,
+        workflow_app_runtime: WorkflowAppRuntime,
+        expected_revision_id: str | None,
+        expected_generation: int | None,
+        expected_snapshot_fingerprint: str | None,
+    ) -> None:
+        """拒绝把固定来源的请求发送到另一 revision 的 worker。"""
+
+        revision_id = expected_revision_id or workflow_app_runtime.active_revision_id
+        generation = (
+            workflow_app_runtime.revision_generation
+            if expected_generation is None
+            else expected_generation
+        )
+        fingerprint = (
+            expected_snapshot_fingerprint
+            or workflow_app_runtime.loaded_snapshot_fingerprint
+        )
+        worker_instance_id = workflow_app_runtime.worker_instance_id
+        if (
+            revision_id is None
+            or handle.workflow_runtime_revision_id != revision_id
+            or handle.runtime_generation != generation
+            or fingerprint is None
+            or handle.expected_snapshot_fingerprint != fingerprint
+            or not worker_instance_id
+            or handle.worker_instance_id != worker_instance_id
+        ):
+            raise ResourceConflictError(
+                "WorkflowAppRuntime worker 身份与请求固定来源不一致",
+                details={
+                    "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                    "expected_revision_id": revision_id,
+                    "actual_revision_id": handle.workflow_runtime_revision_id,
+                    "expected_generation": generation,
+                    "actual_generation": handle.runtime_generation,
+                    "expected_snapshot_fingerprint": fingerprint,
+                    "actual_snapshot_fingerprint": (
+                        handle.expected_snapshot_fingerprint
+                    ),
+                    "expected_worker_instance_id": worker_instance_id,
+                    "actual_worker_instance_id": handle.worker_instance_id,
+                },
+            )
+
+    @staticmethod
+    def _validate_worker_response_identity(
+        message: dict[str, object],
+        handle: _WorkflowRuntimeProcessHandle,
+    ) -> None:
+        """确认响应来自本次接管的 worker epoch 和固定 revision。"""
+
+        response_revision_id = message.get("workflow_runtime_revision_id")
+        response_generation = message.get("runtime_generation")
+        response_fingerprint = message.get("snapshot_fingerprint")
+        response_instance_id = message.get("worker_instance_id")
+        if (
+            handle.expected_snapshot_fingerprint is None
+            and isinstance(response_fingerprint, str)
+            and response_fingerprint
+        ):
+            # 未显式提供预期指纹的内部兼容调用，只允许同一 revision/generation/
+            # worker epoch 的首条消息固定一次，后续消息仍执行严格相等校验。
+            handle.expected_snapshot_fingerprint = response_fingerprint
+        if (
+            response_revision_id != handle.workflow_runtime_revision_id
+            or response_generation != handle.runtime_generation
+            or response_fingerprint != handle.expected_snapshot_fingerprint
+            or response_instance_id != handle.worker_instance_id
+        ):
+            raise ServiceConfigurationError(
+                "workflow runtime worker 响应身份不匹配",
+                details={
+                    "expected_revision_id": handle.workflow_runtime_revision_id,
+                    "actual_revision_id": response_revision_id,
+                    "expected_generation": handle.runtime_generation,
+                    "actual_generation": response_generation,
+                    "expected_worker_instance_id": handle.worker_instance_id,
+                    "actual_worker_instance_id": response_instance_id,
+                },
+            )
+
     def _snapshot_has_model_loaders(self, template_snapshot_object_key: str) -> bool:
         """快速判断固定 snapshot 是否包含 Load Checkpoint 节点。"""
 
@@ -1346,19 +2070,25 @@ class WorkflowRuntimeWorkerManager:
             for node in nodes
         )
 
-    def _resolve_local_buffer_broker_event_channel(self) -> LocalBufferBrokerEventChannel | None:
+    def _resolve_local_buffer_broker_event_channel(
+        self,
+    ) -> LocalBufferBrokerEventChannel | None:
         """读取当前 broker 事件通道。"""
 
         if self.local_buffer_broker_event_channel_provider is None:
             return None
         return self.local_buffer_broker_event_channel_provider()
 
-    def _build_published_inference_gateway_channel(self) -> PublishedInferenceGatewayEventChannel | None:
+    def _build_published_inference_gateway_channel(
+        self,
+    ) -> PublishedInferenceGatewayEventChannel | None:
         """为一个 runtime worker 创建 PublishedInferenceGateway 事件通道。"""
 
         if self.published_inference_gateway is None:
             return None
-        from backend.service.application.deployments import PublishedInferenceGatewayEventChannel
+        from backend.service.application.deployments import (
+            PublishedInferenceGatewayEventChannel,
+        )
 
         return PublishedInferenceGatewayEventChannel(
             request_queue=self._context.Queue(),
@@ -1374,9 +2104,13 @@ class WorkflowRuntimeWorkerManager:
 
         if channel is None or self.published_inference_gateway is None:
             return None
-        from backend.service.application.deployments import PublishedInferenceGatewayDispatcher
+        from backend.service.application.deployments import (
+            PublishedInferenceGatewayDispatcher,
+        )
 
-        return PublishedInferenceGatewayDispatcher(channel=channel, gateway=self.published_inference_gateway)
+        return PublishedInferenceGatewayDispatcher(
+            channel=channel, gateway=self.published_inference_gateway
+        )
 
 
 def _elapsed_ms(started_at: float) -> float:

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import math
 import random
-import warnings
 from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
@@ -45,7 +44,8 @@ class RFDETRModelModule(LightningModule):
         super().__init__()
         self.model_config = model_config
         self.train_config = train_config
-        self.strict_loading = False
+        # resume 只接受平台生成的完整 Lightning checkpoint，模型状态必须精确恢复。
+        self.strict_loading = True
 
         self.model = build_model_from_config(
             model_config,
@@ -314,7 +314,9 @@ class RFDETRModelModule(LightningModule):
         - 当前函数的执行结果。
         """
         if "model" in checkpoint and "state_dict" not in checkpoint:
-            checkpoint["state_dict"] = {"model." + k: v for k, v in checkpoint["model"].items()}
+            raise RuntimeError(
+                "RF-DETR weights-only checkpoint 不能用于 resume；请改用 warm-start"
+            )
 
         if "state_dict" in checkpoint:
             interpolate_position_embeddings(
@@ -323,13 +325,8 @@ class RFDETRModelModule(LightningModule):
             )
 
         if "legacy_ema_state_dict" in checkpoint:
-            self._pending_legacy_ema_state = checkpoint["legacy_ema_state_dict"]
-            warnings.warn(
-                "Checkpoint contains legacy EMA weights (`legacy_ema_state_dict`). "
-                "Add RFDETREMACallback to your trainer callbacks to restore them; "
-                "without it the stashed weights will be ignored.",
-                UserWarning,
-                stacklevel=2,
+            raise RuntimeError(
+                "RF-DETR legacy EMA checkpoint 不能用于严格 resume"
             )
 
     def reinitialize_detection_head(self, num_classes: int) -> None:

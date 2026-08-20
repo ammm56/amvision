@@ -114,10 +114,10 @@ _CHECKPOINT_ARCHITECTURE_FIELDS = (
 
 def normalize_rfdetr_full_core_scale(model_scale: str) -> str:
     """执行 `normalize_rfdetr_full_core_scale`。
-    
+
     参数：
     - `model_scale`：传入的 `model_scale` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -134,11 +134,11 @@ def resolve_rfdetr_full_core_input_divisor(
     model_scale: str,
 ) -> int:
     """执行 `resolve_rfdetr_full_core_input_divisor`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -174,12 +174,12 @@ def align_rfdetr_full_core_input_size(
     input_size: tuple[int, int],
 ) -> tuple[int, int]:
     """执行 `align_rfdetr_full_core_input_size`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -202,12 +202,12 @@ def is_rfdetr_full_core_input_size_aligned(
     input_size: tuple[int, int],
 ) -> bool:
     """执行 `is_rfdetr_full_core_input_size_aligned`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `input_size`：传入的 `input_size` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -227,12 +227,12 @@ def resolve_rfdetr_full_core_config_class(
     pretrained_path: str | None = None,
 ) -> RfdetrConfigClass:
     """执行 `resolve_rfdetr_full_core_config_class`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `pretrained_path`：传入的 `pretrained_path` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -258,18 +258,20 @@ def build_rfdetr_full_core_config(
     task_type: ModelTaskType,
     model_scale: str,
     num_classes: int,
+    input_size: tuple[int, int] | None = None,
     pretrained_path: str | None = None,
     device: str = "cpu",
 ) -> ModelConfig:
     """执行 `build_rfdetr_full_core_config`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `num_classes`：传入的 `num_classes` 参数。
+    - `input_size`：训练或转换实际使用的 `(height, width)`。
     - `pretrained_path`：传入的 `pretrained_path` 参数。
     - `device`：传入的 `device` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -285,6 +287,18 @@ def build_rfdetr_full_core_config(
                 "ignore",
                 category=PretrainWeightsCompatibilityWarning,
             )
+        if input_size is not None:
+            resolution = _resolve_rfdetr_model_resolution(
+                task_type=task_type,
+                model_scale=model_scale,
+                input_size=input_size,
+            )
+            return config_cls(
+                num_classes=num_classes,
+                pretrain_weights=pretrained_path,
+                device=device,
+                resolution=resolution,
+            )
         return config_cls(
             num_classes=num_classes,
             pretrain_weights=pretrained_path,
@@ -297,6 +311,7 @@ def build_rfdetr_full_core_namespace(
     task_type: ModelTaskType,
     model_scale: str,
     num_classes: int,
+    input_size: tuple[int, int] | None = None,
     pretrained_path: str | None = None,
     device: str = "cpu",
     dataset_dir: str = ".",
@@ -304,17 +319,18 @@ def build_rfdetr_full_core_namespace(
     defaults: ModelDefaults = PROJECT_RFDETR_MODEL_DEFAULTS,
 ) -> SimpleNamespace:
     """执行 `build_rfdetr_full_core_namespace`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `num_classes`：传入的 `num_classes` 参数。
+    - `input_size`：训练或转换实际使用的 `(height, width)`。
     - `pretrained_path`：传入的 `pretrained_path` 参数。
     - `device`：传入的 `device` 参数。
     - `dataset_dir`：传入的 `dataset_dir` 参数。
     - `output_dir`：传入的 `output_dir` 参数。
     - `defaults`：传入的 `defaults` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -323,6 +339,7 @@ def build_rfdetr_full_core_namespace(
         task_type=task_type,
         model_scale=model_scale,
         num_classes=num_classes,
+        input_size=input_size,
         pretrained_path=pretrained_path,
         device=device,
     )
@@ -335,22 +352,24 @@ def build_rfdetr_full_core_model(
     task_type: ModelTaskType,
     model_scale: str,
     num_classes: int,
+    input_size: tuple[int, int] | None = None,
     pretrained_path: str | None = None,
     device: str = "cpu",
     load_pretrained: bool = True,
     defaults: ModelDefaults = PROJECT_RFDETR_MODEL_DEFAULTS,
 ) -> nn.Module:
     """执行 `build_rfdetr_full_core_model`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `model_scale`：传入的 `model_scale` 参数。
     - `num_classes`：传入的 `num_classes` 参数。
+    - `input_size`：训练或转换实际使用的 `(height, width)`。
     - `pretrained_path`：传入的 `pretrained_path` 参数。
     - `device`：传入的 `device` 参数。
     - `load_pretrained`：传入的 `load_pretrained` 参数。
     - `defaults`：传入的 `defaults` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -359,6 +378,7 @@ def build_rfdetr_full_core_model(
         task_type=task_type,
         model_scale=model_scale,
         num_classes=num_classes,
+        input_size=input_size,
         pretrained_path=pretrained_path,
         device=device,
     )
@@ -369,12 +389,40 @@ def build_rfdetr_full_core_model(
     return model
 
 
+def _resolve_rfdetr_model_resolution(
+    *,
+    task_type: ModelTaskType,
+    model_scale: str,
+    input_size: tuple[int, int],
+) -> int:
+    """按训练链语义把已对齐输入尺寸转换为模型方形 resolution。
+
+    RF-DETR 的 ModelConfig 只有一个 ``resolution``，平台训练会先分别对齐
+    height/width，再使用二者最大值作为方形训练尺寸。转换重建必须复用完全
+    相同的规则；不对齐的输入在这里直接拒绝，避免转换阶段静默改变模型结构。
+    """
+
+    normalized_input_size = (int(input_size[0]), int(input_size[1]))
+    aligned_input_size = align_rfdetr_full_core_input_size(
+        task_type=task_type,
+        model_scale=model_scale,
+        input_size=normalized_input_size,
+    )
+    if aligned_input_size != normalized_input_size:
+        raise ValueError(
+            "RF-DETR 模型 input_size 必须满足模型 divisor，禁止静默对齐："
+            f"input_size={normalized_input_size}, "
+            f"nearest_aligned_input_size={aligned_input_size}"
+        )
+    return max(normalized_input_size)
+
+
 def _resolve_config_map(task_type: ModelTaskType) -> dict[str, RfdetrConfigClass]:
     """执行 `_resolve_config_map`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -392,11 +440,11 @@ def _resolve_checkpoint_config_class(
     pretrained_path: str | None,
 ) -> RfdetrConfigClass | None:
     """执行 `_resolve_checkpoint_config_class`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
     - `pretrained_path`：传入的 `pretrained_path` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -414,10 +462,10 @@ def _resolve_checkpoint_config_class(
 
 def _read_checkpoint_args(pretrained_path: str) -> object | None:
     """执行 `_read_checkpoint_args`。
-    
+
     参数：
     - `pretrained_path`：传入的 `pretrained_path` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -437,10 +485,10 @@ def _resolve_checkpoint_config_candidates(
     task_type: ModelTaskType,
 ) -> tuple[RfdetrConfigClass, ...]:
     """执行 `_resolve_checkpoint_config_candidates`。
-    
+
     参数：
     - `task_type`：传入的 `task_type` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -457,11 +505,11 @@ def _checkpoint_args_match_config(
     config_cls: RfdetrConfigClass,
 ) -> bool:
     """执行 `_checkpoint_args_match_config`。
-    
+
     参数：
     - `checkpoint_args`：传入的 `checkpoint_args` 参数。
     - `config_cls`：传入的 `config_cls` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """
@@ -482,11 +530,11 @@ def _checkpoint_args_match_config(
 
 def _read_int_config_default(config_cls: RfdetrConfigClass, field_name: str) -> int:
     """执行 `_read_int_config_default`。
-    
+
     参数：
     - `config_cls`：传入的 `config_cls` 参数。
     - `field_name`：传入的 `field_name` 参数。
-    
+
     返回：
     - 当前函数的执行结果。
     """

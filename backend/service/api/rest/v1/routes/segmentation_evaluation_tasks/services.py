@@ -93,12 +93,14 @@ def list_segmentation_evaluation_task_responses(
 
 def get_segmentation_evaluation_task_response(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
 ) -> SegmentationEvaluationDetailResponse:
     """读取 segmentation evaluation 任务详情响应。"""
 
     task = get_evaluation_task_record(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
         expected_task_kind=SEGMENTATION_EVALUATION_TASK_KIND,
@@ -108,12 +110,14 @@ def get_segmentation_evaluation_task_response(
 
 def delete_segmentation_evaluation_task_response(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
 ):
     """删除已完成的 segmentation evaluation 任务。"""
 
     return delete_finished_evaluation_task(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
         expected_task_kind=SEGMENTATION_EVALUATION_TASK_KIND,

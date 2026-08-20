@@ -382,8 +382,15 @@ class SqlAlchemyYoloV8ClassificationEvaluationService:
     ) -> RuntimeTargetSnapshot:
         uow = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            mv = uow.models.get_model_version(request.model_version_id)
-            model = uow.models.get_model(mv.model_id) if mv is not None else None
+            mv = uow.models.get_visible_model_version(
+                request.model_version_id,
+                (request.project_id,),
+            )
+            model = (
+                uow.models.get_visible_model(mv.model_id, (request.project_id,))
+                if mv is not None
+                else None
+            )
         finally:
             uow.close()
         if mv is None:

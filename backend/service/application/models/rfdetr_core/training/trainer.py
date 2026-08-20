@@ -129,6 +129,7 @@ def build_trainer(
             filename="checkpoint_{epoch}",
             every_n_epochs=tc.checkpoint_interval,
             save_top_k=-1,
+            save_last=tc.checkpoint_interval == 1,
             enable_version_counter=False,
             auto_insert_metric_name=False,
             verbose=False,

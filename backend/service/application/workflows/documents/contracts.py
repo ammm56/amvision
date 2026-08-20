@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
+from backend.contracts.workflows.workflow_graph import (
+    FlowApplication,
+    WorkflowGraphTemplate,
+)
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,14 @@ class WorkflowApplicationDocument:
     application: FlowApplication
     validation_summary: WorkflowApplicationValidationSummary
     resource_summary: WorkflowStoredResourceSummary
+
+
+@dataclass(frozen=True)
+class WorkflowApplicationBundleDocument:
+    """描述一次原子保存后的 Application 与 Template 文档组合。"""
+
+    application_document: WorkflowApplicationDocument
+    template_document: WorkflowTemplateDocument
 
 
 @dataclass(frozen=True)

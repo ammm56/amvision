@@ -9,7 +9,6 @@ from fastapi import Request
 from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.task_deployments.runtime_controls import (
-    ensure_deployment_visible,
     ensure_requested_model_type_matches,
     read_async_inference_service_id,
     require_running_deployment_process,
@@ -90,16 +89,10 @@ async def submit_pose_inference_task_from_request(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    deployment_view = deployment_service.get_deployment_instance(body.deployment_instance_id)
-    if deployment_view.project_id != body.project_id:
-        raise InvalidRequestError(
-            "deployment_instance_id 与 project_id 不匹配",
-            details={
-                "project_id": body.project_id,
-                "deployment_project_id": deployment_view.project_id,
-                "deployment_instance_id": body.deployment_instance_id,
-            },
-        )
+    deployment_service.get_visible_deployment_instance(
+        body.deployment_instance_id,
+        visible_project_ids=(body.project_id,),
+    )
     process_config = deployment_service.resolve_process_config(body.deployment_instance_id)
     ensure_requested_model_type_matches(
         requested_model_type=body.model_type,
@@ -180,11 +173,9 @@ async def infer_pose_deployment_instance_from_request(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    deployment_view = deployment_service.get_deployment_instance(deployment_instance_id)
-    ensure_deployment_visible(
-        principal=principal,
-        project_id=deployment_view.project_id,
-        deployment_instance_id=deployment_instance_id,
+    deployment_view = deployment_service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
     ensure_requested_model_type_matches(

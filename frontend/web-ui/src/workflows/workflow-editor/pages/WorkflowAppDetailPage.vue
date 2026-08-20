@@ -62,6 +62,104 @@
       <section class="resource-section">
         <div class="section-heading">
           <div>
+            <h2>{{ t('workflowEditor.appDetail.versionTitle') }}</h2>
+            <p class="muted-note">{{ t('workflowEditor.appDetail.versionDescription') }}</p>
+          </div>
+          <StatusBadge :tone="latestVersion ? 'success' : 'neutral'">
+            {{ latestVersion?.display_version ?? t('workflowEditor.appDetail.noPublishedVersion') }}
+          </StatusBadge>
+        </div>
+        <div v-if="canWriteWorkflows" class="form-grid workflow-version-publish-form">
+          <label class="field">
+            <span>{{ t('workflowEditor.appDetail.fields.displayVersion') }}</span>
+            <input v-model="publishDisplayVersion" :placeholder="t('workflowEditor.appDetail.placeholders.autoVersion')" />
+          </label>
+          <label class="field field--wide">
+            <span>{{ t('workflowEditor.appDetail.fields.releaseNotes') }}</span>
+            <textarea v-model="publishReleaseNotes" rows="3" :placeholder="t('workflowEditor.appDetail.placeholders.releaseNotes')" />
+          </label>
+          <div class="table-actions field--wide">
+            <Button variant="primary" :disabled="publishingVersion || !workflowApp.applicationDocument.draft_fingerprint" :loading="publishingVersion" @click="publishVersion">
+              {{ t('workflowEditor.appDetail.actions.publishVersion') }}
+            </Button>
+          </div>
+        </div>
+        <EmptyState
+          v-if="versions.length === 0"
+          :title="t('workflowEditor.appDetail.emptyVersionTitle')"
+          :description="t('workflowEditor.appDetail.emptyVersionDescription')"
+        />
+        <div v-else class="resource-table">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ t('workflowEditor.appDetail.fields.version') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.versionState') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.releaseNotes') }}</th>
+                <th>{{ t('workflowEditor.appDetail.fields.publishedAt') }}</th>
+                <th>{{ t('workflowEditor.columns.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="version in versions" :key="version.workflow_app_version_id">
+                <td>
+                  <strong>{{ version.display_version }}</strong>
+                  <span>#{{ version.version_number }} · {{ shortId(version.workflow_app_version_id) }}</span>
+                </td>
+                <td><StatusBadge :tone="version.state === 'published' ? 'success' : version.state === 'failed' ? 'danger' : 'neutral'">{{ version.state }}</StatusBadge></td>
+                <td>{{ version.release_notes || '-' }}</td>
+                <td>{{ formatSystemDateTime(version.completed_at || version.created_at) }}</td>
+                <td>
+                  <div class="table-actions table-actions--wrap">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      :disabled="comparingVersionId === version.workflow_app_version_id || changingVersionStateId !== null"
+                      @click="compareVersion(version.workflow_app_version_id)"
+                    >
+                      {{ t('workflowEditor.appDetail.actions.compareDraft') }}
+                    </Button>
+                    <Button
+                      v-if="canWriteWorkflows && version.state === 'published'"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="changingVersionStateId !== null"
+                      :loading="changingVersionStateId === version.workflow_app_version_id"
+                      @click="changeVersionState(version, 'archive')"
+                    >
+                      {{ t('workflowEditor.appDetail.actions.archiveVersion') }}
+                    </Button>
+                    <Button
+                      v-else-if="canWriteWorkflows && version.state === 'archived'"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="changingVersionStateId !== null"
+                      :loading="changingVersionStateId === version.workflow_app_version_id"
+                      @click="changeVersionState(version, 'restore')"
+                    >
+                      {{ t('workflowEditor.appDetail.actions.restoreVersion') }}
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="hasMoreVersions" class="table-actions workflow-version-load-more">
+          <Button variant="secondary" :disabled="loadingMoreVersions" :loading="loadingMoreVersions" @click="loadMoreVersions">
+            {{ t('workflowEditor.appDetail.actions.loadMoreVersions') }}
+          </Button>
+        </div>
+        <div v-if="versionComparison" class="version-comparison" :class="{ 'version-comparison--breaking': !versionComparison.compatible }">
+          <strong>{{ versionComparison.compatible ? t('workflowEditor.appDetail.messages.contractCompatible') : t('workflowEditor.appDetail.messages.contractBreaking') }}</strong>
+          <span>{{ t('workflowEditor.appDetail.messages.contractChangeCount', { changes: versionComparison.changes.length, breaking: versionComparison.breaking_changes.length }) }}</span>
+          <pre v-if="versionComparison.changes.length || versionComparison.breaking_changes.length" class="json-view">{{ JSON.stringify({ changes: versionComparison.changes, breaking_changes: versionComparison.breaking_changes }, null, 2) }}</pre>
+        </div>
+      </section>
+
+      <section class="resource-section">
+        <div class="section-heading">
+          <div>
             <h2>App Contract</h2>
           </div>
           <StatusBadge tone="neutral">{{ bindings.length }} bindings</StatusBadge>
@@ -101,7 +199,7 @@
             <h2>{{ t('workflowEditor.appDetail.runtimeTitle') }}</h2>
           </div>
           <div class="table-actions table-actions--wrap">
-            <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy" @click="createRuntime">
+            <Button v-if="canWriteWorkflows" variant="primary" :disabled="runtimeActionBusy || !runtimeCreateVersionSelectable" @click="createRuntime">
               <Plus :size="16" />
               {{ t('workflowEditor.appDetail.actions.createRuntime') }}
             </Button>
@@ -118,6 +216,10 @@
           </div>
         </div>
         <div v-if="canWriteWorkflows" class="form-grid workflow-runtime-defaults">
+          <label class="field field--wide">
+            <span>{{ t('workflowEditor.appDetail.fields.createFromVersion') }}</span>
+            <SelectField :model-value="runtimeCreateVersionId" :options="versionOptions" @update:model-value="setRuntimeCreateVersion" />
+          </label>
           <label class="field">
             <span>{{ t('workflowEditor.appDetail.fields.workflowRunRecord') }}</span>
             <SelectField :model-value="runtimeWorkflowRunRecordMode" :options="workflowRunRecordModeOptions" @update:model-value="setRuntimeWorkflowRunRecordMode" />
@@ -138,6 +240,7 @@
               <tr>
                 <th>runtime</th>
                 <th>state</th>
+                <th>{{ t('workflowEditor.appDetail.fields.version') }}</th>
                 <th>health / error</th>
                 <th>updated</th>
                 <th>{{ t('workflowEditor.columns.actions') }}</th>
@@ -151,6 +254,13 @@
                 </td>
                 <td>
                   <StatusBadge :tone="runtimeTone(runtime.observed_state)">{{ runtime.desired_state }} / {{ runtime.observed_state }}</StatusBadge>
+                  <span v-if="runtime.observed_state === 'failed'" class="runtime-recovery-hint">
+                    {{ t('workflowEditor.appDetail.hints.failedRuntimeRecovery') }}
+                  </span>
+                </td>
+                <td>
+                  <strong>{{ runtimeVersionLabel(runtime) }}</strong>
+                  <span>generation {{ runtime.revision_generation }}</span>
                 </td>
                 <td>
                   <strong>{{ runtime.heartbeat_at ? `heartbeat ${formatSystemDateTime(runtime.heartbeat_at)}` : 'no heartbeat' }}</strong>
@@ -190,7 +300,7 @@
                       @click="controlRuntime(runtime, 'stop')"
                     >
                       <Square :size="14" />
-                      {{ t('workflowEditor.appDetail.actions.stop') }}
+                      {{ runtimeStopActionLabel(runtime) }}
                     </Button>
                     <Button
                       v-if="canWriteWorkflows"
@@ -241,6 +351,59 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="canWriteWorkflows && selectedRuntime" class="runtime-version-switch">
+          <div>
+            <strong>{{ t('workflowEditor.appDetail.switchVersionTitle') }}</strong>
+            <p class="muted-note">{{ t('workflowEditor.appDetail.switchVersionDescription') }}</p>
+          </div>
+          <div class="runtime-version-route field--wide">
+            <div>
+              <span>{{ t('workflowEditor.appDetail.fields.activeVersion') }}</span>
+              <strong>{{ selectedActiveRevision
+                ? versionLabel(selectedActiveRevision.workflow_app_version_id)
+                : selectedRuntime.active_revision_id ? shortId(selectedRuntime.active_revision_id) : t('workflowEditor.appDetail.noActiveVersion') }}</strong>
+            </div>
+            <span aria-hidden="true">→</span>
+            <div>
+              <span>{{ t('workflowEditor.appDetail.fields.targetVersion') }}</span>
+              <strong>{{ versionLabel(runtimeTargetVersionId) }}</strong>
+            </div>
+          </div>
+          <p
+            v-if="loadingRevisionIds.has(selectedRuntime.active_revision_id ?? '') || loadingRevisionIds.has(selectedRuntime.desired_revision_id ?? '')"
+            class="muted-note field--wide"
+          >
+            {{ t('workflowEditor.appDetail.messages.loadingRevisionSummary') }}
+          </p>
+          <InlineError
+            v-else-if="revisionLoadErrorsByRuntimeId[selectedRuntime.workflow_runtime_id]"
+            class="field--wide"
+            :message="t('workflowEditor.appDetail.messages.revisionSummaryPartial', { message: revisionLoadErrorsByRuntimeId[selectedRuntime.workflow_runtime_id] })"
+          />
+          <label class="field">
+            <span>{{ t('workflowEditor.appDetail.fields.targetVersion') }}</span>
+            <SelectField :model-value="runtimeTargetVersionId" :options="versionOptions" @update:model-value="setRuntimeTargetVersion" />
+          </label>
+          <label v-if="showBreakingOverride" class="field workflow-version-override">
+            <span>{{ t('workflowEditor.appDetail.fields.breakingOverride') }}</span>
+            <input v-model="allowBreakingContract" type="checkbox" />
+          </label>
+          <p v-if="showBreakingOverride" class="muted-note field--wide">
+            {{ t('workflowEditor.appDetail.hints.breakingOverrideValidation') }}
+          </p>
+          <label v-if="allowBreakingContract" class="field field--wide">
+            <span>{{ t('workflowEditor.appDetail.fields.breakingReason') }}</span>
+            <input v-model="breakingChangeReason" :placeholder="t('workflowEditor.appDetail.placeholders.breakingReason')" />
+          </label>
+          <div class="table-actions field--wide">
+            <Button variant="secondary" :disabled="!canSwitchRuntimeVersion(selectedRuntime)" @click="switchRuntimeVersion(selectedRuntime)">
+              {{ t('workflowEditor.appDetail.actions.selectVersion') }}
+            </Button>
+            <Button v-if="hasMoreVersions" variant="secondary" :disabled="loadingMoreVersions" :loading="loadingMoreVersions" @click="loadMoreVersions">
+              {{ t('workflowEditor.appDetail.actions.loadOlderVersions') }}
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -430,25 +593,52 @@ import InlineError from '@/shared/ui/feedback/InlineError.vue'
 import InlineMessage from '@/shared/ui/feedback/InlineMessage.vue'
 import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import {
-  listWorkflowTriggerSources,
+  listAllWorkflowTriggerSourcesForRuntime,
   refreshWorkflowTriggerSourceStatuses,
   type WorkflowTriggerSource,
 } from '@/modules/integrations/services/trigger-source.service'
 import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
-import { getWorkflowApp, type WorkflowAppDocument } from '../services/workflow-app.service'
+import {
+  getWorkflowApp,
+  resolveLatestPublishedVersion,
+  type WorkflowAppDocument,
+} from '../services/workflow-app.service'
+import {
+  compareWorkflowAppVersionToDraft,
+  getWorkflowAppVersion,
+  listWorkflowAppVersions,
+  publishWorkflowAppVersion,
+  transitionWorkflowAppVersionState,
+  type WorkflowAppVersionStateTransition,
+} from '../services/workflow-application.service'
 import {
   createWorkflowAppRuntime,
   createWorkflowRun,
   deleteWorkflowAppRuntime,
   getWorkflowAppRuntimeHealth,
+  getWorkflowRuntimeRevision,
   getWorkflowRun,
   invokeWorkflowAppRuntime,
   restartWorkflowAppRuntime,
   refreshWorkflowAppRuntimeStatuses,
   startWorkflowAppRuntime,
   stopWorkflowAppRuntime,
+  selectWorkflowAppRuntimeVersion,
 } from '../services/workflow-runtime.service'
-import type { FlowApplicationBinding, WorkflowAppRuntime, WorkflowJsonObject, WorkflowRun } from '../types'
+import {
+  buildRuntimeVersionSelectionInput,
+  canSelectWorkflowRuntimeVersion,
+  selectRuntimeCandidateVersions,
+} from '../runtime-version-selection'
+import type {
+  FlowApplicationBinding,
+  WorkflowAppRuntime,
+  WorkflowAppVersion,
+  WorkflowAppVersionComparison,
+  WorkflowJsonObject,
+  WorkflowRun,
+  WorkflowRuntimeRevision,
+} from '../types'
 
 type RuntimeControlAction = 'start' | 'stop' | 'restart'
 type RunSubmitMode = 'async' | 'sync'
@@ -491,6 +681,22 @@ const lastRun = ref<WorkflowRun | null>(null)
 const fetchingLastRun = ref(false)
 const runtimeWorkflowRunRecordMode = ref<WorkflowRunRecordMode>('minimal')
 const runtimeReturnDiagnostics = ref('false')
+const publishingVersion = ref(false)
+const loadingMoreVersions = ref(false)
+const comparingVersionId = ref<string | null>(null)
+const changingVersionStateId = ref<string | null>(null)
+const publishDisplayVersion = ref('')
+const publishReleaseNotes = ref('')
+const versionComparison = ref<WorkflowAppVersionComparison | null>(null)
+const runtimeCreateVersionId = ref('')
+const runtimeTargetVersionId = ref('')
+const allowBreakingContract = ref(false)
+const breakingChangeReason = ref('')
+const revisionsByRuntimeId = ref<Record<string, WorkflowRuntimeRevision[]>>({})
+const revisionLoadErrorsByRuntimeId = ref<Record<string, string>>({})
+const loadingRevisionIds = ref<Set<string>>(new Set())
+const revisionRequests = new Map<string, Promise<WorkflowRuntimeRevision>>()
+const versionSummaryRequests = new Map<string, Promise<WorkflowAppVersion>>()
 
 const applicationId = computed(() => String(route.params.applicationId ?? ''))
 const selectedProjectId = computed(() => projectStore.selectedProjectId)
@@ -501,7 +707,35 @@ const bindings = computed(() => application.value?.bindings ?? [])
 const inputBindings = computed(() => bindings.value.filter((binding) => binding.direction === 'input'))
 const outputBindings = computed(() => bindings.value.filter((binding) => binding.direction === 'output'))
 const runtimes = computed(() => workflowApp.value?.runtimes ?? [])
+const versions = computed(() => workflowApp.value?.versions ?? [])
+const publishedVersions = computed(() => selectRuntimeCandidateVersions(versions.value))
+const latestVersion = computed(() => {
+  const recordedLatestVersion = workflowApp.value?.latestVersion
+  if (recordedLatestVersion?.state === 'published') return recordedLatestVersion
+  return publishedVersions.value[0] ?? null
+})
+const hasMoreVersions = computed(() => workflowApp.value?.versionPagination.hasMore ?? false)
+const versionOptions = computed<SelectOption[]>(() => publishedVersions.value.map((version) => ({
+  label: `${version.display_version} (#${version.version_number})`,
+  value: version.workflow_app_version_id,
+  description: version.release_notes || version.workflow_app_version_id,
+})))
+const runtimeCreateVersionSelectable = computed(() => publishedVersions.value.some(
+  (version) => version.workflow_app_version_id === runtimeCreateVersionId.value,
+))
 const selectedRuntime = computed(() => runtimes.value.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value) ?? workflowApp.value?.primaryRuntime ?? runtimes.value[0] ?? null)
+const selectedActiveRevision = computed(() => {
+  const runtime = selectedRuntime.value
+  return runtime ? runtimeRevision(runtime, runtime.active_revision_id) : null
+})
+const selectedActiveVersionId = computed(() => selectedActiveRevision.value?.workflow_app_version_id ?? '')
+const selectedActiveVersion = computed(() => versions.value.find((version) => version.workflow_app_version_id === selectedActiveVersionId.value) ?? null)
+const selectedTargetVersion = computed(() => versions.value.find((version) => version.workflow_app_version_id === runtimeTargetVersionId.value) ?? null)
+const switchingContractFingerprintChanged = computed(() => {
+  if (!selectedActiveVersion.value || !selectedTargetVersion.value) return false
+  return selectedActiveVersion.value.contract_fingerprint !== selectedTargetVersion.value.contract_fingerprint
+})
+const showBreakingOverride = computed(() => Boolean(selectedActiveVersionId.value) && switchingContractFingerprintChanged.value)
 const runtimeActionBusy = computed(() => busyRuntimeId.value !== null || loading.value)
 const graphEditorPath = computed(() => `/workflows/graph/apps/${encodeURIComponent(applicationId.value)}`)
 const templateInputById = computed(() => new Map((graph.value?.template_inputs ?? []).map((input) => [input.input_id, input])))
@@ -642,6 +876,268 @@ function parseInputBindings(): WorkflowJsonObject {
   return parsedValue
 }
 
+function shortId(value: string): string {
+  return value.length > 20 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value
+}
+
+function versionLabel(versionId: string | null | undefined): string {
+  if (!versionId) return '-'
+  const version = versions.value.find((item) => item.workflow_app_version_id === versionId)
+  return version ? version.display_version : shortId(versionId)
+}
+
+function runtimeRevision(runtime: WorkflowAppRuntime, revisionId: string | null | undefined): WorkflowRuntimeRevision | null {
+  if (!revisionId) return null
+  return (revisionsByRuntimeId.value[runtime.workflow_runtime_id] ?? []).find(
+    (revision) => revision.workflow_runtime_revision_id === revisionId,
+  ) ?? null
+}
+
+function runtimeVersionLabel(runtime: WorkflowAppRuntime): string {
+  const active = runtimeRevision(runtime, runtime.active_revision_id)
+  const desired = runtimeRevision(runtime, runtime.desired_revision_id)
+  const activeLabel = active
+    ? versionLabel(active.workflow_app_version_id)
+    : runtime.active_revision_id ? shortId(runtime.active_revision_id) : '-'
+  const desiredLabel = desired
+    ? versionLabel(desired.workflow_app_version_id)
+    : runtime.desired_revision_id ? shortId(runtime.desired_revision_id) : '-'
+  if (runtime.active_revision_id && runtime.desired_revision_id && runtime.active_revision_id !== runtime.desired_revision_id) {
+    return `${activeLabel} → ${desiredLabel}`
+  }
+  return activeLabel !== '-' ? activeLabel : desiredLabel
+}
+
+function runtimeDesiredVersionId(runtime: WorkflowAppRuntime): string {
+  return runtimeRevision(runtime, runtime.desired_revision_id)?.workflow_app_version_id ?? ''
+}
+
+function setRuntimeCreateVersion(value: SelectValue): void {
+  runtimeCreateVersionId.value = selectValueToString(value)
+}
+
+function setRuntimeTargetVersion(value: SelectValue): void {
+  runtimeTargetVersionId.value = selectValueToString(value)
+  allowBreakingContract.value = false
+  breakingChangeReason.value = ''
+}
+
+function mergeVersionSummary(version: WorkflowAppVersion): void {
+  const app = workflowApp.value
+  if (!app) return
+  app.versions = [
+    ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id),
+    version,
+  ].sort((left, right) => right.version_number - left.version_number)
+  if (version.state === 'published' && (!app.latestVersion || version.version_number > app.latestVersion.version_number)) {
+    app.latestVersion = version
+  }
+}
+
+async function ensureVersionSummary(workflowAppVersionId: string): Promise<void> {
+  if (!workflowAppVersionId || versions.value.some((version) => version.workflow_app_version_id === workflowAppVersionId)) return
+  let request = versionSummaryRequests.get(workflowAppVersionId)
+  if (!request) {
+    request = getWorkflowAppVersion(selectedProjectId.value, applicationId.value, workflowAppVersionId)
+    versionSummaryRequests.set(workflowAppVersionId, request)
+  }
+  try {
+    mergeVersionSummary(await request)
+  } finally {
+    versionSummaryRequests.delete(workflowAppVersionId)
+  }
+}
+
+async function loadRuntimeRevision(runtime: WorkflowAppRuntime, revisionId: string, forceRefresh = false): Promise<WorkflowRuntimeRevision> {
+  const cachedRevision = runtimeRevision(runtime, revisionId)
+  if (cachedRevision && !forceRefresh) return cachedRevision
+  let request = revisionRequests.get(revisionId)
+  if (!request) {
+    request = getWorkflowRuntimeRevision(runtime.workflow_runtime_id, revisionId)
+    revisionRequests.set(revisionId, request)
+  }
+  loadingRevisionIds.value = new Set([...loadingRevisionIds.value, revisionId])
+  try {
+    const revision = await request
+    const currentRevisions = revisionsByRuntimeId.value[runtime.workflow_runtime_id] ?? []
+    revisionsByRuntimeId.value = {
+      ...revisionsByRuntimeId.value,
+      [runtime.workflow_runtime_id]: [
+        ...currentRevisions.filter((item) => item.workflow_runtime_revision_id !== revision.workflow_runtime_revision_id),
+        revision,
+      ],
+    }
+    return revision
+  } finally {
+    revisionRequests.delete(revisionId)
+    const nextLoadingRevisionIds = new Set(loadingRevisionIds.value)
+    nextLoadingRevisionIds.delete(revisionId)
+    loadingRevisionIds.value = nextLoadingRevisionIds
+  }
+}
+
+async function loadRuntimeRevisionSummaries(runtime: WorkflowAppRuntime, forceRefresh = false): Promise<void> {
+  const revisionIds = [...new Set([runtime.active_revision_id, runtime.desired_revision_id].filter((value): value is string => Boolean(value)))]
+  if (revisionIds.length === 0) return
+  const results = await Promise.allSettled(revisionIds.map((revisionId) => loadRuntimeRevision(runtime, revisionId, forceRefresh)))
+  const failedResult = results.find((result) => result.status === 'rejected')
+  const versionResults = await Promise.allSettled(results.flatMap((result) => (
+    result.status === 'fulfilled' ? [ensureVersionSummary(result.value.workflow_app_version_id)] : []
+  )))
+  const failedVersionResult = versionResults.find((result) => result.status === 'rejected')
+  const failedReason = failedResult?.status === 'rejected'
+    ? failedResult.reason
+    : failedVersionResult?.status === 'rejected' ? failedVersionResult.reason : null
+  if (failedReason !== null) {
+    revisionLoadErrorsByRuntimeId.value = {
+      ...revisionLoadErrorsByRuntimeId.value,
+      [runtime.workflow_runtime_id]: failedReason instanceof Error
+        ? failedReason.message
+        : t('workflowEditor.appDetail.messages.revisionSummaryFailed'),
+    }
+  } else {
+    const nextErrors = { ...revisionLoadErrorsByRuntimeId.value }
+    delete nextErrors[runtime.workflow_runtime_id]
+    revisionLoadErrorsByRuntimeId.value = nextErrors
+  }
+}
+
+async function loadMoreVersions(): Promise<void> {
+  const app = workflowApp.value
+  if (!app || loadingMoreVersions.value || !app.versionPagination.hasMore) return
+  loadingMoreVersions.value = true
+  errorMessage.value = null
+  try {
+    const response = await listWorkflowAppVersions(selectedProjectId.value, applicationId.value, {
+      offset: app.versionPagination.nextOffset ?? app.versionPagination.offset + app.versionPagination.limit,
+      limit: app.versionPagination.limit,
+    })
+    const mergedVersions = new Map(app.versions.map((version) => [version.workflow_app_version_id, version]))
+    for (const version of response.items) mergedVersions.set(version.workflow_app_version_id, version)
+    app.versions = [...mergedVersions.values()].sort((left, right) => right.version_number - left.version_number)
+    app.versionPagination = response.pagination
+    app.latestVersion = app.versions.find((version) => version.state === 'published') ?? null
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.loadMoreVersionsFailed')
+  } finally {
+    loadingMoreVersions.value = false
+  }
+}
+
+async function publishVersion(): Promise<void> {
+  const app = workflowApp.value
+  if (!app || !canWriteWorkflows.value || publishingVersion.value) return
+  publishingVersion.value = true
+  errorMessage.value = null
+  versionComparison.value = null
+  try {
+    const version = await publishWorkflowAppVersion(
+      selectedProjectId.value,
+      applicationId.value,
+      {
+        expectedDraftFingerprint: app.applicationDocument.draft_fingerprint,
+        displayVersion: publishDisplayVersion.value.trim() || null,
+        releaseNotes: publishReleaseNotes.value.trim(),
+      },
+    )
+    app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
+    app.latestVersion = version
+    app.versionPagination = {
+      ...app.versionPagination,
+      totalCount: app.versionPagination.totalCount === null ? null : app.versionPagination.totalCount + 1,
+      nextOffset: app.versionPagination.nextOffset === null ? null : app.versionPagination.nextOffset + 1,
+    }
+    publishDisplayVersion.value = ''
+    publishReleaseNotes.value = ''
+    runtimeCreateVersionId.value = version.workflow_app_version_id
+    runtimeTargetVersionId.value = version.workflow_app_version_id
+    statusMessage.value = t('workflowEditor.appDetail.messages.versionPublished', { version: version.display_version })
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.publishVersionFailed')
+  } finally {
+    publishingVersion.value = false
+  }
+}
+
+async function compareVersion(workflowAppVersionId: string): Promise<void> {
+  if (comparingVersionId.value) return
+  comparingVersionId.value = workflowAppVersionId
+  errorMessage.value = null
+  try {
+    versionComparison.value = await compareWorkflowAppVersionToDraft(
+      selectedProjectId.value,
+      applicationId.value,
+      workflowAppVersionId,
+    )
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.compareVersionFailed')
+  } finally {
+    comparingVersionId.value = null
+  }
+}
+
+async function refreshLatestVersionAfterStateChange(app: WorkflowAppDocument): Promise<void> {
+  const latestPublishedVersion = await resolveLatestPublishedVersion(
+    selectedProjectId.value,
+    applicationId.value,
+    { items: app.versions, pagination: app.versionPagination },
+  )
+  if (latestPublishedVersion && !app.versions.some(
+    (version) => version.workflow_app_version_id === latestPublishedVersion.workflow_app_version_id,
+  )) {
+    app.versions = [...app.versions, latestPublishedVersion]
+      .sort((left, right) => right.version_number - left.version_number)
+  }
+  app.latestVersion = latestPublishedVersion
+
+  const candidateIds = new Set(selectRuntimeCandidateVersions(app.versions).map(
+    (version) => version.workflow_app_version_id,
+  ))
+  const fallbackVersionId = latestPublishedVersion?.workflow_app_version_id ?? ''
+  if (!candidateIds.has(runtimeCreateVersionId.value)) runtimeCreateVersionId.value = fallbackVersionId
+  if (!candidateIds.has(runtimeTargetVersionId.value)) runtimeTargetVersionId.value = fallbackVersionId
+}
+
+async function changeVersionState(
+  version: WorkflowAppVersion,
+  transition: WorkflowAppVersionStateTransition,
+): Promise<void> {
+  if (!canWriteWorkflows.value || changingVersionStateId.value !== null) return
+  const expectedState = transition === 'archive' ? 'published' : 'archived'
+  if (version.state !== expectedState) return
+
+  changingVersionStateId.value = version.workflow_app_version_id
+  errorMessage.value = null
+  try {
+    const updatedVersion = await transitionWorkflowAppVersionState(
+      selectedProjectId.value,
+      applicationId.value,
+      version.workflow_app_version_id,
+      transition,
+    )
+    const app = workflowApp.value
+    if (!app) return
+    app.versions = [
+      ...app.versions.filter((item) => item.workflow_app_version_id !== updatedVersion.workflow_app_version_id),
+      updatedVersion,
+    ].sort((left, right) => right.version_number - left.version_number)
+    if (updatedVersion.state !== 'published') {
+      if (runtimeCreateVersionId.value === updatedVersion.workflow_app_version_id) runtimeCreateVersionId.value = ''
+      if (runtimeTargetVersionId.value === updatedVersion.workflow_app_version_id) runtimeTargetVersionId.value = ''
+    }
+    await refreshLatestVersionAfterStateChange(app)
+    statusMessage.value = transition === 'archive'
+      ? t('workflowEditor.appDetail.messages.versionArchived', { version: updatedVersion.display_version })
+      : t('workflowEditor.appDetail.messages.versionRestored', { version: updatedVersion.display_version })
+  } catch (error) {
+    errorMessage.value = error instanceof Error
+      ? error.message
+      : t('workflowEditor.appDetail.messages.versionStateChangeFailed')
+  } finally {
+    changingVersionStateId.value = null
+  }
+}
+
 function validateInputBindingPayloads(inputBindingPayloads: Record<string, unknown>): void {
   for (const binding of inputBindings.value) {
     if (!Object.prototype.hasOwnProperty.call(inputBindingPayloads, binding.binding_id)) continue
@@ -701,10 +1197,17 @@ function validateImageRefBindingPayload(bindingId: string, payload: unknown): vo
   }
 }
 
-function selectRuntime(runtimeId: string): void {
+async function selectRuntime(runtimeId: string): Promise<void> {
   const runtime = runtimes.value.find((item) => item.workflow_runtime_id === runtimeId)
   if (!runtime || !canSelectRuntime(runtime)) return
   selectedRuntimeId.value = runtimeId
+  runtimeTargetVersionId.value = latestVersion.value?.workflow_app_version_id || ''
+  allowBreakingContract.value = false
+  breakingChangeReason.value = ''
+  await loadRuntimeRevisionSummaries(runtime)
+  if (selectedRuntimeId.value === runtimeId) {
+    runtimeTargetVersionId.value = runtimeDesiredVersionId(runtime) || latestVersion.value?.workflow_app_version_id || ''
+  }
 }
 
 function isRuntimeStarting(runtime: WorkflowAppRuntime): boolean {
@@ -733,12 +1236,13 @@ function canSelectRuntime(runtime: WorkflowAppRuntime): boolean {
 
 function canStartRuntime(runtime: WorkflowAppRuntime): boolean {
   if (!canWriteWorkflows.value || isRuntimeBusy()) return false
-  return !isRuntimeRunning(runtime) && !isRuntimeStarting(runtime) && !isRuntimeStopping(runtime)
+  if (runtimeRevision(runtime, runtime.desired_revision_id)?.state === 'failed') return false
+  return runtime.observed_state !== 'failed' && !isRuntimeRunning(runtime) && !isRuntimeStarting(runtime) && !isRuntimeStopping(runtime)
 }
 
 function canStopRuntime(runtime: WorkflowAppRuntime): boolean {
   if (!canWriteWorkflows.value || isRuntimeBusy()) return false
-  return isRuntimeRunning(runtime) || runtime.observed_state === 'starting'
+  return isRuntimeRunning(runtime) || runtime.observed_state === 'starting' || runtime.observed_state === 'failed'
 }
 
 function canRestartRuntime(runtime: WorkflowAppRuntime): boolean {
@@ -748,6 +1252,51 @@ function canRestartRuntime(runtime: WorkflowAppRuntime): boolean {
 
 function canRefreshRuntimeHealth(_runtime: WorkflowAppRuntime): boolean {
   return !isRuntimeBusy()
+}
+
+function canSwitchRuntimeVersion(runtime: WorkflowAppRuntime): boolean {
+  if (!publishedVersions.value.some(
+    (version) => version.workflow_app_version_id === runtimeTargetVersionId.value,
+  )) return false
+  return canSelectWorkflowRuntimeVersion({
+    runtime,
+    desiredRevision: runtimeRevision(runtime, runtime.desired_revision_id),
+    targetVersionId: runtimeTargetVersionId.value,
+    triggerSources: triggerSources.value,
+    canWriteWorkflows: canWriteWorkflows.value,
+    runtimeBusy: isRuntimeBusy(),
+    allowBreakingContract: allowBreakingContract.value,
+    breakingChangeReason: breakingChangeReason.value,
+  })
+}
+
+async function switchRuntimeVersion(runtime: WorkflowAppRuntime): Promise<void> {
+  if (!canSwitchRuntimeVersion(runtime)) return
+  busyRuntimeId.value = runtime.workflow_runtime_id
+  errorMessage.value = null
+  try {
+    const updatedRuntime = await selectWorkflowAppRuntimeVersion(
+      runtime.workflow_runtime_id,
+      buildRuntimeVersionSelectionInput({
+        runtime,
+        targetVersionId: runtimeTargetVersionId.value,
+        allowBreakingContract: allowBreakingContract.value,
+        breakingChangeReason: breakingChangeReason.value,
+      }),
+    )
+    replaceRuntime(updatedRuntime)
+    await loadRuntimeRevisionSummaries(updatedRuntime, true)
+    allowBreakingContract.value = false
+    breakingChangeReason.value = ''
+    statusMessage.value = t('workflowEditor.appDetail.messages.versionSelected', {
+      version: versionLabel(runtimeTargetVersionId.value),
+      generation: updatedRuntime.revision_generation,
+    })
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.selectVersionFailed')
+  } finally {
+    busyRuntimeId.value = null
+  }
 }
 
 function canAddTriggerSource(runtime: WorkflowAppRuntime): boolean {
@@ -762,6 +1311,8 @@ function canDeleteRuntime(runtime: WorkflowAppRuntime): boolean {
 
 function startRuntimeTitle(runtime: WorkflowAppRuntime): string {
   if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (runtime.observed_state === 'failed') return t('workflowEditor.appDetail.hints.resetFailedRuntimeBeforeStart')
+  if (runtimeRevision(runtime, runtime.desired_revision_id)?.state === 'failed') return t('workflowEditor.appDetail.hints.selectVersionAfterFailedRevision')
   if (isRuntimeRunning(runtime)) return t('workflowEditor.appDetail.hints.runtimeRunning')
   if (isRuntimeStarting(runtime)) return t('workflowEditor.appDetail.hints.runtimeStarting')
   if (isRuntimeStopping(runtime)) return t('workflowEditor.appDetail.hints.runtimeStoppingBeforeStart')
@@ -770,9 +1321,16 @@ function startRuntimeTitle(runtime: WorkflowAppRuntime): string {
 
 function stopRuntimeTitle(runtime: WorkflowAppRuntime): string {
   if (isRuntimeBusy()) return t('workflowEditor.appDetail.hints.runtimeBusy')
+  if (runtime.observed_state === 'failed') return t('workflowEditor.appDetail.hints.resetFailedRuntime')
   if (runtime.observed_state === 'stopping') return t('workflowEditor.appDetail.hints.runtimeStopping')
   if (!canStopRuntime(runtime)) return t('workflowEditor.appDetail.hints.runtimeNotRunning')
   return t('workflowEditor.appDetail.hints.stopRuntime')
+}
+
+function runtimeStopActionLabel(runtime: WorkflowAppRuntime): string {
+  return runtime.observed_state === 'failed'
+    ? t('workflowEditor.appDetail.actions.reset')
+    : t('workflowEditor.appDetail.actions.stop')
 }
 
 function restartRuntimeTitle(runtime: WorkflowAppRuntime): string {
@@ -870,14 +1428,26 @@ async function loadPage(): Promise<void> {
   errorMessage.value = null
   statusMessage.value = null
   try {
-    const [appDocument, triggerSourceResult] = await Promise.all([
-      getWorkflowApp(selectedProjectId.value, applicationId.value),
-      listWorkflowTriggerSources({ projectId: selectedProjectId.value, limit: 100 }),
-    ])
+    const appDocument = await getWorkflowApp(selectedProjectId.value, applicationId.value)
+    const applicationTriggerSources: WorkflowTriggerSource[] = []
+    const triggerListConcurrency = 8
+    for (let offset = 0; offset < appDocument.runtimes.length; offset += triggerListConcurrency) {
+      const triggerSourcesForRuntimes = await Promise.all(
+        appDocument.runtimes.slice(offset, offset + triggerListConcurrency).map(
+          (runtime) => listAllWorkflowTriggerSourcesForRuntime(
+            selectedProjectId.value,
+            runtime.workflow_runtime_id,
+          ),
+        ),
+      )
+      applicationTriggerSources.push(...triggerSourcesForRuntimes.flat())
+    }
     const [runtimeStatusResult, triggerStatusResult] = await Promise.all([
       refreshWorkflowAppRuntimeStatuses(appDocument.runtimes),
-      refreshWorkflowTriggerSourceStatuses(triggerSourceResult.items),
+      refreshWorkflowTriggerSourceStatuses(applicationTriggerSources),
     ])
+    revisionsByRuntimeId.value = {}
+    revisionLoadErrorsByRuntimeId.value = {}
     appDocument.runtimes = runtimeStatusResult.items
     appDocument.primaryRuntime = runtimeStatusResult.items.find((runtime) => runtime.observed_state === 'running')
       ?? runtimeStatusResult.items[0]
@@ -888,6 +1458,15 @@ async function loadPage(): Promise<void> {
     selectedRuntimeId.value = appDocument.runtimes.some((runtime) => runtime.workflow_runtime_id === queryRuntimeId)
       ? queryRuntimeId
       : appDocument.primaryRuntime?.workflow_runtime_id ?? appDocument.runtimes[0]?.workflow_runtime_id ?? ''
+    const currentRuntime = appDocument.runtimes.find((runtime) => runtime.workflow_runtime_id === selectedRuntimeId.value)
+    if (currentRuntime) await loadRuntimeRevisionSummaries(currentRuntime)
+    runtimeCreateVersionId.value = latestVersion.value?.workflow_app_version_id ?? ''
+    runtimeTargetVersionId.value = currentRuntime
+      ? runtimeDesiredVersionId(currentRuntime) || latestVersion.value?.workflow_app_version_id || ''
+      : latestVersion.value?.workflow_app_version_id ?? ''
+    allowBreakingContract.value = false
+    breakingChangeReason.value = ''
+    versionComparison.value = null
     resetSamplePayload()
     const failedIds = [...runtimeStatusResult.failedRuntimeIds, ...triggerStatusResult.failedTriggerSourceIds]
     if (failedIds.length > 0) {
@@ -901,13 +1480,13 @@ async function loadPage(): Promise<void> {
 }
 
 async function createRuntime(): Promise<void> {
-  if (!application.value || !canWriteWorkflows.value) return
+  if (!application.value || !canWriteWorkflows.value || !runtimeCreateVersionSelectable.value) return
   busyRuntimeId.value = 'new'
   errorMessage.value = null
   try {
     const runtime = await createWorkflowAppRuntime({
       projectId: selectedProjectId.value,
-      applicationId: application.value.application_id,
+      workflowAppVersionId: runtimeCreateVersionId.value,
       displayName: `${application.value.display_name || application.value.application_id} runtime`,
       metadata: {
         source: 'web-ui-app-detail',
@@ -916,6 +1495,8 @@ async function createRuntime(): Promise<void> {
     })
     replaceRuntime(runtime)
     selectedRuntimeId.value = runtime.workflow_runtime_id
+    await loadRuntimeRevisionSummaries(runtime)
+    runtimeTargetVersionId.value = runtimeCreateVersionId.value
     statusMessage.value = t('workflowEditor.appDetail.messages.runtimeCreated', { runtimeId: runtime.workflow_runtime_id })
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.createRuntimeFailed')
@@ -939,6 +1520,7 @@ async function controlRuntime(runtime: WorkflowAppRuntime, action: RuntimeContro
     }
     const updatedRuntime = await actions[action](runtime.workflow_runtime_id)
     replaceRuntime(updatedRuntime)
+    await loadRuntimeRevisionSummaries(updatedRuntime, true)
     statusMessage.value = t('workflowEditor.appDetail.messages.runtimeActionSubmitted', {
       action,
       runtimeId: updatedRuntime.workflow_runtime_id,
@@ -979,6 +1561,12 @@ async function deleteRuntime(): Promise<void> {
   try {
     await deleteWorkflowAppRuntime(runtime.workflow_runtime_id)
     workflowApp.value.runtimes = workflowApp.value.runtimes.filter((item) => item.workflow_runtime_id !== runtime.workflow_runtime_id)
+    const nextRevisions = { ...revisionsByRuntimeId.value }
+    delete nextRevisions[runtime.workflow_runtime_id]
+    revisionsByRuntimeId.value = nextRevisions
+    const nextRevisionErrors = { ...revisionLoadErrorsByRuntimeId.value }
+    delete nextRevisionErrors[runtime.workflow_runtime_id]
+    revisionLoadErrorsByRuntimeId.value = nextRevisionErrors
     workflowApp.value.primaryRuntime = workflowApp.value.runtimes.find((item) => item.observed_state === 'running') ?? workflowApp.value.runtimes[0] ?? null
     selectedRuntimeId.value = workflowApp.value.primaryRuntime?.workflow_runtime_id ?? workflowApp.value.runtimes[0]?.workflow_runtime_id ?? ''
     statusMessage.value = t('workflowEditor.appDetail.messages.runtimeDeleted', { runtimeId: runtime.workflow_runtime_id })
@@ -1047,5 +1635,76 @@ onMounted(loadPage)
 
 .result-details .json-view {
   margin-top: 12px;
+}
+
+.workflow-version-publish-form,
+.runtime-version-switch {
+  margin-bottom: 16px;
+}
+
+.workflow-version-load-more {
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.version-comparison,
+.runtime-version-switch {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-md);
+  background: var(--am-surface-soft);
+}
+
+.version-comparison--breaking {
+  border-color: var(--am-danger-border);
+}
+
+.version-comparison > span {
+  color: var(--am-text-muted);
+}
+
+.workflow-version-override {
+  align-content: end;
+}
+
+.workflow-version-override input {
+  width: 18px;
+  height: 18px;
+}
+
+.runtime-version-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  background: var(--am-surface);
+}
+
+.runtime-version-route > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.runtime-version-route span,
+.runtime-recovery-hint {
+  color: var(--am-text-muted);
+  font-size: 0.82rem;
+}
+
+.runtime-version-route strong {
+  overflow-wrap: anywhere;
+}
+
+.runtime-recovery-hint {
+  display: block;
+  margin-top: 6px;
+  max-width: 260px;
 }
 </style>

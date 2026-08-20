@@ -19,6 +19,8 @@
         :loading="loading"
         :preview-disabled="previewDisabled"
         :previewing="previewOperationRunning"
+        :publish-disabled="publishDisabled"
+        :publishing="publishingVersion"
         :save-disabled="saveDisabled"
         :saving="saving"
         :group-create-mode="groupCreateMode"
@@ -31,6 +33,7 @@
         @toggle-group-create-mode="toggleGroupCreateMode"
         @toggle-inspector="toggleInspector"
         @preview="requestPreviewRun"
+        @publish="publishCurrentWorkflowApp"
         @save="saveCurrentWorkflowApp"
       />
 
@@ -305,7 +308,7 @@ import { useWorkflowSaveRunFeedback } from '../actions/useWorkflowSaveRunFeedbac
 import { useWorkflowSaveRunOrchestration } from '../actions/useWorkflowSaveRunOrchestration'
 import { useWorkflowSelectionState } from '../selection/useWorkflowSelectionState'
 import type { WorkflowAppDocument } from '../services/workflow-app.service'
-import { updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
+import { publishWorkflowAppVersion, updateWorkflowApplicationMetadata } from '../services/workflow-application.service'
 import { uploadWorkflowPromptMask } from '../services/workflow-runtime.service'
 import {
   buildAppliedMaskBinding,
@@ -348,6 +351,7 @@ const currentLocale = computed<SupportedLocale>(() => {
 })
 
 const loading = ref(false)
+const publishingVersion = ref(false)
 const imageInteractionApplying = ref(false)
 const nodeCatalog = ref<WorkflowNodeCatalogResponse | null>(null)
 const workflowApp = ref<WorkflowAppDocument | null>(null)
@@ -906,6 +910,7 @@ const editorTitleEditable = computed(() => !isNewApp.value && Boolean(workflowAp
 const previewOperationRunning = computed(() => previewing.value || imageInteractionApplying.value)
 const saveDisabled = computed(() => saving.value || imageInteractionApplying.value || !workflowApp.value || Boolean(newWorkflowAppSaveBlocker.value))
 const previewDisabled = computed(() => previewOperationRunning.value || !workflowApp.value || isNewApp.value || Boolean(newWorkflowAppSaveBlocker.value))
+const publishDisabled = computed(() => publishingVersion.value || saveDisabled.value)
 
 function beginEditorTitleEdit(): void {
   if (!editorTitleEditable.value || editorTitleSaving.value) return
@@ -1234,6 +1239,33 @@ const {
   setActionError,
   clearContextMenu,
 })
+
+async function publishCurrentWorkflowApp(): Promise<void> {
+  if (publishDisabled.value) return
+  publishingVersion.value = true
+  clearActionMessages()
+  try {
+    await saveCurrentWorkflowApp()
+    const app = workflowApp.value
+    if (!app || errorMessage.value || !app.applicationDocument.draft_fingerprint) return
+    const version = await publishWorkflowAppVersion(
+      selectedProjectId.value,
+      app.applicationDocument.application_id,
+      {
+        expectedDraftFingerprint: app.applicationDocument.draft_fingerprint,
+        releaseNotes: '',
+      },
+    )
+    app.versions = [version, ...app.versions.filter((item) => item.workflow_app_version_id !== version.workflow_app_version_id)]
+    app.latestVersion = version
+    setActionStatus(t('workflowEditor.feedback.published', { version: version.display_version }))
+  } catch (error) {
+    setActionError(error instanceof Error ? error.message : t('workflowEditor.feedback.publishFailed'))
+  } finally {
+    publishingVersion.value = false
+  }
+}
+
 const { toolbarStatusMessage } = useWorkflowToolbarStatus({
   statusMessage,
   lastPreviewRun,

@@ -502,6 +502,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         if not isinstance(manifest_payload, dict):
             raise InvalidRequestError("RF-DETR detection 训练 manifest 无效")
         warm_start_reference = resolve_rfdetr_warm_start_reference(
+            project_id=task_record.project_id,
             model_version_id=self._read_optional_str(
                 payload.get("warm_start_model_version_id")
             ),

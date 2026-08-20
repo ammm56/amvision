@@ -87,13 +87,43 @@ class WorkflowAppRuntimeCreateRequestBody(BaseModel):
     """描述 app runtime 创建请求体。"""
 
     project_id: str = Field(description="所属 Project id")
-    application_id: str = Field(description="已保存 FlowApplication id")
+    application_id: str | None = Field(
+        default=None,
+        description="旧 API 兼容的 FlowApplication id；新调用应使用 workflow_app_version_id",
+    )
+    workflow_app_version_id: str | None = Field(
+        default=None,
+        description="明确选择的已发布 Workflow App 版本 id",
+    )
     execution_policy_id: str | None = Field(default=None, description="可选的 WorkflowExecutionPolicy id")
     display_name: str = Field(default="", description="可选展示名称")
     request_timeout_seconds: int | None = Field(default=None, description="可选默认同步调用超时秒数")
     heartbeat_interval_seconds: int | None = Field(default=None, description="可选 worker 主动 heartbeat 周期秒数")
     heartbeat_timeout_seconds: int | None = Field(default=None, description="可选 heartbeat 判定超时秒数")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
+
+    @model_validator(mode="after")
+    def validate_version_reference(self) -> WorkflowAppRuntimeCreateRequestBody:
+        """要求旧草稿引用和新版本引用二选一。"""
+
+        application_id = self.application_id.strip() if self.application_id else None
+        version_id = (
+            self.workflow_app_version_id.strip()
+            if self.workflow_app_version_id
+            else None
+        )
+        if bool(application_id) == bool(version_id):
+            raise ValueError("application_id 与 workflow_app_version_id 必须且只能提供一个")
+        return self
+
+
+class WorkflowAppRuntimeSelectVersionRequestBody(BaseModel):
+    """描述 Runtime 停机选择已发布版本请求。"""
+
+    workflow_app_version_id: str
+    expected_generation: int = Field(ge=0)
+    allow_breaking_contract: bool = False
+    breaking_change_reason: str | None = Field(default=None, max_length=2048)
 
 
 class WorkflowRuntimeInvokeRequestBody(BaseModel):

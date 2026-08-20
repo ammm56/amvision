@@ -89,6 +89,7 @@ def get_classification_evaluation_task(
     """获取 classification 评估任务详情。"""
 
     return get_classification_evaluation_task_response(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
     )
@@ -106,6 +107,7 @@ def delete_classification_evaluation_task(
     """删除已完成的 classification 评估任务。"""
 
     return delete_classification_evaluation_task_response(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
     )

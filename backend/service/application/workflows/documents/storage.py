@@ -7,8 +7,15 @@ from pathlib import Path
 import re
 
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.workflows.documents.contracts import WorkflowStoredResourceSummary
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.workflows.documents.contracts import (
+    WorkflowStoredResourceSummary,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    is_workflow_lifecycle_resource_key,
+)
 
 
 _WORKFLOW_ROOT_DIR = "workflows/projects"
@@ -31,7 +38,9 @@ def build_resource_summary_for_save(
         )
     now = _now_isoformat()
     return WorkflowStoredResourceSummary(
-        created_at=(existing_summary.created_at if existing_summary is not None else now),
+        created_at=(
+            existing_summary.created_at if existing_summary is not None else now
+        ),
         updated_at=now,
         created_by=(
             existing_summary.created_by
@@ -41,7 +50,9 @@ def build_resource_summary_for_save(
         updated_by=(
             normalized_actor_id
             if normalized_actor_id is not None
-            else existing_summary.updated_by if existing_summary is not None else None
+            else existing_summary.updated_by
+            if existing_summary is not None
+            else None
         ),
     )
 
@@ -166,10 +177,17 @@ def build_natural_sort_key(value: str) -> tuple[tuple[int, int | str], ...]:
     """构建用于 template_version 和类似标识的自然排序键。"""
 
     parts = re.split(r"(\d+)", value)
-    return tuple((0, int(part)) if part.isdigit() else (1, part) for part in parts if part)
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part) for part in parts if part
+    )
 
 
-def normalize_identifier(value: str, field_name: str) -> str:
+def normalize_identifier(
+    value: str,
+    field_name: str,
+    *,
+    allow_reserved_application_id: bool = False,
+) -> str:
     """校验 project_id、template_id 等路径关键字段。"""
 
     normalized_value = value.strip()
@@ -178,6 +196,27 @@ def normalize_identifier(value: str, field_name: str) -> str:
     if "/" in normalized_value or "\\" in normalized_value or ".." in normalized_value:
         raise InvalidRequestError(
             f"{field_name} 不能包含路径分隔符或父目录引用",
+            details={field_name: normalized_value},
+        )
+    if (
+        field_name == "application_id"
+        and is_workflow_lifecycle_resource_key(normalized_value)
+        and not allow_reserved_application_id
+    ):
+        raise InvalidRequestError(
+            "application_id 使用了系统保留前缀",
+            details={"application_id": normalized_value},
+        )
+    return normalized_value
+
+
+def normalize_application_identifier(value: str, field_name: str) -> str:
+    """校验来自公开业务接口的 Application id，并拒绝内部保留命名空间。"""
+
+    normalized_value = normalize_identifier(value, field_name)
+    if is_workflow_lifecycle_resource_key(normalized_value):
+        raise InvalidRequestError(
+            f"{field_name} 使用了系统保留前缀",
             details={field_name: normalized_value},
         )
     return normalized_value
@@ -197,7 +236,9 @@ def normalize_optional_non_empty_text(value: str | None, field_name: str) -> str
     return normalized_value
 
 
-def _parse_resource_summary_payload(payload: object) -> WorkflowStoredResourceSummary | None:
+def _parse_resource_summary_payload(
+    payload: object,
+) -> WorkflowStoredResourceSummary | None:
     """把 sidecar JSON 解析为资源摘要。"""
 
     if not isinstance(payload, dict):
@@ -224,13 +265,21 @@ def _read_object_timestamps(
     """读取 workflow JSON 文件的创建和更新时间。"""
 
     file_stat = dataset_storage.resolve(object_key).stat()
-    created_at = datetime.fromtimestamp(file_stat.st_ctime, tz=timezone.utc).isoformat().replace(
-        "+00:00",
-        "Z",
+    created_at = (
+        datetime.fromtimestamp(file_stat.st_ctime, tz=timezone.utc)
+        .isoformat()
+        .replace(
+            "+00:00",
+            "Z",
+        )
     )
-    updated_at = datetime.fromtimestamp(file_stat.st_mtime, tz=timezone.utc).isoformat().replace(
-        "+00:00",
-        "Z",
+    updated_at = (
+        datetime.fromtimestamp(file_stat.st_mtime, tz=timezone.utc)
+        .isoformat()
+        .replace(
+            "+00:00",
+            "Z",
+        )
     )
     return created_at, updated_at
 

@@ -788,6 +788,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             )
 
         warm_start_reference = resolve_yolo_detection_warm_start_reference(
+            project_id=request.project_id,
             model_version_id=request.warm_start_model_version_id,
             model_service_cls=self._resolve_model_service_cls(),
             file_types=self._resolve_file_types(),

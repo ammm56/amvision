@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.service.infrastructure.persistence.base import Base
@@ -84,7 +84,7 @@ class DatasetAnnotationRecord(Base):
         index=True,
     )
     annotation_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    category_id: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bbox_x: Mapped[float | None] = mapped_column(Float, nullable=True)
     bbox_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     bbox_w: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -96,5 +96,7 @@ class DatasetAnnotationRecord(Base):
     iscrowd: Mapped[int] = mapped_column(Integer, default=0)
     area: Mapped[float | None] = mapped_column(Float, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_anomalous: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    mask_file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     sample: Mapped[DatasetSampleRecord] = relationship(back_populates="annotations")

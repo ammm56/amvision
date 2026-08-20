@@ -158,6 +158,50 @@ class SqlAlchemyWorkflowTriggerSourceRepository:
             ) from error
         return tuple(self._trigger_source_to_domain(record) for record in records)
 
+    def list_trigger_sources_by_runtime(
+        self, workflow_runtime_id: str
+    ) -> tuple[WorkflowTriggerSource, ...]:
+        """按 Runtime id 列出绑定的 TriggerSource。"""
+
+        statement = (
+            select(WorkflowTriggerSourceRecord)
+            .where(
+                WorkflowTriggerSourceRecord.workflow_runtime_id
+                == workflow_runtime_id
+            )
+            .order_by(WorkflowTriggerSourceRecord.trigger_source_id.asc())
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 Runtime 列出 WorkflowTriggerSource 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._trigger_source_to_domain(record) for record in records)
+
+    def has_trigger_sources_for_runtime(self, workflow_runtime_id: str) -> bool:
+        """使用存在性查询判断 Runtime 是否仍绑定 TriggerSource。"""
+
+        statement = (
+            select(WorkflowTriggerSourceRecord.trigger_source_id)
+            .where(
+                WorkflowTriggerSourceRecord.workflow_runtime_id
+                == workflow_runtime_id
+            )
+            .limit(1)
+        )
+        try:
+            return self.session.execute(statement).scalar_one_or_none() is not None
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "检查 Runtime 绑定 WorkflowTriggerSource 失败",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "error_type": error.__class__.__name__,
+                },
+            ) from error
+
     def delete_trigger_source(self, trigger_source_id: str) -> bool:
         """按 id 删除一条 WorkflowTriggerSource。
 

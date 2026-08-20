@@ -20,6 +20,7 @@ WORKFLOW_PREVIEW_RUN_EVENT_FORMAT = "amvision.workflow-preview-run-event.v1"
 WORKFLOW_APP_RUNTIME_FORMAT = "amvision.workflow-app-runtime.v1"
 WORKFLOW_APP_RUNTIME_INSTANCE_FORMAT = "amvision.workflow-app-runtime-instance.v1"
 WORKFLOW_APP_RUNTIME_EVENT_FORMAT = "amvision.workflow-app-runtime-event.v1"
+WORKFLOW_RUNTIME_REVISION_FORMAT = "amvision.workflow-runtime-revision.v1"
 WORKFLOW_RUN_FORMAT = "amvision.workflow-run.v1"
 WORKFLOW_RUN_EVENT_FORMAT = "amvision.workflow-run-event.v1"
 WORKFLOW_EXECUTION_POLICY_FORMAT = "amvision.workflow-execution-policy.v1"
@@ -277,6 +278,9 @@ class WorkflowAppRuntimeContract(BaseModel):
     application_snapshot_object_key: str
     template_snapshot_object_key: str
     execution_policy_snapshot_object_key: str | None = None
+    active_revision_id: str | None = None
+    desired_revision_id: str | None = None
+    revision_generation: int = Field(default=0, ge=0)
     desired_state: WorkflowAppRuntimeState
     observed_state: WorkflowAppRuntimeState
     request_timeout_seconds: int = 60
@@ -291,6 +295,7 @@ class WorkflowAppRuntimeContract(BaseModel):
     last_started_at: str | None = None
     last_stopped_at: str | None = None
     heartbeat_at: str | None = None
+    worker_instance_id: str | None = None
     worker_process_id: int | None = None
     loaded_snapshot_fingerprint: str | None = None
     last_error: str | None = None
@@ -354,6 +359,11 @@ class WorkflowRunContract(BaseModel):
     workflow_runtime_id: str
     project_id: str
     application_id: str
+    workflow_runtime_revision_id: str | None = None
+    workflow_app_version_id: str | None = None
+    runtime_generation: int | None = Field(default=None, ge=1)
+    snapshot_fingerprint: str | None = None
+    worker_instance_id: str | None = None
     state: WorkflowRunState
     created_at: str
     started_at: str | None = None
@@ -438,4 +448,41 @@ class WorkflowExecutionPolicyContract(BaseModel):
         _require_stripped_text(self.trace_level, "trace_level")
         _require_stripped_text(self.created_at, "created_at")
         _require_stripped_text(self.updated_at, "updated_at")
+        return self
+
+
+class WorkflowRuntimeRevisionContract(BaseModel):
+    """描述 WorkflowRuntimeRevision 的稳定 JSON 规则。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_id: Literal[WORKFLOW_RUNTIME_REVISION_FORMAT] = WORKFLOW_RUNTIME_REVISION_FORMAT
+    workflow_runtime_revision_id: str
+    workflow_runtime_id: str
+    generation: int = Field(ge=1)
+    workflow_app_version_id: str
+    execution_policy_snapshot_object_key: str | None = None
+    expected_snapshot_fingerprint: str
+    state: Literal["staged", "active", "retired", "failed"]
+    created_at: str
+    activated_at: str | None = None
+    failed_at: str | None = None
+    error: str | None = None
+    created_by: str | None = None
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> WorkflowRuntimeRevisionContract:
+        """校验 Runtime revision 关键字段。"""
+
+        _require_stripped_text(
+            self.workflow_runtime_revision_id,
+            "workflow_runtime_revision_id",
+        )
+        _require_stripped_text(self.workflow_runtime_id, "workflow_runtime_id")
+        _require_stripped_text(self.workflow_app_version_id, "workflow_app_version_id")
+        _require_stripped_text(
+            self.expected_snapshot_fingerprint,
+            "expected_snapshot_fingerprint",
+        )
+        _require_stripped_text(self.created_at, "created_at")
         return self

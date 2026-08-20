@@ -20,6 +20,8 @@ function mountToolbar(inspectorCollapsed = false) {
       loading: false,
       previewDisabled: false,
       previewing: false,
+      publishDisabled: false,
+      publishing: false,
       saveDisabled: false,
       saving: false,
       groupCreateMode: false,
@@ -40,7 +42,7 @@ describe('WorkflowGraphToolbar', () => {
     expect(wrapper.element.tagName).toBe('DIV')
     expect(wrapper.attributes('role')).toBe('toolbar')
     expect(wrapper.get('h1').text()).toBe('新建应用')
-    expect(labels).toEqual(expect.arrayContaining(['节点组', '刷新', '预览', '属性面板', '保存']))
+    expect(labels).toEqual(expect.arrayContaining(['节点组', '刷新', '预览', '发布', '属性面板', '保存']))
     expect(wrapper.text()).not.toContain('Preview Run')
     expect(wrapper.text()).not.toContain('保存应用')
   })

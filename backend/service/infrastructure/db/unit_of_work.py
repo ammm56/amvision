@@ -7,19 +7,33 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Executable
 
 from backend.service.application.errors import PersistenceOperationError
-from backend.service.infrastructure.persistence.deployment_repository import SqlAlchemyDeploymentInstanceRepository
+from backend.service.infrastructure.persistence.deployment_repository import (
+    SqlAlchemyDeploymentInstanceRepository,
+)
 from backend.service.infrastructure.persistence.deployment_runtime_state_repository import (
     SqlAlchemyDeploymentRuntimeStateRepository,
 )
-from backend.service.infrastructure.persistence.dataset_export_repository import SqlAlchemyDatasetExportRepository
-from backend.service.infrastructure.persistence.dataset_import_repository import SqlAlchemyDatasetImportRepository
-from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
-from backend.service.infrastructure.persistence.dataset_repository import SqlAlchemyDatasetVersionRepository
-from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
+from backend.service.infrastructure.persistence.dataset_export_repository import (
+    SqlAlchemyDatasetExportRepository,
+)
+from backend.service.infrastructure.persistence.dataset_import_repository import (
+    SqlAlchemyDatasetImportRepository,
+)
+from backend.service.infrastructure.persistence.model_file_repository import (
+    SqlAlchemyModelFileRepository,
+)
+from backend.service.infrastructure.persistence.dataset_repository import (
+    SqlAlchemyDatasetVersionRepository,
+)
+from backend.service.infrastructure.persistence.model_repository import (
+    SqlAlchemyModelRepository,
+)
 from backend.service.infrastructure.persistence.resource_profile_repository import (
     SqlAlchemyResourceProfileRepository,
 )
-from backend.service.infrastructure.persistence.task_repository import SqlAlchemyTaskRepository
+from backend.service.infrastructure.persistence.task_repository import (
+    SqlAlchemyTaskRepository,
+)
 from backend.service.infrastructure.persistence.workflow_runtime_repository import (
     SqlAlchemyWorkflowRuntimeRepository,
 )
@@ -47,7 +61,7 @@ class SqlAlchemyUnitOfWork:
     - model_files：ModelFile 仓储。
     - tasks：TaskRecord、TaskAttempt、TaskEvent 仓储。
     - resource_profiles：ResourceProfile 仓储。
-    - workflow_runtime：WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 仓储。
+    - workflow_runtime：Workflow App 版本/lifecycle、PreviewRun、Runtime、Run 仓储。
     - workflow_trigger_sources：WorkflowTriggerSource 仓储。
     - project_summaries：Project summary 数据库聚合读仓储。
     """
@@ -64,13 +78,17 @@ class SqlAlchemyUnitOfWork:
         self.dataset_imports = SqlAlchemyDatasetImportRepository(session)
         self.datasets = SqlAlchemyDatasetVersionRepository(session)
         self.deployments = SqlAlchemyDeploymentInstanceRepository(session)
-        self.deployment_runtime_states = SqlAlchemyDeploymentRuntimeStateRepository(session)
+        self.deployment_runtime_states = SqlAlchemyDeploymentRuntimeStateRepository(
+            session
+        )
         self.models = SqlAlchemyModelRepository(session)
         self.model_files = SqlAlchemyModelFileRepository(session)
         self.tasks = SqlAlchemyTaskRepository(session)
         self.resource_profiles = SqlAlchemyResourceProfileRepository(session)
         self.workflow_runtime = SqlAlchemyWorkflowRuntimeRepository(session)
-        self.workflow_trigger_sources = SqlAlchemyWorkflowTriggerSourceRepository(session)
+        self.workflow_trigger_sources = SqlAlchemyWorkflowTriggerSourceRepository(
+            session
+        )
         self.project_deletions = SqlAlchemyProjectDeletionRepository(session)
         self.project_summaries = SqlAlchemyProjectSummaryRepository(session)
 
@@ -107,6 +125,17 @@ class SqlAlchemyUnitOfWork:
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "数据库提交失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+    def flush(self) -> None:
+        """把当前事务中的 ORM 变更刷新到数据库，但不提交事务。"""
+
+        try:
+            self.session.flush()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "数据库事务刷新失败",
                 details={"error_type": error.__class__.__name__},
             ) from error
 

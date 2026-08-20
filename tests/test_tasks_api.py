@@ -5,8 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
+from backend.service.application.errors import (
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    build_project_mutation_lifecycle_resource_key,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
@@ -74,6 +85,63 @@ def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
         assert list_response.status_code == 200
         assert len(list_response.json()) == 1
         assert list_response.json()[0]["task_id"] == task_id
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_task_create_uses_project_deletion_admission_and_cleans_temporary_claim(
+    tmp_path: Path,
+) -> None:
+    """验证 Task 最终提交与 Project 删除互斥，且不累积一次性 claim。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    lifecycle_service = WorkflowApplicationLifecycleService(
+        session_factory=session_factory,
+        dataset_storage=None,
+    )
+    blocked_task_id = "task-blocked-by-project-deletion"
+    created_task_id = "task-after-project-deletion"
+    try:
+        with client:
+            deletion_claim = lifecycle_service.acquire_project_deletion(
+                project_id="project-1"
+            )
+            try:
+                with pytest.raises(ResourceConflictError, match="Project 正在删除"):
+                    task_service.create_task(
+                        CreateTaskRequest(
+                            project_id="project-1",
+                            task_kind="dataset-import",
+                            display_name="must not be persisted",
+                            task_id=blocked_task_id,
+                        )
+                    )
+            finally:
+                lifecycle_service.complete(deletion_claim, deleted=False)
+
+            with pytest.raises(ResourceNotFoundError):
+                task_service.get_task(blocked_task_id)
+
+            created = task_service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind="dataset-import",
+                    display_name="persisted after deletion claim release",
+                    task_id=created_task_id,
+                )
+            )
+
+        assert created.task_id == created_task_id
+        temporary_resource_key = build_project_mutation_lifecycle_resource_key(
+            mutation_kind="task-create",
+            resource_id=created_task_id,
+        )
+        with pytest.raises(ResourceNotFoundError):
+            lifecycle_service.get(
+                project_id="project-1",
+                application_id=temporary_resource_key,
+            )
     finally:
         session_factory.engine.dispose()
 

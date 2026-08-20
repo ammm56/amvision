@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.files.model_file import ModelFile
+from backend.service.domain.models.model_records import PLATFORM_BASE_MODEL_SCOPE
 from backend.service.infrastructure.persistence.model_file_orm import ModelFileRecord
 
 
@@ -66,6 +67,27 @@ class SqlAlchemyModelFileRepository:
 
         return self._to_domain(record)
 
+    def get_visible_model_file(
+        self,
+        file_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelFile | None:
+        """按 id 和 Project 可见范围读取 ModelFile。"""
+
+        statement = select(ModelFileRecord).where(ModelFileRecord.file_id == file_id)
+        statement = self._apply_visibility(
+            statement,
+            visible_project_ids=visible_project_ids,
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围读取 ModelFile 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._to_domain(record)
+
     def delete_model_file(self, file_id: str) -> bool:
         """按 id 删除一个 ModelFile。"""
 
@@ -104,6 +126,50 @@ class SqlAlchemyModelFileRepository:
             ) from error
 
         return tuple(self._to_domain(record) for record in records)
+
+    def list_visible_model_files(
+        self,
+        *,
+        visible_project_ids: tuple[str, ...],
+        model_version_id: str | None = None,
+        model_build_id: str | None = None,
+    ) -> tuple[ModelFile, ...]:
+        """按关联资源和 Project 可见范围列出 ModelFile。"""
+
+        statement = select(ModelFileRecord).order_by(ModelFileRecord.file_id)
+        if model_version_id is not None:
+            statement = statement.where(
+                ModelFileRecord.model_version_id == model_version_id
+            )
+        if model_build_id is not None:
+            statement = statement.where(
+                ModelFileRecord.model_build_id == model_build_id
+            )
+        statement = self._apply_visibility(
+            statement,
+            visible_project_ids=visible_project_ids,
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围列出 ModelFile 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._to_domain(record) for record in records)
+
+    @staticmethod
+    def _apply_visibility(statement, *, visible_project_ids: tuple[str, ...]):
+        """把统一 ModelFile 可见性谓词应用到查询。"""
+
+        if not visible_project_ids:
+            return statement
+        return statement.where(
+            or_(
+                ModelFileRecord.scope_kind == PLATFORM_BASE_MODEL_SCOPE,
+                ModelFileRecord.project_id.in_(visible_project_ids),
+            )
+        )
 
     def _to_record(self, model_file: ModelFile) -> ModelFileRecord:
         """把 ModelFile 领域对象转换为 ORM 实体。"""

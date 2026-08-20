@@ -302,8 +302,52 @@ export interface WorkflowApplicationDocument extends WorkflowApplicationValidati
   updated_at: string
   created_by?: string | null
   updated_by?: string | null
+  draft_fingerprint: string
   template_summary: WorkflowTemplateReferenceSummary | null
   application: FlowApplication
+}
+
+export interface WorkflowApplicationBundleSaveDocument extends WorkflowApplicationDocument {
+  saved_template: WorkflowTemplateDocument
+}
+
+export type WorkflowAppVersionState = 'publishing' | 'published' | 'archived' | 'failed' | string
+
+export interface WorkflowAppVersion {
+  format_id: 'amvision.workflow-app-version.v1'
+  workflow_app_version_id: string
+  project_id: string
+  application_id: string
+  version_number: number
+  display_version: string
+  release_notes: string
+  application_snapshot_object_key: string
+  template_snapshot_object_key: string
+  contract_snapshot_object_key: string
+  dependency_manifest_object_key: string
+  content_fingerprint: string
+  contract_fingerprint: string
+  state: WorkflowAppVersionState
+  created_at: string
+  created_by?: string | null
+  completed_at?: string | null
+  error?: string | null
+}
+
+export interface WorkflowAppVersionDetail extends WorkflowAppVersion {
+  application: WorkflowJsonObject
+  template: WorkflowJsonObject
+  contract: WorkflowJsonObject
+  dependencies: WorkflowJsonObject
+  manifest: WorkflowJsonObject
+}
+
+export interface WorkflowAppVersionComparison {
+  compatible: boolean
+  changes: WorkflowJsonObject[]
+  breaking_changes: WorkflowJsonObject[]
+  source_contract_fingerprint: string
+  target_contract_fingerprint: string
 }
 
 export type WorkflowRunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timeout' | string
@@ -377,6 +421,9 @@ export interface WorkflowAppRuntime {
   application_snapshot_object_key: string
   template_snapshot_object_key: string
   execution_policy_snapshot_object_key?: string | null
+  active_revision_id?: string | null
+  desired_revision_id?: string | null
+  revision_generation: number
   desired_state: WorkflowAppRuntimeState
   observed_state: WorkflowAppRuntimeState
   request_timeout_seconds: number
@@ -391,11 +438,30 @@ export interface WorkflowAppRuntime {
   last_started_at?: string | null
   last_stopped_at?: string | null
   heartbeat_at?: string | null
+  worker_instance_id?: string | null
   worker_process_id?: number | null
   loaded_snapshot_fingerprint?: string | null
   last_error?: string | null
   health_summary: WorkflowJsonObject
   metadata: WorkflowJsonObject
+}
+
+export type WorkflowRuntimeRevisionState = 'staged' | 'active' | 'retired' | 'failed'
+
+export interface WorkflowRuntimeRevision {
+  format_id: string
+  workflow_runtime_revision_id: string
+  workflow_runtime_id: string
+  generation: number
+  workflow_app_version_id: string
+  execution_policy_snapshot_object_key?: string | null
+  expected_snapshot_fingerprint: string
+  state: WorkflowRuntimeRevisionState
+  created_at: string
+  activated_at?: string | null
+  failed_at?: string | null
+  error?: string | null
+  created_by?: string | null
 }
 
 export interface WorkflowAppRuntimeInstance {
@@ -418,6 +484,11 @@ export interface WorkflowRun {
   workflow_runtime_id: string
   project_id: string
   application_id: string
+  workflow_runtime_revision_id?: string | null
+  workflow_app_version_id?: string | null
+  runtime_generation?: number | null
+  snapshot_fingerprint?: string | null
+  worker_instance_id?: string | null
   state: WorkflowRunState
   created_at: string
   started_at?: string | null

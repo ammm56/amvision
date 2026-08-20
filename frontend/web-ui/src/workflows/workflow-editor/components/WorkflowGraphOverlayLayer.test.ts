@@ -22,9 +22,7 @@ function mountOverlay() {
       nodePickerTitle: 'Node Catalog',
       nodePickerRequiredPortDirection: null,
       nodePickerRequiredPayloadTypeId: null,
-      loading: false,
       nodeCount: 1,
-      isNewApp: false,
     },
   })
 }

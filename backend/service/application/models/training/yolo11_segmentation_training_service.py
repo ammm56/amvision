@@ -272,6 +272,7 @@ class SqlAlchemyYolo11SegmentationTrainingTaskService:
         summary_object_key = f"{output_prefix}/output-files/training-summary.json"
         resume_checkpoint_path = self._resolve_resume_checkpoint_path(task_record)
         warm_start_reference = resolve_yolo_warm_start_reference(
+            project_id=task_record.project_id,
             model_version_id=(
                 self._read_optional_str(payload.get("warm_start_model_version_id"))
                 if resume_checkpoint_path is None

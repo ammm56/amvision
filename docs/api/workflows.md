@@ -21,7 +21,7 @@
 
 workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies 和对应 WebSocket 事件流；其余扩展设计继续保留在独立草案文档中。
 
-当前 FlowApplication 是可变保存文档，WorkflowAppRuntime 在创建时固定 snapshot。不可变 Workflow App 发布版本、Runtime revision、版本选择和保留稳定 Runtime/Trigger id 的迁移尚未公开，规划见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
+FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppVersion，WorkflowAppRuntime 再通过 revision 选择准确版本。版本切换保留稳定 Runtime/Trigger id，规则见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
 
 当前公开接口与后续扩展的导航页见 [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)。
 
@@ -71,7 +71,9 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 - preview snapshot：workflows/runtime/preview-runs/{preview_run_id}/
 - app runtime snapshot：workflows/runtime/app-runtimes/{workflow_runtime_id}/
 
-规划中的 draft/version/revision 目标路径只记录在 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)，在实现和迁移完成前不得当作当前真实路径使用。
+- Workflow App 发布版本：`workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/`
+
+Runtime revision 通过数据库记录引用上面的不可变发布对象；ExecutionPolicy snapshot 继续保存在 Runtime 自己的受控目录。完整路径和 manifest 规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
 
 本文档配套的 deployment lifecycle detection 手工调试示例使用下面这组真实 object key：
 
@@ -175,6 +177,7 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 - Content-Type：application/json
 - 需要 workflows:write
 - 路径参数中的 template_id 和 template_version 必须与请求体中的 template 一致
+- Template PUT、COPY 和 DELETE 都占用该 `template_id/template_version` 的持久化资源状态门；与 bundle 保存或版本发布竞争时立即返回 409，不排队
 - 成功状态码：201 Created
 - 返回字段：
   - project_id
@@ -265,6 +268,11 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
 - Content-Type：application/json
 - 需要 workflows:write
 - 路径参数中的 application_id 必须与请求体中的 application.application_id 一致
+- 请求体字段：
+  - application
+  - template，可选；提供时必须与 `application.template_ref` 的 id/version 完全一致
+- 提供 template 时，该请求是编辑器的单一 bundle 保存入口：服务先完成 Template 与 Application 交叉校验，再在 Application→Template 两级持久化状态门内保存两份 JSON。修改权威文件前会把两份 JSON 与 sidecar 的原像写入持久 journal；普通异常立即回滚，进程退出或断电后由启动恢复先回滚未 committed journal，再释放写入状态门，因此不会把混合草稿用于发布或旧 Runtime 自动导入
+- 不提供 template 时保持原有只保存 Application 的兼容行为，此时引用的 Template 必须已经存在
 - 成功状态码：201 Created
 - 服务保存 application 时会把 application.template_ref.source_uri 规范化为实际保存后的 template object key
 - 返回字段：
@@ -276,6 +284,7 @@ workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs�
   - updated_by
   - template_summary：引用模板的一跳摘要
   - application
+  - saved_template：仅 bundle 保存时返回本次一致保存的完整 Template 文档
   - validate 接口中的同名校验摘要字段
 
 ### GET /api/v1/workflows/projects/{project_id}/applications/{application_id}

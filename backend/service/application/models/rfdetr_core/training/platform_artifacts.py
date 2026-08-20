@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,15 +13,10 @@ import torch
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core.config import TrainConfig
-from backend.service.application.models.rfdetr_core.training.checkpoint import (
-    convert_legacy_checkpoint,
-)
 from backend.service.domain.models.model_task_types import (
     ModelTaskType,
     SEGMENTATION_TASK_TYPE,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -73,7 +67,10 @@ def read_or_build_checkpoint_artifacts(
     if not latest_checkpoint_path.is_file():
         save_checkpoint = getattr(trainer, "save_checkpoint", None)
         if callable(save_checkpoint):
-            save_checkpoint(str(latest_checkpoint_path))
+            raise InvalidRequestError(
+                "RF-DETR 训练结束时缺少 last.ckpt；禁止在 EMA/best 权重可能已替换后补存恢复文件",
+                details={"checkpoint_path": str(latest_checkpoint_path)},
+            )
     if not latest_checkpoint_path.is_file():
         # 极简测试 trainer 可能不提供 Lightning save_checkpoint；此时明确回退，
         # 但真实训练器必须生成 last.ckpt。
@@ -122,38 +119,49 @@ def prepare_resume_checkpoint(
             details={"checkpoint_path": str(checkpoint_path)},
         )
 
+    _ = temporary_dir
     checkpoint = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
     if not isinstance(checkpoint, dict):
         raise InvalidRequestError("RF-DETR resume checkpoint 格式无效")
-    if "state_dict" in checkpoint:
-        if not checkpoint.get("optimizer_states"):
-            logger.warning(
-                "RF-DETR resume checkpoint 不包含 optimizer state，将兼容恢复模型、epoch 和 global_step；"
-                "优化器会重新初始化。"
-            )
-        return str(checkpoint_path)
-
-    normalized_path = temporary_dir / "normalized-resume.ckpt"
-    if "model_state_dict" in checkpoint:
-        checkpoint = {
-            "model": checkpoint["model_state_dict"],
-            "args": checkpoint.get("args", {}),
-            "epoch": checkpoint.get("epoch", 0),
-            "global_step": checkpoint.get("global_step", 0),
-        }
-        legacy_path = temporary_dir / "legacy-resume.pth"
-        torch.save(checkpoint, legacy_path)
-        convert_legacy_checkpoint(str(legacy_path), str(normalized_path))
-    elif "model" in checkpoint:
-        convert_legacy_checkpoint(str(checkpoint_path), str(normalized_path))
-    else:
-        raise InvalidRequestError(
-            "RF-DETR resume checkpoint 缺少 state_dict、model 或 model_state_dict"
-        )
-    logger.warning(
-        "RF-DETR legacy checkpoint 已转换为兼容 resume 格式；缺失的优化器和 scheduler 状态会重新初始化。"
+    required_fields = (
+        "state_dict",
+        "optimizer_states",
+        "lr_schedulers",
+        "callbacks",
+        "loops",
+        "epoch",
+        "global_step",
+        "pytorch-lightning_version",
     )
-    return str(normalized_path)
+    missing_fields = [field for field in required_fields if field not in checkpoint]
+    state_dict = checkpoint.get("state_dict")
+    optimizer_states = checkpoint.get("optimizer_states")
+    lr_schedulers = checkpoint.get("lr_schedulers")
+    if missing_fields:
+        raise InvalidRequestError(
+            "RF-DETR resume 只接受完整 Lightning checkpoint",
+            details={
+                "checkpoint_path": str(checkpoint_path),
+                "missing_fields": missing_fields,
+                "hint": "weights-only checkpoint 必须改用 warm-start",
+            },
+        )
+    if not isinstance(state_dict, dict) or not state_dict:
+        raise InvalidRequestError("RF-DETR resume checkpoint 的 state_dict 为空或格式无效")
+    if not all(str(key).startswith("model.") for key in state_dict):
+        raise InvalidRequestError(
+            "RF-DETR resume checkpoint 的 state_dict 不是当前 Lightning 模型状态",
+            details={"hint": "weights-only checkpoint 必须改用 warm-start"},
+        )
+    if not isinstance(optimizer_states, list) or not optimizer_states:
+        raise InvalidRequestError("RF-DETR resume checkpoint 缺少有效 optimizer state")
+    if not isinstance(lr_schedulers, list) or not lr_schedulers:
+        raise InvalidRequestError("RF-DETR resume checkpoint 缺少有效 scheduler state")
+    if "legacy_ema_state_dict" in checkpoint:
+        raise InvalidRequestError(
+            "RF-DETR resume 不再接受 legacy EMA checkpoint；请使用当前平台生成的完整 checkpoint"
+        )
+    return str(checkpoint_path)
 
 
 def read_or_build_checkpoint_bytes(

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.contracts.workflows.workflow_graph import FlowApplication, WorkflowGraphTemplate
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.api.app import create_app
 from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
     build_workflow_runtime_service as _build_workflow_runtime_service,
@@ -26,6 +27,7 @@ from backend.service.settings import (
     BackendServiceTaskManagerConfig,
     BackendServiceWorkflowRuntimeConfig,
 )
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from tests.api_test_support import build_test_headers, build_valid_test_png_bytes, create_test_runtime
 from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
 from tests.workflow_test_timing import WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS
@@ -725,6 +727,106 @@ def test_workflow_app_runtime_invoke_api_invalid_image_content_keeps_runtime_run
     health_payload = health_response.json()
     assert health_payload["observed_state"] == "running"
     assert health_payload["last_error"] is None
+
+
+def test_sync_invoke_api_preserves_worker_error_and_terminalizes_dispatch_record(
+    tmp_path: Path,
+) -> None:
+    """验证同步 worker 服务错误保持 HTTP 语义且 Run 可查询为终态。"""
+
+    client, session_factory, dataset_storage = _create_runtime_api_client(
+        tmp_path,
+        database_name="workflow-runtime-invoke-worker-error.db",
+        enable_local_buffer_broker=False,
+    )
+    headers = build_test_headers(scopes="workflows:read,workflows:write")
+    try:
+        with client:
+            _save_example_documents(
+                client=client,
+                dataset_storage=dataset_storage,
+                example_name="barcode_result_display",
+            )
+            workflow_runtime_id = _create_and_start_runtime(
+                client=client,
+                headers=headers,
+                application_id="barcode-result-display-app",
+                display_name="Worker Error Runtime",
+            )
+            worker_manager = client.app.state.workflow_runtime_worker_manager
+            original_invoke_runtime = worker_manager.invoke_runtime
+
+            def raise_worker_error(**kwargs: object) -> object:
+                del kwargs
+                raise ServiceConfigurationError(
+                    "worker 返回的运行配置无效",
+                    details={"reason": "deterministic-worker-error"},
+                )
+
+            worker_manager.invoke_runtime = raise_worker_error
+            try:
+                invoke_response = client.post(
+                    f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                    params={"response_mode": "run"},
+                    headers=headers,
+                    json={
+                        "input_bindings": {},
+                        "execution_metadata": {
+                            "workflow_run_record_mode": "full",
+                        },
+                    },
+                )
+            finally:
+                worker_manager.invoke_runtime = original_invoke_runtime
+
+            unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+            try:
+                runs = unit_of_work.workflow_runtime.list_workflow_runs_by_runtime(
+                    workflow_runtime_id
+                )
+                active_runs = (
+                    unit_of_work.workflow_runtime.list_active_workflow_runs_for_runtime(
+                        workflow_runtime_id
+                    )
+                )
+            finally:
+                unit_of_work.close()
+            assert len(runs) == 1
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{runs[0].workflow_run_id}",
+                params={"response_mode": "run"},
+                headers=headers,
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=headers,
+            )
+            delete_response = client.delete(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}",
+                headers=headers,
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert invoke_response.status_code == 500
+    assert invoke_response.json()["error"] == {
+        "code": "service_configuration_error",
+        "message": "worker 返回的运行配置无效",
+        "details": {"reason": "deterministic-worker-error"},
+        "request_id": invoke_response.json()["error"]["request_id"],
+    }
+    assert get_run_response.status_code == 200
+    run_payload = get_run_response.json()
+    assert run_payload["state"] == "failed"
+    assert run_payload["finished_at"] is not None
+    assert run_payload["error_message"] == "worker 返回的运行配置无效"
+    assert run_payload["metadata"]["error_details"] == {
+        "error_code": "service_configuration_error",
+        "reason": "deterministic-worker-error",
+    }
+    assert active_runs == ()
+    assert stop_response.status_code == 200
+    assert delete_response.status_code == 204
 
 
 def test_workflow_runtime_service_builder_reads_local_buffer_channel_only_when_requested(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import InvalidRequestError, PermissionDeniedError, ResourceNotFoundError
+from backend.service.application.project_access import require_explicit_project_access
 
 
 def ensure_project_writable(*, principal: AuthenticatedPrincipal, project_id: str) -> None:
@@ -24,11 +25,10 @@ def resolve_visible_project_ids(
     """根据主体权限和查询条件解析可查询的 Project 范围。"""
 
     if project_id is not None:
-        if principal.project_ids and project_id not in principal.project_ids:
-            raise ResourceNotFoundError(
-                "找不到指定的任务范围",
-                details={"project_id": project_id},
-            )
+        require_explicit_project_access(
+            visible_project_ids=principal.project_ids,
+            project_id=project_id,
+        )
         return (project_id,)
 
     if principal.project_ids:

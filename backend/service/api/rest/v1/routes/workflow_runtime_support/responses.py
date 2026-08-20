@@ -12,6 +12,7 @@ from backend.contracts.workflows import (
     WorkflowPreviewRunSummaryContract,
     WorkflowRunContract,
     WorkflowRunEventContract,
+    WorkflowRuntimeRevisionContract,
 )
 from backend.service.application.errors import ResourceNotFoundError
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
@@ -23,6 +24,7 @@ from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowPreviewRunEvent,
     WorkflowRun,
     WorkflowRunEvent,
+    WorkflowRuntimeRevision,
 )
 
 
@@ -118,6 +120,9 @@ def build_workflow_app_runtime_contract(
         application_snapshot_object_key=workflow_app_runtime.application_snapshot_object_key,
         template_snapshot_object_key=workflow_app_runtime.template_snapshot_object_key,
         execution_policy_snapshot_object_key=workflow_app_runtime.execution_policy_snapshot_object_key,
+        active_revision_id=workflow_app_runtime.active_revision_id,
+        desired_revision_id=workflow_app_runtime.desired_revision_id,
+        revision_generation=workflow_app_runtime.revision_generation,
         desired_state=workflow_app_runtime.desired_state,
         observed_state=workflow_app_runtime.observed_state,
         request_timeout_seconds=workflow_app_runtime.request_timeout_seconds,
@@ -132,6 +137,7 @@ def build_workflow_app_runtime_contract(
         last_started_at=workflow_app_runtime.last_started_at,
         last_stopped_at=workflow_app_runtime.last_stopped_at,
         heartbeat_at=workflow_app_runtime.heartbeat_at,
+        worker_instance_id=workflow_app_runtime.worker_instance_id,
         worker_process_id=workflow_app_runtime.worker_process_id,
         loaded_snapshot_fingerprint=workflow_app_runtime.loaded_snapshot_fingerprint,
         last_error=workflow_app_runtime.last_error,
@@ -258,6 +264,11 @@ def build_workflow_run_contract(
         workflow_runtime_id=workflow_run.workflow_runtime_id,
         project_id=workflow_run.project_id,
         application_id=workflow_run.application_id,
+        workflow_runtime_revision_id=workflow_run.workflow_runtime_revision_id,
+        workflow_app_version_id=workflow_run.workflow_app_version_id,
+        runtime_generation=workflow_run.runtime_generation,
+        snapshot_fingerprint=workflow_run.snapshot_fingerprint,
+        worker_instance_id=workflow_run.worker_instance_id,
         state=workflow_run.state,
         created_at=workflow_run.created_at,
         started_at=workflow_run.started_at,
@@ -336,3 +347,11 @@ def build_workflow_app_runtime_instance_contract(
         last_error=getattr(runtime_instance, "last_error", None),
         health_summary=dict(getattr(runtime_instance, "health_summary", {}) or {}),
     )
+
+
+def build_workflow_runtime_revision_contract(
+    revision: WorkflowRuntimeRevision,
+) -> WorkflowRuntimeRevisionContract:
+    """把 Runtime revision 领域对象转换为公开规则。"""
+
+    return WorkflowRuntimeRevisionContract(**revision.__dict__)

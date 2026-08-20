@@ -19,6 +19,9 @@ from backend.service.application.workflows.trigger_sources import (
 from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
     TriggerSourceSupervisor,
 )
+from backend.service.application.workflows.worker.manager import (
+    WorkflowRuntimeWorkerManager,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -31,6 +34,10 @@ def build_trigger_source_service(request: Request) -> WorkflowTriggerSourceServi
     return WorkflowTriggerSourceService(
         session_factory=require_session_factory(request),
         trigger_source_supervisor=read_trigger_source_supervisor(request),
+        dataset_storage=require_dataset_storage(request),
+        workflow_runtime_worker_manager=require_workflow_runtime_worker_manager(
+            request
+        ),
     )
 
 
@@ -63,6 +70,19 @@ def read_trigger_source_supervisor(request: Request) -> TriggerSourceSupervisor 
     if not isinstance(supervisor, TriggerSourceSupervisor):
         raise ServiceConfigurationError("当前服务 trigger_source_supervisor 装配无效")
     return supervisor
+
+
+def require_workflow_runtime_worker_manager(
+    request: Request,
+) -> WorkflowRuntimeWorkerManager:
+    """从 application.state 读取共享 Runtime 生命周期锁的 manager。"""
+
+    worker_manager = getattr(request.app.state, "workflow_runtime_worker_manager", None)
+    if not isinstance(worker_manager, WorkflowRuntimeWorkerManager):
+        raise ServiceConfigurationError(
+            "当前服务尚未完成 workflow_runtime_worker_manager 装配"
+        )
+    return worker_manager
 
 
 def require_dataset_storage(request: Request) -> LocalDatasetStorage:

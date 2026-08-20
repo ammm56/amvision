@@ -34,6 +34,19 @@ class TaskRepository(Protocol):
 
         ...
 
+    def get_visible_task(
+        self,
+        task_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> TaskRecord | None:
+        """按 id 和 Project 可见范围读取 TaskRecord。
+
+        ``visible_project_ids`` 为空表示不限制。受限主体访问其他 Project 的
+        task 与 task 不存在使用相同的 None 结果，避免资源归属探测。
+        """
+
+        ...
+
     def list_tasks(self, project_id: str) -> tuple[TaskRecord, ...]:
         """按 Project id 列出任务记录。
 

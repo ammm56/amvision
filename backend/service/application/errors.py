@@ -109,6 +109,25 @@ class PersistenceOperationError(ServiceError):
         super().__init__(message, code="persistence_operation_error", status_code=503, details=details)
 
 
+class WorkflowRecoveryRequiredError(ServiceError):
+    """表示 Workflow 权威文件需要在启动恢复完成前保持写入 claim。"""
+
+    def __init__(
+        self,
+        message: str = "Workflow 持久化恢复尚未完成",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化需要启动恢复的持久化错误。"""
+
+        super().__init__(
+            message,
+            code="workflow_recovery_required",
+            status_code=503,
+            details=details,
+        )
+
+
 class InvalidRequestError(ServiceError):
     """表示当前请求内容不合法。"""
 
@@ -183,6 +202,20 @@ class ResourceInUseError(ServiceError):
         """
 
         super().__init__(message, code="resource_in_use", status_code=409, details=details)
+
+
+class ResourceConflictError(ServiceError):
+    """表示资源状态或乐观并发条件与请求不一致。"""
+
+    def __init__(
+        self,
+        message: str = "资源状态已发生变化",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化资源冲突错误。"""
+
+        super().__init__(message, code="resource_conflict", status_code=409, details=details)
 
 
 class UnsupportedDatasetFormatError(ServiceError):

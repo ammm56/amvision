@@ -24,7 +24,6 @@ from backend.service.api.rest.v1.routes.tasks.schemas import (
 )
 from backend.service.api.rest.v1.routes.tasks.visibility import (
     ensure_project_writable,
-    ensure_task_visible,
     resolve_visible_project_ids,
 )
 from backend.service.application.tasks.task_service import (
@@ -127,8 +126,11 @@ def get_task_detail(
     """
 
     service = SqlAlchemyTaskService(session_factory)
-    task_detail = service.get_task(task_id, include_events=include_events)
-    ensure_task_visible(principal=principal, task_project_id=task_detail.task.project_id, task_id=task_id)
+    task_detail = service.get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+        include_events=include_events,
+    )
     return build_task_query_detail_response(task_detail.task, task_detail.events)
 
 
@@ -145,8 +147,10 @@ def list_task_events(
     """按任务 id 和筛选条件列出事件。"""
 
     service = SqlAlchemyTaskService(session_factory)
-    task_detail = service.get_task(task_id)
-    ensure_task_visible(principal=principal, task_project_id=task_detail.task.project_id, task_id=task_id)
+    service.get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+    )
     events = service.list_task_events(
         TaskEventQueryFilters(
             task_id=task_id,

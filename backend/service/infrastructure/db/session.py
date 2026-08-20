@@ -69,7 +69,10 @@ class SessionFactory:
         """
 
         parsed_url = make_url(database_url)
-        if parsed_url.drivername != "sqlite" or parsed_url.database in (None, ":memory:"):
+        if parsed_url.get_backend_name() != "sqlite" or parsed_url.database in (
+            None,
+            ":memory:",
+        ):
             return
 
         database_path = Path(parsed_url.database)
@@ -86,7 +89,7 @@ class SessionFactory:
         """
 
         parsed_url: URL = make_url(database_url)
-        if parsed_url.drivername == "sqlite":
+        if parsed_url.get_backend_name() == "sqlite":
             options: dict[str, object] = {"connect_args": {"check_same_thread": False}}
             if parsed_url.database in (None, ":memory:"):
                 options["poolclass"] = StaticPool
@@ -102,7 +105,7 @@ class SessionFactory:
         """
 
         parsed_url = make_url(database_url)
-        if parsed_url.drivername != "sqlite":
+        if parsed_url.get_backend_name() != "sqlite":
             return
 
         is_file_database = parsed_url.database not in (None, ":memory:")

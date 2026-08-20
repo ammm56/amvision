@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
+import pytest
+from sqlalchemy.pool import StaticPool
+
 from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
+from backend.service.application.errors import PersistenceOperationError
 from backend.service.domain.datasets.dataset_import import DatasetImport
 from backend.service.domain.datasets.dataset_version import (
     ClassificationAnnotation,
@@ -16,9 +21,25 @@ from backend.service.domain.datasets.dataset_version import (
 )
 from backend.service.domain.models.model_records import Model, ModelBuild, ModelVersion, PROJECT_MODEL_SCOPE
 from backend.service.domain.tasks.task_records import ResourceProfile, TaskAttempt, TaskEvent, TaskRecord
+from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.persistence.base import Base
+
+
+def test_session_factory_configures_driver_qualified_sqlite_url() -> None:
+    """验证 sqlite+pysqlite 同样启用内存池、外键和锁等待设置。"""
+
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
+    try:
+        assert isinstance(session_factory.engine.pool, StaticPool)
+        with session_factory.engine.connect() as connection:
+            assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+            assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar_one() == 30000
+    finally:
+        session_factory.engine.dispose()
 
 
 def test_dataset_repository_round_trip_persists_nested_aggregate() -> None:
@@ -337,6 +358,44 @@ def test_unit_of_work_rollback_discards_uncommitted_aggregate() -> None:
         loaded_dataset_version = unit_of_work.datasets.get_dataset_version("dataset-version-rollback")
 
     assert loaded_dataset_version is None
+
+
+def test_workflow_run_worker_epoch_is_immutable_after_create() -> None:
+    """Run 创建后不能被 Runtime 后继 worker epoch 覆盖来源。"""
+
+    session_factory = _create_session_factory()
+    workflow_run = WorkflowRun(
+        workflow_run_id="workflow-run-worker-provenance",
+        workflow_runtime_id="workflow-runtime-stable",
+        project_id="project-1",
+        application_id="application-1",
+        worker_instance_id="worker-epoch-original",
+        state="running",
+        created_at="2026-08-19T00:00:00Z",
+    )
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        unit_of_work.workflow_runtime.save_workflow_run(workflow_run)
+        unit_of_work.commit()
+
+    with pytest.raises(PersistenceOperationError, match="worker epoch 来源不可变"):
+        with _create_unit_of_work(session_factory) as unit_of_work:
+            unit_of_work.workflow_runtime.save_workflow_run(
+                replace(
+                    workflow_run,
+                    worker_instance_id="worker-epoch-replacement",
+                    state="succeeded",
+                )
+            )
+            unit_of_work.commit()
+
+    with _create_unit_of_work(session_factory) as unit_of_work:
+        persisted_run = unit_of_work.workflow_runtime.get_workflow_run(
+            workflow_run.workflow_run_id
+        )
+
+    assert persisted_run is not None
+    assert persisted_run.worker_instance_id == "worker-epoch-original"
+    assert persisted_run.state == "running"
 
 
 def _create_session_factory() -> SessionFactory:

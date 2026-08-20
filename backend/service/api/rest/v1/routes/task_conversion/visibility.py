@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.task_type_support import normalize_platform_task_type
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
@@ -22,12 +23,11 @@ def require_visible_task_conversion_task(
 ):
     """读取并校验当前主体可见的 task-native conversion 任务。"""
 
-    task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=include_events)
-    if principal.project_ids and task_detail.task.project_id not in principal.project_ids:
-        raise ResourceNotFoundError(
-            "找不到指定的转换任务",
-            details={"task_id": task_id},
-        )
+    task_detail = SqlAlchemyTaskService(session_factory).get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+        include_events=include_events,
+    )
     if task_detail.task.task_kind not in _build_task_kind_set(service_entries):
         raise ResourceNotFoundError(
             f"找不到指定的 {task_type} conversion 任务",
@@ -49,11 +49,10 @@ def resolve_visible_project_ids(
     """根据主体权限和查询条件解析可查询的 Project 范围。"""
 
     if project_id is not None:
-        if principal.project_ids and project_id not in principal.project_ids:
-            raise ResourceNotFoundError(
-                "找不到指定的任务范围",
-                details={"project_id": project_id},
-            )
+        require_explicit_project_access(
+            visible_project_ids=principal.project_ids,
+            project_id=project_id,
+        )
         return (project_id,)
     if principal.project_ids:
         return principal.project_ids

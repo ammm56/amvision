@@ -25,10 +25,15 @@ from backend.service.application.workflows.process_executor import (
 from backend.service.application.workflows.runtime_registry_loader import (
     WorkflowNodeRuntimeRegistryLoader,
 )
+from backend.service.application.workflows.app_version_service import (
+    compute_workflow_app_content_fingerprint,
+)
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
 )
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.workflow_service import (
+    LocalWorkflowJsonService,
+)
 from backend.service.settings import (
     BackendServiceCustomNodesConfig,
     BackendServiceDatabaseConfig,
@@ -37,7 +42,14 @@ from backend.service.settings import (
     BackendServiceSettings as BackendServiceSettingsModel,
     BackendServiceTaskManagerConfig,
 )
-from tests.api_test_support import build_test_headers, create_test_runtime, get_default_test_principal_id
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from tests.api_test_support import (
+    build_test_headers,
+    create_test_runtime,
+    get_default_test_principal_id,
+)
 from tests.workflow_test_timing import (
     WORKFLOW_TEST_WAIT_TIMEOUT_SECONDS,
     WORKFLOW_TEST_WEBSOCKET_TIMEOUT_SECONDS,
@@ -138,9 +150,13 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -180,7 +196,9 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
                 WorkflowApplicationExecutionRequest(
                     project_id="project-1",
                     application_id="process-echo-app",
-                    input_bindings={"request_text": {"value": "hello workflow runtime"}},
+                    input_bindings={
+                        "request_text": {"value": "hello workflow runtime"}
+                    },
                     execution_metadata={"marker": "runtime-run"},
                 )
             )
@@ -262,8 +280,12 @@ def test_workflow_application_runtime_executor_cleans_up_runtime_temp_artifacts(
     assert response_body["marker"] == "direct-cleanup"
     assert response_body["pid"] == os.getpid()
     assert isinstance(response_body["workflow_run_id"], str)
-    assert temp_image_object_key.startswith(f"workflows/runtime/{response_body['workflow_run_id']}/")
-    assert temp_export_root.startswith(f"workflows/runtime/{response_body['workflow_run_id']}/")
+    assert temp_image_object_key.startswith(
+        f"workflows/runtime/{response_body['workflow_run_id']}/"
+    )
+    assert temp_export_root.startswith(
+        f"workflows/runtime/{response_body['workflow_run_id']}/"
+    )
     assert dataset_storage.resolve(temp_image_object_key).exists() is False
     assert dataset_storage.resolve(temp_export_root).exists() is False
     assert dataset_storage.resolve(temp_export_manifest_path).exists() is False
@@ -298,9 +320,13 @@ def test_workflow_preview_run_api_executes_saved_application_directly(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
@@ -375,9 +401,13 @@ def test_workflow_preview_run_api_marks_timed_out_when_direct_node_exceeds_deadl
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -394,7 +424,9 @@ def test_workflow_preview_run_api_marks_timed_out_when_direct_node_exceeds_deadl
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-slow-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview timeout"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview timeout"}
+                    },
                     "execution_metadata": {"marker": "preview-timeout"},
                     "timeout_seconds": 1,
                 },
@@ -418,7 +450,9 @@ def test_workflow_preview_run_api_marks_timed_out_when_direct_node_exceeds_deadl
     assert get_response.json()["error_message"] == "Workflow 执行超过 deadline"
 
 
-def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(tmp_path: Path) -> None:
+def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(
+    tmp_path: Path,
+) -> None:
     """验证 preview run 同步返回终态，并提供追加式事件回放。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -444,9 +478,13 @@ def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(tmp
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -486,7 +524,10 @@ def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(tmp
     assert events_response.status_code == 200
     assert after_first_event_response.status_code == 200
     assert {item["event_type"] for item in events_response.json()} >= {
-        "preview.started", "node.started", "node.completed", "preview.succeeded",
+        "preview.started",
+        "node.started",
+        "node.completed",
+        "preview.succeeded",
     }
     assert {item["event_type"] for item in after_first_event_response.json()} >= {
         "node.completed",
@@ -494,7 +535,9 @@ def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(tmp
     }
 
 
-def test_workflow_preview_run_events_websocket_replays_append_only_events(tmp_path: Path) -> None:
+def test_workflow_preview_run_events_websocket_replays_append_only_events(
+    tmp_path: Path,
+) -> None:
     """验证同步 Preview 完成后 WebSocket 可以回放 JSONL 事件。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -520,9 +563,13 @@ def test_workflow_preview_run_events_websocket_replays_append_only_events(tmp_pa
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -539,7 +586,9 @@ def test_workflow_preview_run_events_websocket_replays_append_only_events(tmp_pa
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-slow-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview websocket"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview websocket"}
+                    },
                     "execution_metadata": {"marker": "preview-websocket"},
                     "timeout_seconds": 20,
                 },
@@ -566,7 +615,9 @@ def test_workflow_preview_run_events_websocket_replays_append_only_events(tmp_pa
                 while not {"node.completed", "preview.succeeded"} <= {
                     item["event_type"] for item in streamed_payloads
                 }:
-                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
+                    streamed_payloads.append(
+                        _receive_websocket_json_with_timeout(websocket)
+                    )
 
             final_preview_response = _wait_for_preview_run_state(
                 client,
@@ -579,13 +630,19 @@ def test_workflow_preview_run_events_websocket_replays_append_only_events(tmp_pa
     streamed_event_types = {item["event_type"] for item in streamed_payloads}
     assert create_response.status_code == 201
     assert limited_events_response.status_code == 200
-    assert [item["event_type"] for item in limited_events_response.json()] == ["preview.started"]
+    assert [item["event_type"] for item in limited_events_response.json()] == [
+        "preview.started"
+    ]
     assert pending_events_response.status_code == 200
-    assert [item["event_type"] for item in pending_events_response.json()] == ["preview.started"]
+    assert [item["event_type"] for item in pending_events_response.json()] == [
+        "preview.started"
+    ]
     assert connected_payload["event_type"] == "workflows.preview-runs.connected"
     assert connected_payload["resource_id"] == preview_run_id
     assert streamed_event_types >= {"node.completed", "preview.succeeded"}
-    assert all(item["stream"] == "workflows.preview-runs.events" for item in streamed_payloads)
+    assert all(
+        item["stream"] == "workflows.preview-runs.events" for item in streamed_payloads
+    )
     assert all(item["resource_id"] == preview_run_id for item in streamed_payloads)
     assert all("sequence" in item["payload"] for item in streamed_payloads)
     assert all("data" not in item["payload"] for item in streamed_payloads)
@@ -618,9 +675,13 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -650,7 +711,9 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "cancel over websocket"}},
+                    "input_bindings": {
+                        "request_text": {"value": "cancel over websocket"}
+                    },
                     "execution_metadata": {
                         "marker": "workflow-run-websocket",
                         "trace_level": "node-summary",
@@ -669,7 +732,9 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 params={"limit": 1},
             )
-            after_cursor = str(max(item["sequence"] for item in started_events_response.json()))
+            after_cursor = str(
+                max(item["sequence"] for item in started_events_response.json())
+            )
             pending_events_response = client.get(
                 f"/api/v1/workflows/runs/{workflow_run_id}/events",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -690,7 +755,9 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                     "run.cancel_requested",
                     "run.cancelled",
                 }:
-                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
+                    streamed_payloads.append(
+                        _receive_websocket_json_with_timeout(websocket)
+                    )
 
             final_run_response = _wait_for_workflow_run_state(
                 client,
@@ -709,7 +776,9 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
     assert start_response.status_code == 200
     assert create_run_response.status_code == 201
     assert limited_events_response.status_code == 200
-    assert [item["event_type"] for item in limited_events_response.json()] == ["run.queued"]
+    assert [item["event_type"] for item in limited_events_response.json()] == [
+        "run.queued"
+    ]
     assert pending_events_response.status_code == 200
     assert pending_events_response.json() == []
     assert cancel_response.status_code == 200
@@ -725,7 +794,9 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
     assert stop_response.json()["observed_state"] == "stopped"
 
 
-def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Path) -> None:
+def test_workflow_app_runtime_events_websocket_streams_live_events(
+    tmp_path: Path,
+) -> None:
     """验证 WorkflowAppRuntime WebSocket 可以在 REST 回放之后继续收到实时事件。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -751,9 +822,13 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -783,7 +858,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 params={"limit": 1},
             )
-            after_cursor = str(max(item["sequence"] for item in history_events_response.json()))
+            after_cursor = str(
+                max(item["sequence"] for item in history_events_response.json())
+            )
 
             streamed_payloads: list[dict[str, object]] = []
             with client.websocket_connect(
@@ -803,7 +880,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
                     "runtime.started",
                     "runtime.stopped",
                 }:
-                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
+                    streamed_payloads.append(
+                        _receive_websocket_json_with_timeout(websocket)
+                    )
 
             limited_live_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
@@ -817,16 +896,24 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
     assert create_runtime_response.status_code == 201
     assert history_events_response.status_code == 200
     assert limited_history_response.status_code == 200
-    assert [item["event_type"] for item in limited_history_response.json()] == ["runtime.created"]
+    assert [item["event_type"] for item in limited_history_response.json()] == [
+        "runtime.created"
+    ]
     assert limited_live_response.status_code == 200
-    assert [item["event_type"] for item in limited_live_response.json()] == ["runtime.started"]
-    assert {item["event_type"] for item in history_events_response.json()} == {"runtime.created"}
+    assert [item["event_type"] for item in limited_live_response.json()] == [
+        "runtime.started"
+    ]
+    assert {item["event_type"] for item in history_events_response.json()} == {
+        "runtime.created"
+    }
     assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
     assert connected_payload["resource_id"] == workflow_runtime_id
     assert start_response.status_code == 200
     assert stop_response.status_code == 200
     assert streamed_event_types >= {"runtime.started", "runtime.stopped"}
-    assert all(item["stream"] == "workflows.app-runtimes.events" for item in streamed_payloads)
+    assert all(
+        item["stream"] == "workflows.app-runtimes.events" for item in streamed_payloads
+    )
     assert all(item["resource_id"] == workflow_runtime_id for item in streamed_payloads)
     assert all("sequence" in item["payload"] for item in streamed_payloads)
     assert all("data" not in item["payload"] for item in streamed_payloads)
@@ -834,7 +921,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(tmp_path: Pat
     assert stop_response.json()["observed_state"] == "stopped"
 
 
-def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp_path: Path) -> None:
+def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
+    tmp_path: Path,
+) -> None:
     """验证 app runtime 事件流会推送 worker 主动 heartbeat。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -860,9 +949,13 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -889,7 +982,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
-            after_cursor = str(max(item["sequence"] for item in history_events_response.json()))
+            after_cursor = str(
+                max(item["sequence"] for item in history_events_response.json())
+            )
 
             streamed_payloads: list[dict[str, object]] = []
             with client.websocket_connect(
@@ -907,7 +1002,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 )
                 for _ in range(3):
-                    streamed_payloads.append(_receive_websocket_json_with_timeout(websocket))
+                    streamed_payloads.append(
+                        _receive_websocket_json_with_timeout(websocket)
+                    )
 
             final_events_response = client.get(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/events",
@@ -917,7 +1014,9 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
         session_factory.engine.dispose()
 
     streamed_event_types = {item["event_type"] for item in streamed_payloads}
-    heartbeat_event = next(item for item in streamed_payloads if item["event_type"] == "runtime.heartbeat")
+    heartbeat_event = next(
+        item for item in streamed_payloads if item["event_type"] == "runtime.heartbeat"
+    )
     assert create_runtime_response.status_code == 201
     assert create_runtime_response.json()["heartbeat_interval_seconds"] == 1
     assert create_runtime_response.json()["heartbeat_timeout_seconds"] == 4
@@ -925,7 +1024,11 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(tmp
     assert connected_payload["event_type"] == "workflows.app-runtimes.connected"
     assert start_response.status_code == 200
     assert stop_response.status_code == 200
-    assert streamed_event_types >= {"runtime.started", "runtime.heartbeat", "runtime.stopped"}
+    assert streamed_event_types >= {
+        "runtime.started",
+        "runtime.heartbeat",
+        "runtime.stopped",
+    }
     assert "data" not in heartbeat_event["payload"]
     assert "observed_state" in heartbeat_event["payload"]
     assert heartbeat_event["payload"]["heartbeat_interval_seconds"] == 1
@@ -973,9 +1076,13 @@ def test_workflow_app_runtime_health_and_instances_follow_heartbeat_timeout(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1025,7 +1132,9 @@ def test_workflow_app_runtime_health_and_instances_follow_heartbeat_timeout(
         session_factory.engine.dispose()
 
     timeout_event = next(
-        item for item in events_response.json() if item["event_type"] == "runtime.heartbeat_timed_out"
+        item
+        for item in events_response.json()
+        if item["event_type"] == "runtime.heartbeat_timed_out"
     )
     instance_payload = instances_response.json()[0]
     assert create_runtime_response.status_code == 201
@@ -1078,9 +1187,13 @@ def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1108,13 +1221,17 @@ def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
 
-            running_state = _force_runtime_worker_heartbeat_timeout(application, workflow_runtime_id)
+            running_state = _force_runtime_worker_heartbeat_timeout(
+                application, workflow_runtime_id
+            )
             timeout_events_response = _wait_for_workflow_app_runtime_event_types(
                 client,
                 workflow_runtime_id,
                 expected_event_types={"runtime.heartbeat_timed_out"},
             )
-            after_cursor = str(max(item["sequence"] for item in timeout_events_response.json()))
+            after_cursor = str(
+                max(item["sequence"] for item in timeout_events_response.json())
+            )
 
             with client.websocket_connect(
                 f"/ws/v1/workflows/app-runtimes/events?workflow_runtime_id={workflow_runtime_id}&after_cursor={after_cursor}",
@@ -1161,7 +1278,9 @@ def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
     assert recovered_health_response.json()["last_error"] is None
 
 
-def test_workflow_preview_run_api_rejects_removed_async_wait_mode(tmp_path: Path) -> None:
+def test_workflow_preview_run_api_rejects_removed_async_wait_mode(
+    tmp_path: Path,
+) -> None:
     """验证 Preview 只接受同步直调，不再暴露异步取消状态机。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1187,9 +1306,13 @@ def test_workflow_preview_run_api_rejects_removed_async_wait_mode(tmp_path: Path
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1206,7 +1329,9 @@ def test_workflow_preview_run_api_rejects_removed_async_wait_mode(tmp_path: Path
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-slow-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview cancel"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview cancel"}
+                    },
                     "execution_metadata": {"marker": "preview-cancel"},
                     "timeout_seconds": 10,
                     "wait_mode": "async",
@@ -1218,7 +1343,9 @@ def test_workflow_preview_run_api_rejects_removed_async_wait_mode(tmp_path: Path
     assert create_response.status_code == 422
 
 
-def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(tmp_path: Path) -> None:
+def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(
+    tmp_path: Path,
+) -> None:
     """验证已删除的 async 模式不会创建 Preview 记录或目录。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1244,9 +1371,13 @@ def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(tmp_pa
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1263,7 +1394,9 @@ def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(tmp_pa
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-slow-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview delete"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview delete"}
+                    },
                     "execution_metadata": {"marker": "preview-delete-running"},
                     "timeout_seconds": 10,
                     "wait_mode": "async",
@@ -1283,7 +1416,9 @@ def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(tmp_pa
     assert not dataset_storage.resolve("workflows/runtime/preview-runs").exists()
 
 
-def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path) -> None:
+def test_workflow_preview_run_api_lists_and_deletes_preview_runs(
+    tmp_path: Path,
+) -> None:
     """验证 preview run 列表和删除接口可用，并会清理 snapshot 目录。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1309,9 +1444,13 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path)
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1333,7 +1472,9 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path)
                 },
             )
             preview_run_id = create_response.json()["preview_run_id"]
-            preview_run_dir = dataset_storage.resolve(f"workflows/runtime/preview-runs/{preview_run_id}")
+            preview_run_dir = dataset_storage.resolve(
+                f"workflows/runtime/preview-runs/{preview_run_id}"
+            )
             preview_run_dir_exists_before_delete = preview_run_dir.exists()
             list_response = client.get(
                 "/api/v1/workflows/preview-runs",
@@ -1381,7 +1522,9 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(tmp_path: Path)
     assert get_deleted_response.json()["error"]["code"] == "resource_not_found"
 
 
-def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path: Path) -> None:
+def test_workflow_preview_run_api_supports_state_and_created_at_filters(
+    tmp_path: Path,
+) -> None:
     """验证 preview run 列表接口支持按状态和创建时间范围过滤。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1415,9 +1558,13 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1434,7 +1581,9 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-echo-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview filters"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview filters"}
+                    },
                     "execution_metadata": {"marker": "preview-filter-succeeded"},
                 },
             )
@@ -1444,7 +1593,9 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(tmp_path
                 json={
                     "project_id": "project-1",
                     "application_ref": {"application_id": "process-slow-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview timeout filters"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview timeout filters"}
+                    },
                     "execution_metadata": {"marker": "preview-filter-timeout"},
                     "timeout_seconds": 1,
                 },
@@ -1549,9 +1700,13 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1615,7 +1770,9 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
                     "project_id": "project-1",
                     "execution_policy_id": "preview-default-policy",
                     "application_ref": {"application_id": "process-echo-app"},
-                    "input_bindings": {"request_text": {"value": "hello preview policy"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello preview policy"}
+                    },
                     "execution_metadata": {"marker": "preview-policy"},
                 },
             )
@@ -1639,7 +1796,9 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
                 params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello runtime policy"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello runtime policy"}
+                    },
                     "execution_metadata": {"marker": "runtime-policy"},
                 },
             )
@@ -1664,9 +1823,15 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     preview_payload = create_preview_response.json()
     runtime_payload = create_runtime_response.json()
     invoke_payload = invoke_response.json()
-    listed_policy_ids = {item["execution_policy_id"] for item in list_policies_response.json()}
-    preview_policy_snapshot_object_key = preview_payload["metadata"]["execution_policy"]["snapshot_object_key"]
-    runtime_policy_snapshot_object_key = runtime_payload["execution_policy_snapshot_object_key"]
+    listed_policy_ids = {
+        item["execution_policy_id"] for item in list_policies_response.json()
+    }
+    preview_policy_snapshot_object_key = preview_payload["metadata"][
+        "execution_policy"
+    ]["snapshot_object_key"]
+    runtime_policy_snapshot_object_key = runtime_payload[
+        "execution_policy_snapshot_object_key"
+    ]
 
     assert listed_policy_ids == {"preview-default-policy", "runtime-default-policy"}
     assert paged_policies_response.status_code == 200
@@ -1681,19 +1846,40 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
     assert get_runtime_policy_response.json()["policy_kind"] == "runtime-default"
     assert preview_payload["timeout_seconds"] == 9
     assert preview_payload["node_records"] == []
-    assert preview_payload["metadata"]["execution_policy"]["execution_policy_id"] == "preview-default-policy"
+    assert (
+        preview_payload["metadata"]["execution_policy"]["execution_policy_id"]
+        == "preview-default-policy"
+    )
     assert runtime_payload["request_timeout_seconds"] == 7
     assert runtime_payload["execution_policy_snapshot_object_key"] is not None
     assert runtime_payload["updated_by"] == default_principal_id
-    assert runtime_payload["application_summary"]["application_id"] == "process-echo-app"
+    assert (
+        runtime_payload["application_summary"]["application_id"] == "process-echo-app"
+    )
     assert runtime_payload["template_summary"]["template_id"] == "process-echo-template"
-    assert runtime_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
+    assert (
+        runtime_payload["metadata"]["execution_policy"]["execution_policy_id"]
+        == "runtime-default-policy"
+    )
     assert invoke_payload["requested_timeout_seconds"] == 7
     assert invoke_payload["template_outputs"] == {}
     assert invoke_payload["node_records"] == []
-    assert invoke_payload["metadata"]["execution_policy"]["execution_policy_id"] == "runtime-default-policy"
-    assert dataset_storage.read_json(preview_policy_snapshot_object_key)["execution_policy_id"] == "preview-default-policy"
-    assert dataset_storage.read_json(runtime_policy_snapshot_object_key)["execution_policy_id"] == "runtime-default-policy"
+    assert (
+        invoke_payload["metadata"]["execution_policy"]["execution_policy_id"]
+        == "runtime-default-policy"
+    )
+    assert (
+        dataset_storage.read_json(preview_policy_snapshot_object_key)[
+            "execution_policy_id"
+        ]
+        == "preview-default-policy"
+    )
+    assert (
+        dataset_storage.read_json(runtime_policy_snapshot_object_key)[
+            "execution_policy_id"
+        ]
+        == "runtime-default-policy"
+    )
     assert start_response.json()["updated_by"] == default_principal_id
     assert stop_response.json()["observed_state"] == "stopped"
     assert stop_response.json()["updated_by"] == default_principal_id
@@ -1727,9 +1913,13 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1763,6 +1953,30 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
                 params={"project_id": "project-1", "offset": 0, "limit": 1},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
             )
+            filtered_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={
+                    "project_id": "project-1",
+                    "application_id": "process-echo-app",
+                },
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            missing_filter_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={
+                    "project_id": "project-1",
+                    "application_id": "missing-app",
+                },
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            application_set_response = client.get(
+                "/api/v1/workflows/app-runtimes",
+                params={
+                    "project_id": "project-1",
+                    "application_ids": "process-echo-app,missing-app",
+                },
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
     finally:
         session_factory.engine.dispose()
 
@@ -1778,9 +1992,20 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
         create_second_runtime_response.json()["workflow_runtime_id"]
     ]
     assert list_response.json()[0]["display_name"] == "Runtime B"
+    assert filtered_response.status_code == 200
+    assert filtered_response.headers["x-total-count"] == "2"
+    assert len(filtered_response.json()) == 2
+    assert missing_filter_response.status_code == 200
+    assert missing_filter_response.headers["x-total-count"] == "0"
+    assert missing_filter_response.json() == []
+    assert application_set_response.status_code == 200
+    assert application_set_response.headers["x-total-count"] == "2"
+    assert len(application_set_response.json()) == 2
 
 
-def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(tmp_path: Path) -> None:
+def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
+    tmp_path: Path,
+) -> None:
     """验证 app runtime 列表和删除接口可用，并会清理 snapshot 目录。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1806,9 +2031,13 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(tmp_path: P
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1829,7 +2058,9 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(tmp_path: P
                 },
             )
             workflow_runtime_id = create_response.json()["workflow_runtime_id"]
-            runtime_dir = dataset_storage.resolve(f"workflows/runtime/app-runtimes/{workflow_runtime_id}")
+            runtime_dir = dataset_storage.resolve(
+                f"workflows/runtime/app-runtimes/{workflow_runtime_id}"
+            )
             runtime_dir_exists_before_delete = runtime_dir.exists()
             list_response = client.get(
                 "/api/v1/workflows/app-runtimes",
@@ -1875,7 +2106,9 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(tmp_path: P
     assert get_deleted_response.json()["error"]["code"] == "resource_not_found"
 
 
-def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_handle(tmp_path: Path) -> None:
+def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_handle(
+    tmp_path: Path,
+) -> None:
     """验证删除运行中的 app runtime 时会先停止 worker 并清理 snapshot 目录。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
@@ -1901,9 +2134,13 @@ def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_hand
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -1924,7 +2161,9 @@ def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_hand
                 },
             )
             workflow_runtime_id = create_response.json()["workflow_runtime_id"]
-            runtime_dir = dataset_storage.resolve(f"workflows/runtime/app-runtimes/{workflow_runtime_id}")
+            runtime_dir = dataset_storage.resolve(
+                f"workflows/runtime/app-runtimes/{workflow_runtime_id}"
+            )
             start_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
@@ -1979,9 +2218,13 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2155,7 +2398,10 @@ def test_workflow_app_runtime_recovers_after_worker_process_crash(
     assert start_response.status_code == 200
     assert recovered_process_id != original_process_id
     assert invoke_response.status_code == 200
-    assert invoke_response.json()["outputs"]["http_response"]["body"]["message"] == "recovered"
+    assert (
+        invoke_response.json()["outputs"]["http_response"]["body"]["message"]
+        == "recovered"
+    )
     assert invoke_response.json()["assigned_process_id"] == recovered_process_id
     assert stop_response.status_code == 200
 
@@ -2188,9 +2434,13 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2222,7 +2472,9 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
                 params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello runtime timeout"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello runtime timeout"}
+                    },
                     "execution_metadata": {"marker": "runtime-timeout"},
                     "timeout_seconds": 1,
                 },
@@ -2270,7 +2522,9 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     run_payload = invoke_response.json()
     runtime_payload = get_runtime_response.json()
     assert run_payload["state"] == "timed_out"
-    assert run_payload["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
+    assert (
+        run_payload["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
+    )
     assert run_payload["outputs"] == {}
     assert get_run_response.json()["state"] == "timed_out"
     assert recovered_process_id != original_process_id
@@ -2309,9 +2563,13 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2341,7 +2599,9 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
                 params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello runtime failure"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello runtime failure"}
+                    },
                     "execution_metadata": {"marker": "api-runtime-failure"},
                 },
             )
@@ -2416,9 +2676,13 @@ def test_workflow_app_runtime_api_can_restart_after_failed_run(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2448,7 +2712,9 @@ def test_workflow_app_runtime_api_can_restart_after_failed_run(
                 params={"response_mode": "run"},
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello runtime failure"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello runtime failure"}
+                    },
                     "execution_metadata": {"marker": "runtime-restart"},
                 },
             )
@@ -2518,9 +2784,13 @@ def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2578,16 +2848,30 @@ def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
     first_instances_payload = instances_response.json()
     restarted_instances_payload = restarted_instances_response.json()
     assert len(first_instances_payload) == 1
-    assert first_instances_payload[0]["workflow_runtime_id"] == create_runtime_response.json()["workflow_runtime_id"]
+    assert (
+        first_instances_payload[0]["workflow_runtime_id"]
+        == create_runtime_response.json()["workflow_runtime_id"]
+    )
     assert first_instances_payload[0]["state"] == "running"
-    assert first_instances_payload[0]["instance_id"].endswith("-primary")
-    assert first_instances_payload[0]["process_id"] == start_response.json()["worker_process_id"]
+    assert first_instances_payload[0]["instance_id"].startswith(
+        f"{create_runtime_response.json()['workflow_runtime_id']}-"
+    )
+    assert (
+        first_instances_payload[0]["process_id"]
+        == start_response.json()["worker_process_id"]
+    )
     assert first_instances_payload[0]["current_run_id"] is None
     assert first_instances_payload[0]["started_at"] is not None
     assert len(restarted_instances_payload) == 1
     assert restarted_instances_payload[0]["state"] == "running"
-    assert restarted_instances_payload[0]["instance_id"] == first_instances_payload[0]["instance_id"]
-    assert restarted_instances_payload[0]["started_at"] != first_instances_payload[0]["started_at"]
+    assert (
+        restarted_instances_payload[0]["instance_id"]
+        != first_instances_payload[0]["instance_id"]
+    )
+    assert (
+        restarted_instances_payload[0]["started_at"]
+        != first_instances_payload[0]["started_at"]
+    )
     assert stop_response.json()["observed_state"] == "stopped"
     assert stopped_instances_response.json() == []
 
@@ -2620,9 +2904,13 @@ def test_workflow_app_runtime_async_run_api_persists_queued_then_succeeded(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2651,7 +2939,9 @@ def test_workflow_app_runtime_async_run_api_persists_queued_then_succeeded(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs",
                 headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 json={
-                    "input_bindings": {"request_text": {"value": "hello async runtime"}},
+                    "input_bindings": {
+                        "request_text": {"value": "hello async runtime"}
+                    },
                     "execution_metadata": {"marker": "async-runtime-api"},
                 },
             )
@@ -2678,7 +2968,10 @@ def test_workflow_app_runtime_async_run_api_persists_queued_then_succeeded(
     assert create_run_payload["state"] == "queued"
     assert final_run_payload["state"] == "succeeded"
     assert final_run_payload["metadata"]["trigger_source"] == "async-invoke"
-    assert final_run_payload["outputs"]["http_response"]["body"]["message"] == "hello async runtime"
+    assert (
+        final_run_payload["outputs"]["http_response"]["body"]["message"]
+        == "hello async runtime"
+    )
     assert stop_response.json()["observed_state"] == "stopped"
 
 
@@ -2710,9 +3003,13 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2806,7 +3103,10 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
     assert queued_final_response.json()["error_message"] == "workflow run 已取消"
     assert running_final_response.json()["state"] == "cancelled"
     assert running_final_response.json()["error_message"] == "workflow run 已取消"
-    assert running_final_response.json()["metadata"]["cancelled_by"] == default_principal_id
+    assert (
+        running_final_response.json()["metadata"]["cancelled_by"]
+        == default_principal_id
+    )
     assert health_response.json()["observed_state"] == "running"
     assert stop_response.json()["observed_state"] == "stopped"
 
@@ -2839,9 +3139,13 @@ def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_deta
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -2946,9 +3250,13 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -3032,7 +3340,10 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
 
     assert create_run_response.json()["state"] == "queued"
     assert final_run_response.json()["state"] == "timed_out"
-    assert final_run_response.json()["error_message"] == "等待 workflow runtime worker 同步调用结果超时"
+    assert (
+        final_run_response.json()["error_message"]
+        == "等待 workflow runtime worker 同步调用结果超时"
+    )
     runtime_event_types = [
         item["event_type"] for item in recovered_events_response.json()
     ]
@@ -3077,9 +3388,13 @@ def test_workflow_app_runtime_async_run_api_cancel_ignores_terminal_succeeded_ru
     application = create_app(
         settings=BackendServiceSettings(
             database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
-            dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
-            custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
             task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
@@ -3614,7 +3929,9 @@ def register(context):
         "description": "用于验证 workflow application 直接执行的测试节点包。",
         "category": "custom-node-pack",
         "capabilities": ["pipeline.node"],
-        "entrypoints": {"backend": "custom_nodes.process_test_nodes.backend.entry:register"},
+        "entrypoints": {
+            "backend": "custom_nodes.process_test_nodes.backend.entry:register"
+        },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
         "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
         "enabledByDefault": True,
@@ -3749,7 +4066,7 @@ def register(context):
                 "runtime_requirements": {},
                 "node_pack_id": "test.process-nodes",
                 "node_pack_version": "0.1.0",
-            }
+            },
         ],
     }
     (node_pack_dir / "manifest.json").write_text(
@@ -3780,7 +4097,10 @@ def _wait_for_workflow_run_state(
             headers=build_test_headers(scopes="workflows:read,workflows:write"),
             params={"response_mode": "run"},
         )
-        if last_response.status_code == 200 and last_response.json().get("state") in expected_states:
+        if (
+            last_response.status_code == 200
+            and last_response.json().get("state") in expected_states
+        ):
             return last_response
         time.sleep(0.05)
     raise AssertionError(
@@ -3805,7 +4125,10 @@ def _wait_for_preview_run_state(
             f"/api/v1/workflows/preview-runs/{preview_run_id}",
             headers=build_test_headers(scopes="workflows:read,workflows:write"),
         )
-        if last_response.status_code == 200 and last_response.json().get("state") in expected_states:
+        if (
+            last_response.status_code == 200
+            and last_response.json().get("state") in expected_states
+        ):
             return last_response
         time.sleep(0.05)
     raise AssertionError(
@@ -3898,7 +4221,9 @@ def _wait_for_workflow_app_runtime_health_state(
         if last_response.status_code == 200:
             payload = last_response.json()
             if payload.get("observed_state") == expected_state:
-                if expected_last_error is None or expected_last_error in str(payload.get("last_error") or ""):
+                if expected_last_error is None or expected_last_error in str(
+                    payload.get("last_error") or ""
+                ):
                     return last_response
         time.sleep(0.05)
     raise AssertionError(
@@ -3927,7 +4252,9 @@ def _wait_for_workflow_app_runtime_instance_state(
         if last_response.status_code == 200 and last_response.json():
             payload = last_response.json()[0]
             if payload.get("state") == expected_state:
-                if expected_last_error is None or expected_last_error in str(payload.get("last_error") or ""):
+                if expected_last_error is None or expected_last_error in str(
+                    payload.get("last_error") or ""
+                ):
                     return last_response
         time.sleep(0.05)
     raise AssertionError(
@@ -3986,7 +4313,9 @@ def _receive_websocket_json_with_timeout(
         except BaseException as exc:  # pragma: no cover - 测试辅助只在失败路径触发
             errors.append(exc)
 
-    thread = Thread(target=receive_json_message, name="test-websocket-receive", daemon=True)
+    thread = Thread(
+        target=receive_json_message, name="test-websocket-receive", daemon=True
+    )
     thread.start()
     thread.join(timeout_seconds)
     if thread.is_alive():
@@ -4039,7 +4368,9 @@ def _wait_for_recovered_runtime_process(
     )
 
 
-def _inject_runtime_worker_heartbeat(application, workflow_runtime_id: str, runtime_state) -> None:
+def _inject_runtime_worker_heartbeat(
+    application, workflow_runtime_id: str, runtime_state
+) -> None:
     """向指定 runtime 的响应队列注入一条恢复用 heartbeat 消息。"""
 
     handle = _get_runtime_worker_handle(application, workflow_runtime_id)
@@ -4054,6 +4385,10 @@ def _inject_runtime_worker_heartbeat(application, workflow_runtime_id: str, runt
             health_summary=dict(runtime_state.health_summary),
             message_type="runtime-heartbeat",
             last_error=None,
+            workflow_runtime_revision_id=(handle.workflow_runtime_revision_id),
+            runtime_generation=handle.runtime_generation,
+            snapshot_fingerprint=handle.expected_snapshot_fingerprint,
+            worker_instance_id=handle.worker_instance_id,
         )
     )
 
@@ -4064,7 +4399,9 @@ def _get_runtime_worker_handle(application, workflow_runtime_id: str):
     manager = application.state.workflow_runtime_worker_manager
     handle = manager._handles.get(workflow_runtime_id)  # noqa: SLF001 - 测试需要读取内部句柄
     if handle is None:
-        raise AssertionError(f"未找到 WorkflowAppRuntime {workflow_runtime_id} 的 worker 句柄")
+        raise AssertionError(
+            f"未找到 WorkflowAppRuntime {workflow_runtime_id} 的 worker 句柄"
+        )
     return handle
 
 
@@ -4079,15 +4416,53 @@ def _run_test_runtime_worker_without_heartbeat(
 ) -> None:
     """运行一个不会主动发送 heartbeat 的测试 runtime worker。"""
 
-    del settings_payload
     del local_buffer_broker_event_channel
     del published_inference_gateway_event_channel
     workflow_runtime_id = str(runtime_payload.get("workflow_runtime_id") or "")
     if not workflow_runtime_id:
         raise AssertionError("测试 runtime worker 缺少 workflow_runtime_id")
     started_at = _test_now_isoformat()
-    runtime_instance_id = f"test-runtime-instance::{workflow_runtime_id}"
-    snapshot_fingerprint = f"test-snapshot::{workflow_runtime_id}"
+    runtime_instance_id = str(runtime_payload.get("worker_instance_id") or "")
+    workflow_runtime_revision_id = str(
+        runtime_payload.get("workflow_runtime_revision_id") or ""
+    )
+    runtime_generation = runtime_payload.get("runtime_generation")
+    expected_snapshot_fingerprint = str(
+        runtime_payload.get("expected_snapshot_fingerprint") or ""
+    )
+    if (
+        not runtime_instance_id
+        or not workflow_runtime_revision_id
+        or not isinstance(runtime_generation, int)
+        or not expected_snapshot_fingerprint
+    ):
+        raise AssertionError("测试 runtime worker 缺少 revision/epoch 身份")
+    settings = BackendServiceSettingsModel.model_validate(settings_payload)
+    dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
+    application_snapshot_object_key = str(
+        runtime_payload.get("application_snapshot_object_key") or ""
+    )
+    template_snapshot_object_key = str(
+        runtime_payload.get("template_snapshot_object_key") or ""
+    )
+    from backend.contracts.workflows.workflow_graph import (  # noqa: PLC0415
+        FlowApplication,
+        WorkflowGraphTemplate,
+    )
+
+    node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
+    node_pack_loader.refresh()
+    snapshot_fingerprint = compute_workflow_app_content_fingerprint(
+        application=FlowApplication.model_validate(
+            dataset_storage.read_json(application_snapshot_object_key)
+        ),
+        template=WorkflowGraphTemplate.model_validate(
+            dataset_storage.read_json(template_snapshot_object_key)
+        ),
+        node_catalog_registry=NodeCatalogRegistry(node_pack_loader=node_pack_loader),
+    )
+    if snapshot_fingerprint != expected_snapshot_fingerprint:
+        raise AssertionError("测试 runtime worker snapshot 指纹不匹配")
     process_id = multiprocessing.current_process().pid
     response_queue.put(
         _build_test_runtime_worker_state_message(
@@ -4097,6 +4472,10 @@ def _run_test_runtime_worker_without_heartbeat(
             process_id=process_id,
             started_at=started_at,
             loaded_snapshot_fingerprint=snapshot_fingerprint,
+            workflow_runtime_revision_id=workflow_runtime_revision_id,
+            runtime_generation=runtime_generation,
+            snapshot_fingerprint=snapshot_fingerprint,
+            worker_instance_id=runtime_instance_id,
         )
     )
     while True:
@@ -4113,6 +4492,10 @@ def _run_test_runtime_worker_without_heartbeat(
                     started_at=started_at,
                     loaded_snapshot_fingerprint=snapshot_fingerprint,
                     request_id=request_id,
+                    workflow_runtime_revision_id=(workflow_runtime_revision_id),
+                    runtime_generation=runtime_generation,
+                    snapshot_fingerprint=snapshot_fingerprint,
+                    worker_instance_id=runtime_instance_id,
                 )
             )
             continue
@@ -4126,6 +4509,10 @@ def _run_test_runtime_worker_without_heartbeat(
                     started_at=started_at,
                     loaded_snapshot_fingerprint=snapshot_fingerprint,
                     request_id=request_id,
+                    workflow_runtime_revision_id=(workflow_runtime_revision_id),
+                    runtime_generation=runtime_generation,
+                    snapshot_fingerprint=snapshot_fingerprint,
+                    worker_instance_id=runtime_instance_id,
                 )
             )
             break
@@ -4144,6 +4531,10 @@ def _build_test_runtime_worker_state_message(
     request_id: str | None = None,
     current_run_id: str | None = None,
     last_error: str | None = None,
+    workflow_runtime_revision_id: str | None = None,
+    runtime_generation: int | None = None,
+    snapshot_fingerprint: str | None = None,
+    worker_instance_id: str | None = None,
 ) -> dict[str, object]:
     """构造测试 runtime worker 使用的状态消息。"""
 
@@ -4158,7 +4549,13 @@ def _build_test_runtime_worker_state_message(
         "heartbeat_at": _test_now_isoformat(),
         "loaded_snapshot_fingerprint": loaded_snapshot_fingerprint,
         "last_error": last_error,
-        "health_summary": dict(health_summary or _build_test_runtime_worker_health_summary()),
+        "health_summary": dict(
+            health_summary or _build_test_runtime_worker_health_summary()
+        ),
+        "workflow_runtime_revision_id": workflow_runtime_revision_id,
+        "runtime_generation": runtime_generation,
+        "snapshot_fingerprint": snapshot_fingerprint,
+        "worker_instance_id": worker_instance_id,
     }
     if request_id is not None:
         payload["request_id"] = request_id

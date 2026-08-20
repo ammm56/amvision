@@ -81,6 +81,30 @@ class SqlAlchemyDeploymentInstanceRepository:
             return None
         return self._to_domain(record)
 
+    def get_visible_deployment_instance(
+        self,
+        deployment_instance_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> DeploymentInstance | None:
+        """按 id 和 Project 可见范围读取 DeploymentInstance。"""
+
+        statement = select(DeploymentInstanceRecord).where(
+            DeploymentInstanceRecord.deployment_instance_id
+            == deployment_instance_id
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                DeploymentInstanceRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围读取 DeploymentInstance 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._to_domain(record)
+
     def list_deployment_instances(
         self, project_id: str
     ) -> tuple[DeploymentInstance, ...]:

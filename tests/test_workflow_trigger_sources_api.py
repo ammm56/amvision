@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -72,6 +73,20 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                 "/api/v1/workflows/trigger-sources?project_id=project-1&offset=0&limit=1",
                 headers=headers,
             )
+            filtered_list_response = context.client.get(
+                (
+                    "/api/v1/workflows/trigger-sources?project_id=project-1"
+                    "&workflow_runtime_id=workflow-runtime-1"
+                ),
+                headers=headers,
+            )
+            missing_runtime_list_response = context.client.get(
+                (
+                    "/api/v1/workflows/trigger-sources?project_id=project-1"
+                    "&workflow_runtime_id=workflow-runtime-missing"
+                ),
+                headers=headers,
+            )
             get_response = context.client.get(
                 "/api/v1/workflows/trigger-sources/trigger-source-1",
                 headers=headers,
@@ -124,6 +139,28 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                     },
                 },
             )
+            delete_bound_runtime_response = context.client.delete(
+                "/api/v1/workflows/app-runtimes/workflow-runtime-1",
+                headers=headers,
+            )
+            unit_of_work = SqlAlchemyUnitOfWork(
+                context.session_factory.create_session()
+            )
+            try:
+                assert (
+                    unit_of_work.workflow_trigger_sources.has_trigger_sources_for_runtime(
+                        "workflow-runtime-1"
+                    )
+                    is True
+                )
+                assert (
+                    unit_of_work.workflow_trigger_sources.has_trigger_sources_for_runtime(
+                        "workflow-runtime-missing"
+                    )
+                    is False
+                )
+            finally:
+                unit_of_work.close()
             default_principal_id = get_default_test_principal_id(
                 context.session_factory
             )
@@ -151,6 +188,15 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert list_response.headers["x-next-offset"] == "1"
     assert len(list_response.json()) == 1
     assert list_response.json()[0]["trigger_source_id"] == "trigger-source-2"
+    assert filtered_list_response.status_code == 200
+    assert filtered_list_response.headers["x-total-count"] == "2"
+    assert {item["trigger_source_id"] for item in filtered_list_response.json()} == {
+        "trigger-source-1",
+        "trigger-source-2",
+    }
+    assert missing_runtime_list_response.status_code == 200
+    assert missing_runtime_list_response.headers["x-total-count"] == "0"
+    assert missing_runtime_list_response.json() == []
     assert get_response.status_code == 200
     assert get_response.json()["result_mapping"]["result_binding"] == "http_response"
 
@@ -194,6 +240,10 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
 
     assert recreate_response.status_code == 201
     assert recreate_response.json()["display_name"] == "HTTP Baseline Trigger Recreated"
+    assert delete_bound_runtime_response.status_code == 409
+    assert delete_bound_runtime_response.json()["error"]["details"][
+        "trigger_source_ids"
+    ] == ["trigger-source-1", "trigger-source-2"]
 
 
 def test_workflow_trigger_source_api_controls_zeromq_adapter(
@@ -753,20 +803,40 @@ def _save_runtime(session_factory: SessionFactory, *, observed_state: str) -> No
 
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
-        unit_of_work.workflow_runtime.save_workflow_app_runtime(
-            WorkflowAppRuntime(
-                workflow_runtime_id="workflow-runtime-1",
-                project_id="project-1",
-                application_id="app-1",
-                display_name="App Runtime",
-                application_snapshot_object_key="app.json",
-                template_snapshot_object_key="template.json",
-                desired_state="running" if observed_state == "running" else "stopped",
+        current = unit_of_work.workflow_runtime.get_workflow_app_runtime(
+            "workflow-runtime-1"
+        )
+        if current is None:
+            unit_of_work.workflow_runtime.save_workflow_app_runtime(
+                WorkflowAppRuntime(
+                    workflow_runtime_id="workflow-runtime-1",
+                    project_id="project-1",
+                    application_id="app-1",
+                    display_name="App Runtime",
+                    application_snapshot_object_key="app.json",
+                    template_snapshot_object_key="template.json",
+                    desired_state=(
+                        "running" if observed_state == "running" else "stopped"
+                    ),
+                    observed_state=observed_state,
+                    created_at="2026-05-13T00:00:00Z",
+                    updated_at="2026-05-13T00:00:00Z",
+                )
+            )
+        else:
+            updated = replace(
+                current,
+                desired_state=("running" if observed_state == "running" else "stopped"),
                 observed_state=observed_state,
-                created_at="2026-05-13T00:00:00Z",
                 updated_at="2026-05-13T00:00:00Z",
             )
-        )
+            applied = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
+                updated,
+                expected_generation=current.revision_generation,
+                expected_revision_id=current.desired_revision_id,
+                expected_worker_instance_id=current.worker_instance_id,
+            )
+            assert applied is True
         unit_of_work.commit()
     finally:
         unit_of_work.close()

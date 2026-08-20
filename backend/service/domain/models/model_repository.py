@@ -145,6 +145,33 @@ class ModelRepository(Protocol):
 
         ...
 
+    def get_visible_model_build(
+        self,
+        model_build_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelBuild | None:
+        """按所属 Model 的 Project 可见范围读取 ModelBuild。"""
+
+        ...
+
+    def get_visible_model_version(
+        self,
+        model_version_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelVersion | None:
+        """按所属 Model 的 Project 可见范围读取 ModelVersion。"""
+
+        ...
+
+    def get_visible_model(
+        self,
+        model_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> Model | None:
+        """按 id 和 Project 可见范围读取 Model；平台基础模型始终可见。"""
+
+        ...
+
     def list_model_builds(self, model_id: str) -> tuple[ModelBuild, ...]:
         """按 Model id 列出所有 ModelBuild。
 

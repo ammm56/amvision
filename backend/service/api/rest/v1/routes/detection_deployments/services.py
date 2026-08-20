@@ -112,9 +112,10 @@ def get_visible_detection_deployment_view(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    view = service.get_deployment_instance(deployment_instance_id)
-    ensure_detection_deployment_visible(principal=principal, view=view)
-    return view
+    return service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
+    )
 
 
 def delete_visible_detection_deployment_instance(

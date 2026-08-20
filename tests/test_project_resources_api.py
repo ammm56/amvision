@@ -2,17 +2,33 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 
 import cv2
 from fastapi.testclient import TestClient
 import numpy as np
-from sqlalchemy import select
+import pytest
+from sqlalchemy import select, text
 
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers.broker_settings import (
     LocalBufferBrokerSettings,
+)
+from backend.service.application.project_bootstrap import (
+    LocalProjectBootstrapService,
+    ProjectBootstrapRequest,
+)
+from backend.service.application.project_deletion import ProjectDeletionService
+from backend.service.application.errors import ResourceInUseError, ResourceNotFoundError
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    build_workflow_lifecycle_resource_key,
+    build_workflow_project_lifecycle_resource_key,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_import import DatasetImport
@@ -22,8 +38,16 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.object_key_layout import (
     build_public_project_file_id,
 )
-from backend.service.infrastructure.persistence.local_auth_orm import LocalAuthUserRecord
+from backend.service.infrastructure.persistence.local_auth_orm import (
+    LocalAuthUserRecord,
+)
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
+from backend.service.infrastructure.persistence.workflow_runtime_orm import (
+    WorkflowApplicationLifecycleRecord,
+    WorkflowAppRuntimeRecord,
+    WorkflowAppVersionRecord,
+    WorkflowRuntimeRevisionRecord,
+)
 from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
@@ -75,7 +99,9 @@ def test_list_and_get_project_detail_expose_catalog_and_summary(tmp_path: Path) 
     assert detail_payload["summary"]["project_id"] == "project-1"
 
 
-def test_project_list_supports_offset_limit_and_pagination_headers(tmp_path: Path) -> None:
+def test_project_list_supports_offset_limit_and_pagination_headers(
+    tmp_path: Path,
+) -> None:
     """验证项目列表接口支持统一分页参数与响应头。"""
 
     client, session_factory = _create_project_resources_test_client(
@@ -120,7 +146,9 @@ def test_project_list_supports_offset_limit_and_pagination_headers(tmp_path: Pat
     assert [item["project_id"] for item in list_response.json()] == ["project-2"]
 
 
-def test_project_object_metadata_and_content_support_image_preview(tmp_path: Path) -> None:
+def test_project_object_metadata_and_content_support_image_preview(
+    tmp_path: Path,
+) -> None:
     """验证项目对象接口可以返回图片元数据并直接输出图片内容。"""
 
     object_key = (
@@ -157,7 +185,9 @@ def test_project_object_metadata_and_content_support_image_preview(tmp_path: Pat
     )
     assert metadata_payload["object_key"] == object_key
     assert metadata_payload["media_type"] == "image/png"
-    assert metadata_payload["content_url"].startswith("/api/v1/projects/project-1/files/content")
+    assert metadata_payload["content_url"].startswith(
+        "/api/v1/projects/project-1/files/content"
+    )
 
     assert content_response.status_code == 200
     assert content_response.headers["content-type"] == "image/png"
@@ -268,8 +298,12 @@ def test_project_file_list_returns_public_files_with_file_ids(tmp_path: Path) ->
 
     input_object_key = "projects/project-1/inputs/gallery/input-1.jpg"
     result_object_key = "projects/project-1/results/workflow-runs/run-1/result.json"
-    version_object_key = "projects/project-1/datasets/dataset-1/versions/version-1/images/sample-1.jpg"
-    private_object_key = "projects/project-1/datasets/dataset-1/imports/import-1/package.zip"
+    version_object_key = (
+        "projects/project-1/datasets/dataset-1/versions/version-1/images/sample-1.jpg"
+    )
+    private_object_key = (
+        "projects/project-1/datasets/dataset-1/imports/import-1/package.zip"
+    )
 
     client, session_factory, dataset_storage = _create_project_resources_test_client(
         tmp_path,
@@ -300,9 +334,13 @@ def test_project_file_list_returns_public_files_with_file_ids(tmp_path: Path) ->
     assert list_response.headers["x-total-count"] == "3"
     payload = list_response.json()
     object_keys = [item["object_key"] for item in payload]
-    assert object_keys == sorted([input_object_key, version_object_key, result_object_key])
+    assert object_keys == sorted(
+        [input_object_key, version_object_key, result_object_key]
+    )
     item_by_object_key = {item["object_key"]: item for item in payload}
-    assert item_by_object_key[input_object_key]["file_id"] == build_public_project_file_id(
+    assert item_by_object_key[input_object_key][
+        "file_id"
+    ] == build_public_project_file_id(
         project_id="project-1",
         object_key=input_object_key,
     )
@@ -340,7 +378,9 @@ def test_project_file_list_rejects_non_public_prefix(tmp_path: Path) -> None:
 def test_project_object_interface_rejects_non_public_namespace(tmp_path: Path) -> None:
     """验证项目对象接口会拒绝 imports 等非公开命名空间。"""
 
-    object_key = "projects/project-1/datasets/dataset-1/imports/dataset-import-1/package.zip"
+    object_key = (
+        "projects/project-1/datasets/dataset-1/imports/dataset-import-1/package.zip"
+    )
     client, session_factory, dataset_storage = _create_project_resources_test_client(
         tmp_path,
         database_name="project-resources-imports.db",
@@ -364,7 +404,9 @@ def test_project_object_interface_rejects_non_public_namespace(tmp_path: Path) -
     assert "allowed_namespaces" in error_payload["details"]
 
 
-def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(tmp_path: Path) -> None:
+def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(
+    tmp_path: Path,
+) -> None:
     """验证 Project bootstrap 会创建目录骨架、manifest，并立即出现在目录列表中。"""
 
     client, session_factory, dataset_storage = _create_project_resources_test_client(
@@ -406,11 +448,17 @@ def test_project_bootstrap_creates_manifest_workspace_and_catalog_entry(tmp_path
     assert dataset_storage.resolve("projects/project-bootstrap/inputs").is_dir()
     assert dataset_storage.resolve("projects/project-bootstrap/results").is_dir()
     assert dataset_storage.resolve("projects/project-bootstrap/datasets").is_dir()
-    assert dataset_storage.resolve("projects/project-bootstrap/workflow/templates").is_dir()
-    assert dataset_storage.resolve("projects/project-bootstrap/workflow/applications").is_dir()
+    assert dataset_storage.resolve(
+        "projects/project-bootstrap/workflow/templates"
+    ).is_dir()
+    assert dataset_storage.resolve(
+        "projects/project-bootstrap/workflow/applications"
+    ).is_dir()
 
     assert list_response.status_code == 200
-    assert [item["project_id"] for item in list_response.json()] == ["project-bootstrap"]
+    assert [item["project_id"] for item in list_response.json()] == [
+        "project-bootstrap"
+    ]
 
 
 def test_local_project_deletion_requires_exact_confirmation_and_removes_workspace(
@@ -454,6 +502,32 @@ def test_local_project_deletion_requires_exact_confirmation_and_removes_workspac
                 json={"confirmation": "project-delete"},
             )
             list_response = client.get("/api/v1/projects", headers=headers)
+            rebootstrap_response = client.post(
+                "/api/v1/projects/bootstrap",
+                headers=headers,
+                json={"project_id": "project-delete"},
+            )
+        lifecycle_service = WorkflowApplicationLifecycleService(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+        )
+        sentinel_key = build_workflow_project_lifecycle_resource_key(
+            project_id="project-delete"
+        )
+        sentinel = lifecycle_service.get(
+            project_id="project-delete",
+            application_id=sentinel_key,
+        )
+        with pytest.raises(ResourceNotFoundError):
+            lifecycle_service.acquire(
+                project_id="project-delete",
+                application_id=build_workflow_lifecycle_resource_key(
+                    "runtime",
+                    "late-runtime",
+                ),
+                operation="saving",
+                allow_deleted=True,
+            )
     finally:
         session_factory.engine.dispose()
 
@@ -464,10 +538,169 @@ def test_local_project_deletion_requires_exact_confirmation_and_removes_workspac
     assert delete_response.status_code == 202
     assert delete_response.json()["project_id"] == "project-delete"
     assert list_response.json() == []
+    assert rebootstrap_response.status_code == 409
     assert not dataset_storage.resolve("projects/project-delete").exists()
+    assert sentinel.state == "idle"
+    assert sentinel.operation_id is None
+    assert sentinel.deleted is True
 
 
-def test_configured_and_default_projects_are_protected_from_deletion(tmp_path: Path) -> None:
+def test_project_deletion_recovery_restores_moves_and_incomplete_manifest(
+    tmp_path: Path,
+) -> None:
+    """验证启动恢复会回滚已移动目录，并清理尚未完成的 manifest staging。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-delete-recovery.db",
+        include_storage=True,
+        project_items=[],
+    )
+    headers = build_test_headers(
+        scopes="projects:delete,workflows:read,models:read,datasets:write"
+    )
+    service = ProjectDeletionService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=client.app.state.queue_backend,
+        default_project_id="project-1",
+        configured_project_ids=(),
+    )
+    claims = []
+    try:
+        with client:
+            for project_id in ("project-recover-moved", "project-recover-manifest"):
+                response = client.post(
+                    "/api/v1/projects/bootstrap",
+                    headers=headers,
+                    json={"project_id": project_id},
+                )
+                assert response.status_code == 201
+                dataset_storage.write_bytes(
+                    f"projects/{project_id}/results/keep.txt",
+                    project_id.encode(),
+                )
+                claims.append(
+                    service.application_lifecycle.acquire_project_deletion(
+                        project_id=project_id
+                    )
+                )
+
+            moved_claim, manifest_claim = claims
+            assert moved_claim.operation_id is not None
+            moved_staging = service._build_staging_root(  # noqa: SLF001
+                moved_claim.operation_id
+            )
+            source_path = "projects/project-recover-moved"
+            destination_path = f"{moved_staging}/0000/project-recover-moved"
+            service._write_deletion_manifest(  # noqa: SLF001
+                staging_root=moved_staging,
+                project_id="project-recover-moved",
+                operation_id=moved_claim.operation_id,
+                paths=((source_path, destination_path),),
+                task_ids=(),
+            )
+            dataset_storage.move_tree(source_path, destination_path)
+
+            assert manifest_claim.operation_id is not None
+            incomplete_staging = service._build_staging_root(  # noqa: SLF001
+                manifest_claim.operation_id
+            )
+            dataset_storage.write_bytes(
+                f"{incomplete_staging}/.manifest-write.tmp",
+                b"partial",
+            )
+
+            recovered = service.recover_interrupted_deletions()
+
+        assert recovered.rolled_back_deletions == 2
+        assert recovered.completed_cleanups == 0
+        for project_id in ("project-recover-moved", "project-recover-manifest"):
+            assert dataset_storage.resolve(
+                f"projects/{project_id}/results/keep.txt"
+            ).is_file()
+            sentinel_key = build_workflow_project_lifecycle_resource_key(
+                project_id=project_id
+            )
+            sentinel = service.application_lifecycle.get(
+                project_id=project_id,
+                application_id=sentinel_key,
+            )
+            assert sentinel.state == "idle"
+            assert sentinel.operation_id is None
+            assert sentinel.deleted is False
+        assert not dataset_storage.resolve(moved_staging).exists()
+        assert not dataset_storage.resolve(incomplete_staging).exists()
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_project_bootstrap_claim_blocks_concurrent_project_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Project 初始化创建目录后仍由持久 claim 阻止并发删除。"""
+
+    client, session_factory, dataset_storage = _create_project_resources_test_client(
+        tmp_path,
+        database_name="project-resources-bootstrap-race.db",
+        include_storage=True,
+        project_items=[],
+    )
+    bootstrap_service = LocalProjectBootstrapService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    deletion_service = ProjectDeletionService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=client.app.state.queue_backend,
+        default_project_id="project-1",
+        configured_project_ids=(),
+    )
+    workspace_ready = Event()
+    release_bootstrap = Event()
+    original_ensure_workspace = (
+        bootstrap_service._ensure_project_workspace  # noqa: SLF001
+    )
+
+    def pause_after_workspace(project_id: str) -> None:
+        original_ensure_workspace(project_id)
+        workspace_ready.set()
+        assert release_bootstrap.wait(timeout=5)
+
+    monkeypatch.setattr(
+        bootstrap_service,
+        "_ensure_project_workspace",
+        pause_after_workspace,
+    )
+    try:
+        with client, ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                bootstrap_service.bootstrap_project,
+                ProjectBootstrapRequest(project_id="project-bootstrap-race"),
+                initialized_by="test-user",
+            )
+            assert workspace_ready.wait(timeout=5)
+            with pytest.raises(ResourceInUseError):
+                deletion_service.application_lifecycle.acquire_project_deletion(
+                    project_id="project-bootstrap-race"
+                )
+            release_bootstrap.set()
+            manifest = future.result(timeout=5)
+
+        assert manifest.project_id == "project-bootstrap-race"
+        assert dataset_storage.resolve(
+            "projects/project-bootstrap-race/project.json"
+        ).is_file()
+    finally:
+        release_bootstrap.set()
+        session_factory.engine.dispose()
+
+
+def test_configured_and_default_projects_are_protected_from_deletion(
+    tmp_path: Path,
+) -> None:
     """验证配置 Project 和默认 Project 不可删除。"""
 
     client, session_factory = _create_project_resources_test_client(
@@ -605,6 +838,91 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
                             updated_at=now,
                         )
                     )
+                    application_id = f"workflow-app-{project_id}"
+                    version_id = f"workflow-app-version-{project_id}"
+                    runtime_id = f"workflow-runtime-{project_id}"
+                    revision_id = f"workflow-runtime-revision-{project_id}"
+                    unit_of_work.session.add_all(
+                        (
+                            WorkflowAppVersionRecord(
+                                workflow_app_version_id=version_id,
+                                project_id=project_id,
+                                application_id=application_id,
+                                version_number=1,
+                                display_version="1.0.0",
+                                release_notes="project deletion test",
+                                application_snapshot_object_key=(
+                                    f"projects/{project_id}/workflow/versions/1/application.json"
+                                ),
+                                template_snapshot_object_key=(
+                                    f"projects/{project_id}/workflow/versions/1/template.json"
+                                ),
+                                contract_snapshot_object_key=(
+                                    f"projects/{project_id}/workflow/versions/1/contract.json"
+                                ),
+                                dependency_manifest_object_key=(
+                                    f"projects/{project_id}/workflow/versions/1/dependencies.json"
+                                ),
+                                content_fingerprint=f"content-{project_id}",
+                                content_deduplication_key=f"dedup-{project_id}",
+                                contract_fingerprint=f"contract-{project_id}",
+                                state="published",
+                                created_at=now,
+                                created_by="project-deletion-test",
+                                completed_at=now,
+                                error=None,
+                            ),
+                            WorkflowApplicationLifecycleRecord(
+                                project_id=project_id,
+                                application_id=application_id,
+                                state="idle",
+                                generation=1,
+                                operation_id=None,
+                                updated_at=now,
+                                deleted=False,
+                            ),
+                            WorkflowAppRuntimeRecord(
+                                workflow_runtime_id=runtime_id,
+                                project_id=project_id,
+                                application_id=application_id,
+                                display_name=runtime_id,
+                                application_snapshot_object_key=(
+                                    f"projects/{project_id}/workflow/runtime/application.json"
+                                ),
+                                template_snapshot_object_key=(
+                                    f"projects/{project_id}/workflow/runtime/template.json"
+                                ),
+                                execution_policy_snapshot_object_key=None,
+                                active_revision_id=revision_id,
+                                desired_revision_id=revision_id,
+                                revision_generation=1,
+                                desired_state="stopped",
+                                observed_state="stopped",
+                                request_timeout_seconds=60,
+                                heartbeat_interval_seconds=5,
+                                heartbeat_timeout_seconds=15,
+                                created_at=now,
+                                updated_at=now,
+                                created_by="project-deletion-test",
+                                health_summary_json={},
+                                metadata_json={},
+                            ),
+                            WorkflowRuntimeRevisionRecord(
+                                workflow_runtime_revision_id=revision_id,
+                                workflow_runtime_id=runtime_id,
+                                generation=1,
+                                workflow_app_version_id=version_id,
+                                execution_policy_snapshot_object_key=None,
+                                expected_snapshot_fingerprint=f"content-{project_id}",
+                                state="active",
+                                created_at=now,
+                                activated_at=now,
+                                failed_at=None,
+                                error=None,
+                                created_by="project-deletion-test",
+                            ),
+                        )
+                    )
                 unit_of_work.session.add(
                     LocalAuthUserRecord(
                         user_id="user-project-delete",
@@ -631,8 +949,7 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
             )
             for project_id in ("project-target", "project-keep"):
                 dataset_storage.write_bytes(
-                    "deployments/instances/"
-                    f"deployment-{project_id}/events.jsonl",
+                    f"deployments/instances/deployment-{project_id}/events.jsonl",
                     b'{"sequence":1}\n',
                 )
             for project_id in ("project-target", "project-keep"):
@@ -670,6 +987,31 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
             auth_user = session.get(LocalAuthUserRecord, "user-project-delete")
             assert auth_user is not None
             remaining_project_ids = auth_user.project_ids_json
+            remaining_version_ids = set(
+                session.execute(
+                    select(WorkflowAppVersionRecord.workflow_app_version_id)
+                )
+                .scalars()
+                .all()
+            )
+            remaining_runtime_ids = set(
+                session.execute(select(WorkflowAppRuntimeRecord.workflow_runtime_id))
+                .scalars()
+                .all()
+            )
+            remaining_revision_ids = set(
+                session.execute(
+                    select(WorkflowRuntimeRevisionRecord.workflow_runtime_revision_id)
+                )
+                .scalars()
+                .all()
+            )
+            remaining_lifecycles = tuple(
+                session.execute(select(WorkflowApplicationLifecycleRecord))
+                .scalars()
+                .all()
+            )
+            foreign_key_errors = session.execute(text("PRAGMA foreign_key_check")).all()
         finally:
             session.close()
     finally:
@@ -678,9 +1020,42 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
     assert preview_response.status_code == 200
     assert preview_response.json()["resource_counts"]["authorization_assignments"] == 1
     assert preview_response.json()["resource_counts"]["queue_messages"] == 1
+    assert preview_response.json()["resource_counts"]["workflow_app_versions"] == 1
+    assert (
+        preview_response.json()["resource_counts"]["workflow_application_lifecycles"]
+        == 2
+    )
     assert delete_response.status_code == 202
     assert remaining_task_ids == {"task-project-keep"}
     assert remaining_project_ids == ["project-keep"]
+    assert remaining_version_ids == {"workflow-app-version-project-keep"}
+    assert remaining_runtime_ids == {"workflow-runtime-project-keep"}
+    assert remaining_revision_ids == {"workflow-runtime-revision-project-keep"}
+    target_sentinel_key = build_workflow_project_lifecycle_resource_key(
+        project_id="project-target"
+    )
+    keep_bootstrap_key = build_workflow_lifecycle_resource_key(
+        "project-bootstrap",
+        "project-keep",
+    )
+    keep_sentinel_key = build_workflow_project_lifecycle_resource_key(
+        project_id="project-keep"
+    )
+    assert {
+        (item.project_id, item.application_id, item.state, item.deleted)
+        for item in remaining_lifecycles
+    } == {
+        (
+            "project-keep",
+            "workflow-app-project-keep",
+            "idle",
+            False,
+        ),
+        ("project-keep", keep_bootstrap_key, "idle", False),
+        ("project-keep", keep_sentinel_key, "idle", False),
+        ("project-target", target_sentinel_key, "idle", True),
+    }
+    assert foreign_key_errors == []
     assert not dataset_storage.resolve("task-runs/task-project-target").exists()
     assert dataset_storage.resolve("task-runs/task-project-keep/output.txt").is_file()
     assert not dataset_storage.resolve(
@@ -689,14 +1064,20 @@ def test_project_deletion_removes_terminal_resources_and_authorization_reference
     assert dataset_storage.resolve(
         "deployments/instances/deployment-project-keep/events.jsonl"
     ).is_file()
-    assert queue_backend.get_task(
-        queue_name="project-delete-project-target",
-        task_id=queue_task_ids["project-target"],
-    ) is None
-    assert queue_backend.get_task(
-        queue_name="project-delete-project-keep",
-        task_id=queue_task_ids["project-keep"],
-    ) is not None
+    assert (
+        queue_backend.get_task(
+            queue_name="project-delete-project-target",
+            task_id=queue_task_ids["project-target"],
+        )
+        is None
+    )
+    assert (
+        queue_backend.get_task(
+            queue_name="project-delete-project-keep",
+            task_id=queue_task_ids["project-keep"],
+        )
+        is not None
+    )
 
 
 def test_project_deletion_is_blocked_by_active_queue_message(tmp_path: Path) -> None:
@@ -748,7 +1129,9 @@ def test_project_deletion_is_blocked_by_active_queue_message(tmp_path: Path) -> 
     assert delete_response.status_code == 409
 
 
-def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(tmp_path: Path) -> None:
+def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(
+    tmp_path: Path,
+) -> None:
     """验证 Project detail summary 会聚合数据集、导入导出、任务和 validation session 统计。"""
 
     client, session_factory, dataset_storage = _create_project_resources_test_client(
@@ -756,8 +1139,12 @@ def test_project_detail_summary_aggregates_dataset_io_and_model_runtime_slices(t
         database_name="project-resources-summary-slices.db",
         include_storage=True,
     )
-    dataset_storage.resolve("projects/project-1/datasets/dataset-1").mkdir(parents=True, exist_ok=True)
-    dataset_storage.resolve("projects/project-1/datasets/dataset-2").mkdir(parents=True, exist_ok=True)
+    dataset_storage.resolve("projects/project-1/datasets/dataset-1").mkdir(
+        parents=True, exist_ok=True
+    )
+    dataset_storage.resolve("projects/project-1/datasets/dataset-2").mkdir(
+        parents=True, exist_ok=True
+    )
     dataset_storage.write_json(
         "runtime/validation-sessions/validation-session-1/session.json",
         _build_validation_session_payload(project_id="project-1", status="ready"),
@@ -941,7 +1328,7 @@ def _create_project_resources_test_client(
                         )
                     ]
                 )
-            )
+            ),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -953,7 +1340,9 @@ def _create_project_resources_test_client(
     return client, session_factory
 
 
-def _build_validation_session_payload(*, project_id: str, status: str) -> dict[str, object]:
+def _build_validation_session_payload(
+    *, project_id: str, status: str
+) -> dict[str, object]:
     """构造最小可读的 validation session JSON。"""
 
     now = _now_isoformat()

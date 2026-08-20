@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
-from backend.service.domain.models.model_records import Model, ModelBuild, ModelScopeKind, ModelVersion
+from backend.service.domain.models.model_records import (
+    PLATFORM_BASE_MODEL_SCOPE,
+    Model,
+    ModelBuild,
+    ModelScopeKind,
+    ModelVersion,
+)
 from backend.service.infrastructure.persistence.model_orm import (
     ModelBuildRecord,
     ModelRecord,
@@ -121,6 +127,7 @@ class SqlAlchemyModelRepository:
                 return
 
             existing_record.project_id = model.project_id
+            existing_record.owner_key = self._owner_key(model.project_id)
             existing_record.scope_kind = model.scope_kind
             existing_record.model_name = model.model_name
             existing_record.model_type = model.model_type
@@ -148,6 +155,27 @@ class SqlAlchemyModelRepository:
             return None
 
         return self._to_model_domain(record)
+
+    def get_visible_model(
+        self,
+        model_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> Model | None:
+        """按 id 和 Project 可见范围读取 Model。"""
+
+        statement = select(ModelRecord).where(ModelRecord.model_id == model_id)
+        statement = self._apply_model_visibility(
+            statement,
+            visible_project_ids=visible_project_ids,
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围读取 Model 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._to_model_domain(record)
 
     def save_model_version(self, model_version: ModelVersion) -> None:
         """保存一个 ModelVersion。"""
@@ -185,6 +213,31 @@ class SqlAlchemyModelRepository:
             return None
 
         return self._to_model_version_domain(record)
+
+    def get_visible_model_version(
+        self,
+        model_version_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelVersion | None:
+        """按所属 Model 的 Project 可见范围读取 ModelVersion。"""
+
+        statement = (
+            select(ModelVersionRecord)
+            .join(ModelRecord, ModelRecord.model_id == ModelVersionRecord.model_id)
+            .where(ModelVersionRecord.model_version_id == model_version_id)
+        )
+        statement = self._apply_model_visibility(
+            statement,
+            visible_project_ids=visible_project_ids,
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围读取 ModelVersion 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._to_model_version_domain(record)
 
     def list_model_versions(self, model_id: str) -> tuple[ModelVersion, ...]:
         """按 Model id 列出所有 ModelVersion。"""
@@ -243,6 +296,44 @@ class SqlAlchemyModelRepository:
 
         return self._to_model_build_domain(record)
 
+    def get_visible_model_build(
+        self,
+        model_build_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelBuild | None:
+        """按所属 Model 的 Project 可见范围读取 ModelBuild。"""
+
+        statement = (
+            select(ModelBuildRecord)
+            .join(ModelRecord, ModelRecord.model_id == ModelBuildRecord.model_id)
+            .where(ModelBuildRecord.model_build_id == model_build_id)
+        )
+        statement = self._apply_model_visibility(
+            statement,
+            visible_project_ids=visible_project_ids,
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见范围读取 ModelBuild 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._to_model_build_domain(record)
+
+    @staticmethod
+    def _apply_model_visibility(statement, *, visible_project_ids: tuple[str, ...]):
+        """把统一 Model 可见性谓词应用到查询。"""
+
+        if not visible_project_ids:
+            return statement
+        return statement.where(
+            or_(
+                ModelRecord.scope_kind == PLATFORM_BASE_MODEL_SCOPE,
+                ModelRecord.project_id.in_(visible_project_ids),
+            )
+        )
+
     def delete_model_build(self, model_build_id: str) -> bool:
         """按 id 删除一个 ModelBuild。"""
 
@@ -282,6 +373,7 @@ class SqlAlchemyModelRepository:
         return ModelRecord(
             model_id=model.model_id,
             project_id=model.project_id,
+            owner_key=self._owner_key(model.project_id),
             scope_kind=model.scope_kind,
             model_name=model.model_name,
             model_type=model.model_type,
@@ -290,6 +382,12 @@ class SqlAlchemyModelRepository:
             labels_file_id=model.labels_file_id,
             metadata_json=dict(model.metadata),
         )
+
+    @staticmethod
+    def _owner_key(project_id: str | None) -> str:
+        """把可空 project_id 转为跨数据库稳定的 Model 所有者键。"""
+
+        return "__platform__" if project_id is None else project_id
 
     def _to_model_version_record(self, model_version: ModelVersion) -> ModelVersionRecord:
         """把 ModelVersion 领域对象转换为 ORM 实体。"""

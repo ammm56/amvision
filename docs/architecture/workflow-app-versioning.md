@@ -2,11 +2,11 @@
 
 ## 文档状态
 
-本文档是 Workflow App 版本管理链路的规划规范，当前尚未完整实现。
+本文档是 Workflow App 版本管理链路的现行规范。不可变 `WorkflowAppVersion`、`WorkflowRuntimeRevision`、Application lifecycle CAS、generation CAS、stopped-only 版本选择、运行来源记录、旧 Runtime 幂等迁移和失败恢复已经实现。
 
-当前已经实现的是：创建 `WorkflowAppRuntime` 时复制当时的 FlowApplication、WorkflowGraphTemplate 和可选 WorkflowExecutionPolicy 快照；后续继续编辑 Workflow App 不会改变已经创建的 Runtime。当前还没有不可变的 Workflow App 发布版本、Runtime revision、版本切换和运行版本来源记录。
+当前实现保留 `/api/v1` 的兼容期：新调用使用准确 `workflow_app_version_id` 创建 Runtime，旧客户端仍可暂时使用互斥的 `application_id`，服务会立即把该 Runtime 自己的快照导入为不可变版本。既有 Runtime/Trigger id 和调用地址不会变化。
 
-实现前不得把本文档中的规划接口写入“当前公开 API”清单。实现完成后，应同步更新 [docs/api/current-api.md](../api/current-api.md)、OpenAPI、SDK 配置包和迁移说明。
+正式接口见 [docs/api/workflow-app-versions.md](../api/workflow-app-versions.md) 和 [docs/api/workflow-app-runtimes.md](../api/workflow-app-runtimes.md)。
 
 ## 文档目的
 
@@ -22,25 +22,32 @@
 
 本文档不替代 [docs/architecture/workflow-runtime.md](workflow-runtime.md)。后者定义执行面、worker 和运行状态；本文档只定义 Workflow App 发布版本和 Runtime 版本选择。
 
-## 当前实现与真实缺口
+## 实现状态与保留边界
 
 ### 当前已经成立的行为
 
 - FlowApplication 是可继续保存和编辑的文档。
 - WorkflowGraphTemplate 按 `template_id/template_version` 保存，但同一个 `template_version` 仍可被再次写入，因此不能直接视为不可变生产发布物。
-- 创建 WorkflowAppRuntime 时，服务把当时的 Application、Template 和可选 ExecutionPolicy 复制到 Runtime 自己的 snapshot 目录。
-- Runtime worker 只加载自己的固定 snapshot，不在每次请求时重新读取可变 Application。
+- 新建 WorkflowAppRuntime 时选择准确 WorkflowAppVersion；v1 旧 `application_id` 路径会先固定快照再导入版本结构。
+- Runtime worker 只加载 revision 指向的不可变版本和固定 ExecutionPolicy snapshot，不在每次请求时读取可变 Application。
 - TriggerSource 绑定稳定的 `workflow_runtime_id`，不会直接绑定 Application 或 Template。
 - 同一个 Workflow App 可以创建多个 Runtime；当前每个 Runtime 是一个长期 worker 进程，不等同于一个 Runtime 内的多副本实例池。
 
-### 当前缺口
+### 已实现
 
-- Workflow App 没有独立的、不可变的发布版本资源。
-- Runtime 只能在创建时固定快照，不能选择另一个已发布版本。
-- 修改 Workflow App 后，只能重新创建 Runtime，导致 Runtime id、Trigger 配置和第三方 SDK 配置发生变化。
-- WorkflowRun 没有完整记录实际执行的 Workflow App 版本、Runtime revision 和 generation。
-- 更新前没有统一比较公开输入输出契约，也没有校验已有 Trigger 映射是否仍兼容。
-- 更新和回滚没有 generation CAS，两个控制请求可能互相覆盖。
+- 发布时生成独立且不可变的 WorkflowAppVersion，并固定内容、契约、依赖和 manifest 指纹。
+- Runtime 通过 WorkflowRuntimeRevision 选择准确版本；升级与回滚保留 Runtime/Trigger id。
+- 同步、异步和 Trigger WorkflowRun 均固定 revision、version、generation 和 snapshot fingerprint。
+- 版本选择使用 expected_generation CAS，并校验 stopped、无活动 run、Trigger 停用和映射兼容性。
+- 启动失败保留最后成功 active revision；服务重启不会静默激活 staged revision。
+- 旧 Runtime 按自身快照做幂等迁移，不使用迁移时的最新草稿替换生产内容。
+- 同一 Application 的保存、发布和删除由持久化 lifecycle CAS 串行，竞争请求立即返回冲突，不进入队列或轮询。
+
+### 保留边界
+
+- 第一阶段仍是停机切换，不做灰度、流量拆分或双 worker 无停机更新。
+- `application_id` 创建只用于 v1 兼容；新前端和新 SDK 控制面使用 `workflow_app_version_id`。
+- 发布版本当前不提供物理删除接口；被 revision 或 run 引用的内容必须保留。
 
 ## 目标与非目标
 
@@ -136,6 +143,8 @@ flowchart LR
 8. 生产请求热路径不访问版本列表，不做“最新版本”解析，不重新做契约比较。
 9. 被 Runtime revision 或 WorkflowRun 引用的版本不能物理删除，只能归档。
 10. 版本切换必须使用 `expected_generation` 做 CAS；并发控制请求只有一个可以成功。
+11. 同一 Application 的保存、发布和删除必须先占用持久化 lifecycle；文件 I/O 期间不能持有数据库事务。
+12. 新建 Runtime 或新增 Runtime revision 时，目标版本的 `published` 校验必须与引用写入处于同一短事务；archive 成功提交后不能再产生指向该 archived 版本的新引用。
 
 ## 领域模型
 
@@ -149,6 +158,24 @@ flowchart LR
 - 生成下一份 WorkflowAppVersion
 
 草稿不能成为迁移完成后的新 Runtime 生产来源。Preview 仍然可以直接运行草稿，生产 Runtime 只能运行发布版本。
+
+草稿 JSON 存在 ObjectStore，而版本记录存在数据库，因此写操作必须共享数据库中的 `WorkflowApplicationLifecycle`。每个 `(project_id, application_id)` 只有一行：
+
+| 字段 | 说明 |
+| --- | --- |
+| state | idle、saving、publishing 或 deleting |
+| generation | 每次成功占用时单调递增 |
+| operation_id | 当前操作唯一 id；idle 时为空 |
+| updated_at | 最近一次 CAS 时间 |
+| deleted | 物理删除后的 tombstone；重新保存成功后清除 |
+
+占用和释放各使用一个短事务。占用由 `state=idle + expected_generation` 的条件更新完成；释放还必须匹配 `generation + operation_id`。文件校验、JSON 写入、staging 和目录移动均在事务外执行。这样同时适用于 SQLite、MySQL 和 PostgreSQL，也不会把控制面协调引入 Runtime 推理热路径。
+
+编辑器保存必须把 Application 与其 Template 放进同一个 Application PUT bundle 请求。服务先交叉校验两份文档，再按 Application claim→Template resource claim 的固定顺序保存。Template 和 Application 的主 JSON 与 sidecar 在修改前写入以外层 Application operation id 命名的持久 journal；manifest 完整落盘后才允许替换权威对象，两份文档完成并 fsync 后再写 committed marker。普通异常立即按 journal 逆序恢复；进程退出后，启动流程先清理无 manifest 的 prepare 残留、回滚未 committed journal、清理已 committed journal，之后才恢复发布记录并释放 lifecycle claim。回滚失败会保留 journal 和两层 claim，并阻止服务进入可写状态。Template 可被多个 App 引用，因此不能只锁当前 App：独立 Template PUT/DELETE、COPY 的 source/target、显式发布和旧 Runtime 自动导入都使用同一个按 `template_id/template_version` 派生的持久化保留 resource key。COPY 对去重后的 source/target key 排序后依次占用。竞争操作立即 409，不等待，也不进入 Runtime 热路径。真实 Application id（包括 copy source/target）禁止使用 lifecycle 保留前缀；保留资源的启动恢复不应用 Application tombstone 语义。
+
+Project 删除复用同一张 lifecycle 表中的保留 sentinel。普通控制写先在一个短事务内原子 touch Project sentinel，再创建或占用自己的 resource claim；真实文件和 worker 控制在事务外执行，不同资源的操作可以并行。Project 删除先把 sentinel 从 `idle` 条件更新为 `deleting`，并在同一事务确认没有其他活动 claim；先进入的一方成立，另一方立即返回 409，不使用业务队列、轮询或自动重试。删除提交事务会清理该 Project 的普通 lifecycle 行并保留 `deleted=true` 的 sentinel tombstone，阻止迟到请求重新写回已删除目录。删除前移动的文件由 operation manifest 记录；启动恢复会在 API 开放前回滚未提交的移动，已提交 tombstone 只补做 staging 清理。该 admission 覆盖 Application/Template/版本、Preview、执行策略、Runtime、TriggerSource，以及 Task 创建、Dataset 导入/导出提交、Model 训练输出/构建登记和 DeploymentInstance 创建等低频 Project 资源写入；一次性资源 claim 在提交后删除。同步/异步 invoke、Task 事件、Run、取消、heartbeat 和 worker callback 不经过 sentinel，生产推理和 worker 热路径没有新增数据库访问。
+
+启动恢复属于独占维护阶段：同一 Local ObjectStore 根目录不能在一个服务仍接收写请求时由另一个 backend 实例执行启动恢复。多 API 进程在正常请求阶段可以依靠数据库 CAS 竞争，但进程编排必须先完成一次统一 bootstrap，再开放流量。这与当前本地优先、单一 backend owner 的部署边界一致；若以后支持跨主机共享 ObjectStore 和滚动重启，需要另行增加明确的服务 owner lease，不能把 lifecycle claim 当作分布式存活探针。
 
 ### WorkflowAppVersion
 
@@ -176,10 +203,12 @@ flowchart LR
 
 - `(project_id, application_id, version_number)` 唯一。
 - `(project_id, workflow_app_version_id)` 唯一。
+- 默认内容占位 `(project_id, application_id, content_deduplication_key)` 唯一；该内部字段只在默认发布时等于 `content_fingerprint`，显式允许重复时为空。
 - `version_number` 是并发和排序依据；可选 SemVer 只用于展示，不能代替内部序号。
 - `published` 后所有 snapshot object key、fingerprint 和 dependency manifest 不允许修改。
 - `publishing` 和 `failed` 只用于发布事务恢复，默认不进入可供 Runtime 选择的版本列表。
 - 同一 `content_fingerprint` 是否允许重复发布，由产品策略决定；默认可以阻止误操作，也可以要求填写新的 release note 后显式重复发布。
+- 同一 Application 的并发发布先由 lifecycle CAS 裁决，数据库内容唯一约束继续保护持久化不变量；两者都不增加队列、等待线程或后台重试，失败发布清空内容占位并允许后续明确重试。
 
 ### 发布快照内容
 
@@ -190,7 +219,7 @@ WorkflowAppVersion 必须冻结：
 - 公开 API/Trigger 输入输出契约
 - 每个节点的 definition id 与实现 version
 - 每个 custom node pack 的 id、version、manifest 摘要和可校验资产指纹
-- 直接引用的 DeploymentInstance、模型版本、规则或其他稳定资源 id
+- Template 节点参数和 Application bindings 直接引用的 DeploymentInstance、模型版本、规则或其他稳定资源 id
 - WorkflowExecutionPolicy 的选择方式；如果 policy 会影响执行结果，应固定 policy snapshot
 - 所有 snapshot 文件的大小、哈希和相互引用关系
 
@@ -251,8 +280,9 @@ WorkflowRun 增加：
 | workflow_app_version_id | 本次实际使用的 App 版本 |
 | runtime_generation | 接收请求时的 Runtime generation |
 | snapshot_fingerprint | worker 实际确认的 snapshot 指纹 |
+| worker_instance_id | 本次固定并调用的 worker epoch；历史记录无法确定时为空 |
 
-同步 invoke、异步 run 和 TriggerSource 创建的 run 都必须写入同一组字段。
+同步 invoke、异步 run 和 TriggerSource 创建的 run 都必须写入同一组字段。`worker_instance_id` 在 Run 创建时从已经通过 active revision、generation 和 fingerprint 校验的 running Runtime 固定，后续 Runtime 重启或切换版本不得覆盖旧 Run 的来源字段；历史记录不能用当前 worker epoch 猜测回填。
 
 ## `template_version` 与生产发布版本的边界
 
@@ -277,18 +307,23 @@ WorkflowRun 增加：
 
 发布必须按下面顺序执行：
 
-1. 读取草稿，并校验调用方提供的 `expected_draft_fingerprint`。
-2. 校验 Application 与 Template 引用、图结构、bindings 和公开输入输出。
-3. 解析所有 NodeDefinition、custom node pack version 和直接资源引用。
-4. 生成公开 contract snapshot 与 dependency manifest。
-5. 对 JSON 做稳定键排序、稳定数字和字符串编码，计算 content/contract fingerprint。
-6. 把所有文件写入 staging 目录。
-7. 重新读取 staging 文件并校验大小、哈希和内部引用。
-8. 使用数据库事务分配 `version_number`，写入 `publishing` WorkflowAppVersion 记录。
+1. 用短事务 CAS 占用该 Application 的 `publishing` lifecycle。
+2. 读取草稿，并校验调用方提供的 `expected_draft_fingerprint`。
+3. 校验 Application 与 Template 引用、图结构、bindings 和公开输入输出。
+4. 解析所有 NodeDefinition、custom node pack version 和直接资源引用。
+5. 生成公开 contract snapshot 与 dependency manifest，并计算稳定 content/contract fingerprint。
+6. 使用短数据库事务分配 `version_number`，写入 `publishing` WorkflowAppVersion 记录和默认内容占位。
+7. 把所有文件写入 staging 目录。
+8. 重新读取 staging 文件并校验大小、哈希和内部引用，最后写完成 manifest。
 9. 原子 rename staging 目录到最终版本目录；若存储后端不支持事务 rename，则使用 manifest 完成标记。
-10. 写入 `published` 完成状态，并返回版本、fingerprint 和契约差异；任一步失败则写入 `failed` 并保留可诊断信息。
+10. 用短事务写入 `published` 完成状态；任一步失败则写入 `failed`、释放内容占位并保留诊断信息。
+11. 用 `generation + operation_id` CAS 释放 Application lifecycle，再返回版本记录与 fingerprint。
 
-数据库事务不能覆盖 ObjectStore 文件写入。实现必须具备 staging、完成 manifest、失败清理和孤儿目录回收，不能假设数据库回滚会删除文件。
+数据库事务不能覆盖 ObjectStore 文件写入。`publishing` 记录必须先于 staging，保证每个新 staging 都有数据库恢复来源。实现仍必须具备完成 manifest、失败清理和启动期孤儿目录回收，不能假设数据库回滚会删除文件。
+
+第 6 步同时处理默认内容占位。普通发布把 `content_fingerprint` 写入 nullable `content_deduplication_key`，并由数据库唯一约束决定唯一胜者；显式 `allow_duplicate_content` 发布写空值。相同内容已有 `publishing`、`published` 或 `archived` 占位时直接返回冲突。发布或启动恢复最终标记为 `failed` 时必须在同一事务清空占位，避免失败记录永久阻塞后续重试。
+
+dependency manifest 中的 `implementation_identity` 是既有稳定身份的显式审计视图：core node 来自 `NodeDefinition.version`，custom node 来自 node definition version、node pack version 和 manifest SHA-256。实现不扫描全仓源码，也不使用文件时间；代码变化必须通过已有版本和 manifest 管理边界表达。Application 本体原本已完整进入 content fingerprint，新增的 binding 资源展开项只提高可读性，不改变既有版本的指纹算法或导致旧 Runtime 误报漂移。
 
 ## Runtime 创建
 
@@ -320,14 +355,18 @@ WorkflowRun 增加：
 2. 停止 Runtime 新请求准入；直接 invoke 在维护窗口返回明确的 409/503，不在服务内排队等待切换。
 3. 等待已有 run 在受控超时内完成；超时后的取消规则沿用 WorkflowRun 状态机。
 4. 停止当前 worker，并确认进程已经退出、LocalBuffer 引用已释放。
-5. 调用 `select-version`。接口在数据库事务中再次校验 stopped、无活动 run、Trigger 已停用和 `expected_generation`，创建 generation + 1 的 staged revision，并设置 desired pointer。
+5. 调用 `select-version`。接口在数据库事务中再次校验 stopped、无活动 run、Trigger 已停用和 `expected_generation`，通过目标版本行的条件 UPDATE 固定其仍为 `published`，再创建 generation + 1 的 staged revision并设置 desired pointer。
 6. 显式调用 Runtime start。worker 从 desired revision 对应的 WorkflowAppVersion 构建可加载快照并启动。
-7. worker 返回实际加载的 fingerprint、节点包版本和健康结果。
+7. worker 按实际节点目录重新计算覆盖节点定义和 node pack manifest 的完整 content fingerprint，并返回 loaded fingerprint 和健康结果。
 8. 控制面比较 loaded fingerprint 与 revision expected fingerprint。
 9. 验证成功后，在事务内把旧 active revision 标为 retired、新 revision 标为 active，同时更新 active/desired pointer。
 10. 操作人员或前端显式恢复原本启用的 TriggerSource。
 
 `select-version` 不隐式启停 Trigger，也不隐式启动 worker。这样每个控制操作都只有一个明确职责，失败时可以从当前 stopped 状态继续处理。
+
+新建 Runtime 使用同一版本引用 fence。该 fence 是 `WHERE state = 'published'` 的条件 UPDATE，并与 Runtime/revision 写入共用一个事务；archive 的 `published -> archived` CAS 也写同一版本行。因此两者在 SQLite、MySQL 和 PostgreSQL 上只有一个数据库顺序：引用事务先完成时，archive 可以随后成功且引用已经存在；archive 先完成时，后到的 create 或 `select-version` 返回 409，不能写入 Runtime/revision。实现不依赖仅对部分数据库有效的 `SELECT FOR UPDATE`，也不增加排队或应用层重试。
+
+restore 仍使用 `archived -> published` CAS。恢复成功只是重新开放后续引用 fence，不修改既有 Runtime/revision，也不绕过 Runtime 自己的 generation CAS。
 
 Runtime id、TriggerSource id、HTTP 路由、ZeroMQ 地址和 SDK 配置文件中的 Runtime key 全程不变。
 
@@ -345,8 +384,9 @@ Runtime id、TriggerSource id、HTTP 路由、ZeroMQ 地址和 SDK 配置文件�
 - `workflow_app_version_id`
 - `revision_generation`
 - `expected_snapshot_fingerprint`
+- `worker_instance_id`
 
-这些值随 WorkflowRun 一起提交给 worker。worker 只接受与自身 loaded fingerprint 和 revision 相符的 run。控制面切换之后，已接受的旧请求仍由旧 revision 完成；第一阶段停机切换会先 drain，所以正常情况下不会存在跨 revision 的在途请求。
+这些值随 WorkflowRun 一起提交给 worker。worker 只接受与自身 revision、generation、loaded fingerprint 和 worker epoch 相符的 run。控制面切换之后，已接受的旧请求仍保留原固定来源；第一阶段停机切换会先 drain，所以正常情况下不会存在跨 revision 的在途请求。
 
 所有选择版本请求必须提交 `expected_generation`。两个操作同时基于 generation 3 发起时，只允许一个创建 generation 4；另一个返回 409 并带回当前 generation 和 active version。
 
@@ -374,7 +414,10 @@ generation 4 -> App v2  （回滚）
 
 ### 服务重启恢复
 
+- 启动先按 `publishing` 版本记录恢复完整 staging，或把不完整发布标记为 failed；随后清理旧实现遗留的无记录 staging。
+- 启动时先恢复 Project 删除中断状态，再恢复 Workflow App bundle journal，然后恢复未完成版本发布，最后才释放中断的 lifecycle claim；真实 Application tombstone 按 `application.json` 是否存在收敛，Template 等保留 resource claim 始终恢复为 `deleted=false`，旧 generation 的迟到完成不能覆盖新操作。
 - Runtime manager 从 active/desired revision 和状态记录恢复，不从 Application 草稿恢复。
+- Runtime manager 的启动方法会等待一次有界并行恢复完成，backend bootstrap 随后才恢复 enabled TriggerSource；协议 adapter 不会在目标 worker 尚未就绪时提前开放首批流量。
 - desired 为未完成 staged revision 时，默认保持 Runtime stopped/failed 并等待显式处理；不能静默切到目标版本。
 - active revision 的 snapshot fingerprint 与磁盘内容不一致时禁止启动，并报告资产损坏。
 - 已处于 running desired state 的 Runtime 只能在确认 active revision 完整后重建 worker。
@@ -446,7 +489,7 @@ workflows/runtime/app-runtimes/{workflow_runtime_id}/revisions/{generation}/
   manifest.json
 ```
 
-Runtime revision 可以引用 WorkflowAppVersion 的不可变对象，也可以在 Runtime 目录保存经过校验的可加载副本。第一阶段建议保留可加载副本，Runtime 启动不依赖 Application 目录的临时状态；manifest 必须记录来源 version id 和源 fingerprint，避免产生两套无法核对的内容。
+当前 Runtime revision 直接引用 WorkflowAppVersion 的不可变对象，并保存 expected snapshot fingerprint。Runtime 启动只读取已发布版本目录，不读取 Application 草稿；这样避免为每个 Runtime 重复复制图结构，同时保持内容唯一、可核对。ExecutionPolicy 继续按 revision 固定自己的 snapshot。
 
 ### 数据库表
 
@@ -454,6 +497,7 @@ Runtime revision 可以引用 WorkflowAppVersion 的不可变对象，也可以�
 
 - `workflow_app_versions`
 - `workflow_runtime_revisions`
+- `workflow_application_lifecycles`
 
 建议修改：
 
@@ -468,15 +512,13 @@ Runtime revision 可以引用 WorkflowAppVersion 的不可变对象，也可以�
 - published version 只能归档。
 - 被 Runtime revision 或 WorkflowRun 引用的 version 不允许物理删除。
 - Runtime 删除时是否删除 revision 可按现有保留策略处理，但 WorkflowRun 仍需保留可读的版本来源摘要。
-- ObjectStore 孤儿文件由显式维护任务按 manifest 和数据库引用清理，不能在正常请求热路径扫描目录。
+- 版本 staging 孤儿目录只在服务启动、尚未接收请求时按数据库 publishing 记录收敛和清理；正常请求热路径不扫描目录。其他 ObjectStore 孤儿文件仍由显式维护任务按 manifest 和数据库引用清理。
 
-## 公开 API 规划
-
-本节只定义目标语义，当前尚未公开。实现时必须遵守公开 API 显式版本化规则。
+## 当前公开 API
 
 ### App 版本接口
 
-建议新增：
+当前接口：
 
 ```text
 POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions
@@ -494,17 +536,19 @@ GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versi
 }
 ```
 
-服务返回 `workflow_app_version_id`、`version_number`、两个 fingerprint、依赖摘要和相对上一版本的契约差异。
+发布接口返回 `workflow_app_version_id`、`version_number`、两个 fingerprint 和状态信息；详情接口返回依赖快照，compare 接口返回指定版本相对当前草稿的契约差异。
 
 ### Runtime revision 接口
 
-建议新增：
+当前接口：
 
 ```text
 POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/select-version
 GET  /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions
 GET  /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions/{workflow_runtime_revision_id}
 ```
+
+revision 列表使用统一 `offset`/`limit` 分页，响应头返回 `x-total-count`、`x-has-more` 和可用时的 `x-next-offset`；版本历史增长不会要求前端一次加载全部记录。
 
 选择版本请求至少包含：
 
@@ -519,18 +563,13 @@ GET  /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions/{workflow_ru
 
 ### Runtime 创建接口版本
 
-当前 `/api/v1/workflows/app-runtimes` 以 `application_id` 创建并直接复制草稿快照。把 `workflow_app_version_id` 改成必填会破坏现有公开请求体，因此不能静默改变 v1 语义。
+当前 `/api/v1/workflows/app-runtimes` 对新调用使用 `workflow_app_version_id`；继续接受 `application_id` 是为了不静默破坏现有 v1 请求体。
 
-实施时采用下面任一显式兼容方案，默认优先第一种：
-
-1. 新增 `/api/v2/workflows/app-runtimes`，只接受 `workflow_app_version_id`，新前端和新 SDK 使用 v2；v1 进入弃用期。
-2. v1 先增设可选且与 `application_id` 互斥的 `workflow_app_version_id`，再在后续明确的 API 大版本中取消草稿创建方式。
-
-不得直接在现有 v1 中把 `application_id` 改为无效字段。迁移完成后的目标状态是：所有新 Runtime 都从发布版本创建。
+当前采用兼容方案：v1 增设可选且与 `application_id` 互斥的 `workflow_app_version_id`。新前端和新 SDK 控制面使用发布版本；`application_id` 保留给旧客户端迁移，后续只在明确的 API 大版本中移除。
 
 ### 资源 format_id
 
-建议新增：
+当前资源：
 
 - `amvision.workflow-app-version.v1`
 - `amvision.workflow-runtime-revision.v1`
@@ -651,7 +690,7 @@ ComfyUI 可以参考图 JSON、节点和 prompt snapshot 的编辑执行体验�
 - 回滚生成更大的 generation，并准确记录目标历史版本。
 - 破坏性输入输出变化默认被阻止，错误包含字段级差异和受影响 Trigger。
 - 两个相同 expected_generation 的并发切换只有一个成功。
-- 每个 WorkflowRun 可以追溯到 revision、version、generation 和 fingerprint。
+- 每个新 WorkflowRun 可以追溯到 revision、version、generation、fingerprint 和实际 worker epoch；历史记录未知的 epoch 明确为空。
 - 迁移前后的 Runtime/Trigger id、协议地址和 SDK 配置完全一致。
 
 ### 性能和稳定性

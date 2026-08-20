@@ -8,6 +8,9 @@ from typing import Any
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.rfdetr_core.runtime import resolve_rfdetr_runtime_input_size
 from backend.service.application.models.rfdetr_core.segmentation import build_rfdetr_segmentation_model
+from backend.service.application.models.rfdetr_core.models.weights import (
+    load_rfdetr_deployment_weights,
+)
 from backend.service.application.runtime.predictors.rfdetr.io import (
     build_rfdetr_input_array,
     load_rfdetr_runtime_input_image,
@@ -87,12 +90,19 @@ class PyTorchRfdetrSegmentationRuntimeSession:
             model_scale=runtime_target.model_scale,
             input_size=runtime_target.input_size,
         )
+        checkpoint_path = runtime_target.runtime_artifact_path
+        if checkpoint_path is None:
+            raise InvalidRequestError(
+                "RF-DETR segmentation PyTorch deployment 缺少 checkpoint 文件"
+            )
         model = build_rfdetr_segmentation_model(
             model_scale=runtime_target.model_scale,
             num_classes=len(runtime_target.labels),
-            pretrained_path=str(runtime_target.runtime_artifact_path)
-            if runtime_target.runtime_artifact_path
-            else None,
+            pretrained_path=None,
+        )
+        load_rfdetr_deployment_weights(
+            model=model,
+            checkpoint_path=checkpoint_path,
         )
         device_name = runtime_target.device_name or "cpu"
         if device_name == "cuda" and torch.cuda.is_available():

@@ -14,12 +14,13 @@
 - [docs/api/workflows.md](workflows.md)：workflow template/application、node catalog 和 workflow runtime 当前公开边界说明
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态同步直调、JSONL 事件和结果回查
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、delete、start、stop、restart、health、instances 和事件历史
+- [docs/api/workflow-app-versions.md](workflow-app-versions.md)：Workflow App 不可变版本的发布、列表、详情、草稿契约比较和迁移规则
 - [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、multipart invoke、async run create、multipart run create、事件历史和取消
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的执行默认项
 - [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)：workflow runtime 当前公开文档和后续扩展草案的导航页
 - [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 资源和 ZeroMQ adapter 的接口边界，覆盖外部触发入口、启停、health 和后续协议扩展
 - [docs/api/workflow-sdks.md](workflow-sdks.md)：Workflow 外部调用方 SDK 规划，覆盖 C# / .NET、Python、Go 和 C SDK 的目录、调用流程和版本规则
-- [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)：Workflow App 版本发布和 Runtime 稳定切换的待实现架构规范；其中规划接口不属于当前公开 API
+- [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)：Workflow App 版本发布、Runtime revision、稳定 id、停机切换、回滚和恢复规范
 - [docs/api/model-deployment-sdks.md](model-deployment-sdks.md)：模型 DeploymentInstance 现场调用 SDK 规划，固定不做部署管理、只做 runtime 控制和推理调用，以及 `config_*.json` 合并 catalog 与重复 key 规则
 - [docs/api/sdk-config-packages.md](sdk-config-packages.md)：SDK `config_*.json` 配置包生成接口，固定项目工作台唯一入口、后端统一生成 zip、workflow runtime / TriggerSource / 模型 deployment 的导出边界
 - [docs/api/communication-contracts.md](communication-contracts.md)：REST API、WebSocket、ZeroMQ 的职责拆分与事件规则边界

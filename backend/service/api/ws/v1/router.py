@@ -189,11 +189,11 @@ async def subscribe_task_events(socket: WebSocket) -> None:
         await socket.close(code=1011, reason="service_event_bus_not_ready")
         return
     try:
-        task_detail = service.get_task(task_id)
+        service.get_visible_task(
+            task_id,
+            visible_project_ids=principal.project_ids,
+        )
     except Exception:
-        await socket.close(code=4404, reason="task_not_found")
-        return
-    if principal.project_ids and task_detail.task.project_id not in principal.project_ids:
         await socket.close(code=4404, reason="task_not_found")
         return
 
@@ -294,11 +294,11 @@ async def subscribe_training_telemetry(socket: WebSocket) -> None:
 
     service = SqlAlchemyTaskService(session_factory)
     try:
-        task_detail = service.get_task(task_id)
+        task_detail = service.get_visible_task(
+            task_id,
+            visible_project_ids=principal.project_ids,
+        )
     except Exception:
-        await socket.close(code=4404, reason="task_not_found")
-        return
-    if principal.project_ids and task_detail.task.project_id not in principal.project_ids:
         await socket.close(code=4404, reason="task_not_found")
         return
     if "training" not in task_detail.task.task_kind:

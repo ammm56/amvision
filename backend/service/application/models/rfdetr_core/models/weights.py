@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List
 
@@ -26,13 +27,54 @@ __all__ = [
     "analyze_rfdetr_checkpoint_load_coverage",
     "apply_lora",
     "interpolate_position_embeddings",
+    "load_rfdetr_deployment_weights",
     "load_pretrain_weights",
     "load_rfdetr_checkpoint_state_dict",
+    "RfdetrDeploymentLoadReport",
+    "RfdetrWarmStartLoadReport",
 ]
 
 _PE_KEY_SUFFIX = "embeddings.position_embeddings"
 
 _QUERY_PARAM_SUFFIXES: tuple[str, ...] = ("refpoint_embed.weight", "query_feat.weight")
+
+
+@dataclass(frozen=True)
+class RfdetrDeploymentLoadReport:
+    """描述一次 RF-DETR 部署权重的严格加载结果。"""
+
+    checkpoint_path: str
+    source_name: str
+    model_key_count: int
+    source_key_count: int
+    loaded_key_count: int
+    model_numel: int
+    loaded_numel: int
+
+    @property
+    def key_coverage(self) -> float:
+        """返回按 state_dict key 计算的覆盖率。"""
+
+        if self.model_key_count == 0:
+            return 1.0
+        return self.loaded_key_count / self.model_key_count
+
+    @property
+    def numel_coverage(self) -> float:
+        """返回按参数和 buffer 元素数量计算的覆盖率。"""
+
+        if self.model_numel == 0:
+            return 1.0
+        return self.loaded_numel / self.model_numel
+
+
+@dataclass(frozen=True)
+class RfdetrWarmStartLoadReport:
+    """描述 warm-start 明确允许忽略的参数差异。"""
+
+    checkpoint_path: str
+    allowed_missing_keys: tuple[str, ...]
+    allowed_unexpected_keys: tuple[str, ...]
 
 
 def _require_local_checkpoint(path: str) -> Path:
@@ -66,9 +108,72 @@ def load_rfdetr_checkpoint_state_dict(path: str | Path) -> dict[str, torch.Tenso
     """
 
     checkpoint_path = _require_local_checkpoint(str(path))
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    normalized = _normalize_checkpoint_payload(checkpoint, checkpoint_path)
+    normalized, _ = _load_normalized_checkpoint(checkpoint_path)
     return dict(normalized["model"])
+
+
+def load_rfdetr_deployment_weights(
+    *,
+    model: torch.nn.Module,
+    checkpoint_path: str | Path,
+) -> RfdetrDeploymentLoadReport:
+    """严格加载 RF-DETR 部署或转换权重。
+
+    部署链路不允许 warm-start 适配。checkpoint 必须覆盖目标模型的全部
+    state_dict key，不能包含未知 key，也不能存在 shape mismatch。完成显式
+    覆盖检查后仍使用 ``strict=True``，避免后续模型结构变化绕过本门禁。
+    """
+
+    checkpoint_path_obj = _require_local_checkpoint(str(checkpoint_path))
+    normalized_checkpoint, source_name = _load_normalized_checkpoint(
+        checkpoint_path_obj
+    )
+    source_state_dict = _normalize_state_dict_for_model(
+        model=model,
+        source_state_dict=dict(normalized_checkpoint["model"]),
+        checkpoint_path=checkpoint_path_obj,
+    )
+    coverage = analyze_state_dict_coverage(
+        model=model,
+        source_state_dict=source_state_dict,
+        key_prefixes_to_strip=(),
+    )
+    model_state_dict = model.state_dict()
+    loaded_numel = sum(
+        int(model_state_dict[key].numel())
+        for key in source_state_dict
+        if key in model_state_dict
+        and tuple(source_state_dict[key].shape) == tuple(model_state_dict[key].shape)
+    )
+    model_numel = sum(int(tensor.numel()) for tensor in model_state_dict.values())
+    report = RfdetrDeploymentLoadReport(
+        checkpoint_path=str(checkpoint_path_obj),
+        source_name=source_name,
+        model_key_count=coverage.model_key_count,
+        source_key_count=coverage.source_key_count,
+        loaded_key_count=coverage.loadable_key_count,
+        model_numel=model_numel,
+        loaded_numel=loaded_numel,
+    )
+    if (
+        coverage.missing_keys
+        or coverage.unexpected_keys
+        or coverage.shape_mismatch_keys
+        or coverage.loadable_key_count != coverage.model_key_count
+        or loaded_numel != model_numel
+    ):
+        raise ValueError(
+            "RF-DETR 部署 checkpoint 与目标模型不完全匹配："
+            f"source={source_name}, "
+            f"key_coverage={report.key_coverage:.6f}, "
+            f"numel_coverage={report.numel_coverage:.6f}, "
+            f"missing={_sample_keys(coverage.missing_keys)}, "
+            f"unexpected={_sample_keys(coverage.unexpected_keys)}, "
+            f"shape_mismatch={_sample_keys(coverage.shape_mismatch_keys)}, "
+            f"checkpoint={checkpoint_path_obj}"
+        )
+    model.load_state_dict(source_state_dict, strict=True)
+    return report
 
 
 def analyze_rfdetr_checkpoint_coverage(
@@ -119,8 +224,7 @@ def analyze_rfdetr_checkpoint_load_coverage(
     """
 
     checkpoint_path_obj = _require_local_checkpoint(str(checkpoint_path))
-    checkpoint = torch.load(checkpoint_path_obj, map_location="cpu", weights_only=False)
-    normalized = _normalize_checkpoint_payload(checkpoint, checkpoint_path_obj)
+    normalized, _ = _load_normalized_checkpoint(checkpoint_path_obj)
     source_state_dict = _build_load_path_coverage_state_dict(
         model=model,
         checkpoint=normalized,
@@ -248,6 +352,16 @@ def _normalize_checkpoint_payload(
         normalized["model"] = model_state
         return normalized
 
+    if "model_state_dict" in checkpoint:
+        model_state = _coerce_tensor_state_dict(
+            checkpoint["model_state_dict"],
+            checkpoint_path=checkpoint_path,
+            source_name="model_state_dict",
+        )
+        normalized = dict(checkpoint)
+        normalized["model"] = model_state
+        return normalized
+
     if "state_dict" in checkpoint:
         model_state = _normalize_lightning_state_dict(
             checkpoint["state_dict"],
@@ -264,8 +378,71 @@ def _normalize_checkpoint_payload(
 
     raise ValueError(
         "RF-DETR checkpoint 缺少可识别的权重字段。"
-        f"需要顶层包含 model、state_dict，或文件本身是裸 state_dict：{checkpoint_path}"
+        "需要顶层包含 model、model_state_dict、state_dict，"
+        f"或文件本身是裸 state_dict：{checkpoint_path}"
     )
+
+
+def _load_normalized_checkpoint(
+    checkpoint_path: Path,
+) -> tuple[dict[str, Any], str]:
+    """读取 checkpoint，并返回归一化 payload 与实际选中的权重来源。"""
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError(f"RF-DETR checkpoint 不是有效字典：{checkpoint_path}")
+    if "model" in checkpoint:
+        source_name = "model"
+    elif "model_state_dict" in checkpoint:
+        source_name = "model_state_dict"
+    elif "state_dict" in checkpoint:
+        source_name = "state_dict"
+    elif _looks_like_tensor_state_dict(checkpoint):
+        source_name = "raw"
+    else:
+        source_name = "unknown"
+    return _normalize_checkpoint_payload(checkpoint, checkpoint_path), source_name
+
+
+def _normalize_state_dict_for_model(
+    *,
+    model: torch.nn.Module,
+    source_state_dict: dict[str, torch.Tensor],
+    checkpoint_path: Path,
+) -> dict[str, torch.Tensor]:
+    """按目标模型 key 规范化外层包装前缀，并拒绝规范化后的重复 key。"""
+
+    model_keys = set(model.state_dict())
+    prefixes = ("model.", "module.", "_orig_mod.")
+    normalized: dict[str, torch.Tensor] = {}
+    for source_key, tensor in source_state_dict.items():
+        target_key = source_key
+        if target_key not in model_keys:
+            changed = True
+            while changed and target_key not in model_keys:
+                changed = False
+                for prefix in prefixes:
+                    if target_key.startswith(prefix):
+                        target_key = target_key[len(prefix) :]
+                        changed = True
+                        break
+        if target_key in normalized:
+            raise ValueError(
+                "RF-DETR checkpoint 规范化后包含重复参数 key："
+                f"key={target_key}, checkpoint={checkpoint_path}"
+            )
+        normalized[target_key] = tensor
+    return normalized
+
+
+def _sample_keys(keys: tuple[str, ...], *, limit: int = 8) -> str:
+    """把不兼容 key 收成有界错误摘要。"""
+
+    if not keys:
+        return "[]"
+    sample = list(keys[:limit])
+    suffix = ", ..." if len(keys) > limit else ""
+    return f"[{', '.join(sample)}{suffix}]"
 
 
 def _normalize_lightning_state_dict(
@@ -416,48 +593,60 @@ def _filter_intentional_keys(keys: list[str]) -> list[str]:
     return [k for k in keys if not _is_intentional(k)]
 
 
-def _warn_on_partial_load(incompatible: Any, pretrain_weights_path: str) -> None:
-    """执行 `_warn_on_partial_load`。
+def _validate_warm_start_partial_load(
+    incompatible: Any,
+    pretrain_weights_path: str,
+) -> RfdetrWarmStartLoadReport:
+    """只允许 head/query 适配产生的 warm-start 参数差异。
     
     参数：
     - `incompatible`：传入的 `incompatible` 参数。
     - `pretrain_weights_path`：传入的 `pretrain_weights_path` 参数。
     
-    返回：
-    - 当前函数的执行结果。
+    非白名单差异说明模型结构与 checkpoint 不兼容。继续训练会把未覆盖的
+    backbone 等参数留在随机初始化状态，因此必须直接拒绝。
     """
     missing_keys_raw = getattr(incompatible, "missing_keys", None)
     unexpected_keys_raw = getattr(incompatible, "unexpected_keys", None)
     try:
         missing_keys = [str(k) for k in missing_keys_raw] if missing_keys_raw else []
         unexpected_keys = [str(k) for k in unexpected_keys_raw] if unexpected_keys_raw else []
-    except TypeError:
-        return
-    missing = _filter_intentional_keys(missing_keys)
-    unexpected = _filter_intentional_keys(unexpected_keys)
-    if not missing and not unexpected:
-        return
+    except TypeError as error:
+        raise ValueError(
+            "RF-DETR warm-start load_state_dict 返回了无效的不兼容参数报告："
+            f"checkpoint={pretrain_weights_path}"
+        ) from error
 
-    parts: list[str] = []
-    if missing:
-        sample = ", ".join(missing[:5])
-        if len(missing) > 5:
-            sample += ", ..."
-        parts.append(f"{len(missing)} model parameter(s) not in checkpoint (left at random init): [{sample}]")
-    if unexpected:
-        sample = ", ".join(unexpected[:5])
-        if len(unexpected) > 5:
-            sample += ", ..."
-        parts.append(f"{len(unexpected)} checkpoint key(s) not consumed by model: [{sample}]")
+    rejected_missing = _filter_intentional_keys(missing_keys)
+    rejected_unexpected = _filter_intentional_keys(unexpected_keys)
+    if rejected_missing or rejected_unexpected:
+        raise ValueError(
+            "RF-DETR warm-start checkpoint 包含白名单之外的模型差异："
+            f"missing={_sample_keys(tuple(rejected_missing))}, "
+            f"unexpected={_sample_keys(tuple(rejected_unexpected))}, "
+            f"checkpoint={pretrain_weights_path}"
+        )
 
-    logger.warning(
-        "Pretrained weights at %r loaded only partially — this typically produces "
-        "lower accuracy. %s. Check that the model configuration (encoder, hidden_dim, "
-        "out_feature_indexes, projector_scale, ...) matches the architecture the "
-        "checkpoint was trained with.",
-        pretrain_weights_path,
-        " ".join(parts),
+    allowed_missing = tuple(
+        key for key in missing_keys if key not in rejected_missing
     )
+    allowed_unexpected = tuple(
+        key for key in unexpected_keys if key not in rejected_unexpected
+    )
+    report = RfdetrWarmStartLoadReport(
+        checkpoint_path=pretrain_weights_path,
+        allowed_missing_keys=allowed_missing,
+        allowed_unexpected_keys=allowed_unexpected,
+    )
+    if allowed_missing or allowed_unexpected:
+        logger.info(
+            "RF-DETR warm-start applied allowed head/query adaptation: "
+            "checkpoint=%s, allowed_missing=%s, allowed_unexpected=%s",
+            pretrain_weights_path,
+            list(allowed_missing),
+            list(allowed_unexpected),
+        )
+    return report
 
 
 def interpolate_position_embeddings(
@@ -638,7 +827,7 @@ def load_pretrain_weights(
 
     interpolate_position_embeddings(checkpoint["model"], mc.positional_encoding_size)
     incompatible = nn_model.load_state_dict(checkpoint["model"], strict=False)
-    _warn_on_partial_load(incompatible, str(checkpoint_path))
+    _validate_warm_start_partial_load(incompatible, str(checkpoint_path))
 
     if checkpoint_num_classes < configured_num_classes_plus_bg and user_overrode_default_num_classes:
         nn_model.reinitialize_detection_head(configured_num_classes_plus_bg)

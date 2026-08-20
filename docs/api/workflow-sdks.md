@@ -51,7 +51,7 @@ ZeroMQ 高帧率图片输入默认使用 BGR24 raw image-ref。SDK、后端 adap
 5. 调用 TriggerSource enable，启动 ZeroMQ adapter。
 6. 查询 TriggerSource health，确认 `adapter_running=true`。
 
-Workflow App 版本管理落地后，设备侧仍只保存稳定的 Runtime/Trigger 配置。Workflow App 发布新版本不会自动改变 Runtime；运维侧停止 Runtime、选择准确发布版本并重新启动后，`workflow_runtime_id`、`trigger_source_id` 和 endpoint 保持不变，兼容契约不需要重新下载 SDK 配置包。破坏性契约变化必须先更新调用方或改用新的 Runtime。完整规划见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
+设备侧仍只保存稳定的 Runtime/Trigger 配置。Workflow App 发布新版本不会自动改变 Runtime；运维侧停止 Runtime、选择准确发布版本并重新启动后，`workflow_runtime_id`、`trigger_source_id` 和 endpoint 保持不变，兼容契约不需要重新下载 SDK 配置包。破坏性契约变化必须先更新调用方或改用新的 Runtime。完整规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
 
 ### 调用方准备
 

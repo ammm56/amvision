@@ -268,13 +268,11 @@ WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
 
 当前实现里的 snapshot 根目录已经固定在 `workflows/runtime/app-runtimes/{workflow_runtime_id}/`，application、template 和 execution-policy snapshot 都应落在这个目录下，而不是继续在不同服务里自由拼接路径。
 
-#### Workflow App 版本管理目标
+#### Workflow App 版本管理
 
-上述 snapshot 固定行为是当前已经实现的生产隔离基线，需要保留。当前尚未实现 Workflow App 的不可变发布版本和 Runtime 版本切换；因此修改 Application 后仍需新建 Runtime 才能使用新内容。
+不可变 WorkflowAppVersion 和 WorkflowRuntimeRevision 已经建立在原 snapshot 固定基线上。`WorkflowAppRuntime` 本身作为第三方调用和 TriggerSource 绑定的稳定地址，通过 revision 选择明确发布版本；切换不改变 Runtime id、TriggerSource id、协议地址和 SDK Runtime key。
 
-后续版本管理不再增加 Workflow Channel。`WorkflowAppRuntime` 本身作为第三方调用和 TriggerSource 绑定的稳定地址，通过 `WorkflowRuntimeRevision` 选择明确的不可变 `WorkflowAppVersion`。版本切换不得改变 Runtime id、TriggerSource id、协议地址和 SDK Runtime key。第一阶段只允许 stopped 状态切换，并使用 generation CAS、启动 fingerprint 校验和失败保留最后 active revision。
-
-完整领域模型、发布流程、停机切换、回滚、契约兼容、API 版本边界和现有 Runtime 迁移规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。该文档当前是待实现规划，不代表接口已经公开。
+第一阶段只允许 stopped 状态切换，并使用 generation CAS、启动 fingerprint 校验和失败保留最后 active revision。完整领域模型、发布流程、停机切换、回滚、契约兼容、API 版本边界和现有 Runtime 迁移规则见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。
 
 ### WorkflowAppInstance
 
@@ -358,6 +356,7 @@ WorkflowRun 表示已发布应用的一次正式调用。
 - manager 负责 start、stop、restart、health、sync invoke 和 async run 提交。
 - 每个 `WorkflowAppRuntime` 对应一个发布时启动并长期复用的 spawn worker。一次 invoke 只向已运行 worker 发送请求，不会重新创建进程；图中的核心节点和自定义节点都在该 worker 内直接调用。
 - 图片和其他大数据通过 LocalBuffer 的 BufferRef / FrameRef 穿过进程边界，控制队列只传小型结构化消息。这个常驻进程边界用于隔离控制面故障和承载 heartbeat、重启与资源回收，不具有旧 Preview“一次请求创建一次进程”的启动开销。
+- backend-service 重启时，manager 会先按 `model_startup_parallelism` 有界并行恢复可恢复的 `desired_state=running` Runtime，并等待这一批恢复结束后才启动 enabled TriggerSource。该 readiness 屏障避免协议 adapter 在 worker 尚不存在时接收首批请求；它只发生在启动控制面，不改变正常 invoke 热路径，也不增加请求队列或重试。
 - 这个模型已经满足“runtime 独立进程执行”的目标，当前不再额外引入一层 runtime 控制队列。
 
 ### 后续扩展条件
@@ -741,12 +740,13 @@ preview 相关图片、文件和其他大结果仍通过对象存储引用、输
 
 #### POST /api/v1/workflows/app-runtimes
 
-用途：基于已保存 FlowApplication 创建一个长期运行的 WorkflowAppRuntime。
+用途：基于准确的已发布 WorkflowAppVersion 创建一个长期运行的 WorkflowAppRuntime；`application_id` 只保留为 v1 兼容入口。
 
 建议请求字段：
 
 - project_id
-- application_id
+- workflow_app_version_id；新调用必填
+- application_id；旧 v1 兼容字段，与 workflow_app_version_id 互斥
 - display_name
 - activation_mode
 - execution_policy_id
@@ -759,8 +759,8 @@ preview 相关图片、文件和其他大结果仍通过对象存储引用、输
 
 建议行为：
 
-- 读取当前 application 和 template
-- 固定为 runtime 快照
+- 读取并校验不可变发布版本
+- 创建 generation 1 的 staged Runtime revision
 - 创建 WorkflowAppRuntime 记录
 - 视 desired_state 是否为 running 决定是否发出 create-runtime 或 start-runtime 控制命令
 

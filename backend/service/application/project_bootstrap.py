@@ -5,8 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from backend.service.application.errors import InvalidRequestError
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.lifecycle_resource_keys import (
+    build_workflow_lifecycle_resource_key,
+    build_workflow_project_lifecycle_resource_key,
+)
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 PROJECT_MANIFEST_FILE_NAME = "project.json"
@@ -62,7 +76,12 @@ class ProjectManifest:
 class LocalProjectBootstrapService:
     """基于本地 ObjectStore 管理 Project 初始化目录和 manifest。"""
 
-    def __init__(self, *, dataset_storage: LocalDatasetStorage) -> None:
+    def __init__(
+        self,
+        *,
+        session_factory: SessionFactory,
+        dataset_storage: LocalDatasetStorage,
+    ) -> None:
         """初始化 Project bootstrap 服务。
 
         参数：
@@ -70,6 +89,10 @@ class LocalProjectBootstrapService:
         """
 
         self.dataset_storage = dataset_storage
+        self.application_lifecycle = WorkflowApplicationLifecycleService(
+            session_factory=session_factory,
+            dataset_storage=dataset_storage,
+        )
 
     def bootstrap_project(
         self,
@@ -87,7 +110,54 @@ class LocalProjectBootstrapService:
         - ProjectManifest：已写入本地磁盘的项目 manifest。
         """
 
-        normalized_project_id = _normalize_identifier(request.project_id, field_name="project_id")
+        normalized_project_id = _normalize_identifier(
+            request.project_id, field_name="project_id"
+        )
+        sentinel_key = build_workflow_project_lifecycle_resource_key(
+            project_id=normalized_project_id
+        )
+        try:
+            sentinel = self.application_lifecycle.get(
+                project_id=normalized_project_id,
+                application_id=sentinel_key,
+            )
+        except ResourceNotFoundError:
+            sentinel = None
+        if sentinel is not None and (sentinel.deleted or sentinel.state == "deleting"):
+            raise ResourceConflictError(
+                "Project 已删除或正在删除，不能使用相同 project_id 重新初始化",
+                details={
+                    "project_id": normalized_project_id,
+                    "state": sentinel.state,
+                    "deleted": sentinel.deleted,
+                },
+            )
+        bootstrap_resource_key = build_workflow_lifecycle_resource_key(
+            "project-bootstrap",
+            normalized_project_id,
+        )
+        with self.application_lifecycle.operation(
+            project_id=normalized_project_id,
+            application_id=bootstrap_resource_key,
+            operation="saving",
+            allow_deleted=True,
+            deleted_on_success=None,
+        ):
+            return self._bootstrap_project(
+                request,
+                normalized_project_id=normalized_project_id,
+                initialized_by=initialized_by,
+            )
+
+    def _bootstrap_project(
+        self,
+        request: ProjectBootstrapRequest,
+        *,
+        normalized_project_id: str,
+        initialized_by: str | None,
+    ) -> ProjectManifest:
+        """在 Project mutation claim 内创建目录和 manifest。"""
+
         existing_manifest = self.get_project_manifest(normalized_project_id)
         if existing_manifest is not None:
             raise InvalidRequestError(
@@ -100,14 +170,20 @@ class LocalProjectBootstrapService:
         manifest = ProjectManifest(
             project_id=normalized_project_id,
             display_name=(
-                _normalize_optional_non_empty_text(request.display_name, field_name="display_name")
+                _normalize_optional_non_empty_text(
+                    request.display_name, field_name="display_name"
+                )
                 or normalized_project_id
             ),
-            description=_normalize_optional_non_empty_text(request.description, field_name="description"),
+            description=_normalize_optional_non_empty_text(
+                request.description, field_name="description"
+            ),
             metadata=dict(request.metadata),
             created_at=now,
             updated_at=now,
-            initialized_by=_normalize_optional_non_empty_text(initialized_by, field_name="initialized_by"),
+            initialized_by=_normalize_optional_non_empty_text(
+                initialized_by, field_name="initialized_by"
+            ),
         )
         self.dataset_storage.write_json(
             build_project_manifest_object_key(normalized_project_id),
@@ -125,7 +201,9 @@ class LocalProjectBootstrapService:
         - ProjectManifest | None：存在时返回 manifest，否则返回 None。
         """
 
-        normalized_project_id = _normalize_identifier(project_id, field_name="project_id")
+        normalized_project_id = _normalize_identifier(
+            project_id, field_name="project_id"
+        )
         object_key = build_project_manifest_object_key(normalized_project_id)
         manifest_path = self.dataset_storage.resolve(object_key)
         if not manifest_path.is_file():
@@ -141,7 +219,9 @@ class LocalProjectBootstrapService:
     def _ensure_project_workspace(self, project_id: str) -> None:
         """确保 Project 根目录和最小工作区目录存在。"""
 
-        self.dataset_storage.resolve(build_project_root_object_key(project_id)).mkdir(parents=True, exist_ok=True)
+        self.dataset_storage.resolve(build_project_root_object_key(project_id)).mkdir(
+            parents=True, exist_ok=True
+        )
         for relative_dir in PROJECT_BOOTSTRAP_WORKSPACE_DIRS:
             self.dataset_storage.resolve(
                 f"{build_project_root_object_key(project_id)}/{relative_dir}"
@@ -186,7 +266,10 @@ def _build_project_manifest_from_payload(
     if payload_project_id != project_id:
         raise InvalidRequestError(
             "Project manifest 与目录不一致",
-            details={"project_id": project_id, "payload_project_id": payload_project_id},
+            details={
+                "project_id": project_id,
+                "payload_project_id": payload_project_id,
+            },
         )
     display_name = _read_required_str(payload, "display_name")
     metadata = payload.get("metadata")
@@ -200,7 +283,9 @@ def _build_project_manifest_from_payload(
     return ProjectManifest(
         project_id=payload_project_id,
         display_name=display_name,
-        description=_normalize_optional_non_empty_text(_read_optional_str(payload, "description"), field_name="description"),
+        description=_normalize_optional_non_empty_text(
+            _read_optional_str(payload, "description"), field_name="description"
+        ),
         metadata=dict(metadata),
         created_at=_read_required_str(payload, "created_at"),
         updated_at=_read_required_str(payload, "updated_at"),
@@ -225,7 +310,9 @@ def _normalize_identifier(value: str, *, field_name: str) -> str:
     return normalized_value
 
 
-def _normalize_optional_non_empty_text(value: str | None, *, field_name: str) -> str | None:
+def _normalize_optional_non_empty_text(
+    value: str | None, *, field_name: str
+) -> str | None:
     """规范化可选非空文本。"""
 
     if value is None:

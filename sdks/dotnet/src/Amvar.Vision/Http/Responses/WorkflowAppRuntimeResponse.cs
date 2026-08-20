@@ -25,6 +25,24 @@ namespace Amvar.Vision
         [JsonProperty("execution_policy_id")]
         public string? ExecutionPolicyId { get; set; }
 
+        [JsonProperty("application_snapshot_object_key")]
+        public string ApplicationSnapshotObjectKey { get; set; } = string.Empty;
+
+        [JsonProperty("template_snapshot_object_key")]
+        public string TemplateSnapshotObjectKey { get; set; } = string.Empty;
+
+        [JsonProperty("execution_policy_snapshot_object_key")]
+        public string? ExecutionPolicySnapshotObjectKey { get; set; }
+
+        [JsonProperty("active_revision_id")]
+        public string? ActiveRevisionId { get; set; }
+
+        [JsonProperty("desired_revision_id")]
+        public string? DesiredRevisionId { get; set; }
+
+        [JsonProperty("revision_generation")]
+        public int RevisionGeneration { get; set; }
+
         [JsonProperty("display_name")]
         public string DisplayName { get; set; } = string.Empty;
 
@@ -36,6 +54,12 @@ namespace Amvar.Vision
 
         [JsonProperty("worker_process_id")]
         public int? WorkerProcessId { get; set; }
+
+        [JsonProperty("worker_instance_id")]
+        public string? WorkerInstanceId { get; set; }
+
+        [JsonProperty("loaded_snapshot_fingerprint")]
+        public string? LoadedSnapshotFingerprint { get; set; }
 
         [JsonProperty("last_started_at")]
         public string? LastStartedAt { get; set; }
@@ -60,6 +84,51 @@ namespace Amvar.Vision
 
         [JsonProperty("updated_at")]
         public string UpdatedAt { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// WorkflowAppRuntime 不可变 revision 响应模型。
+    /// </summary>
+    public sealed class WorkflowRuntimeRevisionResponse
+    {
+        [JsonProperty("format_id")]
+        public string FormatId { get; set; } = string.Empty;
+
+        [JsonProperty("workflow_runtime_revision_id")]
+        public string WorkflowRuntimeRevisionId { get; set; } = string.Empty;
+
+        [JsonProperty("workflow_runtime_id")]
+        public string WorkflowRuntimeId { get; set; } = string.Empty;
+
+        [JsonProperty("generation")]
+        public int Generation { get; set; }
+
+        [JsonProperty("workflow_app_version_id")]
+        public string WorkflowAppVersionId { get; set; } = string.Empty;
+
+        [JsonProperty("execution_policy_snapshot_object_key")]
+        public string? ExecutionPolicySnapshotObjectKey { get; set; }
+
+        [JsonProperty("expected_snapshot_fingerprint")]
+        public string ExpectedSnapshotFingerprint { get; set; } = string.Empty;
+
+        [JsonProperty("state")]
+        public string State { get; set; } = string.Empty;
+
+        [JsonProperty("created_at")]
+        public string CreatedAt { get; set; } = string.Empty;
+
+        [JsonProperty("activated_at")]
+        public string? ActivatedAt { get; set; }
+
+        [JsonProperty("failed_at")]
+        public string? FailedAt { get; set; }
+
+        [JsonProperty("error")]
+        public string? Error { get; set; }
+
+        [JsonProperty("created_by")]
+        public string? CreatedBy { get; set; }
     }
 
     /// <summary>

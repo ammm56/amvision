@@ -501,6 +501,8 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
             "initialize-database-schema",
             "run-service-seeders",
             "load-service-node-catalog",
+            "recover-incomplete-workflow-app-versions",
+            "migrate-legacy-workflow-app-runtime-versions",
         )
     finally:
         runtime.session_factory.engine.dispose()

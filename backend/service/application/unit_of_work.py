@@ -6,18 +6,30 @@ from typing import Protocol
 
 from sqlalchemy.sql import Executable
 
-from backend.service.domain.datasets.dataset_export_repository import DatasetExportRepository
-from backend.service.domain.datasets.dataset_import_repository import DatasetImportRepository
-from backend.service.domain.datasets.dataset_version_repository import DatasetVersionRepository
+from backend.service.domain.datasets.dataset_export_repository import (
+    DatasetExportRepository,
+)
+from backend.service.domain.datasets.dataset_import_repository import (
+    DatasetImportRepository,
+)
+from backend.service.domain.datasets.dataset_version_repository import (
+    DatasetVersionRepository,
+)
 from backend.service.domain.files.model_file_repository import ModelFileRepository
-from backend.service.domain.deployments.deployment_repository import DeploymentInstanceRepository
+from backend.service.domain.deployments.deployment_repository import (
+    DeploymentInstanceRepository,
+)
 from backend.service.domain.deployments.deployment_runtime_state_repository import (
     DeploymentRuntimeStateRepository,
 )
 from backend.service.domain.models.model_repository import ModelRepository
-from backend.service.domain.tasks.resource_profile_repository import ResourceProfileRepository
+from backend.service.domain.tasks.resource_profile_repository import (
+    ResourceProfileRepository,
+)
 from backend.service.domain.tasks.task_repository import TaskRepository
-from backend.service.domain.workflows.workflow_runtime_repository import WorkflowRuntimeRepository
+from backend.service.domain.workflows.workflow_runtime_repository import (
+    WorkflowRuntimeRepository,
+)
 
 
 class UnitOfWork(Protocol):

@@ -30,7 +30,7 @@
 - 正式发布配置中 backend-service 只承担 REST / WebSocket 控制面；独立 inference daemon 持有 deployment process supervisor、async inference gateway 和数据库期望状态恢复协调器。全部任务队列消费者继续由独立 worker profile 持有。
 - 当前公开 REST v1 已覆盖 auth、本地用户与权限管理、datasets、dataset-exports、models、五类 training tasks、五类 validation sessions、deployment-instances、inference-tasks、conversion-tasks、evaluation-tasks、projects 目录与对象读取、workflow runtime 资源和 tasks；公开主链当前已经统一收口到 `/api/v1/models/{task_type}/...`。
 - workflow 公开资源面已经拆成 preview-runs、execution-policies、app-runtimes、runs 和 trigger-sources；当前开始把状态集合、snapshot 路径和 preview cleanup 规则收敛到共享 contracts 语义，避免 route、service、maintenance 和文档继续各写一份。
-- 当前 WorkflowAppRuntime 创建时固定 Application/Template snapshot，修改 Workflow App 不会影响已有 Runtime；不可变 Workflow App 发布版本、Runtime revision、版本选择和运行版本来源记录尚未实现，后续规范见 [workflow-app-versioning.md](workflow-app-versioning.md)。
+- Workflow App 已实现不可变发布版本、Runtime revision、generation CAS、stopped-only 版本选择和 WorkflowRun 来源记录；修改 App 不会自动影响已有 Runtime，升级/回滚保留 Runtime/Trigger id。规范见 [workflow-app-versioning.md](workflow-app-versioning.md)。
 - 当前公开 WebSocket 已覆盖 auth、system、tasks、training.telemetry、workflows.preview-runs、workflows.runs、workflows.app-runtimes、deployments 和 projects 九类资源流；训练 batch 数据通过独立 worker mmap ring 进入有界 broker，不写 TaskEvent 表。统一的路由分层、重连规则和项目级聚合流边界已整理到 [websocket-architecture.md](websocket-architecture.md)。
 - backend-service 当前已经补齐本地前端接入所需的 CORS、hybrid auth、Project 目录接口和 Project 内对象读取接口；主要工作台列表接口已经统一到 offset/limit + 响应头分页规则。
 - backend-service 当前已经补齐本地用户、权限范围、session/refresh token、长期调用 user token 和 auth.events 审计流；在线 provider 只保留目录发现与后续扩展边界。

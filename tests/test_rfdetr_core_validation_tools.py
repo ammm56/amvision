@@ -23,8 +23,10 @@ from backend.service.application.models.rfdetr_core.segmentation import (
     build_rfdetr_segmentation_model,
 )
 from backend.service.application.models.rfdetr_core.models.weights import (
+    _validate_warm_start_partial_load,
     analyze_rfdetr_checkpoint_coverage,
     load_rfdetr_checkpoint_state_dict,
+    load_rfdetr_deployment_weights,
 )
 from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
@@ -327,3 +329,135 @@ def test_rfdetr_local_checkpoint_coverage_normalizes_lightning_payload(tmp_path)
     assert set(state_dict) == set(model.state_dict())
     assert coverage.loadable_key_count == coverage.model_key_count
     assert coverage.loadable_ratio == 1.0
+
+
+def test_rfdetr_deployment_loader_prefers_platform_model_payload(tmp_path) -> None:
+    """平台 hybrid checkpoint 的部署链必须读取 model，而不是 resume state_dict。"""
+
+    model = torch.nn.Linear(3, 2)
+    deployment_state = {
+        key: torch.full_like(value, 2.0) for key, value in model.state_dict().items()
+    }
+    resume_state = {
+        f"model.{key}": torch.full_like(value, 1.0)
+        for key, value in model.state_dict().items()
+    }
+    checkpoint_path = tmp_path / "platform-best.pth"
+    torch.save(
+        {
+            "model": deployment_state,
+            "state_dict": resume_state,
+            "optimizer_states": [{"state": {}, "param_groups": []}],
+            "epoch": 1,
+        },
+        checkpoint_path,
+    )
+
+    report = load_rfdetr_deployment_weights(
+        model=model,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert report.source_name == "model"
+    assert report.key_coverage == pytest.approx(1.0)
+    assert report.numel_coverage == pytest.approx(1.0)
+    assert all(
+        torch.equal(value, deployment_state[key])
+        for key, value in model.state_dict().items()
+    )
+
+
+def test_rfdetr_deployment_loader_accepts_legacy_model_state_dict(tmp_path) -> None:
+    """旧部署产物的 model_state_dict 仍可严格加载，但不影响 resume 策略。"""
+
+    source_model = torch.nn.Linear(3, 2)
+    target_model = torch.nn.Linear(3, 2)
+    checkpoint_path = tmp_path / "legacy-deploy.pth"
+    torch.save({"model_state_dict": source_model.state_dict()}, checkpoint_path)
+
+    report = load_rfdetr_deployment_weights(
+        model=target_model,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert report.key_coverage == pytest.approx(1.0)
+    assert report.source_name == "model_state_dict"
+    assert all(
+        torch.equal(value, source_model.state_dict()[key])
+        for key, value in target_model.state_dict().items()
+    )
+
+
+def test_rfdetr_warm_start_reports_allowed_head_and_query_differences() -> None:
+    """warm-start 只可忽略明确列出的 head/query 差异。"""
+
+    report = _validate_warm_start_partial_load(
+        type(
+            "IncompatibleKeys",
+            (),
+            {
+                "missing_keys": ["class_embed.weight", "refpoint_embed.weight"],
+                "unexpected_keys": ["transformer.enc_out_bbox_embed.0.weight"],
+            },
+        )(),
+        "warm-start.pth",
+    )
+
+    assert report.allowed_missing_keys == (
+        "class_embed.weight",
+        "refpoint_embed.weight",
+    )
+    assert report.allowed_unexpected_keys == (
+        "transformer.enc_out_bbox_embed.0.weight",
+    )
+
+
+def test_rfdetr_warm_start_rejects_non_head_parameter_differences() -> None:
+    """backbone 等非白名单差异不能只告警后继续训练。"""
+
+    incompatible = type(
+        "IncompatibleKeys",
+        (),
+        {
+            "missing_keys": ["backbone.encoder.weight"],
+            "unexpected_keys": ["projector.layers.0.weight"],
+        },
+    )()
+
+    with pytest.raises(ValueError, match="白名单之外"):
+        _validate_warm_start_partial_load(incompatible, "warm-start.pth")
+
+
+@pytest.mark.parametrize("fault_kind", ("missing", "unexpected", "shape"))
+def test_rfdetr_deployment_loader_rejects_incomplete_weights(
+    tmp_path,
+    fault_kind: str,
+) -> None:
+    """部署权重存在缺键、多键或 shape 不一致时必须在写入模型前失败。"""
+
+    model = torch.nn.Linear(3, 2)
+    original_state = {
+        key: value.detach().clone() for key, value in model.state_dict().items()
+    }
+    source_state = {
+        key: torch.full_like(value, 4.0) for key, value in original_state.items()
+    }
+    if fault_kind == "missing":
+        source_state.pop("bias")
+    elif fault_kind == "unexpected":
+        source_state["unknown"] = torch.ones(1)
+    else:
+        source_state["weight"] = torch.ones(1)
+    checkpoint_path = tmp_path / f"invalid-{fault_kind}.pth"
+    torch.save({"model": source_state}, checkpoint_path)
+
+    with pytest.raises(ValueError, match="不完全匹配"):
+        load_rfdetr_deployment_weights(
+            model=model,
+            checkpoint_path=checkpoint_path,
+        )
+
+    assert all(
+        torch.equal(value, original_state[key])
+        for key, value in model.state_dict().items()
+    )

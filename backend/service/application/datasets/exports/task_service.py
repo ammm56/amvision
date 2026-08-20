@@ -20,12 +20,15 @@ from backend.service.application.datasets.exports.contracts import (
 from backend.service.application.datasets.exports.formats.common import (
     _dataset_export_format_matches_task_type,
 )
-from backend.service.application.datasets.exports.service import SqlAlchemyDatasetExporter
+from backend.service.application.datasets.exports.service import (
+    SqlAlchemyDatasetExporter,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
@@ -35,7 +38,9 @@ from backend.service.domain.datasets.dataset_version import DatasetVersion
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 
 DATASET_EXPORT_TASK_KIND = "dataset-export"
@@ -64,6 +69,7 @@ class SqlAlchemyDatasetExportTaskService:
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
         self.task_service = SqlAlchemyTaskService(session_factory)
+        self.project_mutations = ProjectMutationAdmissionService(session_factory)
         self.exporter = SqlAlchemyDatasetExporter(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
@@ -122,11 +128,16 @@ class SqlAlchemyDatasetExportTaskService:
                 "target_format": request.format_id,
             },
         )
-        self._save_dataset_export_and_task(
-            dataset_export=dataset_export,
-            task_record=task_record,
-            created_event=created_event,
-        )
+        with self.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="dataset-export-submit",
+            resource_id=dataset_export_id,
+        ):
+            self._save_dataset_export_and_task(
+                dataset_export=dataset_export,
+                task_record=task_record,
+                created_event=created_event,
+            )
         try:
             queue_task = queue_backend.enqueue(
                 queue_name=DATASET_EXPORT_QUEUE_NAME,
@@ -203,7 +214,9 @@ class SqlAlchemyDatasetExportTaskService:
         dataset_export = self._require_dataset_export(dataset_export_id)
         task_id = self._require_task_id(dataset_export)
 
-        existing_artifact = self._build_export_artifact_from_dataset_export(dataset_export)
+        existing_artifact = self._build_export_artifact_from_dataset_export(
+            dataset_export
+        )
         if dataset_export.status == "completed" and existing_artifact is not None:
             return DatasetExportTaskResult(
                 task_id=task_id,
@@ -419,7 +432,9 @@ class SqlAlchemyDatasetExportTaskService:
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_version = unit_of_work.datasets.get_dataset_version(dataset_version_id)
+            dataset_version = unit_of_work.datasets.get_dataset_version(
+                dataset_version_id
+            )
         finally:
             unit_of_work.close()
 
@@ -467,7 +482,9 @@ class SqlAlchemyDatasetExportTaskService:
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
-            dataset_export = unit_of_work.dataset_exports.get_dataset_export(dataset_export_id)
+            dataset_export = unit_of_work.dataset_exports.get_dataset_export(
+                dataset_export_id
+            )
         finally:
             unit_of_work.close()
 
@@ -507,7 +524,8 @@ class SqlAlchemyDatasetExportTaskService:
         """根据 DatasetExport 记录恢复导出请求。"""
 
         output_object_prefix = (
-            self._read_optional_str(dataset_export.metadata, "output_object_prefix") or ""
+            self._read_optional_str(dataset_export.metadata, "output_object_prefix")
+            or ""
         )
         return DatasetExportRequest(
             project_id=dataset_export.project_id,
@@ -564,7 +582,9 @@ class SqlAlchemyDatasetExportTaskService:
             category_names=dataset_export.category_names,
         )
 
-    def _serialize_export_artifact(self, artifact: DatasetExportArtifact) -> dict[str, object]:
+    def _serialize_export_artifact(
+        self, artifact: DatasetExportArtifact
+    ) -> dict[str, object]:
         """把 export artifact 转为可持久化的任务结果字典。"""
 
         return {
@@ -600,7 +620,9 @@ class SqlAlchemyDatasetExportTaskService:
 
         return None
 
-    def _read_string_tuple(self, payload: dict[str, object], key: str) -> tuple[str, ...]:
+    def _read_string_tuple(
+        self, payload: dict[str, object], key: str
+    ) -> tuple[str, ...]:
         """从字典中读取字符串列表字段。"""
 
         value = payload.get(key)
@@ -622,7 +644,9 @@ class SqlAlchemyDatasetExportTaskService:
             items.append(item)
         return tuple(items)
 
-    def _read_bool(self, payload: dict[str, object], key: str, *, default: bool) -> bool:
+    def _read_bool(
+        self, payload: dict[str, object], key: str, *, default: bool
+    ) -> bool:
         """从字典中读取布尔字段。"""
 
         value = payload.get(key)

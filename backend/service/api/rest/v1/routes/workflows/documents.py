@@ -16,7 +16,13 @@ from backend.service.application.workflows.documents.contracts import (
     WorkflowTemplateValidationSummary,
     WorkflowTemplateVersionSummary,
 )
+from backend.service.application.workflows.documents.storage import (
+    normalize_application_identifier,
+)
 from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
+from backend.service.application.workflows.app_version_service import (
+    compute_workflow_app_draft_fingerprint,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 from .schemas import (
@@ -78,6 +84,8 @@ def _ensure_template_path_matches(
 def _ensure_application_path_matches(*, application: FlowApplication, application_id: str) -> None:
     """校验路径参数与流程应用体内 application_id 一致。"""
 
+    normalize_application_identifier(application_id, "application_id")
+    normalize_application_identifier(application.application_id, "application_id")
     if application.application_id != application_id:
         raise InvalidRequestError(
             "流程应用路径参数与请求体中的 application_id 不一致",
@@ -230,6 +238,11 @@ def _build_application_document_response(
 ) -> WorkflowApplicationDocumentResponse:
     """构建流程应用保存或读取响应。"""
 
+    template_document = workflow_service.get_template(
+        project_id=document.project_id,
+        template_id=document.application.template_ref.template_id,
+        template_version=document.application.template_ref.template_version,
+    )
     payload = _build_application_validation_response(document.validation_summary).model_dump(mode="python")
     payload.update(
         {
@@ -239,6 +252,11 @@ def _build_application_document_response(
             "updated_at": document.resource_summary.updated_at,
             "created_by": document.resource_summary.created_by,
             "updated_by": document.resource_summary.updated_by,
+            "draft_fingerprint": compute_workflow_app_draft_fingerprint(
+                application=document.application,
+                template=template_document.template,
+                project_id=document.project_id,
+            ),
             "template_summary": _try_build_template_reference_summary_response(
                 workflow_service=workflow_service,
                 project_id=document.project_id,

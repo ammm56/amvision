@@ -25,6 +25,21 @@ namespace Amvar.Vision
         [JsonProperty("application_id")]
         public string ApplicationId { get; set; } = string.Empty;
 
+        [JsonProperty("workflow_runtime_revision_id")]
+        public string? WorkflowRuntimeRevisionId { get; set; }
+
+        [JsonProperty("workflow_app_version_id")]
+        public string? WorkflowAppVersionId { get; set; }
+
+        [JsonProperty("runtime_generation")]
+        public int? RuntimeGeneration { get; set; }
+
+        [JsonProperty("snapshot_fingerprint")]
+        public string? SnapshotFingerprint { get; set; }
+
+        [JsonProperty("worker_instance_id")]
+        public string? WorkerInstanceId { get; set; }
+
         [JsonProperty("state")]
         public string State { get; set; } = string.Empty;
 

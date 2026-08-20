@@ -36,7 +36,8 @@ flowchart LR
 ## 当前公开文档
 
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)：WorkflowPreviewRun 的正式接口文档，覆盖编辑态快速试跑和结果回查。
-- [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元的 create、list、get、start、stop、restart、health 和 instances。
+- [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)：WorkflowAppRuntime 的正式接口文档，覆盖长期运行单元、revisions、停机版本选择、运行控制和健康状态。
+- [docs/api/workflow-app-versions.md](workflow-app-versions.md)：Workflow App 不可变版本发布、读取和草稿契约比较。
 - [docs/api/workflow-runs.md](workflow-runs.md)：WorkflowRun 的正式接口文档，覆盖 sync invoke、async run create、结果回查和取消。
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)：WorkflowExecutionPolicy 的正式接口文档，覆盖 preview 和 runtime 的 timeout、trace 和保留策略。
 - [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)：WorkflowTriggerSource 的正式接口文档，覆盖当前已接入 adapter 和 Runtime 绑定边界。
@@ -45,7 +46,7 @@ flowchart LR
 
 第二阶段边界收口见 [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)。
 
-Workflow App 不可变发布版本、Runtime revision 和保持 Runtime/Trigger id 不变的 stopped-only 版本选择仍是待实现规划，见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。规划接口不能加入当前公开文档清单。
+Workflow App 不可变发布版本、Runtime revision 和保持 Runtime/Trigger id 不变的 stopped-only 版本选择已经实现，现行规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
 
 ## 后续扩展草案
 

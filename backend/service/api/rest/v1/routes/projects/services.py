@@ -53,7 +53,10 @@ def require_queue_backend(request: Request) -> LocalFileQueueBackend:
 def build_project_bootstrap_service(request: Request) -> LocalProjectBootstrapService:
     """基于 application.state 构建 Project bootstrap 服务。"""
 
-    return LocalProjectBootstrapService(dataset_storage=require_dataset_storage(request))
+    return LocalProjectBootstrapService(
+        session_factory=require_session_factory(request),
+        dataset_storage=require_dataset_storage(request),
+    )
 
 
 def build_project_deletion_service(request: Request) -> ProjectDeletionService:

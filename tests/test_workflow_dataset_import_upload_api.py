@@ -72,6 +72,19 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
                 },
             )
             workflow_runtime_id = create_runtime_response.json()["workflow_runtime_id"]
+            # Runtime 创建后修改草稿契约，multipart 仍必须读取已固定的版本快照。
+            workflow_service.save_application(
+                project_id="project-1",
+                application=flow_application.model_copy(
+                    update={
+                        "bindings": tuple(
+                            binding
+                            for binding in flow_application.bindings
+                            if binding.binding_id != "request_package"
+                        )
+                    }
+                ),
+            )
             start_response = client.post(
                 f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
                 headers=headers,
@@ -92,7 +105,13 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
                                 }
                             }
                         }
-                    )
+                    ),
+                    "execution_metadata_json": json.dumps(
+                        {
+                            "workflow_run_record_mode": "full",
+                            "retain_input_payload_enabled": True,
+                        }
+                    ),
                 },
                 files={
                     "request_package": (

@@ -34,6 +34,10 @@ from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_model,
     resolve_rfdetr_full_core_input_divisor,
 )
+from backend.service.application.models.rfdetr_core.models.weights import (
+    load_rfdetr_checkpoint_state_dict,
+    load_rfdetr_deployment_weights,
+)
 from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
@@ -103,15 +107,18 @@ def prepare_rfdetr_export_context(
             input_size=requested_input_size,
         )
     )
-    state_dict = load_rfdetr_export_state_dict(checkpoint_path)
     model = build_rfdetr_full_core_model(
         task_type=normalized_task_type,
         model_scale=normalized_model_scale,
         num_classes=num_classes,
+        input_size=(input_height, input_width),
         load_pretrained=False,
     )
     try:
-        model.load_state_dict(state_dict, strict=False)
+        load_rfdetr_deployment_weights(
+            model=model,
+            checkpoint_path=checkpoint_path,
+        )
         model.to("cpu")
         model.eval()
         dummy_input = build_rfdetr_dummy_input(
@@ -155,7 +162,7 @@ def normalize_rfdetr_export_task_type(task_type: ModelTaskType) -> str:
 
 
 def load_rfdetr_export_state_dict(checkpoint_path: Path) -> dict[str, object]:
-    """执行 `load_rfdetr_export_state_dict`。
+    """读取 RF-DETR 转换使用的部署权重。
 
     参数：
     - `checkpoint_path`：传入的 `checkpoint_path` 参数。
@@ -164,19 +171,13 @@ def load_rfdetr_export_state_dict(checkpoint_path: Path) -> dict[str, object]:
     - 当前函数的执行结果。
     """
 
-    checkpoint = torch.load(
-        str(checkpoint_path),
-        map_location="cpu",
-        weights_only=False,
-    )
-    if isinstance(checkpoint, dict):
-        state_dict = checkpoint.get("model_state_dict", checkpoint)
-        if isinstance(state_dict, dict):
-            return state_dict
-    raise ServiceConfigurationError(
-        "RF-DETR checkpoint 格式不包含可加载的 state_dict",
-        details={"checkpoint_path": str(checkpoint_path)},
-    )
+    try:
+        return dict(load_rfdetr_checkpoint_state_dict(checkpoint_path))
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ServiceConfigurationError(
+            "RF-DETR checkpoint 格式不包含可加载的部署权重",
+            details={"checkpoint_path": str(checkpoint_path)},
+        ) from exc
 
 
 def resolve_rfdetr_export_input_size(input_size: object) -> tuple[int, int]:

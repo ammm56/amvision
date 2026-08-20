@@ -14,11 +14,14 @@ import type {
   WorkflowPreviewRunSummary,
   WorkflowRun,
   WorkflowRunEvent,
+  WorkflowRuntimeRevision,
 } from '../types'
 import type { WorkflowPreviewImageUpload } from '../preview/useWorkflowPreviewInputs'
 
 export interface WorkflowRuntimeListQuery {
   projectId: string
+  applicationId?: string
+  applicationIds?: string[]
   offset?: number
   limit?: number
 }
@@ -41,15 +44,26 @@ export interface WorkflowPreviewRunCreateInput {
   executionScope?: WorkflowPreviewExecutionScope
 }
 
-export interface WorkflowAppRuntimeCreateInput {
+interface WorkflowAppRuntimeCreateBaseInput {
   projectId: string
-  applicationId: string
   executionPolicyId?: string | null
   displayName?: string
   requestTimeoutSeconds?: number | null
   heartbeatIntervalSeconds?: number | null
   heartbeatTimeoutSeconds?: number | null
   metadata?: WorkflowJsonObject
+}
+
+export type WorkflowAppRuntimeCreateInput = WorkflowAppRuntimeCreateBaseInput & (
+  | { workflowAppVersionId: string; applicationId?: never }
+  | { applicationId: string; workflowAppVersionId?: never }
+)
+
+export interface WorkflowAppRuntimeSelectVersionInput {
+  workflowAppVersionId: string
+  expectedGeneration: number
+  allowBreakingContract?: boolean
+  breakingChangeReason?: string | null
 }
 
 export interface WorkflowRuntimeInvokeInput {
@@ -191,7 +205,8 @@ export async function createWorkflowAppRuntime(input: WorkflowAppRuntimeCreateIn
     method: 'POST',
     body: {
       project_id: input.projectId,
-      application_id: input.applicationId,
+      application_id: 'applicationId' in input ? input.applicationId : null,
+      workflow_app_version_id: 'workflowAppVersionId' in input ? input.workflowAppVersionId : null,
       execution_policy_id: input.executionPolicyId ?? null,
       display_name: input.displayName ?? '',
       request_timeout_seconds: input.requestTimeoutSeconds ?? null,
@@ -204,7 +219,13 @@ export async function createWorkflowAppRuntime(input: WorkflowAppRuntimeCreateIn
 
 export async function listWorkflowAppRuntimes(query: WorkflowRuntimeListQuery): Promise<PaginatedResult<WorkflowAppRuntime>> {
   const { payload, headers } = await apiRequestWithHeaders<WorkflowAppRuntime[]>('/workflows/app-runtimes', {
-    query: { project_id: query.projectId, offset: query.offset ?? 0, limit: query.limit ?? 100 },
+    query: {
+      project_id: query.projectId,
+      ...(query.applicationId ? { application_id: query.applicationId } : {}),
+      ...(query.applicationIds?.length ? { application_ids: query.applicationIds.join(',') } : {}),
+      offset: query.offset ?? 0,
+      limit: query.limit ?? 100,
+    },
   })
   return { items: payload, pagination: parsePaginationHeaders(headers) }
 }
@@ -233,6 +254,37 @@ export async function restartWorkflowAppRuntime(workflowRuntimeId: string): Prom
 
 export async function getWorkflowAppRuntimeHealth(workflowRuntimeId: string): Promise<WorkflowAppRuntime> {
   return apiRequest<WorkflowAppRuntime>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/health`)
+}
+
+export async function listWorkflowRuntimeRevisions(workflowRuntimeId: string): Promise<WorkflowRuntimeRevision[]> {
+  return apiRequest<WorkflowRuntimeRevision[]>(`/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/revisions`)
+}
+
+export async function getWorkflowRuntimeRevision(
+  workflowRuntimeId: string,
+  workflowRuntimeRevisionId: string,
+): Promise<WorkflowRuntimeRevision> {
+  return apiRequest<WorkflowRuntimeRevision>(
+    `/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/revisions/${encodePathPart(workflowRuntimeRevisionId)}`,
+  )
+}
+
+export async function selectWorkflowAppRuntimeVersion(
+  workflowRuntimeId: string,
+  input: WorkflowAppRuntimeSelectVersionInput,
+): Promise<WorkflowAppRuntime> {
+  return apiRequest<WorkflowAppRuntime>(
+    `/workflows/app-runtimes/${encodePathPart(workflowRuntimeId)}/select-version`,
+    {
+      method: 'POST',
+      body: {
+        workflow_app_version_id: input.workflowAppVersionId,
+        expected_generation: input.expectedGeneration,
+        allow_breaking_contract: input.allowBreakingContract ?? false,
+        breaking_change_reason: input.breakingChangeReason ?? null,
+      },
+    },
+  )
 }
 
 export async function uploadWorkflowPromptMask(

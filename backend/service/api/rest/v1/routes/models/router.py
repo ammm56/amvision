@@ -25,6 +25,7 @@ from backend.service.api.rest.v1.routes.models.services import (
     list_platform_base_model_responses,
 )
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.runtime.deployment.runtime_capabilities import (
     inspect_deployment_runtime_capabilities,
 )
@@ -152,7 +153,10 @@ def list_deployment_source_models(
 ) -> list[DeploymentSourceModelSummaryResponse]:
     """列出部署页可选择的 ModelVersion 和 ModelBuild 来源。"""
 
-    _ = principal
+    require_explicit_project_access(
+        visible_project_ids=principal.project_ids,
+        project_id=project_id,
+    )
     return list_deployment_source_model_responses(
         session_factory=session_factory,
         project_id=project_id,
@@ -175,7 +179,10 @@ def get_deployment_source_model_detail(
 ) -> DeploymentSourceModelDetailResponse:
     """按 id 返回部署页可选择的模型来源详情。"""
 
-    _ = principal
+    require_explicit_project_access(
+        visible_project_ids=principal.project_ids,
+        project_id=project_id,
+    )
     return get_deployment_source_model_detail_response(
         session_factory=session_factory,
         project_id=project_id,

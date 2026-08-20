@@ -118,6 +118,7 @@
     <Compile Include="Http\AMVisionClient.Runtime.cs" />
     <Compile Include="Http\AMVisionClient.System.cs" />
     <Compile Include="Http\AMVisionClient.TriggerSources.cs" />
+    <Compile Include="Http\AMVisionClient.WorkflowApplications.cs" />
     <Compile Include="Http\AMVisionClientOptions.cs" />
     <Compile Include="Http\AMVisionTransportException.cs" />
     <Compile Include="Http\Requests\ModelDeploymentInferenceRequest.cs" />
@@ -125,6 +126,8 @@
     <Compile Include="Http\Requests\ModelDeploymentRuntimeModes.cs" />
     <Compile Include="Http\Requests\ModelTaskTypes.cs" />
     <Compile Include="Http\Requests\WorkflowAppRuntimeCreateRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowAppRuntimeSelectVersionRequest.cs" />
+    <Compile Include="Http\Requests\WorkflowAppVersionStateTransitionRequest.cs" />
     <Compile Include="Http\Requests\WorkflowRuntimeImageInvokeRequest.cs" />
     <Compile Include="Http\Requests\WorkflowRuntimeInvokeRequest.cs" />
     <Compile Include="Http\Requests\WorkflowRuntimeMultipartInvokeRequest.cs" />
@@ -134,6 +137,7 @@
     <Compile Include="Http\Responses\SystemConfigResponse.cs" />
     <Compile Include="Http\Responses\WorkflowAppResultResponse.cs" />
     <Compile Include="Http\Responses\WorkflowAppRuntimeResponse.cs" />
+    <Compile Include="Http\Responses\WorkflowAppVersionResponse.cs" />
     <Compile Include="Http\Responses\WorkflowRunResponse.cs" />
     <Compile Include="Http\Responses\WorkflowTriggerSourceHealthResponse.cs" />
     <Compile Include="Http\Responses\WorkflowTriggerSourceResponse.cs" />

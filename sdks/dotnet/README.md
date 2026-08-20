@@ -34,7 +34,7 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 
 `Amvar.Vision` SDK 负责封装 Amvar Vision 后端的外部调用能力：
 
-- Workflow App Runtime 查询、启动、停止、重启、健康检查
+- Workflow App Runtime 查询、启动、停止、重启、健康检查、revision 读取和停机版本选择
 - Workflow App Runtime 同步 invoke、异步 run、run/event 查询
 - Model Deployment runtime 查询、启动、停止、预热、重置和推理调用
 - TriggerSource 查询、启用、禁用、健康检查
@@ -42,6 +42,12 @@ JSON 统一使用 Newtonsoft.Json；ZeroMQ 统一使用 NetMQ。SDK 项目文件
 - 本地配置文件加载和按 key 调用已配置 runtime / deployment / trigger
 
 Console 示例不是 SDK 边界的一部分，不能把核心封装写到 console 项目中。
+
+新建 Runtime 时，`WorkflowAppRuntimeCreateRequest.WorkflowAppVersionId` 与兼容字段 `ApplicationId` 必须且只能设置一个。新控制面代码使用准确发布版本。`AMVisionClient` 提供 revision 列表、详情和 `SelectWorkflowAppRuntimeVersionResponseAsync`；设备侧常驻调用仍只保存稳定 Runtime/Trigger id，不指定 `latest` 或单次请求 revision。兼容契约切换后不需要重新下载配置包。
+
+版本管理使用显式状态 CAS：`ArchiveWorkflowAppVersionResponseAsync` 的 `ExpectedState` 必须为 `published`，`RestoreWorkflowAppVersionResponseAsync` 必须为 `archived`。归档版本不再作为新 Runtime 或停机切版候选，但已有 Runtime revision 仍保持不可变和可追溯。
+
+`WorkflowRunResponse` 会返回本次实际执行的 revision、Workflow App version、Runtime generation、snapshot fingerprint 和 worker instance id。这些字段用于运行结果溯源；不能用 Runtime 当前状态覆盖某条历史 Run 的来源。
 
 ## Config 自动加载
 
@@ -110,6 +116,15 @@ public static class Example
 3. 第三方项目引用输出的 `Amvar.Vision.dll`。
 4. 将 `Config/config*.json` 放到第三方程序输出目录的 `Config` 子目录。
 5. 将 `libs/net472` 中需要的 DLL 与第三方程序放在同一输出目录。
+
+版本契约门禁位于 `tests/Amvar.Vision.ContractTests`，不使用 NuGet 包。它会真实编译
+`net472` SDK，并验证 Runtime 创建来源互斥、停机选择版本请求、版本 archive/restore
+状态 CAS、Runtime/revision/run 版本溯源字段以及 HTTP 409 冲突详情：
+
+```powershell
+dotnet msbuild tests/Amvar.Vision.ContractTests/Amvar.Vision.ContractTests.vs2019.net472.csproj /t:Rebuild /p:Configuration=Release
+tests/Amvar.Vision.ContractTests/bin/Release/net472/Amvar.Vision.ContractTests.exe
+```
 
 示例代码：
 

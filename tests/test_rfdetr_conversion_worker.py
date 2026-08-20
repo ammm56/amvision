@@ -23,11 +23,11 @@ from backend.service.application.models.catalog.rfdetr import (
     RfdetrTrainingOutputRegistration,
     SqlAlchemyRfdetrModelService,
 )
-from backend.service.application.models.rfdetr_core.detection import build_rfdetr_model
 from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_model,
 )
 from backend.service.domain.models.model_task_types import (
+    DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
@@ -44,7 +44,9 @@ from backend.workers.conversion.rfdetr_conversion_runner import (
 from tests.yolox_test_support import create_yolox_test_runtime
 
 
-def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(tmp_path: Path) -> None:
+def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(
+    tmp_path: Path,
+) -> None:
     """验证 RF-DETR detection full core 可以走 conversion worker 导出 ONNX。"""
 
     pytest.importorskip("onnx")
@@ -61,7 +63,9 @@ def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(tmp_path: Pat
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     submission = service.submit_conversion_task(
@@ -76,7 +80,9 @@ def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(tmp_path: Pat
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     assert worker.run_once() is True
@@ -117,7 +123,9 @@ def test_rfdetr_segmentation_conversion_worker_exports_full_core_onnx(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     submission = service.submit_conversion_task(
@@ -132,7 +140,9 @@ def test_rfdetr_segmentation_conversion_worker_exports_full_core_onnx(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     assert worker.run_once() is True
@@ -236,7 +246,9 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     submission = service.submit_conversion_task(
@@ -253,7 +265,9 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        conversion_runner=_PatchedRfdetrConversionRunner(dataset_storage=dataset_storage),
+        conversion_runner=_PatchedRfdetrConversionRunner(
+            dataset_storage=dataset_storage
+        ),
     )
 
     assert worker.run_once() is True
@@ -277,7 +291,9 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
     build_file_types: set[str] = set()
     build_id_by_format: dict[str, str] = {}
     for build_summary in result["builds"]:
-        build_id_by_format[build_summary["build_format"]] = build_summary["model_build_id"]
+        build_id_by_format[build_summary["build_format"]] = build_summary[
+            "model_build_id"
+        ]
         build_file_types.update(
             item.file_type
             for item in model_service.list_model_files(
@@ -326,7 +342,10 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
     assert deployment_view.runtime_backend == deployment_runtime_backend
     assert process_config.runtime_target.model_type == "rfdetr"
     assert process_config.runtime_target.task_type == "segmentation"
-    assert process_config.runtime_target.runtime_artifact_path.suffix == expected_artifact_suffix
+    assert (
+        process_config.runtime_target.runtime_artifact_path.suffix
+        == expected_artifact_suffix
+    )
 
 
 def _create_test_runtime(
@@ -334,7 +353,9 @@ def _create_test_runtime(
 ) -> tuple[SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建 RF-DETR conversion 测试使用的基础运行时。"""
 
-    return create_yolox_test_runtime(tmp_path, database_name="amvision-rfdetr-conversion.db")
+    return create_yolox_test_runtime(
+        tmp_path, database_name="amvision-rfdetr-conversion.db"
+    )
 
 
 def _seed_rfdetr_segmentation_model_version(
@@ -349,18 +370,28 @@ def _seed_rfdetr_segmentation_model_version(
         "artifacts/checkpoints/best.pt"
     )
     labels_uri = (
-        "projects/project-1/models/rfdetr-segmentation/source-1/"
-        "artifacts/labels.txt"
+        "projects/project-1/models/rfdetr-segmentation/source-1/artifacts/labels.txt"
     )
     torch.manual_seed(0)
     model = build_rfdetr_full_core_model(
         task_type=SEGMENTATION_TASK_TYPE,
         model_scale="nano",
         num_classes=2,
+        input_size=(96, 96),
         load_pretrained=False,
     )
     buffer = io.BytesIO()
-    torch.save({"model_state_dict": model.state_dict()}, buffer)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "state_dict": {
+                f"model.{key}": value for key, value in model.state_dict().items()
+            },
+            "args": {"model_scale": "nano"},
+            "epoch": 1,
+        },
+        buffer,
+    )
     dataset_storage.write_bytes(checkpoint_uri, buffer.getvalue())
     dataset_storage.write_text(labels_uri, "segment-a\nsegment-b\n")
 
@@ -380,9 +411,7 @@ def _seed_rfdetr_segmentation_model_version(
             metadata={
                 "category_names": ["segment-a", "segment-b"],
                 "input_size": {"width": 96, "height": 96},
-                "training_config": {
-                    "input_size": {"width": 96, "height": 96}
-                },
+                "training_config": {"input_size": {"width": 96, "height": 96}},
             },
         )
     )
@@ -400,13 +429,28 @@ def _seed_rfdetr_detection_model_version(
         "artifacts/checkpoints/best.pt"
     )
     labels_uri = (
-        "projects/project-1/models/rfdetr-detection/source-1/"
-        "artifacts/labels.txt"
+        "projects/project-1/models/rfdetr-detection/source-1/artifacts/labels.txt"
     )
     torch.manual_seed(0)
-    model = build_rfdetr_model(model_scale="nano", num_classes=2)
+    model = build_rfdetr_full_core_model(
+        task_type=DETECTION_TASK_TYPE,
+        model_scale="nano",
+        num_classes=2,
+        input_size=(64, 64),
+        load_pretrained=False,
+    )
     buffer = io.BytesIO()
-    torch.save({"model_state_dict": model.state_dict()}, buffer)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "state_dict": {
+                f"model.{key}": value for key, value in model.state_dict().items()
+            },
+            "args": {"model_scale": "nano"},
+            "epoch": 1,
+        },
+        buffer,
+    )
     dataset_storage.write_bytes(checkpoint_uri, buffer.getvalue())
     dataset_storage.write_text(labels_uri, "part-a\npart-b\n")
 
@@ -426,9 +470,7 @@ def _seed_rfdetr_detection_model_version(
             metadata={
                 "category_names": ["part-a", "part-b"],
                 "input_size": {"width": 64, "height": 64},
-                "training_config": {
-                    "input_size": {"width": 64, "height": 64}
-                },
+                "training_config": {"input_size": {"width": 64, "height": 64}},
             },
         )
     )
@@ -497,5 +539,6 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
             item for item in model.graph.input if item.name not in initializer_names
         )
         return graph_input.name, [
-            int(dimension.dim_value) for dimension in graph_input.type.tensor_type.shape.dim
+            int(dimension.dim_value)
+            for dimension in graph_input.type.tensor_type.shape.dim
         ]

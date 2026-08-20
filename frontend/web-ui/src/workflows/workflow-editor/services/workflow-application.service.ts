@@ -2,9 +2,13 @@ import { apiRequest, apiRequestWithHeaders } from '@/shared/api/http-client'
 import { parsePaginationHeaders, type PaginatedResult } from '@/shared/api/pagination'
 import type {
   FlowApplication,
+  WorkflowApplicationBundleSaveDocument,
   WorkflowApplicationDocument,
   WorkflowApplicationSummary,
   WorkflowApplicationValidationResponse,
+  WorkflowAppVersion,
+  WorkflowAppVersionComparison,
+  WorkflowAppVersionDetail,
   WorkflowGraphTemplate,
 } from '../types'
 
@@ -24,6 +28,15 @@ export interface WorkflowApplicationMetadataUpdateInput {
   description?: string
 }
 
+export interface WorkflowAppVersionPublishInput {
+  expectedDraftFingerprint: string
+  releaseNotes?: string
+  displayVersion?: string | null
+  allowDuplicateContent?: boolean
+}
+
+export type WorkflowAppVersionStateTransition = 'archive' | 'restore'
+
 function encodePathPart(value: string): string {
   return encodeURIComponent(value)
 }
@@ -39,10 +52,27 @@ export async function validateWorkflowApplication(
   })
 }
 
-export async function saveWorkflowApplication(projectId: string, application: FlowApplication): Promise<WorkflowApplicationDocument> {
-  return apiRequest<WorkflowApplicationDocument>(
+export function saveWorkflowApplication(
+  projectId: string,
+  application: FlowApplication,
+  template: WorkflowGraphTemplate,
+): Promise<WorkflowApplicationBundleSaveDocument>
+export function saveWorkflowApplication(
+  projectId: string,
+  application: FlowApplication,
+  template?: undefined,
+): Promise<WorkflowApplicationDocument>
+export async function saveWorkflowApplication(
+  projectId: string,
+  application: FlowApplication,
+  template?: WorkflowGraphTemplate,
+): Promise<WorkflowApplicationDocument | WorkflowApplicationBundleSaveDocument> {
+  return apiRequest<WorkflowApplicationDocument | WorkflowApplicationBundleSaveDocument>(
     `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(application.application_id)}`,
-    { method: 'PUT', body: { application } },
+    {
+      method: 'PUT',
+      body: template === undefined ? { application } : { application, template },
+    },
   )
 }
 
@@ -102,5 +132,72 @@ export async function deleteWorkflowApplication(projectId: string, applicationId
   return apiRequest<void>(
     `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}`,
     { method: 'DELETE', responseType: 'void' },
+  )
+}
+
+export async function publishWorkflowAppVersion(
+  projectId: string,
+  applicationId: string,
+  input: WorkflowAppVersionPublishInput,
+): Promise<WorkflowAppVersion> {
+  return apiRequest<WorkflowAppVersion>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions`,
+    {
+      method: 'POST',
+      body: {
+        expected_draft_fingerprint: input.expectedDraftFingerprint,
+        release_notes: input.releaseNotes ?? '',
+        display_version: input.displayVersion ?? null,
+        allow_duplicate_content: input.allowDuplicateContent ?? false,
+      },
+    },
+  )
+}
+
+export async function listWorkflowAppVersions(
+  projectId: string,
+  applicationId: string,
+  query: WorkflowApplicationListQuery = {},
+): Promise<PaginatedResult<WorkflowAppVersion>> {
+  const { payload, headers } = await apiRequestWithHeaders<WorkflowAppVersion[]>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions`,
+    { query: { offset: query.offset ?? 0, limit: query.limit ?? 100 } },
+  )
+  return { items: payload, pagination: parsePaginationHeaders(headers) }
+}
+
+export async function getWorkflowAppVersion(
+  projectId: string,
+  applicationId: string,
+  workflowAppVersionId: string,
+): Promise<WorkflowAppVersionDetail> {
+  return apiRequest<WorkflowAppVersionDetail>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(workflowAppVersionId)}`,
+  )
+}
+
+export async function transitionWorkflowAppVersionState(
+  projectId: string,
+  applicationId: string,
+  workflowAppVersionId: string,
+  transition: WorkflowAppVersionStateTransition,
+): Promise<WorkflowAppVersion> {
+  const expectedState = transition === 'archive' ? 'published' : 'archived'
+  return apiRequest<WorkflowAppVersion>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(workflowAppVersionId)}/${transition}`,
+    {
+      method: 'POST',
+      body: { expected_state: expectedState },
+    },
+  )
+}
+
+export async function compareWorkflowAppVersionToDraft(
+  projectId: string,
+  applicationId: string,
+  workflowAppVersionId: string,
+): Promise<WorkflowAppVersionComparison> {
+  return apiRequest<WorkflowAppVersionComparison>(
+    `/workflows/projects/${encodePathPart(projectId)}/applications/${encodePathPart(applicationId)}/versions/${encodePathPart(workflowAppVersionId)}/compare`,
   )
 }

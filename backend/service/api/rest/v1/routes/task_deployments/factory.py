@@ -178,8 +178,10 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
         """读取当前 task 的 DeploymentInstance。"""
 
         service = build_current_service(session_factory, dataset_storage)
-        view = service.get_deployment_instance(deployment_instance_id)
-        check_project_visible(principal, view.project_id)
+        view = service.get_visible_deployment_instance(
+            deployment_instance_id,
+            visible_project_ids=principal.project_ids,
+        )
         return config.response_builder(view)
 
     @router.delete(
@@ -235,8 +237,10 @@ def create_task_deployment_router(config: TaskDeploymentRouteConfig) -> APIRoute
         """读取当前 task 的 DeploymentInstance 事件列表。"""
 
         service = build_current_service(session_factory, dataset_storage)
-        view = service.get_deployment_instance(deployment_instance_id)
-        check_project_visible(principal, view.project_id)
+        service.get_visible_deployment_instance(
+            deployment_instance_id,
+            visible_project_ids=principal.project_ids,
+        )
         if runtime_mode is not None and runtime_mode not in {"sync", "async"}:
             raise InvalidRequestError(
                 "runtime_mode 仅支持 sync 或 async",

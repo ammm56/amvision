@@ -15,6 +15,7 @@ from backend.contracts.files.yolox_model_files import (
     build_default_file_name,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.domain.files.detection_model_file_types import (
     DetectionModelFileTypes,
     YOLOX_DETECTION_FILE_TYPES,
@@ -404,6 +405,7 @@ class SqlAlchemyModelService:
         self.session_factory = session_factory
         self.spec = spec
         self.file_types = file_types
+        self.project_mutations = ProjectMutationAdmissionService(session_factory)
 
     def register_pretrained(self, request: PretrainedRegistrationRequest) -> str:
         """登记预置预训练模型并返回模型版本 id。
@@ -472,6 +474,21 @@ class SqlAlchemyModelService:
             return model_version_id
 
     def register_training_output(self, request: TrainingOutputRegistration) -> str:
+        """在 Project 删除边界内登记训练输出。"""
+
+        resource_id = (
+            request.model_version_id
+            or request.checkpoint_file_id
+            or request.training_task_id
+        )
+        with self.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="model-training-output",
+            resource_id=resource_id,
+        ):
+            return self._register_training_output(request)
+
+    def _register_training_output(self, request: TrainingOutputRegistration) -> str:
         """登记训练输出并返回新的模型版本 id。
 
         参数：
@@ -511,6 +528,12 @@ class SqlAlchemyModelService:
                 labels_file_id=request.labels_file_id,
                 metadata=training_metadata,
             )
+            self._validate_parent_model_version(
+                unit_of_work=unit_of_work,
+                parent_version_id=request.parent_version_id,
+                model_version_id=model_version_id,
+                project_id=request.project_id,
+            )
             file_ids = self._register_training_files(
                 unit_of_work=unit_of_work,
                 model_id=model.model_id,
@@ -547,6 +570,16 @@ class SqlAlchemyModelService:
             return model_version_id
 
     def register_build(self, request: ModelBuildRegistration) -> str:
+        """在 Project 删除边界内登记转换 build。"""
+
+        with self.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="model-build",
+            resource_id=request.build_file_id,
+        ):
+            return self._register_build(request)
+
+    def _register_build(self, request: ModelBuildRegistration) -> str:
         """登记模型 build 并返回新的 ModelBuild id。
 
         参数：
@@ -567,15 +600,19 @@ class SqlAlchemyModelService:
             runtime_precision=request.runtime_precision,
         )
         with self._open_unit_of_work() as unit_of_work:
-            source_version = unit_of_work.models.get_model_version(
-                request.source_model_version_id
+            source_version = unit_of_work.models.get_visible_model_version(
+                request.source_model_version_id,
+                (request.project_id,),
             )
             if source_version is None:
                 raise ValueError(
                     f"未知的 ModelVersion: {request.source_model_version_id}"
                 )
 
-            model = unit_of_work.models.get_model(source_version.model_id)
+            model = unit_of_work.models.get_visible_model(
+                source_version.model_id,
+                (request.project_id,),
+            )
             if model is None:
                 raise ValueError(f"未知的 Model: {source_version.model_id}")
 
@@ -658,6 +695,20 @@ class SqlAlchemyModelService:
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.models.get_model(model_id)
 
+    def get_visible_model(
+        self,
+        model_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> Model | None:
+        """按 Project 可见范围读取 Model；平台基础模型始终可见。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.models.get_visible_model(
+                model_id,
+                visible_project_ids,
+            )
+
     def get_model_version(self, model_version_id: str) -> ModelVersion | None:
         """按 id 读取 ModelVersion。
 
@@ -670,6 +721,20 @@ class SqlAlchemyModelService:
 
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.models.get_model_version(model_version_id)
+
+    def get_visible_model_version(
+        self,
+        model_version_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelVersion | None:
+        """按所属 Model 的 Project 可见范围读取 ModelVersion。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.models.get_visible_model_version(
+                model_version_id,
+                visible_project_ids,
+            )
 
     def get_model_build(self, model_build_id: str) -> ModelBuild | None:
         """按 id 读取 ModelBuild。
@@ -684,6 +749,20 @@ class SqlAlchemyModelService:
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.models.get_model_build(model_build_id)
 
+    def get_visible_model_build(
+        self,
+        model_build_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelBuild | None:
+        """按所属 Model 的 Project 可见范围读取 ModelBuild。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.models.get_visible_model_build(
+                model_build_id,
+                visible_project_ids,
+            )
+
     def get_model_file(self, file_id: str) -> ModelFile | None:
         """按 id 读取 ModelFile。
 
@@ -696,6 +775,20 @@ class SqlAlchemyModelService:
 
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.model_files.get_model_file(file_id)
+
+    def get_visible_model_file(
+        self,
+        file_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> ModelFile | None:
+        """按 Project 可见范围读取 ModelFile；平台基础模型文件始终可见。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.model_files.get_visible_model_file(
+                file_id,
+                visible_project_ids,
+            )
 
     def list_model_files(
         self,
@@ -715,6 +808,22 @@ class SqlAlchemyModelService:
 
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.model_files.list_model_files(
+                model_version_id=model_version_id,
+                model_build_id=model_build_id,
+            )
+
+    def list_visible_model_files(
+        self,
+        *,
+        visible_project_ids: tuple[str, ...],
+        model_version_id: str | None = None,
+        model_build_id: str | None = None,
+    ) -> tuple[ModelFile, ...]:
+        """按关联资源和 Project 可见范围列出 ModelFile。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.model_files.list_visible_model_files(
+                visible_project_ids=visible_project_ids,
                 model_version_id=model_version_id,
                 model_build_id=model_build_id,
             )
@@ -882,7 +991,10 @@ class SqlAlchemyModelService:
         """
 
         with self._open_unit_of_work() as unit_of_work:
-            model = unit_of_work.models.get_model(model_id)
+            model = unit_of_work.models.get_visible_model(
+                model_id,
+                (project_id,),
+            )
             if model is None:
                 return None
             if (
@@ -993,6 +1105,27 @@ class SqlAlchemyModelService:
         unit_of_work.models.save_model(model)
 
         return model
+
+    @staticmethod
+    def _validate_parent_model_version(
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        parent_version_id: str | None,
+        model_version_id: str,
+        project_id: str,
+    ) -> None:
+        """校验 warm start 父版本存在且不是当前待创建版本。"""
+
+        if parent_version_id is None:
+            return
+        if parent_version_id == model_version_id:
+            raise ValueError("父 ModelVersion 不能与当前 ModelVersion 相同")
+        parent_version = unit_of_work.models.get_visible_model_version(
+            parent_version_id,
+            (project_id,),
+        )
+        if parent_version is None:
+            raise ValueError(f"未知的父 ModelVersion: {parent_version_id}")
 
     def _validate_task_type(self, task_type: str) -> None:
         """校验传入任务类型是否被当前规格支持。"""

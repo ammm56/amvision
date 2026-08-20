@@ -99,15 +99,47 @@ export interface WorkflowTriggerSourceStatusRefreshResult {
   failedTriggerSourceIds: string[]
 }
 
+export interface WorkflowTriggerSourceListQuery {
+  projectId: string
+  workflowRuntimeId?: string
+  offset?: number
+  limit?: number
+}
+
 function encodePathPart(value: string): string {
   return encodeURIComponent(value)
 }
 
-export async function listWorkflowTriggerSources(query: { projectId: string; offset?: number; limit?: number }): Promise<PaginatedResult<WorkflowTriggerSource>> {
+export async function listWorkflowTriggerSources(query: WorkflowTriggerSourceListQuery): Promise<PaginatedResult<WorkflowTriggerSource>> {
   const { payload, headers } = await apiRequestWithHeaders<WorkflowTriggerSource[]>('/workflows/trigger-sources', {
-    query: { project_id: query.projectId, offset: query.offset ?? 0, limit: query.limit ?? 100 },
+    query: {
+      project_id: query.projectId,
+      ...(query.workflowRuntimeId ? { workflow_runtime_id: query.workflowRuntimeId } : {}),
+      offset: query.offset ?? 0,
+      limit: query.limit ?? 100,
+    },
   })
   return { items: payload, pagination: parsePaginationHeaders(headers) }
+}
+
+/** 精确读取一个 Runtime 绑定的全部 TriggerSource，不受单页 100 条限制。 */
+export async function listAllWorkflowTriggerSourcesForRuntime(
+  projectId: string,
+  workflowRuntimeId: string,
+): Promise<WorkflowTriggerSource[]> {
+  const sources: WorkflowTriggerSource[] = []
+  const visitedOffsets = new Set<number>()
+  let offset = 0
+  const limit = 100
+  while (!visitedOffsets.has(offset)) {
+    visitedOffsets.add(offset)
+    const page = await listWorkflowTriggerSources({ projectId, workflowRuntimeId, offset, limit })
+    sources.push(...page.items)
+    const nextOffset = page.pagination.nextOffset
+    if (!page.pagination.hasMore || nextOffset === null || visitedOffsets.has(nextOffset)) break
+    offset = nextOffset
+  }
+  return sources
 }
 
 export async function getWorkflowTriggerSource(triggerSourceId: string): Promise<WorkflowTriggerSource> {

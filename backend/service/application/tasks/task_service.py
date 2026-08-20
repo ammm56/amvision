@@ -9,8 +9,17 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.service.application.events.event_bus import ServiceEvent
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
-from backend.service.domain.tasks.task_records import TaskEvent, TaskEventType, TaskRecord, TaskRecordState
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
+from backend.service.application.project_mutation import ProjectMutationAdmissionService
+from backend.service.domain.tasks.task_records import (
+    TaskEvent,
+    TaskEventType,
+    TaskRecord,
+    TaskRecordState,
+)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -144,6 +153,7 @@ class SqlAlchemyTaskService:
 
         self.session_factory = session_factory
         self.service_event_bus = getattr(session_factory, "service_event_bus", None)
+        self.project_mutations = ProjectMutationAdmissionService(session_factory)
 
     def create_task(self, request: CreateTaskRequest) -> TaskRecord:
         """创建一条新的 TaskRecord。
@@ -181,16 +191,21 @@ class SqlAlchemyTaskService:
             payload={"state": request.state},
         )
 
-        with self._open_unit_of_work() as unit_of_work:
-            existing_task = unit_of_work.tasks.get_task(task_id)
-            if existing_task is not None:
-                raise InvalidRequestError(
-                    "任务 id 已存在",
-                    details={"task_id": task_id},
-                )
-            unit_of_work.tasks.save_task(task_record)
-            unit_of_work.tasks.save_task_event(created_event)
-            unit_of_work.commit()
+        with self.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="task-create",
+            resource_id=task_id,
+        ):
+            with self._open_unit_of_work() as unit_of_work:
+                existing_task = unit_of_work.tasks.get_task(task_id)
+                if existing_task is not None:
+                    raise InvalidRequestError(
+                        "任务 id 已存在",
+                        details={"task_id": task_id},
+                    )
+                unit_of_work.tasks.save_task(task_record)
+                unit_of_work.tasks.save_task_event(created_event)
+                unit_of_work.commit()
 
         self._publish_task_event(created_event)
 
@@ -206,7 +221,34 @@ class SqlAlchemyTaskService:
                     "找不到指定的任务",
                     details={"task_id": task_id},
                 )
-            events = unit_of_work.tasks.list_task_events(task_id) if include_events else ()
+            events = (
+                unit_of_work.tasks.list_task_events(task_id) if include_events else ()
+            )
+
+        return TaskDetail(task=task_record, events=events)
+
+    def get_visible_task(
+        self,
+        task_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+        include_events: bool = False,
+    ) -> TaskDetail:
+        """在 Repository 查询阶段按 Project 可见范围读取任务。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            task_record = unit_of_work.tasks.get_visible_task(
+                task_id,
+                visible_project_ids,
+            )
+            if task_record is None:
+                raise ResourceNotFoundError(
+                    "找不到指定的任务",
+                    details={"task_id": task_id},
+                )
+            events = (
+                unit_of_work.tasks.list_task_events(task_id) if include_events else ()
+            )
 
         return TaskDetail(task=task_record, events=events)
 
@@ -221,8 +263,12 @@ class SqlAlchemyTaskService:
         with self._open_unit_of_work() as unit_of_work:
             tasks = unit_of_work.tasks.list_tasks(filters.project_id)
 
-        matched_tasks = [task for task in tasks if self._task_matches_filters(task, filters)]
-        matched_tasks.sort(key=lambda task: (task.created_at, task.task_id), reverse=True)
+        matched_tasks = [
+            task for task in tasks if self._task_matches_filters(task, filters)
+        ]
+        matched_tasks.sort(
+            key=lambda task: (task.created_at, task.task_id), reverse=True
+        )
         if filters.limit is None:
             return tuple(matched_tasks)
         return tuple(matched_tasks[: filters.limit])
@@ -277,7 +323,9 @@ class SqlAlchemyTaskService:
                     "找不到指定的任务",
                     details={"task_id": request.task_id},
                 )
-            updated_task = self._apply_event(task_record=task_record, task_event=task_event)
+            updated_task = self._apply_event(
+                task_record=task_record, task_event=task_event
+            )
             unit_of_work.tasks.save_task(updated_task)
             unit_of_work.tasks.save_task_event(task_event)
             unit_of_work.commit()
@@ -286,7 +334,9 @@ class SqlAlchemyTaskService:
 
         return TaskDetail(task=updated_task, events=(task_event,))
 
-    def cancel_task(self, task_id: str, *, cancelled_by: str | None = None) -> TaskDetail:
+    def cancel_task(
+        self, task_id: str, *, cancelled_by: str | None = None
+    ) -> TaskDetail:
         """取消一条尚未结束的任务。"""
 
         current_task = self.get_task(task_id).task
@@ -311,7 +361,9 @@ class SqlAlchemyTaskService:
             )
         )
 
-    def update_task_metadata(self, task_id: str, metadata: dict[str, object]) -> TaskRecord:
+    def update_task_metadata(
+        self, task_id: str, metadata: dict[str, object]
+    ) -> TaskRecord:
         """整体替换指定任务的 metadata 字段并持久化。
 
         参数：
@@ -393,20 +445,34 @@ class SqlAlchemyTaskService:
         if not request.task_kind.strip():
             raise InvalidRequestError("task_kind 不能为空")
 
-    def _task_matches_filters(self, task_record: TaskRecord, filters: TaskQueryFilters) -> bool:
+    def _task_matches_filters(
+        self, task_record: TaskRecord, filters: TaskQueryFilters
+    ) -> bool:
         """判断任务是否满足筛选条件。"""
 
         if filters.task_kind is not None and task_record.task_kind != filters.task_kind:
             return False
         if filters.state is not None and task_record.state != filters.state:
             return False
-        if filters.worker_pool is not None and task_record.worker_pool != filters.worker_pool:
+        if (
+            filters.worker_pool is not None
+            and task_record.worker_pool != filters.worker_pool
+        ):
             return False
-        if filters.created_by is not None and task_record.created_by != filters.created_by:
+        if (
+            filters.created_by is not None
+            and task_record.created_by != filters.created_by
+        ):
             return False
-        if filters.parent_task_id is not None and task_record.parent_task_id != filters.parent_task_id:
+        if (
+            filters.parent_task_id is not None
+            and task_record.parent_task_id != filters.parent_task_id
+        ):
             return False
-        if filters.dataset_id is not None and task_record.task_spec.get("dataset_id") != filters.dataset_id:
+        if (
+            filters.dataset_id is not None
+            and task_record.task_spec.get("dataset_id") != filters.dataset_id
+        ):
             return False
         if filters.source_import_id is not None:
             source_import_id = task_record.task_spec.get("dataset_import_id")
@@ -417,7 +483,9 @@ class SqlAlchemyTaskService:
 
         return True
 
-    def _apply_event(self, *, task_record: TaskRecord, task_event: TaskEvent) -> TaskRecord:
+    def _apply_event(
+        self, *, task_record: TaskRecord, task_event: TaskEvent
+    ) -> TaskRecord:
         """根据 TaskEvent 更新 TaskRecord 快照。"""
 
         payload = dict(task_event.payload)
@@ -442,7 +510,16 @@ class SqlAlchemyTaskService:
                 {
                     str(key): value
                     for key, value in payload.items()
-                    if key not in {"state", "metadata", "result", "error_message", "finished_at", "started_at", "attempt_no"}
+                    if key
+                    not in {
+                        "state",
+                        "metadata",
+                        "result",
+                        "error_message",
+                        "finished_at",
+                        "started_at",
+                        "attempt_no",
+                    }
                 }
             )
 
@@ -454,7 +531,16 @@ class SqlAlchemyTaskService:
                 {
                     str(key): value
                     for key, value in payload.items()
-                    if key not in {"state", "metadata", "progress", "error_message", "finished_at", "started_at", "attempt_no"}
+                    if key
+                    not in {
+                        "state",
+                        "metadata",
+                        "progress",
+                        "error_message",
+                        "finished_at",
+                        "started_at",
+                        "attempt_no",
+                    }
                 }
             )
 

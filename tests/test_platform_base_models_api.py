@@ -233,6 +233,20 @@ def test_deployment_source_models_preserve_multi_generation_training_versions(
     client, session_factory = _create_test_client(tmp_path)
     _seed_platform_and_project_models(session_factory)
     service = SqlAlchemyYolo11ModelService(session_factory=session_factory)
+    service.register_pretrained(
+        PretrainedRegistrationRequest(
+            model_name="yolo11",
+            storage_uri=(
+                "models/pretrained/yolo11/classification/s/default/"
+                "checkpoints/yolo11s-cls.pt"
+            ),
+            model_scale="s",
+            model_version_id="mv-pretrained-yolo11-classification-s",
+            checkpoint_file_id="mf-pretrained-yolo11-classification-s",
+            task_type="classification",
+            metadata={"input_size": {"width": 224, "height": 224}},
+        )
+    )
     first_version_id = service.register_training_output(
         Yolo11TrainingOutputRegistration(
             project_id="project-1",

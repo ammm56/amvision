@@ -30,6 +30,7 @@ class YoloDetectionWarmStartReference:
 
 def resolve_yolo_detection_warm_start_reference(
     *,
+    project_id: str,
     model_version_id: str | None,
     model_service_cls: type,
     file_types: Any,
@@ -49,13 +50,19 @@ def resolve_yolo_detection_warm_start_reference(
     if model_version_id is None:
         return None
     model_service = model_service_cls(session_factory=session_factory)
-    model_version = model_service.get_model_version(model_version_id)
+    model_version = model_service.get_visible_model_version(
+        model_version_id,
+        visible_project_ids=(project_id,),
+    )
     if model_version is None:
         raise ResourceNotFoundError(
             "找不到指定的 warm start ModelVersion",
             details={"model_version_id": model_version_id},
         )
-    model = model_service.get_model(model_version.model_id)
+    model = model_service.get_visible_model(
+        model_version.model_id,
+        visible_project_ids=(project_id,),
+    )
     if model is None:
         raise ResourceNotFoundError(
             "指定的 warm start ModelVersion 缺少 Model 主记录",
@@ -64,8 +71,9 @@ def resolve_yolo_detection_warm_start_reference(
     checkpoint_file = next(
         (
             model_file
-            for model_file in model_service.list_model_files(
-                model_version_id=model_version_id
+            for model_file in model_service.list_visible_model_files(
+                visible_project_ids=(project_id,),
+                model_version_id=model_version_id,
             )
             if model_file.file_type == file_types.checkpoint_file_type
         ),

@@ -67,10 +67,11 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
                     created_at="2026-07-26T00:00:00Z",
                     state="succeeded",
                 ),
-                ModelRecord(
-                    model_id="model-1",
-                    project_id="project-1",
-                    scope_kind="project",
+                    ModelRecord(
+                        model_id="model-1",
+                        project_id="project-1",
+                        owner_key="project-1",
+                        scope_kind="project",
                     model_name="trained",
                     model_type="yolo11",
                     task_type="detection",

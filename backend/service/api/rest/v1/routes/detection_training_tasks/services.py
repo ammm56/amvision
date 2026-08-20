@@ -34,6 +34,7 @@ from backend.service.application.models.training.yolox_detection_task_service im
     SqlAlchemyYoloXTrainingTaskService,
     YoloXTrainingTaskRequest,
 )
+from backend.service.application.project_access import require_explicit_project_access
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
@@ -105,11 +106,10 @@ def _resolve_visible_project_ids(
     """根据主体权限和查询条件解析可查询的 Project 范围。"""
 
     if project_id is not None:
-        if principal.project_ids and project_id not in principal.project_ids:
-            raise ResourceNotFoundError(
-                "找不到指定的任务范围",
-                details={"project_id": project_id},
-            )
+        require_explicit_project_access(
+            visible_project_ids=principal.project_ids,
+            project_id=project_id,
+        )
         return (project_id,)
     if principal.project_ids:
         return principal.project_ids
@@ -141,11 +141,10 @@ def _require_visible_detection_training_task(
     """读取并校验当前主体可见的 detection 训练任务。"""
 
     service = SqlAlchemyTaskService(session_factory)
-    task_detail = service.get_task(task_id, include_events=include_events)
-    _ensure_detection_training_task_visible(
-        principal=principal,
-        task_id=task_id,
-        task_project_id=task_detail.task.project_id,
+    task_detail = service.get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+        include_events=include_events,
     )
     if task_detail.task.task_kind not in _DETECTION_TRAINING_MODEL_TYPE_BY_TASK_KIND:
         raise ResourceNotFoundError(

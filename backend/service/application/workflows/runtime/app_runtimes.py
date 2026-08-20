@@ -14,7 +14,8 @@ class WorkflowAppRuntimeCreateRequest:
     """描述一次 app runtime 创建请求。"""
 
     project_id: str
-    application_id: str
+    application_id: str | None = None
+    workflow_app_version_id: str | None = None
     execution_policy_id: str | None = None
     display_name: str = ""
     request_timeout_seconds: int | None = None
@@ -29,11 +30,14 @@ def normalize_app_runtime_create_request(
     """规范化 app runtime 创建请求。"""
 
     project_id = request.project_id.strip()
-    application_id = request.application_id.strip()
+    application_id = _normalize_optional_str(request.application_id)
+    workflow_app_version_id = _normalize_optional_str(request.workflow_app_version_id)
     if not project_id:
         raise InvalidRequestError("project_id 不能为空")
-    if not application_id:
-        raise InvalidRequestError("application_id 不能为空")
+    if (application_id is None) == (workflow_app_version_id is None):
+        raise InvalidRequestError(
+            "application_id 与 workflow_app_version_id 必须且只能提供一个"
+        )
     if request.request_timeout_seconds is not None and request.request_timeout_seconds <= 0:
         raise InvalidRequestError("request_timeout_seconds 必须大于 0")
     heartbeat_interval_seconds = request.heartbeat_interval_seconds
@@ -58,12 +62,44 @@ def normalize_app_runtime_create_request(
     return WorkflowAppRuntimeCreateRequest(
         project_id=project_id,
         application_id=application_id,
+        workflow_app_version_id=workflow_app_version_id,
         execution_policy_id=_normalize_optional_str(request.execution_policy_id),
         display_name=request.display_name.strip(),
         request_timeout_seconds=request.request_timeout_seconds,
         heartbeat_interval_seconds=resolved_heartbeat_interval_seconds,
         heartbeat_timeout_seconds=resolved_heartbeat_timeout_seconds,
         metadata=dict(request.metadata or {}),
+    )
+
+
+@dataclass(frozen=True)
+class WorkflowAppRuntimeSelectVersionRequest:
+    """描述 Runtime 停机选择版本请求。"""
+
+    workflow_app_version_id: str
+    expected_generation: int
+    allow_breaking_contract: bool = False
+    breaking_change_reason: str | None = None
+
+
+def normalize_select_version_request(
+    request: WorkflowAppRuntimeSelectVersionRequest,
+) -> WorkflowAppRuntimeSelectVersionRequest:
+    """规范化 Runtime 选版请求。"""
+
+    workflow_app_version_id = request.workflow_app_version_id.strip()
+    if not workflow_app_version_id:
+        raise InvalidRequestError("workflow_app_version_id 不能为空")
+    if request.expected_generation < 0:
+        raise InvalidRequestError("expected_generation 不能小于 0")
+    reason = _normalize_optional_str(request.breaking_change_reason)
+    if request.allow_breaking_contract and reason is None:
+        raise InvalidRequestError("允许破坏性契约更新时必须填写原因")
+    return WorkflowAppRuntimeSelectVersionRequest(
+        workflow_app_version_id=workflow_app_version_id,
+        expected_generation=request.expected_generation,
+        allow_breaking_contract=request.allow_breaking_contract,
+        breaking_change_reason=reason,
     )
 
 
@@ -89,6 +125,7 @@ def apply_worker_state(
     return replace(
         workflow_app_runtime,
         observed_state=runtime_state.observed_state,
+        worker_instance_id=runtime_state.instance_id,
         worker_process_id=runtime_state.process_id,
         heartbeat_at=runtime_state.heartbeat_at,
         loaded_snapshot_fingerprint=runtime_state.loaded_snapshot_fingerprint,

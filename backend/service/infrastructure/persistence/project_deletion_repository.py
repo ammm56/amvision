@@ -9,15 +9,25 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
-from backend.service.infrastructure.persistence.dataset_export_orm import DatasetExportRecord
-from backend.service.infrastructure.persistence.dataset_import_orm import DatasetImportRecord
+from backend.service.infrastructure.persistence.dataset_export_orm import (
+    DatasetExportRecord,
+)
+from backend.service.infrastructure.persistence.dataset_import_orm import (
+    DatasetImportRecord,
+)
 from backend.service.infrastructure.persistence.dataset_orm import DatasetVersionRecord
-from backend.service.infrastructure.persistence.deployment_orm import DeploymentInstanceRecord
-from backend.service.infrastructure.persistence.local_auth_orm import LocalAuthUserRecord
+from backend.service.infrastructure.persistence.deployment_orm import (
+    DeploymentInstanceRecord,
+)
+from backend.service.infrastructure.persistence.local_auth_orm import (
+    LocalAuthUserRecord,
+)
 from backend.service.infrastructure.persistence.model_file_orm import ModelFileRecord
 from backend.service.infrastructure.persistence.model_orm import ModelRecord
 from backend.service.infrastructure.persistence.task_orm import TaskRecordEntity
 from backend.service.infrastructure.persistence.workflow_runtime_orm import (
+    WorkflowApplicationLifecycleRecord,
+    WorkflowAppVersionRecord,
     WorkflowAppRuntimeRecord,
     WorkflowExecutionPolicyRecord,
     WorkflowPreviewRunRecord,
@@ -48,7 +58,12 @@ class SqlAlchemyProjectDeletionRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def inspect(self, project_id: str) -> ProjectDatabaseInventory:
+    def inspect(
+        self,
+        project_id: str,
+        *,
+        project_sentinel_resource_key: str | None = None,
+    ) -> ProjectDatabaseInventory:
         """读取 Project 关联资源快照。"""
 
         try:
@@ -86,9 +101,9 @@ class SqlAlchemyProjectDeletionRepository:
             )
             workflow_runs = tuple(
                 self.session.execute(
-                    select(WorkflowRunRecord.workflow_run_id, WorkflowRunRecord.state).where(
-                        WorkflowRunRecord.project_id == project_id
-                    )
+                    select(
+                        WorkflowRunRecord.workflow_run_id, WorkflowRunRecord.state
+                    ).where(WorkflowRunRecord.project_id == project_id)
                 ).all()
             )
             trigger_sources = tuple(
@@ -120,10 +135,17 @@ class SqlAlchemyProjectDeletionRepository:
                 "deployments": len(deployments),
                 "workflow_preview_runs": len(preview_runs),
                 "workflow_app_runtimes": len(app_runtimes),
+                "workflow_app_versions": self._count(
+                    WorkflowAppVersionRecord, project_id
+                ),
                 "workflow_runs": len(workflow_runs),
                 "workflow_trigger_sources": len(trigger_sources),
                 "workflow_execution_policies": self._count(
                     WorkflowExecutionPolicyRecord, project_id
+                ),
+                "workflow_application_lifecycles": self._count_lifecycles(
+                    project_id,
+                    excluded_application_id=project_sentinel_resource_key,
                 ),
                 "authorization_assignments": len(
                     self._auth_users_referencing(project_id)
@@ -145,7 +167,12 @@ class SqlAlchemyProjectDeletionRepository:
             counts=counts,
         )
 
-    def delete(self, project_id: str) -> None:
+    def delete(
+        self,
+        project_id: str,
+        *,
+        project_sentinel_resource_key: str | None = None,
+    ) -> None:
         """删除 Project 关联记录，由外层 Unit of Work 提交。"""
 
         try:
@@ -155,10 +182,28 @@ class SqlAlchemyProjectDeletionRepository:
                 user.project_ids_json = [
                     value for value in user.project_ids_json if value != project_id
                 ]
+            # RuntimeRevision 同时引用 Runtime 和 AppVersion。先删除所有入口与
+            # Runtime，并立即 flush 触发 revision 的数据库级 CASCADE，再删除
+            # AppVersion，避免同一事务在不同数据库上因 flush 排序产生 FK 冲突。
             for model in (
                 WorkflowTriggerSourceRecord,
                 WorkflowRunRecord,
                 WorkflowAppRuntimeRecord,
+            ):
+                self._delete_project_records(model, project_id)
+            self.session.flush()
+
+            self._delete_project_records(WorkflowAppVersionRecord, project_id)
+            self.session.flush()
+
+            self._delete_project_records(
+                WorkflowApplicationLifecycleRecord,
+                project_id,
+                excluded_application_id=project_sentinel_resource_key,
+            )
+            self.session.flush()
+
+            for model in (
                 WorkflowPreviewRunRecord,
                 WorkflowExecutionPolicyRecord,
                 DeploymentInstanceRecord,
@@ -169,11 +214,7 @@ class SqlAlchemyProjectDeletionRepository:
                 DatasetImportRecord,
                 DatasetVersionRecord,
             ):
-                records = self.session.execute(
-                    select(model).where(model.project_id == project_id)
-                ).scalars().all()
-                for record in records:
-                    self.session.delete(record)
+                self._delete_project_records(model, project_id)
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "删除 Project 关联记录失败",
@@ -190,7 +231,47 @@ class SqlAlchemyProjectDeletionRepository:
         """返回指定表中的 Project 记录数。"""
 
         return len(
-            self.session.execute(
-                select(model).where(model.project_id == project_id)
-            ).scalars().all()
+            self.session.execute(select(model).where(model.project_id == project_id))
+            .scalars()
+            .all()
         )
+
+    def _count_lifecycles(
+        self,
+        project_id: str,
+        *,
+        excluded_application_id: str | None,
+    ) -> int:
+        """返回 Project lifecycle 数量，可排除持久删除 sentinel。"""
+
+        statement = select(WorkflowApplicationLifecycleRecord).where(
+            WorkflowApplicationLifecycleRecord.project_id == project_id
+        )
+        if excluded_application_id is not None:
+            statement = statement.where(
+                WorkflowApplicationLifecycleRecord.application_id
+                != excluded_application_id
+            )
+        return len(self.session.execute(statement).scalars().all())
+
+    def _delete_project_records(
+        self,
+        model: type[object],
+        project_id: str,
+        *,
+        excluded_application_id: str | None = None,
+    ) -> None:
+        """将指定 Project 的某类 ORM 记录加入当前删除事务。"""
+
+        statement = select(model).where(model.project_id == project_id)
+        if (
+            model is WorkflowApplicationLifecycleRecord
+            and excluded_application_id is not None
+        ):
+            statement = statement.where(
+                WorkflowApplicationLifecycleRecord.application_id
+                != excluded_application_id
+            )
+        records = self.session.execute(statement).scalars().all()
+        for record in records:
+            self.session.delete(record)

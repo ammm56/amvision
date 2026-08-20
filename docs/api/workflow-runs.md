@@ -24,6 +24,7 @@
 - WorkflowRun 同时承接 sync invoke 和 async run 两种调用方式。
 - invoke 或 runs 请求都会先写入 WorkflowRun，再推进到终态。
 - WorkflowRun 与 WorkflowPreviewRun 分开建模：前者面向已发布 runtime 的正式调用，后者面向编辑器里的快速试跑。
+- 每次请求开始时固定 Runtime 当时的 active revision、Workflow App version、generation、snapshot fingerprint 和 worker epoch；后续版本切换或 worker 重启不会改变已经开始或已保存的运行来源。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke` 和 `.../invoke/upload` 默认只返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
 - `POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/runs` 创建异步 run，只返回运行回执。异步 run 完成后，`GET /api/v1/workflows/runs/{workflow_run_id}` 默认返回公开 App Result；如需平台运行回执或完整调试 trace，必须显式传 `response_mode=run` 或 `response_mode=debug`。
 - `response_mode=run` 和 `response_mode=debug` 如果输入或输出里出现 inline base64 图片或 memory image-ref，资源返回会自动脱敏，不直接回显原始图片内容或 image_handle。
@@ -93,6 +94,11 @@
 | workflow_runtime_id | 所属 WorkflowAppRuntime id |
 | project_id | 所属 Project id |
 | application_id | 运行的 FlowApplication id |
+| workflow_runtime_revision_id | 本次实际执行的 Runtime revision id；无法确定来源的旧记录可为空 |
+| workflow_app_version_id | 本次实际执行的不可变 Workflow App 版本 id；旧记录可为空 |
+| runtime_generation | 本次请求开始时固定的 Runtime generation；旧记录可为空 |
+| snapshot_fingerprint | 本次 worker 应加载并已核对的 snapshot fingerprint；旧记录可为空 |
+| worker_instance_id | 本次 Run 固定并调用的 worker epoch id；历史记录无法确定来源时为空，不能用 Runtime 当前 epoch 反向回填 |
 | state | 当前 WorkflowRun 状态 |
 | created_at | 记录创建时间 |
 | started_at | worker 开始执行时间，可为空 |
@@ -164,6 +170,11 @@
   "workflow_runtime_id": "workflow-runtime-1",
   "project_id": "project-1",
   "application_id": "inspection-app",
+  "workflow_runtime_revision_id": "workflow-runtime-revision-1",
+  "workflow_app_version_id": "workflow-app-version-1",
+  "runtime_generation": 1,
+  "snapshot_fingerprint": "sha256:...",
+  "worker_instance_id": "workflow-runtime-1-<epoch>",
   "state": "queued",
   "created_at": "2026-05-08T12:05:00Z",
   "started_at": null,

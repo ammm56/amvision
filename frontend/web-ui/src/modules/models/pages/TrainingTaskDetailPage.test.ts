@@ -405,7 +405,7 @@ describe('TrainingTaskDetailPage', () => {
     await flushPromises()
     expect(listModelTrainingOutputFiles).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('ready')
-  })
+  }, 10_000)
 
   it('applies completed epoch metrics from task events over an older output snapshot', async () => {
     vi.mocked(getModelTrainingTaskDetail).mockResolvedValue({

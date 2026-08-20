@@ -116,7 +116,11 @@ def get_segmentation_training_task_detail(
 ) -> TrainingTaskDetailResponse:
     """获取 segmentation 训练任务详情。"""
 
-    return get_training_task_detail(session_factory=session_factory, task_id=task_id)
+    return get_training_task_detail(
+        session_factory=session_factory,
+        task_id=task_id,
+        visible_project_ids=principal.project_ids,
+    )
 
 
 @segmentation_training_tasks_router.get(
@@ -131,11 +135,11 @@ def list_segmentation_training_output_files(
 ) -> list[TrainingOutputFileSummaryResponse]:
     """列出 segmentation 训练输出文件。"""
 
-    del principal
     return list_training_task_output_files(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         task_id=task_id,
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -152,12 +156,12 @@ def get_segmentation_training_output_file(
 ) -> TrainingOutputFileDetailResponse:
     """读取 segmentation 训练输出文件详情。"""
 
-    del principal
     return get_training_task_output_file(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         task_id=task_id,
         file_name=file_name,
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -180,6 +184,7 @@ def request_segmentation_training_save(
         queue_backend=queue_backend,
         task_id=task_id,
         action="save",
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -202,6 +207,7 @@ def request_segmentation_training_pause(
         queue_backend=queue_backend,
         task_id=task_id,
         action="pause",
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -224,6 +230,7 @@ def request_segmentation_training_terminate(
         queue_backend=queue_backend,
         task_id=task_id,
         action="terminate",
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -246,6 +253,7 @@ def resume_segmentation_training_task(
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
         task_id=task_id,
+        visible_project_ids=principal.project_ids,
     )
 
 
@@ -260,6 +268,10 @@ def delete_segmentation_training_task(
 ) -> Response:
     """删除已停止的 segmentation 训练任务。"""
 
-    delete_training_task(session_factory=session_factory, task_id=task_id)
+    delete_training_task(
+        session_factory=session_factory,
+        task_id=task_id,
+        visible_project_ids=principal.project_ids,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

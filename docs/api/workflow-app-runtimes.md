@@ -6,13 +6,11 @@
 
 本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括第一阶段最小运行面，以及第二阶段已经落地的 restart、instances 和 execution policy 最小接入。
 
-## 当前能力与版本管理规划边界
+## 当前版本管理边界
 
-当前 Runtime 创建接口接收 `application_id`，并固定创建时的 Application、Template 和可选 ExecutionPolicy snapshot。修改 Workflow App 不会改变已有 Runtime，但当前 Runtime 不能改选另一个 Workflow App 发布版本。
+Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVersion`。修改或发布 Workflow App 不会自动改变已有 Runtime；运维侧停止 Runtime、停用绑定 Trigger、使用 generation CAS 选择版本并重新启动后，Runtime id、TriggerSource id、调用地址和 SDK Runtime key 保持不变。
 
-规划中的 Workflow App 版本管理会增加不可变 `WorkflowAppVersion`、`WorkflowRuntimeRevision` 和 stopped-only 版本选择，同时保持 `workflow_runtime_id`、TriggerSource id、调用地址和 SDK Runtime key 不变。规划接口尚未公开，不属于本文档的当前接口清单。完整设计见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
-
-把 Runtime 创建从 `application_id` 改成必填 `workflow_app_version_id` 会改变当前请求体，实施时必须通过新增 API 大版本或明确的兼容期完成，不能静默修改当前 v1 行为。
+新调用应使用 `workflow_app_version_id` 创建 Runtime。v1 兼容期仍接受 `application_id`，但两个字段必须且只能提供一个；旧路径会固定当时快照并立即迁移到版本/revision 结构，不会让 Runtime 追随草稿。
 
 ## 当前公开范围
 
@@ -26,15 +24,18 @@
 - POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/restart
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/health
 - GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/instances
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions
+- GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions/{workflow_runtime_revision_id}
+- POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/select-version
 - /ws/v1/workflows/app-runtimes/events
 
 ## 资源定位
 
-- WorkflowAppRuntime 表示一份已发布应用的长期运行单元。
-- runtime 创建时会固定 application snapshot 和 template snapshot；如果提供 execution_policy_id，还会额外固定 execution policy snapshot。
+- WorkflowAppRuntime 表示一份已发布应用的稳定长期运行身份。
+- runtime revision 引用不可变 Application/Template 发布快照；如果提供 execution_policy_id，还会额外固定 execution policy snapshot。
 - runtime 返回会额外补 application_summary 和 template_summary 两个用于图编排界面的一跳摘要，减少控制面二次请求。
 - 当前仍采用单 runtime 单实例单进程模型，已经公开 restart 和 instances，但不公开 scale。
-- runtime worker 提供 start、stop、health 和执行宿主能力；sync invoke 与 async WorkflowRun 都复用同一份固定 snapshot。
+- runtime worker 提供 start、stop、health 和执行宿主能力；sync invoke、async WorkflowRun 和 Trigger 调用都在请求开始时固定同一份 active revision。
 
 ## 接口入口
 
@@ -45,8 +46,8 @@
 
 ## 鉴权规则
 
-- create、start、stop、restart、delete 需要 workflows:write
-- list、get、events、health、instances 需要 workflows:read
+- create、start、stop、restart、delete、select-version 需要 workflows:write
+- list、get、events、health、instances、revisions 需要 workflows:read
 - /ws/v1/workflows/app-runtimes/events 需要 workflows:read
 
 ## 状态语义
@@ -80,6 +81,9 @@
 | application_snapshot_object_key | 固定 application snapshot 的 object key |
 | template_snapshot_object_key | 固定 template snapshot 的 object key |
 | execution_policy_snapshot_object_key | 固定 execution policy snapshot 的 object key，可为空 |
+| active_revision_id | 最后一次成功启动并确认 fingerprint 的 revision id，可为空 |
+| desired_revision_id | 下一次 start 应加载的 revision id，可为空 |
+| revision_generation | Runtime 当前 CAS generation，从 1 开始；旧异常数据恢复前可为 0 |
 | desired_state | 当前期望状态 |
 | observed_state | 当前观测状态 |
 | request_timeout_seconds | 默认同步调用超时秒数 |
@@ -109,7 +113,8 @@
 ### 请求体字段
 
 - project_id：必填，所属 Project id
-- application_id：必填，已保存 FlowApplication id
+- workflow_app_version_id：新调用必填，准确的 published WorkflowAppVersion id
+- application_id：旧 API 兼容字段；与 workflow_app_version_id 必须且只能提供一个
 - execution_policy_id：可选，引用一条已保存 WorkflowExecutionPolicy
 - display_name：可选，展示名称
 - request_timeout_seconds：可选；未提供且存在 execution policy 时取 policy.default_timeout_seconds，否则默认 60
@@ -122,7 +127,7 @@
 ```json
 {
   "project_id": "project-1",
-  "application_id": "inspection-app",
+  "workflow_app_version_id": "workflow-app-version-1",
   "execution_policy_id": "runtime-default-policy",
   "display_name": "Inspection Runtime",
   "heartbeat_interval_seconds": 5,
@@ -161,6 +166,9 @@
   "application_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/application.snapshot.json",
   "template_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/template.snapshot.json",
   "execution_policy_snapshot_object_key": "workflows/runtime/app-runtimes/workflow-runtime-1/execution-policy.snapshot.json",
+  "active_revision_id": null,
+  "desired_revision_id": "workflow-runtime-revision-1",
+  "revision_generation": 1,
   "desired_state": "stopped",
   "observed_state": "stopped",
   "request_timeout_seconds": 60,
@@ -224,6 +232,38 @@
 
 - 返回单条 WorkflowAppRuntime 的当前持久化记录
 - 不会主动刷新 worker 健康状态；如果需要最新 process_id、heartbeat_at 或 fingerprint，应调用 health 接口
+
+## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}/revisions
+
+- 使用 `offset` 和 `limit` 分页返回该稳定 Runtime 的版本选择历史，按 generation 倒序核对升级、失败和回滚顺序；`limit` 默认采用统一列表页大小
+- 响应头返回 `x-total-count`、`x-has-more`，存在下一页时同时返回 `x-next-offset`
+- revision 状态为 `staged`、`active`、`retired` 或 `failed`
+- 每条记录包含 `workflow_app_version_id`、`generation`、`expected_snapshot_fingerprint`、激活/失败时间和错误摘要
+- 单条读取使用 `GET /revisions/{workflow_runtime_revision_id}`
+
+## POST /api/v1/workflows/app-runtimes/{workflow_runtime_id}/select-version
+
+升级和回滚共用该接口。请求示例：
+
+```json
+{
+  "workflow_app_version_id": "workflow-app-version-2",
+  "expected_generation": 1,
+  "allow_breaking_contract": false,
+  "breaking_change_reason": null
+}
+```
+
+成功只创建新的 staged revision、增加 generation 并更新 desired pointer，不隐式启动 worker，也不隐式停用/启用 Trigger。调用前必须满足：
+
+- Runtime 的 desired/observed state 均为 stopped
+- 不存在活动 WorkflowRun
+- 所有绑定 Trigger 已 disabled 且 stopped
+- `expected_generation` 与当前 generation 一致
+- 公开契约兼容；破坏性变化需要显式 override 和原因
+- 即使显式 override，已有 Trigger 输入输出映射失效时仍拒绝切换
+
+下一次 start 校验 worker 实际加载 fingerprint 后才把 staged revision 改为 active。启动失败会把目标 revision 标记 failed，并保留最后成功 active revision；恢复时需要显式处理并重新 start，不会静默切换。
 
 ## DELETE /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 

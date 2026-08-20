@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Integer, JSON, String
+from sqlalchemy import ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.service.infrastructure.persistence.base import Base
@@ -32,6 +32,20 @@ class TaskRecordEntity(Base):
     """映射 TaskRecord 对象。"""
 
     __tablename__ = "tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "task_kind",
+            "idempotency_key",
+            name="uq_tasks_project_kind_idempotency",
+        ),
+        Index(
+            "ix_tasks_idempotency_lookup",
+            "project_id",
+            "task_kind",
+            "idempotency_key",
+        ),
+    )
 
     task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     task_kind: Mapped[str] = mapped_column(String(128), index=True)
@@ -55,6 +69,8 @@ class TaskRecordEntity(Base):
     progress_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     resource_profile: Mapped[ResourceProfileEntity | None] = relationship(back_populates="tasks")
     attempts: Mapped[list[TaskAttemptEntity]] = relationship(

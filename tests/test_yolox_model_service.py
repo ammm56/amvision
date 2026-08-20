@@ -59,6 +59,19 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
     """验证训练输出和 build 登记会产生可追踪的对象链。"""
 
     service = _create_model_service()
+    parent_version_id = service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-parent-1",
+            model_name="yolox",
+            model_scale="s",
+            dataset_version_id="dataset-version-parent-1",
+            model_version_id="model-version-parent-1",
+            checkpoint_file_id="checkpoint-file-parent-1",
+            checkpoint_file_uri="memory://runs/training-parent-1/best_ckpt.pth",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        )
+    )
 
     model_version_id = service.register_training_output(
         TrainingOutputRegistration(
@@ -67,7 +80,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
             model_name="yolox",
             model_scale="s",
             dataset_version_id="dataset-version-1",
-            parent_version_id="model-version-parent-1",
+            parent_version_id=parent_version_id,
             checkpoint_file_id="checkpoint-file-1",
             checkpoint_file_uri="memory://runs/training-1/best_ckpt.pth",
             labels_file_id="labels-file-1",
@@ -100,7 +113,7 @@ def test_register_training_output_and_build_creates_linked_records() -> None:
 
     assert model_version is not None
     assert model_version.source_kind == "training-output"
-    assert model_version.parent_version_id == "model-version-parent-1"
+    assert model_version.parent_version_id == parent_version_id
     assert model_version.metadata["dataset_export_id"] == "dataset-export-1"
     assert model_version.metadata["manifest_object_key"] == "memory://exports/dataset-export-1/manifest.json"
     assert (
@@ -151,6 +164,26 @@ def test_register_pretrained_rejects_unsupported_model_scale() -> None:
                 model_name="yolox",
                 storage_uri="memory://weights/yolox_unknown.pth",
                 model_scale="unknown",
+            )
+        )
+
+
+def test_register_training_output_rejects_unknown_parent_version() -> None:
+    """验证训练输出登记会在写文件前拒绝不存在的 warm start 父版本。"""
+
+    service = _create_model_service()
+
+    with pytest.raises(ValueError, match="未知的父 ModelVersion"):
+        service.register_training_output(
+            TrainingOutputRegistration(
+                project_id="project-1",
+                training_task_id="training-unknown-parent",
+                model_name="yolox",
+                model_scale="s",
+                dataset_version_id="dataset-version-1",
+                parent_version_id="model-version-missing",
+                checkpoint_file_id="checkpoint-file-unknown-parent",
+                metadata={"input_size": {"width": 640, "height": 640}},
             )
         )
 

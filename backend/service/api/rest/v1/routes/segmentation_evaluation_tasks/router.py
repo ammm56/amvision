@@ -89,6 +89,7 @@ def get_segmentation_evaluation_task(
     """获取 segmentation 评估任务详情。"""
 
     return get_segmentation_evaluation_task_response(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
     )
@@ -106,6 +107,7 @@ def delete_segmentation_evaluation_task(
     """删除已完成的 segmentation 评估任务。"""
 
     return delete_segmentation_evaluation_task_response(
+        principal=principal,
         session_factory=session_factory,
         task_id=task_id,
     )

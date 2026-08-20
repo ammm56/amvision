@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
@@ -13,7 +14,10 @@ namespace Amvar.Vision
         public string ProjectId { get; set; } = string.Empty;
 
         [JsonProperty("application_id")]
-        public string ApplicationId { get; set; } = string.Empty;
+        public string? ApplicationId { get; set; }
+
+        [JsonProperty("workflow_app_version_id")]
+        public string? WorkflowAppVersionId { get; set; }
 
         [JsonProperty("execution_policy_id")]
         public string? ExecutionPolicyId { get; set; }
@@ -32,5 +36,19 @@ namespace Amvar.Vision
 
         [JsonProperty("metadata")]
         public IDictionary<string, object?> Metadata { get; } = new Dictionary<string, object?>();
+
+        /// <summary>
+        /// 校验 Runtime 来源必须在旧 application 和不可变发布版本之间二选一。
+        /// </summary>
+        internal void ValidateVersionSelector()
+        {
+            var hasApplicationId = !string.IsNullOrWhiteSpace(ApplicationId);
+            var hasWorkflowAppVersionId = !string.IsNullOrWhiteSpace(WorkflowAppVersionId);
+            if (hasApplicationId == hasWorkflowAppVersionId)
+            {
+                throw new ArgumentException(
+                    "ApplicationId and WorkflowAppVersionId must contain exactly one value.");
+            }
+        }
     }
 }

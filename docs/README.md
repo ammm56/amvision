@@ -50,7 +50,7 @@
 - [docs/api/websocket-usage.md](api/websocket-usage.md) 汇总第三方系统、HMI、嵌入式 UI 和前端界面接入公开 WebSocket 的连接顺序与恢复流程
 - [docs/architecture/execution-sequences.md](architecture/execution-sequences.md) 汇总训练、转换、部署推理和 workflow execute 四条关键调用顺序图
 - [docs/architecture/workflow-runtime.md](architecture/workflow-runtime.md) 汇总 workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
-- [docs/architecture/workflow-app-versioning.md](architecture/workflow-app-versioning.md) 固定 Workflow App 不可变发布版本、Runtime revision、稳定 Runtime/Trigger id、停机切换、回滚、契约兼容和迁移规则；当前为待实现规划
+- [docs/architecture/workflow-app-versioning.md](architecture/workflow-app-versioning.md) 固定 Workflow App 不可变发布版本、Runtime revision、稳定 Runtime/Trigger id、停机切换、回滚、契约兼容和迁移规则；当前核心链路已实现
 - [docs/architecture/workflow-model-session-runtime.md](architecture/workflow-model-session-runtime.md) 固定图内 Load Checkpoint 节点、AppRuntime 模型隔离、启动预热验证、串行执行和释放规则
 - [docs/architecture/local-buffer-broker.md](architecture/local-buffer-broker.md) 汇总 LocalBufferBroker 本机高性能数据交换层、mmap 文件池、ring buffer 和 workflow 推理调用边界
 - [docs/architecture/high-performance-image-data-plane.md](architecture/high-performance-image-data-plane.md) 汇总上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow 节点和模型 runtime 之间的 BGR24 高性能图片数据面规则

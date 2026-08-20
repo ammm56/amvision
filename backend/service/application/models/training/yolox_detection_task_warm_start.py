@@ -44,14 +44,20 @@ class YoloXTrainingTaskWarmStartMixin:
 
         dataset_storage = self._require_dataset_storage()
         model_service = SqlAlchemyModelService(session_factory=self.session_factory)
-        model_version = model_service.get_model_version(request.warm_start_model_version_id)
+        model_version = model_service.get_visible_model_version(
+            request.warm_start_model_version_id,
+            visible_project_ids=(request.project_id,),
+        )
         if model_version is None:
             raise ResourceNotFoundError(
                 "找不到 warm start 指定的 ModelVersion",
                 details={"model_version_id": request.warm_start_model_version_id},
             )
 
-        model = model_service.get_model(model_version.model_id)
+        model = model_service.get_visible_model(
+            model_version.model_id,
+            visible_project_ids=(request.project_id,),
+        )
         if model is None:
             raise ServiceConfigurationError(
                 "warm start 对应的 Model 不存在",
@@ -68,7 +74,10 @@ class YoloXTrainingTaskWarmStartMixin:
             )
 
         checkpoint_file = self._select_checkpoint_model_file(
-            model_service.list_model_files(model_version_id=model_version.model_version_id)
+            model_service.list_visible_model_files(
+                visible_project_ids=(request.project_id,),
+                model_version_id=model_version.model_version_id,
+            )
         )
         checkpoint_path = self._resolve_storage_uri_to_local_path(
             dataset_storage=dataset_storage,

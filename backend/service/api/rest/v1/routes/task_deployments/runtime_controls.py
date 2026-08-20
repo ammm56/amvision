@@ -222,11 +222,9 @@ def delete_stopped_deployment_instance(
     使用的长期资产。
     """
 
-    view = deployment_service.get_deployment_instance(deployment_instance_id)
-    ensure_deployment_visible(
-        principal=principal,
-        project_id=getattr(view, "project_id"),
-        deployment_instance_id=deployment_instance_id,
+    deployment_service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
     runtime_states = {
@@ -305,11 +303,9 @@ def run_deployment_process_status_action(
 ) -> DeploymentProcessStatusResponse:
     """执行指定通道的 deployment 进程状态动作。"""
 
-    view = deployment_service.get_deployment_instance(deployment_instance_id)
-    ensure_deployment_visible(
-        principal=principal,
-        project_id=getattr(view, "project_id"),
-        deployment_instance_id=deployment_instance_id,
+    view = deployment_service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
     state_service = DeploymentRuntimeStateService(
@@ -423,11 +419,9 @@ def run_deployment_process_health_action(
 ) -> DeploymentRuntimeHealthResponse:
     """执行指定通道的 deployment 进程健康动作。"""
 
-    view = deployment_service.get_deployment_instance(deployment_instance_id)
-    ensure_deployment_visible(
-        principal=principal,
-        project_id=getattr(view, "project_id"),
-        deployment_instance_id=deployment_instance_id,
+    view = deployment_service.get_visible_deployment_instance(
+        deployment_instance_id,
+        visible_project_ids=principal.project_ids,
     )
     process_config = deployment_service.resolve_process_config(deployment_instance_id)
     state_service = DeploymentRuntimeStateService(

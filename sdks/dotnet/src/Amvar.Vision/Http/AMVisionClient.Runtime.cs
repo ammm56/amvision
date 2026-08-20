@@ -16,6 +16,8 @@ namespace Amvar.Vision
             WorkflowAppRuntimeCreateRequest request,
             CancellationToken cancellationToken = default)
         {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            request.ValidateVersionSelector();
             var requestPath = $"{WorkflowApiPrefix}/app-runtimes";
             var requestBody = SerializeJson(request);
             var apiResponse = await SendAsync(
@@ -100,6 +102,108 @@ namespace Amvar.Vision
             var apiResponse = await GetWorkflowAppRuntimeAsync(workflowRuntimeId, cancellationToken).ConfigureAwait(false);
             var typedResponse = ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
             return typedResponse;
+        }
+
+        /// <summary>
+        /// 分页列出稳定 WorkflowAppRuntime 的 revision。
+        /// </summary>
+        public async Task<AMVisionApiResponse> ListWorkflowRuntimeRevisionsAsync(
+            string workflowRuntimeId,
+            int offset = 0,
+            int limit = 100,
+            CancellationToken cancellationToken = default)
+        {
+            var requestPath = WithQuery(
+                $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/revisions",
+                ("offset", offset),
+                ("limit", limit));
+            return await SendAsync(
+                HttpMethod.Get,
+                requestPath,
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 分页列出稳定 WorkflowAppRuntime 的 revision，并返回 typed responses。
+        /// </summary>
+        public async Task<IReadOnlyList<WorkflowRuntimeRevisionResponse>> ListWorkflowRuntimeRevisionResponsesAsync(
+            string workflowRuntimeId,
+            int offset = 0,
+            int limit = 100,
+            CancellationToken cancellationToken = default)
+        {
+            var apiResponse = await ListWorkflowRuntimeRevisionsAsync(
+                workflowRuntimeId,
+                offset,
+                limit,
+                cancellationToken).ConfigureAwait(false);
+            return ReadJsonList<WorkflowRuntimeRevisionResponse>(apiResponse);
+        }
+
+        /// <summary>
+        /// 读取稳定 WorkflowAppRuntime 的一条 revision。
+        /// </summary>
+        public async Task<AMVisionApiResponse> GetWorkflowRuntimeRevisionAsync(
+            string workflowRuntimeId,
+            string workflowRuntimeRevisionId,
+            CancellationToken cancellationToken = default)
+        {
+            var runtimeId = EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)));
+            var revisionId = EncodePathSegment(RequireId(workflowRuntimeRevisionId, nameof(workflowRuntimeRevisionId)));
+            return await SendAsync(
+                HttpMethod.Get,
+                $"{WorkflowApiPrefix}/app-runtimes/{runtimeId}/revisions/{revisionId}",
+                content: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 读取稳定 WorkflowAppRuntime 的一条 revision，并返回 typed response。
+        /// </summary>
+        public async Task<WorkflowRuntimeRevisionResponse> GetWorkflowRuntimeRevisionResponseAsync(
+            string workflowRuntimeId,
+            string workflowRuntimeRevisionId,
+            CancellationToken cancellationToken = default)
+        {
+            var apiResponse = await GetWorkflowRuntimeRevisionAsync(
+                workflowRuntimeId,
+                workflowRuntimeRevisionId,
+                cancellationToken).ConfigureAwait(false);
+            return ReadJson<WorkflowRuntimeRevisionResponse>(apiResponse);
+        }
+
+        /// <summary>
+        /// 在停机状态下为稳定 WorkflowAppRuntime 选择准确发布版本。
+        /// </summary>
+        public async Task<AMVisionApiResponse> SelectWorkflowAppRuntimeVersionAsync(
+            string workflowRuntimeId,
+            WorkflowAppRuntimeSelectVersionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            request.Validate();
+            var requestPath = $"{WorkflowApiPrefix}/app-runtimes/{EncodePathSegment(RequireId(workflowRuntimeId, nameof(workflowRuntimeId)))}/select-version";
+            return await SendAsync(
+                HttpMethod.Post,
+                requestPath,
+                SerializeJson(request),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 在停机状态下选择准确发布版本，并返回更新后的 Runtime。
+        /// </summary>
+        public async Task<WorkflowAppRuntimeResponse> SelectWorkflowAppRuntimeVersionResponseAsync(
+            string workflowRuntimeId,
+            WorkflowAppRuntimeSelectVersionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var apiResponse = await SelectWorkflowAppRuntimeVersionAsync(
+                workflowRuntimeId,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return ReadJson<WorkflowAppRuntimeResponse>(apiResponse);
         }
 
         /// <summary>

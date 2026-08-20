@@ -58,13 +58,17 @@ def list_evaluation_task_records(
 
 def get_evaluation_task_record(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
     expected_task_kind: str,
 ) -> object:
     """读取并校验指定评估任务记录。"""
 
-    detail = SqlAlchemyTaskService(session_factory).get_task(task_id)
+    detail = SqlAlchemyTaskService(session_factory).get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+    )
     task = detail.task
     if task.task_kind != expected_task_kind:
         raise ResourceNotFoundError(
@@ -76,6 +80,7 @@ def get_evaluation_task_record(
 
 def delete_finished_evaluation_task(
     *,
+    principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
     task_id: str,
     expected_task_kind: str,
@@ -83,7 +88,10 @@ def delete_finished_evaluation_task(
     """删除已完成的评估任务。"""
 
     task_service = SqlAlchemyTaskService(session_factory)
-    detail = task_service.get_task(task_id)
+    detail = task_service.get_visible_task(
+        task_id,
+        visible_project_ids=principal.project_ids,
+    )
     task = detail.task
     if task.task_kind != expected_task_kind:
         raise ResourceNotFoundError(

@@ -50,7 +50,7 @@ def test_json_save_local_replaces_complete_document(tmp_path: Path) -> None:
         _request(
             node_id="json-save",
             invocation_id="json-save:1",
-            parameters={"local_path": str(output_path)},
+            parameters={"save_location": str(output_path)},
             input_values={"value": {"value": {"new": True}}},
         )
     )
@@ -66,7 +66,7 @@ def test_csv_append_same_invocation_is_idempotent(tmp_path: Path) -> None:
     request = _request(
         node_id="csv-append",
         invocation_id="csv-append:1",
-        parameters={"local_path": str(output_path)},
+        parameters={"save_location": str(output_path)},
         input_values={"value": {"value": {"serial": "A-001", "ok": True}}},
     )
 
@@ -92,7 +92,7 @@ def test_csv_append_concurrent_invocations_do_not_interleave(tmp_path: Path) -> 
                 _request(
                     node_id="csv-append",
                     invocation_id=f"csv-append:{index}",
-                    parameters={"local_path": str(output_path)},
+                    parameters={"save_location": str(output_path)},
                     input_values={
                         "value": {"value": {"index": index, "state": "ok"}}
                     },
@@ -125,7 +125,7 @@ def test_move_replay_recovers_committed_target(tmp_path: Path) -> None:
         node_id="relocate",
         invocation_id="relocate:1",
         parameters={
-            "target_directory": str(target_directory),
+            "save_location": str(target_directory),
             "mode": "move",
             "conflict_policy": "overwrite",
         },

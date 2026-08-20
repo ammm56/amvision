@@ -10,10 +10,9 @@ from starlette.datastructures import UploadFile
 from backend.contracts.workflows import FlowApplication
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.runtime.invokes import WorkflowRuntimeInvokeRequest
-from backend.service.application.workflows.workflow_service import LocalWorkflowJsonService
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 
-from .services import require_dataset_storage, require_node_catalog_registry, with_created_by
+from .services import require_dataset_storage, with_created_by
 
 
 _MULTIPART_RUNTIME_RESERVED_FIELDS = frozenset(
@@ -137,16 +136,12 @@ def load_runtime_application(
     request: Request,
     workflow_app_runtime: WorkflowAppRuntime,
 ) -> FlowApplication:
-    """读取指定 runtime 绑定的 FlowApplication。"""
+    """读取指定 runtime revision 固定的不可变 FlowApplication 快照。"""
 
-    workflow_service = LocalWorkflowJsonService(
-        dataset_storage=require_dataset_storage(request),
-        node_catalog_registry=require_node_catalog_registry(request),
+    application_payload = require_dataset_storage(request).read_json(
+        workflow_app_runtime.application_snapshot_object_key
     )
-    return workflow_service.get_application(
-        project_id=workflow_app_runtime.project_id,
-        application_id=workflow_app_runtime.application_id,
-    ).application
+    return FlowApplication.model_validate(application_payload)
 
 
 def read_optional_json_object(value: object, *, field_name: str) -> dict[str, object]:

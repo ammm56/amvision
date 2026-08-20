@@ -54,3 +54,12 @@ class DeploymentInstanceRepository(Protocol):
         """
 
         ...
+
+    def get_visible_deployment_instance(
+        self,
+        deployment_instance_id: str,
+        visible_project_ids: tuple[str, ...],
+    ) -> DeploymentInstance | None:
+        """按 id 和 Project 可见范围读取 DeploymentInstance。"""
+
+        ...

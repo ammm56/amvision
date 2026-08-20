@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from backend.contracts.workflows.resource_semantics import (
     WorkflowAppRuntimeState,
@@ -10,6 +11,74 @@ from backend.contracts.workflows.resource_semantics import (
     WorkflowPreviewRunState,
     WorkflowRunState,
 )
+
+
+WorkflowAppVersionState = Literal["publishing", "published", "archived", "failed"]
+WorkflowRuntimeRevisionState = Literal["staged", "active", "retired", "failed"]
+WorkflowApplicationLifecycleState = Literal[
+    "idle",
+    "saving",
+    "publishing",
+    "deleting",
+]
+
+
+@dataclass(frozen=True)
+class WorkflowApplicationLifecycle:
+    """描述一份 Workflow Application 的持久化写操作状态门。
+
+    ``generation`` 与 ``operation_id`` 共同隔离过期操作；``deleted`` 保留
+    物理删除后的 tombstone，避免旧进程在恢复后重新写回过期状态。
+    """
+
+    project_id: str
+    application_id: str
+    state: WorkflowApplicationLifecycleState = "idle"
+    generation: int = 0
+    operation_id: str | None = None
+    updated_at: str = ""
+    deleted: bool = False
+
+
+@dataclass(frozen=True)
+class WorkflowAppVersion:
+    """描述一次不可变的 Workflow App 发布版本。"""
+
+    workflow_app_version_id: str
+    project_id: str
+    application_id: str
+    version_number: int
+    display_version: str
+    release_notes: str
+    application_snapshot_object_key: str
+    template_snapshot_object_key: str
+    contract_snapshot_object_key: str
+    dependency_manifest_object_key: str
+    content_fingerprint: str
+    contract_fingerprint: str
+    state: WorkflowAppVersionState = "publishing"
+    created_at: str = ""
+    created_by: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkflowRuntimeRevision:
+    """描述 Runtime 某次不可变的版本选择记录。"""
+
+    workflow_runtime_revision_id: str
+    workflow_runtime_id: str
+    generation: int
+    workflow_app_version_id: str
+    execution_policy_snapshot_object_key: str | None
+    expected_snapshot_fingerprint: str
+    state: WorkflowRuntimeRevisionState = "staged"
+    created_at: str = ""
+    activated_at: str | None = None
+    failed_at: str | None = None
+    error: str | None = None
+    created_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +196,9 @@ class WorkflowAppRuntime:
     application_snapshot_object_key: str
     template_snapshot_object_key: str
     execution_policy_snapshot_object_key: str | None = None
+    active_revision_id: str | None = None
+    desired_revision_id: str | None = None
+    revision_generation: int = 0
     desired_state: WorkflowAppRuntimeState = "stopped"
     observed_state: WorkflowAppRuntimeState = "stopped"
     request_timeout_seconds: int = 60
@@ -138,6 +210,7 @@ class WorkflowAppRuntime:
     last_started_at: str | None = None
     last_stopped_at: str | None = None
     heartbeat_at: str | None = None
+    worker_instance_id: str | None = None
     worker_process_id: int | None = None
     loaded_snapshot_fingerprint: str | None = None
     last_error: str | None = None
@@ -153,6 +226,11 @@ class WorkflowRun:
     workflow_runtime_id: str
     project_id: str
     application_id: str
+    workflow_runtime_revision_id: str | None = None
+    workflow_app_version_id: str | None = None
+    runtime_generation: int | None = None
+    snapshot_fingerprint: str | None = None
+    worker_instance_id: str | None = None
     state: WorkflowRunState = "created"
     created_at: str = ""
     started_at: str | None = None

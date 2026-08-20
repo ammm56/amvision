@@ -16,6 +16,9 @@ from backend.service.application.runtime.predictors.rfdetr.detection.openvino im
 from backend.service.application.runtime.predictors.rfdetr.detection.pytorch import (
     PyTorchRfdetrRuntimeSession,
 )
+from backend.service.application.runtime.predictors.rfdetr.detection import (
+    pytorch as detection_pytorch_module,
+)
 from backend.service.application.runtime.predictors.rfdetr.segmentation.onnxruntime import (
     OnnxRuntimeRfdetrSegmentationRuntimeSession,
 )
@@ -24,6 +27,9 @@ from backend.service.application.runtime.predictors.rfdetr.segmentation.openvino
 )
 from backend.service.application.runtime.predictors.rfdetr.segmentation.pytorch import (
     PyTorchRfdetrSegmentationRuntimeSession,
+)
+from backend.service.application.runtime.predictors.rfdetr.segmentation import (
+    pytorch as segmentation_pytorch_module,
 )
 
 
@@ -50,6 +56,74 @@ def test_rfdetr_pytorch_session_close_releases_gpu_model(session_type) -> None:
     assert session.model is None
     if hasattr(session, "postprocess_model"):
         assert session.postprocess_model is None
+
+
+@pytest.mark.parametrize(
+    ("module", "session_type"),
+    (
+        (detection_pytorch_module, PyTorchRfdetrRuntimeSession),
+        (segmentation_pytorch_module, PyTorchRfdetrSegmentationRuntimeSession),
+    ),
+)
+def test_rfdetr_pytorch_session_uses_strict_deployment_loader(
+    tmp_path,
+    monkeypatch,
+    module,
+    session_type,
+) -> None:
+    """PyTorch deployment 必须先建空模型，再走严格部署权重加载器。"""
+
+    checkpoint_path = tmp_path / "best.pt"
+    checkpoint_path.write_bytes(b"checkpoint")
+    model = Mock()
+    builder = Mock(return_value=model)
+    strict_loader = Mock()
+    builder_name = (
+        "build_rfdetr_model"
+        if session_type is PyTorchRfdetrRuntimeSession
+        else "build_rfdetr_segmentation_model"
+    )
+    monkeypatch.setattr(module, builder_name, builder)
+    monkeypatch.setattr(module, "load_rfdetr_deployment_weights", strict_loader)
+    monkeypatch.setattr(
+        module,
+        "resolve_rfdetr_runtime_input_size",
+        lambda **_: (64, 64),
+    )
+    if session_type is PyTorchRfdetrRuntimeSession:
+        monkeypatch.setattr(
+            module,
+            "resolve_execution_device_name",
+            lambda **_: "cpu",
+        )
+    runtime_target = SimpleNamespace(
+        runtime_backend="pytorch",
+        runtime_artifact_path=checkpoint_path,
+        model_scale="nano",
+        labels=("part", "defect"),
+        device_name="cpu",
+        runtime_precision="fp32",
+        task_type=session_type.task_type,
+        input_size=(64, 64),
+    )
+
+    session = session_type.load(
+        dataset_storage=Mock(),
+        runtime_target=runtime_target,
+    )
+
+    builder.assert_called_once_with(
+        model_scale="nano",
+        num_classes=2,
+        pretrained_path=None,
+    )
+    strict_loader.assert_called_once_with(
+        model=model,
+        checkpoint_path=checkpoint_path,
+    )
+    model.to.assert_called_once_with("cpu")
+    model.eval.assert_called_once_with()
+    assert session.model is model
 
 
 @pytest.mark.parametrize(

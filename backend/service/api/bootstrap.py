@@ -37,6 +37,7 @@ from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
+from backend.service.application.project_deletion import ProjectDeletionService
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     normalize_detection_async_inference_owner_id,
@@ -75,6 +76,18 @@ from backend.service.application.workflows.preview_run_manager import (
     WorkflowPreviewRunManager,
 )
 from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.app_version_migration import (
+    WorkflowAppVersionMigrationService,
+)
+from backend.service.application.workflows.app_version_service import (
+    WorkflowAppVersionService,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.application_bundle_journal import (
+    WorkflowApplicationBundleJournalService,
+)
 from backend.service.application.workflows.worker.manager import (
     WorkflowRuntimeWorkerManager,
 )
@@ -327,6 +340,61 @@ class LoadBackendServiceNodeCatalogStep:
         runtime.workflow_node_runtime_registry_loader.refresh()
 
 
+class MigrateLegacyWorkflowAppRuntimeVersionsStep:
+    """幂等迁移旧 Runtime 自有快照的启动步骤。"""
+
+    def get_step_name(self) -> str:
+        """返回启动步骤名称。"""
+
+        return "migrate-legacy-workflow-app-runtime-versions"
+
+    def run(self, runtime: BackendServiceRuntime) -> None:
+        """在 worker 和 Trigger 恢复前完成版本来源迁移。"""
+
+        migration_service = WorkflowAppVersionMigrationService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+            node_catalog_registry=runtime.node_catalog_registry,
+        )
+        migration_service.migrate()
+        migration_service.normalize_interrupted_staged_starts()
+
+
+class RecoverIncompleteWorkflowAppVersionsStep:
+    """按文件依赖顺序收敛 Project、bundle、版本和 lifecycle。"""
+
+    def get_step_name(self) -> str:
+        """返回启动步骤名称。"""
+
+        return "recover-incomplete-workflow-app-versions"
+
+    def run(self, runtime: BackendServiceRuntime) -> None:
+        """在 Runtime/Trigger 恢复前完成全部持久 mutation 恢复。"""
+
+        ProjectDeletionService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+            queue_backend=runtime.queue_backend,
+            default_project_id=runtime.settings.projects.default_project_id,
+            configured_project_ids=tuple(
+                item.project_id for item in runtime.settings.projects.items
+            ),
+        ).recover_interrupted_deletions()
+        WorkflowApplicationBundleJournalService(
+            dataset_storage=runtime.dataset_storage,
+        ).recover_interrupted_journals()
+        WorkflowAppVersionService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+            node_catalog_registry=runtime.node_catalog_registry,
+        ).recover_incomplete_versions()
+        # 所有文件型恢复完成后，最后释放普通 reserved/Application claim。
+        WorkflowApplicationLifecycleService(
+            session_factory=runtime.session_factory,
+            dataset_storage=runtime.dataset_storage,
+        ).recover_interrupted_operations()
+
+
 class BackendServiceBootstrap(
     RuntimeBootstrap[BackendServiceSettings, BackendServiceRuntime]
 ):
@@ -419,9 +487,7 @@ class BackendServiceBootstrap(
         )
         workflow_model_session_manager = WorkflowModelSessionManager(
             runtime_registry=workflow_node_runtime_registry_loader.get_runtime_registry(),
-            max_parallel_loads=(
-                settings.workflow_runtime.model_startup_parallelism
-            ),
+            max_parallel_loads=(settings.workflow_runtime.model_startup_parallelism),
         )
         workflow_storage_image_cache = ExecutionImageRegistry(
             decoded_cache_max_entries=(
@@ -472,7 +538,9 @@ class BackendServiceBootstrap(
                     ),
                 )
 
-            def build_control_client(runtime_mode: str) -> QueueBackedInferenceControlClient:
+            def build_control_client(
+                runtime_mode: str,
+            ) -> QueueBackedInferenceControlClient:
                 """构建不持有模型子进程的 daemon 控制客户端。"""
 
                 return QueueBackedInferenceControlClient(
@@ -500,7 +568,9 @@ class BackendServiceBootstrap(
                 )
 
             detection_sync_deployment_process_supervisor = build_control_client("sync")
-            detection_async_deployment_process_supervisor = build_control_client("async")
+            detection_async_deployment_process_supervisor = build_control_client(
+                "async"
+            )
             classification_sync_deployment_supervisor = build_control_client("sync")
             classification_async_deployment_supervisor = build_control_client("async")
             segmentation_sync_deployment_supervisor = build_control_client("sync")
@@ -556,16 +626,12 @@ class BackendServiceBootstrap(
                 pose_sync_deployment_supervisor,
                 pose_async_deployment_supervisor,
                 pose_async_inference_gateway_registry,
-            ) = build_task_type_deployment_runtimes(
-                task_type="pose", **build_kwargs
-            )
+            ) = build_task_type_deployment_runtimes(task_type="pose", **build_kwargs)
             (
                 obb_sync_deployment_supervisor,
                 obb_async_deployment_supervisor,
                 obb_async_inference_gateway_registry,
-            ) = build_task_type_deployment_runtimes(
-                task_type="obb", **build_kwargs
-            )
+            ) = build_task_type_deployment_runtimes(task_type="obb", **build_kwargs)
         published_inference_gateway = TaskTypeDeploymentPublishedInferenceGateway(
             deployment_services_by_task_type=deployment_services_by_task_type,
             deployment_process_supervisors_by_task_type={
@@ -592,7 +658,9 @@ class BackendServiceBootstrap(
                     async_gateway_registry=detection_async_inference_gateway_dispatcher_registry,
                 ),
                 "classification": DeploymentRuntimeBinding(
-                    deployment_service=deployment_services_by_task_type["classification"],
+                    deployment_service=deployment_services_by_task_type[
+                        "classification"
+                    ],
                     sync_supervisor=classification_sync_deployment_supervisor,
                     async_supervisor=classification_async_deployment_supervisor,
                     async_gateway_registry=classification_async_inference_gateway_registry,
@@ -769,9 +837,7 @@ class BackendServiceBootstrap(
         application.state.dataset_storage = runtime.dataset_storage
         application.state.queue_backend = runtime.queue_backend
         application.state.service_event_bus = runtime.service_event_bus
-        application.state.training_telemetry_broker = (
-            runtime.training_telemetry_broker
-        )
+        application.state.training_telemetry_broker = runtime.training_telemetry_broker
         application.state.node_pack_loader = runtime.node_pack_loader
         application.state.node_catalog_registry = runtime.node_catalog_registry
         application.state.workflow_node_runtime_registry_loader = (
@@ -866,6 +932,8 @@ class BackendServiceBootstrap(
         WorkflowTriggerSourceService(
             session_factory=runtime.session_factory,
             trigger_source_supervisor=runtime.trigger_source_supervisor,
+            dataset_storage=runtime.dataset_storage,
+            workflow_runtime_worker_manager=runtime.workflow_runtime_worker_manager,
         ).start_enabled_trigger_sources()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.start()
@@ -896,9 +964,7 @@ class BackendServiceBootstrap(
                 model_session_manager.close_all()
         finally:
             runtime.workflow_service_node_runtime_context.close()
-            storage_image_cache = (
-                runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
-            )
+            storage_image_cache = runtime.workflow_service_node_runtime_context.workflow_storage_image_cache
             if storage_image_cache is not None:
                 storage_image_cache.clear()
         # 反序停止所有 deployment supervisor 和 gateway registry
@@ -925,6 +991,8 @@ class BackendServiceBootstrap(
             InitializeDatabaseSchemaStep(),
             RunBackendServiceSeedersStep(self._build_seeders()),
             LoadBackendServiceNodeCatalogStep(),
+            RecoverIncompleteWorkflowAppVersionsStep(),
+            MigrateLegacyWorkflowAppRuntimeVersionsStep(),
         )
 
     def _build_seeders(self) -> tuple[BackendServiceSeeder, ...]:

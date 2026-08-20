@@ -653,6 +653,84 @@ def test_workflow_node_catalog_returns_effective_parameter_ui_schema(tmp_path: P
         session_factory.engine.dispose()
 
 
+def test_publish_list_get_and_compare_workflow_app_versions(tmp_path: Path) -> None:
+    """验证草稿可以发布为不可变版本，并执行 CAS、去重和契约比较。"""
+
+    client, session_factory, dataset_storage = _create_test_client(tmp_path)
+    try:
+        with client:
+            client.put(
+                "/api/v1/workflows/projects/project-1/templates/inspection-demo/versions/1.0.0",
+                headers=_build_workflow_write_headers(),
+                json={"template": _build_template_payload()},
+            )
+            save_response = client.put(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app",
+                headers=_build_workflow_write_headers(),
+                json={"application": _build_application_payload()},
+            )
+            draft_fingerprint = save_response.json()["draft_fingerprint"]
+            stale_publish_response = client.post(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions",
+                headers=_build_workflow_write_headers(),
+                json={"expected_draft_fingerprint": "sha256:stale"},
+            )
+            publish_response = client.post(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions",
+                headers=_build_workflow_write_headers(),
+                json={
+                    "expected_draft_fingerprint": draft_fingerprint,
+                    "release_notes": "首个生产版本",
+                },
+            )
+            duplicate_response = client.post(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions",
+                headers=_build_workflow_write_headers(),
+                json={"expected_draft_fingerprint": draft_fingerprint},
+            )
+            version_id = publish_response.json()["workflow_app_version_id"]
+            list_response = client.get(
+                "/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions",
+                headers=_build_workflow_read_headers(),
+            )
+            detail_response = client.get(
+                f"/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions/{version_id}",
+                headers=_build_workflow_read_headers(),
+            )
+            compare_response = client.get(
+                f"/api/v1/workflows/projects/project-1/applications/inspection-api-app/versions/{version_id}/compare",
+                headers=_build_workflow_read_headers(),
+            )
+
+        assert stale_publish_response.status_code == 409
+        assert publish_response.status_code == 201
+        published = publish_response.json()
+        assert published["version_number"] == 1
+        assert published["display_version"] == "v1"
+        assert published["state"] == "published"
+        assert published["content_fingerprint"].startswith("sha256:")
+        assert duplicate_response.status_code == 409
+
+        assert list_response.status_code == 200
+        assert list_response.headers["x-total-count"] == "1"
+        assert [item["workflow_app_version_id"] for item in list_response.json()] == [
+            version_id
+        ]
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["manifest"]["complete"] is True
+        assert detail["contract"]["inputs"][0]["binding_id"] == "api-entry"
+        assert detail["dependencies"]["node_packs"][0]["node_pack_id"] == "opencv.nodes"
+        assert dataset_storage.resolve(
+            published["application_snapshot_object_key"]
+        ).is_file()
+        assert compare_response.status_code == 200
+        assert compare_response.json()["compatible"] is True
+        assert compare_response.json()["breaking_changes"] == []
+    finally:
+        session_factory.engine.dispose()
+
+
 def _create_test_client(
     tmp_path: Path,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage]:

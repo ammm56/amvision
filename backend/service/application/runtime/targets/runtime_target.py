@@ -342,8 +342,9 @@ class SqlAlchemyRuntimeTargetResolver:
         model_service = self.model_service_factory(self.session_factory)
         model_build = None
         if _normalize_optional_str(request.model_build_id) is not None:
-            model_build = model_service.get_model_build(
-                _normalize_optional_str(request.model_build_id) or ""
+            model_build = model_service.get_visible_model_build(
+                _normalize_optional_str(request.model_build_id) or "",
+                visible_project_ids=(request.project_id,),
             )
             if model_build is None:
                 raise ResourceNotFoundError(
@@ -382,26 +383,28 @@ class SqlAlchemyRuntimeTargetResolver:
                     },
                 )
 
-        model_version = model_service.get_model_version(resolved_model_version_id or "")
+        model_version = model_service.get_visible_model_version(
+            resolved_model_version_id or "",
+            visible_project_ids=(request.project_id,),
+        )
         if model_version is None:
             raise ResourceNotFoundError(
                 "指定的 ModelVersion 不存在",
                 details={"model_version_id": resolved_model_version_id},
             )
-        model = model_service.get_model(model_version.model_id)
+        model = model_service.get_visible_model(
+            model_version.model_id,
+            visible_project_ids=(request.project_id,),
+        )
         if model is None:
             raise ResourceNotFoundError(
                 "指定 ModelVersion 对应的 Model 不存在",
                 details={"model_version_id": model_version.model_version_id},
             )
         if model.project_id is not None and model.project_id != request.project_id:
-            raise InvalidRequestError(
-                "project_id 与模型所属 Project 不一致",
-                details={
-                    "project_id": request.project_id,
-                    "model_project_id": model.project_id,
-                    "model_version_id": model_version.model_version_id,
-                },
+            raise ResourceNotFoundError(
+                "指定的 ModelVersion 不存在",
+                details={"model_version_id": model_version.model_version_id},
             )
         if model.task_type not in self.supported_task_types:
             raise InvalidRequestError(
@@ -412,8 +415,9 @@ class SqlAlchemyRuntimeTargetResolver:
                 },
             )
 
-        model_files = model_service.list_model_files(
-            model_version_id=model_version.model_version_id
+        model_files = model_service.list_visible_model_files(
+            visible_project_ids=(request.project_id,),
+            model_version_id=model_version.model_version_id,
         )
         checkpoint_file = find_model_file(
             model_files=model_files,
@@ -433,8 +437,9 @@ class SqlAlchemyRuntimeTargetResolver:
             )
         else:
             runtime_artifact_file = require_model_file(
-                model_files=model_service.list_model_files(
-                    model_build_id=model_build.model_build_id
+                model_files=model_service.list_visible_model_files(
+                    visible_project_ids=(request.project_id,),
+                    model_build_id=model_build.model_build_id,
                 ),
                 file_type=resolve_model_build_file_type(
                     build_format=model_build.build_format,
