@@ -1,362 +1,194 @@
-# release/full 排障手册
+# 完整发行栈排障
 
-## 文档目的
+本文适用于 `release/full-windows-x64-cpu/` 和 `release/full-windows-x64-nvidia/`。
 
-本文档只回答 `release/full/` 现场最常见的几类问题：
+## 先看五项
 
-- 为什么整套起不来
-- 为什么 service 正常但任务不动
-- 为什么 worker 起了但某类模型任务报错
-- 出问题时先看哪几个文件和命令
+1. `logs/full-stack/runtime-state.json` 是否存在且指向当前进程。
+2. `backend-service-<当天 YYYYMMDD>.log` 是否正常持续写入。
+3. `inference-daemon-<当天 YYYYMMDD>.log` 是否出现 ready 和 probe 成功。
+4. 目标 `backend-worker-<profile>-<当天 YYYYMMDD>.log` 是否存在。
+5. `GET http://127.0.0.1:5600/api/v1/system/health` 是否返回 `status=ok`。
 
-## 先看这 5 个点
+日志每天切换文件。排障时先确认日期，不要只查看前一天文件。
 
-1. `logs/full-stack/runtime-state.json` 是否存在，记录的完整进程身份是否仍匹配。
-2. `logs/full-stack/backend-service-<当天 YYYYMMDD>.log` 是否正常持续写入。
-3. 目标 `backend-worker-<profile>-<当天 YYYYMMDD>.log` 是否存在，是否和任务类型对应。
-4. `config/backend-service.json`、`config/backend-worker.json` 里的路径是否指向同一套 `data/`。
-5. `manifests/worker-profiles/*.json` 是否真的包含当前任务需要的 consumer kind。
+## 日志对应关系
 
-## 默认观测入口
-
-| 路径或接口 | 用途 |
+| 文件 | 内容 |
 | --- | --- |
-| `logs/full-stack/backend-service-YYYYMMDD.log` | 看 backend-service 是否正常启动、端口是否绑定成功、API 是否有异常 |
-| `logs/full-stack/backend-worker-<profile>-YYYYMMDD.log` | 看具体 Profile 是否成功装配、消费队列或出现模型运行时错误 |
-| `logs/full-stack/runtime-state.json` | 看 Supervisor、Topology、完整进程身份、当前日志路径和日志模式 |
-| `http://127.0.0.1:5600/api/v1/system/health` | 看 service 是否已对外可用 |
-| `http://127.0.0.1:5600/docs` | 看 OpenAPI 和前端静态资源是否至少能正常返回 |
+| `database-migration-YYYYMMDD.log` | Alembic revision、备份和迁移错误 |
+| `inference-daemon-YYYYMMDD.log` | daemon、Deployment 进程、控制队列和 mmap mailbox |
+| `backend-service-YYYYMMDD.log` | API、bootstrap、Workflow Runtime、Trigger 和静态前端 |
+| `backend-worker-dataset-import-YYYYMMDD.log` | 数据集导入 |
+| `backend-worker-dataset-export-YYYYMMDD.log` | 数据集导出 |
+| `backend-worker-training-YYYYMMDD.log` | 训练 |
+| `backend-worker-conversion-YYYYMMDD.log` | 转换 |
+| `backend-worker-evaluation-YYYYMMDD.log` | 评估 |
+| `backend-worker-inference-YYYYMMDD.log` | 异步推理 |
 
-## 当前基础验收结果
+## 启动立即失败
 
-2026-06-12 已完成一轮 `release/full` 基础验收：
-
-- `assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text` 通过，`bundled_python_mode=preserved-existing`。
-- `validate-layout` 通过，`frontend/`、`custom_nodes/`、`tools/ffmpeg/`、`tools/cudnn/`、`python/python.exe` 和 worker profile 目录均存在。
-- `release/full/python/python.exe` 可正常 import `torch / onnxruntime / openvino / tensorrt / cuda`。
-- `start_amvision_full.py` 可拉起 `backend-service` 与 `dataset-import / dataset-export / training / conversion / evaluation / inference` 六个 worker profile。
-- `/api/v1/system/health`、`/docs` 和 `/openapi.json` 均可访问；OpenAPI 中可见 `classification/conversion-tasks/{task_id}/result` 这类 non-detection conversion result 路由。
-- `stop-amvision-full.bat` 可清理 `logs/full-stack/runtime-state.json`；当前 stop launcher 已改为停止失败时返回非 0，并保留状态文件用于排查，不再把“停止超时”伪装成成功。
-- 仓库侧已补 `tests/integration/test_release_full_stack_acceptance.py`，用于显式启动 `release/full`、检查 health/docs/OpenAPI/worker profile、陈旧状态文件恢复、组件日志文件、资源快照、短时驻留并调用 stop 脚本回收。默认驻留时间较短，长时 soak 需要单独设置 `AMVISION_RELEASE_FULL_SOAK_SECONDS`。
-- 每次 release/full integration 验收会在本次 `logs/<subdir>/resource-baseline.json` 写入组件资源快照，字段包含 pid、线程数、RSS 内存和 CPU 时间。当前文件包含 `initial`、`final`、`samples` 和 `summary` 四段：`samples` 用于长时 soak 过程采样，`summary` 用于直接查看 RSS、CPU 和线程数变化。
-- 2026-06-15 已在本机重新装配 `release/full` 并复跑一次短时启停验收：使用 `release/full/python/python.exe`、端口 `18080`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`，结果为 `1 passed`。本次验收确认 root launcher、backend-service、6 个 worker profile、OpenAPI、stop 回收和 `resource-baseline.json` 写入正常；这仍是短时空载验收，不替代现场长时间负载 soak。
-- 2026-06-16 已复跑 `tests/integration/test_release_full_stack_acceptance.py`：使用端口 `18080`、`logs/integration-full-stack-codex-short`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=5`、资源采样间隔 `1` 秒，结果为 `1 passed`。本次资源摘要中 backend-service 与 6 个 worker profile 的 RSS、线程数和 CPU 时间在短时驻留前后无增长；这仍是短时空载验收，不替代目标机长时间负载 soak。
-- 2026-06-18 已完成 NVIDIA full-stack 短时验收；当前复验统一使用 `full-windows-x64-nvidia` profile 和对应发布目录。
-- 2026-06-24 已跑一轮更长 `release/full` 空载常驻基线：使用端口 `18240`、日志目录 `logs/model-mainline-long-soak-20260624-r1`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=600`、`AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS=30`，结果为 `1 passed`。本次验收覆盖陈旧 `runtime-state.json` 恢复、backend-service 与 6 个 worker profile 启动、health / docs / OpenAPI、30 秒间隔资源采样、stop 脚本回收和进程残留检查；`resource-baseline.json` 中 7 个组件 RSS 增量为 `32768` 到 `40960` bytes，CPU 时间增量均为 `0.0`，线程数最终从 `4` 回落到 `2`。日志中未发现 `ERROR`、`Traceback`、`Exception`、`failed` 等异常关键词，stop 后 `runtime-state.json` 已删除。该记录是空载常驻和异常恢复基线，不替代真实模型 deployment 持续推理负载 soak。
-- 2026-06-25 已按验收与修复主线补一轮 `release/full` 60 秒空载驻留复验：日志目录 `logs/integration-full-stack-1782389454`、`AMVISION_RELEASE_FULL_SOAK_SECONDS=60`、`AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS=10`，结果为 `1 passed`。本次复验确认 health / docs / OpenAPI、组件日志、资源采样、陈旧状态文件恢复、stop 脚本回收和进程残留检查仍正常；`resource-baseline.json` 中 backend-service 与 6 个 worker profile 的 RSS 均无增长，CPU 时间增量均为 `0.0`，日志中未发现 `ERROR`、`Traceback`、`Exception`、`failed` 等异常关键词，stop 后 `runtime-state.json` 已删除。
-
-## 常见问题
-
-### 1. `start-amvision-full` 提示已有实例在运行
-
-先看：
-
-- `logs/full-stack/runtime-state.json`
-- 里面记录的 pid 是否还活着
-
-处理顺序：
-
-1. 先执行 `.\stop-amvision-full.bat`
-2. 如果 stop 提示状态文件存在但 pid 已失效，手工删除 `runtime-state.json`
-3. 再重新执行 `.\start-amvision-full.bat`
-
-这类问题通常不是代码问题，而是上次异常退出后状态文件还在。
-
-### 2. health 不通，`/docs` 也打不开
-
-先看：
-
-- `logs/full-stack/backend-service-<当天 YYYYMMDD>.log`
-
-高频原因：
-
-- 端口被占用
-- `config/backend-service.json` 指到了无权限目录
-- `python/` 里的依赖没装全
-- `frontend/` 或 `frontend/runtime-config.json` 缺失
-
-先做：
+先运行布局检查：
 
 ```powershell
 .\launchers\maintenance\invoke-backend-maintenance.bat -- validate-layout --output text
 ```
 
-如果 `validate-layout` 先不过，不要继续看 worker。
+核对：
 
-### 3. CPU-only 机器启动后前端无内容或一直 checking
+- `python/python.exe` 存在且可启动。
+- `frontend/index.html` 与 `frontend/runtime-config.json` 存在。
+- `config/backend-service.json`、`config/backend-worker.json` 是合法 JSON。
+- 发行目录只有一个 `manifests/release-profiles/*.json`。
+- 六个 `manifests/worker-profiles/*.json` 与 release manifest 一致。
+- 端口未被其他实例占用。
 
-先看：
+迁移失败时只看 migration 日志并恢复数据库问题；不能跳过 migration 强行启动服务。
 
-- `logs/full-stack/backend-service-<当天 YYYYMMDD>.log`
-- `logs/full-stack/backend-worker-<profile>-<当天 YYYYMMDD>.log`
-- `logs/full-stack/runtime-state.json`
+## backend-service 可用但页面 checking
 
-典型根因：
-
-- CPU-only 机器误用了 `full-windows-x64-nvidia` 发布包
-- NVIDIA 完整包启动了训练、转换、评估、推理等全部 worker
-- 某个 worker 因 TensorRT、CUDA、NVIDIA driver 或 GPU-only Python 依赖不可用而退出
-- `start-amvision-full` 发现子组件退出后，会停止整个 stack，backend-service 也随之退出
-- 前端无法再获取 bootstrap/session 状态，所以界面停在 checking 或空白
-
-正确处理：
+检查：
 
 ```powershell
-conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
+Invoke-WebRequest http://127.0.0.1:5600/openapi.json
 ```
 
-然后在 `release/full-windows-x64-cpu/` 中部署和启动。CPU profile 的验收点：
+如果 API 正常：
 
-- 不存在 `tools/tensorrt/`
-- 不存在 `tools/cudnn/`
-- `app/requirements.txt` 不包含 `tensorrt-cu12`、`cuda-python`
-- 包含六类 worker，可按现场需要通过启动参数选择实际启动的 worker
+- 查看浏览器 Network/Console。
+- 核对 `frontend/runtime-config.json` 的 API base URL。
+- 确认当前访问的是这份发行目录对应的 service。
 
-如果必须在 CPU 机器上跑模型推理，应使用 ONNX Runtime / OpenVINO CPU 路线构建和部署模型，不应使用 TensorRT 构建。
+如果 API 随后退出，检查 Supervisor 终端和各 Profile 日志；某组件首次启动失败会使完整 stack 回收，不能只看曾经短暂成功的 service health。
 
-### 4. 后端 health 正常，但浏览器空白且控制台提示 JS MIME type 错误
+## Worker 显示 degraded
 
-先看浏览器开发者工具 Console 和 Network：
-
-- `/api/v1/system/health` 返回 200
-- `/` 返回 200 或 304
-- `/assets/index-*.js` 返回 200
-- Console 提示 module script 被拒绝，原因类似 `MIME type "text/plain"` 不允许
-
-这类问题不是 Intel CPU、NPU 或 Arc 核显导致，也不是 worker 没启动。根因通常是目标 Windows 系统的 MIME 注册表把 `.js` 错误映射成 `text/plain`，导致 Starlette / Python `mimetypes` 按系统表返回错误 `Content-Type`，Firefox / Chromium 会拒绝加载 Vite 生成的 module script。
-
-当前 backend-service 在挂载前端静态资源前会显式注册前端构建产物 MIME 类型，避免依赖目标机系统 MIME 表。现场验证方式：
-
-```powershell
-curl -I http://127.0.0.1:5600/assets/index-xxxx.js
-```
-
-期望响应头包含：
+设置页只读取：
 
 ```text
-Content-Type: application/javascript
+data/runtime/backend-workers/active.json
+  → topologies/<epoch>/manifest.json
+  → profiles/<profile-id>.json
 ```
 
-如果仍然返回 `text/plain`，说明运行的不是包含该修复的发布包，或目标目录仍在使用旧的 `app/backend/service/api/app.py`。应重新装配并部署对应 release profile。
+检查 active pointer、manifest 中的 generation/epoch、目标 Profile heartbeat 和 `worker_instance_id` 是否一致。历史 epoch、旧目录或手工创建的心跳不属于当前状态。
 
-### 5. 单个 Worker Profile 退出或显示降级
+单 Profile 崩溃时 Supervisor 应只恢复该 Profile，并生成新的 instance id。其他 Profile、daemon 和 service PID 应保持不变。反复恢复时查看对应 Profile 日志的首个异常，不要手工启动第二个 Worker。
 
-当前实现不扫描队列目录中的旧心跳文件。设置页只读取 `data/runtime/backend-workers/active.json` 指向的当前 epoch，并逐个读取 manifest 声明的 Profile 心跳。
+## 任务一直 queued
 
-检查顺序：
+1. 根据任务类型找到正确 Profile。
+2. 检查该 Profile 是否 `running` 且 heartbeat 新鲜。
+3. 确认 service 与 worker 的 `queue.root_dir` 指向同一发行目录 `data/queue`。
+4. 查看 Task events 与 Profile 日志。
+5. 检查队列文件权限、磁盘空间和杀毒软件锁定。
 
-1. 在设置页“运行状态”确认 Topology generation、epoch 和失败 Profile。
-2. 检查 `data/runtime/backend-workers/topologies/<epoch>/manifest.json`。
-3. 检查 `data/runtime/backend-workers/topologies/<epoch>/profiles/<profile>.json`。
-4. 检查 `logs/full-stack/backend-worker-<profile>-<当天 YYYYMMDD>.log`。
+不要通过提高 lease、重复提交或启动旧兼容 Worker 掩盖消费者未运行的问题。
 
-运行期只有一个 Worker Profile 退出时，Supervisor 只恢复该 Profile，backend-service、inference daemon 和其他 Profile 不会被停止。新的进程必须产生新的 `worker_instance_id`；持续使用旧 instance id 或旧 epoch 心跳属于错误。
+## Deployment 或同步推理失败
 
-健康诊断只读取 `data/runtime/backend-workers/active.json` 指向的 Topology 和该 Topology 的 Profile 心跳；其他目录或文件不参与当前健康判断。
+依次检查：
 
-### 6. API 能访问，但任务一直停在 `queued`
+1. inference daemon 日志和 probe。
+2. DeploymentInstance 的 desired/observed state、generation 和健康实例数。
+3. 模型 runtime、device、precision 和输入尺寸。
+4. `data/buffers/` 与 mmap mailbox 权限和容量。
+5. OpenVINO/TensorRT/CUDA 的版本与目标硬件。
 
-先看：
+容量已满时同步接口会直接返回错误；系统不在内部排队或自动重试。调用方应按业务节奏再次调用。
 
-- `logs/full-stack/backend-worker-*-YYYYMMDD.log`
-- `config/backend-worker.json`
-- `manifests/worker-profiles/*.json`
+## Workflow Runtime 或 Trigger 失败
 
-重点确认：
+检查 Runtime：
 
-- dataset 导入任务：看 `backend-worker-dataset-import-YYYYMMDD.log`
-- 训练任务：看 `backend-worker-training-YYYYMMDD.log`
-- 转换任务：看 `backend-worker-conversion-YYYYMMDD.log`
-- 评估任务：看 `backend-worker-evaluation-YYYYMMDD.log`
-- 异步推理任务：看 `backend-worker-inference-YYYYMMDD.log`
+- active/desired revision
+- generation
+- snapshot fingerprint
+- worker instance id
+- recent error
 
-当前 `worker profile` 真实边界是：
+检查 Run：
 
-- `training` 已覆盖 `yolox / yolov8 / yolo11 / yolo26 / rfdetr` detection 训练，以及 `classification / segmentation / pose / obb`
-- `evaluation` 与 `inference` 已覆盖 `detection / classification / segmentation / pose / obb`
+- revision/version/generation/fingerprint/worker provenance
+- state 与 error details
+- 输入引用是否仍存在
 
-所以如果任务仍然不动，先不要再怀疑“是不是还没接通 non-detection worker”，优先检查日志、队列目录和配置路径。
+切版前必须停止 Runtime 并处理活动 Run/Trigger。Trigger 保持稳定 runtime id；版本更新不应要求更换 Trigger 或 SDK 配置。
 
-### 7. 某类 non-detection 模型部署能建出来，但推理报 backend 错误
+图片输入：
 
-先看：
+- ObjectStore 使用相对 `object_key`。
+- 磁盘文件使用显式绝对路径。
+- Windows JSON 字符串中的反斜杠必须正确转义，或使用 `/`。
+- `media_type` 必须与实际文件内容一致。
 
-- 该任务对应的 deployment / inference API 返回
-- `backend-service-<当天 YYYYMMDD>.log`
-- 对应的 `backend-worker-<profile>-<当天 YYYYMMDD>.log`
+## CPU/NVIDIA 包不匹配
 
-当前仓库已经有一条显式 real smoke matrix：
+CPU-only 机器使用：
 
-- `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`
+```text
+release/full-windows-x64-cpu/
+```
 
-覆盖组合：
+NVIDIA 机器使用：
 
-- `YOLOv8 / YOLO11 / YOLO26`
-- `classification / segmentation / pose / obb`
+```text
+release/full-windows-x64-nvidia/
+```
 
-覆盖 backend：
+CPU 包不包含 TensorRT/cuDNN。NVIDIA 包要求兼容 driver；`python/` 中 TensorRT wheel、`tools/tensorrt/bin` DLL 和 `trtexec` 必须同版本。
 
-- `onnxruntime`
-- `openvino`
-- `tensorrt`
+快速导入核对：
 
-也就是当前覆盖 `3 × 4 × 3 = 36` 条 `conversion -> runtime predict` 组合。RF-DETR segmentation 不放在这条矩阵里，继续由 `tests/test_rfdetr_segmentation_task_smoke.py` 单独覆盖。
+```powershell
+.\python\python.exe -c "import torch, onnxruntime, openvino; print(torch.__version__)"
+```
 
-如果现场问题和这条矩阵的组合一致，先对照测试判断是：
+NVIDIA 包再核对：
 
-- 现场机器驱动 / runtime 版本问题
-- 发布目录资产不完整
-- 还是当前代码主线真的回归了
+```powershell
+.\python\python.exe -c "import tensorrt; print(tensorrt.__version__)"
+```
 
-### 8. `openvino` 或 `tensorrt` 相关任务只在现场机器失败
+## 正确停止
 
-先看：
+```powershell
+.\stop-amvision-full.bat
+```
 
-- 驱动版本
-- GPU / NPU 是否真的可用
-- 发布目录里模型构建产物是否齐全
-- `tools/ffmpeg/`、`tools/cudnn/`、`python/`、厂商 runtime 是否来自同一套打包
-- `tools/tensorrt/bin/trtexec.exe` 是否存在
-- `tools/cudnn/bin/12.9/x64/` 是否存在当前打包的 cuDNN DLL
-- `python/` 中安装的 TensorRT wheel 是否与 `tools/tensorrt/bin/` 中的 DLL 同版本
+stop 会校验 PID、创建时间、解释器、工作目录和命令行。仍有进程存活时返回非零并保留 `runtime-state.json`。此时：
 
-当前判断原则：
+1. 根据输出定位仍存活进程。
+2. 查看其当天日志。
+3. 处理文件句柄或子进程。
+4. 再次执行 stop。
 
-- 如果 `onnxruntime` 能跑、`openvino/tensorrt` 不能跑，优先查现场 runtime 环境
-- 不要把不同版本的 TensorRT Python 包和 TensorRT DLL 混用；本地开发环境和 `release/full/python/` 中的 TensorRT 版本应与 `tools/tensorrt/bin/` 中的 DLL 同版本
-- 目标客户机默认安装 NVIDIA driver 和现场要求的系统 CUDA；如果报 DLL 缺失，优先检查发布目录 `tools/tensorrt/bin/`、`tools/cudnn/bin/12.9/x64/` 和启动脚本 PATH，而不是把整套 CUDA Toolkit 复制进项目
-- 如果三条 backend 都不能跑，再回头查模型构建、labels、部署绑定和 API 入参
+不要直接删除状态文件或只按 PID 强杀不明进程。
 
-### 7. `release/full/python` 看起来存在，但一 `import torch` 就直接崩
+## 回归与 soak
 
-这是 bundled Python 漂移的典型信号，先不要直接怀疑业务代码。
-
-当前已真实遇到过的现象是：
-
-- `release/full/python/python.exe -c "import torch"` 直接报 `libiomp5md.dll already initialized`
-- 同一台机器上先执行 `conda activate amvision` 后，源码开发环境 `python -c "import torch"` 却是正常的
-
-高频原因：
-
-- 当前 `release/full/python` 来自 `bundled_python_mode=preserved-existing`
-- 旧 bundle 里残留了历史 DLL 或厂商 runtime 文件
-
-先做：
+仓库根目录执行发行组装测试：
 
 ```powershell
 conda activate amvision
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
-# 停止全部发布进程后，把已验证的 Python 环境目录手工移动/重命名为：
-# .\release\full-windows-x64-nvidia\python
+python -m pytest tests/test_release_assembly.py -q
 ```
 
-判断方式：
-
-- `assemble-release` 会保留已有 `python/`，不会替换环境；需要排除旧 bundle 漂移时，必须先把旧目录移走，再把已验证环境整体移动或手工复制到目标位置
-- 如果更换后 `python/python.exe -c "import torch"` 正常，说明是旧 bundle 漂移，不是当前仓库源码主链坏了
-- 如果更换后仍然异常，再继续查 Python 来源目录本身和系统级 DLL 干扰
-
-### 8. stop 脚本执行后还有进程残留
-
-先看：
-
-- `runtime-state.json` 是否被更新
-- stop 前后当天的 `backend-worker-<profile>-<YYYYMMDD>.log` 是否还在持续写入
-
-当前 stop 语义是：
-
-- 先停 `backend-service` 和各类 `backend-worker:*`
-- 再给 `full-stack-root` 一个自然收尾退出窗口
-- 只有 root 没有自行退出时，才转入强制停止
-
-处理顺序：
-
-1. 先再执行一次 `.\stop-amvision-full.bat`
-2. 再按 `runtime-state.json` 里的 pid 检查是否还有活进程
-3. 只在确认 stop 脚本已经失败时，再手工清理残留进程和状态文件
-
-## 推荐排障顺序
-
-1. `validate-layout`
-2. `backend-service-<当天 YYYYMMDD>.log`
-3. `runtime-state.json`
-4. 对应的 `backend-worker-<profile>-<当天 YYYYMMDD>.log`
-5. `system/health`
-6. 最小 API smoke
-7. 必要时回到仓库侧 integration smoke
-
-## 仓库侧验证入口
-
-如果需要在开发仓库复现 release/full 现场问题，当前最直接的入口是：
+完整进程验收：
 
 ```powershell
-conda activate amvision
-python -m pytest --basetemp .tmp\pytest_openvino_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k openvino -q
+python -m pytest tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
-```powershell
-conda activate amvision
-python -m pytest --basetemp .tmp\pytest_tensorrt_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k tensorrt -q
-```
+长时负载应覆盖实际 Deployment、Workflow Runtime 和 Trigger，监控：
 
-完整 non-detection runtime backend matrix：
+- RSS、CPU、线程和句柄趋势
+- Profile 重启次数与 instance id
+- 请求成功率和时延分位数
+- mmap 槽位 generation/owner/deadline
+- Run 终态与版本 provenance
+- 跨日日志切换
+- stop 后端口、进程和状态文件是否完全回收
 
-```powershell
-conda activate amvision
-python -m pytest --basetemp .tmp\pytest_non_detection_full_matrix tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -q
-```
-
-release/full 短时启停验收：
-
-```powershell
-conda activate amvision
-python -m pytest --basetemp .tmp\pytest_release_full_acceptance tests/integration/test_release_full_stack_acceptance.py -q
-```
-
-release/full 长时 soak 入口示例：
-
-```powershell
-conda activate amvision
-$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
-$env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
-python -m pytest --basetemp .tmp\pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
-```
-
-空载驻留不能替代真实负载。已经准备好运行中的 deployment、workflow runtime 和 `tcp://` ZeroMQ TriggerSource 时，可以把持续负载工具接入 release/full 的外部 workload 槽。负载时长应略短于 release/full 总驻留时长，让工具有时间落下最终结果并以 0 退出。
-
-```powershell
-conda activate amvision
-$workload = @(
-  (Get-Command python).Source,
-  "-m", "tests.integration.deployment_workflow_trigger_soak",
-  "--duration-seconds", "540",
-  "--deployment-instance-id", "<deployment-id>",
-  "--deployment-task-type", "detection",
-  "--deployment-model-type", "yolov8",
-  "--deployment-image", "<sample-image.png>",
-  "--workflow-runtime-id", "<workflow-runtime-id>",
-  "--workflow-request-json", "<workflow-request.json>",
-  "--trigger-source-id", "<trigger-source-id>",
-  "--trigger-envelope-json", "<trigger-envelope.json>",
-  "--trigger-binary", "<sample-image.png>"
-)
-$env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"
-$env:AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS="30"
-$env:AMVISION_RELEASE_FULL_SOAK_WORKLOAD_CWD=(Get-Location).Path
-$env:AMVISION_RELEASE_FULL_SOAK_WORKLOAD_COMMAND_JSON=($workload | ConvertTo-Json -Compress)
-python -m pytest --basetemp .tmp\pytest_release_full_loaded_soak tests/integration/test_release_full_stack_acceptance.py -q
-```
-
-长时 soak 完成后先看：
-
-- `release/full/logs/<logs-subdir>/resource-baseline.json`
-- `summary[*].rss_delta_bytes`
-- `summary[*].cpu_delta_seconds`
-- `samples` 中是否有某个组件持续单调增长
-- `.tmp/deployment-workflow-trigger-soak/<run-id>/result.json` 中各 lane 的 `error_rate` 和 p95/p99
-- `result.json` 的 `health_samples` 是否出现错误或运行状态回退
-
-如果只想跑短时启停，不需要设置 `AMVISION_RELEASE_FULL_RESOURCE_SAMPLE_INTERVAL_SECONDS`。
-
-`Windows + OpenVINO` 下如果临时目录句柄占用导致清理失败，优先换一个新的 `--basetemp`，不要直接把这种现象判断成模型主链错误。
+空载常驻不能替代真实模型和 Workflow 持续负载。

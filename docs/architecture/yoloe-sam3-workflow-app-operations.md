@@ -76,7 +76,7 @@
 含义：
 
 - 这是单个节点定义的成熟度标签。
-- 它描述的是某一个节点本身是否已经接通和达到当前阶段目标。
+- 它描述某一个节点本身是否已经接通并满足当前实现边界。
 
 作用：
 
@@ -86,7 +86,7 @@
 
 对 `YOLOE / SAM3` 这类重资产扩展型 node pack，当前已经满足：
 
-- 第一阶段目标能力已经做完整
+- 目标能力已经完整实现
 - pack 与节点定义都已收口到 `implemented`
 - pack 默认自动启用，但模型会话仍保持按需首次加载
 
@@ -325,7 +325,7 @@ python -m pytest tests/integration/test_yoloe_sam3_workflow_app_runtime_smoke.py
 4. 确认本地资产目录
 5. 必要时先停 runtime，再重启
 
-## 当前阶段是否已经把 pack `metadata.phase` 收口到 `implemented`
+## pack `metadata.phase` 是否已经收口到 `implemented`
 
 ### 当前状态
 

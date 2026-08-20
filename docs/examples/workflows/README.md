@@ -1203,7 +1203,7 @@ ZeroMQ TriggerSource 示例不把机器相关的 `path`、`offset` 和 `broker_e
 注意事项：
 
 - `request_delivery_context.value.record_id` 当前既是 `custom.database.sql.upsert` 的主键来源，也是 `custom.http.request` 的查询参数/请求体字段，导入后建议先明确现场唯一键策略
-- `custom.database.sql.upsert` 当前不会自动建表；导入并运行这条模板前，应先在目标 SQLite 文件上执行 [industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](/W:/workspace/codex/python/amvision/docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql)
+- `custom.database.sql.upsert` 当前不会自动建表；导入并运行这条模板前，应先在目标 SQLite 文件上执行 [industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql)
 - 模板默认的 SQLite 目标是 `sqlite:///./data/workflow-results/glue-roi-delivery/inspection-results.sqlite3`，MES 地址默认是 `http://127.0.0.1:18080/mes/inspection-result`；两者都只是样例值，导入后应先改成现场真实地址
 - `build_delivery_context` 会显式收集 `signal_write_summary / json_summary / csv_summary`，再把它们一起送给 MES / SQL Database 节点，因此这条图天然表达了“先完成 PLC 回写和本地归档，再做对外/对库交付”
 - `http_response` 仍然是 `value.v1` 摘要，不是原始 `http-response.v1`；`http_prepared_request` 会保留 query/body/headers 预览，适合现场先核对映射是否正确

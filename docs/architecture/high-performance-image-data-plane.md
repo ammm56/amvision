@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档固定上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow app 节点和模型推理节点之间的大图高速传递规则，避免后续实现时再次把现场高帧率链路退回到 JPEG、PNG、Bitmap 或 base64 转换路径。
+本文档固定上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow app 节点和模型推理节点之间的大图高速传递规则，防止维护中把现场高帧率链路退回到 JPEG、PNG、Bitmap 或 base64 转换路径。
 
 这里讨论的是本机高速图片数据面，不替代 HTTP API、workflow app 管理接口、SDK 配置包、模型 DeploymentInstance 管理页面或普通调试示例。
 
@@ -62,7 +62,7 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 - 字节长度必须等于 `width * height * 3`。
 - 通道顺序为 B、G、R，每通道 8 bit。
 - 新代码和文档统一使用 `pixel_format=bgr24`，不要继续新增 `BGR`、`BGR24` 等大小写变体。
-- 第一阶段要求连续内存，不处理行填充。后续如需支持工业相机 pitch/stride，应增加 `row_stride_bytes`，而不是隐式猜测。
+- 当前 BufferRef 要求连续内存，不处理行填充。只有协议显式增加 `row_stride_bytes` 后才能接收带 pitch/stride 的工业相机内存，不能隐式猜测。
 - SDK 在发送前必须校验宽、高、shape、dtype、layout、pixel_format 和 bytes 长度。
 - 后端写入 LocalBufferBroker 时必须保留 shape、dtype、layout、pixel_format 和 media_type。
 
@@ -187,7 +187,7 @@ BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded �
 | Camera/ZeroMQ/视频帧入口 | Camera/OpenCV 帧默认输出 raw memory image-ref，跨进程入口输出 BufferRef/FrameRef，并保留 shape、dtype、layout、pixel_format | 默认生成 base64 或临时 PNG |
 | model-inference-submit 等异步任务提交节点 | 使用 storage ref 作为可恢复任务输入 | 把短生命周期 BufferRef 持久化进异步队列 |
 
-最后一类 storage 输入属于持久化任务边界，不是旧实现。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用。
+storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用。
 
 ### OpenCV 和显示节点
 

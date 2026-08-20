@@ -29,7 +29,7 @@
 - 上述三个请求里的 `request_signal_write.unit_id`
 - 上述三个请求里的 `request_signal_write.signal_values.*`
 
-如果需要联调 sql upsert，先执行 [docs/examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](../../../examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql) 准备本地 SQLite 表结构。
+如果需要联调 sql upsert，先执行 [industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql](../../../../examples/workflows/industrial_single_frame_glue_roi_delivery_bundle.sqlite.sql) 准备本地 SQLite 表结构。
 
 默认模板中的 MES 地址、JSON/CSV 保存路径和 sql 连接参数都只是现场占位值。第一次联调建议先确认“准备出的结果对象和请求摘要”是否正确，再接入真实外部系统。
 

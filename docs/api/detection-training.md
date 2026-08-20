@@ -607,7 +607,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 当前训练链已经从早期闭环升级为完整主链路，已经打通训练后验证、评估、转换、DeploymentInstance 发布和同步 / 异步推理接口。训练详情和输出文件接口已经能稳定公开 `model_version_id`、`best/latest checkpoint`、`labels.txt`、`training-summary.json`、`train-metrics.json` 和 `validation-metrics.json`，后续链路不再依赖临时脚本或裸模型路径拼接。
 
-### 当前已完成的基础衔接
+### 训练输出衔接
 
 - 训练详情已经公开 `model_version_id`，可以把训练输出正式衔接到后续模型发布、部署或验证链路。
 - 训练输出资源组已经公开 `best-checkpoint`、`latest-checkpoint`、`summary`、`labels`、`train-metrics` 和 `validation-metrics` 的统一读取状态。

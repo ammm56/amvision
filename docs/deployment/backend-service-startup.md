@@ -1,415 +1,156 @@
-# backend-service 启动说明
+# backend-service 启动
 
-## 文档目的
+`backend-service` 提供 REST API、WebSocket、静态前端和平台控制面。它不消费数据集、训练、转换、评估或异步推理队列。
 
-本文档用于说明当前仓库里的 FastAPI backend-service 怎么启动、启动后能看到什么、默认会使用哪些本地目录，以及当前还没有自动完成的初始化步骤。
+## 进程边界
 
-本文档只覆盖 backend-service 本身；独立 worker、maintenance 和发布 profile 见本目录其他专题文档。
+正式完整拓扑：
 
-## 适用范围
+- full Supervisor：数据库迁移、进程拓扑和恢复。
+- inference daemon：DeploymentInstance 与推理进程。
+- backend-service：API、Workflow 控制面、Trigger 和前端静态资源。
+- six Worker Profiles：后台任务消费。
 
-- conda 开发环境中的 backend-service 启动
-- 同目录 Python 运行时中的 backend-service 启动
-- 健康检查、OpenAPI 文档和最小验收步骤
-- 当前默认数据库与文件目录
-- 当前启动链路的已知限制
+开发 API/UI 时可以单独启动 backend-service；生产和完整链路必须使用 full Supervisor。
 
-## 当前服务入口
+## 配置
 
-- ASGI 应用入口：backend.service.api.app:app
-- FastAPI app factory：backend.service.api.app.create_app
-- 健康检查：/api/v1/system/health
-- 当前公开任务接口：/api/v1/tasks
-- 当前公开任务事件订阅：/ws/v1/tasks/events
-- 当前公开训练高频遥测订阅：/ws/v1/training/telemetry
-- OpenAPI JSON：/openapi.json
-- Swagger UI：/docs
+默认配置文件：
 
-## 当前默认本地目录
-
-当前服务未传自定义配置时会使用下面三个默认路径：
-
-- SQLite 数据库目标路径：./data/amvision.db
-- 数据集本地文件目录：./data/files
-- 本地持久化队列目录：./data/queue
-
-当前实现的行为是：
-
-- 服务启动时会创建 ./data、./data/files 和 ./data/queue 目录
-- SQLite 文件路径默认指向 ./data/amvision.db
-- SQLite 数据库文件会在第一次真正建立数据库连接时创建
-- 本地队列目录用于保存 DatasetImport 异步处理使用的 pending、claimed、completed、failed 任务文件
-
-## 当前配置来源
-
-当前服务通过统一 settings 模块读取启动配置。
-
-- 配置入口：backend.service.settings.BackendServiceSettings
-- 默认读取方式：config 目录 JSON + 环境变量覆盖 + 代码内默认值
-- 环境变量前缀：AMVISION_
-- 嵌套字段分隔符：__
-- 默认主配置文件：./config/backend-service.json
-- 可选本地覆盖文件：./config/backend-service.local.json
-- backend-service 不包含 task manager；任务消费者只由 Worker Topology 启动
-- 默认 deployment supervisor 配置：max_running_process_count=32、warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=false、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
-
-常见示例：
-
-- config/backend-service.json
-
-```json
-{
-  "app": {
-    "app_name": "amvision backend-service",
-    "app_version": "0.1.4"
-  },
-  "database": {
-    "url": "sqlite:///./data/amvision.db",
-    "echo": false
-  },
-  "dataset_storage": {
-    "root_dir": "./data/files"
-  },
-  "queue": {
-    "root_dir": "./data/queue",
-    "lease_timeout_seconds": 86400.0,
-    "completed_retention_seconds": 86400.0,
-    "failed_retention_seconds": 604800.0,
-    "response_queue_retention_seconds": 3600.0
-  },
-  "async_inference_gateway": {
-    "service_id": "backend-service-main"
-  },
-  "workflow_runtime": {
-    "operator_thread_count": 1,
-    "decoded_image_cache_max_entries": 8,
-    "decoded_image_cache_max_bytes": 268435456,
-    "raw_result_cache_ttl_seconds": 900.0,
-    "raw_result_cache_max_items": 64,
-    "model_startup_timeout_seconds": 600.0,
-    "preview_model_session_scope_limit": 1
-  },
-  "local_buffer_broker": {
-    "enabled": true,
-    "root_dir": "./data/buffers",
-    "startup_timeout_seconds": 60.0,
-    "takeover_existing_process": true,
-    "takeover_timeout_seconds": 10.0,
-    "request_timeout_seconds": 5.0,
-    "shutdown_timeout_seconds": 5.0,
-    "expire_interval_seconds": 5.0,
-    "default_pool_name": "image-4k",
-    "pools": [
-      {
-        "pool_name": "image-4k",
-        "slot_size_bytes": 134217728,
-        "slot_count": 16,
-        "flush_on_write": false
-      },
-      {
-        "pool_name": "image-1080p",
-        "slot_size_bytes": 16777216,
-        "slot_count": 16,
-        "flush_on_write": false
-      },
-      {
-        "pool_name": "image-640x640",
-        "slot_size_bytes": 4194304,
-        "slot_count": 16,
-        "flush_on_write": false
-      }
-    ]
-  },
-  "deployment_process_supervisor": {
-    "auto_restart": true,
-    "monitor_interval_seconds": 0.5,
-    "startup_timeout_seconds": 180.0,
-    "request_timeout_seconds": 30.0,
-    "shutdown_timeout_seconds": 5.0,
-    "max_running_process_count": 32,
-    "operator_thread_count": 1,
-    "warmup_dummy_inference_count": 6,
-    "warmup_dummy_image_size": [64, 64],
-    "keep_warm_enabled": false,
-    "keep_warm_interval_seconds": 0.1,
-    "keep_warm_yield_timeout_seconds": 1.0,
-    "tensorrt_pinned_output_buffer_enabled": true,
-    "tensorrt_pinned_output_buffer_max_bytes": 8388608
-  }
-}
+```text
+config/backend-service.json
 ```
 
-- AMVISION_APP__APP_NAME=amvision backend-service
-- AMVISION_APP__APP_VERSION=0.1.4
-- AMVISION_DATABASE__URL=sqlite:///./data/amvision.db
-- AMVISION_DATABASE__ECHO=false
-- AMVISION_DATASET_STORAGE__ROOT_DIR=./data/files
-- AMVISION_QUEUE__ROOT_DIR=./data/queue
-- AMVISION_QUEUE__LEASE_TIMEOUT_SECONDS=86400.0
-- AMVISION_QUEUE__COMPLETED_RETENTION_SECONDS=86400.0
-- AMVISION_QUEUE__FAILED_RETENTION_SECONDS=604800.0
-- AMVISION_QUEUE__RESPONSE_QUEUE_RETENTION_SECONDS=3600.0
-- AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
-- AMVISION_WORKFLOW_RUNTIME__OPERATOR_THREAD_COUNT=1
-- AMVISION_WORKFLOW_RUNTIME__DECODED_IMAGE_CACHE_MAX_ENTRIES=8
-- AMVISION_WORKFLOW_RUNTIME__DECODED_IMAGE_CACHE_MAX_BYTES=268435456
-- AMVISION_WORKFLOW_RUNTIME__RAW_RESULT_CACHE_TTL_SECONDS=900.0
-- AMVISION_WORKFLOW_RUNTIME__RAW_RESULT_CACHE_MAX_ITEMS=64
-- AMVISION_WORKFLOW_RUNTIME__MODEL_STARTUP_TIMEOUT_SECONDS=600
-- AMVISION_WORKFLOW_RUNTIME__PREVIEW_MODEL_SESSION_SCOPE_LIMIT=1
-- AMVISION_LOCAL_BUFFER_BROKER__TAKEOVER_EXISTING_PROCESS=true
-- AMVISION_LOCAL_BUFFER_BROKER__TAKEOVER_TIMEOUT_SECONDS=10.0
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__AUTO_RESTART=true
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MONITOR_INTERVAL_SECONDS=0.5
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__STARTUP_TIMEOUT_SECONDS=180.0
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__REQUEST_TIMEOUT_SECONDS=30.0
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__SHUTDOWN_TIMEOUT_SECONDS=5.0
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__MAX_RUNNING_PROCESS_COUNT=32
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__OPERATOR_THREAD_COUNT=1
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__WARMUP_DUMMY_INFERENCE_COUNT=6
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__WARMUP_DUMMY_IMAGE_SIZE=[64,64]
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_ENABLED=true
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_INTERVAL_SECONDS=0.1
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__KEEP_WARM_YIELD_TIMEOUT_SECONDS=1.0
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__TENSORRT_PINNED_OUTPUT_BUFFER_ENABLED=true
-- AMVISION_DEPLOYMENT_PROCESS_SUPERVISOR__TENSORRT_PINNED_OUTPUT_BUFFER_MAX_BYTES=8388608
+主要配置段：
 
-说明：
+- `app`
+- `cors`
+- `auth`
+- `database`
+- `dataset_storage`
+- `queue`
+- `training_telemetry`
+- `workflow_runtime`
+- `zeromq_trigger`
+- `local_buffer_broker`
+- `deployment_process_supervisor`
+- `deployment_runtime_reconciler`
+- `inference_daemon`
 
-- 本地部署优先修改 config 目录 JSON 文件，而不是直接改代码
-- 环境变量主要用于测试、调试、launcher 注入和临时覆盖
-- 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
-- backend-service 只提供 API、控制面和轻量协调，不承担任务队列消费
-- `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-4k`
-- `workflow_runtime.decoded_image_cache_max_entries` 和 `decoded_image_cache_max_bytes` 只限制单次 Workflow Run 内对 storage、buffer、frame 等输入图片的解码矩阵缓存。缓存采用 LRU 和同 key single-flight；Run 结束、失败或 cleanup 失败后都会清空，不跨 Run 持有现场图片。
-- `workflow_runtime.model_startup_timeout_seconds` 限制 AppRuntime 启动时等待全部 `Load Checkpoint` 完成加载、移入设备、warmup 和输出验证的时间。模型全部 ready 前 runtime 不接收生产请求，默认 600 秒。
-- `workflow_runtime.preview_model_session_scope_limit` 限制 backend-service API 进程保留的编辑态 Preview 模型 scope 数量，默认 1。相同 Project + Application 的连续 Preview 复用模型；切换应用时释放最近最少使用且未执行的旧 scope，避免现场 GPU 同时堆叠多个编辑态模型。该配置不影响独立进程中的正式 AppRuntime。
-- `decoded_image_cache_max_bytes` 是进程私有解码矩阵的硬上限。单张解码矩阵超过上限时仍可完成当前节点，并会共享给当时已经等待同一 single-flight 的并发分支，但不会进入 Run 级 LRU；这避免 16K BGR24 这类 768 MiB 矩阵因为“单张例外”长期突破 256 MiB 配置。broker raw BufferRef / FrameRef 在长期 worker 中直接借用只读 mmap view，不再复制一份等大的 Python bytes，且共享 view 不重复计入私有缓存字节数。
-- 缓存中的共享解码矩阵为只读；需要原地修改输入的节点必须显式请求可写副本。OpenCV 中间输出继续使用 raw BGR24 memory handle，不因该缓存配置增加 PNG/JPEG 编解码。
-- broker pool 和 decoded cache 不能合并为同一层：pool 管理跨进程 bytes、固定槽位、lease 和覆盖安全；decoded cache 管理当前 Run 中由 JPEG/PNG 等编码输入生成的进程内 OpenCV matrix。raw BGR24 broker 输入可以直接映射，编码图片仍必须有解码后的目标矩阵。
-- `local_buffer_broker.pools` 应按现场相机分辨率、图像编码方式和并发量显式配置；`slot_size_bytes` 必须大于单帧最大 bytes，`slot_count` 是可同时占用的槽位数量
-- 仓库默认创建 `image-4k`、`image-1080p` 和 `image-640x640` 三个 pool；`image-4k` 单槽 128MB 用于 5000x4000 级 20MP 工业相机 raw RGB/RGBA 输入；mmap 文件名按 `pool_name` 自动生成，总容量按 `slot_size_bytes * slot_count` 自动计算
-- 默认 pool 使用 16 个槽位；低内存设备可以把每个 pool 的 `slot_count` 进一步改为 8 或 4。槽位减少只会降低同时占用容量，pool 满时会返回明确的容量不足错误，不会动态扩大 mmap 文件
-- `image-8k` 单槽 256MB、默认 16 个槽位，仅作为现场可选大图 pool；需要更高分辨率、更多通道或相机专用大图输入时，手动把 `{"pool_name":"image-8k","slot_size_bytes":268435456,"slot_count":16,"flush_on_write":false}` 加到 `local_buffer_broker.pools`
-- `local_buffer_broker.startup_timeout_seconds` 默认 60 秒；大 pool 首次创建和 mmap 可能超过原 5 秒，尤其是 Windows 和机械硬盘环境
-- `local_buffer_broker.root_dir` 是单 broker 写入边界。broker 启动前会锁定 `.local-buffer-broker.lock`，并写入 PID、进程创建时间、解释器、工作目录、命令和父子层级。新实例发现同一目录被占用时，只会接管“同工作目录、同 Python 解释器、标准 AMVision uvicorn 入口且创建时间更早”的完整旧进程树，然后重试启动；如果旧 uvicorn 根进程已异常消失，则在确认 broker 仍实际打开同一锁文件后回收残留 supervisor/broker。锁内容伪造、PID 复用、无关命令、不同工作目录、不同解释器和较新实例都会明确拒绝，不能仅凭 PID 结束进程
-- `local_buffer_broker.takeover_existing_process` 默认开启，控制重复启动时是否接管已验证的旧 backend-service；`takeover_timeout_seconds` 默认 10 秒，限制旧进程树退出等待。关闭自动接管后保持严格单实例行为并直接返回占用详情
-- pool 文件容量与当前配置一致时直接复用；只有首次创建或容量发生变化时才调整文件长度，避免每次开发启动都重建默认约 2.4 GiB 的 pool 文件
-- Windows 上调整现有 pool 容量前必须停止 backend-service、inference daemon 和仍持有该 pool 的本地 worker，修改配置后按 inference daemon、backend-service 的顺序重新启动；不能在活动 mmap reader 存在时在线调整文件长度
-- `local_buffer_broker.default_pool` 简化配置不再使用；配置文件应统一使用 `default_pool_name + pools`，仍出现旧字段时服务启动会直接失败，避免旧配置被静默忽略
-- ZeroMQ TriggerSource 可以通过 `transport_config.pool_name` 选择目标 pool；不配置时使用 `local_buffer_broker.default_pool_name`
-- 前端集成页面通过 `/api/v1/system/config` 读取当前后端实际配置，再从 `local_buffer_broker.pools` 生成 pool 下拉选项；页面不维护独立默认 pool 列表
-- 如果使用 `config/backend-service.local.json` 覆盖 `local_buffer_broker`，建议把 `enabled/root_dir/default_pool_name/pools` 作为完整配置块一起写入，避免现场配置只覆盖部分字段后难以判断实际 pool 大小
-- pool 的 `flush_on_write` 默认建议为 `false`，用于 ZeroMQ 和本机 workflow 临时图片输入；只有确实需要把 mmap 写入强制刷到文件系统时才改为 `true`
-- `deployment_process_supervisor` 提供 deployment 子进程的启动确认、普通请求、warmup、keep-warm 和 TensorRT 输出 host buffer 行为；`startup_timeout_seconds` 是 start / warmup 等待 runtime 返回的最长时间，默认 180 秒；`request_timeout_seconds` 只用于 health、reset、infer 等普通运行期命令，默认 30 秒。
-- `start` 只启动并确认子进程，不加载模型、不执行 dummy infer，也不激活 keep-warm。`warmup` 会加载全部实例并完成有限次数 dummy infer；只有当前 DeploymentInstance 的 `runtime_configuration.lifecycle.keep_warm_enabled=true` 时，才会继续激活持续设备保活。真实推理只会暂时让 keep-warm 让出执行机会，不会隐式开启保活。
-- DeploymentInstance 通过 `runtime_configuration.lifecycle` 独立配置 `warmup_dummy_inference_count`、`warmup_dummy_image_size`、`keep_warm_enabled` 和 `keep_warm_interval_seconds`；新建部署默认显式关闭 keep-warm，并将保活间隔显式保存为 `0.1` 秒，创建时可按实例修改。该能力适合笔记本低功耗 GPU 等会快速降频的设备，TensorRT pinned output 配置位于 `runtime_configuration.backend_options`。
-- `deployment_process_supervisor.max_running_process_count` 限制当前 backend-service 进程内同时运行的独立 deployment 子进程总数，默认 32。这个限制不影响 DeploymentInstance 创建数量，也不限制单个子进程内的 `instance_count`，只在显式 start、warmup 或崩溃自动拉起真正启动子进程时生效。
-- `tensorrt_pinned_output_buffer_max_bytes` 用于限制单实例允许长期驻留的 pinned output host buffer 上限；当前超过阈值后会自动回退到 pageable memory，避免多 deployment、多实例场景下 pinned memory 累积过大
-- `async_inference_gateway.service_id` 是 async inference gateway 的稳定 owner id，会进入 inference task 的 `task_spec.async_inference_owner_id`；实际请求队列按 `service_id + deployment_instance_id` 构建为 `detection-ai-gw-{service_id}-{deployment_id}`，其中 `deployment-instance-` 前缀会在队列名中省略。同一 backend-service 内的多个 async deployment 也会使用独立 gateway 队列和 dispatcher 线程；一次性响应队列使用 `detection-ai-rsp-*`，响应被 worker 取走后会立即删除，TTL 清理只作为异常兜底
+配置由 Pydantic 严格解析。删除或改名的字段不会被静默忽略；发现未知/旧字段时应修改配置，不增加双格式解析分支。
 
-## 启动前要知道的事
+## 开发态启动
 
-### 当前仓库已经具备的能力
+从仓库根目录执行。
 
-- FastAPI 服务可直接通过 uvicorn 启动
-- 同一工作区、端口和 `local_buffer_broker.root_dir` 最终只保留一个 backend-service。Windows 开发态重复执行相同 `python -m uvicorn ... --reload` 命令时，新实例会通过 broker 锁验证并接管较早实例，无需手工查找 reloader、server 和 broker PID；仍建议正常停止时优先在原终端按 Ctrl+C，使各运行时完成优雅清理
-- 自动接管不是通用进程清理器，也不替代 full release 根 launcher 的启动/停止状态管理。生产完整实例继续使用 `start-amvision-full` / `stop-amvision-full`；单进程诊断应先停止完整实例。不同端口但错误共享同一 broker 根目录时同样会触发接管，因此并行 backend-service 必须配置不同 `local_buffer_broker.root_dir`
-- REST 路由、WebSocket 路由、中间件和异常映射已装配完成
-- /api/v1/system/health 可以直接返回最小健康状态
-- /api/v1/tasks、/ws/v1/tasks/events 和 /ws/v1/training/telemetry 已经公开
-- backend-service 不托管队列消费者；dataset import、dataset export、training、conversion、evaluation 和 inference 全部由 active Topology 声明的独立 Worker Profile 承担
-
-### 数据库迁移边界
-
-- `start-amvision-full` 在启动 inference daemon、backend-service 和 Worker Topology 前先执行 Alembic `upgrade head`，迁移失败会阻止整套服务启动
-- 开发态直接运行 uvicorn 前，应先执行 `python -m alembic -c backend/alembic.ini upgrade head`
-- 不允许用 `stamp`、运行期 `create_all` 或删除数据库绕过正式 migration chain
-
-这意味着生产与现场启动都以 migration 成功作为服务接流量的前置条件；不能把 FastAPI lifespan 中的 schema 初始化当成数据库升级机制。
-
-## 当前启动流
-
-当前 backend-service 的启动链路如下：
-
-1. `create_app` 创建 `BackendServiceBootstrap`
-2. bootstrap 读取 `BackendServiceSettings`
-3. bootstrap 构建 `BackendServiceRuntime`，其中包含：
-  - `SessionFactory`
-  - `LocalDatasetStorage`
-  - `LocalFileQueueBackend`
-  - sync / async deployment supervisor
-  - `PublishedInferenceGateway`
-  - async inference gateway dispatcher registry，按当前 `async_inference_gateway.service_id` 和 DeploymentInstance id 为每个 async deployment 懒启动专属请求队列与 dispatcher 线程，并定期清理一次性响应队列
-4. `create_app` 把这些运行时对象绑定到 `application.state`
-5. FastAPI lifespan 启动时执行：
-  - 初始化数据库缺失表
-  - 运行显式传入的 seeders
-  - 执行 `custom_nodes` 目录元数据预留步骤
-  - 启动 sync / async deployment supervisor
-  - 启动 async inference gateway dispatcher
-6. 应用关闭时停止 async inference gateway dispatcher、deployment supervisor，并释放数据库 engine
-
-## 开发环境启动
-
-以下步骤从仓库根目录执行。
-
-### 1. 激活 conda 环境
+### 1. 激活环境
 
 ```powershell
 conda activate amvision
 ```
 
-### 2. 启动 backend-service
+### 2. 数据库迁移
 
-开发调试使用：
+```powershell
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini current
+```
+
+禁止用 `stamp`、`create_all()` 或删除数据库绕过 migration chain。
+
+### 3. 启动服务
+
+热重载：
 
 ```powershell
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
-性能测量或稳定性压测使用：
+不带 reload 的诊断：
 
 ```powershell
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600
 ```
 
-说明：
+`--reload` 只用于开发。性能、稳定性、进程恢复和 Workflow/Deployment 延迟测试必须使用完整 Supervisor 或至少不启用 reload。
 
-- --reload 只用于开发阶段，并且只监视 `backend` 和 `custom_nodes`；测试临时文件、数据资产、参考仓库和发布生成物不得触发 service 重载
-- 需要观察 TensorRT、PyTorch、OpenVINO 等 runtime 的真实延迟时，不应使用 --reload
-- 如果 5600 端口被占用，可改为其他端口，例如 5610
-- 服务日志当前默认输出到控制台
-
-### 3. 访问健康检查
-
-浏览器访问或直接调用：
-
-- http://127.0.0.1:5600/api/v1/system/health
-
-PowerShell 示例：
+### 4. 健康检查
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
-预期结果示例：
+文档：
 
-```json
-{
-  "status": "ok",
-  "request_id": "8a8c4eb0-b7d7-4ec1-a3ee-2a33f48e93d9"
-}
+- `http://127.0.0.1:5600/docs`
+- `http://127.0.0.1:5600/openapi.json`
+
+### 5. 停止
+
+在启动终端按 `Ctrl+C`，等待 lifespan 清理完成。
+
+## 发行态启动
+
+生产环境不单独启动 service：
+
+```powershell
+.\start-amvision-full.bat
 ```
 
-### 4. 查看 OpenAPI 文档
-
-- Swagger UI：http://127.0.0.1:5600/docs
-- OpenAPI JSON：http://127.0.0.1:5600/openapi.json
-
-### 5. 停止服务
-
-在启动服务的终端里按 Ctrl+C。
-
-## 同目录 Python 运行时启动
-
-发布阶段应优先由项目同目录 Python 解释器启动 backend-service，而不是依赖系统 PATH。
-
-当前 Windows 发布目录的默认入口已经切到根目录一键启动脚本 `start-amvision-full.bat`。Ubuntu 发布尚未实现，因此发布包当前不复制 `.sh` 根 launcher。
-本页保留 `launchers/service/` 的调用方式，主要用于只拉起 service 或拆分排障。
-
-如果发布目录结构类似下面这样：
+低层 service launcher：
 
 ```text
-release/
-├─ python/
-├─ app/
-├─ config/
-├─ data/
-└─ launchers/
+launchers/service/start-backend-service.bat
 ```
 
-则当前等价启动方式应优先通过 Python launcher 完成：
+它只供 full Supervisor 编排或受控诊断，不负责数据库迁移、daemon、Worker Profile 和完整回收。
 
-```powershell
-.\launchers\service\start-backend-service.bat --host 0.0.0.0 --port 5600
-```
+## 启动期顺序
 
-说明：
+数据库已经由 Supervisor/Alembic 升级后，FastAPI lifespan：
 
-- 当前仓库中的 launcher 模板位于 `runtimes/launchers/service/`；`assemble-release` 会把它们复制到发布目录里的 `launchers/service/`
-- 发布阶段应优先以 launcher 启动，并配合独立 `backend-worker` 一起运行
-- release 目录里如果直接执行 `python -m backend.service.api.app`，需要自行处理 `PYTHONPATH`；launcher 已经封装了这部分路径补齐逻辑
+1. 读取并验证配置。
+2. 构建 SessionFactory、ObjectStore、Queue、LocalBuffer 和应用服务。
+3. 登记 seed 数据和 Node Pack/Custom Node catalog。
+4. 恢复 Workflow bundle journal 与 lifecycle。
+5. 恢复 Workflow Runtime，等待实际 ready。
+6. 恢复 enabled TriggerSource。
+7. 接受 API 流量。
 
-## 数据库 schema 初始化
+关闭时按依赖逆序停止 Trigger、Workflow worker、dispatcher、broker 和数据库 engine。
 
-当前服务在启动时会自动执行缺失表初始化，等价于对当前 ORM 执行一次 `create_all`。
+## 单实例和 LocalBufferBroker
 
-如果需要在不启动服务的情况下提前准备本地数据库，也可以手动执行一次建表命令：
+同一 `local_buffer_broker.root_dir` 只能有一个有效 broker。开发态重复启动相同工作区的标准 Uvicorn 入口时，可按配置验证并接管较早实例；正常操作仍应优先在原终端优雅停止。
 
-```powershell
-python -c "from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory; from backend.service.infrastructure.persistence.base import Base; session_factory = SessionFactory(DatabaseSettings()); Base.metadata.create_all(session_factory.engine); print('schema ready')"
-```
+自动接管不是通用进程清理器，也不替代 full Supervisor 的状态文件。并行 backend-service 必须使用不同端口、数据库、队列和 LocalBuffer 根目录。
 
-说明：
+## 诊断
 
-- 这只是当前仓库状态下的临时开发命令
-- 后续应收敛到 Alembic 或 maintenance launcher，而不是长期依赖 python -c
+### health 不通
 
-## 最小验收步骤
+- 检查端口占用。
+- 查看配置 JSON 与路径权限。
+- 查看 Alembic migration 日志或开发终端。
+- 检查 SQLite/WAL 文件是否可写。
+- 检查 broker 锁是否属于另一个有效实例。
 
-### 只验证服务能启动
+### health 正常但任务不推进
 
-1. 激活 conda 环境
-2. 执行 uvicorn 启动命令
-3. 访问 /api/v1/system/health
-4. 打开 /docs
-5. 确认 /api/v1/tasks 已出现在 OpenAPI 列表中
+单独 service 不消费队列。必须使用完整 Supervisor，并检查目标 Worker Profile 心跳与日期日志。
 
-### 验证服务能处理持久化接口
+### Deployment 不可用
 
-1. 启动 backend-service
-2. 访问 /api/v1/system/health
-3. 调用 /api/v1/datasets/imports 提交导入任务
-4. 用返回的 task_id 调用 /api/v1/tasks/{task_id}
-5. 普通任务状态订阅 `/ws/v1/tasks/events?task_id=...`；训练 batch 遥测订阅
-   `/ws/v1/training/telemetry?task_id=...`。训练详情页会同时管理两条连接。
-6. 如果使用的是旧数据库文件，再检查是否存在 schema 不兼容问题
+检查 inference daemon 状态和 probe。不要在 backend-service 中启动第二套 embedded deployment owner。
 
-## 当前已验证的命令
+### Workflow/Trigger 启动失败
 
-当前仓库已实际验证下面这条命令可以启动服务，并通过健康检查：
+检查 bundle journal、Application lifecycle、Runtime revision/generation、worker instance 和 Trigger recovery 错误。启动期恢复失败不能通过删除 runtime 文件或状态记录绕过。
 
-```powershell
-python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5610
-```
+## 相关文档
 
-对应健康检查接口：
-
-- http://127.0.0.1:5610/api/v1/system/health
-
-## 常见问题
-
-### 1. 健康检查能通，但导入或查询接口报数据库错误
-
-优先检查当前数据库文件是否是旧 schema。当前启动只会创建缺失表，不会自动补缺失列或改列类型。
-
-### 2. data 目录出现了，但看不到 amvision.db
-
-这是当前实现的正常行为。目录会在启动时创建，SQLite 文件通常在第一次数据库连接时创建。
-
-### 3. 服务能启动，但没有文件日志
-
-当前仓库还没有把 backend-service 的文件日志写入单独日志目录，默认先看控制台输出。
-
-### 4. 为什么文档里没有 launcher 命令
-
-当前仓库已经提交 service launcher，但在开发环境里直接执行 uvicorn 仍然是最短调试路径；发布形态应优先切到 launcher 调用。
-
-## 推荐后续文档
-
-- [docs/architecture/backend-service.md](../architecture/backend-service.md)
-- [docs/deployment/bundled-python-deployment.md](bundled-python-deployment.md)
-- [docs/architecture/runtime-packaging.md](../architecture/runtime-packaging.md)
-- [docs/api/current-api.md](../api/current-api.md)
-- [docs/api/datasets-imports.md](../api/datasets-imports.md)
+- [开发环境启动](development-environment.md)
+- [Worker Topology](backend-worker-startup.md)
+- [inference daemon](inference-daemon.md)
+- [数据库与维护](backend-maintenance.md)
+- [后端架构](../architecture/backend-service.md)

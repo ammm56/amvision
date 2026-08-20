@@ -41,7 +41,7 @@ node pack 的拆分标准、包内目录、core 分类和兼容迁移统一见
 - 简单节点优先在本 pack 内完成实现；参数规范化、小型 helper、单一结果整理这类逻辑，优先放到当前 pack 的 support 模块，不要为了少量代码直接依赖另一个 pack
 - 复杂节点、组合节点、桥接节点或结果处理链，在复用另一个 pack 的成熟能力比重复实现更清楚时，可以依赖另一个 pack
 - pack 间依赖应尽量是显式、窄范围依赖，不要让一个简单 helper 把整个 sibling pack 变成启动期硬依赖
-- 当前阶段如确需 pack 间依赖，应至少在 manifest metadata、pack 文档或实现说明中写明依赖的 pack、用途和最低版本边界
+- pack 间依赖必须在 manifest metadata 或包文档中写明依赖的 pack、用途和最低版本边界
 - pack 间依赖如果缺失，应在依赖节点自身附近给出清楚错误，而不是让无关节点或整个服务启动阶段一起失效
 - 不要通过 backend entrypoint、目录扫描初始化或类似全量预加载链路，引入仅为单个简单节点服务的跨 pack 顶层 import
 - 如果 pack 间依赖属于长期稳定关系，后续应继续向正式 dependency 字段、兼容性校验和启用前检查收敛，而不是长期停留在隐式代码耦合
@@ -252,7 +252,7 @@ Workflow 核心节点使用 `Split List`、`Parallel Start`、现有 `Get List I
 - WorkflowAppRuntime、TriggerSource 和高帧率生产链路只读取普通节点和节点 `enabled` 状态，不读取节点组。
 - 组成员按画布矩形完整包含判断；拖动组时组内节点同步移动；调整组框大小后重新计算成员。
 
-详细设计见 [docs/development/workflow-graph-groups-plan.md](../development/workflow-graph-groups-plan.md)。
+当前实现见 [docs/development/workflow-graph-groups.md](../development/workflow-graph-groups.md)。
 
 ## 图像交互取参
 
@@ -350,4 +350,4 @@ Preview Run 与图像交互取参要保持边界清楚：Preview Run 负责提�
 - [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
 - [docs/architecture/system-overview.md](system-overview.md)
 - [docs/architecture/project-structure.md](project-structure.md)
-- [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)
+- [工业视觉与集成节点](industrial-workflow-nodes.md)

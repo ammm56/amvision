@@ -1,71 +1,56 @@
-# 检测类模型的最小平台规则
+# Detection 模型平台规则
 
-## 文档目的
+## 边界
 
-本文档用于定义检测类模型在 amvision 中共享的最小平台规则，明确第一阶段哪些对象现在就作为正式平台对象落地，哪些信息先保留在 metadata。
+Detection 是任务类型，不是独立持久化的模型 family。YOLOX、YOLOv8、YOLO11、YOLO26 与 RF-DETR detection 使用同一组平台资源与任务边界，模型差异保留在对应 Core、TrainingBackend、ConversionBackend 和 ModelRuntime adapter 中。
 
-本文档只覆盖 detection 任务类型，不展开具体训练参数字段、运行时实现细节或某个单一模型仓库的脚本迁移方式。
+## 稳定资源
 
-## 命名约定
+| 资源 | 职责 |
+| --- | --- |
+| DatasetVersion | 平台统一数据版本 |
+| DatasetExport | 训练与评估使用的不可变格式化输入 |
+| TaskRecord / TaskEvent | 导入、导出、训练、评估、转换和异步推理状态 |
+| Model | 项目或平台模型身份；保存 `model_type`、`task_type`、scale 等规格 |
+| ModelVersion | 预训练或训练输出版本、父版本和文件集合 |
+| ModelBuild | ONNX、OpenVINO、TensorRT 等转换产物与 RuntimeProfile |
+| ModelFile | checkpoint、labels、metrics、IR、engine 等文件登记 |
+| DeploymentInstance | 指向 ModelBuild 的长期推理服务配置 |
 
-- 正式名称使用“检测类模型”
-- 这里的“类”表示共享 detection 输入输出主干的一组模型类型，例如 YOLOX、YOLOv8/11 detection、RT-DETR
-- 不使用 family 作为正式命名
-- 不使用“工厂”表达业务对象边界；工厂只保留给代码层的实例创建扩展点，例如 trainer factory、converter factory、runtime factory
-- “检测类模型”是架构分组概念，不新增一个 DetectionModelCategory 表或同级持久化对象
+不新增 DetectionCategory、ModelFamily 或单模型任务主表。训练、转换与部署必须继续复用平台通用资源。
 
-## 适用范围
+## 执行规则
 
-- 训练输入边界
-- 模型版本与 build 产物登记边界
-- 转换和推理任务的最小共享对象
-- YOLOX 作为第一个真实实现时应遵守的对象落位规则
+- 训练与独立评估消费 DatasetExport，不直接读取上传 zip、`projectsrc` 或页面临时目录。
+- backend-service 创建资源、校验引用和提交任务；模型计算由严格 Worker Profile 执行。
+- 训练产物必须登记为 ModelVersion 与 ModelFile，不能只保存在任务输出目录。
+- 转换产物必须登记为 ModelBuild 与 ModelFile，DeploymentInstance 只绑定已登记 build。
+- 推理会话由 Inference Daemon 管理；workflow 节点通过公开 Deployment 服务调用，不直接 import predictor。
+- sync 与 async 推理返回统一平台结果，模型私有 tensor 和进程句柄不进入公开 API。
+- unsupported model/task 组合必须明确拒绝，不能回退到另一模型或伪装成功。
 
-## 最小共享规则
+## 可扩展元数据
 
-- task_type 固定为 detection
-- 平台内部通用输入是 DatasetVersion，训练与转换执行输入是 DatasetExport
-- detection 训练后端不直接消费原始 COCO、VOC、YOLO 目录，而是消费平台生成的 DatasetExport
-- backend-service 负责任务、元数据和对象关系，不直接持有底层训练器、推理会话或脚本参数解析入口
-- worker 负责训练、转换和推理执行，但输出必须回写为正式平台对象，而不是只落到本地输出目录
-- 对外 API 和任务结果只暴露平台对象 id、object key 和结构化摘要，不暴露 projectsrc 路径、脚本入口或临时目录约定
+训练增强、优化器细节、opset、dynamic axis、后端特有 profile、benchmark 和 exporter 版本保留在任务或产物 metadata。只有跨多个模型实现稳定、需要查询或形成公开不变量的字段才升格为正式列。
 
-## 现在就落地的正式对象
+## 依赖方向
 
-| 对象 | 现在就稳定的正式边界 | 说明 |
-| --- | --- | --- |
-| TaskRecord / TaskAttempt / TaskEvent / ResourceProfile | task_kind、task_spec、worker_pool、progress、result、event payload、attempt result | detection 训练、转换、推理都继续走统一任务系统，不为单个模型单独发明任务主表 |
-| DatasetExport | dataset_export_id、dataset_id、project_id、dataset_version_id、format_id、task_type、task_id、manifest_object_key、split_names、sample_count、category_names | 这是 detection 训练执行时的正式输入资源边界 |
-| Model | model_id、project_id、model_name、model_type、task_type、model_scale、labels_file_id | model_type 保存具体模型类型，例如 yolox、yolov8、rtdetr；“检测类模型”不是这个字段的取值 |
-| ModelVersion | model_version_id、model_id、source_kind、training_task_id、parent_version_id、file_ids | 训练输出文件或预置预训练模型都应登记为 ModelVersion |
-| ModelBuild | model_build_id、model_id、source_model_version_id、build_format、runtime_profile_id、conversion_task_id、file_ids | 转换输出统一登记为 ModelBuild，用于部署和推理绑定 |
-| ModelFile | file_id、project_id、model_id、model_version_id、model_build_id、file_type、logical_name、storage_uri | checkpoint、onnx、openvino-ir、labels、metrics 等文件统一进入文件记录链路 |
+```text
+API / Workflow Node
+        ↓
+Application Service
+        ↓
+ModelBackend / Runtime adapter
+        ↓
+project-native model core
+```
 
-## 先放 metadata 的内容
+`projectsrc/` 只用于开发期参考核对，不能进入运行时 import、响应字段或文件定位逻辑。
 
-| 承载对象 | 先放 metadata 的内容 | 现在不升格为正式字段的原因 |
-| --- | --- | --- |
-| TaskRecord.task_spec 与 TaskRecord.metadata | exp 模板名、增强策略、优化器细节、学习率计划、batch size、resume checkpoint、蒸馏或 teacher 配置 | 这些字段随具体训练后端差异很大，当前还不足以形成跨 YOLOX、YOLOv8/11、RT-DETR 的稳定公共 schema |
-| Model.metadata | supported_export_formats、supported_build_formats、默认输入尺寸、默认阈值、后端说明标签 | 当前更多用于展示、默认值回填和能力提示，不是第一阶段的核心查询条件 |
-| ModelVersion.metadata | dataset_export_id、manifest_object_key、category_names 快照、input_size、训练配置摘要、关键指标摘要 | 当前正式对象里已经有 training_task_id 和 file_ids，可以形成可追溯链路；DatasetExport 关联字段等共性还需要经过至少两个 detection 后端验证后再决定是否升格 |
-| ModelBuild.metadata | onnx opset、dynamic axes、precision、device hints、benchmark 摘要、exporter 版本 | 转换链路和运行时兼容矩阵还未稳定，现在先保留弹性 |
-| ModelFile.metadata | checksum、artifact role、lineage 标签、生成命令摘要 | 这些信息需要保留，但暂时没有必要为了第一阶段引入更多正式列 |
+## 相关文档
 
-## 第一阶段不单独新增的对象
-
-- 不新增“检测类模型分类表”或“family 表”；检测类模型只作为架构概念存在
-- 不新增单独的 detection runtime registry 主对象；先通过 ModelBuild、RuntimeProfile 和 metadata 组合表达
-- 不把工厂对象当作领域对象持久化；trainer factory、converter factory、runtime factory 只属于代码装配层
-
-## 推荐落地顺序
-
-1. 继续以 DatasetExport 作为 detection 训练唯一输入边界，优先把 YOLOX 真实 training runner 接到现有任务系统和 ModelVersion / ModelFile 登记链路上。
-2. 在不扩 schema 的前提下，把 dataset_export_id、manifest_object_key、训练配置摘要先写入 TaskRecord.task_spec 和 ModelVersion.metadata。
-3. 等 RT-DETR 或 YOLOv8/11 detection 接入后，再检查哪些 metadata 字段已经成为稳定共性，再决定是否升格为正式对象字段或独立规则。
-
-## 关联文档
-
-- [project-structure.md](project-structure.md)
-- [data-and-files.md](data-and-files.md)
-- [dataset-export-formats.md](dataset-export-formats.md)
-- [yolox-module-design.md](yolox-module-design.md)
+- [模型支持矩阵](model-support-matrix.md)
+- [模型 Core 架构](model-core-architecture.md)
+- [模型工作流边界](model-workflow-boundaries.md)
+- [训练与评估契约](model-training-evaluation-contract.md)
+- [部署运行时配置](model-deployment-runtime-policy.md)

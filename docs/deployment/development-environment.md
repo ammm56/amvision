@@ -1,218 +1,189 @@
-# 开发与完整启动说明
+# 开发环境启动
 
-## 文档目的
+本文给出当前代码可用的启动步骤。开发时按目标选择“API/UI 快速调试”或“完整业务链路”，不要把缺少 Worker 的局部启动误认为完整平台。
 
-本文档是仓库开发调试环境的完整启动入口，同时说明生产发布包的完整启动方式。项目实际使用时统一启动数据库迁移、inference daemon、backend-service、全量 backend-worker 和 Vue 前端，不把缺少任一常驻组件的局部启动作为完整运行状态。
+## 前置条件
 
-## 完整进程关系
+- 从仓库根目录执行后端命令。
+- 已创建并激活 `amvision` conda 环境。
+- Python 版本为 3.12+，依赖已按 `requirements.txt` 安装。
+- Node.js 满足 `frontend/web-ui/package.json` 的 `engines`，前端已执行 `npm ci`。
+- `config/backend-service.json` 与 `config/backend-worker.json` 中的数据库、文件、队列和 runtime 路径可写。
 
-- inference daemon：托管 deployment、预热、sync/async 推理及其隔离子进程。
-- backend-service：提供 REST API、WebSocket、静态前端和控制面能力。
-- backend-worker：消费数据集导入导出、训练、转换、评估和异步推理任务。
-- Vue 开发服务器：开发阶段提供前端 HMR；生产发布由 backend-service 提供已构建的静态资源。
-- WorkflowAppRuntime：由 backend-service 按运行请求创建和监督，不需要额外手工启动独立 workflow 常驻入口。
+## 模式 A：API/UI 快速调试
 
-## 开发环境完整启动顺序
+这种模式适合 REST API、页面、鉴权、只读查询和普通控制面开发。它不启动后台任务消费者，也不保证 Deployment 推理链完整。
 
-所有后端命令都从仓库根目录执行。建议准备四个独立终端，并严格按下面的顺序启动。
-
-### 1. 激活开发环境
-
-在每个需要运行 Python 命令的终端中执行：
+### 1. 激活 Python 环境
 
 ```powershell
 conda activate amvision
-```
-
-确认当前解释器来自 `amvision` 环境：
-
-```powershell
 python -c "import sys; print(sys.executable)"
 ```
 
-项目代码不得依赖系统 Python 的隐式状态。
-
-### 2. 执行数据库迁移
-
-在终端一执行：
+### 2. 升级数据库
 
 ```powershell
-python -m backend.maintenance.main migrate-database --output text
+python -m alembic -c backend/alembic.ini upgrade head
+python -m alembic -c backend/alembic.ini current
 ```
 
-该命令同时覆盖空数据库初始化、旧数据库接管和已有数据库升级。数据库已经位于最新 revision 时返回 `changed: False`，不会重复修改。
+必须先迁移再启动服务。不要依赖 ORM `create_all()` 修补历史 schema。
 
-必须先完成迁移，再启动任何常驻后端进程。包含新 Alembic revision 的代码更新也按“停止完整进程组、迁移、重新完整启动”的顺序处理。
+### 3. 启动 backend-service
 
-### 3. 启动 inference daemon
-
-迁移成功后，在终端一继续执行并保持常驻：
-
-```powershell
-python -m backend.inference_daemon.main
-```
-
-看到下面的日志表示 daemon 已完成初始化：
-
-```text
-inference-daemon ready
-```
-
-当前默认配置为 `inference_daemon.runtime_owner=daemon`。daemon 未运行时，deployment、预热和推理链路不完整。
-
-### 4. 探测 inference daemon
-
-在终端二激活同一个 conda 环境，然后执行真实控制队列和 mmap 推理热路径双探测：
-
-```powershell
-python -m backend.inference_daemon.main --probe
-```
-
-命令退出码为 `0` 后才能继续启动 backend-service。探测失败时先检查终端一的 daemon 日志、`config/backend-service.json`、`data/queue/` 和 `data/buffers/inference-control/`，不要绕过探测继续启动。
-
-数据库迁移、daemon 启动和 daemon probe 的开发命令只在本文档维护，其他文档只引用本页。
-
-### 5. 启动 backend-service
-
-daemon probe 成功后，在终端二执行并保持常驻：
+终端一：
 
 ```powershell
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
-也可以使用 VS Code Run and Debug 中的 `Python 调试程序: backend-service 热重载`。开发环境使用 `--reload` 时，只监视 `backend` 和 `custom_nodes` 两个源码目录；pytest 临时文件、数据资产、参考源码和发布生成物不会中断正在运行的 workflow runtime。热重载不会代替 daemon 或 worker 的重启。
-
-等待启动日志完成后验证：
+验证：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```
 
-预期 `status` 为 `ok`。
+### 4. 启动 Vue 前端
 
-### 6. 启动全量 backend-worker
-
-service health 成功后，在终端三激活同一个 conda 环境，然后执行并保持常驻：
+终端二：
 
 ```powershell
-python -m backend.workers.main
-```
-
-完整开发环境始终启动全量 worker，不使用单一 worker profile 代替完整运行。VS Code 中可通过 `Tasks: Run Task` 选择 `amvision: 启动 backend-worker 全量`。
-
-### 7. 启动 Vue 前端
-
-在终端四执行：
-
-```powershell
-cd frontend/web-ui
+Set-Location frontend/web-ui
 npm run dev
 ```
 
-前端默认地址为 `http://127.0.0.1:5601`，后端 API 默认地址为 `http://127.0.0.1:5600`。
+访问：
 
-### 8. 完整启动验收
+- Web UI：`http://127.0.0.1:5601`
+- OpenAPI：`http://127.0.0.1:5600/docs`
+- OpenAPI JSON：`http://127.0.0.1:5600/openapi.json`
 
-下面各项同时满足，才视为开发环境完整启动：
+### 5. 停止
 
-1. inference daemon 终端持续运行，独立 probe 退出码为 `0`。
-2. `http://127.0.0.1:5600/api/v1/system/health` 返回 `status=ok`。
-3. backend-worker 日志显示全量 worker ready，任务队列能够被消费。
-4. `http://127.0.0.1:5601` 可以打开并正常调用后端 API。
-5. `http://127.0.0.1:5600/docs` 和 `http://127.0.0.1:5600/openapi.json` 可以访问。
-6. 使用已登录身份访问 diagnostics 时，inference daemon 状态不是 `unavailable`。
+先停止 Vite，再停止 Uvicorn；两个终端分别使用 `Ctrl+C`。
 
-## 开发环境停止顺序
+## 模式 B：完整业务链路
 
-开发环境按启动顺序的逆序停止：
+数据集导入导出、训练、转换、评估、异步推理、Deployment、Workflow Runtime 和 Trigger 必须使用 full Supervisor。当前源码目录不是发行目录，先组装本地 release。
 
-1. 在终端四停止 Vue 前端。
-2. 在终端三停止 backend-worker。
-3. 在终端二停止 backend-service。
-4. 在终端一停止 inference daemon。
-
-每个终端使用 `Ctrl+C` 正常退出。确认没有遗留 Python 子进程后再迁移数据库、切换分支或替换运行时文件。
-
-## 不同修改的重启规则
-
-- Vue 页面修改：Vite HMR 自动更新；出现状态不一致时刷新页面。
-- backend-service 修改：`--reload` 负责重载 service；涉及启动依赖或全局资源时完整重启全部进程。
-- inference daemon、deployment runtime 或模型推理修改：重启 inference daemon，并重新 probe。
-- inference daemon 与 backend-service 的本机调用协议、LocalBufferBroker 或 mmap 热路径修改：先停止 backend-service，再重启 inference daemon 并确认 probe 成功，最后重新启动 backend-service；不能只依赖 Uvicorn reload。
-- backend-worker、训练、转换、数据集任务修改：重启全量 backend-worker。
-- 配置、数据库 schema、进程监督或公共调用链修改：停止全部进程，执行数据库迁移，再按本文顺序完整启动。
-
-## 生产发布包完整启动
-
-生产环境不手工拆分启动 daemon、service 和 worker。进入实际发行目录后执行：
+### 1. 构建前端
 
 ```powershell
-.\start-amvision-full.bat
+conda activate amvision
+Set-Location frontend/web-ui
+npm run build
+Set-Location ../..
 ```
 
-该入口自动按以下顺序执行：
+### 2. 组装本地发行目录
 
-1. 数据库迁移。
-2. inference daemon 启动、ready 日志检查、真实控制队列和 mmap 推理热路径双 probe。
-3. backend-service 启动和 health 检查。
-4. release manifest 中声明的全部 backend-worker 依次启动和 ready 检查。
-5. backend-service 提供随包构建的 Vue 静态资源。
+CPU 开发机：
 
-任一步失败都会停止已经启动的组件并返回非零退出码。完整生产运行不传 `--worker-profile-id`，避免裁剪掉实际业务需要的消费者。
+```powershell
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root .\release --force --output text
+```
 
-生产环境停止整套进程：
+NVIDIA 开发机：
+
+```powershell
+python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root .\release --force --output text
+```
+
+`assemble-release` 会复制本次源码、配置模板、前端 build、custom nodes、launcher 和 manifest。源码修改后要重新组装，发行目录不是手工维护的源码目录。
+
+### 3. 指定开发解释器
+
+开发验收可以让发行目录使用当前 conda Python，不必把环境复制到 `python/`：
+
+```powershell
+$env:AMVISION_PYTHON_EXECUTABLE = (Get-Command python).Source
+```
+
+这个环境变量只影响当前终端。正式交付仍使用发行目录中的 `python/python.exe`。
+
+### 4. 校验发行布局
+
+CPU 示例：
+
+```powershell
+Set-Location release/full-windows-x64-cpu
+.\launchers\maintenance\invoke-backend-maintenance.bat -- validate-layout --output text
+```
+
+NVIDIA 环境把目录替换为 `release/full-windows-x64-nvidia`。
+
+### 5. 启动完整拓扑
+
+```powershell
+.\start-amvision-full.bat --host 127.0.0.1 --port 5600
+```
+
+Supervisor 会依次完成：
+
+1. Alembic `upgrade head`。
+2. inference daemon 启动与 probe。
+3. backend-service 启动与 health。
+4. `dataset-import`、`dataset-export`、`training`、`conversion`、`evaluation`、`inference` 六个 Worker Profile 启动与心跳验证。
+
+启动脚本保持前台运行。不要直接执行 `python -m backend.workers.main`；Worker 缺少 Supervisor 注入的 Topology id、generation、epoch 和 instance id 时会拒绝启动。
+
+### 6. 可选：使用 Vite 调试 UI
+
+保持完整拓扑运行，在新的终端回到仓库根目录：
+
+```powershell
+Set-Location frontend/web-ui
+npm run dev
+```
+
+Vite 使用 `5601`，完整后端继续使用 `5600`。生产形态的静态前端仍以发行目录内 build 为准。
+
+### 7. 验收
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
+```
+
+同时检查：
+
+- 设置页的 Worker Topology 只有一个 active epoch。
+- 六个 Profile 均为 `running`。
+- `logs/full-stack/` 已生成当天的 service、daemon、migration 和 Profile 日志。
+- 至少一个目标业务任务从 `queued` 推进到终态。
+
+### 8. 停止完整拓扑
+
+在发行目录的另一个终端执行：
 
 ```powershell
 .\stop-amvision-full.bat
 ```
 
-停止入口按逆序回收完整进程树。仍有进程存活时会返回非零退出码并保留 `logs/full-stack/runtime-state.json`，不能手工删除状态文件后直接重复启动。
+停止成功后 `logs/full-stack/runtime-state.json` 会被清理。返回非零时先按状态文件和当日日志排查，不能直接删除状态文件后重复启动。
 
-## 维护和回归命令
-
-发布布局检查：
+回到仓库根目录并清除开发解释器覆盖：
 
 ```powershell
-python -m backend.maintenance.main validate-layout --output json
+Set-Location ../..
+Remove-Item Env:AMVISION_PYTHON_EXECUTABLE -ErrorAction SilentlyContinue
 ```
 
-重新组装 Windows 发布目录：
+## 修改后的重启范围
 
-```powershell
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-nvidia --release-root ./release --force --output text
-python -m backend.maintenance.main assemble-release --profile-id full-windows-x64-cpu --release-root ./release --force --output text
-```
+| 修改 | 最小动作 |
+| --- | --- |
+| Vue 页面 | Vite HMR；生产 build 需重新 `npm run build` 和组装 |
+| REST/API 普通代码 | 快速模式由 Uvicorn reload；完整链需重新组装并重启 |
+| Alembic/schema/config/bootstrap | 停止进程，迁移后完整重启 |
+| Worker、训练、转换、评估 | 重新组装并由 full Supervisor 启动 |
+| inference daemon、Deployment、mmap/LocalBuffer | 完整停止、重新组装和启动 |
+| Workflow Runtime worker/Trigger | 完整重启并复跑版本、revision、epoch 相关测试 |
 
-`assemble-release --force` 会整体移动并恢复已有发行目录中的 `python/`，不会自动复制大体量 Python 环境。
+## 相关文档
 
-后端最小回归：
-
-```powershell
-python -m pytest tests/test_release_assembly.py tests/test_bootstrap_chains.py tests/test_api_dependency_chain.py -k frontend_static
-python -m pytest --collect-only -q
-```
-
-前端回归：
-
-```powershell
-cd frontend/web-ui
-npm run test:unit
-npm run build
-```
-
-`pytest.ini` 将默认临时目录固定为仓库根目录 `.tmp/pytest`，并把 pytest cache 固定为 `.tmp/pytest-cache`。并行长链或 Windows 文件句柄排查才使用独立的 `.tmp/<name>` 子目录。
-
-## 细分文档入口
-
-- service 启动和 health：`backend-service-startup.md`
-- worker 进程与 profile：`backend-worker-startup.md`
-- inference daemon 架构和恢复：`inference-daemon.md`
-- maintenance 和数据库迁移：`backend-maintenance.md`
-- 生产发布：`production-environment.md`
-- 首次发布验收：`full-first-deploy-checklist.md`
-
-## 运行边界
-
-- 开发环境为了日志和断点调试而拆成多个终端，但这些终端共同组成一个完整项目实例。
-- 生产环境统一使用根目录一键启动和停止入口，不以手工拆分进程作为正常运行方式。
-- WorkflowAppRuntime 的隔离 worker 由 backend-service 按业务状态管理，不是需要额外手工启动的第五个固定后端入口。
+- [开发指南](../development/README.md)
+- [backend-service 启动](backend-service-startup.md)
+- [Worker Topology](backend-worker-startup.md)
+- [生产环境](production-environment.md)
+- [首次部署清单](full-first-deploy-checklist.md)

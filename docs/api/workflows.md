@@ -19,19 +19,15 @@
 
 ## 相关 runtime 文档
 
-workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies 和对应 WebSocket 事件流；其余扩展设计继续保留在独立草案文档中。
+workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies、TriggerSource 和对应 WebSocket 事件流。
 
 FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppVersion，WorkflowAppRuntime 再通过 revision 选择准确版本。版本切换保留稳定 Runtime/Trigger id，规则见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
 
-当前公开接口与后续扩展的导航页见 [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)。
-
-- [docs/api/workflow-runtime-drafts.md](workflow-runtime-drafts.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflow-execution-policies.md](workflow-execution-policies.md)
-- [docs/api/workflow-persona-profiles.md](workflow-persona-profiles.md)
-- [docs/api/workflow-tool-policies.md](workflow-tool-policies.md)
+- [docs/api/workflow-trigger-sources.md](workflow-trigger-sources.md)
 
 ## service 节点语义
 
@@ -393,7 +389,7 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
 - [docs/api/current-api.md](current-api.md)
 - [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)
-- [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)
+- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
 - [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)
 
 

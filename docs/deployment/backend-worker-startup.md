@@ -1,54 +1,41 @@
-# backend-worker Topology 与启动说明
+# backend-worker Topology
 
-## 目的
+backend-worker 是后台任务执行层。正式运行只允许 full Supervisor 激活一代 Topology，再按 release manifest 启动严格 Worker Profile。`backend-service` 不创建进程内消费者。
 
-backend-worker 是任务消费执行层。正式运行只允许 full Supervisor 根据严格 Worker Profile 激活一代 Topology，再启动其中声明的 Profile 进程。backend-service 不创建进程内任务消费者。
+## 正式入口
 
-## 唯一正式入口
-
-开发态和发布态都使用完整 Supervisor：
-
-```powershell
-conda activate amvision
-python runtimes/launchers/full/start_amvision_full.py --app-root . --python-executable python
-```
-
-发布目录使用：
+开发完整链路和生产发布都从已组装的发行目录启动：
 
 ```powershell
 .\start-amvision-full.bat
 ```
 
-`python -m backend.workers.main`、固定 Profile wrapper 和只传 `--worker-profile-file` 的旧启动方式已经删除。Worker 进程缺少 Supervisor 注入的 topology id、generation、epoch、instance id 或 Profile 路径时会直接拒绝启动。
+源码目录必须先执行 `assemble-release`，完整步骤见 [开发环境启动](development-environment.md)。
 
-`runtimes/launchers/worker/start_backend_worker.py` 是 Supervisor 使用的低层入口，不是独立部署入口。
+以下入口不是独立运行方式：
 
-## Profile 是唯一职责配置
+- `python -m backend.workers.main`
+- `runtimes/launchers/worker/start_backend_worker.py`
+- 手工只传一个 Profile 文件
 
-Profile 位于 `runtimes/manifests/worker-profiles/*.json`，格式固定为 `amvision.worker-profile.v1`，严格拒绝未知字段。每个 Profile 明确声明：
+低层 Worker 缺少 Supervisor 注入的 Topology id、generation、epoch、instance id 和精确 Profile 路径时会拒绝启动。
 
-- `profile_id`
-- `display_name`
-- `enabled_consumer_kinds`
-- `max_concurrent_tasks`
-- `poll_interval_seconds`
+## Worker Profile
 
-当前 Profile：
+Profile 源文件位于 `runtimes/manifests/worker-profiles/*.json`，格式固定为 `amvision.worker-profile.v1`，未知字段会被拒绝。
 
-| Profile | 职责 |
+| Profile | 主要职责 |
 | --- | --- |
-| `dataset-import` | 数据集导入 |
-| `dataset-export` | 数据集导出与训练输入生成 |
-| `training` | YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 及非 detection 训练 |
-| `conversion` | ONNX、OpenVINO、TensorRT 转换 |
-| `evaluation` | detection、classification、segmentation、pose、obb 评估 |
-| `inference` | 五类任务的异步推理队列消费与 gateway 转发 |
+| `dataset-import` | zip 导入、格式校验、规范化和 DatasetVersion 落盘 |
+| `dataset-export` | 数据集导出、打包和训练输入生成 |
+| `training` | YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 及各任务训练 |
+| `conversion` | ONNX、OpenVINO 和 TensorRT 转换 |
+| `evaluation` | detection、classification、segmentation、pose 和 OBB 评估 |
+| `inference` | 五类异步推理队列与 gateway 转发 |
 
-`config/backend-worker.json` 只保存共享数据库、对象存储、队列、workspace 和 gateway 配置，不再保存全量消费者集合或并发策略。
+Profile 独立声明 consumer、并发数和轮询间隔。`config/backend-worker.json` 只保存共享数据库、ObjectStore、队列、workspace、telemetry 和 gateway 配置。
 
-## Topology 运行契约
-
-Supervisor 每次启动创建新的 epoch，并原子更新当前指针：
+## Topology 契约
 
 ```text
 data/runtime/backend-workers/
@@ -60,40 +47,41 @@ data/runtime/backend-workers/
    └─ locks/<profile-id>.lock
 ```
 
-- `active.json`：唯一活动 Topology 指针，格式 `amvision.worker-topology-pointer.v1`。
-- `manifest.json`：本代期望 Profile、generation、epoch、Supervisor id 和健康阈值。
-- `profiles/*.json`：本代 Profile 的严格心跳，格式 `amvision.worker-heartbeat.v1`。
-- `topology.lock`：同一应用根目录只允许一个 full Supervisor。
-- `locks/*.lock`：同一 epoch 的每个 Profile 只允许一个进程。
+- `active.json` 是唯一活动 Topology 指针。
+- `manifest.json` 固定期望 Profile、generation、epoch、Supervisor 和健康阈值。
+- `profiles/*.json` 是当前代的严格心跳。
+- `topology.lock` 保证同一应用根只有一个 full Supervisor。
+- `locks/*.lock` 保证同一 epoch、同一 Profile 只有一个进程。
 
-诊断只读取 `active.json` 指向的 manifest 及其精确 Profile 心跳。旧 epoch、旧 `_worker_health` 目录、文件 glob 和损坏的历史文件都不参与当前健康计算。
+设置页诊断只读取 `active.json` 指向的当前 manifest 与精确心跳；历史 epoch、旧目录和 glob 结果不参与当前健康状态。
 
-## 故障隔离与恢复
+## 故障恢复
 
-- backend-service 或 inference daemon 退出：Supervisor 停止完整 stack。
-- 单个 Worker Profile 退出：只恢复该 Profile，不停止其他 Profile 和 service。
-- 恢复采用有上限的退避，失败立即反映到当前 Profile 心跳和设置页。
-- 心跳线程、日志复制线程发生异常时，异常会进入 Supervisor 主循环，不能静默停止。
-- stop 只操作状态文件中 PID、创建时间、解释器、工作目录和命令行全部匹配的进程，避免 PID 复用导致误杀。
+- 单个 Profile 退出：只恢复该 Profile，并生成新的 `worker_instance_id`。
+- backend-service 或 inference daemon 退出：完整 stack 进入失败回收。
+- 心跳、日志复制或监督循环异常：异常回传 Supervisor 主循环，不能静默降级。
+- stop 同时核对 PID、创建时间、解释器、工作目录和命令行，避免 PID 复用误杀。
+
+系统不为 Worker 启动引入业务队列、隐藏重试或备用兼容拓扑。
 
 ## 按日日志
 
-Supervisor 将每个组件 stdout/stderr 追加到本地日期文件：
-
 ```text
-logs/full-stack/backend-service-YYYYMMDD.log
-logs/full-stack/inference-daemon-YYYYMMDD.log
-logs/full-stack/backend-worker-<profile>-YYYYMMDD.log
-logs/full-stack/database-migration-YYYYMMDD.log
+logs/full-stack/backend-worker-dataset-import-YYYYMMDD.log
+logs/full-stack/backend-worker-dataset-export-YYYYMMDD.log
+logs/full-stack/backend-worker-training-YYYYMMDD.log
+logs/full-stack/backend-worker-conversion-YYYYMMDD.log
+logs/full-stack/backend-worker-evaluation-YYYYMMDD.log
+logs/full-stack/backend-worker-inference-YYYYMMDD.log
 ```
 
-同一天持续 append 到同一个文件；跨过本地午夜后的第一段输出自动切换到新日期文件。当天文件保持打开并在切换时关闭，避免每条日志反复打开文件。`runtime-state.json` 同时记录当前日志路径和 `log_pattern`。
+当天日志持续 append，跨过本地午夜后的第一段输出切换到新日期文件。`runtime-state.json` 记录当前日志路径与 `log_pattern`。
 
 ## 验收
 
-1. 启动 full Supervisor，确认 `active.json` 和当前 epoch manifest 存在。
-2. 设置页“运行状态”确认 Topology generation/epoch 和全部 Profile。
-3. 每个 Profile 应为 `running`，`running_count == worker_count`。
-4. 提交对应任务，确认队列状态推进并写入当天 Profile 日志。
-5. 仅终止一个 Worker Profile，确认 Supervisor 只生成该 Profile 的新 instance id，其他组件 PID 不变。
-6. 跨日 soak 确认新日志进入下一日期文件，旧文件不再增长。
+1. 启动 full Supervisor。
+2. 确认 `active.json`、当前 epoch manifest 和六份心跳存在。
+3. 设置页确认全部 Profile 为 `running`，Topology generation/epoch 与心跳一致。
+4. 提交目标任务，确认队列推进并写入对应日期日志。
+5. 受控终止一个 Profile，确认只替换该 Profile 的 PID/instance，其他组件不变。
+6. 跨日 soak 确认新日志进入下一日期文件，前一日文件不再增长。

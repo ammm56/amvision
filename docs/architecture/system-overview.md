@@ -1,324 +1,163 @@
-# 平台整体方案总览
+# 平台总览
 
-## 文档目的
+## 产品定位
 
-本文档用于从平台视角描述整体框架、主要模块、端到端流程和所需功能，帮助建立对本地优先工业视觉平台的完整理解。
+AMVision 是本地优先的工业视觉服务平台，覆盖数据集、训练、评估、模型转换、部署推理、Workflow 编排、Trigger 与现场系统协议集成。平台不是相机、PLC、机械臂或 IO 控制器；硬件直连和行业特化能力通过外部系统或显式安装的 Node Pack 接入。
 
-本文档聚焦整体方案和系统边界，不展开实现细节、接口字段或具体类设计。
+目标部署形态为 standalone、workstation 和 edge，本地运行不依赖云对象存储、外部 Redis/MQ、系统 Python、系统 Node.js 或在线 CDN。
 
-## 适用范围
-
-- 平台整体目标与边界
-- 一级模块和职责分工
-- 目录结构与模块层级的对应关系
-- 关键业务流程与状态流转
-- 所需功能的全局版图
-
-## 平台目标
-
-- 支持前后端分离部署，保持浏览器前端、后端服务和 worker 的职责清晰
-- 支持数据集、训练、验证、模型转换、发布、部署、推理和回滚的完整工程链路
-- 支持传统 OpenCV 机器视觉流程与深度学习模型流程并存
-- 支持流程编排与节点扩展，保留向 ComfyUI 式节点语义兼容的长期演进能力
-- 支持 standalone、workstation、edge 三类本地部署形态，并为后续演进为类似 Roboflow 的在线版本预留边界
-- 支持通过自定义节点补齐协议集成、硬件桥接、模块连接和场景化能力，保持核心平台精简稳定
-
-## 边界澄清
-
-- 本项目采用前后端分离架构，前端界面与后端服务通过版本化 REST API 和 WebSocket 交互
-- 本项目是独立视觉处理后端服务，不承担相机、PLC、IO 传感器、机械臂等外部硬件的直接连接和驱动职责
-- 图像、视频流、任务触发、结果回传和联动信号通过界面或外部系统经协议交互完成
-- 上位机、采集系统、MES、PLC 网关、设备代理系统等属于外部系统，本项目只定义协议边界和集成接口规则
-- 上位机和其他外部系统可按部署场景使用 REST API、WebSocket、ZeroMQ、gRPC、MQTT、PLC、IO 或传感器触发入口，所有入口都应落到版本化资源、任务或 workflow 运行记录
-- 设备集成在本文档中指“与外部系统的协议协作”，不指“项目直接接入硬件”
-- 在 standalone 或 workstation 的同机本地部署中，ZeroMQ 可作为高速触发和图片提交入口；本机内部大图数据交换优先通过 LocalBufferBroker、mmap 文件池和后续 ring buffer 承接
-- 如确有现场直连相机、PLC、传感器等需求，应通过独立自定义节点在受控边界中实现，而不是进入核心平台主链路
-
-## 方案总览
-
-平台由浏览器前端、后端服务、后台 workers、运行时、自定义节点体系、协议集成边界、基础设施适配层和打包发布层共同组成。
-
-## 当前实现状态入口
-
-- 当前主干已经从 YOLOX 首条闭环扩展到多模型平台主线：YOLOX detection 仍是第一套完整参考实现，YOLOv8/YOLO11/YOLO26 已覆盖 detection/classification/segmentation/pose/obb 五类任务，RF-DETR 已覆盖 detection 与 segmentation 主链，YOLOE / SAM3 也已作为 project-native custom node 接入 workflow。
-- 当前 backend-service 主要承担 REST / WebSocket 控制面、workflow runtime / trigger-source 管理、LocalBufferBroker 和 PublishedInferenceGateway。正式发布的 sync / async deployment supervisor 由独立 inference daemon 持有；backend-service 通过本地持久化控制队列调用，默认不再托管模型子进程或队列消费者。
-- 当前已经落地的代码模块、运行时矩阵和下一步收敛重点见 [docs/architecture/current-implementation-status.md](current-implementation-status.md)。
-- Workflow App 已实现可变草稿、不可变发布版本和 Runtime revision；修改或发布 App 不会自动影响已有 Runtime，停机选择版本时保持 Runtime/Trigger id 和第三方调用地址不变。完整规范见 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)。
-
-## 最小框架视图
-
-- frontend/web-ui：浏览器前端，放页面、工作流和结果查看
-- backend/service：后端入口，处理 API、状态和任务安排
-- backend/workers：后台 worker，跑训练、推理、转换和流程
-- custom_nodes：节点扩展层，放 node pack、custom node 和相关扩展资产
-- runtimes + packaging：运行和发布相关内容
+## 当前拓扑
 
 ```text
-操作人员 / 工程人员 / 外部系统 / 模型产物 / 节点包
-        |              |
-        |              | REST API / WebSocket / 协议调用 / 数据提交 / 结果回传
-        v              v
-frontend/web-ui    protocol integration boundary
-        |              |
-        +------ REST API / WebSocket / 状态流 ------+
-                                               |
-                                               v
-                                      backend/service
-                                               |
-                                                                 任务提交 / 元数据 / 状态编排 / 规则检查
-                                  +------------+-------------+
-                                  |                          |
-                                  v                          v
-                           backend/workers     service/infrastructure
-                                  |                          |
-                                                                                         | 调用运行时 / 节点包      | 接入数据库、对象存储和协议通信
-                                  v                          v
-                               runtimes              本地基础设施与外部系统协议端点
-                                  |
-                                                                                         | 高速触发入口 / 本机 Buffer 引用
-                                                                                         v
-                                                                                 protocol adapters / LocalBufferBroker
-                                                                                         |
-                                  v
-                         custom_nodes / assets / packaging
+Browser / SDK / HMI / MES / PLC gateway
+                  │ REST / WebSocket / ZeroMQ
+                  ▼
+            backend-service
+        ┌─────────┼──────────┐
+        │         │          │
+        ▼         ▼          ▼
+ Database +   QueueBackend  LocalBufferBroker
+ ObjectStore      │          (mmap data plane)
+                  ▼
+          six Worker Profiles
+
+ backend-service ──control──> inference daemon
+        │                         │
+        │                         └─ Deployment processes
+        └─ Workflow manager
+              ├─ Workflow Runtime processes
+              └─ Trigger Source adapters
 ```
 
-## 一级模块与职责
+完整发行由 full Supervisor 统一拥有：先执行 Alembic migration，再启动 inference daemon、backend-service 和六类 Worker Profile，并管理健康、日志、Profile 恢复和停止。
 
-### frontend/web-ui
+## 模块职责
 
-- 放浏览器前端、工作站和现场操作界面
-- 提供数据集、任务、模型、部署、外部系统集成和流程编排等界面能力
-- 作为独立前端工程存在，不与后端内部模块混合部署逻辑
-- 通过版本化 REST API、WebSocket 和任务状态流与后端服务协作
+### Web UI
 
-### backend/service
+Vue 3 + TypeScript + Vite 前端，提供 Project、Task、Dataset、Model、Deployment、Inference、Workflow、Trigger、Custom Node 和 Settings 工作台。前端只通过版本化 API、WebSocket 和公开协议访问后端，不 import 后端内部实现。
 
-- 是统一后端入口，处理元数据、任务安排和对外接口
-- 管理项目、数据集、任务、模型、部署实例、集成端点、流程模板和节点包记录
-- 为浏览器前端、上位机和其他外部系统提供统一的公开通信边界
-- 协调 workers、infrastructure、QueueBackend 和公开接口规则，避免前端或外部直接耦合内部执行逻辑
+### backend-service
 
-### backend/workers
+FastAPI 控制面，负责：
 
-- 跑训练、验证、推理、转换和流程这些重任务
-- 作为后台 worker 运行，接受后端服务调度并回写任务状态和结果
-- 依赖运行时和节点扩展体系完成模型执行、OpenCV 流程和后处理扩展
+- 本地鉴权、Project scope 和公开 API；
+- 数据集、任务、模型、部署、Workflow 与 Trigger 资源；
+- QueueBackend 提交和状态查询；
+- inference daemon 与 Workflow Runtime 控制；
+- ObjectStore、LocalBuffer 和事件流装配；
+- 版本发布、恢复、归档、回滚和 mutation fence。
 
-### backend/contracts
+它不消费后台任务队列，也不在 HTTP handler 中运行长时训练、转换或正式 Workflow。
 
-- 放 API、事件、文件规则、节点规则和集成规则
-- 给后端服务、workers、节点包和前端提供共用格式
-- 这里的内容一旦公开，就尽量保持稳定
+### Worker Profiles
 
-### backend/service/infrastructure 与 backend/queue
+独立 Profile 分别消费 dataset-import、dataset-export、training、conversion、evaluation 和 batch-inference。Worker 执行 Runner 并回写 Task/Attempt/Event，不拥有公开 API。
 
-- `backend/service/infrastructure` 接数据库、对象存储、本地 buffer 和协议通信
-- `backend/queue` 提供 QueueBackend 抽象和本地队列实现
-- 二者只服务 service 和 worker 的内部边界，不作为公开 API
-- 屏蔽具体 SQLite、文件系统、本地队列、ZeroMQ 和其他通信协议实现差异
+### inference daemon 与 Deployment
 
-### runtimes
+inference daemon 是 DeploymentInstance 进程的唯一控制 owner。模型通过 PyTorch、ONNXRuntime、OpenVINO 或 TensorRT predictor 长期加载，支持 sync/async、warmup、health、reset、stop 和进程恢复。
 
-- 放 conda 开发环境定义和发布时同目录 Python 运行时
-- 管理服务、worker 和维护脚本的统一启动入口
-- 管理运行时依赖、兼容性和目标平台差异边界
+Deployment 数量表示已发布实例，不等于同时调用数。OpenVINO CPU effective thread 只按当前 deployment 自身 instance_count 和主机能力计算；不同空闲 deployment 不静态瓜分全部物理核心。
 
-### custom_nodes
+### Workflow Runtime 与 Trigger
 
-- 放流程节点包、结果处理节点包、协议节点包、硬件桥接节点包和模块连接节点包
-- 通过 manifest、节点目录和接口规则接入平台，不直接侵入后端服务内部实现
-- 在节点编辑器中与 core nodes 统一注册和展示，方向上向 ComfyUI custom nodes 看齐
-- 大量自定义功能以 node pack 形式独立实现、独立加载，可作为节点或连接器接入平台
-- 节点包可连接外部系统、内部模块、任务对象和数据对象，承担处理、回传和联动职责
+Workflow App 草稿发布为不可变 Version。稳定 Runtime id 通过 revision/generation 选择版本，Trigger 和第三方 SDK 始终绑定 Runtime。切版和回滚不改变第三方调用地址。
 
-### assets
+Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常驻进程执行。请求固定 version/revision/generation/fingerprint/worker epoch，旧进程事件不能污染当前状态。
 
-- 放流程模板、模型配置、默认资源和运行时辅助资产
-- 为训练、转换、部署和流程编排提供可复用的静态资源基础
+### LocalBufferBroker
 
-### packaging
+同机大图片和视频帧使用 mmap 与 BufferRef/FrameRef 传输。JSON/ZeroMQ 控制消息不复制整张图片。需要持久化的输入输出使用 ObjectStore 或显式磁盘保存位置。
 
-- 放 standalone、workstation、edge 三类发行结构的组装逻辑
-- 将 backend、frontend、runtimes、assets 和必要配置收敛成可分发产物
+### Node Pack
 
-## 目录结构与模块层级对应
+核心节点位于 `backend/nodes/`，行业规则、协议、硬件桥接、YOLOE、SAM3 等扩展位于 `custom_nodes/`。每个包必须有 manifest、version、capabilities、schema、timeout 和启用边界。
 
-- 仓库目录结构、层级关系和模块依赖方向见 [docs/architecture/project-structure.md](project-structure.md)
-- 本文档主要回答“为什么要这样分模块”和“这些模块怎么一起工作”
-- project-structure 讲静态结构，system-overview 讲流程和整体功能
-- 任务状态、执行调度与后端服务职责详见 [docs/architecture/backend-service.md](backend-service.md)
-- 检测类模型的最小共享对象与 metadata 边界详见 [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-- 对象关系与文件追踪详见 [docs/architecture/data-and-files.md](data-and-files.md)
-- 开发运行时与发布装配详见 [docs/architecture/runtime-packaging.md](runtime-packaging.md)
+## 端到端链路
 
-## 交互关系总则
+### 数据集
 
-- 浏览器前端与后端服务之间是标准前后端分离关系，不共享内部模块实现
-- 上位机、MES、采集系统和其他外部系统通过与前端一致的公开边界接入后端
-- REST API 用来做请求响应，WebSocket 用来推送状态、日志和任务事件
-- ZeroMQ 可作为 workstation 或 standalone 场景下的高速触发和图片提交入口
-- LocalBufferBroker 用于 workflow 隔离进程、发布推理 worker 和本地 adapter 之间的大图、连续帧和中间结果引用传递，详细规划见 [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-- 已发布 Workflow 的第三方稳定调用身份是 WorkflowAppRuntime；TriggerSource 和 SDK 绑定 Runtime，不直接绑定可变 Workflow App 或某个发布版本
+```text
+zip upload
+  -> DatasetImport + Task
+  -> safe extract / format validation
+  -> immutable DatasetVersion
+  -> DatasetExport
+```
 
-## 整体流程
+统一支持 detection、classification、segmentation、pose 和 OBB 的 COCO/VOC/YOLO/ImageNet/DOTA 版本化格式。训练只读取 DatasetExport/Version，不直接读取原始 zip。
 
-### 1. 数据集准备流程
+### 模型
 
-1. 创建项目、数据集和数据版本
-2. 导入本地图片、视频、采集结果或外部数据源清单
-3. 记录元数据、样本组织方式和版本信息
-4. 为训练、验证、传统视觉流程或推理任务准备输入集
+```text
+DatasetExport
+  -> TrainingTask
+  -> checkpoint + ModelVersion
+  -> Validation / Evaluation
+  -> ONNX / OpenVINO / TensorRT ModelBuild
+  -> DeploymentInstance
+  -> sync / async inference
+```
 
-### 2. 训练与验证流程
+当前模型矩阵：
 
-1. 从数据集版本和训练配置创建训练任务
-2. 后端服务写入任务定义并提交到 worker
-3. worker 在运行时环境中启动训练、验证和指标采集
-4. 训练结果生成模型文件、指标记录和实验轨迹
-5. 验证结论回写到后端服务，用于后续转换、发布和回滚判断
+- YOLOX：detection；
+- YOLOv8 / YOLO11 / YOLO26：detection、classification、segmentation、pose、OBB；
+- RF-DETR：detection、segmentation。
 
-### 3. 模型转换与发布流程
+准确组合与后端见 [模型支持矩阵](model-support-matrix.md)。
 
-1. 基于模型文件选择目标运行时和目标部署平台
-2. 发起 ONNX、OpenVINO、TensorRT、CoreML 或 ARM NPU 转换任务
-3. 记录转换结果、输入输出约束、精度与 benchmark 信息
-4. 将可部署文件注册为可发布版本，并关联兼容平台和回滚信息
+### Workflow
 
-### 4. 部署与推理流程
+```text
+edit graph + application
+  -> Preview
+  -> publish immutable App Version
+  -> create/select stable Runtime revision
+  -> start worker
+  -> bind Trigger Source
+  -> sync/async/trigger invoke
+  -> Workflow Run provenance
+```
 
-1. 创建部署实例，绑定模型版本、运行时配置和目标运行环境
-2. 通过本地运行时和启动器启动服务或 worker 进程
-3. 前端或外部系统通过 REST API、WebSocket 或约定好的接口规则提交图片、视频流或推理请求，worker 完成推理和后处理
-4. 后端服务回传推理结果、状态、日志和告警信息
-5. 需要时执行灰度切换、回滚或重新部署
+Workflow 节点可调用已发布 Deployment，也可执行 OpenCV、逻辑、协议和自定义节点。模型 session 不嵌入 Workflow JSON；图只保存稳定资源引用和节点参数。
 
-### 5. 流程编排流程
+### 外部系统
 
-1. 选择模型节点、传统视觉节点、后处理节点、协议集成节点和自定义节点
-2. 通过流程模板或节点编辑器定义执行图
-3. 后端服务检查节点输入输出规则和资源依赖
-4. worker 按流程图运行节点链路，并允许自定义节点连接内部模块、外部端点和相关数据对象
-5. 模板与节点版本可被追踪、复用和回滚
+当前公开入口包括 REST、WebSocket、ZeroMQ Trigger、Modbus TCP polling、directory-poll 与 directory-watch。未实现的 MQTT、gRPC、其他 PLC driver 或相机直连不进入 capability；需要时通过新的 Trigger adapter 或 Node Pack 实现。
 
-### 6. 外部系统协议集成流程
+## 数据与追溯
 
-1. 注册外部系统、协议配置和回调规则
-2. 由上位机、采集系统或其他业务系统提交图片、视频流、批量任务或触发请求，也可由节点扩展定义自定义触发入口
-3. 后端服务根据 REST API、WebSocket 或其他版本化接口规则完成任务创建、状态跟踪和结果分发
-4. 结果可经核心链路或节点扩展上报链路回传到前端、上位机、MES、PLC 网关或其他外部系统
-5. 发生异常时支持禁用集成端点、切换回调策略、停用节点包或回滚模型版本
+- Database 保存元数据、状态、版本和引用关系；
+- ObjectStore 保存平台托管文件；
+- LocalBuffer 保存执行期共享内存数据；
+- Task/Attempt/Event 追溯后台任务；
+- ModelVersion/Build 追溯训练和转换产物；
+- App Version/Runtime Revision/Run 追溯 Workflow；
+- manifest、fingerprint、generation、operation id 和 worker instance id 提供并发 fence。
 
-### 7. 节点扩展与节点注册流程
+历史资源不可通过更新“伪装成新版本”。发布、回滚、重试和恢复都创建或保留可审计记录。
 
-1. 安装或发现 node pack，读取 manifest、capability 和节点定义
-2. 后端服务完成版本校验、依赖校验、权限校验和启用状态登记
-3. 前端节点编辑器读取统一节点目录、参数 schema 和分类信息
-4. worker 在运行时环境中按节点输入输出规则执行 custom node 逻辑，并允许节点扩展接入内部模块、外部系统和相关数据流
-5. 节点扩展可实现外部触发、执行完成后的数据上报、结果后处理和跨模块衔接逻辑
-6. 节点包升级、禁用、回滚后，流程模板与部署引用关系同步更新
+## 稳定性原则
 
-## 所需功能版图
+- 重任务与长期模型/Workflow 进程和 API 控制面分离；
+- 满载立即返回明确冲突，不引入隐藏排队和重试；
+- 控制面使用短事务 CAS，文件 I/O 和进程启动不持长事务；
+- heartbeat/health 使用精确 topology、revision 和 epoch；
+- 日志按 `YYYYMMDD` 每日文件追加；
+- schema 只由 Alembic 演进；
+- 发行目录由 assemble-release 生成，不手工修改；
+- `projectsrc/` 只用于参考审计，不进入运行时。
 
-### 项目与数据能力
+## 文档入口
 
-- 项目空间管理
-- 数据集创建、导入、组织和版本化
-- 样本元数据、标签引用和数据审计
-- 数据预览、筛选和任务输入集准备
-
-### 训练与实验能力
-
-- 训练任务创建、排队、执行和取消
-- 验证任务、指标记录和实验追踪
-- 训练配置版本化与基线比对
-- 训练输出文件和日志归档
-
-### 模型与文件能力
-
-- 模型注册与版本管理
-- 文件类型管理
-- 模型转换、量化和目标平台兼容性记录
-- benchmark、输入输出约束和回滚信息管理
-
-### 部署与推理能力
-
-- 部署实例管理
-- 运行时配置与资源配置管理
-- 推理任务、批处理和结果回传
-- 部署切换、回滚、日志和健康状态监控
-
-### 流程与节点扩展能力
-
-- 流程模板管理
-- 节点编排、节点版本和节点依赖校验
-- 结果处理节点包、协议节点包、硬件桥接节点包、模块连接节点包和 custom node 加载
-- 节点包 manifest、capability、timeout、禁用和版本追踪
-- 统一节点目录、节点参数 schema 和节点分类管理
-- 向 ComfyUI 风格靠拢的 custom nodes 和 workflow 扩展体验
-- 以节点包独立实现和加载外部触发、自定义回调、完成后数据上报和结果处理逻辑
-- 以节点包连接项目、任务、部署、流程模板、集成端点和外部系统数据
-
-### 外部系统协议集成能力
-
-- 外部系统端点注册、协议配置和回调管理
-- 图片、视频流、批量任务和推理请求的协议接入
-- 结果回传、状态订阅和联动触发的协议适配
-- REST API、WebSocket、ZeroMQ 或其他本地与在线协议边界支持
-- 与上位机、采集系统、MES、PLC 网关或设备代理系统协同
-- 允许通过节点扩展实现自定义触发入口、完成通知、数据上报和特定系统联动
-
-### 硬件桥接与模块扩展能力
-
-- 以独立节点包形式实现相机、PLC、传感器、机械臂等硬件桥接能力
-- 以独立节点包形式实现跨模块事件连接、任务衔接和结果转发能力
-- 对可选节点包施加额外权限、隔离、超时和回滚约束
-- 允许节点扩展按受控接口规则连接内部模块、外部端点和数据对象，形成可编排的自定义链路
-
-### 浏览器前端能力
-
-- 数据集、任务、模型、部署、集成端点和流程编排页面
-- 训练进度、任务状态、日志和告警面板
-- 图像结果查看、检测框叠加和图表可视化
-- 大图像浏览、工作站布局和触屏兼容交互
-
-### 系统管理功能
-
-- 任务状态流和事件审计
-- 节点包和模型版本追踪
-- 配置管理、兼容性声明和回滚机制
-- 基础健康检查、错误记录和最小可观测性能力
-
-## 关键对象
-
-- Project
-- Dataset
-- DatasetVersion
-- TrainingTask
-- ValidationTask
-- ModelFile
-- ConversionTask
-- DeploymentInstance
-- InferenceTask
-- PipelineTemplate
-- NodePackManifest
-- NodeDefinition
-- IntegrationEndpoint
-- RuntimeProfile
-
-## 推荐阅读路径
-
-1. [docs/architecture/system-overview.md](system-overview.md)
-2. [docs/architecture/project-structure.md](project-structure.md)
-3. [docs/architecture/backend-service.md](backend-service.md)
-4. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-5. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-6. [docs/architecture/data-and-files.md](data-and-files.md)
-7. [docs/architecture/node-system.md](node-system.md)
-8. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-9. 根据任务继续进入 deployment 专题文档
-
-## 后续建议拆分文档
-
-- integration-rules.md：外部协议、回调和集成端点边界
-- execution-observability.md：任务执行日志、指标、告警和审计模型
+- [当前实现状态](current-implementation-status.md)
+- [项目结构](project-structure.md)
+- [Backend Service](backend-service.md)
+- [任务系统](task-system.md)
+- [模型工作流边界](model-workflow-boundaries.md)
+- [Workflow Runtime](workflow-runtime.md)
+- [数据与文件](data-and-files.md)
+- [部署指南](../deployment/README.md)
+- [API 与集成](../api/README.md)

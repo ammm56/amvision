@@ -366,7 +366,7 @@ val ∩ test = ∅
 
 ## zip 包要求
 
-当前阶段默认通过 FastAPI 上传 zip 数据集压缩包。
+数据集通过 FastAPI 上传 zip 压缩包并异步导入。
 
 zip 包应满足：
 

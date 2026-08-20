@@ -16,8 +16,8 @@
 
 ## 边界结论
 
-- 当前阶段采用最简单的 JSON 方案保存和加载流程配置，方向与 ComfyUI workflow 的使用方式保持一致
-- 当前阶段的可执行流程应用是 Python 运行环境中加载的一份 JSON 配置，不是 exe 打包产物
+- Workflow 使用版本化 JSON 契约保存和加载图、节点和 binding，交互方向与 ComfyUI workflow 类似
+- 可执行 Workflow App 是运行环境加载的不可变发布快照，不是单独的 exe 产物
 - 图模板只负责节点图结构、参数状态、逻辑输入输出和编辑器状态
 - 流程应用只负责引用哪一份图模板，并把模板暴露的逻辑输入输出绑定到 API、HTTP 回包、ZeroMQ、PLC、上传等现场端点
 - 训练、验证、转换、推理这些重任务仍然由独立 worker 进程承担，不把节点图执行器设计成替代它们的一体化单进程运行器
@@ -186,14 +186,14 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 
 ## 图模型规则
 
-- 当前阶段图模板按 DAG 校验，不允许环路
+- 图模板按 DAG 校验，不允许环路
 - 节点边连接时，源输出端口和目标输入端口必须引用同一个 payload_type_id
 - 单输入端口默认只允许一个上游输入；只有 multiple=true 的端口才允许多个输入
 - 模板输入本质上也是外部来源注入，因此会与上游边共享同一套输入数量校验
 
 这里的 DAG 是节点执行图，不是 RAG，也不建议用 LangGraph 作为平台主干。
 
-## OpenCV 自定义节点规划
+## OpenCV 自定义节点
 
 OpenCV 节点不应直接写死在推理 runtime 里，而应通过 custom-node 接入统一节点目录。
 
@@ -376,29 +376,14 @@ barcode.nodes 当前已经采用这套维护方式，并固定通过 custom_node
 
 ## 当前落地范围
 
-当前已经落地：
+- `WorkflowPayloadContract`、`NodeDefinition`、`WorkflowGraphTemplate` 与 `FlowApplication` 已形成版本化 Python/JSON 契约。
+- NodeCatalogRegistry 合并 Core Node 与 Custom Node Pack，并校验 manifest、端口、payload 和 handler。
+- Template/Application 通过单一 bundle 保存；节点组作为 editor artifact 持久化，不进入执行节点集合。
+- Preview、Workflow App Version、Runtime revision、generation、Run 来源和 Trigger 已形成完整链路。
+- Custom Node 与 Core Node 均视为本地受信代码并同进程执行；长期故障边界由 Workflow Runtime Worker 提供，不为每个节点创建子进程。
+- Custom Node Pack、Catalog 与 manifest 由 `assemble-release` 纳入发行目录。
+- 图执行结果通过同步响应、Run 详情和事件接口公开；是否保留详细 trace 由 execution policy 控制。
 
-- workflows contracts Python 模块
-- WorkflowPayloadContract、NodeDefinition、WorkflowGraphTemplate、FlowApplication 四类对象
-- 节点目录校验、模板 DAG 校验、流程应用绑定校验
-- LocalNodePackLoader、NodePackManifest、CustomNodeCatalogDocument
-- NodeCatalogRegistry 合并 core nodes 与 custom nodes
-- backend-service 的模板 / 应用 validate、save、get API
-- backend-service 当前已经公开 WorkflowPreviewRun、WorkflowAppRuntime、WorkflowRun 三类 runtime API；编辑态试跑在 backend-service 当前进程同步直调，已发布应用走长期 runtime worker
-- 最小图执行器，当前支持 python-callable 和 worker-task 两类节点
-- node pack entrypoint 到实际 python-callable / worker-task handler 的自动注册
-
-当前还没有落地：
-
-- Workflow App 不可变发布版本、Runtime revision、版本选择和运行版本来源记录
-- 更完整的 custom node 运行时隔离与依赖装载
-- 流程编辑器前端的节点组持久化和批量状态控制
-
-## 下一步建议
-
-1. 按 [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md) 落地不可变发布版本和 Runtime revision。
-2. 在节点编辑器里补齐 `WorkflowGraphTemplate.groups`，节点组只作为 editor artifact 保存，不作为 runtime node 执行。
-3. 把 custom_nodes 资产纳入发行装配与发布校验。
-4. 再把图执行结果接入现有任务状态流和现场端点绑定。
+版本与运行来源规则见 [Workflow App 版本管理](workflow-app-versioning.md)。
 
 

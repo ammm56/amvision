@@ -47,7 +47,7 @@
 - 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`，并按 profile 过滤不适用依赖
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
 - 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
-- 不自动复制或重建 Python 环境；兼容参数 `--bundled-python-source-dir` 已禁用，传入会明确失败
+- 不自动复制或重建 Python 环境；bundled Python 由发布人员放入目标发行目录
 - 如果当前发布目录原本没有 `python/`，会创建空目录供发布人员后续手工移动、重命名或复制已经准备好的环境
 - full 启动器只接受显式 `--python-executable` 或发布目录中的 `python/python.exe`，不会回退到系统 Python
 - 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`

@@ -4,7 +4,7 @@
 
 本文档说明当前已经公开的 WorkflowAppRuntime REST API、状态语义和稳定返回字段。
 
-本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括第一阶段最小运行面，以及第二阶段已经落地的 restart、instances 和 execution policy 最小接入。
+本文档描述当前已经公开的 WorkflowAppRuntime 行为，包括 start/stop/restart、instances、execution policy、版本选择和 revision/generation 追溯。
 
 ## 当前版本管理边界
 
@@ -65,7 +65,7 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 
 补充说明：
 
-- 领域状态机内部允许 starting 和 stopping，但第一阶段 HTTP start/stop 是同步接口，接口返回时通常已经落到 running、stopped 或 failed。
+- 领域状态机内部允许 starting 和 stopping；HTTP start/stop 是同步控制接口，返回时通常已经落到 running、stopped 或 failed。
 - health 接口会刷新 observed_state、heartbeat_at、worker_process_id 和 loaded_snapshot_fingerprint。
 - invoke 超时只把对应 WorkflowRun 记录为 timed_out；旧 worker 会被强制终止。desired_state 仍为 running 时，监督器会创建新进程并记录 runtime.recovered，恢复完成后 runtime 回到 running。
 
@@ -226,7 +226,7 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 
 - 需要显式提供查询参数 project_id
 - 返回当前 Project 下的 WorkflowAppRuntime 列表
-- 第一阶段列表项返回完整 WorkflowAppRuntime 规则，不只返回摘要字段；其中包含 application_summary 和 template_summary 两个一跳摘要
+- 列表项返回完整 WorkflowAppRuntime 规则，不只返回摘要字段；其中包含 application_summary 和 template_summary 两个一跳摘要
 
 ## GET /api/v1/workflows/app-runtimes/{workflow_runtime_id}
 
@@ -393,5 +393,5 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
-- [docs/architecture/workflow-runtime-phase1.md](../architecture/workflow-runtime-phase1.md)
-- [docs/architecture/workflow-runtime-phase2.md](../architecture/workflow-runtime-phase2.md)
+- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
+- [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)

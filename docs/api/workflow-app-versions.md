@@ -40,7 +40,7 @@ GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versi
 }
 ```
 
-响应包含版本 id/序号、显示版本、快照 object key、content/contract fingerprint、状态、时间、发布主体和错误摘要。发布先用短事务占用 Application lifecycle，再以短事务写 `publishing` 记录和内容去重占位，之后才写入并回读 staging 对象与完成 manifest，最后原子移动到最终目录并改为 `published`。数据库记录先于 staging，因此进程中断后不存在“只有 staging、没有可恢复记录”的新发布。服务启动会恢复或标记未完成发布，并清理旧实现遗留的孤儿 staging，不会把缺少对象或指纹不匹配的版本提供给 Runtime。
+响应包含版本 id/序号、显示版本、快照 object key、content/contract fingerprint、状态、时间、发布主体和错误摘要。发布先用短事务占用 Application lifecycle，再以短事务写 `publishing` 记录和内容去重占位，之后才写入并回读 staging 对象与完成 manifest，最后原子移动到最终目录并改为 `published`。数据库记录先于 staging，因此进程中断后不存在“只有 staging、没有可恢复记录”的新发布。服务启动会恢复或标记未完成发布，并清理异常遗留的孤儿 staging，不会把缺少对象或指纹不匹配的版本提供给 Runtime。
 
 默认发布在写入 `publishing` 记录时原子占用 `(project_id, application_id, content_fingerprint)`。同一 Application 的并发发布通常先由 lifecycle 状态门裁决，竞争请求直接返回 409 和当前操作；数据库唯一内容占位继续作为持久化不变量，防止绕过控制面或异常恢复路径产生重复默认版本。两层裁决都不进入排队或轮询。发布收敛为 `failed` 时释放内容占位，后续请求可以明确重试。`allow_duplicate_content=true` 不占用默认去重键，因此仍可保留有意创建的重复发布记录。
 

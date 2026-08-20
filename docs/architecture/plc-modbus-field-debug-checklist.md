@@ -6,13 +6,13 @@
 
 本文档不替代：
 
-- [industrial-extension-node-plan.md](industrial-extension-node-plan.md)：长期规划、协议分层和后续待办
+- [industrial-workflow-nodes.md](industrial-workflow-nodes.md)：工业节点分层与协议边界
 - [current-implementation-status.md](current-implementation-status.md)：当前主干总览
 - [workflow-trigger-sources.md](../api/workflow-trigger-sources.md)：TriggerSource 接口与请求形状
 
 ## 当前范围
 
-当前 PLC 主线只收口在 `Modbus TCP` 第一阶段，不扩到 `S7 / MC / OPC UA`。
+当前 PLC 主线只实现 `Modbus TCP`，不包含 `S7 / MC / OPC UA`。
 
 当前代码边界分为两层：
 
@@ -66,7 +66,7 @@
 
 ## 当前未实现能力
 
-以下内容属于“还没做”，不是当前阶段 bug：
+以下内容未实现，不属于当前 capability：
 
 - `S7 / MC / OPC UA / FINS / EtherNet/IP`
 - `plc-register` 的 `sync-reply`
@@ -168,12 +168,12 @@
 - 先 workflow 内主动节点，再调 TriggerSource 常驻监听
 - 先本地结果记录，再接外部回传
 
-## 下一步建议
+## 扩展边界
 
-如果这一轮现场联调稳定，下一批最值得补的是：
+如果现场需要多地址监听、更丰富的边沿模式或更细的 health 字段，应先扩展 manifest、公开 schema 和测试，再增加节点能力：
 
 - `plc-register` 多地址监听
 - 更丰富的边沿/状态模式
 - 更细的 health 字段
 
-如果现场已经明确不是 Modbus TCP，而是 `S7 / MC`，那就不应该继续往当前 pack 上堆兼容逻辑，而应单独起新的 PLC custom node pack 和 TriggerSource 分层实现。
+如果现场协议不是 Modbus TCP，而是 `S7 / MC`，不得向当前 pack 堆叠隐式兼容逻辑；应创建独立 PLC Custom Node Pack 和 TriggerSource adapter。

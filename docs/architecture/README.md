@@ -1,142 +1,68 @@
-# 架构文档总览
+# 架构文档
 
-## 文档目的
+本目录说明当前系统结构、长期边界和公开契约。实施过程、阶段编号、临时审计结果和启动操作不属于架构正文。
 
-本目录用于存放长期稳定的架构参考文档，覆盖目录结构、层级关系、模块边界和关键子系统职责。
+## 建议阅读路径
 
-本目录不承担接口实现说明、部署步骤清单或临时讨论记录。
+1. [平台整体方案](system-overview.md)
+2. [当前实现状态](current-implementation-status.md)
+3. [项目结构](project-structure.md)
+4. [关键执行顺序](execution-sequences.md)
+5. 按需要进入下列专题
 
-## 当前文档
+## 平台与运行时
 
-- [docs/architecture/system-overview.md](system-overview.md)：平台整体框架、一级模块、端到端流程和所需功能总览
-- [docs/architecture/current-implementation-status.md](current-implementation-status.md)：当前主干已经落地的整体框架、主要代码落点、运行时矩阵和下一步收敛重点
-- [docs/architecture/next-stage-roadmap.md](next-stage-roadmap.md)：当前阶段判断、本轮已收口事项、固定开发环境与下一阶段五条主线
-- [docs/architecture/model-platform-plan.md](model-platform-plan.md)：多模型平台化路线，说明通用层、任务分类层、模型分类适配层和各模型分类的最小接入范围
-- [docs/architecture/model-support-matrix.md](model-support-matrix.md)：当前主干代码里 `model_type × task_type × 导入/导出/训练/验证/评估/转换/部署/推理/workflow/前端` 的真实支持矩阵
-- [docs/architecture/model-dataset-format-contract.md](model-dataset-format-contract.md)：YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 按 classification / detection / segmentation / pose / obb 顺序的数据集导入、导出和训练格式规则
-- [docs/architecture/classification-dataset-import-format.md](classification-dataset-import-format.md)：单标签图像分类数据集的标准导入目录、类别规则、图像要求和不符合规范的结构
-- [docs/architecture/coco-detection-dataset-import-format.md](coco-detection-dataset-import-format.md)：COCO 矩形边界框目标检测数据集的标准导入目录、JSON 字段、类别映射和图片格式限制
-- [docs/architecture/voc-detection-dataset-import-format.md](voc-detection-dataset-import-format.md)：VOC 矩形边界框目标检测数据集的标准导入目录、XML 字段、split 文件和图片格式限制
-- [docs/architecture/yolo-detection-dataset-import-format.md](yolo-detection-dataset-import-format.md)：YOLO 矩形边界框目标检测数据集的标准导入目录、标签行、类别配置和图片格式限制
-- [docs/architecture/coco-segmentation-dataset-import-format.md](coco-segmentation-dataset-import-format.md)：COCO 实例分割数据集的标准导入目录、polygon/RLE 标注、类别映射和图片格式限制
-- [docs/architecture/yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)：YOLO 实例分割数据集的标准导入目录、polygon 标注行、类别配置和图片格式限制
-- [docs/architecture/voc-instance-segmentation-dataset-format.md](voc-instance-segmentation-dataset-format.md)：VOC indexed mask 实例分割目录、mask/XML 权威关系、RLE 统一化、往返导出和 VOC2012 全量审计
-- [docs/architecture/coco-pose-dataset-import-format.md](coco-pose-dataset-import-format.md)：COCO Keypoints 姿态估计数据集的标准导入目录、JSON 字段、关键点可见性和图片格式限制
-- [docs/architecture/yolo-pose-dataset-import-format.md](yolo-pose-dataset-import-format.md)：YOLO 姿态估计数据集的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制
-- [docs/architecture/dota-obb-dataset-import-format.md](dota-obb-dataset-import-format.md)：DOTA OBB 旋转框数据集的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制
-- [docs/architecture/training-parameter-support.md](training-parameter-support.md)：训练参数的真实支持清单，分开说明公开接口、执行层实际使用参数、当前前端已暴露参数和缺口
-- [docs/architecture/model-training-input-size-rules.md](model-training-input-size-rules.md)：固定 YOLOX / RF-DETR / YOLOv8 / YOLO11 / YOLO26 的训练输入尺寸规则、常用尺寸和前端训练页面展示约束
-- [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)：固定公开入口、模型实现层、模型系列共享层和通用值对象的命名边界
-- [docs/architecture/model-core-implementation-plan.md](model-core-implementation-plan.md)：固定 YOLOX / YOLOv8 / YOLO11 / YOLO26 / RF-DETR 完整 core 的实现范围，并集中维护 YOLO full core 目录、任务拆分、参考映射、层级边界和验收规则
-- [docs/architecture/model-full-core-audit-checklist.md](model-full-core-audit-checklist.md)：固定 RF-DETR / YOLOX / YOLOv8 / YOLO11 / YOLO26 的 full core 审计状态、过渡残留分类和进入 custom node 前的真实全链路验收清单
-- [docs/architecture/code-structure-cleanup-plan.md](code-structure-cleanup-plan.md)：固定模型 core / runtime 之外的代码结构收口顺序和目标目录
-- [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)：模型接入、数据集、部署长期运行服务、workflow app 和 TriggerSource 之间的正式边界
-- [docs/architecture/model-deployment-runtime-policy.md](model-deployment-runtime-policy.md)：模型发布时的平台部署策略、OpenVINO CPU / GPU / NPU 和 TensorRT 运行参数边界、硬件迁移规则与实施顺序
-- [docs/architecture/model-artifact-provenance.md](model-artifact-provenance.md)：训练和转换模型产物的统一来源元数据、格式写入位置和证据链边界
-- [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)：YOLOE 与 SAM3 作为 custom node 扩展时的磁盘资产规则、manifest.json 字段和 payload 规则 约定
-- [docs/architecture/sam3-custom-node-plan.md](sam3-custom-node-plan.md)：固定 SAM3 Prompt、模型资产、设备、运行时、节点参数和验收边界
-- [docs/architecture/visual-prompt-editor.md](visual-prompt-editor.md)：固定通用 Point、Box、Polygon、Mask 图片编辑和 ObjectStore 持久化边界
-- [docs/architecture/video-workflow-node-plan.md](video-workflow-node-plan.md)：通用视频 payload 规则、core 视频节点、SAM3 视频/多帧分层边界和实现顺序
-- [docs/architecture/industrial-rule-node-plan.md](industrial-rule-node-plan.md)：工业现场单帧判定优先的规则节点、结果回传节点和输入接入节点分批规划
-- [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)：工业现场扩展节点体系规划，重点细化相机、PLC、工业缺陷核心节点与 OpenCV 常用算子路线
-- [docs/architecture/plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)：当前 PLC Modbus 已实现能力、未实现能力和推荐现场联调顺序的短清单
-- [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)：YOLOE 与 SAM3 在 WorkflowAppRuntime 中的默认启用策略、接入顺序、观测入口、排障路径，以及 `metadata.phase` / `enabledByDefault` 的当前建议
-- [docs/architecture/yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)：YOLOE 与 SAM3 本地 CPU/GPU soak / benchmark 的显式执行方式、目标机器基线结果和当前稳定性判断
-- [docs/architecture/websocket-architecture.md](websocket-architecture.md)：WebSocket 子系统的职责边界、版本化路由、事件流组织和重连规则
-- [docs/architecture/execution-sequences.md](execution-sequences.md)：训练、转换、部署推理和 workflow execute 四条关键调用顺序图
-- [docs/architecture/workflow-runtime.md](workflow-runtime.md)：workflow 编辑态试跑、已发布应用运行、队列划分、worker 拓扑和 API 草案
-- [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)：Workflow App 不可变发布版本、Runtime revision、稳定 Runtime/Trigger id、停机切换、回滚、契约兼容和迁移规范；当前核心链路已实现
-- [docs/architecture/workflow-model-session-runtime.md](workflow-model-session-runtime.md)：图内 Load Checkpoint、AppRuntime 模型隔离、启动预热验证、单 session 串行和释放规则
-- [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)：workflow 图编排前端所需的后端接口现状、本轮已补齐项和下一批执行清单
-- [docs/architecture/workflow-parallel-branches.md](workflow-parallel-branches.md)：通用 Parallel 分支、受控并发、资源边界和 80 ROI / 3 实例现场配置
-- [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)：workflow runtime 第一阶段实现清单，收口状态机、snapshot 规则和 worker 消息规则
-- [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)：workflow runtime 第二阶段边界，收口 restart、instances、异步 runs 和 execution policies 的进入范围
-- [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)：固定上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow 节点和模型 runtime 之间的 BGR24 高性能图片数据面规则
-- [docs/architecture/project-structure.md](project-structure.md)：项目目录结构、层级关系、模块关系和禁止直接耦合关系总览
-- [docs/architecture/backend-service.md](backend-service.md)：后端服务职责、任务状态、执行调度、QueueBackend 和状态回写边界
-- [docs/architecture/task-system.md](task-system.md)：统一任务实体、资源调度模型、任务 schema 和 worker pool 划分
-- [docs/architecture/detection-model-rules.md](detection-model-rules.md)：检测类模型的最小平台规则，以及正式对象与 metadata 的边界
-- [docs/architecture/yolox-module-design.md](yolox-module-design.md)：YOLOX 在 amvision 里的模块拆分、目录位置、当前代码落点和后续收敛方向
-- [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)：浏览器前端 Web UI 的模块划分、路由结构、状态组织和交互边界
-- [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)：浏览器前端 Web UI 的工程骨架、目录分层、LiteGraph 接入位置和组件层边界
-- [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)：浏览器前端 Web UI 的本地启动、默认用户、自动进入、登录页和退出规则
-- [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)：浏览器前端 Web UI 真实编码前的准备检查、剩余缺口和开工顺序
-- [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)：浏览器前端 Web UI 的节点映射、业务页面流程、workflow app 调用和事件通信规则
-- [docs/architecture/node-system.md](node-system.md)：节点系统、node pack 边界、custom node 模型和 ComfyUI 对齐方向
-- [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)：NodeDefinition、payload 规则、图模板与流程应用 JSON 规则
-- [docs/architecture/data-and-files.md](data-and-files.md)：关键对象、文件引用和版本关系
-- [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)：LocalBufferBroker 本机高性能数据交换层，规划 Broker、mmap 文件池、ring buffer 和 workflow 推理调用边界
-- [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)：DatasetImport、通用数据格式、任务类型格式矩阵和数据集导出规范
-- [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)：数据集导出格式列表、格式命名和模型默认格式映射
-- [docs/architecture/runtime-packaging.md](runtime-packaging.md)：开发运行时、同目录 Python 发布运行时和发行装配结构
+- [后端服务](backend-service.md)：控制面职责、依赖注入、Repository 和 Unit of Work 边界。
+- [统一任务系统](task-system.md)：Task、队列、Worker Profile 和状态回写。
+- [运行时与打包](runtime-packaging.md)：开发运行时、发行目录和 bundled Python。
+- [数据和文件](data-and-files.md)：ObjectStore、文件引用、版本和生命周期。
+- [WebSocket](websocket-architecture.md)：版本化消息、订阅和恢复规则。
+- [LocalBufferBroker](local-buffer-broker.md) 与 [高性能图片数据面](high-performance-image-data-plane.md)：本机图片引用、mmap 和 ZeroMQ 数据链。
 
-## 建议后续文档
+## 模型平台
 
-- integration-rules.md：集成端点、协议适配和回调规则
-- logs-and-metrics.md：任务日志、指标和告警
-- ui-schema-and-extension.md：前端节点 UI schema、节点面板和结果展示扩展规范
+- [模型支持矩阵](model-support-matrix.md)：模型、任务和端到端能力的当前事实来源。
+- [模型 Core 架构](model-core-architecture.md)：模型家族、平台应用层与 Runtime adapter 的职责。
+- [模型工作流边界](model-workflow-boundaries.md)：数据集、训练、转换、Deployment、Workflow 和 Trigger 的关系。
+- [模型数据集格式](model-dataset-format-contract.md)：分类、检测、分割、姿态和 OBB 的统一格式入口。
+- [训练与评估契约](model-training-evaluation-contract.md)、[训练参数](training-parameter-support.md) 和 [输入尺寸规则](model-training-input-size-rules.md)。
+- [模型产物来源](model-artifact-provenance.md) 与 [部署运行时配置](model-deployment-runtime-policy.md)。
+- [模型实现审计基线](model-implementation-audit.md) 与 [full core 验收](model-full-core-audit-checklist.md)。
 
-## 存放规则
+具体数据集格式按来源进入 `classification-*`、`coco-*`、`voc-*`、`yolo-*` 和 `dota-*` 文档。未出现在支持矩阵中的组合不属于已实现能力。
 
-- 一份文档只写一个稳定主题
-- 结构总览文档优先引用专题文档，不在单文件持续膨胀
-- 子系统变化如果影响长期边界，先更新这里的文档，不要只写在提交说明里
-- 架构决策的取舍过程不写入本目录正文，统一下沉到 [docs/decisions/README.md](../decisions/README.md) 对应的决策记录
+## Workflow 与节点
 
-## 推荐阅读路径
+- [Workflow 运行时](workflow-runtime.md)：Preview、正式 Runtime、Run、进程和事件边界。
+- [Workflow App 版本管理](workflow-app-versioning.md)：不可变版本、稳定 Runtime/Trigger id、revision、generation 和回滚。
+- [Workflow JSON](workflow-json-contracts.md)：图、节点、端口、参数和应用契约。
+- [模型 Session Runtime](workflow-model-session-runtime.md) 与 [Parallel 分支](workflow-parallel-branches.md)。
+- [节点系统](node-system.md) 与 [节点分类](node-taxonomy.md)：Core、Custom、Node Pack 和 runtime hook。
+- [Visual Prompt](visual-prompt-editor.md) 与 [YOLOE/SAM3 节点资产](yoloe-sam3-node-assets.md)。
 
-1. [docs/architecture/system-overview.md](system-overview.md)
-2. [docs/architecture/current-implementation-status.md](current-implementation-status.md)
-3. [docs/architecture/next-stage-roadmap.md](next-stage-roadmap.md)
-4. [docs/architecture/model-platform-plan.md](model-platform-plan.md)
-5. [docs/architecture/model-support-matrix.md](model-support-matrix.md)
-6. [docs/architecture/model-dataset-format-contract.md](model-dataset-format-contract.md)
-7. [docs/architecture/classification-dataset-import-format.md](classification-dataset-import-format.md)
-8. [docs/architecture/coco-detection-dataset-import-format.md](coco-detection-dataset-import-format.md)
-9. [docs/architecture/voc-detection-dataset-import-format.md](voc-detection-dataset-import-format.md)
-10. [docs/architecture/yolo-detection-dataset-import-format.md](yolo-detection-dataset-import-format.md)
-11. [docs/architecture/coco-segmentation-dataset-import-format.md](coco-segmentation-dataset-import-format.md)
-12. [docs/architecture/yolo-segmentation-dataset-import-format.md](yolo-segmentation-dataset-import-format.md)
-13. [docs/architecture/coco-pose-dataset-import-format.md](coco-pose-dataset-import-format.md)
-14. [docs/architecture/yolo-pose-dataset-import-format.md](yolo-pose-dataset-import-format.md)
-15. [docs/architecture/dota-obb-dataset-import-format.md](dota-obb-dataset-import-format.md)
-16. [docs/architecture/training-parameter-support.md](training-parameter-support.md)
-17. [docs/architecture/model-training-input-size-rules.md](model-training-input-size-rules.md)
-18. [docs/architecture/model-task-naming-boundaries.md](model-task-naming-boundaries.md)
-19. [docs/architecture/model-core-implementation-plan.md](model-core-implementation-plan.md)
-20. [docs/architecture/model-full-core-audit-checklist.md](model-full-core-audit-checklist.md)
-21. [docs/architecture/code-structure-cleanup-plan.md](code-structure-cleanup-plan.md)
-22. [docs/architecture/model-workflow-boundaries.md](model-workflow-boundaries.md)
-23. [docs/architecture/model-deployment-runtime-policy.md](model-deployment-runtime-policy.md)
-24. [docs/architecture/yoloe-sam3-node-assets.md](yoloe-sam3-node-assets.md)
-25. [docs/architecture/industrial-rule-node-plan.md](industrial-rule-node-plan.md)
-26. [docs/architecture/industrial-extension-node-plan.md](industrial-extension-node-plan.md)
-27. [docs/architecture/plc-modbus-field-debug-checklist.md](plc-modbus-field-debug-checklist.md)
-28. [docs/architecture/yoloe-sam3-workflow-app-operations.md](yoloe-sam3-workflow-app-operations.md)
-29. [docs/architecture/yoloe-sam3-soak-baseline.md](yoloe-sam3-soak-baseline.md)
-30. [docs/architecture/execution-sequences.md](execution-sequences.md)
-31. [docs/architecture/workflow-runtime.md](workflow-runtime.md)
-32. [docs/architecture/workflow-app-versioning.md](workflow-app-versioning.md)
-33. [docs/architecture/workflow-editor-backend-checklist.md](workflow-editor-backend-checklist.md)
-34. [docs/architecture/workflow-runtime-phase1.md](workflow-runtime-phase1.md)
-35. [docs/architecture/workflow-runtime-phase2.md](workflow-runtime-phase2.md)
-36. [docs/architecture/project-structure.md](project-structure.md)
-37. [docs/architecture/backend-service.md](backend-service.md)
-38. [docs/architecture/websocket-architecture.md](websocket-architecture.md)
-39. [docs/architecture/task-system.md](task-system.md)
-40. [docs/architecture/detection-model-rules.md](detection-model-rules.md)
-41. [docs/architecture/yolox-module-design.md](yolox-module-design.md)
-42. [docs/architecture/frontend-web-ui.md](frontend-web-ui.md)
-43. [docs/architecture/frontend-web-ui-structure.md](frontend-web-ui-structure.md)
-44. [docs/architecture/frontend-web-ui-startup-session.md](frontend-web-ui-startup-session.md)
-45. [docs/architecture/frontend-web-ui-development-readiness.md](frontend-web-ui-development-readiness.md)
-46. [docs/architecture/frontend-web-ui-workflows.md](frontend-web-ui-workflows.md)
-47. [docs/architecture/node-system.md](node-system.md)
-48. [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
-49. [docs/architecture/data-and-files.md](data-and-files.md)
-50. [docs/architecture/local-buffer-broker.md](local-buffer-broker.md)
-51. [docs/architecture/high-performance-image-data-plane.md](high-performance-image-data-plane.md)
-52. [docs/architecture/dataset-import-spec.md](dataset-import-spec.md)
-53. [docs/architecture/dataset-export-formats.md](dataset-export-formats.md)
-54. [docs/architecture/runtime-packaging.md](runtime-packaging.md)
-55. 按任务继续进入集成规则或日志专题文档
+编辑器中已经实现的图像交互取参、节点组和 ROI 边界放在 [开发指南](../development/README.md)，不再以实施计划形式保留。
+
+## 前端
+
+- [Web UI 架构](frontend-web-ui.md)
+- [前端工程结构](frontend-web-ui-structure.md)
+- [启动与会话](frontend-web-ui-startup-session.md)
+- [Workflow 页面和节点通信](frontend-web-ui-workflows.md)
+
+前端当前统一使用 Vue 3 + TypeScript + Vite。设计稿和组件视觉规范位于 [docs/design/frontend](../design/frontend/README.md)。
+
+## 扩展与现场能力
+
+- [工业视觉与集成节点](industrial-workflow-nodes.md)
+- [视频 Workflow 节点](video-workflow-nodes.md)
+- [PLC Modbus 联调](plc-modbus-field-debug-checklist.md)
+- [YOLOE/SAM3 Workflow 运行](yoloe-sam3-workflow-app-operations.md)
+
+节点是否可用以运行时 Catalog 为准；架构文档只说明稳定分层和使用边界。
+
+## 写作边界
+
+- 架构正文写当前不变量和模块关系，不累计修复批次、提交记录或日期流水账。
+- 取舍原因进入 [ADR](../decisions/README.md)，执行命令进入 [development](../development/README.md) 或 [deployment](../deployment/README.md)。
+- API 字段以 [API 文档](../api/README.md) 和 OpenAPI 为准。
+- 当前能力以代码、迁移和自动化测试为最终证据；文档发现偏差时必须随代码修正。

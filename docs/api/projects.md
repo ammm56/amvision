@@ -4,7 +4,7 @@
 
 本文档说明当前已经公开的 Project 目录、Project 初始化和前端首屏 bootstrap 接口。
 
-当前阶段的 Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数据库主数据表。前端、工作站和外部集成应把 Project 当作 datasets、training、evaluation、conversion、deployment、workflow 和运行结果的统一作用域。
+Project 是本地 ObjectStore 上的工作区命名空间，不是单独的数据库主数据表。前端、工作站和外部集成应把 Project 当作 datasets、training、evaluation、conversion、deployment、workflow 和运行结果的统一作用域。
 
 ## 当前公开范围
 

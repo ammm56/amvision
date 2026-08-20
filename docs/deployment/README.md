@@ -1,34 +1,60 @@
-# 部署文档目录
+# 部署指南
 
-## 文档目的
+本目录覆盖开发启动、发行包组装、bundled Python、首次部署和生产启动。当前正式发行目标为 Windows x64 CPU 和 Windows x64 NVIDIA。
 
-本目录用于存放开发环境、运行时、安装、打包、发布和排障相关文档。
+## 选择入口
 
-## 当前文档
+| 场景 | 文档 |
+| --- | --- |
+| 开发态 API/UI 或完整链路启动 | [开发环境启动](development-environment.md) |
+| backend-service 参数与健康检查 | [backend-service 启动](backend-service-startup.md) |
+| Worker Profile 与 Topology | [backend-worker Topology](backend-worker-startup.md) |
+| inference daemon | [独立 inference daemon](inference-daemon.md) |
+| maintenance 与数据库迁移 | [维护命令](backend-maintenance.md) |
+| 发行包组装与生产启动 | [生产环境](production-environment.md) |
+| 硬件 profile 和目录结构 | [发布 profile](runtime-profiles.md) |
+| 同目录 Python | [bundled Python](bundled-python-deployment.md) |
+| 新机器首次验收 | [首次部署清单](full-first-deploy-checklist.md) |
 
-### 开发环境
+## 当前标准流程
 
-- [docs/deployment/development-environment.md](development-environment.md)：开发环境的目录、启动顺序和建议阅读路径
-- [docs/deployment/backend-service-startup.md](backend-service-startup.md)：backend-service 的开发态启动、健康检查、schema 初始化和当前限制
-- [docs/deployment/backend-worker-startup.md](backend-worker-startup.md)：独立 backend-worker 的启动、consumer lane 配置和最小验收方式
-- [docs/deployment/backend-maintenance.md](backend-maintenance.md)：backend-maintenance CLI 入口、命令和 launcher 调用方式
+### 开发
 
-### 生产环境
+```text
+conda 环境 → Alembic → backend-service/Vite 快速调试
+                         或
+前端 build → assemble-release → full Supervisor 完整链路
+```
 
-- [docs/deployment/production-environment.md](production-environment.md)：生产环境的 release 组装、目录职责、根目录一键启动和排障入口
-- [docs/deployment/runtime-profiles.md](runtime-profiles.md)：当前 `full` 发布目录、launcher、默认 worker 拓扑、worker profile、日志和状态文件约定
-- [docs/deployment/bundled-python-deployment.md](bundled-python-deployment.md)：同目录 Python 运行时的安装、升级、回滚和验收方案
-- [docs/deployment/full-first-deploy-checklist.md](full-first-deploy-checklist.md)：`release/full/` 首次部署时的 layout、health、docs 和 smoke test 顺序
+### 生产
 
-## 建议内容
+```text
+assemble-release
+  → 准备 release/<profile-id>/python
+  → validate-layout
+  → start-amvision-full.bat
+  → health / OpenAPI / 前端 / 业务 smoke
+  → stop-amvision-full.bat
+```
 
-- 先区分开发环境与生产环境，再进入细分专题
-- 开发环境优先说明 conda、仓库根目录启动和调试入口
-- 生产环境优先说明 release 组装、bundled Python、根目录一键启动和首次验收
-- 安装检查、升级、回滚和排障说明保持在生产环境分组下
+full Supervisor 是生产进程拓扑的唯一入口。它先迁移数据库，再启动 inference daemon、backend-service 和 release manifest 中的六个 Worker Profile。单个 Profile 退出时只恢复该 Profile。
 
-## 存放规则
+## 日志
 
-- 部署步骤与架构背景分开书写
-- 能执行的命令、目录和验证步骤优先直接放入本目录
-- 额外系统依赖必须单独列出用途、版本边界和验证方法
+默认日志目录为 `logs/full-stack/`：
+
+- `database-migration-YYYYMMDD.log`
+- `inference-daemon-YYYYMMDD.log`
+- `backend-service-YYYYMMDD.log`
+- `backend-worker-<profile>-YYYYMMDD.log`
+- `runtime-state.json`
+
+日志按本地日期追加；跨日自动切换到新文件。现场排障见 [运维文档](../operations/README.md)。
+
+## 边界
+
+- `backend-service` 不包含队列消费者。
+- Worker 低层 Python launcher 只供 full Supervisor 使用。
+- 发布包不依赖系统 Python 或系统 Node.js；`python/` 与前端静态资源随发行目录管理。
+- NVIDIA driver 和无法随包交付的系统依赖必须单独核对。
+- `release/<profile-id>/` 是组装结果，源代码修改必须发生在仓库源目录，再重新组装。

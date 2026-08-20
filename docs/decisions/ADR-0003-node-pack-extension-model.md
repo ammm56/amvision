@@ -1,5 +1,7 @@
 # ADR-0003 节点扩展优先模型
 
+- 状态：已接受并实现
+
 ## 背景
 
 项目需要面对行业差异、客户定制、协议集成、硬件桥接、自定义后处理、外部触发与结果上报等高度变化的需求。
@@ -31,8 +33,3 @@
 - 提高了扩展灵活性和客户定制承接能力
 - 需要维护 `NodePackManifest`、`NodeDefinition`、runtime handler 和兼容性边界
 - 需要在 backend-service 中维护 `custom_nodes` 目录扫描、node pack manifest 校验和节点目录装载规则
-
-## 后续动作
-
-- 持续维护 [docs/architecture/node-system.md](../architecture/node-system.md) 和 [docs/nodes/node-pack-manifest.md](../nodes/node-pack-manifest.md)
-- 为自定义节点包提供示例模板、兼容性说明和审计要求

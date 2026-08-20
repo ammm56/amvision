@@ -66,4 +66,4 @@
 
 - [训练参数支持清单](training-parameter-support.md)
 - [模型 full core 审计与验收清单](model-full-core-audit-checklist.md)
-- [模型 core 完整实现计划](model-core-implementation-plan.md)
+- [模型 Core 架构](model-core-architecture.md)

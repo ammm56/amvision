@@ -9,25 +9,14 @@
 - SDK 不直接导入 `backend/`、`frontend/`、`custom_nodes/` 的运行时代码。
 - 跨语言共享内容放在 `sdks/schemas/`，以 JSON schema、示例 payload 和错误码说明为准。
 
-## 建议结构
+## 当前结构
 
-当前已实现 `schemas/` 和 C# / .NET SDK。Python、Go 和 C SDK 仍处于规划状态，暂不提供代码。
+当前已实现 `schemas/` 和 C# / .NET SDK。Python、Go 和 C SDK 尚未交付，不属于当前能力。
 
 ```text
 sdks/
 ├─ schemas/
-├─ dotnet/
-├─ python/
-├─ go/
-├─ c/
-└─ examples/
+└─ dotnet/
 ```
 
-## 实现顺序
-
-1. C# / .NET SDK：优先覆盖 .NET Framework 上位机和 .NET Core / .NET 应用，当前已支持 `net461;net472;netstandard2.1;net10.0`。首版在 [sdks/dotnet](dotnet/)。
-2. Python SDK：服务于调试脚本、测试和轻量桥接。
-3. Go SDK：服务于边缘代理和本地桥接服务。
-4. C SDK：服务于 C/C++ 上位机、厂商接口和需要稳定 C ABI 的系统。
-
-详细规划见 [docs/api/workflow-sdks.md](../docs/api/workflow-sdks.md)。
+当前 SDK 说明见 [docs/api/workflow-sdks.md](../docs/api/workflow-sdks.md)，构建和引用见 [sdks/dotnet/README.md](dotnet/README.md)。

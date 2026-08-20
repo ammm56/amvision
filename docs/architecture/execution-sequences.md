@@ -23,7 +23,7 @@
 
 ## 训练链
 
-- REST 入口：[backend/service/api/rest/v1/routes/detection_training_tasks.py](../../backend/service/api/rest/v1/routes/detection_training_tasks.py)
+- REST 入口：[backend/service/api/rest/v1/routes/detection_training_tasks/router.py](../../backend/service/api/rest/v1/routes/detection_training_tasks/router.py)
 - 任务服务：REST 层按 `model_type` 分发到 `SqlAlchemyYoloXTrainingTaskService`、`SqlAlchemyYoloV8TrainingTaskService`、`SqlAlchemyYolo11TrainingTaskService`、`SqlAlchemyYolo26TrainingTaskService` 或 `SqlAlchemyRfdetrTrainingTaskService`
 - worker 入口：`backend/workers/training/*_training_queue_worker.py` 中的模型专属 worker；YOLOv8 / YOLO11 / YOLO26 的 classification、segmentation、pose、obb 训练由 `yolo_training_queue_worker.py` 按 `task_type` 消费
 
@@ -267,7 +267,7 @@ sequenceDiagram
 
 - REST 入口：[backend/service/api/rest/v1/routes/detection_inference_tasks/router.py](../../backend/service/api/rest/v1/routes/detection_inference_tasks/router.py)
 - Deployment 服务：[backend/service/application/deployments/deployment_instance_service.py](../../backend/service/application/deployments/deployment_instance_service.py)
-- 推理监督器：[backend/service/application/runtime/deployment_process_supervisor.py](../../backend/service/application/runtime/deployment_process_supervisor.py)
+- 推理监督器：[backend/service/application/runtime/deployment/deployment_process_supervisor.py](../../backend/service/application/runtime/deployment/deployment_process_supervisor.py)
 
 ```mermaid
 sequenceDiagram

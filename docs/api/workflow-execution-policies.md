@@ -36,7 +36,7 @@
 - GET /api/v1/workflows/execution-policies/{execution_policy_id} 需要 workflows:read
 - POST /api/v1/workflows/execution-policies 需要 workflows:write
 
-当前阶段不单独拆 execution-policies 专用 scope，避免过早把控制面权限做复杂。
+当前不单独拆 execution-policies 专用 scope，沿用 Workflow 控制面的权限边界。
 
 ## 稳定字段
 
@@ -187,19 +187,9 @@
 - WorkflowRun 不直接绑定 execution_policy_id，而是沿用宿主 WorkflowAppRuntime 固定的 policy snapshot。
 - 该资源不替代 custom node 的节点参数，也不替代 node pack 自己的实现语义。
 
-## 当前不公开的扩展项
-
-- PUT /api/v1/workflows/execution-policies/{execution_policy_id}
-- DELETE /api/v1/workflows/execution-policies/{execution_policy_id}
-- persona_profile_id
-- tool_policy_id
-- max_agent_steps
-
 ## 相关文档
 
 - [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
-- [docs/api/workflow-persona-profiles.md](workflow-persona-profiles.md)
-- [docs/api/workflow-tool-policies.md](workflow-tool-policies.md)

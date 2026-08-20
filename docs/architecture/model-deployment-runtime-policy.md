@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档固定模型发布时的运行资源概念、OpenVINO CPU / GPU / NPU 参数边界、TensorRT 构建期与运行期参数边界，以及后续 API、前端和 runtime adapter 的实现顺序。
+本文档固定模型发布时的运行资源概念、OpenVINO CPU / GPU / NPU 参数边界，以及 TensorRT 构建期与运行期参数边界。
 
 本文档用于避免下面几类实现偏差：
 
@@ -15,7 +15,7 @@
 
 ## 当前状态
 
-截至 2026-08-16，运行时配置和 OpenVINO CPU 共享线程配置已经进入公开 API、workflow service node、deployment 子进程、runtime adapter 和 Vue 3 发布界面。
+运行时配置和 OpenVINO CPU 共享线程配置已经进入公开 API、Workflow service node、Deployment 子进程、runtime adapter 和 Vue 3 发布界面。
 
 当前已经完成：
 
@@ -34,7 +34,7 @@
 - TensorRT 的 engine 共享、多 execution context、CUDA Graph 和 device memory 策略尚未作为独立字段进入公开配置。
 - 多个 deployment 同时满载时的延迟与吞吐取决于 OpenVINO、操作系统调度和现场硬件；需要通过目标机器 benchmark 与 soak 确定容量，不以常驻 deployment 数量代替实时负载。
 
-后续实现必须先在共享 deployment/runtime contract 中形成统一边界，再由各模型 predictor 适配；不得只在单个 YOLO 或 RF-DETR predictor 中增加孤立字段。
+新增运行参数必须先在共享 Deployment/Runtime contract 中形成统一边界，再由各模型 predictor 适配；不得只在单个 YOLO 或 RF-DETR predictor 中增加孤立字段。
 
 ## 核心规则
 
@@ -49,7 +49,7 @@
 7. OpenVINO CPU 新建发布的默认线程数取创建时主机物理核心数并作为 requested 值保存；`auto` 仍可显式选择。启动时根据当前主机物理核心数和本 deployment 的 `instance_count` 生成 effective 值，不改写 requested。
 8. 运行状态同时返回请求值和实际生效值，现场性能分析不得只读取创建请求。
 9. 创建和启动 OpenVINO CPU deployment 不按其他常驻 deployment 的数量或静态线程配置做准入。每个实例至少配置一个线程；多个 deployment 或多个实例同时满载时允许操作系统共享调度，并明确提示可能的延迟上升。
-10. 工业同步推理默认保持立即执行、立即返回结果的调用边界；本规划不引入内部等待队列，不自动把 workflow 的多次同步调用合并成 list、batch 或隐藏队列，也不自动改写显式并行分支。
+10. 工业同步推理保持立即执行、立即返回结果的调用边界；当前实现不引入内部等待队列，不自动把 workflow 的多次同步调用合并成 list、batch 或隐藏队列，也不自动改写显式并行分支。
 
 ## 概念边界
 
@@ -425,43 +425,6 @@ OpenVINO stream：自动（当前实际 1）
 - workflow 可以根据现场业务明确使用一个 For Each 或多条并行分支；deployment runtime 不自动合并、拆分或重写这些调用。
 - deployment runtime 不因启用 throughput 配置就自动增加等待队列。
 - 对批处理、异步聚合或跨请求调度的支持如果后续进入范围，必须作为独立能力设计，不能由本配置隐式启用。
-
-## 实施顺序
-
-### 第一阶段：共享 contract 和观测
-
-- 定义平台部署策略和各 backend/device 的 tagged options。
-- 增加 `requested`、`effective`、`warnings` 和 device capability 响应。
-- 统一 OpenVINO compile properties 构造入口，避免各模型 predictor 各写一份。
-- 不改变现有同步调用和满载行为。
-
-### 第二阶段：OpenVINO CPU
-
-- 接入 `performance_hint`、`inference_num_threads` 和 `num_streams`。
-- 正确识别物理核心、逻辑处理器、P-core / E-core 和 NUMA 信息。
-- 增加按 deployment 的每实例有效线程配置、共享调度观测和停止后的记录清理。
-- 对单实例全核心、多实例分核和默认自动配置建立真实 benchmark。
-
-### 第三阶段：OpenVINO GPU 和 NPU
-
-- 运行时查询 `supported_properties`，动态构造发布表单和 compile properties。
-- GPU 增加 multi-stream、request、precision 和队列控制。
-- NPU 增加 performance hint、request、turbo 和高级编译选项；不伪造可写 `num_streams`。
-- 增加不同驱动、不同 SKU 和硬件迁移回归。
-
-### 第四阶段：TensorRT
-
-- 将 engine 构建摘要与 deployment runtime 参数分开。
-- 明确 engine 副本、execution context、CUDA stream 和 process isolation。
-- 评估共享 engine 多 context 与独立 engine 副本的延迟、吞吐和显存。
-- 增加 CUDA Graph、optimization profile 和 device memory 策略。
-
-### 第五阶段：长期稳定性
-
-- 每个 backend 建立单请求、受控并发和满载 benchmark。
-- 建立冷启动、warmup、restart、模型切换和硬件迁移测试。
-- 建立 CPU 内存、GPU 显存、NPU 内存、线程数、句柄数和延迟分位数的长期 soak 基线。
-- 把有效配置、硬件摘要和 benchmark profile 记录到部署诊断中。
 
 ## 验收规则
 

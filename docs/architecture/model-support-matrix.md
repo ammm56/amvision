@@ -1,25 +1,8 @@
-# 模型真实支持清单
+# 模型支持矩阵
 
-## 文档目的
+本文是当前模型与任务组合的能力入口，只描述正式代码路径。`projectsrc/` 仅用于开发期参考，不属于运行时、测试或发行包依赖。
 
-本文档把当前主干代码中已经落地的模型支持情况收成一份正式支持清单，重点回答下面三个问题：
-
-- 哪些 `model_type × task_type` 组合已经进入平台主链
-- 这些组合在 `导入 -> 导出 -> 训练 -> 验证 -> 评估 -> 转换 -> 部署 -> 推理 -> workflow -> 前端` 各阶段做到哪里
-- 哪些能力已经有显式回归，哪些只是代码已接通但还需要继续补 smoke 或工程化收口
-
-本文档按 2026-08-07 的仓库主干代码整理，只描述本项目正式实现，不包含
-`projectsrc/` 参考仓库。参考仓库只用于开发期逐项核对，运行时、测试和发布包均不得依赖。
-
-## 适用范围
-
-- `yolox / yolov8 / yolo11 / yolo26 / rfdetr`
-- `detection / classification / segmentation / pose / obb`
-- 数据集导入导出、训练、验证、评估、转换、部署、推理、workflow 编排和浏览器前端
-
-本文档不覆盖 `YOLOE / SAM3` custom node 主线。两者当前走 `WorkflowAppRuntime + custom node runtime`，不属于 `DeploymentInstance` 主链。
-
-## 模型任务边界
+## 模型与任务
 
 | model_type | 正式任务 |
 | --- | --- |
@@ -29,172 +12,96 @@
 | `yolo26` | `detection / classification / segmentation / pose / obb` |
 | `rfdetr` | `detection / segmentation` |
 
-RF-DETR 的 classification、pose、obb 不是当前参考实现和平台公开能力。最新 RF-DETR
-参考代码中的 keypoint 分支尚未进入本项目公开 pose 主链，因此不能把 RF-DETR 写成五任务模型。
+RF-DETR classification、pose 和 OBB 不属于当前公开能力。YOLOE、SAM3 走 Custom Node/Workflow Runtime，不属于 DeploymentInstance 模型注册主链。
 
-## 状态标记
+## 状态
 
-| 标记 | 含义 |
+- `tested`：公开代码路径已接通，并有自动化或真实 artifact smoke。
+- `implemented`：代码路径已接通，仍应按实际数据、设备和目标 runtime 验收。
+- `—`：不支持，不能在 API 或 UI 中作为可选能力公开。
+
+## 端到端矩阵
+
+数据集导入导出是任务级能力；部署和推理同时包含 sync/async 控制面；Workflow 表示存在通用模型节点和正式 Runtime 调用面。
+
+| model | task | 导入/导出 | 训练/验证 | 评估 | ONNX/OpenVINO/TensorRT | 部署/推理 | Workflow | 前端 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| YOLOX | detection | tested | tested | tested | tested | tested | tested | implemented |
+| YOLOv8 | detection | tested | tested | tested | tested | tested | tested | implemented |
+| YOLOv8 | classification | tested | tested | implemented | tested | implemented | tested | implemented |
+| YOLOv8 | segmentation | implemented | tested | implemented | tested | implemented | tested | implemented |
+| YOLOv8 | pose | implemented | tested | implemented | implemented | tested | tested | implemented |
+| YOLOv8 | obb | tested | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO11 | detection | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO11 | classification | tested | tested | implemented | implemented | tested | tested | implemented |
+| YOLO11 | segmentation | implemented | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO11 | pose | implemented | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO11 | obb | tested | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO26 | detection | tested | tested | tested | tested | tested | tested | implemented |
+| YOLO26 | classification | tested | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO26 | segmentation | implemented | tested | implemented | implemented | tested | tested | implemented |
+| YOLO26 | pose | implemented | implemented | implemented | implemented | implemented | tested | implemented |
+| YOLO26 | obb | tested | tested | implemented | implemented | tested | tested | implemented |
+| RF-DETR | detection | tested | tested | tested | tested | tested | tested | implemented |
+| RF-DETR | segmentation | implemented | tested | implemented | tested | tested | tested | implemented |
+
+`implemented` 不是精度承诺。模型准确率取决于数据、标注、训练参数、checkpoint、评估口径和目标 runtime；进入现场前必须使用目标数据与硬件验收。
+
+## 数据格式
+
+| task | 导入/导出格式 |
 | --- | --- |
-| `tested` | 公开代码路径已接通，并且仓库里已经有显式回归、checked-in Postman、checked-in workflow 或实际构建验证 |
-| `implemented` | 公开代码路径已接通，但当前组合还不是仓库内主验收路径，或者显式 smoke 还偏轻 |
-| `limited` | 代码已接通，但存在后端、设备、格式来源或运行条件限制，暂不适合直接当成“全收口”能力 |
-| `—` | 当前不支持 |
+| classification | ImageNet directory / `imagenet-classification-v1` |
+| detection | COCO、VOC、YOLO / `coco-detection-v1`、`voc-detection-v1`、`yolo-detection-v1` |
+| segmentation | COCO、YOLO、VOC indexed mask / `coco-instance-seg-v1`、`yolo-instance-seg-v1`、`voc-instance-seg-v1` |
+| pose | COCO Keypoints、YOLO Pose / `coco-keypoints-v1`、`yolo-pose-v1` |
+| obb | DOTA、YOLO OBB / `dota-obb-v1`、`yolo-obb-v1` |
 
-## 使用说明
+完整字段和目录规范见 [模型数据集格式](model-dataset-format-contract.md)。公开注册表不保留未实现格式占位。
 
-- `导入` 和 `导出` 本质上是 `task_type` 级能力，不是 `model_type` 专属能力；同一任务下不同模型行通常会保持一致。
-- `部署` 和 `推理` 这里默认同时指 `sync / async` 两条控制面，且对应独立进程 deployment runtime。
-- `workflow` 列表示当前已经有正式 workflow/runtime 使用面，不表示每个模型分类都单独有一份专属 workflow 图。
-- `前端` 列表示 `frontend/web-ui` 已有真实页面、路由和构建入口可以管理这条资源链，不表示每个组合都有单独页面或 e2e。
-- `release/full` 装配、独立 worker profile、日志和排障不放在本表里，单独归到部署与发布收口。
+## 运行时后端
 
-## 正式支持清单
-
-| model_type | task_type | 导入 | 导出 | 训练 | 验证 | 评估 | 转换 | 部署 | 推理 | workflow | 前端 | 说明 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `yolox` | `detection` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `implemented` | 当前最成熟的参考主线 |
-| `yolov8` | `detection` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `implemented` | 已并入统一 detection 主链 |
-| `yolo11` | `detection` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `implemented` | 已并入统一 detection 主链 |
-| `yolo26` | `detection` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `implemented` | 已并入统一 detection 主链 |
-| `rfdetr` | `detection` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `tested` | `implemented` | detection 主链已接通 |
-| `yolov8` | `classification` | `tested` | `tested` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | 内部链与 ONNX 预测已有显式 smoke |
-| `yolo11` | `classification` | `tested` | `tested` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | 当前 full-chain Postman 默认分类主线 |
-| `yolo26` | `classification` | `tested` | `tested` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 公开主链已接通，显式回归还偏轻 |
-| `yolov8` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `implemented` | 内部链与 ONNX 预测已有显式 smoke |
-| `yolo11` | `segmentation` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 当前 full-chain Postman 默认分割主线 |
-| `yolo26` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | task-native API 主验收组合之一 |
-| `rfdetr` | `segmentation` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `tested` | `implemented` | full-core conversion、OpenVINO、TensorRT 和 deployment runtime pool smoke 已接通；长时间 soak 继续放到现场验收 |
-| `yolov8` | `pose` | `implemented` | `implemented` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | task-native API 主验收组合之一 |
-| `yolo11` | `pose` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | full-chain Postman 与 workflow 面已接通 |
-| `yolo26` | `pose` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 模型构建与公开主链已接通 |
-| `yolov8` | `obb` | `tested` | `tested` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | 模型构建与公开主链已接通 |
-| `yolo11` | `obb` | `tested` | `tested` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `implemented` | `tested` | `implemented` | full-chain Postman 与 workflow 面已接通 |
-| `yolo26` | `obb` | `tested` | `tested` | `tested` | `implemented` | `implemented` | `implemented` | `tested` | `tested` | `tested` | `implemented` | task-native API 主验收组合之一 |
-
-## 当前主验收组合
-
-完整统一入口为
-`python -m tests.integration.model_task_e2e_matrix --start-processes`。默认矩阵与公开
-训练参数 registry 使用同一组 18 个模型/任务组合，固定要求 ONNX、OpenVINO IR、
-TensorRT engine 三种产物，并对每种产物实际执行独立进程 sync/async 推理。
-脚本会把全量和筛选运行分别标成 `full`、`partial`，不能用局部成功替代全量结论。
-
-2026-08-07 已用该入口的局部模式实跑通过 `yolov8 + detection`：真实
-`medical-pills` 数据完成导入、YOLO 导出、1 epoch 训练、4 个 validation 样本评估，
-并完成三种转换产物的登记、加载、sync/async 推理、reset 和 stop。完整 18 项结果
-只有在统一入口全量执行成功后才记为完整通过。
-
-下面这些组合当前已经不是“只有接口或只有路由”，而是仓库里有更明确的显式回归或正式样例：
-
-| 组合 | 当前主证据 |
+| backend | 当前边界 |
 | --- | --- |
-| `yolox + detection` | `tests/test_yolox_training_api.py`、`tests/test_yolox_conversion_tasks_api.py`、`tests/test_yolox_inference_tasks_api.py`、`tests/test_yolox_validation_sessions_api.py`、`tests/test_yolox_voc_dataset_support.py`；当前训练和评估输入支持 `coco-detection-v1` 与 `voc-detection-v1` |
-| `yolov8 + classification` | `tests/test_yolov8_classification_chain.py` |
-| `yolo11 + classification` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py`、`docs/api/postman/classification-full-chain.postman_collection.json` |
-| `yolov8 + segmentation` | `tests/test_yolov8_segmentation_chain.py` |
-| `yolo26 + segmentation` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
-| `rfdetr + segmentation` | `tests/test_rfdetr_segmentation_task_smoke.py`；2026-06-15 已用真实 segmentation nano checkpoint 跑通 ONNX 导出、ONNXRuntime 数值校验、ONNX simplify、OpenVINO IR、TensorRT 10.16 engine 构建和 deployment runtime pool sync / async smoke。 |
-| `yolov8 + pose` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
-| `yolo26 + obb` | `tests/test_non_detection_inference_api.py`、`tests/test_non_detection_training_result_registration.py` |
-| `task-family workflow 12-15` | `docs/api/postman/workflows/12-*` 到 `15-*`、四套 non-detection root full-chain Postman collection |
-| `non-detection training model_type smoke` | `tests/test_non_detection_training_model_type_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb` 的训练任务提交、队列分发、结果登记、模型文件登记和 `pytorch` runtime target 解析，结果为 `12 passed`。这条是快速分发与登记回归，不代表每个组合都做过长时间真实训练。 |
-| `non-detection runtime backend smoke` | `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`，2026-06-12 已显式跑通 `YOLOv8 / YOLO11 / YOLO26 × classification / segmentation / pose / obb × onnxruntime / openvino / tensorrt` 的真实 conversion -> runtime predict，结果为 `36 passed`。RF-DETR segmentation 由 `tests/test_rfdetr_segmentation_task_smoke.py` 和 2026-06-15 的真实 checkpoint conversion / deployment runtime pool smoke 单独覆盖。 |
-| `YOLOv8 conversion/runtime focused smoke` | 2026-06-18 已显式复跑 `tests/integration/test_yolov8_detection_runtime_backend_smoke.py` 与 `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py -k yolov8`，覆盖 YOLOv8 detection 的 ONNXRuntime / OpenVINO / TensorRT runtime backend，以及 YOLOv8 classification / segmentation / pose / OBB 的 conversion -> runtime predict，结果为 `15 passed, 24 deselected`，耗时 `0:09:25`。这条验证转换和 runtime predict，不替代真实数据短训练或长时间 soak。 |
-| `YOLOv8 五任务真实短链路` | 2026-06-18 使用真实 `config/backend-worker.json` 启动 backend-service + backend-worker，并基于 `data/files/datasets` 下的真实本地样本跑通 `detection / classification / segmentation / pose / obb` 的真实 zip 导入、DatasetExport、1 epoch 短训练、ONNX / OpenVINO / TensorRT 转换、deployment sync / async 推理和 stop/reset。该轮验证不进入默认测试；当前显式运行入口统一为 `python -m tests.integration.yolo_model_full_chain_smoke --model-type yolov8`，结果统一记录到 `.tmp/yolo-model-full-chain-smoke/` 下，回归点已沉淀到数据集识别、worker profile、conversion worker 和 async inference gateway 相关测试。 |
-| `RF-DETR full-core checkpoint / conversion / deployment runtime pool` | 2026-06-15 已显式跑通本地 RF-DETR detection `nano / s / m / l` 与 segmentation `nano / s / m / l / x` checkpoint 加载覆盖率，真实加载路径 coverage 均为 `1.0`；detection nano 与 segmentation nano 已完成 ONNX、OpenVINO IR、TensorRT 10.16 engine 的短时转换验收，并跑通 TensorRT engine 的 sync / async deployment runtime pool warmup、一次推理和 reset。 |
-| `前端控制面` | `frontend/web-ui` 真实模块页、真实路由；models / deployments / inference 调试页已从 detection-only 改为显式 task_type 选择，相关 `Detection*` 历史类型和函数名已收成 `Model* / Task*` 命名；2026-06-12 本地 `npm run build` 已通过。 |
-| `Windows x64 NVIDIA 基础验收` | 使用 `full-windows-x64-nvidia` profile 验证 bundled Python、六类 worker、health、OpenAPI、资源快照、短时驻留和 stop 回收；更长 soak 通过环境变量单独指定。 |
-| `完整默认回归` | 2026-06-12 已使用开发环境 Python 跑通默认测试集 `1290 passed`，并补跑 `ruff check`、前端 `npm run build` 和若干边界定点回归。ONNX 导出当前优先使用 PyTorch 2.8 dynamo exporter；RF-DETR 对当前 PyTorch 2.8 不支持的 lowering 路径有显式 metadata 和受控 fallback，`tracer` 或 `cuda.cudart` deprecation warning 不单独记为功能失败。 |
+| `pytorch` | 训练输出验证、部署和推理 |
+| `onnxruntime` | ONNX artifact 加载与推理 |
+| `openvino` | CPU/GPU/NPU 取决于设备和 OpenVINO 环境 |
+| `tensorrt` | NVIDIA GPU，要求 wheel、DLL、engine 和 driver 版本匹配 |
 
-## 数据集导入导出当前事实
+转换 artifact 必须实际加载和推理，不能只以文件生成成功作为通过。
 
-模型和任务类型的完整数据集导入、导出、默认训练格式和标签字段规范见 [model-dataset-format-contract.md](model-dataset-format-contract.md)。本节只保留实现事实摘要。
+## 评估边界
 
-### 已正式实现的导入入口
+平台通用评估使用项目内 COCO-style AP、mask IoU、OKS 和 rotated IoU。它不宣称逐字段等同于 `pycocotools.COCOeval` 或每个参考仓库 validator 的全部 stats、area range、crowd/ignore 语义。训练期 best checkpoint 选择继续使用各模型 Core validator 的明确指标。
 
-- `COCO`：服务 detection / segmentation / pose
-- `VOC`：服务 detection
-- `YOLO`：服务 detection / segmentation / pose / obb
-- `ImageNet classification`：服务 classification
-- `DOTA OBB`：服务 obb
+RF-DETR 当前不公开 LoRA/PEFT，不接受任意 Python optimizer callable。配置必须可序列化、可复现、可审计。
 
-### 已正式实现的导出格式
+## 验收入口
 
-- `coco-detection-v1`
-- `voc-detection-v1`
-- `yolo-detection-v1`
-- `coco-instance-seg-v1`
-- `yolo-instance-seg-v1`
-- `coco-keypoints-v1`
-- `yolo-pose-v1`
-- `yolo-obb-v1`
-- `imagenet-classification-v1`
-- `dota-obb-v1`
+统一矩阵入口：
 
-公开格式列表不包含未实现占位项。
+```powershell
+python -m tests.integration.model_task_e2e_matrix --start-processes
+```
 
-## 运行时后端当前状态
+该入口覆盖真实数据导入、导出、短训练、评估、三类转换 artifact、独立进程 sync/async 推理和清理。筛选运行只能证明子集，不能替代完整矩阵。
 
-| 运行时后端 | 当前状态 | 说明 |
-| --- | --- | --- |
-| `pytorch` | `tested` | 当前训练后验证、部署和推理主线最成熟的后端 |
-| `onnxruntime` | `tested` | detection 主线与多条 non-detection 内部链、task smoke 已覆盖 |
-| `openvino` | `tested` | 当前已补 non-detection 正式 smoke；更依赖设备与驱动环境，但主线组合已经有显式 conversion -> runtime predict 回归 |
-| `tensorrt` | `tested` | detection 与代表性 non-detection 组合当前都已有显式真实 smoke；仍需要在现场继续关注 CUDA、TensorRT 版本与显存边界 |
+其他证据：
 
-## 当前已经有真实前端页面的模块
+- `tests/integration/test_non_detection_runtime_backend_smoke_matrix.py`
+- `tests/integration/test_yolov8_detection_runtime_backend_smoke.py`
+- `tests/test_rfdetr_segmentation_task_smoke.py`
+- `tests/test_non_detection_training_model_type_matrix.py`
+- `docs/api/postman/` 中的模型与 Workflow collection
 
-当前 `frontend/web-ui` 已有真实页面和路由的主模块包括：
+长期训练、精度对比和持续负载不放入默认快速 pytest；执行方式见 [full core 验收](model-full-core-audit-checklist.md) 和 [完整发行栈排障](../operations/release-full-troubleshooting.md)。
 
-- 项目
-- 任务
-- 数据集
-- 模型
-- 部署
-- 推理
-- TriggerSource
-- custom node
-- workflow app
-- workflow editor
-- 设置与诊断
+## 事实来源
 
-当前前端不是空壳，但“文档是否同步”和“每个组合有没有单独页面”是另一件事，不能混为一谈。
+- 模型/任务注册表与训练参数 registry
+- 数据集格式注册表
+- conversion planner 与 runtime backend registry
+- Deployment/Workflow 节点 catalog
+- OpenAPI 与前端 bootstrap capability
 
-## 当前还没完全收口的点
-
-- 数据集格式注册表、导入能力、导出能力和训练格式矩阵已经统一；新增格式必须先完成双向实现和测试，再进入公开列表。
-- 平台通用 dataset evaluation 使用项目内 101 点 COCO-style AP、OKS、mask IoU
-  和 rotated IoU，已统一全类别每图 `maxDets`、多类别匹配和资源释放；它不是
-  `pycocotools.COCOeval` 的 area range、crowd/ignore、全部 stats 字段替代品。
-  训练期模型选择仍走各模型 core validator，不能把平台通用评估器描述成参考仓库
-  validator 的逐字段复制。
-- RF-DETR 当前不公开 LoRA/PEFT，也不接受配置中任意 Python optimizer callable；
-  这是平台可复现配置和代码执行边界，不属于当前正式训练能力。
-- `frontend` 真实代码已经明显领先于部分旧文档，本轮已先同步 models / deployments / inference 的 task-aware 调试入口，并清掉这几页内部的 `Detection*` 历史类型命名；前端专题文档后续还需要继续细化 workflow template/version 使用面。
-- `release/full` 基础装配、一键启动验收和仓库侧短时自动验收入口已经具备；worker profile 也已短时启动确认可装配。后续还需要继续补更长时间的发布目录 soak、资源占用、日志指标和现场排障样例。
-- `workflow template/version` 的前端使用面已经可走主线，但还没有细化成更完整的独立使用说明。
-
-## 2026-07-27 本轮核对结果
-
-- 修复 YOLO detection zip 因空 label 文件被误识别成 DOTA 的问题。
-- 训练 worker 改为严格的 `task_type × model_type` 路由，不再把未知模型回退到 YOLOv8。
-- validation session 和异步 inference task 只接受当前 `runtime_artifact_*` 与
-  `normalized_input` 契约，不再读取旧 checkpoint/task_spec 双来源字段。
-- 三代 YOLO 的 segmentation、pose、obb Mosaic 统一使用完整
-  `YoloLetterboxTransform`，并覆盖非方形、奇数 padding 和正反变换。
-- RF-DETR 和通用 OpenVINO 构建摘要统一使用稳定 dtype 名，真实 RF-DETR
-  segmentation 训练 -> ONNX -> OpenVINO -> deployment 推理已复跑通过。
-- deployment runtime pool 已覆盖三代五任务三后端反复 warmup/close 矩阵；
-  单次 workflow run 的领域错误只终止该 run，常驻 worker 保持可复用，进程退出、
-  heartbeat 超时和用户执行超时仍进入失败或超时状态。
-- 后端 bootstrap 返回 `training_export_formats_by_task_and_model_type`，Vue 3
-  训练页面不再维护第二份静态格式矩阵。
-
-## 建议下一步
-
-最合适的下一步不是继续扩新模型，而是按这份支持清单继续做三件事：
-
-1. 在 `tests/integration/test_release_full_stack_acceptance.py` 的基础上跑更长时间的发布目录 soak，并记录资源占用、日志指标和异常恢复样例。
-2. 再回头补剩余导出格式和前端文档同步，不要让“代码已实现”和“文档还停在旧状态”继续分叉。
-3. 后续按真实现场组合继续加更细的长期 benchmark，而不是再回到“先怀疑主链是否能跑”的阶段。
+新增组合必须先完成实现和测试，再更新本矩阵；不能先把未实现项写成 `implemented`。

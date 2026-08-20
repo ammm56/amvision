@@ -1,38 +1,18 @@
-# 架构决策记录目录
+# 架构决策记录
 
-## 文档目的
+ADR 记录已经生效的关键取舍及未采用方案。当前行为由对应架构文档说明，ADR 只回答“为什么这样设计”。
 
-本目录用于存放关键架构决策记录，回答“为什么采用这个方案，而不是其他方案”。
+## 当前决策
 
-## 当前文档
+- [ADR-0001：模块化单体与独立 Worker](ADR-0001-modular-monolith-with-workers.md)
+- [ADR-0002：Bundled Python Runtime](ADR-0002-bundled-python-runtime.md)
+- [ADR-0003：Node Pack 扩展模型](ADR-0003-node-pack-extension-model.md)
+- [ADR-0004：模型 Deployment Runtime 参数](ADR-0004-model-deployment-runtime-options.md)
+- [ADR-0005：稳定 Workflow Runtime 与不可变 App Version](ADR-0005-workflow-app-versioned-runtime.md)
 
-- [docs/decisions/ADR-0001-modular-monolith-with-workers.md](ADR-0001-modular-monolith-with-workers.md)：固定模块化单体 + 独立 worker 的总体形态
-- [docs/decisions/ADR-0002-bundled-python-runtime.md](ADR-0002-bundled-python-runtime.md)：固定开发 conda / 发布 bundled Python 的运行时策略
-- [docs/decisions/ADR-0003-node-pack-extension-model.md](ADR-0003-node-pack-extension-model.md)：固定节点扩展优先和 ComfyUI 风格能力模型
-- [docs/decisions/ADR-0004-model-deployment-runtime-options.md](ADR-0004-model-deployment-runtime-options.md)：固定模型发布配置按平台策略和 OpenVINO CPU / GPU / NPU、TensorRT 后端专属参数拆分
-- [docs/decisions/ADR-0005-workflow-app-versioned-runtime.md](ADR-0005-workflow-app-versioned-runtime.md)：固定 WorkflowAppRuntime 作为稳定调用身份、指向不可变 Workflow App 版本，并采用 stopped-only revision 切换
+## 规则
 
-## 适合存放的内容
-
-- 是否拆分微服务与 worker 的取舍
-- 是否采用本地对象存储、本地队列和本地缓存的取舍
-- 前端主栈选择 Vue 3 的取舍
-- 部署阶段采用同目录 Python 运行时的取舍
-
-## 建议命名方式
-
-- ADR-0001-brief-title.md
-- ADR-0002-brief-title.md
-
-## 建议结构
-
-- 背景
-- 决策
-- 备选方案
-- 影响
-- 后续动作
-
-## 存放规则
-
-- 决策记录不替代长期参考文档
-- 当某项决策已经稳定为长期约束时，应同步更新 AGENTS.md 或对应专题文档
+- ADR 包含状态、背景、决策、未采用方案和影响。
+- 已接受决策不保留“后续动作”任务清单；实现结果进入架构/API/开发文档。
+- 决策被替代时保留原 ADR，并标记 superseded 及替代 ADR。
+- 命令、故障排查和逐步操作不写入 ADR。

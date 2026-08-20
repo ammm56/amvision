@@ -31,25 +31,25 @@ AMVision
 | S02 | 登录 | 现有 | `/login` | UserSession |
 | S03 | 离线/无权限/未找到 | 系统状态 | `/offline` 等 | 系统状态 |
 | P01 | 项目列表 | 现有增强 | `/projects` | Project |
-| P02 | 项目概览 | 规划 | `/projects/:projectId` | Project 汇总 |
+| P02 | 项目概览 | 参考概念 | `/projects/:projectId` | Project 汇总 |
 | T01 | 任务中心 | 现有增强 | `/tasks` | TaskRecord |
 | T02 | 通用任务详情 | 现有增强 | `/tasks/:taskId` | TaskRecord、TaskEvent |
 | D01 | 数据集工作台 | 现有增强 | `/datasets` | Dataset、Import、Export |
-| D02 | 导入数据集向导 | 规划为独立体验 | `/datasets/import/new` | DatasetImport |
+| D02 | 导入数据集向导 | 参考概念 | `/datasets/import/new` | DatasetImport |
 | D03 | 导入详情 | 现有增强 | `/datasets/imports/:id` | DatasetImport |
-| D04 | 数据版本详情 | 规划 | `/datasets/versions/:id` | DatasetVersion |
-| D05 | 创建导出 | 规划为独立体验 | `/datasets/exports/new` | DatasetExport |
+| D04 | 数据版本详情 | 参考概念 | `/datasets/versions/:id` | DatasetVersion |
+| D05 | 创建导出 | 参考概念 | `/datasets/exports/new` | DatasetExport |
 | D06 | 导出详情 | 现有增强 | `/datasets/exports/:id` | DatasetExport |
 | M01 | 模型工作台 | 现有增强 | `/models` | Model、Training、Conversion |
 | M02 | 创建训练任务 | 现有能力重组 | `/models/training/new` | TrainingTask |
 | M03 | 训练详情 | 现有增强 | `/models/:taskType/training-tasks/:id` | TrainingTask |
-| M04 | 验证与评估中心 | 规划 | `/models/evaluations` | ValidationSession、EvaluationTask |
-| M05 | 评估详情 | 规划 | `/models/evaluations/:id` | Metrics、Predictions |
-| M06 | 模型版本详情 | 规划 | `/models/versions/:id` | ModelVersion |
+| M04 | 验证与评估中心 | 参考概念 | `/models/evaluations` | ValidationSession、EvaluationTask |
+| M05 | 评估详情 | 参考概念 | `/models/evaluations/:id` | Metrics、Predictions |
+| M06 | 模型版本详情 | 参考概念 | `/models/versions/:id` | ModelVersion |
 | M07 | 创建转换任务 | 现有能力重组 | `/models/conversions/new` | ConversionTask |
 | M08 | 转换详情 | 现有增强 | `/models/:taskType/conversion-tasks/:id` | ConversionTask、ModelBuild |
 | R01 | 部署工作台 | 现有增强 | `/deployments` | DeploymentInstance |
-| R02 | 部署实例详情 | 规划 | `/deployments/:id` | Runtime、Endpoint、Events |
+| R02 | 部署实例详情 | 参考概念 | `/deployments/:id` | Runtime、Endpoint、Events |
 | I01 | 推理实验室 | 现有增强 | `/inference` | Sync/Async Inference |
 | W01 | 流程应用列表 | 现有增强 | `/workflows/apps` | FlowApplication、Runtime |
 | W02 | 流程应用详情 | 现有增强 | `/workflows/apps/:id` | App、Runtime、Run、Trigger |
@@ -58,7 +58,7 @@ AMVision
 | N01 | 自定义节点目录 | 现有增强 | `/custom-nodes` | NodePack、NodeDefinition |
 | C01 | 设置与诊断 | 现有增强 | `/settings` | Runtime、Service、Device、Access |
 
-“规划”页面用于完整表达后端资源链和未来前端入口，不代表当前路由已经存在。设计稿应在文件名和评审记录中保留状态标记。
+“参考概念”用于表达资源关系和备选页面结构，不代表当前路由已经存在，也不构成产品承诺。实际路由以 `frontend/web-ui/src/**/routes.ts` 为准。
 
 ## 3. 端到端主路径
 

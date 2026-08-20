@@ -1,5 +1,7 @@
 # ADR-0004：按后端和设备拆分模型发布运行时配置
 
+- 状态：已接受并实现
+
 ## 背景
 
 当前模型发布主要通过 `instance_count` 表达运行实例数量。OpenVINO predictor 对 FP32 通常使用插件默认编译属性，TensorRT predictor 则为每个 session 反序列化 engine、创建 execution context 和 CUDA stream。
@@ -60,11 +62,3 @@
 - TensorRT conversion report 和 `ModelBuild.metadata` 记录 engine shape/profile 摘要；deployment 页面按静态、动态单 profile、动态多 profile 三种能力分别隐藏、只读展示或提供受限选择。
 - benchmark 和 soak 结果必须记录目标硬件、驱动、runtime 版本和实际配置。
 - deployment API 一次性切换到完整 `runtime_configuration`，不接受旧扁平字段；旧 deployment 数据由迁移删除。
-
-## 后续动作
-
-1. 先增加共享 contract 和只读 capability / effective 配置观测。
-2. 实现 OpenVINO CPU 参数、按 deployment 生成 effective 线程配置和共享 CPU 调度观测。
-3. 按设备 capability 实现 OpenVINO GPU / NPU 参数。
-4. 拆分 TensorRT engine 构建配置和 deployment runtime 配置。
-5. 完成跨硬件迁移、并发 benchmark 和长期 soak 验收。

@@ -27,7 +27,7 @@
 
 ## 四条正式资源链
 
-后续实现应长期保持下面四条正式资源链：
+当前实现长期保持下面四条正式资源链：
 
 ```text
 Project
@@ -67,7 +67,7 @@ Project
 
 ## 跨链执行关系
 
-后续实现建议长期保持下面这条主关系：
+模型资源长期保持下面这条主关系：
 
 ```text
 DatasetImport
@@ -104,7 +104,7 @@ TriggerSource / SDK / 外部协议
 
 TaskRecord 是统一后台任务记录，不是长期运行模型服务。
 
-后续实现必须分清下面两类执行面：
+实现必须分清下面两类执行面：
 
 ### 后台任务执行面
 
@@ -309,7 +309,7 @@ DeploymentInstance 是模型发布后的正式运行单元。
 
 ### 推理调用的两条路径
 
-后续实现应固定区分下面两条推理路径：
+实现固定区分下面两条推理路径：
 
 1. 公开推理调用
 
@@ -474,14 +474,14 @@ TriggerSource 和 SDK 只负责协议入口。
 | 可视化工具、预览逻辑 | validation session、result viewer helper、custom nodes | 通用模型资源对象 |
 | 协议桥接、外部调用示例 | sdks、TriggerSource adapter、node pack | 模型训练主链路 |
 
-## 后续模型接入的固定顺序
+## 新模型接入的固定顺序
 
 每增加一个新的模型分类，建议长期遵守下面这个顺序：
 
 1. 先确认任务分类和结果 contract。
 2. 再确认 `DatasetExport` 默认格式和备选格式。
 3. 再定义 model spec、model profile、file type 和 build format。
-4. 再实现训练 backend 或明确当前阶段不做训练。
+4. 再实现训练 backend，或在支持矩阵中明确不提供训练。
 5. 再实现 validation session 和 evaluation task 的边界。
 6. 再实现 conversion backend。
 7. 再实现 `DeploymentInstance` 对应的长期稳定独立推理服务。
@@ -502,21 +502,21 @@ TriggerSource 和 SDK 只负责协议入口。
 - 图编辑器不得保存模型内部运行态。
 - `projectsrc` 不得成为本项目运行时代码的 import 来源。
 
-## 当前阶段结论
+## 稳定结论
 
-后续模型接入最需要先守住的，不是单个模型功能，而是四条链和三类执行面的分工：
+模型接入必须守住四条链和三类执行面的分工：
 
 - 数据集链负责把外部数据稳定变成平台输入
 - 模型链负责把训练、评估、转换稳定变成平台模型产物
 - 部署链负责长期稳定独立推理服务
 - workflow 链负责图编排、应用发布和正式业务调用
 
-只要这条边界持续保持清楚，后续无论继续接 `YOLOv8`、`YOLO11`、`YOLO26`、`RT-DETR`、`SAM2/3` 还是 `QwenVL`，代码层次、对象关系和模块职责都更容易保持稳定。
+新增模型必须复用这些边界，不能为单个实现复制一套顶层资源、任务、Deployment 或 Workflow 链。
 
 ## 关联文档
 
-- [model-platform-plan.md](model-platform-plan.md)
-- [model-core-implementation-plan.md](model-core-implementation-plan.md)
+- [model-support-matrix.md](model-support-matrix.md)
+- [模型 Core 架构](model-core-architecture.md)
 - [workflow-runtime.md](workflow-runtime.md)
 - [workflow-json-contracts.md](workflow-json-contracts.md)
 - [node-system.md](node-system.md)

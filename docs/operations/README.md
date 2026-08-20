@@ -1,11 +1,22 @@
-# 运维与排障文档
+# 运维与排障
 
-## 文档目的
+本目录面向已经安装或正在运行的现场环境，提供健康检查、日志、恢复和故障定位顺序。
 
-本目录用于存放面向现场、本地部署和受控上线阶段的运维说明、排障路径和基线操作手册。
+## 入口
 
-## 当前文档
+- [完整发行栈排障](release-full-troubleshooting.md)
+- [Windows 长路径](windows-long-paths.md)
+- [YOLOE / SAM3 排障](yoloe-sam3-troubleshooting.md)
 
-- [docs/operations/yoloe-sam3-troubleshooting.md](yoloe-sam3-troubleshooting.md)：YOLOE 与 SAM3 custom node 的常见问题、检查顺序和快速入口
-- [docs/operations/release-full-troubleshooting.md](release-full-troubleshooting.md)：`release/full/` 的日志入口、worker profile 检查点和现场排障顺序
-- [docs/operations/windows-long-paths.md](windows-long-paths.md)：Windows 长路径的独立启用脚本、首次启动检查和验证方法
+安装与首次启动见 [部署指南](../deployment/README.md)，接口字段见 [API 文档](../api/README.md)。
+
+## 标准排障顺序
+
+1. 确认使用正确的 Windows CPU/NVIDIA profile。
+2. 查看 `logs/full-stack/runtime-state.json`。
+3. 查看当天 migration、daemon、service 和目标 Worker Profile 日志。
+4. 调用 `/api/v1/system/health`，再查看设置页服务与 Worker Topology。
+5. 定位业务资源状态、Task/Run 终态和错误详情。
+6. 只有在完整停止后才替换配置、Python、模型 runtime 或代码。
+
+不要通过删除状态文件、伪造心跳、直接启动低层 Worker 或增加隐藏重试来绕过故障。

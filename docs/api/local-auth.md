@@ -4,9 +4,9 @@
 
 本文档说明当前已经公开的本地用户、权限管理、登录会话、refresh token 和长期调用 token 接口。
 
-当前阶段已经把本地用户、权限范围、登录会话、refresh token、长期调用 token 和实时审计收敛为稳定基线。
+本地用户、权限范围、登录会话、refresh token、长期调用 token 和实时审计已经收敛为稳定基线。
 
-本文档只描述本地实现，不展开未来在线账号提供方的扩展设计；在线版本后续会在本项目稳定基线之上继续扩展。
+本文档只描述当前本地账号实现；未实现的在线账号 provider 不属于公开能力。
 
 ## 当前公开范围
 
@@ -29,7 +29,7 @@
 
 ## 设计边界
 
-- 当前阶段以本地用户与权限管理闭环为目标；`local` 是当前唯一完整可用的账号 provider。
+- `local` 是当前唯一完整可用的账号 provider。
 - 当前本地用户、登录会话、refresh token 和长期调用 token 都保存在服务数据库中。
 - 当前可以通过 provider 目录公开 local 和已配置的在线账号 provider；在线 provider 目前只提供发现抽象，不在本阶段实现回调登录流程，也不是当前前端或集成接入的前提。
 - 登录返回的是短期会话凭据：`access_token` + `refresh_token`。
@@ -278,12 +278,12 @@
   - `provider_id`
   - `credential_kind`
 - 连接成功后会先收到一条 `auth.connected` 控制事件
-- 后续当前阶段会推送的主要事件类型：
+- 主要推送事件类型：
   - `auth.sessions.issued`
   - `auth.sessions.revoked`
   - `auth.user-tokens.issued`
   - `auth.user-tokens.revoked`
-- 当前阶段只提供实时流，不提供通过 WebSocket 的历史回放
+- WebSocket 只提供实时流，不提供历史回放
 
 ## 当前限制
 

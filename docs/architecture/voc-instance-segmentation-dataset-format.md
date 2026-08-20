@@ -101,7 +101,7 @@ id 稳定排序后等分：前 50% 为 test，其余为 validation。`official-v
 官方 val，报告记录算法、命名空间、比例和计数。train、validation、test 三者互斥，
 官方 train 不参与 test；重复执行得到相同清单。
 
-2026-08-10 全量结果：
+当前已登记的全量基线：
 
 - 2,913 张图片
 - train 1,464，validation 725，独立 test 724

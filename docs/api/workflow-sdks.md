@@ -1,289 +1,59 @@
-# Workflow SDK 规划
+# Workflow 外部调用 SDK
 
-## 文档目的
+## 当前交付
 
-本文档定义 Workflow 外部调用方 SDK 的边界、标准调用流程、语言实现顺序和仓库落位。
+仓库当前提供 C#/.NET SDK：`sdks/dotnet/`。它面向 WinForms、WPF、MES 桥接、采集程序和现场服务，核心库为 `Amvar.Vision.dll`，默认交付工程支持 VS2019 + .NET Framework 4.7.2。
 
-SDK 面向设备上位机、MES、采集程序、现场桥接进程和调试脚本。SDK 不属于 backend-service 内部实现，也不属于 workflow node pack。SDK 只封装已经公开的 REST 管理接口、ZeroMQ 触发协议和稳定结果规则，降低外部系统接入成本。
+Python、Go 和 C SDK 当前没有实现，不能作为已交付能力使用。跨语言协议事实位于 `sdks/schemas/`。
 
-## 结论
+## 能力
 
-- 同机高速图片触发默认使用 ZeroMQ 调用 backend-service 公开的 TriggerSource adapter。
-- 低频调试、管理、创建 runtime、创建 trigger source、启停 trigger source、health 查询和统一配置读取继续使用 REST API。
-- 设备上位机软件不应直接拼 multipart 帧和错误解析逻辑，推荐通过 SDK 调用。
-- SDK 应放在仓库根目录 `sdks/` 下，与 `backend/`、`frontend/`、`custom_nodes/` 明确分离。
-- 第一优先级是 C# / .NET SDK，兼容 .NET Framework 和 .NET Core / .NET 运行时；首版已放在 `sdks/dotnet/`，随后再补 Python、Go 和 C。
-- 模型 DeploymentInstance 的 runtime 控制和直接推理调用不属于 WorkflowAppRuntime / TriggerSource 这条文档的主线，单独记录在 [docs/api/model-deployment-sdks.md](model-deployment-sdks.md)。
-- 现场 `Config/config_*.json` 配置包由项目工作台右上角统一导出，SDK 不从前端页面状态拼配置。配置包生成接口见 [docs/api/sdk-config-packages.md](sdk-config-packages.md)。
+- Workflow Runtime 查询、启停、重启、健康与 revision 分页
+- 停机选择 Workflow App Version
+- Workflow App Version archive/restore 状态 CAS
+- 同步 invoke、异步 run、Run/Event 查询和取消
+- TriggerSource 查询、启停与健康
+- ZeroMQ 图片、BGR24、Base64 和事件调用
+- Model Deployment runtime 控制与同步/异步推理
+- `Config/config_*.json` 加载和按 name/id 调用
 
-## 调用方关系
+SDK 不创建训练任务、修改模型资源、直接访问数据库/ObjectStore/LocalBuffer，也不读取 Workflow Worker 内部状态。
 
-```text
-设备上位机 / MES / 采集程序 / 调试脚本
-  |
-  v
-Amvision SDK
-  |
-  |-- REST 管理 API：创建、启停、health、run 查询
-  |
-  `-- ZeroMQ 触发面：图片 bytes + envelope -> TriggerSource adapter
-        |
-        v
-      WorkflowAppRuntime / WorkflowRun
-```
+## 版本调用规则
 
-SDK 不直接访问数据库、LocalBufferBroker、workflow worker、deployment worker 或对象存储。LocalBufferBroker 仍由 backend-service 内部 adapter 写入和管理，外部调用方只发送图片 bytes、metadata 和必要的业务字段。
+- 设备侧长期保存稳定 Runtime/Trigger id，不保存 `latest`。
+- Runtime 切换兼容版本后调用地址不变；破坏性契约变化必须先升级调用方或新建 Runtime。
+- 每条 Run 返回固定的 Workflow App version、revision、generation、snapshot fingerprint 和 worker instance id。
+- archive 请求的 `expected_state` 为 `published`，restore 为 `archived`。
+- Runtime 创建时 version selector 必须且只能提供一个；新代码使用准确 `workflow_app_version_id`。
 
-SDK 和 TriggerSource 都只负责提交协议原生输入，不负责替 workflow 图做跨 payload type 转换、本地磁盘读图或相机取帧。HTTP/base64 调试入口和 ZeroMQ image-ref 高速入口应该在 workflow 图边界显式发布，并由图内节点决定如何汇合。
+## 使用配置包
 
-ZeroMQ 高帧率图片输入默认使用 BGR24 raw image-ref。SDK、后端 adapter、LocalBufferBroker、workflow 节点和模型 runtime 的完整规则见 [docs/architecture/high-performance-image-data-plane.md](../architecture/high-performance-image-data-plane.md)。
+项目工作台统一生成 SDK 配置包。解压后的 `Config/config_*.json` 包含 Runtime、TriggerSource 或 Model Deployment 的稳定 id、HTTP/ZeroMQ 地址与调用参数。
 
-## 标准使用流程
-
-### 服务侧准备
-
-服务侧准备通常由部署脚本、前端界面、Postman 调试集或运维工具完成，不要求设备上位机每次启动时重复创建资源。
-
-1. 创建或确认 WorkflowAppRuntime。
-2. 启动绑定的 WorkflowAppRuntime。
-3. 通过 `GET /api/v1/system/config` 读取当前 backend-service 统一配置，确认 `local_buffer_broker.default_pool_name` 和可选 `pools`。
-4. 创建 `zeromq-topic` TriggerSource，配置 `bind_endpoint`、`pool_name`、`default_input_binding`、`result_mapping` 和超时。
-5. 调用 TriggerSource enable，启动 ZeroMQ adapter。
-6. 查询 TriggerSource health，确认 `adapter_running=true`。
-
-设备侧仍只保存稳定的 Runtime/Trigger 配置。Workflow App 发布新版本不会自动改变 Runtime；运维侧停止 Runtime、选择准确发布版本并重新启动后，`workflow_runtime_id`、`trigger_source_id` 和 endpoint 保持不变，兼容契约不需要重新下载 SDK 配置包。破坏性契约变化必须先更新调用方或改用新的 Runtime。完整规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
-
-### 调用方准备
-
-调用方只需要保存少量运行参数：
-
-- `endpoint`：ZeroMQ endpoint，例如 `tcp://127.0.0.1:5555` 或受控的 `ipc://...`。
-- `trigger_source_id`：目标 TriggerSource id。
-- `input_binding`：ZeroMQ envelope 中保存图片引用的事件 payload 字段名；当前 SDK 示例默认使用 `request_image_ref`，由 TriggerSource 的 `input_binding_mapping.request_image_ref.source = payload.request_image_ref` 直接映射到 workflow app 的 `request_image_ref`。
-- `timeout`：发送和接收超时。
-- `metadata`：line_id、station_id、camera_id、job_id 等业务字段。
-
-### 单次图片触发
-
-1. SDK 生成 `event_id` 和 `trace_id`。
-2. SDK 构造 ZeroMQ multipart：第一帧是 JSON envelope，第二帧是图片 bytes。
-3. backend-service ZeroMQ adapter 收到 bytes 后写入 LocalBufferBroker。
-4. TriggerSource 按 `input_binding_mapping` 生成 WorkflowRuntime input_bindings，保持在协议原生 payload 边界内。
-5. WorkflowRuntime 创建 sync invoke 或 async WorkflowRun。
-6. SDK 解析 JSON reply，返回统一结果对象或抛出统一错误。
-
-## ZeroMQ envelope 初版字段
-
-当前 backend-service 已支持以下 envelope 字段：
-
-```json
+```csharp
+using (var client = AMVisionClient.CreateFromConfig())
 {
-  "trigger_source_id": "zeromq-trigger-source-06",
-  "event_id": "event-0001",
-  "trace_id": "trace-0001",
-  "occurred_at": "2026-05-13T00:00:00Z",
-  "input_binding": "request_image_ref",
-  "media_type": "image/raw",
-  "shape": [1080, 1920, 3],
-  "dtype": "uint8",
-  "layout": "HWC",
-  "pixel_format": "bgr24",
-  "metadata": {
-    "line_id": "line-a",
-    "station_id": "station-1",
-    "camera_id": "camera-1"
-  },
-  "payload": {
-    "job_id": "job-1"
-  }
+    var result = await client
+        .InvokeConfiguredWorkflowRuntimeByNameAsync("托盘空盘检测")
+        .ConfigureAwait(false);
 }
 ```
 
-当前 SDK envelope 不发送 `format_id`，因为 backend-service 的 `ZeroMqFrameEnvelope` 当前禁止额外字段。公开 SDK v1 前需要把 envelope 字段一次性固定清楚：
+配置包接口见 [SDK 配置包](sdk-config-packages.md)。完整引用、依赖 DLL、name/id 规则、Console 示例和 VS2019 构建命令见 [sdks/dotnet/README.md](../../sdks/dotnet/README.md)。
 
-- backend-service 先允许 envelope 可选 `format_id`，再由 SDK 发送 `amvision.zeromq-trigger-envelope.v1`。
-- shared schema 已固定到 `sdks/schemas/`，后续各语言 SDK 使用同一份字段说明和测试样例。
-
-## SDK 职责
-
-SDK 应封装以下能力：
-
-- 构造 ZeroMQ envelope 和 multipart 消息。
-- 发送图片 bytes，避免调用方手写 JSON base64。
-- 解析 `TriggerResult 响应` 和 ZeroMQ error reply。
-- 生成 event_id、trace_id 和可选 idempotency_key。
-- 统一超时、重试、连接重建和错误码。
-- 提供可选 REST API client，用于 health 检查、enable/disable 和 run 查询。
-- 提供统一配置读取能力，用于选择与后端实际配置一致的 LocalBufferBroker pool。
-- 提供最小示例，覆盖 06 和 07 同 app HTTP base64 + ZeroMQ image-ref 双输入 workflow app 的真实图片触发，并说明图内节点负责转换。
-
-SDK 不应承担以下职责：
-
-- 不内置相机、PLC、IO 或传感器驱动。
-- 不直接写 LocalBufferBroker。
-- 不直接调用 workflow worker 或 deployment worker。
-- 不复制 backend-service 的业务对象和持久化逻辑。
-- 不把客户现场业务流程写入通用 SDK。
-
-## 图级转换边界
-
-- HTTP 调试入口如果公开的是 `image-base64.v1`，就继续由 HTTP 调用方直接传 base64 图片。
-- ZeroMQ 调试入口默认公开 `image-ref.v1`，由 SDK 把文件、base64 或相机输出 bytes 转成 multipart 第二帧图片 bytes，再由 backend-service adapter 写成 BufferRef / image-ref。
-- 如果同一个 workflow app 需要同时接两类入口，应在图里显式提供多个 binding。默认推荐 `request_image_ref -> Image Ref Coalesce -> 下游节点`，HTTP base64 入口只通过 `Image Base64 Decode` 接入 fallback；高频链路不把 image-ref 转回 base64。
-- 如果触发源只有 PLC 寄存器值、IO 状态或其他数值输入，后续图片应由图里的本地图片加载节点、相机抓帧节点或 custom node 决定，不由 SDK 或 TriggerSource 补出。
-- 如果 workflow app 完全不需要外部 input binding，例如图内直接从磁盘读取图片、从相机节点取帧或使用固定测试资源，TriggerSource 可以保留空 `input_binding_mapping`。调用时只提交事件 envelope 和业务 payload 即可，WorkflowRuntime 会收到空 `input_bindings` 并继续执行图内输入节点。
-
-## 目录结构
-
-建议在仓库根目录增加 `sdks/`：
+## 高速图片调用
 
 ```text
-sdks/
-├─ README.md
-├─ schemas/
-│  ├─ zeromq-trigger-envelope.v1.schema.json
-│  ├─ trigger-result.v1.schema.json
-│  └─ errors.v1.md
-├─ dotnet/
-│  ├─ src/Amvision.Workflows/
-│  │  ├─ Http/
-│  │  │  ├─ Responses/
-│  │  │  └─ Requests/
-│  │  ├─ Internal/
-│  │  │  ├─ Http/
-│  │  │  └─ Json/
-│  │  └─ ZeroMq/
-│  └─ tests/Amvision.Workflows.Tests/
-├─ python/
-│  ├─ amvision_trigger_client/
-│  ├─ examples/
-│  └─ tests/
-├─ go/
-│  ├─ amvisiontrigger/
-│  ├─ examples/
-│  └─ tests/
-├─ c/
-│  ├─ include/
-│  ├─ src/
-│  ├─ examples/
-│  └─ tests/
-└─ examples/
-   ├─ 04-detection-deployment-infer-opencv-health/
-   └─ 05-opencv-process-save-image/
+SDK BGR24/image bytes
+  → ZeroMQ envelope + content
+  → TriggerSource adapter
+  → LocalBufferBroker BufferRef
+  → Workflow Runtime
 ```
 
-`sdks/schemas/` 保存外部调用协议的稳定规则，不直接导入 `backend/` Python 代码。需要共享字段时，以 JSON schema、Markdown 规则和跨语言测试样例为准。
+SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和后端非 2xx/错误 reply 必须保留原始状态与错误详情，调用方自行决定现场处置；SDK 不隐藏队列或无限重试。
 
-## 语言实现顺序
+## 门禁
 
-### C# / .NET
-
-C# / .NET SDK 是第一优先级，面向设备上位机默认接入方式。首版已实现 sync REQ/REP 单张图片调用、TriggerResult 解析和 ZeroMQ error reply 解析。
-
-包名：`Amvision.Workflows`。
-
-当前目标框架：
-
-- `net461`：覆盖仍停留在 .NET Framework 4.6.1 的上位机软件。
-- `net472`：覆盖常见 .NET Framework 上位机软件。
-- `netstandard2.1`：覆盖 .NET Core 3.0+ 和多数现代 .NET 应用。
-- `net10.0`：用于现代 .NET 运行时。
-
-说明：`net461` 目标使用 NetMQ 4.0.1.10 和 System.Text.Json 6.0.10，避免依赖包退回到未声明支持 net461 的资产。`net472`、`netstandard2.1` 和 `net10.0` 使用 NetMQ 4.0.4.1；非 `net10.0` 目标显式引用 System.Text.Json。
-
-当前依赖：
-
-- ZeroMQ：NetMQ，减少现场 native libzmq 部署成本。
-- JSON：`System.Text.Json`。
-
-构建和自测：
-
-```powershell
-dotnet build sdks/dotnet/src/Amvision.Workflows/Amvision.Workflows.csproj
-dotnet run --project sdks/dotnet/tests/Amvision.Workflows.Tests/Amvision.Workflows.Tests.csproj
-```
-
-建议 API：
-
-```csharp
-var client = new AmvisionTriggerClient(new AmvisionTriggerClientOptions
-{
-    Endpoint = "tcp://127.0.0.1:5555",
-    TriggerSourceId = "zeromq-trigger-source-06",
-    DefaultInputBinding = "request_image_ref",
-    Timeout = TimeSpan.FromSeconds(5)
-});
-
-var request = ImageTriggerRequest.FromBgr24(bgr24Bytes, width, height);
-request.Metadata["line_id"] = "line-a";
-request.Metadata["station_id"] = "station-1";
-
-request
-    .WithDeploymentInstance("deployment-instance-1")
-    .WithIdempotencyKey("line-a-20260702-0001");
-
-var result = client.InvokeImage(request);
-```
-
-真实 06/07 backend-service 调试当前通过 `sdks/dotnet/tests/Amvision.Workflows.Tests` 的 smoke 测试或 `sdks/dotnet/apps/Amvision.Workflows.Console` 完成。Console app 只封装运行时使用和 TriggerSource 调用，不重复前端的创建配置流程；现场高频图片触发默认调用 BGR24 raw 方法。
-
-### Python
-
-Python SDK 用于调试、脚本集成、测试夹具和现场轻量桥接。
-
-建议包名：`amvision-trigger-client`。
-
-建议依赖：`pyzmq`、`pydantic` 或标准库 dataclass。
-
-建议提供 CLI：
-
-```text
-amvision-trigger invoke-image --endpoint tcp://127.0.0.1:5555 --trigger-source-id trigger-source-04 --image sample.jpg
-```
-
-### Go
-
-Go SDK 面向边缘代理、轻量本地服务和跨平台桥接程序。
-
-建议包名：`amvisiontrigger`。
-
-ZeroMQ 依赖需要在纯 Go 实现和 libzmq/cgo 实现之间做取舍：
-
-- 纯 Go 依赖便于发布，但需要验证 REQ/REP 兼容性和长期维护状态。
-- libzmq/cgo 依赖更贴近标准 ZeroMQ，但 Windows 现场部署需要额外说明 native 依赖。
-
-### C
-
-C SDK 面向 C/C++ 上位机、厂商二次开发接口、LabVIEW 或其他需要稳定 C ABI 的场景。
-
-建议结构：
-
-- `include/amvision_trigger_client.h`
-- `src/amvision_trigger_client.c`
-- `examples/invoke_image.c`
-
-建议依赖：`libzmq` 和一个轻量 JSON 实现。C SDK 应保持函数式 API，避免把 backend-service 规则嵌入复杂对象模型。
-
-## 版本规则
-
-- SDK package 使用 SemVer。
-- wire schema 使用独立 `format_id` 和 schema 版本。
-- SDK minor 版本可以增加字段；破坏字段、错误码或 reply 结构时必须升级 wire schema 版本。
-- backend-service 可以继续接受旧 envelope 字段，至少保留一个稳定迁移窗口。
-
-## 测试要求
-
-- 每个 SDK 至少包含 envelope 序列化测试、错误 reply 解析测试和超时测试。
-- 每个 SDK 至少包含一个本地 ZeroMQ fake server 测试。
-- C# 和 Python SDK 优先增加真实 backend-service 联调脚本，覆盖 04 和 05 workflow app。
-- 规则样例放在 `sdks/schemas/fixtures/` 后，可被各语言测试复用。
-
-## 分期实现建议
-
-1. 固定 ZeroMQ envelope 和 reply 的稳定 schema。
-2. 增加 `sdks/README.md` 和 `sdks/schemas/`。
-3. 实现 C# / .NET SDK，先覆盖 sync REQ/REP 单张图片调用。已完成首版。
-4. 用 C# SDK 触发 06/07 双输入 workflow app 的 ZeroMQ image-ref 通道，形成端到端示例。当前已经新增 06/07 的双输入 workflow app 请求体、TriggerSource 创建请求体和 C# 示例命令，后续需要在真实 backend-service 进程中完成端到端截图或日志归档。
-5. 实现 Python SDK 和 CLI，用于本地联调和回归测试。
-6. 根据现场需求补 Go 和 C SDK。
-7. 后续再补 async-report、ring frame、批量发送和更完整的重试策略。
+.NET contract harness 使用真实 `net472` 编译，覆盖 selector 互斥、版本选择、archive/restore、revision 分页、Run 来源字段和 409 错误详情。命令见 [sdks/dotnet/README.md](../../sdks/dotnet/README.md)。

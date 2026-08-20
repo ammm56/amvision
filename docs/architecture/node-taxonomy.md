@@ -82,7 +82,7 @@ custom_nodes/database_nodes/providers/
 └─ redis/
 ```
 
-未实现的 provider 只写入规划，不放空节点定义，不伪造可执行能力。SQL provider 当前覆盖 SQLite、MySQL 和 PostgreSQL 的受限 upsert。Redis 需要独立依赖、连接规则、key namespace 和超时规则，完成后再加入 catalog。
+未实现的 provider 不放入 NodeDefinition，不伪造可执行能力。SQL provider 当前覆盖 SQLite、MySQL 和 PostgreSQL 的受限 upsert。Redis 只有在依赖、连接规则、key namespace 和超时规则全部实现后才可加入 catalog。
 
 ### 按协议分类
 

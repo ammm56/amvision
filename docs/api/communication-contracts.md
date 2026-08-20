@@ -161,7 +161,7 @@ LocalBufferBroker 用来做本机内部隔离进程之间的大图、帧和中�
 - BufferRef 和 FrameRef 只在本机短期有效，不写成长期公开接口字段
 - 需要保留的图片和结果必须保存到 ObjectStore，并形成正式文件引用
 - mmap 文件池必须有固定容量、租约、TTL、心跳、背压和启动清理
-- LocalBufferBroker 的详细规划见 [docs/architecture/local-buffer-broker.md](../architecture/local-buffer-broker.md)
+- LocalBufferBroker 的当前设计见 [LocalBufferBroker](../architecture/local-buffer-broker.md)
 
 ## 鉴权与权限边界
 
