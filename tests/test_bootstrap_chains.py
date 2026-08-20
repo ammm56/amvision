@@ -13,6 +13,7 @@ from backend.maintenance.settings import (
     get_backend_maintenance_settings,
 )
 from backend.workers.bootstrap import BackendWorkerBootstrap
+from backend.workers.contracts import WORKER_PROFILE_FORMAT_ID, WorkerProfileManifest
 from backend.workers.main import build_background_task_manager
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
@@ -21,7 +22,6 @@ from backend.workers.settings import (
     BackendWorkerDatasetStorageConfig,
     BackendWorkerDatabaseConfig,
     BackendWorkerQueueConfig,
-    BackendWorkerTaskManagerConfig,
     BackendWorkerSettings,
     BackendWorkerWorkspaceConfig,
     get_backend_worker_settings,
@@ -46,18 +46,7 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
                 "workspace": {
                     "root_dir": "./data/from-worker-config",
                 },
-                "queue": {
-                    "root_dir": "./data/from-worker-queue-config"
-                },
-                "task_manager": {
-                    "enabled_consumer_kinds": [
-                        "dataset-import",
-                        "detection-evaluation",
-                        "detection-inference"
-                    ],
-                    "max_concurrent_tasks": 3,
-                    "poll_interval_seconds": 2.5
-                },
+                "queue": {"root_dir": "./data/from-worker-queue-config"},
                 "async_inference_gateway_request_timeout_seconds": 12.0,
             }
         ),
@@ -78,8 +67,9 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AMVISION_WORKER_APP__APP_NAME", "amvision env-worker")
     monkeypatch.setenv("AMVISION_WORKER_WORKSPACE__ROOT_DIR", "./data/from-worker-env")
-    monkeypatch.setenv("AMVISION_WORKER_QUEUE__ROOT_DIR", "./data/from-worker-queue-env")
-    monkeypatch.setenv("AMVISION_WORKER_TASK_MANAGER__MAX_CONCURRENT_TASKS", "4")
+    monkeypatch.setenv(
+        "AMVISION_WORKER_QUEUE__ROOT_DIR", "./data/from-worker-queue-env"
+    )
 
     settings = get_backend_worker_settings()
 
@@ -87,13 +77,6 @@ def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
     assert settings.app.app_version == "0.2.1-local"
     assert settings.workspace.root_dir == "./data/from-worker-env"
     assert settings.queue.root_dir == "./data/from-worker-queue-env"
-    assert settings.task_manager.enabled_consumer_kinds == (
-        "dataset-import",
-        "detection-evaluation",
-        "detection-inference",
-    )
-    assert settings.task_manager.max_concurrent_tasks == 4
-    assert settings.task_manager.poll_interval_seconds == 2.5
     assert settings.async_inference_gateway_request_timeout_seconds == 12.0
 
     get_backend_worker_settings.cache_clear()
@@ -121,7 +104,9 @@ def test_worker_bootstrap_initializes_workspace_directory(tmp_path: Path) -> Non
 
         assert runtime.workspace_dir == (tmp_path / "worker-root").resolve()
         assert runtime.workspace_dir.is_dir()
-        assert runtime.dataset_storage.root_dir == (tmp_path / "dataset-files").resolve()
+        assert (
+            runtime.dataset_storage.root_dir == (tmp_path / "dataset-files").resolve()
+        )
         assert runtime.queue_backend.root_dir == (tmp_path / "queue-root").resolve()
         assert bootstrap.get_step_names() == (
             "prepare-worker-workspace",
@@ -145,18 +130,28 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
             root_dir=str(tmp_path / "dataset-files")
         ),
         queue=BackendWorkerQueueConfig(root_dir=str(tmp_path / "queue-root")),
-        task_manager=BackendWorkerTaskManagerConfig(
-            enabled_consumer_kinds=(
-                BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
-                BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
-            )
-        ),
     )
     bootstrap = BackendWorkerBootstrap(settings=settings)
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
 
     try:
-        manager = build_background_task_manager(runtime)
+        profile = WorkerProfileManifest(
+            format_id=WORKER_PROFILE_FORMAT_ID,
+            profile_id="test-evaluation-inference",
+            display_name="test evaluation inference worker",
+            description="测试严格 Profile 选择 consumer。",
+            enabled_consumer_kinds=(
+                BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+                BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
+            ),
+            max_concurrent_tasks=1,
+            poll_interval_seconds=0.1,
+        )
+        manager = build_background_task_manager(
+            runtime,
+            profile=profile,
+            worker_instance_id="worker-instance-test-0001",
+        )
 
         assert [type(consumer).__name__ for consumer in manager.consumers] == [
             "DetectionEvaluationQueueWorker",
@@ -187,7 +182,7 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
                 "release": {
                     "frontend": {
                         "dist_dir": "./frontend/dist",
-                        "runtime_config_template_file": "./frontend/runtime-config.template.json"
+                        "runtime_config_template_file": "./frontend/runtime-config.template.json",
                     }
                 },
             }
@@ -223,7 +218,10 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
     assert settings.workspace.root_dir == "./data/from-maintenance-env"
     assert settings.release.bundled_python.source_dir is None
     assert settings.release.frontend.dist_dir == "./frontend/dist"
-    assert settings.release.frontend.runtime_config_template_file == "./frontend/runtime-config.template.json"
+    assert (
+        settings.release.frontend.runtime_config_template_file
+        == "./frontend/runtime-config.template.json"
+    )
     assert (
         settings.release.frontend.runtime_config_source_file
         == "./frontend/runtime-config.local.json"

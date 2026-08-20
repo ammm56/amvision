@@ -42,7 +42,7 @@
 - NVIDIA 包复制并校验 Windows x64 TensorRT / cuDNN；CPU 包不复制这些资产，并拒绝 NVIDIA-only requirements
 - profile id 必须使用完整目标名称；Ubuntu profile 仅预留，当前不允许组装
 - 自动复制 backend 源码、配置模板、Python launcher 和 Windows bat wrapper
-- 自动复制当前 profile 需要的全部 worker profile manifest，并生成 `start-<profile_id>-worker.bat`
+- 自动复制当前 profile 需要的全部 Worker Profile manifest；Worker 只由 full Supervisor 启动，不生成脱离 Topology 的固定 Profile wrapper
 - 自动复制仓库根 `README.md`、`LICENSE`、`LICENSE.zh-CN` 和 `COMMERCIAL_LICENSE_REQUIRED.md`
 - 自动复制仓库根目录的 `requirements.txt` 到发行目录里的 `app/requirements.txt`，并按 profile 过滤不适用依赖
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回

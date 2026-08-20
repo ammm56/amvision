@@ -95,7 +95,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from backend.service.application.workflows.worker.manager import (
     WorkflowRuntimeWorkerManager,
@@ -1256,7 +1255,6 @@ def test_backend_service_runtime_starts_broker_and_binds_workflow_context(
             root_dir=str(tmp_path / "service-files")
         ),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "service-queue")),
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
         local_buffer_broker=_build_broker_settings(tmp_path / "service-broker"),
     )
     bootstrap = BackendServiceBootstrap(settings=settings)

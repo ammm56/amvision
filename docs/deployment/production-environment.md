@@ -67,11 +67,11 @@ Ubuntu x64 CPU/NVIDIA 发布尚未实现，本阶段没有可交付的 Linux 等
 - 先执行 Alembic 数据库迁移；SQLite schema 变化前自动生成一致性备份
 - 迁移成功后启动独立 inference daemon，并通过 ready 日志和控制队列 probe 双重确认
 - daemon 就绪后启动 backend-service，health 成功后再依次启动当前 release profile 中声明的全部 worker
-- 任一步迁移、初始化、probe、health 或 worker ready 失败都会停止已经启动的全部组件并返回非零退出码
+- 初始启动中的迁移、初始化、probe、health 或 Worker heartbeat 失败会停止已经启动的全部组件并返回非零退出码
 - 每个 canonical 发行目录只包含一个生成后的 release manifest，启动器会自动使用该 manifest
 - 启动和停止脚本只允许使用 `python/python.exe` 或显式的 `AMVISION_PYTHON_EXECUTABLE`，不会回退系统 Python
 - `custom_nodes/` 已随发布目录一起准备好，适合作为完整运行资源直接发出
-- 子进程日志写到 `logs/full-stack/`
+- 子进程日志按本地日期追加到 `logs/full-stack/*-YYYYMMDD.log`，跨日自动切换文件
 - 运行状态文件写到 `logs/full-stack/runtime-state.json`
 - 每启动一个组件就立即更新运行状态文件，启动过程中也可由 stop 脚本完整回收
 - 根脚本保持前台运行，按 `Ctrl+C` 时会停止全部子进程
@@ -92,8 +92,9 @@ Linux 等价调用：
 
 当前行为：
 
-- stop 脚本会读取 `logs/full-stack/runtime-state.json`
-- 按 worker、backend-service、inference daemon、根监督进程的逆序停止完整进程树
+- stop 脚本会严格读取 `logs/full-stack/runtime-state.json`
+- 按 Worker、backend-service、inference daemon、根监督进程的逆序停止完整进程树
+- 每个进程必须同时匹配 PID、创建时间、解释器、工作目录和命令行，禁止只按 PID 停止
 - Windows 使用进程句柄 API 判断 pid 是否真实存活，不依赖可能被服务账户限制或受本地化影响的 `tasklist` 输出
 - 每个目标停止后都会再次确认；仍有进程存活时返回非零退出码并保留状态文件，禁止假报成功
 - 只有全部记录进程和子进程树均已停止后才清理运行状态文件
@@ -122,4 +123,4 @@ Linux 等价调用：
 
 - 一键启动是生产环境的默认入口，不再要求手工分开拉起 service 和 worker
 - 当前发布目录包含代码、worker profile 和 custom_nodes，但不包含数据库内容、workflow 业务数据、预训练模型和开发期数据文件
-- 独立 launcher 只用于停止完整实例后的单进程诊断，不作为生产运行方式；诊断结束后仍需恢复根目录完整启动
+- Worker 低层 launcher 只供 full Supervisor 注入当前 Topology 身份；不支持脱离 Supervisor 的单进程运行

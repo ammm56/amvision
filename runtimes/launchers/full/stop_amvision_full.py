@@ -17,9 +17,14 @@ LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
 if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
-from common import is_pid_alive, resolve_app_root, resolve_path  # noqa: E402
+from common import (  # noqa: E402
+    process_identity_matches,
+    resolve_app_root,
+    resolve_path,
+)
 
 _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS = 15.0
+FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -86,24 +91,11 @@ def _load_stack_state(state_file_path: Path) -> dict[str, object] | None:
     return json.loads(state_file_path.read_text(encoding="utf-8"))
 
 
-def _pid_is_alive(pid: int) -> bool:
-    """判断指定 pid 当前是否仍然存活。
+def _wait_process_exit(identity: dict[str, object], timeout_seconds: float) -> bool:
+    """等待状态文件记录的同一个进程退出。
 
     参数：
-    - pid：待检查的进程 id。
-
-    返回：
-    - bool：进程仍然存活时返回 True，否则返回 False。
-    """
-
-    return is_pid_alive(pid)
-
-
-def _wait_pid_exit(pid: int, timeout_seconds: float) -> bool:
-    """等待指定 pid 在给定时间内退出。
-
-    参数：
-    - pid：待等待的进程 id。
+    - identity：包含 PID、创建时间、可执行文件、cwd 和命令行的进程身份。
     - timeout_seconds：等待秒数。
 
     返回：
@@ -112,17 +104,22 @@ def _wait_pid_exit(pid: int, timeout_seconds: float) -> bool:
 
     deadline = time.monotonic() + max(timeout_seconds, 0.0)
     while time.monotonic() < deadline:
-        if not _pid_is_alive(pid):
+        if not process_identity_matches(identity):
             return True
         time.sleep(0.1)
-    return not _pid_is_alive(pid)
+    return not process_identity_matches(identity)
 
 
-def _stop_recorded_process(pid: int, *, stop_mode: str, graceful_timeout_seconds: float) -> bool:
+def _stop_recorded_process(
+    identity: dict[str, object],
+    *,
+    stop_mode: str,
+    graceful_timeout_seconds: float,
+) -> bool:
     """按状态文件记录的方式停止一个进程或进程组。
 
     参数：
-    - pid：待停止的进程 id。
+    - identity：状态文件记录的完整进程身份。
     - stop_mode：停止模式；Windows 使用 process-tree，Unix 子进程使用 process-group。
     - graceful_timeout_seconds：发送终止信号后的等待秒数。
 
@@ -130,8 +127,10 @@ def _stop_recorded_process(pid: int, *, stop_mode: str, graceful_timeout_seconds
     - bool：停止后进程已经退出时返回 True，否则返回 False。
     """
 
-    if not _pid_is_alive(pid):
+    if not process_identity_matches(identity):
         return True
+    pid = identity["pid"]
+    assert isinstance(pid, int)
 
     if os.name == "nt":
         subprocess.run(
@@ -140,39 +139,43 @@ def _stop_recorded_process(pid: int, *, stop_mode: str, graceful_timeout_seconds
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return _wait_pid_exit(pid, graceful_timeout_seconds)
+        return _wait_process_exit(identity, graceful_timeout_seconds)
 
     if stop_mode == "process-group":
         with contextlib.suppress(ProcessLookupError):
             os.killpg(pid, signal.SIGTERM)
-        if _wait_pid_exit(pid, graceful_timeout_seconds):
+        if _wait_process_exit(identity, graceful_timeout_seconds):
             return True
         with contextlib.suppress(ProcessLookupError):
             os.killpg(pid, signal.SIGKILL)
-        return _wait_pid_exit(pid, 1.0)
+        return _wait_process_exit(identity, 1.0)
 
     with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGTERM)
-    if _wait_pid_exit(pid, graceful_timeout_seconds):
+    if _wait_process_exit(identity, graceful_timeout_seconds):
         return True
     with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    return _wait_pid_exit(pid, 1.0)
+    return _wait_process_exit(identity, 1.0)
 
 
-def _wait_root_process_exit(pid: int, *, graceful_timeout_seconds: float) -> bool:
+def _wait_root_process_exit(
+    identity: dict[str, object],
+    *,
+    graceful_timeout_seconds: float,
+) -> bool:
     """等待 full-stack root 在停掉子组件后自行收尾退出。
 
     参数：
-    - pid：root 进程 id。
+    - identity：root 进程完整身份。
     - graceful_timeout_seconds：命令行传入的基础等待秒数。
 
     返回：
     - bool：等待窗口内 root 已退出时返回 True，否则返回 False。
     """
 
-    return _wait_pid_exit(
-        pid,
+    return _wait_process_exit(
+        identity,
         max(graceful_timeout_seconds, _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS),
     )
 
@@ -189,7 +192,9 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_argument_parser()
     args = parser.parse_args(argv)
-    app_root = resolve_app_root(script_file=Path(__file__), explicit_app_root=args.app_root)
+    app_root = resolve_app_root(
+        script_file=Path(__file__), explicit_app_root=args.app_root
+    )
     state_file_path = _resolve_stack_state_file(
         app_root,
         logs_subdir=args.logs_subdir,
@@ -199,46 +204,59 @@ def main(argv: list[str] | None = None) -> int:
     if stack_state is None:
         print(f"未找到运行状态文件，无需停止：{state_file_path}", flush=True)
         return 0
+    if stack_state.get("format_id") != FULL_SUPERVISOR_STATE_FORMAT_ID:
+        print(
+            f"运行状态文件格式无效，拒绝按 PID 停止未知进程：{state_file_path}",
+            flush=True,
+        )
+        return 2
 
-    stop_targets: list[tuple[str, int, str]] = []
+    stop_targets: list[tuple[str, dict[str, object], str]] = []
     seen_pids: set[int] = set()
-    root_pid: int | None = None
+    root_identity: dict[str, object] | None = None
 
     components_raw = stack_state.get("components")
     if isinstance(components_raw, list):
         for component_raw in reversed(components_raw):
             if not isinstance(component_raw, dict):
                 continue
-            pid_raw = component_raw.get("pid")
+            process_identity = component_raw.get("process")
+            if not isinstance(process_identity, dict):
+                continue
+            pid_raw = process_identity.get("pid")
             if not isinstance(pid_raw, int) or pid_raw in seen_pids:
                 continue
             stop_targets.append(
                 (
                     str(component_raw.get("name", f"process-{pid_raw}")),
-                    pid_raw,
+                    process_identity,
                     str(component_raw.get("stop_mode", "process")),
                 )
             )
             seen_pids.add(pid_raw)
 
-    root_pid_raw = stack_state.get("root_pid")
-    if isinstance(root_pid_raw, int) and root_pid_raw not in seen_pids:
-        root_pid = root_pid_raw
+    root_process_raw = stack_state.get("root_process")
+    if isinstance(root_process_raw, dict):
+        root_pid_raw = root_process_raw.get("pid")
+        if isinstance(root_pid_raw, int) and root_pid_raw not in seen_pids:
+            root_identity = root_process_raw
 
-    if not stop_targets and root_pid is None:
+    if not stop_targets and root_identity is None:
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
         print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
         return 0
 
     failed_targets: list[tuple[str, int]] = []
-    for component_name, pid, stop_mode in stop_targets:
-        if not _pid_is_alive(pid):
+    for component_name, identity, stop_mode in stop_targets:
+        pid = identity["pid"]
+        assert isinstance(pid, int)
+        if not process_identity_matches(identity):
             print(f"{component_name} 已经退出，pid={pid}", flush=True)
             continue
         print(f"正在停止 {component_name}，pid={pid}", flush=True)
         stopped = _stop_recorded_process(
-            pid,
+            identity,
             stop_mode=stop_mode,
             graceful_timeout_seconds=args.graceful_timeout_seconds,
         )
@@ -248,20 +266,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"停止 {component_name} 超时，pid={pid}", flush=True)
         failed_targets.append((component_name, pid))
 
-    if isinstance(root_pid, int):
-        if not _pid_is_alive(root_pid):
+    if root_identity is not None:
+        root_pid = root_identity["pid"]
+        assert isinstance(root_pid, int)
+        if not process_identity_matches(root_identity):
             print(f"full-stack-root 已经退出，pid={root_pid}", flush=True)
         elif stop_targets:
             print(f"等待 full-stack-root 自行退出，pid={root_pid}", flush=True)
             if _wait_root_process_exit(
-                root_pid,
+                root_identity,
                 graceful_timeout_seconds=args.graceful_timeout_seconds,
             ):
                 print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
             else:
-                print(f"full-stack-root 未在等待窗口内退出，转入强制停止，pid={root_pid}", flush=True)
+                print(
+                    f"full-stack-root 未在等待窗口内退出，转入强制停止，pid={root_pid}",
+                    flush=True,
+                )
                 stopped = _stop_recorded_process(
-                    root_pid,
+                    root_identity,
                     stop_mode="process",
                     graceful_timeout_seconds=args.graceful_timeout_seconds,
                 )
@@ -273,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"正在停止 full-stack-root，pid={root_pid}", flush=True)
             stopped = _stop_recorded_process(
-                root_pid,
+                root_identity,
                 stop_mode="process",
                 graceful_timeout_seconds=args.graceful_timeout_seconds,
             )
@@ -286,10 +309,22 @@ def main(argv: list[str] | None = None) -> int:
     still_alive_targets = [
         (component_name, pid)
         for component_name, pid in failed_targets
-        if _pid_is_alive(pid)
+        if any(
+            isinstance(identity.get("pid"), int)
+            and identity.get("pid") == pid
+            and process_identity_matches(identity)
+            for _name, identity, _mode in stop_targets
+        )
+        or (
+            root_identity is not None
+            and root_identity.get("pid") == pid
+            and process_identity_matches(root_identity)
+        )
     ]
     if still_alive_targets:
-        failed_text = ", ".join(f"{name}(pid={pid})" for name, pid in still_alive_targets)
+        failed_text = ", ".join(
+            f"{name}(pid={pid})" for name, pid in still_alive_targets
+        )
         print(
             f"仍有进程未停止，保留运行状态文件以便继续排查：{failed_text}；"
             f"state_file={state_file_path}",

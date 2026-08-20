@@ -14,9 +14,8 @@ if str(LAUNCHERS_ROOT) not in sys.path:
 from common import (  # noqa: E402
     WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE,
     ensure_windows_long_paths_enabled,
-    json_env_value,
-    load_json_file,
     resolve_app_root,
+    resolve_code_root,
     run_python_module,
 )
 
@@ -25,40 +24,43 @@ def build_argument_parser() -> argparse.ArgumentParser:
     """构造 backend-worker launcher 参数解析器。"""
 
     parser = argparse.ArgumentParser(description="amvision backend-worker launcher")
-    parser.add_argument("--app-root", help="应用根目录；未传入时按 launcher 相对位置自动解析")
-    parser.add_argument("--python-executable", help="用于启动 backend-worker 的 Python 解释器路径")
+    parser.add_argument(
+        "--app-root", help="应用根目录；未传入时按 launcher 相对位置自动解析"
+    )
+    parser.add_argument(
+        "--python-executable", help="用于启动 backend-worker 的 Python 解释器路径"
+    )
     parser.add_argument(
         "--worker-profile-file",
+        required=True,
         help="worker profile manifest 路径；相对路径按应用根目录解析",
     )
+    parser.add_argument("--topology-id", required=True, help="当前 Worker Topology id")
     parser.add_argument(
-        "--enabled-consumer-kind",
-        action="append",
-        default=None,
-        help="显式指定要启用的 consumer kind；可重复传入",
-    )
-    parser.add_argument("--max-concurrent-tasks", type=int, help="覆盖 worker 最大并发数")
-    parser.add_argument(
-        "--poll-interval-seconds",
-        type=float,
-        help="覆盖 worker 空闲轮询间隔秒数",
+        "--topology-generation",
+        required=True,
+        type=int,
+        help="当前 Worker Topology generation",
     )
     parser.add_argument(
-        "--workspace-root-dir",
-        help="覆盖 worker workspace.root_dir；未传入时按 profile_id 自动落到 data/worker/<profile_id>",
+        "--topology-epoch-id", required=True, help="当前 Worker Topology epoch id"
+    )
+    parser.add_argument(
+        "--worker-instance-id", required=True, help="当前 Worker 进程实例 id"
+    )
+    parser.add_argument(
+        "--worker-runtime-root",
+        required=True,
+        help="Worker Topology 运行态根目录",
     )
     return parser
 
 
-def _resolve_worker_profile(
-    app_root: Path,
-    worker_profile_file: str | None,
-) -> dict[str, object] | None:
-    """读取 worker profile manifest。"""
+def _resolve_required_path(app_root: Path, value: str) -> Path:
+    """解析 launcher 必填路径。"""
 
-    if worker_profile_file is None or not worker_profile_file.strip():
-        return None
-    return load_json_file(app_root, worker_profile_file.strip())
+    path = Path(value)
+    return path.resolve() if path.is_absolute() else (app_root / path).resolve()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -66,54 +68,40 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_argument_parser()
     args = parser.parse_args(argv)
-    app_root = resolve_app_root(script_file=Path(__file__), explicit_app_root=args.app_root)
+    app_root = resolve_app_root(
+        script_file=Path(__file__), explicit_app_root=args.app_root
+    )
     if not ensure_windows_long_paths_enabled(
         app_root=app_root,
         python_executable=args.python_executable,
     ):
         return WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE
-    worker_profile = _resolve_worker_profile(app_root, args.worker_profile_file)
+    code_root = resolve_code_root(app_root)
+    if str(code_root) not in sys.path:
+        sys.path.insert(0, str(code_root))
+    from backend.workers.contracts import (  # noqa: PLC0415
+        WORKER_INSTANCE_ID_ENV,
+        WORKER_PROFILE_FILE_ENV,
+        WORKER_RUNTIME_ROOT_ENV,
+        WORKER_TOPOLOGY_EPOCH_ID_ENV,
+        WORKER_TOPOLOGY_GENERATION_ENV,
+        WORKER_TOPOLOGY_ID_ENV,
+        load_worker_profile_manifest,
+    )
 
-    enabled_consumer_kinds: list[str] = []
-    if args.enabled_consumer_kind is not None:
-        enabled_consumer_kinds.extend(args.enabled_consumer_kind)
-    elif worker_profile is not None:
-        worker_profile_consumer_kinds = worker_profile.get("enabled_consumer_kinds")
-        if isinstance(worker_profile_consumer_kinds, list):
-            enabled_consumer_kinds.extend(str(item) for item in worker_profile_consumer_kinds)
-
-    extra_env: dict[str, str] = {}
-    if enabled_consumer_kinds:
-        extra_env["AMVISION_WORKER_TASK_MANAGER__ENABLED_CONSUMER_KINDS"] = json_env_value(
-            enabled_consumer_kinds
-        )
-
-    max_concurrent_tasks = args.max_concurrent_tasks
-    if max_concurrent_tasks is None and worker_profile is not None:
-        raw_max_concurrent_tasks = worker_profile.get("max_concurrent_tasks")
-        if isinstance(raw_max_concurrent_tasks, int):
-            max_concurrent_tasks = raw_max_concurrent_tasks
-    if max_concurrent_tasks is not None:
-        extra_env["AMVISION_WORKER_TASK_MANAGER__MAX_CONCURRENT_TASKS"] = str(max_concurrent_tasks)
-
-    poll_interval_seconds = args.poll_interval_seconds
-    if poll_interval_seconds is None and worker_profile is not None:
-        raw_poll_interval_seconds = worker_profile.get("poll_interval_seconds")
-        if isinstance(raw_poll_interval_seconds, int | float):
-            poll_interval_seconds = float(raw_poll_interval_seconds)
-    if poll_interval_seconds is not None:
-        extra_env["AMVISION_WORKER_TASK_MANAGER__POLL_INTERVAL_SECONDS"] = str(
-            poll_interval_seconds
-        )
-
-    if worker_profile is not None:
-        profile_id = str(worker_profile.get("profile_id", "worker"))
-        display_name = str(worker_profile.get("display_name", f"amvision worker {profile_id}"))
-        extra_env["AMVISION_WORKER_APP__APP_NAME"] = display_name
-        workspace_root_dir = args.workspace_root_dir or f"./data/worker/{profile_id}"
-        extra_env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"] = workspace_root_dir
-    elif args.workspace_root_dir is not None:
-        extra_env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"] = args.workspace_root_dir
+    profile_path = _resolve_required_path(app_root, args.worker_profile_file)
+    runtime_root = _resolve_required_path(app_root, args.worker_runtime_root)
+    profile = load_worker_profile_manifest(profile_path)
+    extra_env = {
+        WORKER_PROFILE_FILE_ENV: str(profile_path),
+        WORKER_RUNTIME_ROOT_ENV: str(runtime_root),
+        WORKER_TOPOLOGY_ID_ENV: args.topology_id,
+        WORKER_TOPOLOGY_GENERATION_ENV: str(args.topology_generation),
+        WORKER_TOPOLOGY_EPOCH_ID_ENV: args.topology_epoch_id,
+        WORKER_INSTANCE_ID_ENV: args.worker_instance_id,
+        "AMVISION_WORKER_APP__APP_NAME": profile.display_name,
+        "AMVISION_WORKER_WORKSPACE__ROOT_DIR": f"./data/worker/{profile.profile_id}",
+    }
 
     return run_python_module(
         app_root=app_root,

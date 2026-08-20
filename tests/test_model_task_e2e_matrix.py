@@ -66,7 +66,7 @@ def test_e2e_process_environment_isolates_database_queue_and_ipc(
     )
     assert first["AMVISION_WORKER_DATABASE__URL"] == first["AMVISION_DATABASE__URL"]
     assert first["AMVISION_WORKER_QUEUE__ROOT_DIR"] == first["AMVISION_QUEUE__ROOT_DIR"]
-    assert first["AMVISION_TASK_MANAGER__ENABLED"] == "false"
+    assert "AMVISION_TASK_MANAGER__ENABLED" not in first
 
 
 def test_e2e_runner_collects_new_working_directory_diagnostics(
@@ -593,10 +593,15 @@ def test_managed_process_shutdown_terminates_multiprocessing_descendants(
     )
     try:
         deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline and not child_pid_path.is_file():
+        child_pid: int | None = None
+        while time.monotonic() < deadline:
+            if child_pid_path.is_file():
+                child_pid_text = child_pid_path.read_text(encoding="utf-8").strip()
+                if child_pid_text:
+                    child_pid = int(child_pid_text)
+                    break
             time.sleep(0.05)
-        assert child_pid_path.is_file()
-        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        assert child_pid is not None
         assert psutil.pid_exists(child_pid)
 
         stop_managed_processes((managed,))

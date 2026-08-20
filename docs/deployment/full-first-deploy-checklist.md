@@ -80,7 +80,7 @@
 
 - 根启动脚本保持常驻，不立即退出
 - 控制台依次输出数据库迁移、inference daemon、backend-service 和多个 worker 的就绪结果
-- `logs/full-stack/` 下出现 `database-migration.log`、`inference-daemon.log`、`service.log` 和各 worker log
+- `logs/full-stack/` 下出现 `database-migration-YYYYMMDD.log`、`inference-daemon-YYYYMMDD.log`、`backend-service-YYYYMMDD.log` 和各 Worker Profile 的当日日志
 
 当前 service 只承担控制面，不消费任务队列；deployment 子进程由独立 inference daemon 托管；一键启动脚本会把当前 release profile 里的 worker 一起拉起。
 
@@ -130,15 +130,11 @@ Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 
 通过标准：
 
-- `logs/full-stack/worker-dataset-import.log` 已经生成
-- `logs/full-stack/worker-inference.log` 等当前 profile 需要的目标 worker log 已经生成
+- `logs/full-stack/backend-worker-dataset-import-YYYYMMDD.log` 已经生成
+- `logs/full-stack/backend-worker-inference-YYYYMMDD.log` 等当前 profile 需要的目标 Worker 日志已经生成
 - 根启动脚本控制台没有出现 worker profile 缺失、队列目录不可写或配置解析错误
 
-如果需要定位某一个 worker 的问题，再临时拆回独立启动方式，例如：
-
-```powershell
-.\launchers\worker\start-dataset-import-worker.bat
-```
+如果需要定位某一个 Worker，使用设置页当前 Topology 明细和对应日期日志；不脱离 Supervisor 单独启动。
 
 ## 6. 执行最小任务 smoke test
 
@@ -196,7 +192,7 @@ curl -X POST "http://127.0.0.1:5600/api/v1/datasets/imports" \
 如果任务一直停在 `queued`，优先检查：
 
 - `start-amvision-full.bat` 所在终端是否仍在运行
-- `logs/full-stack/worker-dataset-import.log` 是否出现启动异常
+- `logs/full-stack/backend-worker-dataset-import-YYYYMMDD.log` 是否出现启动异常
 - `data/queue` 是否在 service 与 worker 之间共用同一目录
 - `config/backend-worker.json` 是否被本地覆盖文件改掉了队列路径
 

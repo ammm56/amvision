@@ -7,7 +7,9 @@ import mimetypes
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from backend.service.api.app import create_app
 from backend.service.api.bootstrap import BackendServiceBootstrap
@@ -24,7 +26,6 @@ from backend.service.settings import (
     BackendServiceQueueConfig,
     BackendServiceSettings,
     BackendServiceStaticAccessTokenConfig,
-    BackendServiceTaskManagerConfig,
     BackendServiceZeroMqTriggerConfig,
     get_backend_service_settings,
 )
@@ -185,9 +186,11 @@ def test_system_config_payload_redacts_sensitive_config_values() -> None:
 
 def test_diagnostics_route_requires_auth_read_and_returns_system_summary(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """验证系统诊断接口需要 auth:read 并返回设置页依赖的摘要字段。"""
 
+    monkeypatch.chdir(tmp_path)
     client, session_factory = _create_test_client(
         tmp_path, enable_local_buffer_broker=False
     )
@@ -222,6 +225,9 @@ def test_diagnostics_route_requires_auth_read_and_returns_system_summary(
     assert payload["python_runtime"]["executable"]
     assert payload["services"]["database"]["status"] == "ok"
     assert payload["services"]["zeromq"]["status"] == "available"
+    assert payload["services"]["backend_worker"]["health"] == "offline"
+    assert payload["services"]["backend_worker"]["reason"] == "active_topology_missing"
+    assert "task_manager" not in payload["services"]
     assert payload["services"]["zeromq"]["available"] is True
     assert payload["services"]["zeromq"]["adapter_configured"] is True
     assert payload["services"]["local_buffer_broker"]["enabled"] is False
@@ -283,7 +289,6 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
         ),
         dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(storage_root)),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "queue-root")),
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
 
     application = create_app(settings=settings)
@@ -296,7 +301,7 @@ def test_create_app_uses_explicit_backend_service_settings(tmp_path: Path) -> No
             application.state.queue_backend.root_dir
             == (tmp_path / "queue-root").resolve()
         )
-        assert application.state.background_task_manager_host is None
+        assert not hasattr(application.state, "background_task_manager_host")
     finally:
         application.state.session_factory.engine.dispose()
 
@@ -334,7 +339,6 @@ def test_create_app_mounts_frontend_static_files_with_spa_fallback(
             root_dir=str(tmp_path / "files")
         ),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "queue-root")),
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
         local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
         zeromq_trigger=BackendServiceZeroMqTriggerConfig(
             buffer_ttl_seconds=330.0,
@@ -397,11 +401,6 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                 "queue": {
                     "root_dir": "./data/from-config-queue",
                 },
-                "task_manager": {
-                    "enabled": False,
-                    "max_concurrent_tasks": 3,
-                    "poll_interval_seconds": 2.0,
-                },
                 "zeromq_trigger": {
                     "buffer_ttl_seconds": 330.0,
                     "buffer_ttl_safety_margin_seconds": 30.0,
@@ -428,9 +427,6 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
                 "queue": {
                     "root_dir": "./data/from-local-config-queue",
                 },
-                "task_manager": {
-                    "max_concurrent_tasks": 4,
-                },
             }
         ),
         encoding="utf-8",
@@ -440,7 +436,6 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AMVISION_APP__APP_NAME", "amvision env-service")
     monkeypatch.setenv("AMVISION_DATABASE__ECHO", "true")
-    monkeypatch.setenv("AMVISION_TASK_MANAGER__ENABLED", "true")
 
     settings = get_backend_service_settings()
 
@@ -450,12 +445,16 @@ def test_get_backend_service_settings_reads_json_files_and_environment_overrides
     assert settings.database.url == "sqlite:///./data/from-config.db"
     assert settings.dataset_storage.root_dir == "./data/from-local-config-files"
     assert settings.queue.root_dir == "./data/from-local-config-queue"
-    assert settings.task_manager.enabled is True
-    assert settings.task_manager.max_concurrent_tasks == 4
-    assert settings.task_manager.poll_interval_seconds == 2.0
     assert settings.zeromq_trigger.max_message_size_bytes == 1073741824
 
     get_backend_service_settings.cache_clear()
+
+
+def test_backend_service_settings_reject_removed_task_manager_config() -> None:
+    """验证旧 task_manager 配置会显式失败，避免被静默忽略。"""
+
+    with pytest.raises(ValidationError, match="task_manager"):
+        BackendServiceSettings(task_manager={})
 
 
 def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
@@ -508,35 +507,6 @@ def test_bootstrap_runs_explicit_seeders_in_initialize(tmp_path: Path) -> None:
         runtime.session_factory.engine.dispose()
 
 
-def test_app_lifespan_starts_and_stops_background_task_manager(tmp_path: Path) -> None:
-    """验证 backend-service 生命周期不再创建进程内 task manager。"""
-
-    settings = BackendServiceSettings(
-        database=BackendServiceDatabaseConfig(
-            url=f"sqlite:///{(tmp_path / 'hosted.db').as_posix()}"
-        ),
-        dataset_storage=BackendServiceDatasetStorageConfig(
-            root_dir=str(tmp_path / "hosted-files")
-        ),
-        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "hosted-queue")),
-        local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=True,
-            max_concurrent_tasks=1,
-            poll_interval_seconds=0.1,
-        ),
-    )
-    application = create_app(settings=settings)
-    background_task_manager_host = application.state.background_task_manager_host
-
-    assert background_task_manager_host is None
-
-    with TestClient(application):
-        assert application.state.background_task_manager_host is None
-
-    assert application.state.background_task_manager_host is None
-
-
 def test_service_does_not_host_background_task_consumers(
     tmp_path: Path,
 ) -> None:
@@ -550,18 +520,15 @@ def test_service_does_not_host_background_task_consumers(
             root_dir=str(tmp_path / "hosted-files")
         ),
         queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "hosted-queue")),
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=True,
-            max_concurrent_tasks=1,
-            poll_interval_seconds=0.1,
-        ),
+        local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
     )
     application = create_app(settings=settings)
-    background_task_manager_host = application.state.background_task_manager_host
-
-    assert background_task_manager_host is None
-
-    application.state.session_factory.engine.dispose()
+    try:
+        assert not hasattr(application.state, "background_task_manager_host")
+        with TestClient(application):
+            assert not hasattr(application.state, "background_task_manager_host")
+    finally:
+        application.state.session_factory.engine.dispose()
 
 
 def _create_test_client(

@@ -304,20 +304,6 @@ class BackendServiceQueueConfig(BaseModel):
     file_operation_retry_timeout_seconds: float = Field(default=2.0, ge=0)
 
 
-class BackendServiceTaskManagerConfig(BaseModel):
-    """描述 backend-service 托管后台任务管理器的配置。
-
-    字段：
-    - enabled：是否在 backend-service 进程内自动启动 task manager。
-    - max_concurrent_tasks：后台任务最大并发数。
-    - poll_interval_seconds：空闲轮询间隔秒数。
-    """
-
-    enabled: bool = True
-    max_concurrent_tasks: int = 16
-    poll_interval_seconds: float = 1.0
-
-
 class BackendServiceAsyncInferenceGatewayConfig(BaseModel):
     """描述 async inference gateway 的服务标识配置。
 
@@ -541,7 +527,7 @@ class BackendServiceSettings(BaseSettings):
     - database：数据库连接配置。
     - dataset_storage：本地数据集文件存储配置。
     - queue：本地任务队列配置。
-    - task_manager：内嵌后台任务管理器配置。
+    - 后台任务只由独立 backend-worker Topology 消费。
     - async_inference_gateway：异步推理 gateway 配置。
     - workflow_runtime：workflow runtime 结果缓存配置。
     - zeromq_trigger：ZeroMQ TriggerSource 全局缺省值与 listener 生命周期配置。
@@ -553,7 +539,7 @@ class BackendServiceSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AMVISION_",
         env_nested_delimiter="__",
-        extra="ignore",
+        extra="forbid",
     )
 
     app: BackendServiceAppSettings = Field(default_factory=BackendServiceAppSettings)
@@ -569,9 +555,6 @@ class BackendServiceSettings(BaseSettings):
         default_factory=BackendServiceDatasetStorageConfig
     )
     queue: BackendServiceQueueConfig = Field(default_factory=BackendServiceQueueConfig)
-    task_manager: BackendServiceTaskManagerConfig = Field(
-        default_factory=BackendServiceTaskManagerConfig
-    )
     async_inference_gateway: BackendServiceAsyncInferenceGatewayConfig = Field(
         default_factory=BackendServiceAsyncInferenceGatewayConfig
     )

@@ -36,7 +36,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_test_headers, create_test_runtime
 from tests.test_workflow_application_process_executor import (
@@ -355,7 +354,6 @@ def _create_project_summary_test_client(
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,

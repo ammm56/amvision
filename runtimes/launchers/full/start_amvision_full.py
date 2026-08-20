@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import json
 import os
 import signal
@@ -13,7 +14,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import BinaryIO
+from typing import Callable
+from uuid import uuid4
 
 
 LAUNCHERS_ROOT = Path(__file__).resolve().parent / "launchers"
@@ -21,12 +23,53 @@ if str(LAUNCHERS_ROOT) not in sys.path:
     sys.path.insert(0, str(LAUNCHERS_ROOT))
 
 from common import (  # noqa: E402
+    DailyAppendLogCapture,
     WINDOWS_SYSTEM_CONFIGURATION_REQUIRED_EXIT_CODE,
+    build_daily_log_path,
     ensure_windows_long_paths_enabled,
-    is_pid_alive,
+    process_identity_matches,
+    read_process_identity,
     resolve_app_root,
     resolve_path,
 )
+
+
+FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
+
+
+class SupervisedComponent:
+    """描述 full Supervisor 当前管理的一个常驻组件。"""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        process: subprocess.Popen[bytes] | None,
+        log_capture: DailyAppendLogCapture | None,
+        worker_entry: dict[str, object] | None = None,
+        worker_profile: object | None = None,
+        restart_count: int = 0,
+        next_restart_at: float | None = None,
+        started_monotonic: float = 0.0,
+        last_return_code: int | None = None,
+    ) -> None:
+        """初始化一个受监督组件。"""
+
+        self.name = name
+        self.process = process
+        self.log_capture = log_capture
+        self.worker_entry = worker_entry
+        self.worker_profile = worker_profile
+        self.restart_count = restart_count
+        self.next_restart_at = next_restart_at
+        self.started_monotonic = started_monotonic
+        self.last_return_code = last_return_code
+
+    @property
+    def is_worker(self) -> bool:
+        """返回当前组件是否为可独立恢复的 Worker Profile。"""
+
+        return self.worker_entry is not None
 
 
 def _build_child_process_environment() -> dict[str, str]:
@@ -158,19 +201,6 @@ def _load_stack_state(state_file_path: Path) -> dict[str, object] | None:
     return json.loads(state_file_path.read_text(encoding="utf-8"))
 
 
-def _pid_is_alive(pid: int) -> bool:
-    """判断指定 pid 当前是否仍然存活。
-
-    参数：
-    - pid：待检查的进程 id。
-
-    返回：
-    - bool：进程仍然存活时返回 True，否则返回 False。
-    """
-
-    return is_pid_alive(pid)
-
-
 def _ensure_stack_not_running(state_file_path: Path) -> None:
     """确认当前不存在活跃的 full 一键启动实例。
 
@@ -182,19 +212,30 @@ def _ensure_stack_not_running(state_file_path: Path) -> None:
     if stack_state is None:
         return
 
+    if stack_state.get("format_id") != FULL_SUPERVISOR_STATE_FORMAT_ID:
+        raise RuntimeError(
+            f"full stack 状态文件不是当前格式，必须先完成干净切换: {state_file_path}"
+        )
+
     active_pids: list[int] = []
-    root_pid_raw = stack_state.get("root_pid")
-    if isinstance(root_pid_raw, int) and _pid_is_alive(root_pid_raw):
-        active_pids.append(root_pid_raw)
+    root_process = stack_state.get("root_process")
+    if isinstance(root_process, dict) and process_identity_matches(root_process):
+        root_pid = root_process.get("pid")
+        if isinstance(root_pid, int):
+            active_pids.append(root_pid)
 
     components_raw = stack_state.get("components")
     if isinstance(components_raw, list):
         for component_raw in components_raw:
             if not isinstance(component_raw, dict):
                 continue
-            pid_raw = component_raw.get("pid")
-            if isinstance(pid_raw, int) and _pid_is_alive(pid_raw):
-                active_pids.append(pid_raw)
+            process_identity = component_raw.get("process")
+            if isinstance(process_identity, dict) and process_identity_matches(
+                process_identity
+            ):
+                pid_raw = process_identity.get("pid")
+                if isinstance(pid_raw, int):
+                    active_pids.append(pid_raw)
 
     if not active_pids:
         with contextlib.suppress(FileNotFoundError):
@@ -248,7 +289,9 @@ def _load_release_manifest(app_root: Path, manifest_path: Path) -> dict[str, obj
     """
 
     if not manifest_path.is_file():
-        raise FileNotFoundError(f"文件不存在: {_format_runtime_path(app_root, manifest_path)}")
+        raise FileNotFoundError(
+            f"文件不存在: {_format_runtime_path(app_root, manifest_path)}"
+        )
     return json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
@@ -329,9 +372,7 @@ def _validate_required_files(
     daemon_entry = release_manifest.get("inference_daemon")
     if not isinstance(daemon_entry, dict):
         raise ValueError("release manifest 必须包含 inference_daemon")
-    required_paths.append(
-        resolve_path(app_root, str(daemon_entry["python_launcher"]))
-    )
+    required_paths.append(resolve_path(app_root, str(daemon_entry["python_launcher"])))
     for worker_entry in worker_entries:
         required_paths.append(
             resolve_path(app_root, str(worker_entry["python_launcher"]))
@@ -376,6 +417,10 @@ def _build_service_command(
     return [
         python_executable,
         str(service_launcher_path),
+        "--app-root",
+        str(app_root),
+        "--python-executable",
+        python_executable,
         "--host",
         host,
         "--port",
@@ -396,10 +441,14 @@ def _build_inference_daemon_command(
     daemon_entry = release_manifest.get("inference_daemon")
     if not isinstance(daemon_entry, dict):
         raise ValueError("release manifest 必须包含 inference_daemon")
-    launcher_path = resolve_path(app_root, str(daemon_entry.get("python_launcher") or ""))
+    launcher_path = resolve_path(
+        app_root, str(daemon_entry.get("python_launcher") or "")
+    )
     return [
         python_executable,
         str(launcher_path),
+        "--app-root",
+        str(app_root),
         "--python-executable",
         python_executable,
     ]
@@ -412,7 +461,9 @@ def _build_database_migration_command(
 ) -> list[str]:
     """构造发布启动前的数据库迁移命令。"""
 
-    maintenance_launcher = app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py"
+    maintenance_launcher = (
+        app_root / "launchers" / "maintenance" / "invoke_backend_maintenance.py"
+    )
     return [
         python_executable,
         str(maintenance_launcher),
@@ -429,6 +480,9 @@ def _build_worker_command(
     worker_entry: dict[str, object],
     *,
     python_executable: str,
+    topology: object,
+    worker_instance_id: str,
+    worker_runtime_root: Path,
 ) -> list[str]:
     """构造单个 worker 子进程命令。
 
@@ -445,9 +499,134 @@ def _build_worker_command(
     return [
         python_executable,
         str(worker_launcher_path),
+        "--app-root",
+        str(app_root),
+        "--python-executable",
+        python_executable,
         "--worker-profile-file",
         str(worker_entry["manifest"]),
+        "--topology-id",
+        str(getattr(topology, "topology_id")),
+        "--topology-generation",
+        str(getattr(topology, "topology_generation")),
+        "--topology-epoch-id",
+        str(getattr(topology, "topology_epoch_id")),
+        "--worker-instance-id",
+        worker_instance_id,
+        "--worker-runtime-root",
+        str(worker_runtime_root),
     ]
+
+
+def _import_worker_runtime_modules(app_root: Path) -> tuple[object, object]:
+    """从源码或发布目录导入 Worker 运行契约和单实例锁模块。"""
+
+    backend_root = app_root if (app_root / "backend").is_dir() else app_root / "app"
+    if str(backend_root) not in sys.path:
+        sys.path.insert(0, str(backend_root))
+    contracts = importlib.import_module("backend.workers.contracts")
+    profile_lock = importlib.import_module("backend.workers.profile_lock")
+    return contracts, profile_lock
+
+
+def _acquire_topology_lock(app_root: Path) -> tuple[object, str]:
+    """获取唯一 Topology 锁，并返回本次 Supervisor 实例 id。"""
+
+    contracts, profile_lock_module = _import_worker_runtime_modules(app_root)
+    layout = contracts.BackendWorkerRuntimeLayout(
+        (app_root / "data" / "runtime" / "backend-workers").resolve()
+    )
+    supervisor_instance_id = f"supervisor-{uuid4().hex}"
+    topology_lock = profile_lock_module.BackendWorkerProfileLock(
+        lock_path=layout.topology_lock_path,
+        owner={
+            "topology_id": contracts.WORKER_TOPOLOGY_ID,
+            "supervisor_instance_id": supervisor_instance_id,
+        },
+    )
+    topology_lock.acquire()
+    return topology_lock, supervisor_instance_id
+
+
+def _activate_worker_topology(
+    app_root: Path,
+    worker_entries: list[dict[str, object]],
+    *,
+    supervisor_instance_id: str,
+) -> tuple[object, object, dict[str, object]]:
+    """创建并原子激活一代严格 Worker Topology。"""
+
+    contracts, _profile_lock_module = _import_worker_runtime_modules(app_root)
+    layout = contracts.BackendWorkerRuntimeLayout(
+        (app_root / "data" / "runtime" / "backend-workers").resolve()
+    )
+    topology_generation = 1
+    if layout.active_topology_path.is_file():
+        try:
+            previous = contracts.load_worker_topology_pointer(
+                layout.active_topology_path
+            )
+        except (OSError, ValueError):
+            previous = None
+        if previous is not None:
+            topology_generation = previous.topology_generation + 1
+    profiles: dict[str, object] = {}
+    for worker_entry in worker_entries:
+        profile_path = resolve_path(app_root, str(worker_entry["manifest"]))
+        profile = contracts.load_worker_profile_manifest(profile_path)
+        declared_profile_id = str(worker_entry.get("profile_id") or "")
+        if profile.profile_id != declared_profile_id:
+            raise ValueError(
+                "release manifest 的 worker profile_id 与 Profile Manifest 不一致: "
+                f"declared={declared_profile_id!r}, actual={profile.profile_id!r}"
+            )
+        if profile.profile_id in profiles:
+            raise ValueError(
+                f"release manifest 重复声明 worker profile: {profile.profile_id}"
+            )
+        profiles[profile.profile_id] = profile
+    topology = contracts.WorkerTopologyManifest(
+        format_id=contracts.WORKER_TOPOLOGY_FORMAT_ID,
+        topology_id=contracts.WORKER_TOPOLOGY_ID,
+        topology_generation=topology_generation,
+        topology_epoch_id=f"epoch-{uuid4().hex}",
+        state="starting",
+        supervisor_instance_id=supervisor_instance_id,
+        activated_at=contracts.utc_now(),
+        heartbeat_interval_seconds=2.0,
+        stale_after_seconds=15.0,
+        expected_profiles=tuple(
+            contracts.WorkerTopologyProfile.from_manifest(profile)
+            for profile in profiles.values()
+        ),
+    )
+    contracts.write_worker_contract(
+        layout.topology_manifest_path(topology.topology_epoch_id),
+        topology,
+    )
+    contracts.write_worker_contract(
+        layout.active_topology_path,
+        contracts.build_topology_pointer(topology),
+    )
+    return layout, topology, profiles
+
+
+def _update_worker_topology_state(
+    app_root: Path,
+    *,
+    layout: object,
+    topology: object,
+    state: str,
+) -> object:
+    """更新当前 epoch 的 Supervisor 状态，并保持身份和 Profile 不变。"""
+
+    contracts, _profile_lock_module = _import_worker_runtime_modules(app_root)
+    updated = topology.model_copy(update={"state": state})
+    contracts.write_worker_contract(
+        layout.topology_manifest_path(updated.topology_epoch_id),
+        updated,
+    )
+    return updated
 
 
 def _start_component(
@@ -456,7 +635,7 @@ def _start_component(
     *,
     app_root: Path,
     log_file_path: Path,
-) -> tuple[subprocess.Popen[bytes], BinaryIO]:
+) -> tuple[subprocess.Popen[bytes], DailyAppendLogCapture]:
     """启动一个受监督的子进程，并把输出写入日志文件。
 
     参数：
@@ -466,26 +645,31 @@ def _start_component(
     - log_file_path：日志文件路径。
 
     返回：
-    - tuple[subprocess.Popen[bytes], BinaryIO]：子进程对象和打开中的日志句柄。
+    - 子进程对象和按日日志捕获器。
     """
 
-    log_file_path.parent.mkdir(parents=True, exist_ok=True)
-    log_handle = log_file_path.open("ab")
+    log_capture = DailyAppendLogCapture(
+        logs_dir=log_file_path.parent,
+        component_name=log_file_path.stem,
+    )
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     process = subprocess.Popen(
         command,
         cwd=str(app_root),
         env=_build_child_process_environment(),
-        stdout=log_handle,
+        stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         creationflags=creationflags,
         start_new_session=os.name != "nt",
     )
+    assert process.stdout is not None
+    log_capture.start(process.stdout)
     print(
-        f"已启动 {component_name}，pid={process.pid}，日志={_format_runtime_path(app_root, log_file_path)}",
+        f"已启动 {component_name}，pid={process.pid}，"
+        f"日志={_format_runtime_path(app_root, log_capture.current_log_path)}",
         flush=True,
     )
-    return process, log_handle
+    return process, log_capture
 
 
 def _resolve_health_host(host: str) -> str:
@@ -535,62 +719,81 @@ def _wait_for_backend_service_ready(
     )
 
 
-def _read_log_tail(
-    log_file_path: Path,
-    *,
-    max_bytes: int = 4096,
-    start_offset: int = 0,
-) -> str:
-    """读取本次启动之后的日志尾部，避免旧 ready 标记造成假就绪。"""
-
-    if not log_file_path.is_file():
-        return ""
-    with log_file_path.open("rb") as log_file:
-        log_file.seek(0, os.SEEK_END)
-        file_size = log_file.tell()
-        log_file.seek(max(max(0, start_offset), file_size - max_bytes))
-        return log_file.read().decode("utf-8", errors="replace")
-
-
 def _wait_for_worker_ready(
     *,
     app_root: Path,
     component_name: str,
     process: subprocess.Popen[bytes],
-    log_file_path: Path,
+    log_capture: DailyAppendLogCapture,
     timeout_seconds: float,
-    log_start_offset: int = 0,
+    worker_runtime_layout: object,
+    topology: object,
+    profile: object,
 ) -> None:
     """等待 backend-worker 完成初始化。
 
     说明：
-    - worker 只有打印 backend-worker ready 后才真正进入轮询循环。
-    - 如果 worker 在初始化阶段退出，立即带日志尾部报错，避免现场只看到 returncode。
+    - 就绪只以当前 Topology epoch 的严格心跳为准，不解析日志文本。
+    - 如果 worker 在初始化阶段退出，仍附带当日日志尾部帮助定位。
     """
 
     deadline = time.monotonic() + max(1.0, timeout_seconds)
-    ready_marker = "backend-worker ready"
+    contracts, _profile_lock_module = _import_worker_runtime_modules(app_root)
+    heartbeat_path = worker_runtime_layout.profile_heartbeat_path(
+        topology.topology_epoch_id,
+        profile.profile_id,
+    )
     while time.monotonic() < deadline:
         return_code = process.poll()
-        log_tail = _read_log_tail(
-            log_file_path,
-            start_offset=log_start_offset,
-        )
-        if ready_marker in log_tail:
-            print(f"{component_name} 已就绪。", flush=True)
-            return
+        if heartbeat_path.is_file():
+            try:
+                heartbeat = contracts.load_worker_heartbeat(heartbeat_path)
+            except (OSError, ValueError):
+                heartbeat = None
+            if heartbeat is not None:
+                heartbeat_identity = (
+                    heartbeat.topology_id,
+                    heartbeat.topology_generation,
+                    heartbeat.topology_epoch_id,
+                    heartbeat.profile_id,
+                    heartbeat.profile_fingerprint,
+                )
+                expected_identity = (
+                    topology.topology_id,
+                    topology.topology_generation,
+                    topology.topology_epoch_id,
+                    profile.profile_id,
+                    profile.fingerprint(),
+                )
+                if (
+                    heartbeat_identity == expected_identity
+                    and heartbeat.status == "running"
+                ):
+                    print(
+                        f"{component_name} 已就绪，worker_instance_id="
+                        f"{heartbeat.worker_instance_id}。",
+                        flush=True,
+                    )
+                    return
+                if (
+                    heartbeat_identity == expected_identity
+                    and heartbeat.status == "failed"
+                ):
+                    raise RuntimeError(
+                        f"{component_name} 初始化失败：{heartbeat.failure_message or 'unknown'}"
+                    )
         if return_code is not None:
             raise RuntimeError(
                 f"{component_name} 初始化失败，returncode={return_code}，"
-                f"日志={_format_runtime_path(app_root, log_file_path)}\n"
-                f"{log_tail}"
+                f"日志={_format_runtime_path(app_root, log_capture.current_log_path)}\n"
+                f"{log_capture.tail_text()}"
             )
         time.sleep(0.2)
 
     raise TimeoutError(
         f"{component_name} 未在 {timeout_seconds:.0f}s 内完成初始化，"
-        f"日志={_format_runtime_path(app_root, log_file_path)}\n"
-        f"{_read_log_tail(log_file_path, start_offset=log_start_offset)}"
+        f"日志={_format_runtime_path(app_root, log_capture.current_log_path)}\n"
+        f"{log_capture.tail_text()}"
     )
 
 
@@ -598,9 +801,8 @@ def _wait_for_inference_daemon_ready(
     *,
     app_root: Path,
     process: subprocess.Popen[bytes],
-    log_file_path: Path,
+    log_capture: DailyAppendLogCapture,
     timeout_seconds: float,
-    log_start_offset: int = 0,
     probe_command: list[str] | None = None,
 ) -> None:
     """等待 daemon 初始化，并用真实控制队列往返确认可用。"""
@@ -610,10 +812,8 @@ def _wait_for_inference_daemon_ready(
     last_probe_error = ""
     while time.monotonic() < deadline:
         return_code = process.poll()
-        log_tail = _read_log_tail(
-            log_file_path,
-            start_offset=log_start_offset,
-        )
+        log_capture.assert_healthy()
+        log_tail = log_capture.tail_text()
         if ready_marker in log_tail:
             if probe_command is None:
                 print("inference-daemon 已就绪。", flush=True)
@@ -639,14 +839,14 @@ def _wait_for_inference_daemon_ready(
         if return_code is not None:
             raise RuntimeError(
                 f"inference-daemon 初始化失败，returncode={return_code}，"
-                f"日志={_format_runtime_path(app_root, log_file_path)}\n{log_tail}"
+                f"日志={_format_runtime_path(app_root, log_capture.current_log_path)}\n{log_tail}"
             )
         time.sleep(0.2)
     raise TimeoutError(
         f"inference-daemon 未在 {timeout_seconds:.0f}s 内完成初始化，"
-        f"日志={_format_runtime_path(app_root, log_file_path)}\n"
+        f"日志={_format_runtime_path(app_root, log_capture.current_log_path)}\n"
         f"最近探测错误={last_probe_error}\n"
-        f"{_read_log_tail(log_file_path, start_offset=log_start_offset)}"
+        f"{log_capture.tail_text()}"
     )
 
 
@@ -658,8 +858,12 @@ def _run_database_migration(
 ) -> None:
     """在任何常驻组件启动前完成数据库升级，失败时阻止整套服务启动。"""
 
-    log_file_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_file_path.open("ab") as log_handle:
+    daily_log_file_path = build_daily_log_path(
+        log_file_path.parent,
+        log_file_path.stem,
+    )
+    daily_log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with daily_log_file_path.open("ab") as log_handle:
         result = subprocess.run(
             command,
             cwd=str(app_root),
@@ -672,7 +876,7 @@ def _run_database_migration(
         raise RuntimeError(
             "数据库迁移失败，禁止继续启动；"
             f"returncode={result.returncode}，"
-            f"日志={_format_runtime_path(app_root, log_file_path)}"
+            f"日志={_format_runtime_path(app_root, daily_log_file_path)}"
         )
     print("数据库 schema 已升级到当前版本。", flush=True)
 
@@ -684,7 +888,7 @@ def _write_stack_state(
     release_manifest_file: str,
     python_executable: str,
     logs_dir: Path,
-    components: list[tuple[str, subprocess.Popen[bytes], BinaryIO, Path]],
+    components: list[SupervisedComponent],
 ) -> None:
     """把当前 full stack 的运行状态写入状态文件。
 
@@ -698,27 +902,59 @@ def _write_stack_state(
     """
 
     payload = {
+        "format_id": FULL_SUPERVISOR_STATE_FORMAT_ID,
         "app_root": str(app_root),
-        "root_pid": os.getpid(),
+        "root_process": read_process_identity(os.getpid()),
         "release_manifest_file": release_manifest_file,
         "python_executable": python_executable,
         "logs_dir": _format_runtime_path(app_root, logs_dir),
         "state_file": _format_runtime_path(app_root, state_file_path),
         "components": [
-            {
-                "name": component_name,
-                "pid": process.pid,
-                "log_file": _format_runtime_path(app_root, log_file_path),
-                "stop_mode": "process-tree" if os.name == "nt" else "process-group",
-            }
-            for component_name, process, _log_handle, log_file_path in components
+            _build_component_state(app_root, component) for component in components
         ],
     }
     state_file_path.parent.mkdir(parents=True, exist_ok=True)
-    state_file_path.write_text(
+    temp_path = state_file_path.with_name(f"{state_file_path.name}.{os.getpid()}.tmp")
+    temp_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    temp_path.replace(state_file_path)
+
+
+def _build_component_state(
+    app_root: Path,
+    component: SupervisedComponent,
+) -> dict[str, object]:
+    """把一个 Supervisor 组件转换为可恢复的状态记录。"""
+
+    process = component.process
+    log_capture = component.log_capture
+    process_identity: dict[str, object] | None = None
+    if process is not None and process.poll() is None:
+        with contextlib.suppress(Exception):
+            process_identity = read_process_identity(process.pid)
+    return {
+        "name": component.name,
+        "process": process_identity,
+        "state": "running"
+        if process is not None and process.poll() is None
+        else "recovering",
+        "profile_id": (
+            str(component.worker_entry.get("profile_id"))
+            if component.worker_entry is not None
+            else None
+        ),
+        "restart_count": component.restart_count,
+        "last_return_code": component.last_return_code,
+        "log_file": (
+            _format_runtime_path(app_root, log_capture.current_log_path)
+            if log_capture is not None
+            else None
+        ),
+        "log_pattern": log_capture.log_pattern if log_capture is not None else None,
+        "stop_mode": "process-tree" if os.name == "nt" else "process-group",
+    }
 
 
 def _stop_component(process: subprocess.Popen[bytes]) -> None:
@@ -751,6 +987,61 @@ def _stop_component(process: subprocess.Popen[bytes]) -> None:
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
 
 
+def _launch_worker_profile(
+    *,
+    app_root: Path,
+    python_executable: str,
+    logs_dir: Path,
+    worker_entry: dict[str, object],
+    profile: object,
+    worker_runtime_layout: object,
+    worker_topology: object,
+    ready_timeout_seconds: float,
+    on_started: Callable[[subprocess.Popen[bytes], DailyAppendLogCapture], None]
+    | None = None,
+) -> tuple[subprocess.Popen[bytes], DailyAppendLogCapture]:
+    """启动一个 Worker Profile，并等待严格 epoch 心跳进入 running。"""
+
+    profile_id = str(worker_entry["profile_id"])
+    worker_process, worker_log_capture = _start_component(
+        f"backend-worker:{profile_id}",
+        _build_worker_command(
+            app_root,
+            worker_entry,
+            python_executable=python_executable,
+            topology=worker_topology,
+            worker_instance_id=f"worker-{profile_id}-{uuid4().hex}",
+            worker_runtime_root=worker_runtime_layout.root_dir,
+        ),
+        app_root=app_root,
+        log_file_path=logs_dir / f"backend-worker-{profile_id}.log",
+    )
+    if on_started is not None:
+        on_started(worker_process, worker_log_capture)
+    try:
+        _wait_for_worker_ready(
+            app_root=app_root,
+            component_name=f"backend-worker:{profile_id}",
+            process=worker_process,
+            log_capture=worker_log_capture,
+            timeout_seconds=ready_timeout_seconds,
+            worker_runtime_layout=worker_runtime_layout,
+            topology=worker_topology,
+            profile=profile,
+        )
+    except BaseException:
+        _stop_component(worker_process)
+        worker_log_capture.close()
+        raise
+    return worker_process, worker_log_capture
+
+
+def _calculate_worker_restart_delay(restart_count: int) -> float:
+    """返回无抖动、封顶的 Worker Profile 恢复退避秒数。"""
+
+    return min(30.0, 2.0 ** max(0, min(restart_count - 1, 5)))
+
+
 def main(argv: list[str] | None = None) -> int:
     """执行 full 发布目录一键启动入口。
 
@@ -778,7 +1069,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ensure_stack_not_running(state_file_path)
 
-    release_manifest_path = _resolve_release_manifest_path(app_root, args.release_manifest_file)
+    release_manifest_path = _resolve_release_manifest_path(
+        app_root, args.release_manifest_file
+    )
     release_manifest = _load_release_manifest(app_root, release_manifest_path)
     worker_entries = _select_worker_entries(release_manifest, args.worker_profile_id)
     _validate_required_files(app_root, release_manifest, worker_entries)
@@ -794,8 +1087,25 @@ def main(argv: list[str] | None = None) -> int:
             "full 发行目录缺少可用的 python/python.exe，禁止回退到系统 Python"
         )
     python_executable = str(python_executable_path)
+    topology_lock, supervisor_instance_id = _acquire_topology_lock(app_root)
+    worker_runtime_layout: object | None = None
+    worker_topology: object | None = None
+    worker_profiles: dict[str, object] = {}
+    try:
+        (
+            worker_runtime_layout,
+            worker_topology,
+            worker_profiles,
+        ) = _activate_worker_topology(
+            app_root,
+            worker_entries,
+            supervisor_instance_id=supervisor_instance_id,
+        )
+    except BaseException:
+        topology_lock.release()
+        raise
     logs_dir = app_root / "logs" / args.logs_subdir
-    components: list[tuple[str, subprocess.Popen[bytes], BinaryIO, Path]] = []
+    components: list[SupervisedComponent] = []
     signal.signal(signal.SIGTERM, _request_stack_shutdown)
     if os.name == "nt" and hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, _request_stack_shutdown)
@@ -822,12 +1132,7 @@ def main(argv: list[str] | None = None) -> int:
             log_file_path=logs_dir / "database-migration.log",
         )
         daemon_log_file_path = logs_dir / "inference-daemon.log"
-        daemon_log_start_offset = (
-            daemon_log_file_path.stat().st_size
-            if daemon_log_file_path.is_file()
-            else 0
-        )
-        daemon_process, daemon_log_handle = _start_component(
+        daemon_process, daemon_log_capture = _start_component(
             "inference-daemon",
             _build_inference_daemon_command(
                 app_root,
@@ -838,20 +1143,19 @@ def main(argv: list[str] | None = None) -> int:
             log_file_path=daemon_log_file_path,
         )
         components.append(
-            (
-                "inference-daemon",
-                daemon_process,
-                daemon_log_handle,
-                daemon_log_file_path,
+            SupervisedComponent(
+                name="inference-daemon",
+                process=daemon_process,
+                log_capture=daemon_log_capture,
+                started_monotonic=time.monotonic(),
             )
         )
         persist_stack_state()
         _wait_for_inference_daemon_ready(
             app_root=app_root,
             process=daemon_process,
-            log_file_path=daemon_log_file_path,
+            log_capture=daemon_log_capture,
             timeout_seconds=args.service_ready_timeout_seconds,
-            log_start_offset=daemon_log_start_offset,
             probe_command=_build_inference_daemon_command(
                 app_root,
                 release_manifest,
@@ -859,7 +1163,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
 
-        service_log_file_path = logs_dir / "service.log"
+        service_log_file_path = logs_dir / "backend-service.log"
         service_command = _build_service_command(
             app_root,
             release_manifest,
@@ -868,18 +1172,18 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             service_log_level=args.service_log_level,
         )
-        service_process, service_log_handle = _start_component(
+        service_process, service_log_capture = _start_component(
             "backend-service",
             service_command,
             app_root=app_root,
             log_file_path=service_log_file_path,
         )
         components.append(
-            (
-                "backend-service",
-                service_process,
-                service_log_handle,
-                service_log_file_path,
+            SupervisedComponent(
+                name="backend-service",
+                process=service_process,
+                log_capture=service_log_capture,
+                started_monotonic=time.monotonic(),
             )
         )
         persist_stack_state()
@@ -895,41 +1199,53 @@ def main(argv: list[str] | None = None) -> int:
 
         for worker_entry in worker_entries:
             profile_id = str(worker_entry["profile_id"])
-            worker_log_file_path = logs_dir / f"worker-{profile_id}.log"
-            worker_log_start_offset = (
-                worker_log_file_path.stat().st_size
-                if worker_log_file_path.is_file()
-                else 0
+            component = SupervisedComponent(
+                name=f"backend-worker:{profile_id}",
+                process=None,
+                log_capture=None,
+                worker_entry=worker_entry,
+                worker_profile=worker_profiles[profile_id],
             )
-            worker_command = _build_worker_command(
-                app_root,
-                worker_entry,
-                python_executable=python_executable,
-            )
-            worker_process, worker_log_handle = _start_component(
-                f"backend-worker:{profile_id}",
-                worker_command,
-                app_root=app_root,
-                log_file_path=worker_log_file_path,
-            )
-            components.append(
-                (
-                    f"backend-worker:{profile_id}",
-                    worker_process,
-                    worker_log_handle,
-                    worker_log_file_path,
-                )
-            )
-            persist_stack_state()
-            _wait_for_worker_ready(
-                app_root=app_root,
-                component_name=f"backend-worker:{profile_id}",
-                process=worker_process,
-                log_file_path=worker_log_file_path,
-                timeout_seconds=args.worker_ready_timeout_seconds,
-                log_start_offset=worker_log_start_offset,
-            )
+            components.append(component)
 
+            def record_worker_start(
+                process: subprocess.Popen[bytes],
+                log_capture: DailyAppendLogCapture,
+                *,
+                target: SupervisedComponent = component,
+            ) -> None:
+                """在启动等待前持久化新 Worker pid。"""
+
+                target.process = process
+                target.log_capture = log_capture
+                target.started_monotonic = time.monotonic()
+                persist_stack_state()
+
+            worker_process, worker_log_capture = _launch_worker_profile(
+                app_root=app_root,
+                python_executable=python_executable,
+                logs_dir=logs_dir,
+                worker_entry=worker_entry,
+                profile=worker_profiles[profile_id],
+                worker_runtime_layout=worker_runtime_layout,
+                worker_topology=worker_topology,
+                ready_timeout_seconds=args.worker_ready_timeout_seconds,
+                on_started=record_worker_start,
+            )
+            component.process = worker_process
+            component.log_capture = worker_log_capture
+            component.started_monotonic = time.monotonic()
+            component.restart_count = 0
+            component.next_restart_at = None
+            component.last_return_code = None
+            persist_stack_state()
+
+        worker_topology = _update_worker_topology_state(
+            app_root,
+            layout=worker_runtime_layout,
+            topology=worker_topology,
+            state="running",
+        )
         persist_stack_state()
         print(
             f"运行状态文件已写入 {_format_runtime_path(app_root, state_file_path)}。",
@@ -938,27 +1254,125 @@ def main(argv: list[str] | None = None) -> int:
         print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
 
         while True:
-            for component_name, process, _log_handle, _log_file_path in components:
-                return_code = process.poll()
-                if return_code is None:
+            now = time.monotonic()
+            for component in components:
+                process = component.process
+                log_capture = component.log_capture
+                if log_capture is not None:
+                    log_capture.assert_healthy()
+                if process is not None:
+                    return_code = process.poll()
+                    if return_code is None:
+                        continue
+                    component.last_return_code = return_code
+                    if not component.is_worker:
+                        print(
+                            f"检测到 {component.name} 已退出，returncode={return_code}；"
+                            "正在停止整套服务。",
+                            flush=True,
+                        )
+                        return 1 if return_code == 0 else return_code
+                    if log_capture is not None:
+                        log_capture.close()
+                    if now - component.started_monotonic >= 300:
+                        component.restart_count = 0
+                    component.restart_count += 1
+                    component.process = None
+                    component.log_capture = None
+                    restart_delay = _calculate_worker_restart_delay(
+                        component.restart_count
+                    )
+                    component.next_restart_at = now + restart_delay
+                    print(
+                        f"{component.name} 已退出，returncode={return_code}；"
+                        f"仅恢复该 Profile，{restart_delay:.0f}s 后重启。",
+                        flush=True,
+                    )
+                    persist_stack_state()
                     continue
-                print(
-                    f"检测到 {component_name} 已退出，returncode={return_code}；正在停止其余组件。",
-                    flush=True,
-                )
-                return 1 if return_code == 0 else return_code
-            time.sleep(1.0)
+                if not component.is_worker:
+                    continue
+                restart_at = component.next_restart_at
+                if restart_at is None or now < restart_at:
+                    continue
+
+                def record_recovery_start(
+                    recovered_process: subprocess.Popen[bytes],
+                    recovered_log_capture: DailyAppendLogCapture,
+                    *,
+                    target: SupervisedComponent = component,
+                ) -> None:
+                    """持久化恢复中的 Worker 新进程身份。"""
+
+                    target.process = recovered_process
+                    target.log_capture = recovered_log_capture
+                    target.started_monotonic = time.monotonic()
+                    target.next_restart_at = None
+                    persist_stack_state()
+
+                try:
+                    recovered_process, recovered_log_capture = _launch_worker_profile(
+                        app_root=app_root,
+                        python_executable=python_executable,
+                        logs_dir=logs_dir,
+                        worker_entry=component.worker_entry,
+                        profile=component.worker_profile,
+                        worker_runtime_layout=worker_runtime_layout,
+                        worker_topology=worker_topology,
+                        ready_timeout_seconds=args.worker_ready_timeout_seconds,
+                        on_started=record_recovery_start,
+                    )
+                except Exception as error:  # noqa: BLE001 - 单 Profile 故障不停止整栈
+                    component.process = None
+                    component.log_capture = None
+                    component.restart_count += 1
+                    restart_delay = _calculate_worker_restart_delay(
+                        component.restart_count
+                    )
+                    component.next_restart_at = time.monotonic() + restart_delay
+                    print(
+                        f"{component.name} 恢复失败：{error}；"
+                        f"{restart_delay:.0f}s 后再次启动该 Profile。",
+                        flush=True,
+                    )
+                    persist_stack_state()
+                    continue
+                component.process = recovered_process
+                component.log_capture = recovered_log_capture
+                component.started_monotonic = time.monotonic()
+                component.next_restart_at = None
+                component.last_return_code = None
+                print(f"{component.name} 已独立恢复。", flush=True)
+                persist_stack_state()
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("收到终止信号，正在停止全部子进程。", flush=True)
         return 0
     finally:
-        for _component_name, process, _log_handle, _log_file_path in reversed(
-            components
-        ):
-            _stop_component(process)
-        for _component_name, _process, log_handle, _log_file_path in components:
+        if worker_runtime_layout is not None and worker_topology is not None:
             with contextlib.suppress(Exception):
-                log_handle.close()
+                worker_topology = _update_worker_topology_state(
+                    app_root,
+                    layout=worker_runtime_layout,
+                    topology=worker_topology,
+                    state="stopping",
+                )
+        for component in reversed(components):
+            if component.process is not None:
+                _stop_component(component.process)
+        for component in components:
+            if component.log_capture is not None:
+                with contextlib.suppress(Exception):
+                    component.log_capture.close()
+        if worker_runtime_layout is not None and worker_topology is not None:
+            with contextlib.suppress(Exception):
+                worker_topology = _update_worker_topology_state(
+                    app_root,
+                    layout=worker_runtime_layout,
+                    topology=worker_topology,
+                    state="stopped",
+                )
+        topology_lock.release()
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
 

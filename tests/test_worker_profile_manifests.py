@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from backend.workers.settings import SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS
+import pytest
+from pydantic import ValidationError
+
+from backend.workers.contracts import (
+    WORKER_PROFILE_FORMAT_ID,
+    load_worker_profile_manifest,
+)
+from backend.workers.settings import BackendWorkerSettings
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKER_PROFILES_DIR = REPO_ROOT / "runtimes" / "manifests" / "worker-profiles"
-DEFAULT_BACKEND_WORKER_CONFIG = REPO_ROOT / "config" / "backend-worker.json"
 
 
 EXPECTED_WORKER_PROFILE_CONSUMERS: dict[str, tuple[str, ...]] = {
@@ -54,30 +59,37 @@ EXPECTED_WORKER_PROFILE_CONSUMERS: dict[str, tuple[str, ...]] = {
 def test_worker_profile_manifests_cover_current_release_full_consumer_matrix() -> None:
     """验证 full 发布目录使用的 worker profile 已覆盖当前真实消费者矩阵。"""
 
-    for profile_id, expected_consumer_kinds in EXPECTED_WORKER_PROFILE_CONSUMERS.items():
+    for (
+        profile_id,
+        expected_consumer_kinds,
+    ) in EXPECTED_WORKER_PROFILE_CONSUMERS.items():
         manifest_path = WORKER_PROFILES_DIR / f"{profile_id}.json"
-        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert tuple(manifest_payload["enabled_consumer_kinds"]) == expected_consumer_kinds
+        manifest = load_worker_profile_manifest(manifest_path)
+        assert manifest.format_id == WORKER_PROFILE_FORMAT_ID
+        assert manifest.enabled_consumer_kinds == expected_consumer_kinds
 
 
 def test_worker_profile_manifests_only_use_supported_consumer_kinds() -> None:
     """验证 worker profile manifest 不会引用未注册的 consumer kind。"""
 
     for manifest_path in WORKER_PROFILES_DIR.glob("*.json"):
-        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        enabled_consumer_kinds = manifest_payload.get("enabled_consumer_kinds")
-        assert isinstance(enabled_consumer_kinds, list)
-        assert enabled_consumer_kinds
-        assert set(enabled_consumer_kinds).issubset(SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS)
+        manifest = load_worker_profile_manifest(manifest_path)
+        assert manifest.enabled_consumer_kinds
 
 
-def test_default_backend_worker_config_enables_current_full_consumer_set() -> None:
-    """验证默认 backend-worker 配置覆盖当前真实使用的所有 consumer。"""
+def test_backend_worker_config_does_not_repeat_profile_runtime_policy() -> None:
+    """consumer、并发和轮询策略只能来自严格 Profile Manifest。"""
 
-    config_payload = json.loads(DEFAULT_BACKEND_WORKER_CONFIG.read_text(encoding="utf-8"))
-    enabled_consumer_kinds = tuple(config_payload["task_manager"]["enabled_consumer_kinds"])
-    expected_consumer_kinds = set().union(*EXPECTED_WORKER_PROFILE_CONSUMERS.values())
+    config_text = (REPO_ROOT / "config" / "backend-worker.json").read_text(
+        encoding="utf-8"
+    )
 
-    assert len(enabled_consumer_kinds) == len(set(enabled_consumer_kinds))
-    assert set(enabled_consumer_kinds) == expected_consumer_kinds
-    assert set(enabled_consumer_kinds).issubset(SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS)
+    assert '"task_manager"' not in config_text
+    assert '"enabled_consumer_kinds"' not in config_text
+
+
+def test_backend_worker_settings_reject_removed_task_manager_config() -> None:
+    """旧 task_manager 配置不能被静默忽略。"""
+
+    with pytest.raises(ValidationError, match="task_manager"):
+        BackendWorkerSettings(task_manager={})

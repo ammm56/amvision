@@ -11,9 +11,9 @@
 
 ## 先看这 5 个点
 
-1. `logs/full-stack/runtime-state.json` 是否存在，内容里的 pid 是否还是活的。
-2. `logs/full-stack/service.log` 是否正常持续写入。
-3. 目标 `worker-*.log` 是否存在，是否和任务类型对应。
+1. `logs/full-stack/runtime-state.json` 是否存在，记录的完整进程身份是否仍匹配。
+2. `logs/full-stack/backend-service-<当天 YYYYMMDD>.log` 是否正常持续写入。
+3. 目标 `backend-worker-<profile>-<当天 YYYYMMDD>.log` 是否存在，是否和任务类型对应。
 4. `config/backend-service.json`、`config/backend-worker.json` 里的路径是否指向同一套 `data/`。
 5. `manifests/worker-profiles/*.json` 是否真的包含当前任务需要的 consumer kind。
 
@@ -21,9 +21,9 @@
 
 | 路径或接口 | 用途 |
 | --- | --- |
-| `logs/full-stack/service.log` | 看 backend-service 是否正常启动、端口是否绑定成功、API 是否有异常 |
-| `logs/full-stack/worker-*.log` | 看具体 worker 是否成功装配、是否在消费队列、是否有模型运行时错误 |
-| `logs/full-stack/runtime-state.json` | 看 full 根脚本当前记录的 service / worker pid 和日志路径 |
+| `logs/full-stack/backend-service-YYYYMMDD.log` | 看 backend-service 是否正常启动、端口是否绑定成功、API 是否有异常 |
+| `logs/full-stack/backend-worker-<profile>-YYYYMMDD.log` | 看具体 Profile 是否成功装配、消费队列或出现模型运行时错误 |
+| `logs/full-stack/runtime-state.json` | 看 Supervisor、Topology、完整进程身份、当前日志路径和日志模式 |
 | `http://127.0.0.1:5600/api/v1/system/health` | 看 service 是否已对外可用 |
 | `http://127.0.0.1:5600/docs` | 看 OpenAPI 和前端静态资源是否至少能正常返回 |
 
@@ -66,7 +66,7 @@
 
 先看：
 
-- `logs/full-stack/service.log`
+- `logs/full-stack/backend-service-<当天 YYYYMMDD>.log`
 
 高频原因：
 
@@ -87,8 +87,8 @@
 
 先看：
 
-- `logs/full-stack/service.log`
-- `logs/full-stack/worker-*.log`
+- `logs/full-stack/backend-service-<当天 YYYYMMDD>.log`
+- `logs/full-stack/backend-worker-<profile>-<当天 YYYYMMDD>.log`
 - `logs/full-stack/runtime-state.json`
 
 典型根因：
@@ -140,46 +140,36 @@ Content-Type: application/javascript
 
 如果仍然返回 `text/plain`，说明运行的不是包含该修复的发布包，或目标目录仍在使用旧的 `app/backend/service/api/app.py`。应重新装配并部署对应 release profile。
 
-### 5. 第一次启动某个 worker 退出，第二次启动正常
+### 5. 单个 Worker Profile 退出或显示降级
 
-典型现象：
+当前实现不扫描队列目录中的旧心跳文件。设置页只读取 `data/runtime/backend-workers/active.json` 指向的当前 epoch，并逐个读取 manifest 声明的 Profile 心跳。
 
-- `start-amvision-full.bat` 显示 backend-service health 已就绪，并依次启动 `dataset-import`、`dataset-export`、`inference`。
-- 随后提示类似 `检测到 backend-worker:dataset-export 已退出，returncode=1；正在停止其余组件。`
-- 重新执行同一个启动脚本后又能正常启动。
+检查顺序：
 
-这类问题通常不是 dataset export 任务本身失败，而是 worker 初始化阶段失败。旧实现中多个独立 worker profile 会同时写入同一个 `data/queue/_worker_health/backend-worker.json.tmp`，Windows 下其中一个进程完成原子替换后，另一个进程再替换同名临时文件就可能失败并退出。第二次启动只是竞态没有碰上，不代表实现稳定。
+1. 在设置页“运行状态”确认 Topology generation、epoch 和失败 Profile。
+2. 检查 `data/runtime/backend-workers/topologies/<epoch>/manifest.json`。
+3. 检查 `data/runtime/backend-workers/topologies/<epoch>/profiles/<profile>.json`。
+4. 检查 `logs/full-stack/backend-worker-<profile>-<当天 YYYYMMDD>.log`。
 
-当前修复后的发布包应满足：
+运行期只有一个 Worker Profile 退出时，Supervisor 只恢复该 Profile，backend-service、inference daemon 和其他 Profile 不会被停止。新的进程必须产生新的 `worker_instance_id`；持续使用旧 instance id 或旧 epoch 心跳属于错误。
 
-- `data/queue/_worker_health/` 下每个 profile 有独立心跳文件，例如 `backend-worker-amvision-dataset-export-worker.json`。
-- 心跳临时文件带进程 id 和随机 id，不再共享 `backend-worker.json.tmp`。
-- full 一键启动器会等待每个 worker 日志出现 `backend-worker ready` 后才继续，并在失败时打印对应 `logs/full-stack/worker-<profile>.log` 的尾部。
-
-现场验证方式：
-
-```powershell
-Get-ChildItem .\data\queue\_worker_health
-Get-Content .\logs\full-stack\worker-dataset-export.log -Tail 80
-```
-
-如果仍然看到只有单个 `backend-worker.json`，说明运行的仍是旧发布包。需要用包含该修复的源码重新执行对应 release profile 的装配。
+健康诊断只读取 `data/runtime/backend-workers/active.json` 指向的 Topology 和该 Topology 的 Profile 心跳；其他目录或文件不参与当前健康判断。
 
 ### 6. API 能访问，但任务一直停在 `queued`
 
 先看：
 
-- `logs/full-stack/worker-*.log`
+- `logs/full-stack/backend-worker-*-YYYYMMDD.log`
 - `config/backend-worker.json`
 - `manifests/worker-profiles/*.json`
 
 重点确认：
 
-- dataset 导入任务：看 `worker-dataset-import.log`
-- 训练任务：看 `worker-training.log`
-- 转换任务：看 `worker-conversion.log`
-- 评估任务：看 `worker-evaluation.log`
-- 异步推理任务：看 `worker-inference.log`
+- dataset 导入任务：看 `backend-worker-dataset-import-YYYYMMDD.log`
+- 训练任务：看 `backend-worker-training-YYYYMMDD.log`
+- 转换任务：看 `backend-worker-conversion-YYYYMMDD.log`
+- 评估任务：看 `backend-worker-evaluation-YYYYMMDD.log`
+- 异步推理任务：看 `backend-worker-inference-YYYYMMDD.log`
 
 当前 `worker profile` 真实边界是：
 
@@ -193,8 +183,8 @@ Get-Content .\logs\full-stack\worker-dataset-export.log -Tail 80
 先看：
 
 - 该任务对应的 deployment / inference API 返回
-- `service.log`
-- 相关 worker log
+- `backend-service-<当天 YYYYMMDD>.log`
+- 对应的 `backend-worker-<profile>-<当天 YYYYMMDD>.log`
 
 当前仓库已经有一条显式 real smoke matrix：
 
@@ -272,7 +262,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 先看：
 
 - `runtime-state.json` 是否被更新
-- stop 前后 `worker-*.log` 是否还在持续写入
+- stop 前后当天的 `backend-worker-<profile>-<YYYYMMDD>.log` 是否还在持续写入
 
 当前 stop 语义是：
 
@@ -289,9 +279,9 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 ## 推荐排障顺序
 
 1. `validate-layout`
-2. `service.log`
+2. `backend-service-<当天 YYYYMMDD>.log`
 3. `runtime-state.json`
-4. 对应 `worker-*.log`
+4. 对应的 `backend-worker-<profile>-<当天 YYYYMMDD>.log`
 5. `system/health`
 6. 最小 API smoke
 7. 必要时回到仓库侧 integration smoke

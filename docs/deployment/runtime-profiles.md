@@ -116,14 +116,11 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 
 | 路径 | 作用 |
 | --- | --- |
-| `logs/full-stack/service.log` | backend-service 主日志 |
-| `logs/full-stack/worker-dataset-import.log` | dataset-import worker 日志 |
-| `logs/full-stack/worker-dataset-export.log` | dataset-export worker 日志 |
-| `logs/full-stack/worker-training.log` | training worker 日志 |
-| `logs/full-stack/worker-conversion.log` | conversion worker 日志 |
-| `logs/full-stack/worker-evaluation.log` | evaluation worker 日志 |
-| `logs/full-stack/worker-inference.log` | inference worker 日志 |
-| `logs/full-stack/runtime-state.json` | full 一键启动写入的运行状态文件，供 stop 脚本回收进程 |
+| `logs/full-stack/backend-service-YYYYMMDD.log` | backend-service 当日日志 |
+| `logs/full-stack/inference-daemon-YYYYMMDD.log` | inference daemon 当日日志 |
+| `logs/full-stack/backend-worker-<profile>-YYYYMMDD.log` | 指定 Worker Profile 当日日志 |
+| `logs/full-stack/database-migration-YYYYMMDD.log` | Alembic 迁移当日日志 |
+| `logs/full-stack/runtime-state.json` | full Supervisor 状态、完整进程身份、当前日志路径和日志模式 |
 
 如果使用 `--logs-subdir` 或 `--state-file`，这些默认路径会被覆盖。现场多套实例并存时，建议显式改 `logs-subdir`，避免日志和状态文件互相覆盖。
 
@@ -148,7 +145,7 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 1. 先执行 maintenance `validate-layout`
 2. 在对应发行目录根目录执行 `start-amvision-full.bat`
 3. 检查 health、OpenAPI 文档和目标业务 smoke test
-4. 如需单进程排障，先停止完整实例；排障结束后重新使用根目录入口完整启动
+4. Worker 排障通过设置页 Topology 明细、当前日期日志和 Supervisor 恢复记录完成，不脱离 Topology 单独启动
 
 ## 运维重点
 

@@ -1,49 +1,47 @@
-"""backend-worker 本地健康心跳。"""
+"""基于当前 Topology epoch 的 backend-worker 健康心跳。"""
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from threading import Event, Thread
-from typing import Any
-from uuid import uuid4
+from threading import Event, Lock, Thread
+from typing import Literal
+
+from pydantic import ValidationError
+
+from backend.workers.contracts import (
+    WORKER_HEARTBEAT_FORMAT_ID,
+    BackendWorkerLaunchBundle,
+    BackendWorkerRuntimeLayout,
+    WorkerHeartbeatRecord,
+    WorkerTopologyManifest,
+    load_worker_heartbeat,
+    load_worker_topology_manifest,
+    load_worker_topology_pointer,
+    utc_now,
+    write_worker_contract,
+)
 
 
-BACKEND_WORKER_HEALTH_DIRNAME = "_worker_health"
-BACKEND_WORKER_HEALTH_FILE_PREFIX = "backend-worker"
 DEFAULT_BACKEND_WORKER_HEARTBEAT_INTERVAL_SECONDS = 2.0
 DEFAULT_BACKEND_WORKER_STALE_AFTER_SECONDS = 15.0
 
 
 @dataclass(frozen=True)
 class BackendWorkerHeartbeatInfo:
-    """描述 backend-worker 心跳写入所需的稳定信息。
+    """描述单个 Worker Profile 心跳写入所需的稳定信息。"""
 
-    字段：
-    - app_name：worker 进程名称。
-    - app_version：worker 进程版本。
-    - workspace_dir：worker 工作目录。
-    - queue_root_dir：本地队列根目录。
-    - enabled_consumer_kinds：当前 worker 启用的 consumer kind。
-    - max_concurrent_tasks：当前 worker 最大并发任务数。
-    - poll_interval_seconds：当前 worker 空闲轮询间隔秒数。
-    """
-
-    app_name: str
+    launch_bundle: BackendWorkerLaunchBundle
     app_version: str
     workspace_dir: Path
     queue_root_dir: Path
-    enabled_consumer_kinds: tuple[str, ...]
-    max_concurrent_tasks: int
-    poll_interval_seconds: float
 
 
 class BackendWorkerHeartbeat:
-    """在后台线程中维护 backend-worker 本地心跳文件。"""
+    """在受监督线程中维护当前 epoch 的单 Profile 心跳。"""
 
     def __init__(
         self,
@@ -51,387 +49,396 @@ class BackendWorkerHeartbeat:
         info: BackendWorkerHeartbeatInfo,
         interval_seconds: float = DEFAULT_BACKEND_WORKER_HEARTBEAT_INTERVAL_SECONDS,
     ) -> None:
-        """初始化 worker 心跳写入器。
-
-        参数：
-        - info：写入心跳文件所需的 worker 运行信息。
-        - interval_seconds：两次心跳写入之间的间隔秒数。
-        """
+        """初始化 Worker 心跳写入器。"""
 
         self.info = info
         self.interval_seconds = max(0.5, float(interval_seconds))
-        self._started_at = datetime.now(UTC).isoformat()
+        self._process_started_at = utc_now()
+        self._status: Literal[
+            "starting", "running", "stopping", "stopped", "failed"
+        ] = "starting"
+        self._failure_message: str | None = None
         self._stop_event = Event()
         self._thread: Thread | None = None
+        self._state_lock = Lock()
+        self._thread_error: BaseException | None = None
 
     @property
     def heartbeat_path(self) -> Path:
-        """返回当前 worker 心跳文件路径。"""
+        """返回当前 epoch/Profile 的唯一心跳路径。"""
 
-        return build_backend_worker_profile_health_path(
-            self.info.queue_root_dir,
-            worker_name=self.info.app_name,
+        context = self.info.launch_bundle.context
+        profile = self.info.launch_bundle.profile
+        return context.runtime_layout.profile_heartbeat_path(
+            context.topology_epoch_id,
+            profile.profile_id,
         )
 
     def start(self) -> None:
-        """启动心跳后台线程。"""
+        """启动心跳线程，并先同步写入 starting 状态。"""
 
         if self._thread is not None and self._thread.is_alive():
-            return
-
+            raise RuntimeError("backend-worker 心跳线程已经启动")
         self._stop_event.clear()
-        self._write_snapshot(status="running")
+        with self._state_lock:
+            self._thread_error = None
+            self._status = "starting"
+            self._failure_message = None
+        self._write_snapshot()
         self._thread = Thread(
             target=self._run,
-            name="backend-worker-heartbeat",
+            name=(
+                f"backend-worker-heartbeat-{self.info.launch_bundle.profile.profile_id}"
+            ),
             daemon=True,
         )
         self._thread.start()
 
+    def mark_running(self) -> None:
+        """在消费者完成装配后发布 running 状态。"""
+
+        self._set_status("running")
+
+    def mark_failed(self, error: BaseException) -> None:
+        """记录 Worker 主循环失败并立即刷新心跳。"""
+
+        self._set_status(
+            "failed",
+            failure_message=str(error) or error.__class__.__name__,
+        )
+
+    def assert_healthy(self) -> None:
+        """确保心跳线程仍在正常工作，否则让 Worker 主循环失败退出。"""
+
+        with self._state_lock:
+            error = self._thread_error
+            thread = self._thread
+        if error is not None:
+            raise RuntimeError("backend-worker 心跳写入线程异常退出") from error
+        if thread is None or not thread.is_alive():
+            raise RuntimeError("backend-worker 心跳写入线程意外停止")
+
     def stop(self) -> None:
-        """停止心跳后台线程，并写入 stopped 状态。"""
+        """停止心跳线程，并尽力写入 stopped 状态。"""
 
         self._stop_event.set()
         thread = self._thread
         if thread is not None:
             thread.join(timeout=max(0.5, self.interval_seconds * 2))
+        with self._state_lock:
             self._thread = None
-        self._write_snapshot(status="stopped")
+            previous_status = self._status
+        if previous_status != "failed":
+            self._set_status("stopped")
+
+    def _set_status(
+        self,
+        status: Literal["starting", "running", "stopping", "stopped", "failed"],
+        *,
+        failure_message: str | None = None,
+    ) -> None:
+        """同步更新并刷新当前 Profile 状态。"""
+
+        with self._state_lock:
+            self._status = status
+            self._failure_message = failure_message
+        self._write_snapshot()
 
     def _run(self) -> None:
-        """持续写入 worker 运行心跳。"""
+        """持续刷新心跳；任何写入异常都交回主循环处理。"""
 
-        while not self._stop_event.wait(self.interval_seconds):
-            self._write_snapshot(status="running")
+        try:
+            while not self._stop_event.wait(self.interval_seconds):
+                self._assert_active_topology()
+                self._write_snapshot()
+        except BaseException as error:  # noqa: BLE001 - 线程故障必须原样交给主循环
+            with self._state_lock:
+                self._thread_error = error
+            self._stop_event.set()
 
-    def _write_snapshot(self, *, status: str) -> None:
-        """把当前 worker 状态写入本地心跳文件。"""
+    def _assert_active_topology(self) -> None:
+        """确认当前进程仍属于唯一激活且可运行的 Topology。"""
 
-        heartbeat_at = datetime.now(UTC).isoformat()
-        payload: dict[str, object] = {
-            "status": status,
-            "health": status,
-            "app_name": self.info.app_name,
-            "app_version": self.info.app_version,
-            "worker_id": self.info.app_name,
-            "process_id": os.getpid(),
-            "python_executable": sys.executable,
-            "entrypoint": "python -m backend.workers.main",
-            "started_at": self._started_at,
-            "heartbeat_at": heartbeat_at,
-            "workspace_dir": str(self.info.workspace_dir),
-            "queue_root_dir": str(self.info.queue_root_dir),
-            "enabled_consumer_kinds": list(self.info.enabled_consumer_kinds),
-            "enabled_consumer_count": len(self.info.enabled_consumer_kinds),
-            "max_concurrent_tasks": self.info.max_concurrent_tasks,
-            "poll_interval_seconds": self.info.poll_interval_seconds,
-        }
-        _write_json_atomic(self.heartbeat_path, payload)
+        bundle = self.info.launch_bundle
+        context = bundle.context
+        pointer = load_worker_topology_pointer(
+            context.runtime_layout.active_topology_path
+        )
+        topology = load_worker_topology_manifest(
+            context.runtime_layout.topology_manifest_path(context.topology_epoch_id)
+        )
+        expected_identity = (
+            context.topology_id,
+            context.topology_generation,
+            context.topology_epoch_id,
+        )
+        if (
+            pointer.topology_id,
+            pointer.topology_generation,
+            pointer.topology_epoch_id,
+        ) != expected_identity:
+            raise RuntimeError("backend-worker 已不属于当前 active Topology")
+        if (
+            topology.topology_id,
+            topology.topology_generation,
+            topology.topology_epoch_id,
+        ) != expected_identity:
+            raise RuntimeError("backend-worker Topology Manifest 身份已变化")
+        if topology.supervisor_instance_id != bundle.topology.supervisor_instance_id:
+            raise RuntimeError("backend-worker Supervisor 身份已变化")
+        if topology.state not in {"starting", "running"}:
+            raise RuntimeError(
+                f"backend-worker Topology 已停止接收任务: state={topology.state!r}"
+            )
 
+    def _write_snapshot(self) -> None:
+        """原子写入当前严格心跳契约。"""
 
-def build_backend_worker_health_path(queue_root_dir: str | Path) -> Path:
-    """根据本地队列根目录构造默认 backend-worker 心跳文件路径。"""
-
-    return _build_backend_worker_health_dir(queue_root_dir) / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}.json"
-
-
-def build_backend_worker_profile_health_path(
-    queue_root_dir: str | Path,
-    *,
-    worker_name: str,
-) -> Path:
-    """根据 worker 名称构造独立心跳文件路径。
-
-    参数：
-    - queue_root_dir：backend-service 和 backend-worker 共享的本地队列根目录。
-    - worker_name：worker profile 展示名称，发布目录里每个 profile 保持唯一。
-
-    返回：
-    - Path：当前 worker 独占的心跳文件路径。
-    """
-
-    worker_key = _normalize_worker_health_key(worker_name)
-    return _build_backend_worker_health_dir(queue_root_dir) / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-{worker_key}.json"
-
-
-def _build_backend_worker_health_dir(queue_root_dir: str | Path) -> Path:
-    """返回 backend-worker 心跳目录。"""
-
-    return Path(queue_root_dir).resolve() / BACKEND_WORKER_HEALTH_DIRNAME
-
-
-def _normalize_worker_health_key(worker_name: str) -> str:
-    """把 worker 名称转换成适合文件名的稳定 key。"""
-
-    normalized_chars: list[str] = []
-    for char in worker_name.strip().lower():
-        if char.isalnum():
-            normalized_chars.append(char)
-            continue
-        if normalized_chars and normalized_chars[-1] != "-":
-            normalized_chars.append("-")
-    normalized = "".join(normalized_chars).strip("-")
-    return normalized or "worker"
-
-
-def _list_backend_worker_health_paths(health_dir: Path) -> list[Path]:
-    """列出当前队列根目录下所有 backend-worker 心跳文件。"""
-
-    if not health_dir.exists():
-        return []
-    profile_paths = sorted(
-        path
-        for path in health_dir.glob(f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-*.json")
-        if path.is_file()
-    )
-    if profile_paths:
-        return profile_paths
-    default_path = health_dir / f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}.json"
-    return [default_path] if default_path.is_file() else []
-
-
-def _read_backend_worker_health_file(
-    health_path: Path,
-    *,
-    stale_after_seconds: float,
-) -> dict[str, object]:
-    """读取单个 backend-worker 心跳文件。"""
-
-    base_summary: dict[str, object] = {
-        "health_file": str(health_path),
-        "worker_key": health_path.stem.removeprefix(f"{BACKEND_WORKER_HEALTH_FILE_PREFIX}-"),
-    }
-    try:
-        payload = _read_json_dict(health_path)
-    except Exception as error:  # pragma: no cover - 文件损坏时用于诊断页面暴露
-        return {
-            **base_summary,
-            "health": "unknown",
-            "reason": "heartbeat_unreadable",
-            "error": str(error),
-        }
-
-    heartbeat_at = _read_optional_str(payload, "heartbeat_at")
-    age_seconds = _calculate_age_seconds(heartbeat_at)
-    reported_health = (
-        _read_optional_str(payload, "health")
-        or _read_optional_str(payload, "status")
-        or "unknown"
-    )
-    health = _resolve_worker_health(
-        reported_health=reported_health,
-        age_seconds=age_seconds,
-        stale_after_seconds=stale_after_seconds,
-    )
-    return {
-        **base_summary,
-        **payload,
-        "health": health,
-        "reported_health": reported_health,
-        "heartbeat_age_seconds": age_seconds,
-        "stale_after_seconds": stale_after_seconds,
-    }
-
-
-def _resolve_backend_worker_group_health(workers: list[dict[str, object]]) -> str:
-    """根据多个 worker 心跳聚合 backend-worker 总健康状态。"""
-
-    if not workers:
-        return "offline"
-    worker_healths = {
-        str(worker.get("effective_health") or worker.get("health") or "unknown")
-        .strip()
-        .lower()
-        for worker in workers
-        if worker.get("effective_health") != "superseded"
-    }
-    if not worker_healths:
-        return "offline"
-    if worker_healths == {"running"}:
-        return "running"
-    if "running" in worker_healths:
-        return "degraded"
-    if worker_healths == {"stopped"}:
-        return "stopped"
-    if "stale" in worker_healths:
-        return "stale"
-    if "unknown" in worker_healths:
-        return "unknown"
-    return sorted(worker_healths)[0] if worker_healths else "unknown"
-
-
-def _mark_superseded_worker_health(
-    workers: list[dict[str, object]],
-) -> None:
-    """标记已被当前 running worker 完整覆盖的历史心跳。
-
-    同一个 queue 根目录可能先运行拆分 profile，之后切换为单一全功能
-    worker。旧 profile 文件不会随进程退出自动消失，继续把这些过期文件
-    视为当前拓扑会导致正常 worker 被误判为 degraded。
-
-    这里只忽略 consumer 能力已被新鲜 running worker 完整覆盖的
-    stale/stopped 心跳；未覆盖的 profile、损坏文件和无 consumer 信息的
-    心跳仍参与聚合，避免掩盖真实的部分故障。
-    """
-
-    running_consumer_kinds: set[str] = set()
-    for worker in workers:
-        if worker.get("health") != "running":
-            continue
-        running_consumer_kinds.update(_read_consumer_kinds(worker))
-
-    for worker in workers:
-        worker["effective_health"] = worker.get("health") or "unknown"
-        if worker.get("health") not in {"stale", "stopped"}:
-            continue
-        consumer_kinds = _read_consumer_kinds(worker)
-        if not consumer_kinds or not consumer_kinds.issubset(running_consumer_kinds):
-            continue
-        worker["effective_health"] = "superseded"
-        worker["reason"] = "consumer_coverage_superseded"
-        worker["covered_consumer_kinds"] = sorted(consumer_kinds)
-
-
-def _read_consumer_kinds(worker: dict[str, object]) -> set[str]:
-    """从 worker 心跳读取规范化 consumer kind 集合。"""
-
-    value = worker.get("enabled_consumer_kinds")
-    if not isinstance(value, list):
-        return set()
-    return {
-        item.strip()
-        for item in value
-        if isinstance(item, str) and item.strip()
-    }
+        bundle = self.info.launch_bundle
+        context = bundle.context
+        profile = bundle.profile
+        with self._state_lock:
+            status = self._status
+            failure_message = self._failure_message
+        record = WorkerHeartbeatRecord(
+            format_id=WORKER_HEARTBEAT_FORMAT_ID,
+            topology_id=context.topology_id,
+            topology_generation=context.topology_generation,
+            topology_epoch_id=context.topology_epoch_id,
+            profile_id=profile.profile_id,
+            profile_fingerprint=profile.fingerprint(),
+            worker_instance_id=context.worker_instance_id,
+            status=status,
+            app_version=self.info.app_version,
+            process_id=os.getpid(),
+            python_executable=sys.executable,
+            process_started_at=self._process_started_at,
+            heartbeat_at=utc_now(),
+            workspace_dir=str(self.info.workspace_dir),
+            queue_root_dir=str(self.info.queue_root_dir),
+            enabled_consumer_kinds=profile.enabled_consumer_kinds,
+            max_concurrent_tasks=profile.max_concurrent_tasks,
+            poll_interval_seconds=profile.poll_interval_seconds,
+            failure_message=failure_message,
+        )
+        write_worker_contract(self.heartbeat_path, record)
 
 
 def read_backend_worker_health_summary(
     *,
-    queue_root_dir: str | Path,
-    stale_after_seconds: float = DEFAULT_BACKEND_WORKER_STALE_AFTER_SECONDS,
+    worker_runtime_root_dir: str | Path,
+    stale_after_seconds: float | None = None,
 ) -> dict[str, object]:
-    """读取 backend-worker 心跳并转换为设置页诊断摘要。
+    """只读取 active Topology 声明的期望 Profile 心跳。"""
 
-    参数：
-    - queue_root_dir：backend-service 和 backend-worker 共享的本地队列根目录。
-    - stale_after_seconds：心跳超过该秒数后判定为 stale。
-
-    返回：
-    - dict[str, object]：backend-worker 诊断摘要。
-    """
-
-    health_dir = _build_backend_worker_health_dir(queue_root_dir)
+    layout = BackendWorkerRuntimeLayout(Path(worker_runtime_root_dir).resolve())
     base_summary: dict[str, object] = {
         "status": "external",
-        "entrypoint": "python -m backend.workers.main",
-        "health_dir": str(health_dir),
+        "entrypoint": "amvision full supervisor",
+        "runtime_root_dir": str(layout.root_dir),
+        "active_topology_path": str(layout.active_topology_path),
     }
-    heartbeat_paths = _list_backend_worker_health_paths(health_dir)
-    if not heartbeat_paths:
+    if not layout.active_topology_path.is_file():
         return {
             **base_summary,
             "health": "offline",
-            "reason": "heartbeat_missing",
+            "reason": "active_topology_missing",
+            "worker_count": 0,
+            "workers": [],
+        }
+    try:
+        pointer = load_worker_topology_pointer(layout.active_topology_path)
+        manifest_path = layout.topology_manifest_path(pointer.topology_epoch_id)
+        topology = load_worker_topology_manifest(manifest_path)
+        _validate_active_topology(
+            pointer_identity=(
+                pointer.topology_id,
+                pointer.topology_generation,
+                pointer.topology_epoch_id,
+            ),
+            topology=topology,
+        )
+    except (OSError, ValueError, ValidationError) as error:
+        return {
+            **base_summary,
+            "health": "failed",
+            "reason": "active_topology_invalid",
+            "error_type": error.__class__.__name__,
+            "error": str(error),
             "worker_count": 0,
             "workers": [],
         }
 
+    effective_stale_after = (
+        topology.stale_after_seconds
+        if stale_after_seconds is None
+        else max(1.0, float(stale_after_seconds))
+    )
     workers = [
-        _read_backend_worker_health_file(
-            health_path,
-            stale_after_seconds=stale_after_seconds,
+        _read_expected_profile_health(
+            layout=layout,
+            topology=topology,
+            profile_id=profile.profile_id,
+            display_name=profile.display_name,
+            profile_fingerprint=profile.profile_fingerprint,
+            enabled_consumer_kinds=profile.enabled_consumer_kinds,
+            max_concurrent_tasks=profile.max_concurrent_tasks,
+            poll_interval_seconds=profile.poll_interval_seconds,
+            stale_after_seconds=effective_stale_after,
         )
-        for health_path in heartbeat_paths
+        for profile in topology.expected_profiles
     ]
-    _mark_superseded_worker_health(workers)
-    health = _resolve_backend_worker_group_health(workers)
-    running_workers = [worker for worker in workers if worker.get("health") == "running"]
-    stale_workers = [worker for worker in workers if worker.get("health") == "stale"]
-    stopped_workers = [worker for worker in workers if worker.get("health") == "stopped"]
-    superseded_workers = [
-        worker for worker in workers if worker.get("effective_health") == "superseded"
-    ]
-    unreadable_workers = [
-        worker for worker in workers if worker.get("reason") == "heartbeat_unreadable"
-    ]
-    primary_worker = running_workers[0] if running_workers else workers[0]
+    aggregate_health = _resolve_topology_health(topology=topology, workers=workers)
+    statuses = (
+        "starting",
+        "running",
+        "failed",
+        "stopping",
+        "stopped",
+        "offline",
+        "stale",
+    )
+    status_counts = {
+        status: sum(worker.get("health") == status for worker in workers)
+        for status in statuses
+    }
     return {
         **base_summary,
-        **{
-            key: value
-            for key, value in primary_worker.items()
-            if key not in {"health", "health_file"}
-        },
-        "health": health,
-        "stale_after_seconds": stale_after_seconds,
+        "health": aggregate_health,
+        "topology_id": topology.topology_id,
+        "topology_generation": topology.topology_generation,
+        "topology_epoch_id": topology.topology_epoch_id,
+        "topology_state": topology.state,
+        "supervisor_instance_id": topology.supervisor_instance_id,
+        "activated_at": topology.activated_at.isoformat(),
+        "stale_after_seconds": effective_stale_after,
         "worker_count": len(workers),
-        "running_count": len(running_workers),
-        "stale_count": len(stale_workers),
-        "stopped_count": len(stopped_workers),
-        "superseded_count": len(superseded_workers),
-        "unreadable_count": len(unreadable_workers),
-        "health_files": [str(path) for path in heartbeat_paths],
+        **{f"{status}_count": count for status, count in status_counts.items()},
         "workers": workers,
     }
 
 
-def _resolve_worker_health(
+def _read_expected_profile_health(
     *,
-    reported_health: str,
-    age_seconds: float | None,
+    layout: BackendWorkerRuntimeLayout,
+    topology: WorkerTopologyManifest,
+    profile_id: str,
+    display_name: str,
+    profile_fingerprint: str,
+    enabled_consumer_kinds: tuple[str, ...],
+    max_concurrent_tasks: int,
+    poll_interval_seconds: float,
     stale_after_seconds: float,
-) -> str:
-    """结合心跳上报状态和时间差判断 worker 健康状态。"""
+) -> dict[str, object]:
+    """读取并校验一个期望 Profile 的唯一心跳。"""
 
-    normalized = reported_health.strip().lower()
-    if normalized == "stopped":
-        return "stopped"
-    if age_seconds is None:
-        return "unknown"
-    if age_seconds > max(1.0, stale_after_seconds):
-        return "stale"
-    if normalized in {"running", "ok", "healthy"}:
-        return "running"
-    return normalized or "unknown"
-
-
-def _calculate_age_seconds(value: str | None) -> float | None:
-    """计算 ISO 时间距离当前时间的秒数。"""
-
-    if not value:
-        return None
+    path = layout.profile_heartbeat_path(topology.topology_epoch_id, profile_id)
+    base: dict[str, object] = {
+        "profile_id": profile_id,
+        "display_name": display_name,
+        "health_file": str(path),
+        "expected_profile_fingerprint": profile_fingerprint,
+        "enabled_consumer_kinds": list(enabled_consumer_kinds),
+        "enabled_consumer_count": len(enabled_consumer_kinds),
+        "max_concurrent_tasks": max_concurrent_tasks,
+        "poll_interval_seconds": poll_interval_seconds,
+    }
+    if not path.is_file():
+        return {**base, "health": "offline", "reason": "heartbeat_missing"}
     try:
-        heartbeat_at = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if heartbeat_at.tzinfo is None:
-        heartbeat_at = heartbeat_at.replace(tzinfo=UTC)
-    return max(0.0, (datetime.now(UTC) - heartbeat_at).total_seconds())
-
-
-def _read_json_dict(path: Path) -> dict[str, object]:
-    """读取 JSON 文件并确认顶层是对象。"""
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("backend-worker health 文件顶层必须是 JSON object")
-    return {str(key): value for key, value in payload.items()}
-
-
-def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
-    """原子写入 JSON 文件，避免诊断接口读到半截内容。"""
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
-    temp_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
+        record = load_worker_heartbeat(path)
+    except (OSError, ValueError, ValidationError) as error:
+        return {
+            **base,
+            "health": "failed",
+            "reason": "heartbeat_invalid",
+            "error_type": error.__class__.__name__,
+            "error": str(error),
+        }
+    expected_identity = (
+        topology.topology_id,
+        topology.topology_generation,
+        topology.topology_epoch_id,
+        profile_id,
+        profile_fingerprint,
     )
-    temp_path.replace(path)
+    record_identity = (
+        record.topology_id,
+        record.topology_generation,
+        record.topology_epoch_id,
+        record.profile_id,
+        record.profile_fingerprint,
+    )
+    if record_identity != expected_identity:
+        return {
+            **base,
+            "health": "failed",
+            "reason": "heartbeat_identity_mismatch",
+            "worker_instance_id": record.worker_instance_id,
+        }
+    heartbeat_age_seconds = max(
+        0.0,
+        (datetime.now(UTC) - record.heartbeat_at).total_seconds(),
+    )
+    health = record.status
+    reason: str | None = None
+    if heartbeat_age_seconds > stale_after_seconds and record.status not in {
+        "stopped",
+        "failed",
+    }:
+        health = "stale"
+        reason = "heartbeat_stale"
+    return {
+        **base,
+        **record.model_dump(mode="json"),
+        "health": health,
+        "reason": reason,
+        "heartbeat_age_seconds": heartbeat_age_seconds,
+        "stale_after_seconds": stale_after_seconds,
+        "enabled_consumer_count": len(record.enabled_consumer_kinds),
+    }
 
 
-def _read_optional_str(payload: dict[str, Any], key: str) -> str | None:
-    """从字典读取可选字符串字段。"""
+def _resolve_topology_health(
+    *,
+    topology: WorkerTopologyManifest,
+    workers: list[dict[str, object]],
+) -> str:
+    """按当前 Topology 的期望 Profile 集合计算总健康状态。"""
 
-    value = payload.get(key)
-    return value if isinstance(value, str) and value.strip() else None
+    if topology.state == "failed":
+        return "failed"
+    if topology.state == "stopping":
+        return "stopping"
+    if topology.state == "stopped":
+        return "stopped"
+    healths = [str(worker.get("health") or "failed") for worker in workers]
+    if healths and all(health == "running" for health in healths):
+        return "running"
+    if topology.state == "starting" and all(
+        health in {"starting", "running", "offline"} for health in healths
+    ):
+        return "starting"
+    if any(health == "running" for health in healths):
+        return "degraded"
+    if any(health in {"failed", "stale"} for health in healths):
+        return "failed"
+    if healths and all(health == "stopped" for health in healths):
+        return "stopped"
+    return "offline"
+
+
+def _validate_active_topology(
+    *,
+    pointer_identity: tuple[str, int, str],
+    topology: WorkerTopologyManifest,
+) -> None:
+    """拒绝 active pointer 与 Manifest 身份不一致的运行目录。"""
+
+    manifest_identity = (
+        topology.topology_id,
+        topology.topology_generation,
+        topology.topology_epoch_id,
+    )
+    if pointer_identity != manifest_identity:
+        raise ValueError("active Topology pointer 与 Manifest 身份不一致")

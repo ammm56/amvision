@@ -10,7 +10,13 @@ from backend.workers.consumer_registry import (
     BackgroundTaskConsumerResources,
     build_background_task_consumers,
 )
+from backend.workers.contracts import (
+    BackendWorkerLaunchBundle,
+    WorkerProfileManifest,
+    load_backend_worker_launch_bundle,
+)
 from backend.workers.health import BackendWorkerHeartbeat, BackendWorkerHeartbeatInfo
+from backend.workers.profile_lock import BackendWorkerProfileLock
 from backend.workers.task_manager import (
     BackgroundTaskManager,
     BackgroundTaskManagerConfig,
@@ -19,6 +25,9 @@ from backend.workers.task_manager import (
 
 def build_background_task_manager(
     runtime: BackendWorkerRuntime,
+    *,
+    profile: WorkerProfileManifest,
+    worker_instance_id: str,
 ) -> BackgroundTaskManager:
     """根据 worker runtime 构建后台任务管理器。
 
@@ -35,35 +44,58 @@ def build_background_task_manager(
                 session_factory=runtime.session_factory,
                 dataset_storage=runtime.dataset_storage,
                 queue_backend=runtime.queue_backend,
-                worker_id_prefix=runtime.settings.app.app_name,
+                worker_id_prefix=f"{profile.profile_id}-{worker_instance_id}",
                 async_inference_request_timeout_seconds=(
                     runtime.settings.async_inference_gateway_request_timeout_seconds
                 ),
             ),
-            enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,
+            enabled_consumer_kinds=profile.enabled_consumer_kinds,
         ),
         config=BackgroundTaskManagerConfig(
-            max_concurrent_tasks=runtime.settings.task_manager.max_concurrent_tasks,
-            poll_interval_seconds=runtime.settings.task_manager.poll_interval_seconds,
+            max_concurrent_tasks=profile.max_concurrent_tasks,
+            poll_interval_seconds=profile.poll_interval_seconds,
         ),
     )
 
 
-def run_worker_forever() -> None:
+def run_worker_forever(
+    *,
+    launch_bundle: BackendWorkerLaunchBundle | None = None,
+) -> None:
     """启动 backend-worker 并持续消费后台任务。"""
+
+    bundle = launch_bundle or load_backend_worker_launch_bundle()
+    context = bundle.context
+    profile = bundle.profile
+    profile_lock = BackendWorkerProfileLock(
+        lock_path=context.runtime_layout.profile_lock_path(
+            context.topology_epoch_id,
+            profile.profile_id,
+        ),
+        owner={
+            "topology_id": context.topology_id,
+            "topology_generation": context.topology_generation,
+            "topology_epoch_id": context.topology_epoch_id,
+            "profile_id": profile.profile_id,
+            "worker_instance_id": context.worker_instance_id,
+        },
+    )
+    with profile_lock:
+        _run_worker_with_bundle(bundle)
+
+
+def _run_worker_with_bundle(bundle: BackendWorkerLaunchBundle) -> None:
+    """在已持有 Profile 单实例锁时运行 Worker 主循环。"""
 
     bootstrap = BackendWorkerBootstrap()
     runtime = bootstrap.build_runtime(bootstrap.load_settings())
     bootstrap.initialize(runtime)
     heartbeat = BackendWorkerHeartbeat(
         info=BackendWorkerHeartbeatInfo(
-            app_name=runtime.settings.app.app_name,
+            launch_bundle=bundle,
             app_version=runtime.settings.app.app_version,
             workspace_dir=runtime.workspace_dir,
             queue_root_dir=runtime.queue_backend.root_dir,
-            enabled_consumer_kinds=runtime.settings.task_manager.enabled_consumer_kinds,
-            max_concurrent_tasks=runtime.settings.task_manager.max_concurrent_tasks,
-            poll_interval_seconds=runtime.settings.task_manager.poll_interval_seconds,
         )
     )
     try:
@@ -73,18 +105,31 @@ def run_worker_forever() -> None:
             runtime.training_telemetry_publisher
         )
         heartbeat.start()
-        task_manager = build_background_task_manager(runtime)
+        task_manager = build_background_task_manager(
+            runtime,
+            profile=bundle.profile,
+            worker_instance_id=bundle.context.worker_instance_id,
+        )
+        heartbeat.mark_running()
         print(
             "backend-worker ready "
-            f"app_name={runtime.settings.app.app_name!r} "
+            f"profile_id={bundle.profile.profile_id!r} "
+            f"worker_instance_id={bundle.context.worker_instance_id!r} "
+            f"topology_epoch_id={bundle.context.topology_epoch_id!r} "
             f"workspace={runtime.workspace_dir} "
             f"queue_root={runtime.queue_backend.root_dir} "
             "training_telemetry="
             f"{getattr(runtime.training_telemetry_publisher, 'path', 'disabled')} "
-            f"enabled_consumer_kinds={list(runtime.settings.task_manager.enabled_consumer_kinds)!r}",
+            f"enabled_consumer_kinds={list(bundle.profile.enabled_consumer_kinds)!r}",
             flush=True,
         )
-        task_manager.run_forever()
+        task_manager.run_forever(health_check=heartbeat.assert_healthy)
+    except BaseException as error:
+        try:
+            heartbeat.mark_failed(error)
+        except Exception:
+            pass
+        raise
     finally:
         heartbeat.stop()
         configure_process_training_telemetry_publisher(None)

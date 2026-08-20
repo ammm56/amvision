@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import importlib.util
-import io
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 import backend.maintenance.release_assembly as release_assembly
 from backend.maintenance.main import run_command
-from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.maintenance.release_assembly import (
+    ReleaseAssemblyRequest,
+    assemble_release,
+)
 
 
 def test_assemble_release_materializes_windows_x64_nvidia_layout(
@@ -34,17 +37,27 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert (release_dir / "app" / "backend").is_dir()
     assert (release_dir / "config" / "backend-service.json").is_file()
     assert (release_dir / "launchers" / "common.py").is_file()
-    assert (release_dir / "launchers" / "service" / "start_backend_service.py").is_file()
+    assert (
+        release_dir / "launchers" / "service" / "start_backend_service.py"
+    ).is_file()
     assert (release_dir / "launchers" / "enable_windows_long_paths.py").is_file()
-    assert (release_dir / "launchers" / "service" / "start-backend-service.bat").is_file()
-    assert (release_dir / "launchers" / "maintenance" / "invoke_backend_maintenance.py").is_file()
-    assert (release_dir / "launchers" / "inference" / "start_inference_daemon.py").is_file()
-    assert (release_dir / "launchers" / "inference" / "start-inference-daemon.bat").is_file()
+    assert (
+        release_dir / "launchers" / "service" / "start-backend-service.bat"
+    ).is_file()
+    assert (
+        release_dir / "launchers" / "maintenance" / "invoke_backend_maintenance.py"
+    ).is_file()
+    assert (
+        release_dir / "launchers" / "inference" / "start_inference_daemon.py"
+    ).is_file()
+    assert (
+        release_dir / "launchers" / "inference" / "start-inference-daemon.bat"
+    ).is_file()
     assert (release_dir / "start_amvision_full.py").is_file()
     assert (release_dir / "start-amvision-full.bat").is_file()
-    assert 'set "PYTHONUTF8=1"' in (
-        release_dir / "start-amvision-full.bat"
-    ).read_text(encoding="utf-8")
+    assert 'set "PYTHONUTF8=1"' in (release_dir / "start-amvision-full.bat").read_text(
+        encoding="utf-8"
+    )
     assert not (release_dir / "start-amvision-full.sh").exists()
     assert (release_dir / "stop_amvision_full.py").is_file()
     assert (release_dir / "stop-amvision-full.bat").is_file()
@@ -57,14 +70,32 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     ):
         copied_document = release_dir / document_name
         assert copied_document.is_file()
-        assert copied_document.read_bytes() == (
-            release_assembly.REPOSITORY_ROOT / document_name
-        ).read_bytes()
+        assert (
+            copied_document.read_bytes()
+            == (release_assembly.REPOSITORY_ROOT / document_name).read_bytes()
+        )
     assert (release_dir / "app" / "requirements.txt").is_file()
     assert (release_dir / "custom_nodes" / "opencv_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry").is_dir()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").is_file()
+    assert (
+        release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry"
+    ).is_dir()
+    assert (
+        release_dir
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "backend"
+        / "runtime"
+        / "images.py"
+    ).is_file()
+    assert (
+        release_dir
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "workflow"
+        / "payload_contracts.json"
+    ).is_file()
     assert (release_dir / "custom_nodes" / "_scaffold" / "README.md").is_file()
     assert not (release_dir / "custom_nodes" / "__pycache__").exists()
     assert (release_dir / "tools" / "ffmpeg" / "windows-x64" / "ffmpeg.exe").is_file()
@@ -80,14 +111,18 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     assert (release_dir / "tools" / "tensorrt" / "doc" / "README.txt").is_file()
     assert not (release_dir / "tools" / "tensorrt" / "include").exists()
     assert not (release_dir / "tools" / "tensorrt" / "lib").exists()
-    assert (release_dir / "tools" / "cudnn" / "bin" / "12.9" / "x64" / "cudnn64_9.dll").is_file()
+    assert (
+        release_dir / "tools" / "cudnn" / "bin" / "12.9" / "x64" / "cudnn64_9.dll"
+    ).is_file()
     assert (release_dir / "tools" / "cudnn" / "LICENSE").is_file()
     assert (release_dir / "frontend" / "index.html").is_file()
     assert (release_dir / "frontend" / "runtime-config.json").is_file()
     assert (release_dir / "python").is_dir()
     assert result.bundled_python_mode == "placeholder-empty"
 
-    requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
+    requirements_text = (release_dir / "app" / "requirements.txt").read_text(
+        encoding="utf-8"
+    )
     assert "torch==2.12.1" in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
     assert "openvino>=2026.1.0" in requirements_text
@@ -103,14 +138,23 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     )
     assert result.worker_profile_ids == expected_worker_profile_ids
     for profile_id in expected_worker_profile_ids:
-        assert (release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json").is_file()
-        assert (release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat").is_file()
-        assert not (release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh").exists()
+        assert (
+            release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json"
+        ).is_file()
+        assert not (
+            release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat"
+        ).exists()
+        assert not (
+            release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.sh"
+        ).exists()
 
     release_manifest = json.loads(
-        (release_dir / "manifests" / "release-profiles" / "full-windows-x64-nvidia.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            release_dir
+            / "manifests"
+            / "release-profiles"
+            / "full-windows-x64-nvidia.json"
+        ).read_text(encoding="utf-8")
     )
     assert release_manifest["profile_id"] == "full-windows-x64-nvidia"
     assert release_manifest["target"] == {
@@ -128,24 +172,47 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     }
     assert release_manifest["layout"]["custom_nodes_dir"] == "custom_nodes"
     assert release_manifest["layout"]["python_dir"] == "python"
-    assert release_manifest["service"]["windows_launcher"] == "launchers/service/start-backend-service.bat"
+    assert (
+        release_manifest["service"]["windows_launcher"]
+        == "launchers/service/start-backend-service.bat"
+    )
+    assert release_manifest["service"]["log_pattern"] == (
+        "logs/full-stack/backend-service-YYYYMMDD.log"
+    )
     assert release_manifest["inference_daemon"]["python_launcher"] == (
         "launchers/inference/start_inference_daemon.py"
     )
     assert release_manifest["inference_daemon"]["windows_launcher"] == (
         "launchers/inference/start-inference-daemon.bat"
     )
+    assert release_manifest["inference_daemon"]["log_pattern"] == (
+        "logs/full-stack/inference-daemon-YYYYMMDD.log"
+    )
     assert release_manifest["stack"]["windows_launcher"] == "start-amvision-full.bat"
-    assert release_manifest["stack"]["stop_windows_launcher"] == "stop-amvision-full.bat"
-    assert release_manifest["stack"]["state_file"] == "logs/full-stack/runtime-state.json"
+    assert (
+        release_manifest["stack"]["stop_windows_launcher"] == "stop-amvision-full.bat"
+    )
+    assert (
+        release_manifest["stack"]["state_file"] == "logs/full-stack/runtime-state.json"
+    )
     assert [worker["profile_id"] for worker in release_manifest["workers"]] == list(
         expected_worker_profile_ids
     )
-    assert release_manifest["workers"][0]["python_launcher"] == "launchers/worker/start_backend_worker.py"
-    start_batch_text = (release_dir / "start-amvision-full.bat").read_text(encoding="utf-8")
+    assert (
+        release_manifest["workers"][0]["python_launcher"]
+        == "launchers/worker/start_backend_worker.py"
+    )
+    assert release_manifest["workers"][0]["log_pattern"] == (
+        "logs/full-stack/backend-worker-dataset-import-YYYYMMDD.log"
+    )
+    start_batch_text = (release_dir / "start-amvision-full.bat").read_text(
+        encoding="utf-8"
+    )
     assert 'set "PYTHON_EXE=python"' not in start_batch_text
     assert "bundled Python not found" in start_batch_text
-    start_python_text = (release_dir / "start_amvision_full.py").read_text(encoding="utf-8")
+    start_python_text = (release_dir / "start_amvision_full.py").read_text(
+        encoding="utf-8"
+    )
     main_offset = start_python_text.index("def main(")
     migration_offset = start_python_text.index("_run_database_migration(", main_offset)
     daemon_start_offset = start_python_text.index("_start_component(", migration_offset)
@@ -214,7 +281,9 @@ def test_assemble_release_windows_x64_cpu_excludes_nvidia_runtime_assets(
     assert not (release_dir / "tools" / "ffmpeg" / "linux-x64").exists()
     assert not (release_dir / "start-amvision-full.sh").exists()
 
-    requirements_text = (release_dir / "app" / "requirements.txt").read_text(encoding="utf-8")
+    requirements_text = (release_dir / "app" / "requirements.txt").read_text(
+        encoding="utf-8"
+    )
     assert "tensorrt-cu12==" not in requirements_text
     assert "cuda-python==" not in requirements_text
     assert "onnxruntime>=1.22,<2" in requirements_text
@@ -230,12 +299,14 @@ def test_assemble_release_windows_x64_cpu_excludes_nvidia_runtime_assets(
         "inference",
     )
     assert (release_dir / "manifests" / "worker-profiles" / "training.json").is_file()
-    assert (release_dir / "launchers" / "worker" / "start-training-worker.bat").is_file()
+    assert not (
+        release_dir / "launchers" / "worker" / "start-training-worker.bat"
+    ).exists()
 
     release_manifest = json.loads(
-        (release_dir / "manifests" / "release-profiles" / "full-windows-x64-cpu.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            release_dir / "manifests" / "release-profiles" / "full-windows-x64-cpu.json"
+        ).read_text(encoding="utf-8")
     )
     assert release_manifest["artifacts"]["include_tensorrt_runtime"] is False
     assert release_manifest["artifacts"]["include_cudnn_runtime"] is False
@@ -264,7 +335,9 @@ def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
             output_root=tmp_path,
         )
     )
-    (result.release_dir / "python" / "python.exe").write_text("python", encoding="utf-8")
+    (result.release_dir / "python" / "python.exe").write_text(
+        "python", encoding="utf-8"
+    )
     monkeypatch.chdir(result.release_dir)
     runtime = SimpleNamespace(workspace_dir=result.release_dir)
 
@@ -276,15 +349,13 @@ def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
     assert layout_result["paths"]["python_executable"]["exists"] is True
     assert layout_result["paths"]["ffmpeg_tools"]["exists"] is True
     assert all(
-        entry["valid"] is True
-        for entry in layout_result["forbidden_paths"].values()
+        entry["valid"] is True for entry in layout_result["forbidden_paths"].values()
     )
 
     (result.release_dir / "tools" / "tensorrt").mkdir(parents=True)
     invalid_layout_result = run_command("validate-layout", runtime)
     assert (
-        invalid_layout_result["forbidden_paths"]["cpu_tensorrt_tools"]["valid"]
-        is False
+        invalid_layout_result["forbidden_paths"]["cpu_tensorrt_tools"]["valid"] is False
     )
 
 
@@ -311,7 +382,9 @@ def test_assemble_release_rejects_automatic_bundled_python_copy(
         )
 
 
-def test_assemble_release_requires_force_to_overwrite_existing_directory(tmp_path: Path) -> None:
+def test_assemble_release_requires_force_to_overwrite_existing_directory(
+    tmp_path: Path,
+) -> None:
     """验证 release 目录已存在时必须显式允许覆盖。"""
 
     release_dir = tmp_path / "full-windows-x64-nvidia"
@@ -357,9 +430,26 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     assert not stale_file.exists()
     assert (release_dir / "app" / "backend").is_dir()
     assert (release_dir / "custom_nodes" / "opencv_nodes" / "manifest.json").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry").is_dir()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").is_file()
-    assert (release_dir / "custom_nodes" / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").is_file()
+    assert (
+        release_dir / "custom_nodes" / "opencv_nodes" / "categories" / "geometry"
+    ).is_dir()
+    assert (
+        release_dir
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "backend"
+        / "runtime"
+        / "images.py"
+    ).is_file()
+    assert (
+        release_dir
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "workflow"
+        / "payload_contracts.json"
+    ).is_file()
 
 
 def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
@@ -375,7 +465,9 @@ def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
     marker_file = existing_python_dir / "marker.txt"
     marker_file.write_text("keep", encoding="utf-8")
 
-    monkeypatch.setattr(release_assembly, "SOURCE_FRONTEND_DIST_DIR", tmp_path / "missing-frontend-dist")
+    monkeypatch.setattr(
+        release_assembly, "SOURCE_FRONTEND_DIST_DIR", tmp_path / "missing-frontend-dist"
+    )
 
     with pytest.raises(FileNotFoundError):
         assemble_release(
@@ -407,7 +499,9 @@ def test_assemble_release_recovers_python_when_old_release_removal_fails(
 
     original_rmtree = release_assembly.shutil.rmtree
 
-    def _fail_old_release_removal(path: object, *args: object, **kwargs: object) -> None:
+    def _fail_old_release_removal(
+        path: object, *args: object, **kwargs: object
+    ) -> None:
         if Path(path).resolve() == release_dir.resolve():
             raise PermissionError("simulated locked release file")
         original_rmtree(path, *args, **kwargs)
@@ -450,10 +544,19 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
     state_file_path.write_text(
         json.dumps(
             {
-                "root_pid": 99,
+                "format_id": "amvision.full-supervisor-state.v1",
+                "root_process": {"pid": 99, "kind": "root"},
                 "components": [
-                    {"name": "backend-service", "pid": 11, "stop_mode": "process-tree"},
-                    {"name": "backend-worker:training", "pid": 12, "stop_mode": "process-tree"},
+                    {
+                        "name": "backend-service",
+                        "process": {"pid": 11, "kind": "service"},
+                        "stop_mode": "process-tree",
+                    },
+                    {
+                        "name": "backend-worker:training",
+                        "process": {"pid": 12, "kind": "worker"},
+                        "stop_mode": "process-tree",
+                    },
                 ],
             },
             ensure_ascii=False,
@@ -464,27 +567,39 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
     recorded_stop_calls: list[tuple[int, str, float]] = []
     recorded_root_wait_calls: list[tuple[int, float]] = []
 
-    monkeypatch.setattr(stop_module, "_pid_is_alive", lambda pid: pid in {11, 12, 99})
+    monkeypatch.setattr(
+        stop_module,
+        "process_identity_matches",
+        lambda identity: identity.get("pid") in {11, 12, 99},
+    )
 
     def _fake_stop_recorded_process(
-        pid: int,
+        identity: dict[str, object],
         *,
         stop_mode: str,
         graceful_timeout_seconds: float,
     ) -> bool:
-        recorded_stop_calls.append((pid, stop_mode, graceful_timeout_seconds))
+        recorded_stop_calls.append(
+            (int(identity["pid"]), stop_mode, graceful_timeout_seconds)
+        )
         return True
 
     def _fake_wait_root_process_exit(
-        pid: int,
+        identity: dict[str, object],
         *,
         graceful_timeout_seconds: float,
     ) -> bool:
-        recorded_root_wait_calls.append((pid, graceful_timeout_seconds))
+        recorded_root_wait_calls.append(
+            (int(identity["pid"]), graceful_timeout_seconds)
+        )
         return True
 
-    monkeypatch.setattr(stop_module, "_stop_recorded_process", _fake_stop_recorded_process)
-    monkeypatch.setattr(stop_module, "_wait_root_process_exit", _fake_wait_root_process_exit)
+    monkeypatch.setattr(
+        stop_module, "_stop_recorded_process", _fake_stop_recorded_process
+    )
+    monkeypatch.setattr(
+        stop_module, "_wait_root_process_exit", _fake_wait_root_process_exit
+    )
 
     exit_code = stop_module.main(
         [
@@ -527,16 +642,18 @@ def test_release_full_start_resolves_the_only_generated_manifest(
         result.release_dir / "start_amvision_full.py",
     )
 
-    manifest_path = start_module._resolve_release_manifest_path(result.release_dir, None)
+    manifest_path = start_module._resolve_release_manifest_path(
+        result.release_dir, None
+    )
 
     assert manifest_path == result.release_manifest_path
 
 
-def test_release_full_ready_log_reader_ignores_previous_launch_marker(
+def test_release_full_forwards_explicit_python_to_service_and_worker_launchers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证旧日志里的 ready 不会让新 daemon/worker 启动被误判为就绪。"""
+    """验证 Supervisor 不会让二级 launcher 回退解析 bundled Python。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     result = assemble_release(
@@ -546,22 +663,115 @@ def test_release_full_ready_log_reader_ignores_previous_launch_marker(
         )
     )
     start_module = _load_module_from_file(
-        "release_full_start_log_reader",
+        "release_full_explicit_python",
         result.release_dir / "start_amvision_full.py",
     )
-    log_file = tmp_path / "component.log"
-    log_file.write_text("inference-daemon ready\n", encoding="utf-8")
-    current_size = log_file.stat().st_size
-    with log_file.open("a", encoding="utf-8") as stream:
-        stream.write("starting new process\n")
+    manifest = json.loads(result.release_manifest_path.read_text(encoding="utf-8"))
+    python_executable = str((tmp_path / "runtime" / "python.exe").resolve())
 
-    current_launch_tail = start_module._read_log_tail(
-        log_file,
-        start_offset=current_size,
+    service_command = start_module._build_service_command(
+        result.release_dir,
+        manifest,
+        python_executable=python_executable,
+        host="127.0.0.1",
+        port=6600,
+        service_log_level="info",
+    )
+    worker_command = start_module._build_worker_command(
+        result.release_dir,
+        manifest["workers"][0],
+        python_executable=python_executable,
+        topology=SimpleNamespace(
+            topology_id="amvision-backend-workers",
+            topology_generation=1,
+            topology_epoch_id="topology-epoch-1234567890",
+        ),
+        worker_instance_id="worker-instance-1234567890",
+        worker_runtime_root=result.release_dir / "data" / "runtime",
     )
 
-    assert "inference-daemon ready" not in current_launch_tail
-    assert "starting new process" in current_launch_tail
+    for command in (service_command, worker_command):
+        assert command[0] == python_executable
+        assert command[command.index("--app-root") + 1] == str(result.release_dir)
+        assert command[command.index("--python-executable") + 1] == python_executable
+
+
+def test_release_worker_launcher_imports_backend_from_release_app_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证发行布局中的 Worker launcher 从 app/ 导入 backend。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    worker_module = _load_module_from_file(
+        "release_worker_code_root",
+        result.release_dir / "launchers" / "worker" / "start_backend_worker.py",
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "ensure_windows_long_paths_enabled",
+        lambda **_kwargs: True,
+    )
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        worker_module,
+        "run_python_module",
+        lambda **kwargs: calls.append(kwargs) or 0,
+    )
+    python_executable = str((tmp_path / "runtime" / "python.exe").resolve())
+
+    exit_code = worker_module.main(
+        [
+            "--app-root",
+            str(result.release_dir),
+            "--python-executable",
+            python_executable,
+            "--worker-profile-file",
+            "manifests/worker-profiles/dataset-import.json",
+            "--topology-id",
+            "amvision-backend-workers",
+            "--topology-generation",
+            "1",
+            "--topology-epoch-id",
+            "topology-epoch-1234567890",
+            "--worker-instance-id",
+            "worker-instance-1234567890",
+            "--worker-runtime-root",
+            "data/runtime/backend-workers",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls[0]["app_root"] == result.release_dir
+    assert calls[0]["python_executable"] == python_executable
+    assert str(result.release_dir / "app") in sys.path
+
+
+def test_release_full_worker_readiness_uses_current_epoch_heartbeat_not_log_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Worker 就绪只读取当前 epoch 严格心跳，不解析历史日志。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    start_text = (result.release_dir / "start_amvision_full.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "contracts.load_worker_heartbeat" in start_text
+    assert 'ready_marker = "backend-worker ready"' not in start_text
 
 
 def test_release_full_start_cleans_started_daemon_when_readiness_fails(
@@ -589,12 +799,33 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
         lambda **_kwargs: True,
     )
     fake_process = SimpleNamespace(pid=321, poll=lambda: None)
+    fake_log_capture = SimpleNamespace(
+        current_log_path=result.release_dir
+        / "logs"
+        / "startup-failure"
+        / "daemon-20260820.log",
+        log_pattern="daemon-YYYYMMDD.log",
+        close=lambda: None,
+        tail_text=lambda: "",
+        assert_healthy=lambda: None,
+    )
     stopped_processes: list[object] = []
     monkeypatch.setattr(start_module, "_run_database_migration", lambda **_kwargs: None)
     monkeypatch.setattr(
         start_module,
         "_start_component",
-        lambda *_args, **_kwargs: (fake_process, io.BytesIO()),
+        lambda *_args, **_kwargs: (fake_process, fake_log_capture),
+    )
+    monkeypatch.setattr(
+        start_module,
+        "read_process_identity",
+        lambda pid: {
+            "pid": pid,
+            "create_time": 1.0,
+            "executable": "python",
+            "working_directory": str(result.release_dir),
+            "command_line": ["python"],
+        },
     )
     monkeypatch.setattr(
         start_module,
@@ -603,13 +834,17 @@ def test_release_full_start_cleans_started_daemon_when_readiness_fails(
     )
 
     def fail_daemon_ready(**_kwargs) -> None:
-        state_path = result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
+        state_path = (
+            result.release_dir / "logs" / "startup-failure" / "runtime-state.json"
+        )
         state_payload = json.loads(state_path.read_text(encoding="utf-8"))
         assert state_payload["components"][0]["name"] == "inference-daemon"
-        assert state_payload["components"][0]["pid"] == 321
+        assert state_payload["components"][0]["process"]["pid"] == 321
         raise RuntimeError("daemon probe failed")
 
-    monkeypatch.setattr(start_module, "_wait_for_inference_daemon_ready", fail_daemon_ready)
+    monkeypatch.setattr(
+        start_module, "_wait_for_inference_daemon_ready", fail_daemon_ready
+    )
 
     with pytest.raises(RuntimeError, match="daemon probe failed"):
         start_module.main(
@@ -672,39 +907,70 @@ def _patch_release_runtime_asset_sources(
     """用轻量测试目录替换 release 组装使用的运行期资产源目录。"""
 
     source_custom_nodes_dir = tmp_path / "source-custom-nodes"
-    (source_custom_nodes_dir / "opencv_nodes" / "categories" / "geometry").mkdir(parents=True, exist_ok=True)
+    (source_custom_nodes_dir / "opencv_nodes" / "categories" / "geometry").mkdir(
+        parents=True, exist_ok=True
+    )
     (source_custom_nodes_dir / "opencv_nodes" / "manifest.json").write_text(
         '{"id": "opencv.nodes"}\n',
         encoding="utf-8",
     )
-    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "backend" / "runtime").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "backend" / "runtime" / "images.py").write_text(
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "backend" / "runtime").mkdir(
+        parents=True, exist_ok=True
+    )
+    (
+        source_custom_nodes_dir
+        / "opencv_nodes"
+        / "shared"
+        / "backend"
+        / "runtime"
+        / "images.py"
+    ).write_text(
         '"""shared image runtime"""\n',
         encoding="utf-8",
     )
-    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "workflow").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "workflow" / "payload_contracts.json").write_text(
+    (source_custom_nodes_dir / "opencv_nodes" / "shared" / "workflow").mkdir(
+        parents=True, exist_ok=True
+    )
+    (
+        source_custom_nodes_dir
+        / "opencv_nodes"
+        / "shared"
+        / "workflow"
+        / "payload_contracts.json"
+    ).write_text(
         "{}\n",
         encoding="utf-8",
     )
     (source_custom_nodes_dir / "_scaffold").mkdir(parents=True, exist_ok=True)
-    (source_custom_nodes_dir / "_scaffold" / "README.md").write_text("template\n", encoding="utf-8")
+    (source_custom_nodes_dir / "_scaffold" / "README.md").write_text(
+        "template\n", encoding="utf-8"
+    )
     (source_custom_nodes_dir / "__pycache__").mkdir(parents=True, exist_ok=True)
     (source_custom_nodes_dir / "__pycache__" / "cached.pyc").write_bytes(b"cache")
 
-    monkeypatch.setattr(release_assembly, "SOURCE_CUSTOM_NODES_DIR", source_custom_nodes_dir)
+    monkeypatch.setattr(
+        release_assembly, "SOURCE_CUSTOM_NODES_DIR", source_custom_nodes_dir
+    )
 
     source_frontend_dist_dir = tmp_path / "source-frontend-dist"
     (source_frontend_dist_dir / "assets").mkdir(parents=True, exist_ok=True)
-    (source_frontend_dist_dir / "index.html").write_text("<html>frontend</html>\n", encoding="utf-8")
-    (source_frontend_dist_dir / "assets" / "app.js").write_text("console.log('app')\n", encoding="utf-8")
+    (source_frontend_dist_dir / "index.html").write_text(
+        "<html>frontend</html>\n", encoding="utf-8"
+    )
+    (source_frontend_dist_dir / "assets" / "app.js").write_text(
+        "console.log('app')\n", encoding="utf-8"
+    )
     (source_frontend_dist_dir / "runtime-config.template.json").write_text(
         '{"apiBaseUrl": "http://127.0.0.1:5600/api/v1"}\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(release_assembly, "SOURCE_FRONTEND_DIST_DIR", source_frontend_dist_dir)
+    monkeypatch.setattr(
+        release_assembly, "SOURCE_FRONTEND_DIST_DIR", source_frontend_dist_dir
+    )
 
-    source_frontend_runtime_config_template_file = tmp_path / "runtime-config.template.json"
+    source_frontend_runtime_config_template_file = (
+        tmp_path / "runtime-config.template.json"
+    )
     source_frontend_runtime_config_template_file.write_text(
         '{"apiBaseUrl": "http://127.0.0.1:5600/api/v1", "wsBaseUrl": "ws://127.0.0.1:5600/ws/v1"}\n',
         encoding="utf-8",
@@ -723,11 +989,21 @@ def _patch_release_runtime_asset_sources(
     source_ffmpeg_runtime_dir = tmp_path / "source-ffmpeg"
     (source_ffmpeg_runtime_dir / "windows-x64").mkdir(parents=True, exist_ok=True)
     (source_ffmpeg_runtime_dir / "linux-x64").mkdir(parents=True, exist_ok=True)
-    (source_ffmpeg_runtime_dir / "windows-x64" / "ffmpeg.exe").write_text("ffmpeg", encoding="utf-8")
-    (source_ffmpeg_runtime_dir / "windows-x64" / "ffprobe.exe").write_text("ffprobe", encoding="utf-8")
-    (source_ffmpeg_runtime_dir / "linux-x64" / "ffmpeg").write_text("ffmpeg", encoding="utf-8")
-    (source_ffmpeg_runtime_dir / "linux-x64" / "ffprobe").write_text("ffprobe", encoding="utf-8")
-    monkeypatch.setattr(release_assembly, "SOURCE_FFMPEG_RUNTIME_DIR", source_ffmpeg_runtime_dir)
+    (source_ffmpeg_runtime_dir / "windows-x64" / "ffmpeg.exe").write_text(
+        "ffmpeg", encoding="utf-8"
+    )
+    (source_ffmpeg_runtime_dir / "windows-x64" / "ffprobe.exe").write_text(
+        "ffprobe", encoding="utf-8"
+    )
+    (source_ffmpeg_runtime_dir / "linux-x64" / "ffmpeg").write_text(
+        "ffmpeg", encoding="utf-8"
+    )
+    (source_ffmpeg_runtime_dir / "linux-x64" / "ffprobe").write_text(
+        "ffprobe", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        release_assembly, "SOURCE_FFMPEG_RUNTIME_DIR", source_ffmpeg_runtime_dir
+    )
 
     source_tensorrt_runtime_dir = tmp_path / "source-tensorrt"
     (source_tensorrt_runtime_dir / "bin").mkdir(parents=True, exist_ok=True)
@@ -735,8 +1011,12 @@ def _patch_release_runtime_asset_sources(
     (source_tensorrt_runtime_dir / "doc").mkdir(parents=True, exist_ok=True)
     (source_tensorrt_runtime_dir / "include").mkdir(parents=True, exist_ok=True)
     (source_tensorrt_runtime_dir / "lib").mkdir(parents=True, exist_ok=True)
-    (source_tensorrt_runtime_dir / "bin" / "trtexec.exe").write_text("trtexec", encoding="utf-8")
-    (source_tensorrt_runtime_dir / "bin" / "nvinfer_11.dll").write_text("dll", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "bin" / "trtexec.exe").write_text(
+        "trtexec", encoding="utf-8"
+    )
+    (source_tensorrt_runtime_dir / "bin" / "nvinfer_11.dll").write_text(
+        "dll", encoding="utf-8"
+    )
     (
         source_tensorrt_runtime_dir
         / "python"
@@ -745,9 +1025,15 @@ def _patch_release_runtime_asset_sources(
         "wheel",
         encoding="utf-8",
     )
-    (source_tensorrt_runtime_dir / "doc" / "README.txt").write_text("readme", encoding="utf-8")
-    (source_tensorrt_runtime_dir / "include" / "NvInfer.h").write_text("header", encoding="utf-8")
-    (source_tensorrt_runtime_dir / "lib" / "nvinfer.lib").write_text("lib", encoding="utf-8")
+    (source_tensorrt_runtime_dir / "doc" / "README.txt").write_text(
+        "readme", encoding="utf-8"
+    )
+    (source_tensorrt_runtime_dir / "include" / "NvInfer.h").write_text(
+        "header", encoding="utf-8"
+    )
+    (source_tensorrt_runtime_dir / "lib" / "nvinfer.lib").write_text(
+        "lib", encoding="utf-8"
+    )
     monkeypatch.setattr(
         release_assembly,
         "SOURCE_TENSORRT_RUNTIME_DIR",
@@ -755,8 +1041,12 @@ def _patch_release_runtime_asset_sources(
     )
 
     source_cudnn_runtime_dir = tmp_path / "source-cudnn"
-    (source_cudnn_runtime_dir / "bin" / "12.9" / "x64").mkdir(parents=True, exist_ok=True)
-    (source_cudnn_runtime_dir / "bin" / "13.2" / "x64").mkdir(parents=True, exist_ok=True)
+    (source_cudnn_runtime_dir / "bin" / "12.9" / "x64").mkdir(
+        parents=True, exist_ok=True
+    )
+    (source_cudnn_runtime_dir / "bin" / "13.2" / "x64").mkdir(
+        parents=True, exist_ok=True
+    )
     (source_cudnn_runtime_dir / "bin" / "12.9" / "x64" / "cudnn64_9.dll").write_text(
         "cudnn",
         encoding="utf-8",

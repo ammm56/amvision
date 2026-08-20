@@ -38,7 +38,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_test_headers, create_test_runtime
 
@@ -635,7 +634,6 @@ def _create_runtime_api_client(
                 root_dir=str(_CUSTOM_NODES_ROOT)
             ),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,

@@ -8,11 +8,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from backend.maintenance.bootstrap import BackendMaintenanceBootstrap, BackendMaintenanceRuntime
+from backend.maintenance.bootstrap import (
+    BackendMaintenanceBootstrap,
+    BackendMaintenanceRuntime,
+)
 from backend.maintenance.extension_pretrained_manifests import (
     sync_extension_pretrained_manifests,
 )
-from backend.maintenance.release_assembly import ReleaseAssemblyRequest, assemble_release
+from backend.maintenance.release_assembly import (
+    ReleaseAssemblyRequest,
+    assemble_release,
+)
 from backend.maintenance.workflow_save_location_migration import (
     WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
     migrate_workflow_save_locations,
@@ -41,7 +47,9 @@ from backend.contracts.workflows.resource_semantics import (
     WORKFLOW_RUNTIME_STORAGE_ROOT,
     build_workflow_preview_run_storage_dir,
 )
-from backend.service.infrastructure.object_store.object_key_layout import RUNTIME_INPUTS_STORAGE_ROOT
+from backend.service.infrastructure.object_store.object_key_layout import (
+    RUNTIME_INPUTS_STORAGE_ROOT,
+)
 
 if TYPE_CHECKING:
     from backend.service.domain.workflows.workflow_runtime_records import WorkflowRun
@@ -252,7 +260,9 @@ def run_command(
         if layout_kind == "release":
             release_manifest = _load_release_manifest_for_layout(app_root)
             release_artifacts = release_manifest.get("artifacts")
-            release_artifacts = release_artifacts if isinstance(release_artifacts, dict) else {}
+            release_artifacts = (
+                release_artifacts if isinstance(release_artifacts, dict) else {}
+            )
             release_target = release_manifest.get("target")
             release_target = release_target if isinstance(release_target, dict) else {}
             accelerator_section = release_manifest.get("accelerator")
@@ -260,7 +270,9 @@ def run_command(
                 accelerator_section if isinstance(accelerator_section, dict) else {}
             )
             accelerator = str(accelerator_section.get("kind") or "").strip().lower()
-            platform_tag = str(release_target.get("platform_tag") or "windows-x64").strip()
+            platform_tag = str(
+                release_target.get("platform_tag") or "windows-x64"
+            ).strip()
             expected_paths.update(
                 {
                     "root_readme": (app_root / "README.md",),
@@ -326,7 +338,9 @@ def run_command(
             "workspace_dir": str(runtime.workspace_dir),
             "paths": {
                 name: {
-                    "path": str(next((path for path in paths if path.exists()), paths[0])),
+                    "path": str(
+                        next((path for path in paths if path.exists()), paths[0])
+                    ),
                     "exists": any(path.exists() for path in paths),
                     "candidates": [str(path) for path in paths],
                 }
@@ -380,10 +394,13 @@ def run_command(
             "requirements_file": str(result.requirements_path),
             "python_dir": str(result.bundled_python_dir),
             "bundled_python_mode": result.bundled_python_mode,
-            "generated_root_launchers": [str(path) for path in result.generated_root_launchers],
+            "generated_root_launchers": [
+                str(path) for path in result.generated_root_launchers
+            ],
             "worker_profiles": list(result.worker_profile_ids),
-            "generated_worker_launchers": [str(path) for path in result.generated_worker_launchers],
-            "copied_root_documents": [str(path) for path in result.copied_root_documents],
+            "copied_root_documents": [
+                str(path) for path in result.copied_root_documents
+            ],
             "placeholder_dirs": [str(path) for path in result.placeholder_dirs],
         }
     if command == DATABASE_MIGRATION_COMMAND:
@@ -406,7 +423,9 @@ def run_command(
         return {
             "command": command,
             "moved_legacy_yoloe_root": result.moved_legacy_yoloe_root,
-            "written_manifest_paths": [str(path) for path in result.written_manifest_paths],
+            "written_manifest_paths": [
+                str(path) for path in result.written_manifest_paths
+            ],
             "warnings": list(result.warnings),
         }
     if command == WORKFLOW_PREVIEW_RUN_CLEANUP_COMMAND:
@@ -430,12 +449,16 @@ def run_command(
             ),
         )
     if command == WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND:
-        from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+        from backend.service.infrastructure.object_store.local_dataset_storage import (
+            LocalDatasetStorage,
+        )
         from backend.service.settings import get_backend_service_settings
 
         service_settings = backend_service_settings or get_backend_service_settings()
         result = migrate_workflow_save_locations(
-            dataset_storage=LocalDatasetStorage(service_settings.to_dataset_storage_settings()),
+            dataset_storage=LocalDatasetStorage(
+                service_settings.to_dataset_storage_settings()
+            ),
             confirm=confirm_migration,
         )
         return {
@@ -470,16 +493,16 @@ def cleanup_expired_preview_runs(
     service_settings = backend_service_settings or get_backend_service_settings()
     cutoff_time = _normalize_cutoff_time(now_iso)
     session_factory = SessionFactory(service_settings.to_database_settings())
-    dataset_storage = LocalDatasetStorage(service_settings.to_dataset_storage_settings())
+    dataset_storage = LocalDatasetStorage(
+        service_settings.to_dataset_storage_settings()
+    )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     staged_snapshot_dirs: list[tuple[str, str | None]] = []
     try:
         expired_preview_runs = unit_of_work.workflow_runtime.list_expired_preview_runs(
             cutoff_time
         )
-        deleted_preview_run_ids = [
-            item.preview_run_id for item in expired_preview_runs
-        ]
+        deleted_preview_run_ids = [item.preview_run_id for item in expired_preview_runs]
         for preview_run in expired_preview_runs:
             staged_snapshot_dirs.append(
                 (
@@ -560,10 +583,14 @@ def cleanup_runtime_storage(
         now_iso=now_iso,
     )
     service_settings = backend_service_settings or get_backend_service_settings()
-    cutoff_time = _resolve_retention_cutoff_time(now_iso, retention_hours=retention_hours)
+    cutoff_time = _resolve_retention_cutoff_time(
+        now_iso, retention_hours=retention_hours
+    )
     cutoff_datetime = _parse_iso_datetime_text(cutoff_time)
     session_factory = SessionFactory(service_settings.to_database_settings())
-    dataset_storage = LocalDatasetStorage(service_settings.to_dataset_storage_settings())
+    dataset_storage = LocalDatasetStorage(
+        service_settings.to_dataset_storage_settings()
+    )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
         deleted_runtime_input_entries = _cleanup_runtime_input_entries(
@@ -696,11 +723,15 @@ def _cleanup_runtime_input_entries(
         return []
 
     deleted_entries: list[str] = []
-    for consumer_path in sorted(runtime_inputs_root.iterdir(), key=lambda item: item.name):
+    for consumer_path in sorted(
+        runtime_inputs_root.iterdir(), key=lambda item: item.name
+    ):
         if not consumer_path.is_dir():
             continue
         for request_path in sorted(consumer_path.iterdir(), key=lambda item: item.name):
-            if not _is_path_older_than_cutoff(request_path, cutoff_datetime=cutoff_datetime):
+            if not _is_path_older_than_cutoff(
+                request_path, cutoff_datetime=cutoff_datetime
+            ):
                 continue
             relative_path = _to_relative_storage_path(
                 dataset_storage=dataset_storage,
@@ -724,7 +755,9 @@ def _cleanup_workflow_run_dirs(
         return []
 
     deleted_dirs: list[str] = []
-    for child_path in sorted(workflow_runtime_root.iterdir(), key=lambda item: item.name):
+    for child_path in sorted(
+        workflow_runtime_root.iterdir(), key=lambda item: item.name
+    ):
         if not child_path.is_dir():
             continue
         if child_path.name in {
@@ -734,14 +767,18 @@ def _cleanup_workflow_run_dirs(
             continue
         workflow_run = unit_of_work.workflow_runtime.get_workflow_run(child_path.name)
         if workflow_run is None:
-            if not _is_path_older_than_cutoff(child_path, cutoff_datetime=cutoff_datetime):
+            if not _is_path_older_than_cutoff(
+                child_path, cutoff_datetime=cutoff_datetime
+            ):
                 continue
         elif not _is_workflow_run_storage_expired(
             workflow_run,
             cutoff_datetime=cutoff_datetime,
         ):
             continue
-        relative_path = _to_relative_storage_path(dataset_storage=dataset_storage, path=child_path)
+        relative_path = _to_relative_storage_path(
+            dataset_storage=dataset_storage, path=child_path
+        )
         dataset_storage.delete_tree(relative_path)
         deleted_dirs.append(relative_path)
     return deleted_dirs
@@ -767,7 +804,9 @@ def _cleanup_orphan_preview_run_dirs(
             continue
         if not _is_path_older_than_cutoff(child_path, cutoff_datetime=cutoff_datetime):
             continue
-        relative_path = _to_relative_storage_path(dataset_storage=dataset_storage, path=child_path)
+        relative_path = _to_relative_storage_path(
+            dataset_storage=dataset_storage, path=child_path
+        )
         dataset_storage.delete_tree(relative_path)
         deleted_dirs.append(relative_path)
     return deleted_dirs
@@ -789,11 +828,16 @@ def _cleanup_orphan_app_runtime_dirs(
     for child_path in sorted(app_runtime_root.iterdir(), key=lambda item: item.name):
         if not child_path.is_dir():
             continue
-        if unit_of_work.workflow_runtime.get_workflow_app_runtime(child_path.name) is not None:
+        if (
+            unit_of_work.workflow_runtime.get_workflow_app_runtime(child_path.name)
+            is not None
+        ):
             continue
         if not _is_path_older_than_cutoff(child_path, cutoff_datetime=cutoff_datetime):
             continue
-        relative_path = _to_relative_storage_path(dataset_storage=dataset_storage, path=child_path)
+        relative_path = _to_relative_storage_path(
+            dataset_storage=dataset_storage, path=child_path
+        )
         dataset_storage.delete_tree(relative_path)
         deleted_dirs.append(relative_path)
     return deleted_dirs
@@ -825,7 +869,9 @@ def _is_path_older_than_cutoff(path: Path, *, cutoff_datetime: datetime) -> bool
     return modified_at <= cutoff_datetime
 
 
-def _to_relative_storage_path(*, dataset_storage: LocalDatasetStorage, path: Path) -> str:
+def _to_relative_storage_path(
+    *, dataset_storage: LocalDatasetStorage, path: Path
+) -> str:
     """把文件系统路径转回 ObjectStore 相对路径。"""
 
     return path.relative_to(dataset_storage.root_dir).as_posix()

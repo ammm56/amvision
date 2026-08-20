@@ -1,4 +1,5 @@
 {
+  "format_id": "amvision.worker-profile.v1",
   "profile_id": "dataset-export",
   "display_name": "amvision dataset export worker",
   "description": "独立消费 DatasetExport 队列，负责数据集导出、打包和输出文件落盘。",

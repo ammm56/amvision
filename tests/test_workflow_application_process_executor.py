@@ -40,7 +40,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings as BackendServiceSettingsModel,
-    BackendServiceTaskManagerConfig,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -157,7 +156,6 @@ def test_workflow_application_runtime_executor_runs_application_in_current_proce
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -328,7 +326,6 @@ def test_workflow_preview_run_api_executes_saved_application_directly(
                 root_dir=str(custom_nodes_root_dir)
             ),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -408,7 +405,6 @@ def test_workflow_preview_run_api_marks_timed_out_when_direct_node_exceeds_deadl
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -485,7 +481,6 @@ def test_workflow_preview_run_api_returns_sync_result_and_append_only_events(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -570,7 +565,6 @@ def test_workflow_preview_run_events_websocket_replays_append_only_events(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -682,7 +676,6 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -829,7 +822,6 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -956,7 +948,6 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1083,7 +1074,6 @@ def test_workflow_app_runtime_health_and_instances_follow_heartbeat_timeout(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1194,7 +1184,6 @@ def test_workflow_app_runtime_recovery_event_streams_to_websocket_and_history(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1313,7 +1302,6 @@ def test_workflow_preview_run_api_rejects_removed_async_wait_mode(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1378,7 +1366,6 @@ def test_workflow_preview_run_api_async_request_creates_no_run_or_storage(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1451,7 +1438,6 @@ def test_workflow_preview_run_api_lists_and_deletes_preview_runs(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1565,7 +1551,6 @@ def test_workflow_preview_run_api_supports_state_and_created_at_filters(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1707,7 +1692,6 @@ def test_workflow_execution_policy_api_creates_lists_and_applies_to_preview_and_
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -1920,7 +1904,6 @@ def test_workflow_app_runtime_api_list_supports_offset_limit_pagination_headers(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2038,7 +2021,6 @@ def test_workflow_app_runtime_api_lists_and_deletes_stopped_runtimes(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2141,7 +2123,6 @@ def test_workflow_app_runtime_api_deletes_running_runtime_and_cleans_worker_hand
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2225,7 +2206,6 @@ def test_workflow_app_runtime_api_invokes_saved_application_in_worker_process(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2337,7 +2317,6 @@ def test_workflow_app_runtime_recovers_after_worker_process_crash(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2441,7 +2420,6 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2570,7 +2548,6 @@ def test_workflow_app_runtime_api_persists_failed_invoke_details(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2683,7 +2660,6 @@ def test_workflow_app_runtime_api_can_restart_after_failed_run(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2791,7 +2767,6 @@ def test_workflow_app_runtime_api_lists_instances_and_clears_them_after_stop(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -2911,7 +2886,6 @@ def test_workflow_app_runtime_async_run_api_persists_queued_then_succeeded(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -3010,7 +2984,6 @@ def test_workflow_app_runtime_async_run_api_can_cancel_running_and_queued_runs(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -3146,7 +3119,6 @@ def test_workflow_app_runtime_async_run_api_persists_failed_state_and_error_deta
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -3257,7 +3229,6 @@ def test_workflow_app_runtime_async_run_api_marks_timed_out_and_allows_restart(
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -3395,7 +3366,6 @@ def test_workflow_app_runtime_async_run_api_cancel_ignores_terminal_succeeded_ru
             custom_nodes=BackendServiceCustomNodesConfig(
                 root_dir=str(custom_nodes_root_dir)
             ),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,

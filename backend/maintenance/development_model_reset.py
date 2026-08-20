@@ -47,9 +47,7 @@ from backend.service.infrastructure.persistence.workflow_trigger_source_orm impo
 
 DEVELOPMENT_MODEL_RESET_COMMAND = "reset-development-model-state"
 _PRESERVED_TASK_KINDS = frozenset({"dataset-import", "dataset-export"})
-_PRESERVED_QUEUE_NAMES = frozenset(
-    {"_worker_health", "dataset-exports", "dataset-imports"}
-)
+_PRESERVED_QUEUE_NAMES = frozenset({"dataset-exports", "dataset-imports"})
 _DERIVED_STORAGE_PATHS = (
     "task-runs",
     "deployments/instances",
@@ -210,12 +208,8 @@ def _delete_database_state(*, session_factory: SessionFactory) -> dict[str, int]
                 session, WorkflowTriggerSourceRecord
             ),
             "workflow_runs": _count_rows(session, WorkflowRunRecord),
-            "workflow_app_runtimes": _count_rows(
-                session, WorkflowAppRuntimeRecord
-            ),
-            "workflow_preview_runs": _count_rows(
-                session, WorkflowPreviewRunRecord
-            ),
+            "workflow_app_runtimes": _count_rows(session, WorkflowAppRuntimeRecord),
+            "workflow_preview_runs": _count_rows(session, WorkflowPreviewRunRecord),
             "deployment_instances": _count_rows(session, DeploymentInstanceRecord),
             "model_files": _count_rows(session, ModelFileRecord),
             "model_builds": _count_rows(session, ModelBuildRecord),

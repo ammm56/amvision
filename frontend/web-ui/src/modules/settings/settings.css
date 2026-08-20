@@ -232,6 +232,42 @@
   background: var(--am-surface-soft);
 }
 
+.settings-worker-topology {
+  display: grid;
+  gap: var(--am-space-lg);
+  padding: var(--am-space-lg);
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-lg);
+  background: var(--am-surface);
+}
+
+.settings-worker-topology__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--am-space-lg);
+}
+
+.settings-worker-topology__heading h3,
+.settings-worker-topology__heading p {
+  margin: 0;
+}
+
+.settings-worker-topology__heading p {
+  margin-top: var(--am-space-xs);
+  color: var(--am-text-muted);
+  font-size: 13px;
+}
+
+.settings-worker-profile-id {
+  display: block;
+  margin-top: 2px;
+  color: var(--am-text-muted);
+  font-family: var(--am-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .settings-metadata-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

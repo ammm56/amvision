@@ -12,12 +12,10 @@
   },
   "service": {
     "python_launcher": "runtimes/launchers/service/start_backend_service.py",
-    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat",
-    "hosted_task_manager_enabled": false
+    "windows_launcher": "runtimes/launchers/service/start-backend-service.bat"
   },
   "worker": {
     "python_launcher": "runtimes/launchers/worker/start_backend_worker.py",
-    "windows_launcher": "runtimes/launchers/worker/start-backend-worker.bat",
     "worker_profile_ids": [
       "dataset-import",
       "dataset-export",

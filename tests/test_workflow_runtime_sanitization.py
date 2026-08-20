@@ -79,7 +79,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_valid_test_png_bytes, create_test_runtime
 
@@ -1254,7 +1253,6 @@ def _build_runtime_service(
         custom_nodes=BackendServiceCustomNodesConfig(
             root_dir=str(custom_nodes_root_dir)
         ),
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
     preview_run_manager = WorkflowPreviewRunManager(
         session_factory=session_factory,

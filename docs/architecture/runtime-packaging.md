@@ -83,7 +83,7 @@ release/
 ### worker launcher
 
 - 负责启动训练、推理、转换和流程 worker
-- 当前通过 `config/backend-worker.json` 的 `task_manager.enabled_consumer_kinds` 或 `runtimes/manifests/worker-profiles/*.json` 派生不同 worker 组合
+- 只通过严格的 `runtimes/manifests/worker-profiles/*.json` 定义 worker 职责和并发策略；`config/backend-worker.json` 不再重复这些字段
 - 不允许隐式回退到系统 Python
 
 ### maintenance launcher

@@ -140,6 +140,59 @@
             <StatusBadge :status="service.status" :label="service.statusLabel" with-dot />
           </article>
         </div>
+        <section class="settings-worker-topology">
+          <header class="settings-worker-topology__heading">
+            <div>
+              <h3>{{ t('settingsDiagnostics.sections.workerTopology') }}</h3>
+              <p>{{ t('settingsDiagnostics.workerTopologyDescription') }}</p>
+            </div>
+            <StatusBadge
+              :status="backendWorkerDiagnostics.health"
+              :label="formatServiceStatus(backendWorkerDiagnostics.health)"
+              with-dot
+            />
+          </header>
+          <dl class="settings-metadata-grid settings-metadata-grid--runtime">
+            <InfoRow :label="t('settingsDiagnostics.fields.topologyId')" :value="backendWorkerDiagnostics.topologyId || '-'" />
+            <InfoRow :label="t('settingsDiagnostics.fields.topologyGeneration')" :value="stringValue(backendWorkerDiagnostics.topologyGeneration)" />
+            <InfoRow :label="t('settingsDiagnostics.fields.topologyEpoch')" :value="backendWorkerDiagnostics.topologyEpochId || '-'" />
+            <InfoRow :label="t('settingsDiagnostics.fields.topologyState')" :value="formatServiceStatus(backendWorkerDiagnostics.topologyState || 'offline')" />
+            <InfoRow :label="t('settingsDiagnostics.fields.workerProfiles')" :value="`${backendWorkerDiagnostics.runningCount} / ${backendWorkerDiagnostics.workerCount}`" />
+            <InfoRow :label="t('settingsDiagnostics.fields.activatedAt')" :value="formatOptionalDate(backendWorkerDiagnostics.activatedAt)" />
+          </dl>
+          <div class="resource-table settings-diagnostic-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ t('settingsDiagnostics.columns.profile') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.status') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.consumers') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.concurrency') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.processId') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.heartbeatAge') }}</th>
+                  <th>{{ t('settingsDiagnostics.columns.reason') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="profile in backendWorkerDiagnostics.profiles" :key="profile.profileId">
+                  <td>
+                    <strong>{{ profile.displayName }}</strong>
+                    <small class="settings-worker-profile-id">{{ profile.profileId }}</small>
+                  </td>
+                  <td><StatusBadge :status="profile.health" :label="formatServiceStatus(profile.health)" with-dot /></td>
+                  <td>{{ profile.enabledConsumerKinds.join(', ') || '-' }}</td>
+                  <td>{{ stringValue(profile.maxConcurrentTasks) }}</td>
+                  <td class="settings-mono-value">{{ stringValue(profile.processId) }}</td>
+                  <td>{{ formatWorkerHeartbeatAge(profile.heartbeatAgeSeconds) }}</td>
+                  <td>{{ formatWorkerReason(profile.reason) }}</td>
+                </tr>
+                <tr v-if="backendWorkerDiagnostics.profiles.length === 0">
+                  <td colspan="7">{{ t('settingsDiagnostics.emptyWorkerProfiles') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
         <dl class="settings-metadata-grid settings-metadata-grid--runtime">
           <InfoRow :label="t('settingsDiagnostics.fields.apiBaseUrl')" :value="runtimeConfig.apiBaseUrl" />
           <InfoRow :label="t('settingsDiagnostics.fields.wsBaseUrl')" :value="runtimeConfig.wsBaseUrl" />
@@ -326,6 +379,7 @@ import PageHeader from '@/shared/ui/layout/PageHeader.vue'
 import TabList from '@/shared/ui/navigation/TabList.vue'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import SettingsAccountsPanel from '../components/SettingsAccountsPanel.vue'
+import { parseBackendWorkerDiagnostics } from '../backend-worker-diagnostics'
 import { getSystemDiagnostics, type SystemDiagnosticsResponse } from '../services/settings-diagnostics.service'
 
 interface DependencyRow {
@@ -411,6 +465,7 @@ const bootstrapProviders = computed<AuthProvider[]>(() => sessionStore.bootstrap
 const visibleProjects = computed<ProjectCatalogItem[]>(() => sessionStore.bootstrap?.visible_projects ?? [])
 const platformCapabilities = computed<SystemCapabilities>(() => sessionStore.bootstrap?.capabilities ?? {})
 const serviceStatus = computed(() => stringValue(recordValue(services.value, 'backend_service', 'status')))
+const backendWorkerDiagnostics = computed(() => parseBackendWorkerDiagnostics(services.value.backend_worker))
 const formatCpu = computed(() =>
   [stringValue(system.value.processor), stringValue(system.value.cpu_count)].filter((value) => value !== '-').join(' / ') || '-',
 )
@@ -474,7 +529,7 @@ onMounted(() => {
 })
 
 watch(
-  () => [route.query.category, route.query.section, route.hash],
+  () => [route.query.category, route.query.section],
   () => restoreSettingsLocation(),
 )
 
@@ -497,14 +552,11 @@ function restoreSettingsLocation(): void {
     activeCategory.value = category
   }
 
-  const legacySystemSection = route.hash.replace('#settings-', '')
-  const section = typeof route.query.section === 'string' ? route.query.section : legacySystemSection
+  const section = typeof route.query.section === 'string' ? route.query.section : ''
   if (section === 'about' || section === 'python' || section === 'devices') {
     activeSystemSection.value = section
-    if (legacySystemSection) activeCategory.value = 'system'
   } else if (section === 'host' || section === 'system') {
     activeSystemSection.value = 'host'
-    if (legacySystemSection) activeCategory.value = 'system'
   } else if (section === 'session' || section === 'accounts') {
     activeAccessSection.value = section
   }
@@ -668,11 +720,27 @@ function formatServiceStatus(value: string): string {
   if (normalized === 'reachable') return t('settingsDiagnostics.status.reachable')
   if (normalized === 'unreachable') return t('settingsDiagnostics.status.unreachable')
   if (normalized === 'running') return t('settingsDiagnostics.status.running')
+  if (normalized === 'starting') return t('settingsDiagnostics.status.starting')
+  if (normalized === 'stopping') return t('settingsDiagnostics.status.stopping')
+  if (normalized === 'failed') return t('settingsDiagnostics.status.failed')
   if (normalized === 'stale') return t('settingsDiagnostics.status.stale')
   if (normalized === 'offline') return t('settingsDiagnostics.status.offline')
   if (normalized === 'stopped') return t('settingsDiagnostics.status.stopped')
   if (normalized === 'not_probed') return t('settingsDiagnostics.status.notProbed')
   if (normalized === 'unknown') return t('tasks.status.unknown')
+  return value.replace(/[_-]+/g, ' ')
+}
+
+function formatWorkerHeartbeatAge(value: number | null): string {
+  return value === null ? '-' : t('settingsDiagnostics.workerHeartbeatAge', { seconds: value.toFixed(1) })
+}
+
+function formatWorkerReason(value: string | null): string {
+  if (!value) return '-'
+  if (value === 'heartbeat_missing') return t('settingsDiagnostics.workerReasons.heartbeatMissing')
+  if (value === 'heartbeat_invalid') return t('settingsDiagnostics.workerReasons.heartbeatInvalid')
+  if (value === 'heartbeat_identity_mismatch') return t('settingsDiagnostics.workerReasons.identityMismatch')
+  if (value === 'heartbeat_stale') return t('settingsDiagnostics.workerReasons.heartbeatStale')
   return value.replace(/[_-]+/g, ' ')
 }
 

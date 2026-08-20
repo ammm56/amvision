@@ -27,7 +27,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import create_test_runtime
 from tests.test_workflow_barcode_nodes import _build_mixed_barcode_test_png_bytes
@@ -108,7 +107,6 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
         dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
         queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
         custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
-        task_manager=BackendServiceTaskManagerConfig(enabled=False),
     )
     preview_run_manager = WorkflowPreviewRunManager(
         session_factory=session_factory,

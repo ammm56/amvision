@@ -26,6 +26,7 @@ from backend.service.api.rest.v1.routes.system.services import (
 )
 from backend.service.application.unit_of_work import UnitOfWork
 from backend.service.settings import BackendServiceSettings
+from backend.workers.contracts import DEFAULT_WORKER_RUNTIME_ROOT
 from backend.workers.health import read_backend_worker_health_summary
 
 
@@ -83,7 +84,8 @@ def _build_about_diagnostics(settings: BackendServiceSettings) -> dict[str, obje
         "app_name": settings.app.app_name,
         "app_version": settings.app.app_version,
         "backend_version": settings.app.app_version,
-        "git_commit": _read_first_env("AMVISION_GIT_COMMIT", "GIT_COMMIT") or _read_git_commit(),
+        "git_commit": _read_first_env("AMVISION_GIT_COMMIT", "GIT_COMMIT")
+        or _read_git_commit(),
         "build_time": _read_first_env("AMVISION_BUILD_TIME", "BUILD_TIME"),
         "license": AMVISION_LICENSE_NAME,
         "license_spdx": AMVISION_LICENSE_SPDX,
@@ -224,9 +226,12 @@ def _build_service_diagnostics(
     - dict[str, object]：服务组件运行摘要。
     """
 
-    background_task_manager_host = getattr(request.app.state, "background_task_manager_host", None)
-    workflow_runtime_worker_manager = getattr(request.app.state, "workflow_runtime_worker_manager", None)
-    trigger_source_supervisor = getattr(request.app.state, "trigger_source_supervisor", None)
+    workflow_runtime_worker_manager = getattr(
+        request.app.state, "workflow_runtime_worker_manager", None
+    )
+    trigger_source_supervisor = getattr(
+        request.app.state, "trigger_source_supervisor", None
+    )
     return {
         "backend_service": {
             "status": "ok",
@@ -242,12 +247,6 @@ def _build_service_diagnostics(
             "scopes": list(principal.scopes),
             "bearer_auth_enabled": settings.auth.bearer_auth_enabled(),
         },
-        "task_manager": {
-            "enabled": settings.task_manager.enabled,
-            "running": bool(getattr(background_task_manager_host, "is_running", False)),
-            "max_concurrent_tasks": settings.task_manager.max_concurrent_tasks,
-            "poll_interval_seconds": settings.task_manager.poll_interval_seconds,
-        },
         "backend_worker": _build_backend_worker_diagnostics(settings),
         "inference_daemon": _build_inference_daemon_summary(
             request=request,
@@ -259,8 +258,12 @@ def _build_service_diagnostics(
         },
         "zeromq": _build_zeromq_service_summary(trigger_source_supervisor),
         "local_buffer_broker": build_local_buffer_broker_health(request),
-        "workflow_runtime_worker_manager": _build_workflow_runtime_manager_summary(workflow_runtime_worker_manager),
-        "trigger_source_supervisor": _build_trigger_source_supervisor_summary(trigger_source_supervisor),
+        "workflow_runtime_worker_manager": _build_workflow_runtime_manager_summary(
+            workflow_runtime_worker_manager
+        ),
+        "trigger_source_supervisor": _build_trigger_source_supervisor_summary(
+            trigger_source_supervisor
+        ),
         "queue": {
             "root_dir": str(_resolve_path(settings.queue.root_dir)),
             "lease_timeout_seconds": settings.queue.lease_timeout_seconds,
@@ -295,7 +298,9 @@ def _build_database_diagnostics(unit_of_work: UnitOfWork) -> dict[str, object]:
     return {"status": "ok", "database": "reachable", "scalar": health_value}
 
 
-def _build_backend_worker_diagnostics(settings: BackendServiceSettings) -> dict[str, object]:
+def _build_backend_worker_diagnostics(
+    settings: BackendServiceSettings,
+) -> dict[str, object]:
     """读取独立 backend-worker 的本地心跳摘要。
 
     参数：
@@ -305,7 +310,9 @@ def _build_backend_worker_diagnostics(settings: BackendServiceSettings) -> dict[
     - dict[str, object]：backend-worker 进程健康摘要。
     """
 
-    return read_backend_worker_health_summary(queue_root_dir=_resolve_path(settings.queue.root_dir))
+    return read_backend_worker_health_summary(
+        worker_runtime_root_dir=_resolve_path(DEFAULT_WORKER_RUNTIME_ROOT)
+    )
 
 
 def _build_inference_daemon_summary(
@@ -348,7 +355,9 @@ def _build_inference_daemon_summary(
     }
 
 
-def _build_zeromq_service_summary(trigger_source_supervisor: object) -> dict[str, object]:
+def _build_zeromq_service_summary(
+    trigger_source_supervisor: object,
+) -> dict[str, object]:
     """构造 ZeroMQ 协议组件摘要。
 
     参数：
@@ -378,7 +387,9 @@ def _build_zeromq_service_summary(trigger_source_supervisor: object) -> dict[str
     }
 
 
-def _build_workflow_runtime_manager_summary(worker_manager: object) -> dict[str, object]:
+def _build_workflow_runtime_manager_summary(
+    worker_manager: object,
+) -> dict[str, object]:
     """构造 WorkflowRuntimeWorkerManager 摘要。
 
     参数：
@@ -392,7 +403,9 @@ def _build_workflow_runtime_manager_summary(worker_manager: object) -> dict[str,
     handles = getattr(worker_manager, "_handles", {})
     return {
         "configured": worker_manager is not None,
-        "monitor_running": bool(monitor_thread is not None and monitor_thread.is_alive()),
+        "monitor_running": bool(
+            monitor_thread is not None and monitor_thread.is_alive()
+        ),
         "runtime_count": len(handles) if isinstance(handles, dict) else None,
     }
 
@@ -489,9 +502,15 @@ def _build_openvino_summary() -> dict[str, object]:
     normalized_devices = [device.upper() for device in available_devices]
     summary["available_devices"] = available_devices
     summary["device_count"] = len(available_devices)
-    summary["supports_cpu"] = any(device == "CPU" or device.startswith("CPU.") for device in normalized_devices)
-    summary["supports_gpu"] = any(device == "GPU" or device.startswith("GPU.") for device in normalized_devices)
-    summary["supports_npu"] = any(device == "NPU" or device.startswith("NPU.") for device in normalized_devices)
+    summary["supports_cpu"] = any(
+        device == "CPU" or device.startswith("CPU.") for device in normalized_devices
+    )
+    summary["supports_gpu"] = any(
+        device == "GPU" or device.startswith("GPU.") for device in normalized_devices
+    )
+    summary["supports_npu"] = any(
+        device == "NPU" or device.startswith("NPU.") for device in normalized_devices
+    )
     return summary
 
 
@@ -509,7 +528,12 @@ def _build_memory_summary() -> dict[str, object]:
 
         memory = psutil.virtual_memory()
     except Exception as error:  # pragma: no cover - 平台探测异常时进入
-        return {"status": "error", "total_bytes": None, "available_bytes": None, "error": str(error)}
+        return {
+            "status": "error",
+            "total_bytes": None,
+            "available_bytes": None,
+            "error": str(error),
+        }
     return {
         "status": "ok",
         "total_bytes": memory.total,
@@ -532,7 +556,12 @@ def _build_disk_summary(path: Path) -> dict[str, object]:
     try:
         usage = shutil.disk_usage(probe_path)
     except OSError as error:
-        return {"path": str(path), "probe_path": str(probe_path), "status": "error", "error": str(error)}
+        return {
+            "path": str(path),
+            "probe_path": str(probe_path),
+            "status": "error",
+            "error": str(error),
+        }
     return {
         "path": str(path),
         "probe_path": str(probe_path),

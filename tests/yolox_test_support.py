@@ -58,8 +58,14 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationRuntimeTensorSpec,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from tests.api_test_support import ApiTestContext, create_api_test_context, create_test_runtime
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from tests.api_test_support import (
+    ApiTestContext,
+    create_api_test_context,
+    create_test_runtime,
+)
 
 
 _TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT = {
@@ -115,8 +121,6 @@ def create_yolox_api_test_context(
     tmp_path: Path,
     *,
     database_name: str,
-    max_concurrent_tasks: int = 2,
-    poll_interval_seconds: float = 0.05,
     attach_fake_deployment_supervisors: bool = False,
 ) -> YoloXApiTestContext:
     """创建绑定测试数据库、本地文件存储和队列的 YOLOX API 测试上下文。
@@ -124,8 +128,6 @@ def create_yolox_api_test_context(
     参数：
     - tmp_path：pytest 提供的临时目录。
     - database_name：SQLite 数据库文件名。
-    - max_concurrent_tasks：task manager 最大并发数。
-    - poll_interval_seconds：task manager 轮询间隔。
     - attach_fake_deployment_supervisors：是否挂载 fake deployment 监督器。
 
     返回：
@@ -136,8 +138,6 @@ def create_yolox_api_test_context(
         tmp_path,
         database_name=database_name,
         enable_local_buffer_broker=False,
-        max_concurrent_tasks=max_concurrent_tasks,
-        poll_interval_seconds=poll_interval_seconds,
     )
 
     sync_supervisor = None
@@ -147,23 +147,31 @@ def create_yolox_api_test_context(
         sync_supervisor = FakeDeploymentProcessSupervisor(
             runtime_mode="sync",
             dataset_storage_root_dir=str(context.dataset_storage.root_dir),
-            service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
+            service_event_bus=service_event_bus
+            if isinstance(service_event_bus, InMemoryServiceEventBus)
+            else None,
         )
         async_supervisor = FakeDeploymentProcessSupervisor(
             runtime_mode="async",
             dataset_storage_root_dir=str(context.dataset_storage.root_dir),
-            service_event_bus=service_event_bus if isinstance(service_event_bus, InMemoryServiceEventBus) else None,
+            service_event_bus=service_event_bus
+            if isinstance(service_event_bus, InMemoryServiceEventBus)
+            else None,
         )
-        context.client.app.state.detection_sync_deployment_process_supervisor = sync_supervisor
-        context.client.app.state.detection_async_deployment_process_supervisor = async_supervisor
+        context.client.app.state.detection_sync_deployment_process_supervisor = (
+            sync_supervisor
+        )
+        context.client.app.state.detection_async_deployment_process_supervisor = (
+            async_supervisor
+        )
         gateway_dispatcher_registry = getattr(
             context.client.app.state,
             "detection_async_inference_gateway_dispatcher_registry",
             None,
         )
         if gateway_dispatcher_registry is not None:
-            gateway_dispatcher_registry.execution_handler = _build_fake_async_inference_gateway_handler(
-                async_supervisor
+            gateway_dispatcher_registry.execution_handler = (
+                _build_fake_async_inference_gateway_handler(async_supervisor)
             )
             gateway_dispatcher_registry.dataset_storage = context.dataset_storage
 
@@ -283,15 +291,23 @@ def seed_yolox_model_build(
     if resolved_build_uri is None:
         resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.onnx"
         if build_format == "openvino-ir":
-            resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.openvino.xml"
+            resolved_build_uri = (
+                "projects/project-1/models/builds/build-1/yolox.openvino.xml"
+            )
         if build_format == "tensorrt-engine":
-            resolved_build_uri = "projects/project-1/models/builds/build-1/yolox.tensorrt.engine"
+            resolved_build_uri = (
+                "projects/project-1/models/builds/build-1/yolox.tensorrt.engine"
+            )
     dataset_storage.write_bytes(resolved_build_uri, build_bytes)
 
     service = SqlAlchemyModelService(session_factory=session_factory)
     normalized_metadata = dict(metadata or {})
-    resolved_runtime_backend = runtime_backend or _TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT[build_format]
-    resolved_runtime_precision = runtime_precision or _TEST_RUNTIME_PRECISION_BY_BUILD_FORMAT[build_format]
+    resolved_runtime_backend = (
+        runtime_backend or _TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT[build_format]
+    )
+    resolved_runtime_precision = (
+        runtime_precision or _TEST_RUNTIME_PRECISION_BY_BUILD_FORMAT[build_format]
+    )
     return service.register_build(
         ModelBuildRegistration(
             project_id=project_id,
@@ -350,13 +366,17 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         self.load_calls: list[str] = []
         self.inference_requests: list[object] = []
 
-    def ensure_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def ensure_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """确保指定 deployment 已经初始化到 fake 状态机中。"""
 
         state = self._ensure_state(config)
         return self._build_status(state)
 
-    def start_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def start_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 running。"""
 
         state = self._ensure_state(config)
@@ -374,7 +394,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
             )
         return current_status
 
-    def stop_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
+    def stop_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessStatus:
         """把指定 deployment 标记为 stopped。"""
 
         state = self._ensure_state(config)
@@ -391,7 +413,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
             )
         return current_status
 
-    def warmup_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+    def warmup_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessHealth:
         """把所有实例标记为 warmed。"""
 
         state = self._ensure_state(config)
@@ -416,7 +440,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
 
         return self._build_health(self._ensure_state(config))
 
-    def reset_deployment(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
+    def reset_deployment(
+        self, config: DeploymentProcessConfig
+    ) -> DeploymentProcessHealth:
         """清空 warmed 标记，模拟 reset。"""
 
         state = self._ensure_state(config)
@@ -431,7 +457,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         )
         return health
 
-    def run_inference(self, *, config: DeploymentProcessConfig, request: object) -> DeploymentProcessExecution:
+    def run_inference(
+        self, *, config: DeploymentProcessConfig, request: object
+    ) -> DeploymentProcessExecution:
         """执行一次 fake 推理，并返回固定结果。
 
         参数：
@@ -451,7 +479,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         self.inference_requests.append(request)
         instance_id = f"{config.deployment_instance_id}:instance-{instance_index}"
         request_input_uri = getattr(request, "input_uri", None)
-        request_has_input_image_bytes = getattr(request, "input_image_bytes", None) is not None
+        request_has_input_image_bytes = (
+            getattr(request, "input_image_bytes", None) is not None
+        )
         request_save_result_image = bool(getattr(request, "save_result_image", False))
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
@@ -698,11 +728,17 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
         """按索引读取 runtime target labels。"""
 
         labels = tuple(config.runtime_target.labels)
-        if 0 <= index < len(labels) and isinstance(labels[index], str) and labels[index].strip():
+        if (
+            0 <= index < len(labels)
+            and isinstance(labels[index], str)
+            and labels[index].strip()
+        ):
             return labels[index]
         return default
 
-    def _ensure_state(self, config: DeploymentProcessConfig) -> _FakeDeploymentProcessState:
+    def _ensure_state(
+        self, config: DeploymentProcessConfig
+    ) -> _FakeDeploymentProcessState:
         """返回 deployment 对应的 fake 状态对象。"""
 
         state = self._states.get(config.deployment_instance_id)
@@ -713,7 +749,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
             state.config = config
         return state
 
-    def _build_status(self, state: _FakeDeploymentProcessState) -> DeploymentProcessStatus:
+    def _build_status(
+        self, state: _FakeDeploymentProcessState
+    ) -> DeploymentProcessStatus:
         """根据 fake 状态构建公开状态响应。"""
 
         return DeploymentProcessStatus(
@@ -729,7 +767,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
             last_error=state.last_error,
         )
 
-    def _build_health(self, state: _FakeDeploymentProcessState) -> DeploymentProcessHealth:
+    def _build_health(
+        self, state: _FakeDeploymentProcessState
+    ) -> DeploymentProcessHealth:
         """根据 fake 状态构建公开健康响应。"""
 
         instances = []
@@ -768,7 +808,9 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
             instances=tuple(instances),
         )
 
-    def _warm_instance(self, state: _FakeDeploymentProcessState, instance_index: int) -> None:
+    def _warm_instance(
+        self, state: _FakeDeploymentProcessState, instance_index: int
+    ) -> None:
         """把实例标记为 warmed，并记录一次 load。"""
 
         if instance_index in state.warmed_instance_indexes:
@@ -792,15 +834,17 @@ def _build_fake_async_inference_gateway_handler(
     def _execute(*, process_config, request):
         """通过 fake async supervisor 执行一次 queue-backed 推理请求。"""
 
-        execution_result = detection_inference_task_service_module.run_detection_inference_task(
-            deployment_process_supervisor=async_supervisor,
-            process_config=process_config,
-            input_uri=request.input_uri,
-            input_image_bytes=request.input_image_bytes,
-            score_threshold=request.score_threshold,
-            save_result_image=request.save_result_image,
-            return_preview_image_base64=False,
-            extra_options=dict(request.extra_options),
+        execution_result = (
+            detection_inference_task_service_module.run_detection_inference_task(
+                deployment_process_supervisor=async_supervisor,
+                process_config=process_config,
+                input_uri=request.input_uri,
+                input_image_bytes=request.input_image_bytes,
+                score_threshold=request.score_threshold,
+                save_result_image=request.save_result_image,
+                return_preview_image_base64=False,
+                extra_options=dict(request.extra_options),
+            )
         )
         return serialize_detection_async_inference_execution_result(execution_result)
 

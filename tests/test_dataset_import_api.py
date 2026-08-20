@@ -16,8 +16,12 @@ from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.datasets.dataset_import_queue_worker import DatasetImportQueueWorker
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.workers.datasets.dataset_import_queue_worker import (
+    DatasetImportQueueWorker,
+)
 from backend.workers.task_manager import (
     BackgroundTaskManager,
     BackgroundTaskManagerConfig,
@@ -28,7 +32,9 @@ from tests.api_test_support import build_test_headers, create_api_test_context
 def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None:
     """验证导入 COCO zip 会创建 DatasetImport、DatasetVersion 和本地目录。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -40,7 +46,11 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -65,17 +75,25 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import.metadata["upload_state"] == "uploaded"
         assert dataset_import.metadata["queue_task_id"] == payload["queue_task_id"]
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
-        assert task_detail.task.task_spec["dataset_import_id"] == payload["dataset_import_id"]
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            payload["task_id"], include_events=True
+        )
+        assert (
+            task_detail.task.task_spec["dataset_import_id"]
+            == payload["dataset_import_id"]
+        )
         assert task_detail.task.state == "queued"
 
         assert dataset_storage.resolve(payload["package_path"]).is_file()
         assert dataset_storage.resolve(payload["staging_path"]).is_dir()
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
@@ -88,15 +106,27 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         assert dataset_import.detected_profile["format_type"] == "coco"
         assert dataset_import.detected_profile["format_id"] == "coco-detection-v1"
         assert dataset_version is not None
-        assert dataset_version.metadata["source_import_id"] == payload["dataset_import_id"]
-        assert dataset_version.samples[0].annotations[0].bbox_xywh == (1.0, 2.0, 3.0, 4.0)
+        assert (
+            dataset_version.metadata["source_import_id"] == payload["dataset_import_id"]
+        )
+        assert dataset_version.samples[0].annotations[0].bbox_xywh == (
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+        )
         assert dataset_version.categories[0].category_id == 0
         assert dataset_import.version_path is not None
         assert dataset_storage.resolve(dataset_import.version_path).is_dir()
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(payload["task_id"], include_events=True)
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            payload["task_id"], include_events=True
+        )
         assert task_detail.task.state == "succeeded"
-        assert task_detail.task.result["dataset_version_id"] == dataset_import.dataset_version_id
+        assert (
+            task_detail.task.result["dataset_version_id"]
+            == dataset_import.dataset_version_id
+        )
         assert any(event.event_type == "result" for event in task_detail.events)
 
         extracted_dir = dataset_storage.resolve(payload["staging_path"])
@@ -116,10 +146,14 @@ def test_import_dataset_zip_creates_coco_dataset_version(tmp_path: Path) -> None
         session_factory.engine.dispose()
 
 
-def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Path) -> None:
+def test_delete_completed_dataset_import_removes_import_files_only(
+    tmp_path: Path,
+) -> None:
     """验证删除已完成导入时只清理导入目录，不删除 DatasetVersion 文件。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -131,16 +165,23 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             assert response.status_code == 202
             payload = response.json()
-            assert _run_import_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_import_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             dataset_import, dataset_version = _load_dataset_objects(
                 session_factory=session_factory,
@@ -158,11 +199,13 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
                 params={"project_id": "project-1"},
             )
             assert version_list_response.status_code == 200
-            assert [item["dataset_version_id"] for item in version_list_response.json()] == [
-                dataset_import.dataset_version_id
-            ]
+            assert [
+                item["dataset_version_id"] for item in version_list_response.json()
+            ] == [dataset_import.dataset_version_id]
 
-            import_root = dataset_storage.resolve(dataset_import.package_path.rsplit("/", 1)[0])
+            import_root = dataset_storage.resolve(
+                dataset_import.package_path.rsplit("/", 1)[0]
+            )
             version_root = dataset_storage.resolve(dataset_import.version_path)
             assert import_root.is_dir()
             assert version_root.is_dir()
@@ -205,10 +248,14 @@ def test_delete_completed_dataset_import_removes_import_files_only(tmp_path: Pat
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Path) -> None:
+def test_import_dataset_zip_creates_zero_based_voc_dataset_version(
+    tmp_path: Path,
+) -> None:
     """验证无声明 VOC 按项目默认 0-based exclusive 语义导入。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -221,7 +268,11 @@ def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Pat
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("voc-dataset.zip", _build_voc_zip_bytes(), "application/zip"),
+                    "package": (
+                        "voc-dataset.zip",
+                        _build_voc_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -229,11 +280,14 @@ def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Pat
         payload = response.json()
         assert payload["status"] == "received"
 
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
@@ -243,7 +297,12 @@ def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Pat
         assert dataset_import is not None
         assert dataset_import.validation_report["format_type"] == "voc"
         assert dataset_version is not None
-        assert dataset_version.samples[0].annotations[0].bbox_xywh == (10.0, 20.0, 20.0, 30.0)
+        assert dataset_version.samples[0].annotations[0].bbox_xywh == (
+            10.0,
+            20.0,
+            20.0,
+            30.0,
+        )
         assert dataset_import.detected_profile["coordinate_convention"] == (
             "zero-based-exclusive"
         )
@@ -262,7 +321,9 @@ def test_import_dataset_zip_creates_zero_based_voc_dataset_version(tmp_path: Pat
 def test_import_dataset_zip_auto_detects_voc_dataset_version(tmp_path: Path) -> None:
     """验证自动识别不会把 Pascal VOC 误判成 classification 数据集。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -274,16 +335,23 @@ def test_import_dataset_zip_auto_detects_voc_dataset_version(tmp_path: Path) -> 
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("voc-auto-dataset.zip", _build_voc_zip_bytes(), "application/zip"),
+                    "package": (
+                        "voc-auto-dataset.zip",
+                        _build_voc_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -303,7 +371,9 @@ def test_import_dataset_zip_auto_detects_voc_dataset_version(tmp_path: Path) -> 
 def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> None:
     """验证导入器可以识别带多层包裹目录和非整数标记的 Pascal VOC zip。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -328,11 +398,14 @@ def test_import_dataset_zip_accepts_nested_voc_wrapper_dirs(tmp_path: Path) -> N
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
@@ -351,7 +424,9 @@ def test_import_dataset_zip_converts_explicit_official_pascal_voc_coordinates(
 ) -> None:
     """验证只有 XML 明确声明时才按官方 1-based inclusive 坐标转换。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -375,11 +450,14 @@ def test_import_dataset_zip_converts_explicit_official_pascal_voc_coordinates(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=response.json()["dataset_import_id"],
@@ -405,7 +483,9 @@ def test_import_dataset_zip_accepts_voc2007_trainval_and_test_layout(
 ) -> None:
     """验证 VOC2007 根和 trainval/test split 可直接导入且告知缺少 val。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -430,11 +510,14 @@ def test_import_dataset_zip_accepts_voc2007_trainval_and_test_layout(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=response.json()["dataset_import_id"],
@@ -455,7 +538,9 @@ def test_import_dataset_zip_accepts_voc2007_trainval_and_test_layout(
 def test_import_dataset_zip_merges_voc2007_and_voc2012_shards(tmp_path: Path) -> None:
     """验证 VOCdevkit 中多个年份 shard 合并为一个 DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -477,11 +562,14 @@ def test_import_dataset_zip_merges_voc2007_and_voc2012_shards(tmp_path: Path) ->
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=response.json()["dataset_import_id"],
@@ -492,7 +580,15 @@ def test_import_dataset_zip_merges_voc2007_and_voc2012_shards(tmp_path: Path) ->
         assert len(dataset_import.detected_profile["shards"]) == 2
         assert dataset_version is not None
         assert len(dataset_version.samples) == 4
-        assert len({sample.metadata["source_shard_id"] for sample in dataset_version.samples}) == 2
+        assert (
+            len(
+                {
+                    sample.metadata["source_shard_id"]
+                    for sample in dataset_version.samples
+                }
+            )
+            == 2
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -502,7 +598,9 @@ def test_import_dataset_zip_rejects_mixed_voc_coordinate_conventions(
 ) -> None:
     """验证一次导入不能混用无声明默认坐标和显式官方坐标。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -528,20 +626,24 @@ def test_import_dataset_zip_rejects_mixed_voc_coordinate_conventions(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=response.json()["dataset_import_id"],
         )
         assert dataset_import is not None
         assert dataset_import.status == "failed"
-        assert dataset_import.validation_report["error"]["details"]["issues"][0][
-            "code"
-        ] == "VOC_COORDINATE_CONVENTION_MIXED"
+        assert (
+            dataset_import.validation_report["error"]["details"]["issues"][0]["code"]
+            == "VOC_COORDINATE_CONVENTION_MIXED"
+        )
         assert dataset_version is None
     finally:
         session_factory.engine.dispose()
@@ -550,7 +652,9 @@ def test_import_dataset_zip_rejects_mixed_voc_coordinate_conventions(
 def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -> None:
     """验证导入器可以识别 train/valid/test 目录内各自携带 manifest 的 COCO zip。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -571,11 +675,14 @@ def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -587,7 +694,11 @@ def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -
         assert dataset_import.status == "completed"
         assert dataset_import.format_type == "coco"
         assert dataset_import.detected_profile["format_type"] == "coco"
-        assert dataset_import.detected_profile["split_names"] == ["train", "val", "test"]
+        assert dataset_import.detected_profile["split_names"] == [
+            "train",
+            "val",
+            "test",
+        ]
         assert dataset_import.detected_profile["split_counts"] == {
             "train": 1,
             "val": 1,
@@ -596,15 +707,23 @@ def test_import_dataset_zip_accepts_roboflow_coco_split_layout(tmp_path: Path) -
         assert dataset_import.validation_report["status"] == "ok"
         assert dataset_version is not None
         assert len(dataset_version.samples) == 3
-        assert {sample.split for sample in dataset_version.samples} == {"train", "val", "test"}
+        assert {sample.split for sample in dataset_version.samples} == {
+            "train",
+            "val",
+            "test",
+        }
     finally:
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_creates_imagenet_classification_dataset_version(tmp_path: Path) -> None:
+def test_import_dataset_zip_creates_imagenet_classification_dataset_version(
+    tmp_path: Path,
+) -> None:
     """验证导入 ImageNet 风格 zip 会创建 classification DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -626,11 +745,14 @@ def test_import_dataset_zip_creates_imagenet_classification_dataset_version(tmp_
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -652,7 +774,9 @@ def test_import_imagenet_preserves_same_file_name_images_across_classes(
 ) -> None:
     """验证不同类别的同名图片使用独立存储键，不会互相覆盖。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     ok_image_bytes = _build_test_image_bytes(
         image_format="PNG",
         size=(32, 24),
@@ -689,11 +813,14 @@ def test_import_imagenet_preserves_same_file_name_images_across_classes(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
@@ -728,7 +855,9 @@ def test_import_dataset_zip_auto_detects_imagenet_classification_dataset_version
 ) -> None:
     """验证自动识别仍可正确识别 ImageNet classification 数据集。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -749,11 +878,14 @@ def test_import_dataset_zip_auto_detects_imagenet_classification_dataset_version
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -775,7 +907,9 @@ def test_import_dataset_zip_rejects_auto_detected_imagenet_for_detection_task(
 ) -> None:
     """验证 detection 自动识别不会接受 classification 数据集。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -796,11 +930,14 @@ def test_import_dataset_zip_rejects_auto_detected_imagenet_for_detection_task(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -826,7 +963,9 @@ def test_import_dataset_zip_rejects_auto_detected_dota_for_detection_task(
 ) -> None:
     """验证 detection 自动识别不会接受 obb 数据集。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -847,11 +986,14 @@ def test_import_dataset_zip_rejects_auto_detected_dota_for_detection_task(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -875,7 +1017,9 @@ def test_import_dataset_zip_rejects_auto_detected_dota_for_detection_task(
 def test_import_dataset_zip_creates_dota_obb_dataset_version(tmp_path: Path) -> None:
     """验证导入 DOTA 风格 zip 会创建 obb DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -897,11 +1041,14 @@ def test_import_dataset_zip_creates_dota_obb_dataset_version(tmp_path: Path) -> 
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -912,16 +1059,23 @@ def test_import_dataset_zip_creates_dota_obb_dataset_version(tmp_path: Path) -> 
         assert dataset_import.format_type == "dota"
         assert dataset_version is not None
         assert dataset_version.task_type == "obb"
-        assert dataset_version.samples[0].annotations[0].metadata["source_class_name"] == "ship"
+        assert (
+            dataset_version.samples[0].annotations[0].metadata["source_class_name"]
+            == "ship"
+        )
         assert dataset_import.validation_report["task_type"] == "obb"
     finally:
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_creates_yolo_detection_dataset_version(tmp_path: Path) -> None:
+def test_import_dataset_zip_creates_yolo_detection_dataset_version(
+    tmp_path: Path,
+) -> None:
     """验证导入 YOLO detection zip 会创建 detection DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -942,11 +1096,14 @@ def test_import_dataset_zip_creates_yolo_detection_dataset_version(tmp_path: Pat
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -973,7 +1130,9 @@ def test_import_yolo_dataset_uses_unwrapped_root_when_yaml_path_repeats_root_nam
 ) -> None:
     """验证 YOLO data.yaml 的 path 与 zip 根目录同名时不会重复拼接目录。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -995,11 +1154,14 @@ def test_import_yolo_dataset_uses_unwrapped_root_when_yaml_path_repeats_root_nam
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -1008,7 +1170,10 @@ def test_import_yolo_dataset_uses_unwrapped_root_when_yaml_path_repeats_root_nam
         )
         assert dataset_import is not None
         assert dataset_import.status == "completed"
-        assert dataset_import.validation_report["split_counts"] == {"train": 1, "val": 1}
+        assert dataset_import.validation_report["split_counts"] == {
+            "train": 1,
+            "val": 1,
+        }
         assert dataset_version is not None
         assert len(dataset_version.samples) == 2
         assert dataset_version.categories[0].name == "pill"
@@ -1016,10 +1181,14 @@ def test_import_yolo_dataset_uses_unwrapped_root_when_yaml_path_repeats_root_nam
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: Path) -> None:
+def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(
+    tmp_path: Path,
+) -> None:
     """验证导入 YOLO instance segmentation zip 会创建 segmentation DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1041,11 +1210,14 @@ def test_import_dataset_zip_creates_yolo_segmentation_dataset_version(tmp_path: 
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -1072,7 +1244,9 @@ def test_import_yolo_segmentation_reads_source_beyond_windows_max_path(
 ) -> None:
     """验证格式解析器可读取超过传统 MAX_PATH 的图片和 label。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     dataset_id = f"dataset-{'x' * 120}"
     try:
         with client:
@@ -1102,11 +1276,14 @@ def test_import_yolo_segmentation_reads_source_beyond_windows_max_path(
         if os.name == "nt":
             assert len(str(source_label_path)) > 260
 
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
@@ -1127,7 +1304,9 @@ def test_import_dataset_zip_auto_detects_yolo_segmentation_with_test_split(
 ) -> None:
     """验证只有 test split 的 YOLO segmentation 不会被误判为 DOTA。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1148,11 +1327,14 @@ def test_import_dataset_zip_auto_detects_yolo_segmentation_with_test_split(
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -1173,7 +1355,9 @@ def test_import_dataset_zip_auto_detects_yolo_segmentation_with_test_split(
 def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) -> None:
     """验证导入 YOLO pose zip 会创建 pose DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1195,11 +1379,14 @@ def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) ->
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -1223,7 +1410,9 @@ def test_import_dataset_zip_creates_yolo_pose_dataset_version(tmp_path: Path) ->
 def test_import_dataset_zip_creates_yolo_obb_dataset_version(tmp_path: Path) -> None:
     """验证导入 YOLO OBB zip 会创建 obb DatasetVersion。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1245,11 +1434,14 @@ def test_import_dataset_zip_creates_yolo_obb_dataset_version(tmp_path: Path) -> 
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         payload = response.json()
         dataset_import, dataset_version = _load_dataset_objects(
@@ -1274,7 +1466,9 @@ def test_import_dataset_zip_creates_yolo_obb_dataset_version(tmp_path: Path) -> 
 def test_import_dataset_zip_rejects_yolo_obb_extra_tokens(tmp_path: Path) -> None:
     """YOLO OBB v1 必须严格为 class id 加四个角点，不能静默保留额外 token。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1296,11 +1490,14 @@ def test_import_dataset_zip_rejects_yolo_obb_extra_tokens(tmp_path: Path) -> Non
             )
 
         assert response.status_code == 202
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
         dataset_import, dataset_version = _load_dataset_objects(
             session_factory=session_factory,
             dataset_import_id=response.json()["dataset_import_id"],
@@ -1315,10 +1512,14 @@ def test_import_dataset_zip_rejects_yolo_obb_extra_tokens(tmp_path: Path) -> Non
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_rejects_semantic_segmentation_task_type(tmp_path: Path) -> None:
+def test_import_dataset_zip_rejects_semantic_segmentation_task_type(
+    tmp_path: Path,
+) -> None:
     """验证导入接口当前不会把 semantic-segmentation 暴露为已实现 task type。"""
 
-    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1330,7 +1531,11 @@ def test_import_dataset_zip_rejects_semantic_segmentation_task_type(tmp_path: Pa
                     "task_type": "semantic-segmentation",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -1344,7 +1549,9 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
 ) -> None:
     """验证可以按导入记录 id 读取校验报告和关联版本摘要。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             create_response = client.post(
@@ -1356,7 +1563,11 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             assert create_response.status_code == 202
@@ -1371,11 +1582,14 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
             assert queued_detail_response.json()["status"] == "received"
             assert queued_detail_response.json()["processing_state"] == "queued"
 
-            assert _run_import_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_import_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             detail_response = client.get(
                 f"/api/v1/datasets/imports/{dataset_import_id}",
@@ -1392,11 +1606,17 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
         assert payload["validation_report"]["error"] is None
         assert payload["detected_profile"]["format_type"] == "coco"
         assert payload["detected_profile"]["split_counts"] == {"train": 1}
-        assert payload["dataset_version"]["dataset_version_id"] == payload["dataset_version_id"]
+        assert (
+            payload["dataset_version"]["dataset_version_id"]
+            == payload["dataset_version_id"]
+        )
         assert payload["dataset_version"]["sample_count"] == 1
         assert payload["dataset_version"]["category_count"] == 1
         assert payload["dataset_version"]["split_names"] == ["train"]
-        assert payload["dataset_version"]["metadata"]["source_import_id"] == dataset_import_id
+        assert (
+            payload["dataset_version"]["metadata"]["source_import_id"]
+            == dataset_import_id
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -1404,7 +1624,9 @@ def test_get_dataset_import_detail_returns_validation_report_and_version_relatio
 def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -> None:
     """验证可以按 Dataset id 列出导入记录摘要。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             create_response = client.post(
@@ -1416,7 +1638,11 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             assert create_response.status_code == 202
@@ -1430,11 +1656,14 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
             assert queued_list_response.json()[0]["status"] == "received"
             assert queued_list_response.json()[0]["processing_state"] == "queued"
 
-            assert _run_import_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_import_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             list_response = client.get(
                 "/api/v1/datasets/dataset-1/imports",
@@ -1455,7 +1684,9 @@ def test_list_dataset_imports_returns_dataset_import_summaries(tmp_path: Path) -
 def test_get_dataset_version_relation_returns_task_type_summary(tmp_path: Path) -> None:
     """验证可以按 DatasetVersion id 读取版本摘要。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             create_response = client.post(
@@ -1467,21 +1698,32 @@ def test_get_dataset_version_relation_returns_task_type_summary(tmp_path: Path) 
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             assert create_response.status_code == 202
-            assert _run_import_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_import_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
 
             dataset_import, _dataset_version = _load_dataset_objects(
                 session_factory=session_factory,
                 dataset_import_id=create_response.json()["dataset_import_id"],
             )
-            dataset_version_id = dataset_import.dataset_version_id if dataset_import is not None else None
+            dataset_version_id = (
+                dataset_import.dataset_version_id
+                if dataset_import is not None
+                else None
+            )
             assert dataset_version_id is not None
 
             detail_response = client.get(
@@ -1502,10 +1744,14 @@ def test_get_dataset_version_relation_returns_task_type_summary(tmp_path: Path) 
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_path: Path) -> None:
+def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(
+    tmp_path: Path,
+) -> None:
     """验证显式 split_strategy 会覆盖导入器自动识别出的 split。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1518,16 +1764,23 @@ def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_p
                     "split_strategy": "val",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
             assert response.status_code == 202
-            assert _run_import_worker_once(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                queue_backend=queue_backend,
-            ) is True
+            assert (
+                _run_import_worker_once(
+                    session_factory=session_factory,
+                    dataset_storage=dataset_storage,
+                    queue_backend=queue_backend,
+                )
+                is True
+            )
             payload = response.json()
 
             detail_response = client.get(
@@ -1548,7 +1801,9 @@ def test_import_dataset_zip_forced_split_strategy_overrides_detected_split(tmp_p
 def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> None:
     """验证非法 split_strategy 会在路由层被拒绝。"""
 
-    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, _dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1561,7 +1816,11 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
                     "split_strategy": "shadow",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -1570,10 +1829,14 @@ def test_import_dataset_zip_rejects_invalid_split_strategy(tmp_path: Path) -> No
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_rejects_empty_package_before_enqueue(tmp_path: Path) -> None:
+def test_import_dataset_zip_rejects_empty_package_before_enqueue(
+    tmp_path: Path,
+) -> None:
     """验证空 zip 包会在提交阶段直接被拒绝，不会创建导入记录。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1596,21 +1859,29 @@ def test_import_dataset_zip_rejects_empty_package_before_enqueue(tmp_path: Path)
 
         unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
         try:
-            assert unit_of_work.dataset_imports.list_dataset_imports("dataset-empty") == ()
+            assert (
+                unit_of_work.dataset_imports.list_dataset_imports("dataset-empty") == ()
+            )
         finally:
             unit_of_work.close()
 
-        imports_dir = dataset_storage.resolve("projects/project-1/datasets/dataset-empty/imports")
+        imports_dir = dataset_storage.resolve(
+            "projects/project-1/datasets/dataset-empty/imports"
+        )
         assert imports_dir.is_dir()
         assert list(imports_dir.iterdir()) == []
     finally:
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_rejects_non_zip_payload_before_enqueue(tmp_path: Path) -> None:
+def test_import_dataset_zip_rejects_non_zip_payload_before_enqueue(
+    tmp_path: Path,
+) -> None:
     """验证伪造 zip 后缀但内容非法的文件会在提交阶段直接被拒绝。"""
 
-    client, session_factory, dataset_storage, _queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, _queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1633,21 +1904,30 @@ def test_import_dataset_zip_rejects_non_zip_payload_before_enqueue(tmp_path: Pat
 
         unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
         try:
-            assert unit_of_work.dataset_imports.list_dataset_imports("dataset-fake-zip") == ()
+            assert (
+                unit_of_work.dataset_imports.list_dataset_imports("dataset-fake-zip")
+                == ()
+            )
         finally:
             unit_of_work.close()
 
-        imports_dir = dataset_storage.resolve("projects/project-1/datasets/dataset-fake-zip/imports")
+        imports_dir = dataset_storage.resolve(
+            "projects/project-1/datasets/dataset-fake-zip/imports"
+        )
         assert imports_dir.is_dir()
         assert list(imports_dir.iterdir()) == []
     finally:
         session_factory.engine.dispose()
 
 
-def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path) -> None:
+def test_import_dataset_zip_can_be_called_twice_for_same_dataset(
+    tmp_path: Path,
+) -> None:
     """验证同一 Dataset 连续导入两次不会触发样本或标注主键冲突。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             first_response = client.post(
@@ -1659,7 +1939,11 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             second_response = client.post(
@@ -1671,23 +1955,33 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
         assert first_response.status_code == 202
         assert second_response.status_code == 202
 
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
-        assert _run_import_worker_once(
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-        ) is True
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
+        assert (
+            _run_import_worker_once(
+                session_factory=session_factory,
+                dataset_storage=dataset_storage,
+                queue_backend=queue_backend,
+            )
+            is True
+        )
 
         first_payload = first_response.json()
         second_payload = second_response.json()
@@ -1707,7 +2001,10 @@ def test_import_dataset_zip_can_be_called_twice_for_same_dataset(tmp_path: Path)
         assert first_version is not None
         assert second_version is not None
         assert first_version.samples[0].sample_id != second_version.samples[0].sample_id
-        assert first_version.samples[0].annotations[0].annotation_id != second_version.samples[0].annotations[0].annotation_id
+        assert (
+            first_version.samples[0].annotations[0].annotation_id
+            != second_version.samples[0].annotations[0].annotation_id
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -1717,7 +2014,9 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
 ) -> None:
     """验证后台任务管理器可以批量消费多个 DatasetImport 队列任务。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             first_response = client.post(
@@ -1729,7 +2028,11 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
             second_response = client.post(
@@ -1741,7 +2044,11 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -1789,7 +2096,9 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
 ) -> None:
     """验证独立后台任务管理器可以消费 DatasetImport 队列。"""
 
-    client, session_factory, dataset_storage, queue_backend = _create_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_test_client(
+        tmp_path
+    )
     try:
         with client:
             response = client.post(
@@ -1801,7 +2110,11 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
                     "task_type": "detection",
                 },
                 files={
-                    "package": ("coco-dataset.zip", _build_coco_zip_bytes(), "application/zip"),
+                    "package": (
+                        "coco-dataset.zip",
+                        _build_coco_zip_bytes(),
+                        "application/zip",
+                    ),
                 },
             )
 
@@ -1850,8 +2163,6 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
 
 def _create_test_client(
     tmp_path: Path,
-    *,
-    enable_task_manager: bool = False,
 ) -> tuple[TestClient, SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
     """创建绑定内存 SQLite 和临时本地文件存储的测试客户端。
 
@@ -1865,11 +2176,15 @@ def _create_test_client(
     context = create_api_test_context(
         tmp_path,
         database_name="amvision-test.db",
-        enable_task_manager=enable_task_manager,
         enable_local_buffer_broker=False,
     )
 
-    return context.client, context.session_factory, context.dataset_storage, context.queue_backend
+    return (
+        context.client,
+        context.session_factory,
+        context.dataset_storage,
+        context.queue_backend,
+    )
 
 
 def _load_dataset_objects(
@@ -1891,13 +2206,17 @@ def _load_dataset_objects(
 
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
     try:
-        dataset_import = unit_of_work.dataset_imports.get_dataset_import(dataset_import_id)
+        dataset_import = unit_of_work.dataset_imports.get_dataset_import(
+            dataset_import_id
+        )
         resolved_dataset_version_id = dataset_version_id
         if resolved_dataset_version_id is None and dataset_import is not None:
             resolved_dataset_version_id = dataset_import.dataset_version_id
         dataset_version = None
         if resolved_dataset_version_id is not None:
-            dataset_version = unit_of_work.datasets.get_dataset_version(resolved_dataset_version_id)
+            dataset_version = unit_of_work.datasets.get_dataset_version(
+                resolved_dataset_version_id
+            )
         return dataset_import, dataset_version
     finally:
         unit_of_work.close()
@@ -2210,14 +2529,12 @@ def _build_dota_zip_bytes() -> bytes:
         zip_file.writestr("dataset-root/images/train/train-1.png", image_bytes)
         zip_file.writestr(
             "dataset-root/labels/train_original/train-1.txt",
-            "imagesource:GoogleEarth\ngsd:0.5\n"
-            "10 10 30 10 30 30 10 30 ship 0\n",
+            "imagesource:GoogleEarth\ngsd:0.5\n10 10 30 10 30 30 10 30 ship 0\n",
         )
         zip_file.writestr("dataset-root/images/val/val-1.png", image_bytes)
         zip_file.writestr(
             "dataset-root/labels/val_original/val-1.txt",
-            "imagesource:GoogleEarth\ngsd:0.5\n"
-            "12 12 28 12 28 28 12 28 ship 0\n",
+            "imagesource:GoogleEarth\ngsd:0.5\n12 12 28 12 28 28 12 28 ship 0\n",
         )
     return buffer.getvalue()
 
@@ -2241,7 +2558,10 @@ def _build_yolo_detection_zip_bytes() -> bytes:
             ),
         )
         zip_file.writestr("dataset-root/images/train/train-1.jpg", image_bytes)
-        zip_file.writestr("dataset-root/labels/train/train-1.txt", "0 0.250000 0.500000 0.300000 0.500000\n")
+        zip_file.writestr(
+            "dataset-root/labels/train/train-1.txt",
+            "0 0.250000 0.500000 0.300000 0.500000\n",
+        )
         zip_file.writestr("dataset-root/images/val/val-1.jpg", image_bytes)
         zip_file.writestr("dataset-root/labels/val/val-1.txt", "")
     return buffer.getvalue()

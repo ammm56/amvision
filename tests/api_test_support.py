@@ -18,7 +18,10 @@ from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
     DEFAULT_LOCAL_AUTH_USERNAME,
 )
-from backend.service.application.auth.local_auth_service import LocalAuthService, LocalAuthUserCreateRequest
+from backend.service.application.auth.local_auth_service import (
+    LocalAuthService,
+    LocalAuthUserCreateRequest,
+)
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -28,15 +31,28 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.settings import (
     BackendServiceInferenceDaemonConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
+    BackendServiceZeroMqTriggerConfig,
 )
 
 
-_VALID_TEST_IMAGE_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
-)
+_VALID_TEST_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
 _DEFAULT_TEST_AUTH_TOKEN = DEFAULT_LOCAL_AUTH_TOKEN
 _DEFAULT_TEST_AUTH_USERNAME = DEFAULT_LOCAL_AUTH_USERNAME
+
+
+def _build_test_zeromq_trigger_config() -> BackendServiceZeroMqTriggerConfig:
+    """构建不依赖仓库现场配置文件的测试 ZeroMQ Trigger 配置。"""
+
+    return BackendServiceZeroMqTriggerConfig(
+        buffer_ttl_seconds=330.0,
+        buffer_ttl_safety_margin_seconds=30.0,
+        receive_hwm=1,
+        send_hwm=1,
+        max_message_size_bytes=128 * 1024 * 1024,
+        poll_timeout_ms=100,
+        startup_timeout_seconds=2.0,
+        shutdown_timeout_seconds=10.0,
+    )
 
 
 @dataclass(frozen=True)
@@ -72,10 +88,16 @@ def create_test_runtime(
     """
 
     database_path = tmp_path / database_name
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}")
+    )
     initialize_database_schema(session_factory)
-    dataset_storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files")))
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files")))
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
+    )
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
+    )
     return session_factory, dataset_storage, queue_backend
 
 
@@ -83,20 +105,14 @@ def create_api_test_context(
     tmp_path: Path,
     *,
     database_name: str,
-    enable_task_manager: bool = False,
     enable_local_buffer_broker: bool = True,
-    max_concurrent_tasks: int = 2,
-    poll_interval_seconds: float = 0.05,
 ) -> ApiTestContext:
     """创建绑定测试数据库、本地文件存储和队列的通用 API 测试上下文。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
     - database_name：SQLite 数据库文件名。
-    - enable_task_manager：是否启用 task manager。
     - enable_local_buffer_broker：是否启用 LocalBufferBroker companion process。
-    - max_concurrent_tasks：task manager 最大并发数。
-    - poll_interval_seconds：task manager 轮询间隔。
 
     返回：
     - ApiTestContext：构建完成的 API 测试上下文。
@@ -109,9 +125,8 @@ def create_api_test_context(
     settings = BackendServiceSettings(
         # API 单元测试在同一进程内替换 supervisor/registry；正式发布配置
         # 使用 daemon，但测试必须显式选择 embedded，不能隐式读取现场 JSON。
-        inference_daemon=BackendServiceInferenceDaemonConfig(
-            runtime_owner="embedded"
-        ),
+        inference_daemon=BackendServiceInferenceDaemonConfig(runtime_owner="embedded"),
+        zeromq_trigger=_build_test_zeromq_trigger_config(),
         local_buffer_broker=LocalBufferBrokerSettings(
             enabled=enable_local_buffer_broker,
             root_dir=str(tmp_path / "local-buffer-broker"),
@@ -124,11 +139,6 @@ def create_api_test_context(
                     slot_count=4,
                 ),
             ),
-        ),
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=enable_task_manager,
-            max_concurrent_tasks=max_concurrent_tasks,
-            poll_interval_seconds=poll_interval_seconds,
         ),
     )
     application = create_app(
@@ -182,7 +192,12 @@ def get_default_test_principal_id(session_factory: SessionFactory) -> str:
     - str：默认本地测试用户当前解析得到的 user_id。
     """
 
-    service = LocalAuthService(settings=BackendServiceSettings(), session_factory=session_factory)
+    service = LocalAuthService(
+        settings=BackendServiceSettings(
+            zeromq_trigger=_build_test_zeromq_trigger_config()
+        ),
+        session_factory=session_factory,
+    )
     resolved_credential = service.resolve_bearer_token(_DEFAULT_TEST_AUTH_TOKEN)
     if resolved_credential is None:
         raise AssertionError("默认本地测试用户尚未初始化")
@@ -216,7 +231,12 @@ def issue_test_user_token(
     - str：新签发的长期调用 user token 明文。
     """
 
-    service = LocalAuthService(settings=BackendServiceSettings(), session_factory=session_factory)
+    service = LocalAuthService(
+        settings=BackendServiceSettings(
+            zeromq_trigger=_build_test_zeromq_trigger_config()
+        ),
+        session_factory=session_factory,
+    )
     result = service.create_user(
         LocalAuthUserCreateRequest(
             username=username,

@@ -186,7 +186,7 @@ backend/service/
 	- 停止 sync / async deployment supervisor
 	- `dispose` 数据库 engine
 
-当前 `_build_background_task_manager_host()` 固定返回 `None`，因此 backend-service 不再托管任何队列消费者。dataset-import、dataset-export、training、conversion、evaluation 和 inference 六类任务全部由独立 backend-worker 消费；service 只保留控制面、deployment supervisor、workflow runtime manager、TriggerSourceSupervisor、PublishedInferenceGateway 和 async inference gateway dispatcher。
+backend-service 不定义或创建 BackgroundTaskManager。dataset-import、dataset-export、training、conversion、evaluation 和 inference 六类任务全部由当前 Worker Topology 的独立 Profile 消费；service 只保留控制面、deployment supervisor、workflow runtime manager、TriggerSourceSupervisor、PublishedInferenceGateway 和 async inference gateway dispatcher。
 
 ## REST API 与 WebSocket 的拆分方式
 

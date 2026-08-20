@@ -36,7 +36,6 @@ from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceProjectsConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
     LocalBufferBrokerSettings,
 )
 from tests.api_test_support import build_bearer_headers, create_test_runtime
@@ -405,7 +404,6 @@ def test_default_local_auth_initializer_skips_non_empty_user_table(
     application = create_app(
         settings=BackendServiceSettings(
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -794,7 +792,6 @@ def _create_local_auth_test_client(
             ),
             projects=projects_config or BackendServiceProjectsConfig(),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,

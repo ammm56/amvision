@@ -32,8 +32,12 @@ SOURCE_ROOT_DOCUMENTS = (
 )
 SOURCE_LAUNCHERS_DIR = REPOSITORY_ROOT / "runtimes" / "launchers"
 SOURCE_FULL_LAUNCHERS_DIR = SOURCE_LAUNCHERS_DIR / "full"
-SOURCE_RELEASE_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
-SOURCE_WORKER_PROFILES_DIR = REPOSITORY_ROOT / "runtimes" / "manifests" / "worker-profiles"
+SOURCE_RELEASE_PROFILES_DIR = (
+    REPOSITORY_ROOT / "runtimes" / "manifests" / "release-profiles"
+)
+SOURCE_WORKER_PROFILES_DIR = (
+    REPOSITORY_ROOT / "runtimes" / "manifests" / "worker-profiles"
+)
 SOURCE_FFMPEG_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "third_party" / "ffmpeg"
 SOURCE_TENSORRT_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "tensorrt_bin"
 SOURCE_CUDNN_RUNTIME_DIR = REPOSITORY_ROOT / "runtimes" / "cudnn_dll"
@@ -90,7 +94,6 @@ class ReleaseAssemblyResult:
     - bundled_python_mode：bundled Python 的来源模式，仅支持 preserved-existing 或 placeholder-empty。
     - generated_root_launchers：发行目录根目录的一键启动脚本列表。
     - worker_profile_ids：本次打入发行目录的 worker profile id 列表。
-    - generated_worker_launchers：自动生成的 worker wrapper 列表。
     - placeholder_dirs：本次创建但等待后续资产填充的目录列表。
     """
 
@@ -102,7 +105,6 @@ class ReleaseAssemblyResult:
     bundled_python_mode: str
     generated_root_launchers: tuple[Path, ...]
     worker_profile_ids: tuple[str, ...]
-    generated_worker_launchers: tuple[Path, ...]
     copied_root_documents: tuple[Path, ...]
     placeholder_dirs: tuple[Path, ...]
 
@@ -190,7 +192,9 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
     if target_os != "windows":
         raise ValueError(f"当前 release 组装尚未实现目标操作系统: {target_os}")
 
-    _copy_file(SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py")
+    _copy_file(
+        SOURCE_LAUNCHERS_DIR / "common.py", release_dir / "launchers" / "common.py"
+    )
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "enable_windows_long_paths.py",
         release_dir / "launchers" / "enable_windows_long_paths.py",
@@ -206,10 +210,6 @@ def _copy_launcher_tree(release_dir: Path, *, target_os: str) -> None:
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "worker" / "start_backend_worker.py",
         release_dir / "launchers" / "worker" / "start_backend_worker.py",
-    )
-    _copy_file(
-        SOURCE_LAUNCHERS_DIR / "worker" / "start-backend-worker.bat",
-        release_dir / "launchers" / "worker" / "start-backend-worker.bat",
     )
     _copy_file(
         SOURCE_LAUNCHERS_DIR / "maintenance" / "invoke_backend_maintenance.py",
@@ -280,27 +280,6 @@ def _copy_root_documents(release_dir: Path) -> tuple[Path, ...]:
     return tuple(copied_paths)
 
 
-def _build_worker_windows_wrapper(profile_id: str) -> str:
-    """生成带固定 profile 的 Windows worker wrapper。"""
-
-    return (
-        "@echo off\r\n"
-        "setlocal\r\n"
-        "set \"PYTHONUTF8=1\"\r\n"
-        "set \"PYTHONIOENCODING=utf-8\"\r\n"
-        "set \"SCRIPT_DIR=%~dp0\"\r\n"
-        "set \"PYTHON_EXE=%AMVISION_PYTHON_EXECUTABLE%\"\r\n"
-        "if not defined PYTHON_EXE set \"PYTHON_EXE=%SCRIPT_DIR%..\\..\\python\\python.exe\"\r\n"
-        "if not exist \"%PYTHON_EXE%\" (\r\n"
-        "  echo [ERROR] bundled Python not found: \"%PYTHON_EXE%\" 1>&2\r\n"
-        "  exit /b 2\r\n"
-        ")\r\n"
-        f"\"%PYTHON_EXE%\" \"%SCRIPT_DIR%start_backend_worker.py\" --worker-profile-file \"manifests/worker-profiles/{profile_id}.json\" %*\r\n"
-        "set \"EXIT_CODE=%ERRORLEVEL%\"\r\n"
-        "endlocal & exit /b %EXIT_CODE%\r\n"
-    )
-
-
 def _normalize_requirement_name(requirement_line: str) -> str | None:
     """从 requirements 行中提取可比较的包名。
 
@@ -332,10 +311,15 @@ def _resolve_requirements_source_file(artifacts_section: dict[str, object]) -> P
     - Path：仓库根目录下受支持的 requirements 文件路径。
     """
 
-    raw_requirements_file = artifacts_section.get("requirements_file", "requirements.txt")
+    raw_requirements_file = artifacts_section.get(
+        "requirements_file", "requirements.txt"
+    )
     requirements_file = str(raw_requirements_file).strip() or "requirements.txt"
     requirements_file = requirements_file.replace("\\", "/")
-    if "/" in requirements_file or requirements_file not in _SUPPORTED_REQUIREMENTS_FILES:
+    if (
+        "/" in requirements_file
+        or requirements_file not in _SUPPORTED_REQUIREMENTS_FILES
+    ):
         supported_files = ", ".join(sorted(_SUPPORTED_REQUIREMENTS_FILES))
         raise ValueError(
             "artifacts.requirements_file 只允许使用仓库根目录中的已知文件: "
@@ -384,7 +368,9 @@ def _copy_requirements_file(
     target_path.write_text("\n".join(filtered_lines).rstrip() + "\n", encoding="utf-8")
 
 
-def _extract_excluded_requirement_packages(artifacts_section: dict[str, object]) -> set[str]:
+def _extract_excluded_requirement_packages(
+    artifacts_section: dict[str, object],
+) -> set[str]:
     """读取当前 release profile 要排除的 requirements 包名。"""
 
     excluded_packages_raw = artifacts_section.get("requirements_exclude_packages", [])
@@ -404,7 +390,9 @@ def _copy_application_sources(
 ) -> None:
     """复制后端源码和基础配置到发行目录。"""
 
-    shutil.copytree(SOURCE_BACKEND_DIR, release_dir / "app" / "backend", dirs_exist_ok=True)
+    shutil.copytree(
+        SOURCE_BACKEND_DIR, release_dir / "app" / "backend", dirs_exist_ok=True
+    )
     shutil.copytree(SOURCE_CONFIG_DIR, release_dir / "config", dirs_exist_ok=True)
     requirements_source_file = _resolve_requirements_source_file(artifacts_section)
     _copy_requirements_file(
@@ -436,7 +424,9 @@ def _copy_runtime_assets(
         release_dir / "custom_nodes",
         ignore=_ignore_custom_nodes_copy,
     )
-    ffmpeg_platform = str(artifacts_section.get("ffmpeg_platform") or platform_tag).strip()
+    ffmpeg_platform = str(
+        artifacts_section.get("ffmpeg_platform") or platform_tag
+    ).strip()
     if ffmpeg_platform != platform_tag:
         raise ValueError(
             "artifacts.ffmpeg_platform 必须与 target.platform_tag 一致: "
@@ -444,7 +434,9 @@ def _copy_runtime_assets(
         )
     source_ffmpeg_platform_dir = SOURCE_FFMPEG_RUNTIME_DIR / ffmpeg_platform
     if not source_ffmpeg_platform_dir.is_dir():
-        raise FileNotFoundError(f"目标平台 FFmpeg 资产不存在: {source_ffmpeg_platform_dir}")
+        raise FileNotFoundError(
+            f"目标平台 FFmpeg 资产不存在: {source_ffmpeg_platform_dir}"
+        )
     _copy_directory_tree(
         source_ffmpeg_platform_dir,
         release_dir / "tools" / "ffmpeg" / ffmpeg_platform,
@@ -591,7 +583,9 @@ def _copy_frontend_assets(
     _copy_directory_tree(frontend_dist_dir, release_dir / "frontend")
     frontend_root_dir = release_dir / "frontend"
     if not (frontend_root_dir / "index.html").is_file():
-        raise FileNotFoundError(f"前端构建产物缺少 index.html: {frontend_root_dir / 'index.html'}")
+        raise FileNotFoundError(
+            f"前端构建产物缺少 index.html: {frontend_root_dir / 'index.html'}"
+        )
 
     runtime_config_target_path = frontend_root_dir / "runtime-config.json"
     if runtime_config_target_path.is_file():
@@ -602,7 +596,9 @@ def _copy_frontend_assets(
         _copy_file(runtime_config_source_file, runtime_config_target_path)
         return
 
-    runtime_config_template_file = _resolve_frontend_runtime_config_template_file(request)
+    runtime_config_template_file = _resolve_frontend_runtime_config_template_file(
+        request
+    )
     if not runtime_config_template_file.is_file():
         raise FileNotFoundError(
             "前端运行时配置模板不存在，无法生成 runtime-config.json: "
@@ -626,7 +622,9 @@ def _stash_existing_python_dir(release_dir: Path) -> Path | None:
         return None
 
     temporary_root_dir = Path(
-        tempfile.mkdtemp(prefix="amvision-release-python-", dir=str(release_dir.parent.resolve()))
+        tempfile.mkdtemp(
+            prefix="amvision-release-python-", dir=str(release_dir.parent.resolve())
+        )
     )
     shutil.move(str(existing_python_dir), str(temporary_root_dir / "python"))
     return temporary_root_dir
@@ -715,7 +713,9 @@ def _materialize_bundled_python_dir(
     """
 
     if preserved_python_temp_dir is not None:
-        restored_python_dir = _restore_preserved_python_dir(release_dir, preserved_python_temp_dir)
+        restored_python_dir = _restore_preserved_python_dir(
+            release_dir, preserved_python_temp_dir
+        )
         return restored_python_dir, "preserved-existing"
     release_python_dir = _prepare_bundled_python_dir(release_dir)
     return release_python_dir, "placeholder-empty"
@@ -762,7 +762,9 @@ def _resolve_release_target(
 
     target_section = source_release_profile.get("target")
     accelerator_section = source_release_profile.get("accelerator")
-    if not isinstance(target_section, dict) or not isinstance(accelerator_section, dict):
+    if not isinstance(target_section, dict) or not isinstance(
+        accelerator_section, dict
+    ):
         raise ValueError("canonical release profile 必须包含 target 和 accelerator")
     target_os = str(target_section.get("os") or "").strip().lower()
     target_arch = str(target_section.get("arch") or "").strip().lower()
@@ -837,28 +839,24 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
         worker_profile_ids_raw = worker_section.get("worker_profile_ids")
         if not isinstance(worker_profile_ids_raw, list) or not worker_profile_ids_raw:
             raise ValueError("release profile 必须包含非空 worker.worker_profile_ids")
-        worker_profile_ids = tuple(str(profile_id) for profile_id in worker_profile_ids_raw)
+        worker_profile_ids = tuple(
+            str(profile_id) for profile_id in worker_profile_ids_raw
+        )
 
         worker_entries: list[dict[str, object]] = []
-        generated_worker_launchers: list[Path] = []
         for profile_id in worker_profile_ids:
-            source_worker_profile_path = SOURCE_WORKER_PROFILES_DIR / f"{profile_id}.json"
+            source_worker_profile_path = (
+                SOURCE_WORKER_PROFILES_DIR / f"{profile_id}.json"
+            )
             if not source_worker_profile_path.is_file():
-                raise FileNotFoundError(f"worker profile 不存在: {source_worker_profile_path}")
+                raise FileNotFoundError(
+                    f"worker profile 不存在: {source_worker_profile_path}"
+                )
             source_worker_profile = _load_json_file(source_worker_profile_path)
             release_worker_profile_path = (
                 release_dir / "manifests" / "worker-profiles" / f"{profile_id}.json"
             )
             _write_json_file(release_worker_profile_path, source_worker_profile)
-
-            windows_wrapper_path = (
-                release_dir / "launchers" / "worker" / f"start-{profile_id}-worker.bat"
-            )
-            windows_wrapper_path.write_text(
-                _build_worker_windows_wrapper(profile_id),
-                encoding="utf-8",
-            )
-            generated_worker_launchers.append(windows_wrapper_path)
 
             worker_entries.append(
                 {
@@ -867,10 +865,18 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
                     "description": source_worker_profile["description"],
                     "manifest": f"manifests/worker-profiles/{profile_id}.json",
                     "python_launcher": "launchers/worker/start_backend_worker.py",
-                    "windows_launcher": f"launchers/worker/start-{profile_id}-worker.bat",
-                    "enabled_consumer_kinds": source_worker_profile["enabled_consumer_kinds"],
-                    "max_concurrent_tasks": source_worker_profile.get("max_concurrent_tasks", 1),
-                    "poll_interval_seconds": source_worker_profile.get("poll_interval_seconds", 1.0),
+                    "log_pattern": (
+                        f"logs/full-stack/backend-worker-{profile_id}-YYYYMMDD.log"
+                    ),
+                    "enabled_consumer_kinds": source_worker_profile[
+                        "enabled_consumer_kinds"
+                    ],
+                    "max_concurrent_tasks": source_worker_profile.get(
+                        "max_concurrent_tasks", 1
+                    ),
+                    "poll_interval_seconds": source_worker_profile.get(
+                        "poll_interval_seconds", 1.0
+                    ),
                 }
             )
 
@@ -906,21 +912,21 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             "service": {
                 "python_launcher": "launchers/service/start_backend_service.py",
                 "windows_launcher": "launchers/service/start-backend-service.bat",
-                "hosted_task_manager_enabled": source_release_profile["service"][
-                    "hosted_task_manager_enabled"
-                ],
+                "log_pattern": "logs/full-stack/backend-service-YYYYMMDD.log",
             },
             "inference_daemon": {
                 "module": "backend.inference_daemon.main",
                 "python_launcher": "launchers/inference/start_inference_daemon.py",
                 "windows_launcher": "launchers/inference/start-inference-daemon.bat",
-                "logs_file": "logs/full-stack/inference-daemon.log",
+                "log_pattern": "logs/full-stack/inference-daemon-YYYYMMDD.log",
             },
             "workers": worker_entries,
             "maintenance": {
                 "python_launcher": "launchers/maintenance/invoke_backend_maintenance.py",
                 "windows_launcher": "launchers/maintenance/invoke-backend-maintenance.bat",
-                "default_command": source_release_profile["maintenance"]["default_command"],
+                "default_command": source_release_profile["maintenance"][
+                    "default_command"
+                ],
             },
             "stack": {
                 "python_launcher": "start_amvision_full.py",
@@ -941,7 +947,10 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             },
         }
         release_manifest_path = (
-            release_dir / "manifests" / "release-profiles" / f"{request.profile_id}.json"
+            release_dir
+            / "manifests"
+            / "release-profiles"
+            / f"{request.profile_id}.json"
         )
         _write_json_file(release_manifest_path, release_manifest)
         _discard_preserved_python_dir(preserved_python_temp_dir)
@@ -955,7 +964,6 @@ def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
             bundled_python_mode=bundled_python_mode,
             generated_root_launchers=generated_root_launchers,
             worker_profile_ids=worker_profile_ids,
-            generated_worker_launchers=tuple(generated_worker_launchers),
             copied_root_documents=copied_root_documents,
             placeholder_dirs=placeholder_dirs,
         )

@@ -5,8 +5,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic import BaseModel, Field
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from backend.version import BACKEND_VERSION
 
@@ -48,43 +52,25 @@ BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION = "segmentation-evaluation"
 BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION = "detection-evaluation"
 BACKEND_WORKER_CONSUMER_POSE_EVALUATION = "pose-evaluation"
 BACKEND_WORKER_CONSUMER_OBB_EVALUATION = "obb-evaluation"
-DEFAULT_BACKEND_WORKER_CONSUMER_KINDS = (
-    BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
-    BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
-    BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
-    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
-    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
-    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
-    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION,
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION,
-    BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
-    BACKEND_WORKER_CONSUMER_POSE_EVALUATION,
-    BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
-    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION,
-    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
-    BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
-    BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
-    BACKEND_WORKER_CONSUMER_CLASSIFICATION_TRAINING,
-    BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING,
-    BACKEND_WORKER_CONSUMER_POSE_TRAINING,
-    BACKEND_WORKER_CONSUMER_OBB_TRAINING,
-    BACKEND_WORKER_CONSUMER_RFDETR_TRAINING,
-)
 SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS = frozenset(
     (
-        *DEFAULT_BACKEND_WORKER_CONSUMER_KINDS,
+        BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
+        BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
+        BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
         BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
-        BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
         BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
         BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
+        BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
+        BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
         BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
         BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION,
+        BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
+        BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION,
+        BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+        BACKEND_WORKER_CONSUMER_POSE_EVALUATION,
+        BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
+        BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION,
+        BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
         BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
         BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
         BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
@@ -93,11 +79,7 @@ SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS = frozenset(
         BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING,
         BACKEND_WORKER_CONSUMER_POSE_TRAINING,
         BACKEND_WORKER_CONSUMER_OBB_TRAINING,
-        BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
-        BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION,
-        BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
-        BACKEND_WORKER_CONSUMER_POSE_EVALUATION,
-        BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
+        BACKEND_WORKER_CONSUMER_RFDETR_TRAINING,
     )
 )
 
@@ -174,58 +156,6 @@ class BackendWorkerQueueConfig(BaseModel):
     file_operation_retry_timeout_seconds: float = Field(default=2.0, ge=0)
 
 
-class BackendWorkerTaskManagerConfig(BaseModel):
-    """描述 backend-worker 托管后台任务消费者的配置。
-
-    字段：
-    - enabled_consumer_kinds：当前独立 worker 需要启用的消费者种类。
-    - max_concurrent_tasks：当前 worker 允许的最大并发任务数。
-    - poll_interval_seconds：空闲轮询间隔秒数。
-    """
-
-    enabled_consumer_kinds: tuple[str, ...] = Field(
-        default_factory=lambda: DEFAULT_BACKEND_WORKER_CONSUMER_KINDS
-    )
-    max_concurrent_tasks: int = 16
-    poll_interval_seconds: float = 1.0
-
-    @field_validator("enabled_consumer_kinds", mode="before")
-    @classmethod
-    def _normalize_enabled_consumer_kinds(cls, value: object) -> tuple[str, ...]:
-        """规范化并校验当前 worker 需要启用的消费者种类。
-
-        参数：
-        - value：原始配置值。
-
-        返回：
-        - tuple[str, ...]：去重后的稳定消费者种类元组。
-        """
-
-        if value is None:
-            return DEFAULT_BACKEND_WORKER_CONSUMER_KINDS
-        raw_items: tuple[object, ...]
-        if isinstance(value, str):
-            raw_items = (value,)
-        elif isinstance(value, list | tuple):
-            raw_items = tuple(value)
-        else:
-            raise ValueError("enabled_consumer_kinds 必须是字符串列表")
-
-        normalized_items: list[str] = []
-        for raw_item in raw_items:
-            if not isinstance(raw_item, str) or not raw_item.strip():
-                raise ValueError("enabled_consumer_kinds 里的每个值都必须是非空字符串")
-            consumer_kind = raw_item.strip()
-            if consumer_kind not in SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS:
-                raise ValueError(f"不支持的 worker consumer kind: {consumer_kind}")
-            if consumer_kind not in normalized_items:
-                normalized_items.append(consumer_kind)
-
-        if not normalized_items:
-            raise ValueError("enabled_consumer_kinds 不能为空")
-        return tuple(normalized_items)
-
-
 class BackendWorkerTrainingTelemetryConfig(BaseModel):
     """描述 worker 写入本机 mmap 训练遥测 ring 的参数。"""
 
@@ -245,28 +175,27 @@ class BackendWorkerSettings(BaseSettings):
     - database：数据库连接配置。
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
-    - task_manager：后台任务管理器配置。
+    - Profile Manifest：消费者集合、并发数和轮询间隔的唯一配置来源。
     - async_inference_gateway_request_timeout_seconds：等待 backend-service async inference gateway 响应的最长秒数。
     """
 
     model_config = SettingsConfigDict(
         env_prefix="AMVISION_WORKER_",
         env_nested_delimiter="__",
-        extra="ignore",
+        extra="forbid",
     )
 
     app: BackendWorkerAppSettings = Field(default_factory=BackendWorkerAppSettings)
     workspace: BackendWorkerWorkspaceConfig = Field(
         default_factory=BackendWorkerWorkspaceConfig
     )
-    database: BackendWorkerDatabaseConfig = Field(default_factory=BackendWorkerDatabaseConfig)
+    database: BackendWorkerDatabaseConfig = Field(
+        default_factory=BackendWorkerDatabaseConfig
+    )
     dataset_storage: BackendWorkerDatasetStorageConfig = Field(
         default_factory=BackendWorkerDatasetStorageConfig
     )
     queue: BackendWorkerQueueConfig = Field(default_factory=BackendWorkerQueueConfig)
-    task_manager: BackendWorkerTaskManagerConfig = Field(
-        default_factory=BackendWorkerTaskManagerConfig
-    )
     training_telemetry: BackendWorkerTrainingTelemetryConfig = Field(
         default_factory=BackendWorkerTrainingTelemetryConfig
     )

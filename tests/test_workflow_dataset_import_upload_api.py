@@ -19,7 +19,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
 )
 from tests.api_test_support import build_test_headers, create_test_runtime
 from tests.test_dataset_import_api import _build_coco_zip_bytes
@@ -38,7 +37,6 @@ def test_workflow_app_runtime_invoke_upload_submits_dataset_import_package(tmp_p
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -165,7 +163,6 @@ def test_workflow_preview_run_accepts_dataset_package_base64_payload(tmp_path: P
             dataset_storage=BackendServiceDatasetStorageConfig(root_dir=str(dataset_storage.root_dir)),
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=False),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
         ),
         session_factory=session_factory,
         dataset_storage=dataset_storage,

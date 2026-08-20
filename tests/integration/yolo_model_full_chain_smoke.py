@@ -26,12 +26,23 @@ import sys
 import time
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
+from uuid import uuid4
 
 import httpx
 
+from backend.workers.contracts import (
+    WORKER_TOPOLOGY_FORMAT_ID,
+    WORKER_TOPOLOGY_ID,
+    BackendWorkerRuntimeLayout,
+    WorkerTopologyManifest,
+    WorkerTopologyProfile,
+    build_topology_pointer,
+    load_worker_profile_manifest,
+    write_worker_contract,
+)
 from tests.integration.model_task_e2e_assets import (
     ensure_model_task_e2e_archives,
 )
@@ -431,14 +442,51 @@ def start_service_processes(
         processes.append(inference_daemon_process)
         ensure_managed_processes_running(processes, startup_wait_seconds=2.0)
 
-        worker_process = start_process(
-            name="backend-worker",
-            args=[sys.executable, "-m", "backend.workers.main"],
-            env=process_env,
-            log_path=worker_log,
-            working_directory_artifact_snapshot=(working_directory_artifact_snapshot),
-        )
-        processes.append(worker_process)
+        topology = _activate_e2e_worker_topology(run_dir=run_dir)
+        for profile in topology.expected_profiles:
+            worker_process = start_process(
+                name=f"backend-worker-{profile.profile_id}",
+                args=[
+                    sys.executable,
+                    str(
+                        PROJECT_ROOT
+                        / "runtimes"
+                        / "launchers"
+                        / "worker"
+                        / "start_backend_worker.py"
+                    ),
+                    "--app-root",
+                    str(PROJECT_ROOT),
+                    "--python-executable",
+                    sys.executable,
+                    "--worker-profile-file",
+                    str(
+                        PROJECT_ROOT
+                        / "runtimes"
+                        / "manifests"
+                        / "worker-profiles"
+                        / f"{profile.profile_id}.json"
+                    ),
+                    "--topology-id",
+                    topology.topology_id,
+                    "--topology-generation",
+                    str(topology.topology_generation),
+                    "--topology-epoch-id",
+                    topology.topology_epoch_id,
+                    "--worker-instance-id",
+                    f"worker-{uuid4().hex}",
+                    "--worker-runtime-root",
+                    str(run_dir / "runtime" / "backend-workers"),
+                ],
+                env=process_env,
+                log_path=worker_log.with_name(
+                    f"backend-worker-{profile.profile_id}.log"
+                ),
+                working_directory_artifact_snapshot=(
+                    working_directory_artifact_snapshot
+                ),
+            )
+            processes.append(worker_process)
         ensure_managed_processes_running(processes, startup_wait_seconds=2.0)
         return processes
     except Exception:
@@ -462,7 +510,6 @@ def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]
     process_env["AMVISION_DATABASE__URL"] = sqlite_url
     process_env["AMVISION_DATASET_STORAGE__ROOT_DIR"] = str(dataset_storage_root)
     process_env["AMVISION_QUEUE__ROOT_DIR"] = str(queue_root)
-    process_env["AMVISION_TASK_MANAGER__ENABLED"] = "false"
     process_env["AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID"] = service_id
     process_env["AMVISION_LOCAL_BUFFER_BROKER__ENABLED"] = "false"
     process_env["AMVISION_LOCAL_BUFFER_BROKER__ROOT_DIR"] = str(buffer_root)
@@ -475,6 +522,43 @@ def build_e2e_process_environment(*, run_dir: Path, port: int) -> dict[str, str]
     process_env["AMVISION_WORKER_QUEUE__ROOT_DIR"] = str(queue_root)
     process_env["AMVISION_WORKER_WORKSPACE__ROOT_DIR"] = str(worker_root)
     return process_env
+
+
+def _activate_e2e_worker_topology(*, run_dir: Path) -> WorkerTopologyManifest:
+    """为隔离 E2E 进程创建一代严格 Worker Topology。"""
+
+    profile_dir = PROJECT_ROOT / "runtimes" / "manifests" / "worker-profiles"
+    profiles = tuple(
+        load_worker_profile_manifest(path)
+        for path in sorted(profile_dir.glob("*.json"))
+    )
+    if not profiles:
+        raise RuntimeError("E2E 启动未找到 Worker Profile manifest")
+    runtime_layout = BackendWorkerRuntimeLayout(
+        (run_dir / "runtime" / "backend-workers").resolve()
+    )
+    activated_at = datetime.now(UTC)
+    topology = WorkerTopologyManifest(
+        format_id=WORKER_TOPOLOGY_FORMAT_ID,
+        topology_id=WORKER_TOPOLOGY_ID,
+        topology_generation=1,
+        topology_epoch_id=f"worker-topology-{uuid4().hex}",
+        state="running",
+        supervisor_instance_id=f"e2e-supervisor-{uuid4().hex}",
+        activated_at=activated_at,
+        heartbeat_interval_seconds=1.0,
+        stale_after_seconds=5.0,
+        expected_profiles=tuple(
+            WorkerTopologyProfile.from_manifest(profile) for profile in profiles
+        ),
+    )
+    write_worker_contract(
+        runtime_layout.topology_manifest_path(topology.topology_epoch_id), topology
+    )
+    write_worker_contract(
+        runtime_layout.active_topology_path, build_topology_pointer(topology)
+    )
+    return topology
 
 
 def start_process(

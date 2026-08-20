@@ -1,4 +1,5 @@
 {
+  "format_id": "amvision.worker-profile.v1",
   "profile_id": "training",
   "display_name": "amvision training worker",
   "description": "独立消费当前已接通的 detection、classification、segmentation、pose、obb 与 RF-DETR 训练队列，负责训练执行、产物写回和状态同步。",

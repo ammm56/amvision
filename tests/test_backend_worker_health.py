@@ -1,223 +1,282 @@
+"""Worker Topology 心跳与诊断聚合测试。"""
+
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
+from pathlib import Path
+import time
 
+from backend.workers.contracts import (
+    WORKER_HEARTBEAT_FORMAT_ID,
+    WORKER_PROFILE_FORMAT_ID,
+    WORKER_TOPOLOGY_FORMAT_ID,
+    WORKER_TOPOLOGY_ID,
+    BackendWorkerLaunchBundle,
+    BackendWorkerLaunchContext,
+    BackendWorkerRuntimeLayout,
+    WorkerHeartbeatRecord,
+    WorkerProfileManifest,
+    WorkerTopologyManifest,
+    WorkerTopologyProfile,
+    build_topology_pointer,
+    utc_now,
+    write_worker_contract,
+)
 from backend.workers.health import (
     BackendWorkerHeartbeat,
     BackendWorkerHeartbeatInfo,
-    build_backend_worker_profile_health_path,
     read_backend_worker_health_summary,
 )
 
 
-def test_worker_health_summary_reports_offline_when_heartbeat_missing(tmp_path) -> None:
-    """没有心跳文件时，诊断应明确显示 worker 离线。"""
+def _profile(profile_id: str, consumer_kind: str) -> WorkerProfileManifest:
+    """构造测试 Profile。"""
 
-    summary = read_backend_worker_health_summary(queue_root_dir=tmp_path)
+    return WorkerProfileManifest(
+        format_id=WORKER_PROFILE_FORMAT_ID,
+        profile_id=profile_id,
+        display_name=f"amvision {profile_id} worker",
+        description=f"测试 {profile_id} worker Profile。",
+        enabled_consumer_kinds=(consumer_kind,),
+        max_concurrent_tasks=1,
+        poll_interval_seconds=0.1,
+    )
 
-    assert summary["health"] == "offline"
-    assert summary["reason"] == "heartbeat_missing"
+
+def _activate_topology(
+    runtime_root: Path,
+    *profiles: WorkerProfileManifest,
+    state: str = "running",
+) -> tuple[BackendWorkerRuntimeLayout, WorkerTopologyManifest]:
+    """写入一代测试 Topology 和 active pointer。"""
+
+    layout = BackendWorkerRuntimeLayout(runtime_root)
+    topology = WorkerTopologyManifest(
+        format_id=WORKER_TOPOLOGY_FORMAT_ID,
+        topology_id=WORKER_TOPOLOGY_ID,
+        topology_generation=1,
+        topology_epoch_id="epoch-test-000000000001",
+        state=state,
+        supervisor_instance_id="supervisor-test-00000001",
+        activated_at=utc_now(),
+        heartbeat_interval_seconds=0.5,
+        stale_after_seconds=5.0,
+        expected_profiles=tuple(
+            WorkerTopologyProfile.from_manifest(profile) for profile in profiles
+        ),
+    )
+    write_worker_contract(
+        layout.topology_manifest_path(topology.topology_epoch_id), topology
+    )
+    write_worker_contract(layout.active_topology_path, build_topology_pointer(topology))
+    return layout, topology
 
 
-def test_worker_health_summary_reads_running_heartbeat(tmp_path) -> None:
-    """读取到新鲜心跳时，诊断应显示 worker 正在运行。"""
+def _launch_bundle(
+    *,
+    layout: BackendWorkerRuntimeLayout,
+    topology: WorkerTopologyManifest,
+    profile: WorkerProfileManifest,
+) -> BackendWorkerLaunchBundle:
+    """构造已校验过的测试启动契约。"""
+
+    return BackendWorkerLaunchBundle(
+        context=BackendWorkerLaunchContext(
+            profile_file=layout.root_dir / f"{profile.profile_id}.json",
+            runtime_layout=layout,
+            topology_id=topology.topology_id,
+            topology_generation=topology.topology_generation,
+            topology_epoch_id=topology.topology_epoch_id,
+            worker_instance_id=f"worker-instance-{profile.profile_id}-0001",
+        ),
+        profile=profile,
+        topology=topology,
+    )
+
+
+def _start_heartbeat(
+    *,
+    layout: BackendWorkerRuntimeLayout,
+    topology: WorkerTopologyManifest,
+    profile: WorkerProfileManifest,
+) -> BackendWorkerHeartbeat:
+    """启动一个测试 Profile 心跳。"""
 
     heartbeat = BackendWorkerHeartbeat(
         info=BackendWorkerHeartbeatInfo(
-            app_name="amvision worker",
+            launch_bundle=_launch_bundle(
+                layout=layout,
+                topology=topology,
+                profile=profile,
+            ),
             app_version="0.1.4",
-            workspace_dir=tmp_path / "worker",
-            queue_root_dir=tmp_path,
-            enabled_consumer_kinds=("dataset-import", "dataset-export"),
-            max_concurrent_tasks=2,
-            poll_interval_seconds=1.0,
-        )
+            workspace_dir=layout.root_dir / "workspace" / profile.profile_id,
+            queue_root_dir=layout.root_dir / "queue",
+        ),
+        interval_seconds=0.5,
     )
-
     heartbeat.start()
-    try:
-        summary = read_backend_worker_health_summary(queue_root_dir=tmp_path)
-    finally:
-        heartbeat.stop()
-
-    assert summary["health"] == "running"
-    assert summary["worker_count"] == 1
-    assert summary["running_count"] == 1
-    assert summary["app_name"] == "amvision worker"
-    assert summary["enabled_consumer_count"] == 2
-    assert summary["workers"][0]["app_name"] == "amvision worker"
+    heartbeat.mark_running()
+    return heartbeat
 
 
-def test_worker_health_summary_reads_multiple_profile_heartbeats(tmp_path) -> None:
-    """多个独立 worker profile 应分别写心跳并聚合为 running。"""
+def test_worker_health_summary_reports_offline_without_active_topology(
+    tmp_path,
+) -> None:
+    """没有 active Topology 时明确显示离线，不扫描历史文件。"""
 
-    import_workers = BackendWorkerHeartbeat(
-        info=BackendWorkerHeartbeatInfo(
-            app_name="amvision dataset import worker",
-            app_version="0.1.4",
-            workspace_dir=tmp_path / "worker" / "dataset-import",
-            queue_root_dir=tmp_path,
-            enabled_consumer_kinds=("dataset-import",),
-            max_concurrent_tasks=1,
-            poll_interval_seconds=1.0,
-        )
+    summary = read_backend_worker_health_summary(worker_runtime_root_dir=tmp_path)
+
+    assert summary["health"] == "offline"
+    assert summary["reason"] == "active_topology_missing"
+
+
+def test_worker_health_summary_reads_only_expected_current_epoch_profiles(
+    tmp_path,
+) -> None:
+    """诊断只聚合当前 epoch 声明的 Profile，完全忽略历史目录。"""
+
+    import_profile = _profile("dataset-import", "dataset-import")
+    export_profile = _profile("dataset-export", "dataset-export")
+    layout, topology = _activate_topology(tmp_path, import_profile, export_profile)
+    old_heartbeat = layout.profile_heartbeat_path("old-epoch-0000000001", "legacy")
+    old_heartbeat.parent.mkdir(parents=True)
+    old_heartbeat.write_bytes(b"\x00" * 128)
+    import_heartbeat = _start_heartbeat(
+        layout=layout,
+        topology=topology,
+        profile=import_profile,
     )
-    export_workers = BackendWorkerHeartbeat(
-        info=BackendWorkerHeartbeatInfo(
-            app_name="amvision dataset export worker",
-            app_version="0.1.4",
-            workspace_dir=tmp_path / "worker" / "dataset-export",
-            queue_root_dir=tmp_path,
-            enabled_consumer_kinds=("dataset-export",),
-            max_concurrent_tasks=1,
-            poll_interval_seconds=1.0,
-        )
+    export_heartbeat = _start_heartbeat(
+        layout=layout,
+        topology=topology,
+        profile=export_profile,
     )
-
-    import_workers.start()
-    export_workers.start()
     try:
-        summary = read_backend_worker_health_summary(queue_root_dir=tmp_path)
+        summary = read_backend_worker_health_summary(worker_runtime_root_dir=tmp_path)
     finally:
-        export_workers.stop()
-        import_workers.stop()
+        export_heartbeat.stop()
+        import_heartbeat.stop()
 
     assert summary["health"] == "running"
     assert summary["worker_count"] == 2
     assert summary["running_count"] == 2
-    worker_names = {worker["app_name"] for worker in summary["workers"]}
-    assert worker_names == {
-        "amvision dataset import worker",
-        "amvision dataset export worker",
+    assert {worker["profile_id"] for worker in summary["workers"]} == {
+        "dataset-import",
+        "dataset-export",
     }
 
 
-def test_worker_health_summary_marks_old_heartbeat_stale(tmp_path) -> None:
-    """心跳过期时，诊断应显示 stale，而不是继续显示 running。"""
-
-    health_path = build_backend_worker_profile_health_path(
-        tmp_path,
-        worker_name="amvision stale worker",
-    )
-    health_path.parent.mkdir(parents=True)
-    health_path.write_text(
-        json.dumps(
-            {
-                "health": "running",
-                "heartbeat_at": (datetime.now(UTC) - timedelta(seconds=60)).isoformat(),
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    summary = read_backend_worker_health_summary(queue_root_dir=tmp_path, stale_after_seconds=5)
-
-    assert summary["health"] == "stale"
-    assert summary["reported_health"] == "running"
-
-
-def test_worker_health_summary_ignores_stale_profile_covered_by_running_worker(
+def test_worker_health_summary_marks_missing_expected_profile_degraded(
     tmp_path,
 ) -> None:
-    """旧 profile 的 consumer 已被当前 worker 覆盖时不应误报 degraded。"""
+    """当前 Topology 缺少一个期望 Profile 时报告真实降级。"""
 
-    stale_path = build_backend_worker_profile_health_path(
-        tmp_path,
-        worker_name="amvision dataset import worker",
+    import_profile = _profile("dataset-import", "dataset-import")
+    export_profile = _profile("dataset-export", "dataset-export")
+    layout, topology = _activate_topology(tmp_path, import_profile, export_profile)
+    heartbeat = _start_heartbeat(
+        layout=layout,
+        topology=topology,
+        profile=import_profile,
     )
-    stale_path.parent.mkdir(parents=True)
-    stale_path.write_text(
-        json.dumps(
-            {
-                "health": "running",
-                "app_name": "amvision dataset import worker",
-                "heartbeat_at": (
-                    datetime.now(UTC) - timedelta(seconds=60)
-                ).isoformat(),
-                "enabled_consumer_kinds": ["dataset-import"],
-            }
-        ),
-        encoding="utf-8",
-    )
-    current_worker = BackendWorkerHeartbeat(
-        info=BackendWorkerHeartbeatInfo(
-            app_name="amvision worker",
-            app_version="0.1.4",
-            workspace_dir=tmp_path / "worker",
-            queue_root_dir=tmp_path,
-            enabled_consumer_kinds=("dataset-import", "dataset-export"),
-            max_concurrent_tasks=2,
-            poll_interval_seconds=1.0,
-        )
-    )
-
-    current_worker.start()
     try:
-        summary = read_backend_worker_health_summary(
-            queue_root_dir=tmp_path,
-            stale_after_seconds=5,
-        )
+        summary = read_backend_worker_health_summary(worker_runtime_root_dir=tmp_path)
     finally:
-        current_worker.stop()
-
-    assert summary["health"] == "running"
-    assert summary["running_count"] == 1
-    assert summary["stale_count"] == 1
-    assert summary["superseded_count"] == 1
-    stale_worker = next(
-        worker
-        for worker in summary["workers"]
-        if worker["app_name"] == "amvision dataset import worker"
-    )
-    assert stale_worker["health"] == "stale"
-    assert stale_worker["effective_health"] == "superseded"
-    assert stale_worker["reason"] == "consumer_coverage_superseded"
-
-
-def test_worker_health_summary_keeps_uncovered_stale_profile_degraded(tmp_path) -> None:
-    """running worker 未覆盖的旧 profile 仍应报告部分故障。"""
-
-    stale_path = build_backend_worker_profile_health_path(
-        tmp_path,
-        worker_name="amvision dataset import worker",
-    )
-    stale_path.parent.mkdir(parents=True)
-    stale_path.write_text(
-        json.dumps(
-            {
-                "health": "running",
-                "app_name": "amvision dataset import worker",
-                "heartbeat_at": (
-                    datetime.now(UTC) - timedelta(seconds=60)
-                ).isoformat(),
-                "enabled_consumer_kinds": ["dataset-import"],
-            }
-        ),
-        encoding="utf-8",
-    )
-    current_worker = BackendWorkerHeartbeat(
-        info=BackendWorkerHeartbeatInfo(
-            app_name="amvision export worker",
-            app_version="0.1.4",
-            workspace_dir=tmp_path / "worker",
-            queue_root_dir=tmp_path,
-            enabled_consumer_kinds=("dataset-export",),
-            max_concurrent_tasks=1,
-            poll_interval_seconds=1.0,
-        )
-    )
-
-    current_worker.start()
-    try:
-        summary = read_backend_worker_health_summary(
-            queue_root_dir=tmp_path,
-            stale_after_seconds=5,
-        )
-    finally:
-        current_worker.stop()
+        heartbeat.stop()
 
     assert summary["health"] == "degraded"
     assert summary["running_count"] == 1
+    assert summary["offline_count"] == 1
+
+
+def test_worker_health_summary_rejects_stale_and_mismatched_heartbeats(
+    tmp_path,
+) -> None:
+    """过期心跳和身份不匹配心跳都不能被当作当前运行实例。"""
+
+    import_profile = _profile("dataset-import", "dataset-import")
+    export_profile = _profile("dataset-export", "dataset-export")
+    layout, topology = _activate_topology(tmp_path, import_profile, export_profile)
+    stale = WorkerHeartbeatRecord(
+        format_id=WORKER_HEARTBEAT_FORMAT_ID,
+        topology_id=topology.topology_id,
+        topology_generation=topology.topology_generation,
+        topology_epoch_id=topology.topology_epoch_id,
+        profile_id=import_profile.profile_id,
+        profile_fingerprint=import_profile.fingerprint(),
+        worker_instance_id="worker-instance-import-0001",
+        status="running",
+        app_version="0.1.4",
+        process_id=1234,
+        python_executable="python",
+        process_started_at=utc_now() - timedelta(minutes=2),
+        heartbeat_at=utc_now() - timedelta(minutes=1),
+        workspace_dir=str(tmp_path / "worker"),
+        queue_root_dir=str(tmp_path / "queue"),
+        enabled_consumer_kinds=import_profile.enabled_consumer_kinds,
+        max_concurrent_tasks=1,
+        poll_interval_seconds=0.1,
+    )
+    mismatched = stale.model_copy(
+        update={
+            "profile_id": export_profile.profile_id,
+            "profile_fingerprint": "0" * 64,
+            "heartbeat_at": utc_now(),
+        }
+    )
+    write_worker_contract(
+        layout.profile_heartbeat_path(
+            topology.topology_epoch_id, import_profile.profile_id
+        ),
+        stale,
+    )
+    write_worker_contract(
+        layout.profile_heartbeat_path(
+            topology.topology_epoch_id, export_profile.profile_id
+        ),
+        mismatched,
+    )
+
+    summary = read_backend_worker_health_summary(
+        worker_runtime_root_dir=tmp_path,
+        stale_after_seconds=5,
+    )
+
+    assert summary["health"] == "failed"
     assert summary["stale_count"] == 1
-    assert summary["superseded_count"] == 0
+    assert summary["failed_count"] == 1
+    reasons = {worker["reason"] for worker in summary["workers"]}
+    assert reasons == {"heartbeat_stale", "heartbeat_identity_mismatch"}
+
+
+def test_worker_heartbeat_stops_worker_when_active_topology_is_stopped(
+    tmp_path,
+) -> None:
+    """Supervisor 停止当前 Topology 后，遗留 Worker 必须主动退出主循环。"""
+
+    profile = _profile("dataset-import", "dataset-import")
+    layout, topology = _activate_topology(tmp_path, profile)
+    heartbeat = _start_heartbeat(
+        layout=layout,
+        topology=topology,
+        profile=profile,
+    )
+    write_worker_contract(
+        layout.topology_manifest_path(topology.topology_epoch_id),
+        topology.model_copy(update={"state": "stopped"}),
+    )
+
+    deadline = time.monotonic() + 3.0
+    try:
+        while time.monotonic() < deadline:
+            try:
+                heartbeat.assert_healthy()
+            except RuntimeError as error:
+                assert "心跳写入线程异常退出" in str(error)
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("Worker 未在 Topology 停止后退出心跳线程")
+    finally:
+        heartbeat.stop()

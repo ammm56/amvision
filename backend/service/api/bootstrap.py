@@ -150,7 +150,6 @@ from backend.service.settings import (
     BackendServiceSettings,
     get_backend_service_settings,
 )
-from backend.workers.task_manager import HostedBackgroundTaskManager
 
 
 @dataclass(frozen=True)
@@ -178,7 +177,6 @@ class BackendServiceRuntime:
     - workflow_runtime_worker_manager：workflow runtime worker 管理器。
     - workflow_preview_run_manager：preview run 进程管理器。
     - trigger_source_supervisor：workflow trigger source adapter 监督器。
-    - background_task_manager_host：当前进程托管的后台任务管理器宿主。
     """
 
     settings: BackendServiceSettings
@@ -205,7 +203,6 @@ class BackendServiceRuntime:
     workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
-    background_task_manager_host: HostedBackgroundTaskManager | None
     classification_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
     classification_async_deployment_supervisor: DeploymentProcessSupervisor | None = (
         None
@@ -692,13 +689,6 @@ class BackendServiceBootstrap(
                 )
             ),
         )
-        background_task_manager_host = self._build_background_task_manager_host(
-            settings=settings,
-            session_factory=session_factory,
-            dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
-            detection_async_deployment_process_supervisor=detection_async_deployment_process_supervisor,
-        )
         workflow_service_node_runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
@@ -785,7 +775,6 @@ class BackendServiceBootstrap(
             workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
             deployment_runtime_reconciler=deployment_runtime_reconciler,
-            background_task_manager_host=background_task_manager_host,
             classification_sync_deployment_supervisor=classification_sync_deployment_supervisor,
             classification_async_deployment_supervisor=classification_async_deployment_supervisor,
             classification_async_inference_gateway_registry=classification_async_inference_gateway_registry,
@@ -910,9 +899,6 @@ class BackendServiceBootstrap(
         application.state.deployment_runtime_reconciler = (
             runtime.deployment_runtime_reconciler
         )
-        application.state.background_task_manager_host = (
-            runtime.background_task_manager_host
-        )
         application.state.training_telemetry_receiver = (
             runtime.training_telemetry_receiver
         )
@@ -937,8 +923,6 @@ class BackendServiceBootstrap(
         ).start_enabled_trigger_sources()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.start()
-        if runtime.background_task_manager_host is not None:
-            runtime.background_task_manager_host.start()
 
     def stop_runtime(self, runtime: BackendServiceRuntime) -> None:
         """停止 backend-service 托管的长生命周期资源。
@@ -947,8 +931,6 @@ class BackendServiceBootstrap(
         - runtime：当前应用实例使用的运行时资源。
         """
 
-        if runtime.background_task_manager_host is not None:
-            runtime.background_task_manager_host.stop()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
         runtime.training_telemetry_broker.close()
@@ -1011,36 +993,6 @@ class BackendServiceBootstrap(
             return default_seeders
 
         return default_seeders + self._provided_seeders
-
-    def _build_background_task_manager_host(
-        self,
-        *,
-        settings: BackendServiceSettings,
-        session_factory: SessionFactory,
-        dataset_storage: LocalDatasetStorage,
-        queue_backend: LocalFileQueueBackend,
-        detection_async_deployment_process_supervisor: DeploymentProcessSupervisor,
-    ) -> HostedBackgroundTaskManager | None:
-        """按 backend-service 配置创建后台任务管理器宿主。
-
-        参数：
-        - settings：当前 backend-service 统一配置。
-        - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
-        - queue_backend：本地任务队列后端。
-
-        返回：
-        - 已配置完成的后台任务管理器宿主；未启用时返回 None。
-        """
-
-        _ = (
-            settings,
-            session_factory,
-            dataset_storage,
-            queue_backend,
-            detection_async_deployment_process_supervisor,
-        )
-        return None
 
 
 def _resolve_async_inference_service_id(settings: BackendServiceSettings) -> str:

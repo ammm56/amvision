@@ -67,11 +67,11 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
                     created_at="2026-07-26T00:00:00Z",
                     state="succeeded",
                 ),
-                    ModelRecord(
-                        model_id="model-1",
-                        project_id="project-1",
-                        owner_key="project-1",
-                        scope_kind="project",
+                ModelRecord(
+                    model_id="model-1",
+                    project_id="project-1",
+                    owner_key="project-1",
+                    scope_kind="project",
                     model_name="trained",
                     model_type="yolo11",
                     task_type="detection",
@@ -126,11 +126,7 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     _write_marker(storage_root / "models" / "pretrained" / "keep.txt")
     _write_marker(storage_root / "task-runs" / "training-1" / "result.json")
     _write_marker(
-        storage_root
-        / "deployments"
-        / "instances"
-        / "deployment-1"
-        / "events.jsonl"
+        storage_root / "deployments" / "instances" / "deployment-1" / "events.jsonl"
     )
     _write_marker(storage_root / "workflows" / "runtime" / "run-1" / "state.json")
     _write_marker(queue_root / "dataset-imports" / "dataset-import-1.json")
@@ -160,14 +156,10 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     assert (storage_root / "datasets" / "dataset-1" / "manifest.json").is_file()
     assert (storage_root / "models" / "pretrained" / "keep.txt").is_file()
     assert (queue_root / "dataset-imports" / "dataset-import-1.json").is_file()
-    assert (queue_root / "_worker_health" / "worker.json").is_file()
+    assert not (queue_root / "_worker_health").exists()
     assert not (storage_root / "task-runs" / "training-1").exists()
     assert not (
-        storage_root
-        / "deployments"
-        / "instances"
-        / "deployment-1"
-        / "events.jsonl"
+        storage_root / "deployments" / "instances" / "deployment-1" / "events.jsonl"
     ).exists()
     assert not (queue_root / "yolo11-trainings").exists()
 

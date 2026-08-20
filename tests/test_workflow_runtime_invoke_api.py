@@ -24,7 +24,6 @@ from backend.service.settings import (
     BackendServiceDatasetStorageConfig,
     BackendServiceQueueConfig,
     BackendServiceSettings,
-    BackendServiceTaskManagerConfig,
     BackendServiceWorkflowRuntimeConfig,
 )
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -941,7 +940,6 @@ def _create_runtime_api_client(
             queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
             custom_nodes=BackendServiceCustomNodesConfig(root_dir=str(custom_nodes_root_dir)),
             local_buffer_broker=LocalBufferBrokerSettings(enabled=enable_local_buffer_broker),
-            task_manager=BackendServiceTaskManagerConfig(enabled=False),
             workflow_runtime=workflow_runtime or BackendServiceWorkflowRuntimeConfig(),
         ),
         session_factory=session_factory,

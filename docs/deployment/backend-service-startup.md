@@ -50,7 +50,7 @@
 - 嵌套字段分隔符：__
 - 默认主配置文件：./config/backend-service.json
 - 可选本地覆盖文件：./config/backend-service.local.json
-- 默认 task manager 配置：enabled=false、max_concurrent_tasks=16、poll_interval_seconds=1.0
+- backend-service 不包含 task manager；任务消费者只由 Worker Topology 启动
 - 默认 deployment supervisor 配置：max_running_process_count=32、warmup_dummy_inference_count=6、warmup_dummy_image_size=[64,64]、keep_warm_enabled=false、keep_warm_interval_seconds=0.1、tensorrt_pinned_output_buffer_enabled=true、tensorrt_pinned_output_buffer_max_bytes=8388608
 
 常见示例：
@@ -76,11 +76,6 @@
     "completed_retention_seconds": 86400.0,
     "failed_retention_seconds": 604800.0,
     "response_queue_retention_seconds": 3600.0
-  },
-  "task_manager": {
-    "enabled": false,
-    "max_concurrent_tasks": 16,
-    "poll_interval_seconds": 1.0
   },
   "async_inference_gateway": {
     "service_id": "backend-service-main"
@@ -154,9 +149,6 @@
 - AMVISION_QUEUE__COMPLETED_RETENTION_SECONDS=86400.0
 - AMVISION_QUEUE__FAILED_RETENTION_SECONDS=604800.0
 - AMVISION_QUEUE__RESPONSE_QUEUE_RETENTION_SECONDS=3600.0
-- AMVISION_TASK_MANAGER__ENABLED=false
-- AMVISION_TASK_MANAGER__MAX_CONCURRENT_TASKS=16
-- AMVISION_TASK_MANAGER__POLL_INTERVAL_SECONDS=1.0
 - AMVISION_ASYNC_INFERENCE_GATEWAY__SERVICE_ID=backend-service-main
 - AMVISION_WORKFLOW_RUNTIME__OPERATOR_THREAD_COUNT=1
 - AMVISION_WORKFLOW_RUNTIME__DECODED_IMAGE_CACHE_MAX_ENTRIES=8
@@ -187,6 +179,7 @@
 - 本地部署优先修改 config 目录 JSON 文件，而不是直接改代码
 - 环境变量主要用于测试、调试、launcher 注入和临时覆盖
 - 如果 config 文件和环境变量都未提供，当前服务会回退到仓库默认值
+- backend-service 只提供 API、控制面和轻量协调，不承担任务队列消费
 - `local_buffer_broker.default_pool_name` 是未显式指定 pool 时使用的默认 pool；仓库默认值为 `image-4k`
 - `workflow_runtime.decoded_image_cache_max_entries` 和 `decoded_image_cache_max_bytes` 只限制单次 Workflow Run 内对 storage、buffer、frame 等输入图片的解码矩阵缓存。缓存采用 LRU 和同 key single-flight；Run 结束、失败或 cleanup 失败后都会清空，不跨 Run 持有现场图片。
 - `workflow_runtime.model_startup_timeout_seconds` 限制 AppRuntime 启动时等待全部 `Load Checkpoint` 完成加载、移入设备、warmup 和输出验证的时间。模型全部 ready 前 runtime 不接收生产请求，默认 600 秒。
@@ -225,19 +218,15 @@
 - REST 路由、WebSocket 路由、中间件和异常映射已装配完成
 - /api/v1/system/health 可以直接返回最小健康状态
 - /api/v1/tasks、/ws/v1/tasks/events 和 /ws/v1/training/telemetry 已经公开
-- 当前默认配置下，backend-service 不再自动托管任何队列消费者；dataset import、dataset export、training、conversion、evaluation 和 inference 全部迁到独立 worker profile
-- `task_manager` 字段当前仅保留兼容配置形态，service 启动链不会再创建进程内 BackgroundTaskManager
+- backend-service 不托管队列消费者；dataset import、dataset export、training、conversion、evaluation 和 inference 全部由 active Topology 声明的独立 Worker Profile 承担
 
-### 当前仓库还没有自动完成的事
+### 数据库迁移边界
 
-- 当前服务启动时会自动创建缺失的数据表，但不会做 schema 迁移
-- 当前仓库还没有正式接入 Alembic 初始化命令或 maintenance launcher
-- 如果已有旧版本数据库文件且表结构落后，当前仍需要手动迁移或重建数据库
+- `start-amvision-full` 在启动 inference daemon、backend-service 和 Worker Topology 前先执行 Alembic `upgrade head`，迁移失败会阻止整套服务启动
+- 开发态直接运行 uvicorn 前，应先执行 `python -m alembic -c backend/alembic.ini upgrade head`
+- 不允许用 `stamp`、运行期 `create_all` 或删除数据库绕过正式 migration chain
 
-这意味着：
-
-- 新环境下直接启动服务即可拿到当前代码对应的基础表结构
-- 旧数据库如果缺列、列类型不同，当前不会在启动时自动修正
+这意味着生产与现场启动都以 migration 成功作为服务接流量的前置条件；不能把 FastAPI lifespan 中的 schema 初始化当成数据库升级机制。
 
 ## 当前启动流
 
@@ -252,7 +241,6 @@
   - sync / async deployment supervisor
   - `PublishedInferenceGateway`
   - async inference gateway dispatcher registry，按当前 `async_inference_gateway.service_id` 和 DeploymentInstance id 为每个 async deployment 懒启动专属请求队列与 dispatcher 线程，并定期清理一次性响应队列
-  - `background_task_manager_host=None`
 4. `create_app` 把这些运行时对象绑定到 `application.state`
 5. FastAPI lifespan 启动时执行：
   - 初始化数据库缺失表

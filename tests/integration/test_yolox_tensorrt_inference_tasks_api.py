@@ -19,9 +19,12 @@ from backend.service.application.models.registry.model_service import (
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.infrastructure.persistence.base import Base
-from backend.service.settings import BackendServiceSettings, BackendServiceTaskManagerConfig
+from backend.service.settings import BackendServiceSettings
 from backend.workers.inference.detection_inference_queue_worker import (
     DetectionInferenceQueueWorker,
 )
@@ -47,9 +50,13 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
     """
 
     if not _can_run_tensorrt_runtime_probe():
-        pytest.skip("当前环境缺少可执行的 TensorRT CUDA 运行条件，跳过 TensorRT inference-tasks API 测试")
+        pytest.skip(
+            "当前环境缺少可执行的 TensorRT CUDA 运行条件，跳过 TensorRT inference-tasks API 测试"
+        )
 
-    client, session_factory, dataset_storage, queue_backend = _create_real_test_client(tmp_path)
+    client, session_factory, dataset_storage, queue_backend = _create_real_test_client(
+        tmp_path
+    )
     model_version_id = _seed_model_version(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -60,7 +67,9 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
         model_version_id=model_version_id,
         runtime_precision=runtime_precision,
     )
-    dataset_storage.write_bytes("runtime-inputs/inference-image.png", _build_valid_test_image_bytes())
+    dataset_storage.write_bytes(
+        "runtime-inputs/inference-image.png", _build_valid_test_image_bytes()
+    )
     worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -91,7 +100,10 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert deployment_payload["runtime_backend"] == "tensorrt"
             assert deployment_payload["runtime_precision"] == runtime_precision
             assert deployment_payload["device_name"] == "cuda:0"
-            assert deployment_payload["runtime_execution_mode"] == f"tensorrt:{runtime_precision}:cuda:0"
+            assert (
+                deployment_payload["runtime_execution_mode"]
+                == f"tensorrt:{runtime_precision}:cuda:0"
+            )
 
             async_start_response = client.post(
                 f"/api/v1/models/detection/deployment-instances/{deployment_instance_id}/async/start",
@@ -118,15 +130,21 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             task_id = submission["task_id"]
             assert submission["input_source_kind"] == "input_uri"
 
-            task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=False)
-            runtime_target_snapshot = task_detail.task.task_spec.get("runtime_target_snapshot")
+            task_detail = SqlAlchemyTaskService(session_factory).get_task(
+                task_id, include_events=False
+            )
+            runtime_target_snapshot = task_detail.task.task_spec.get(
+                "runtime_target_snapshot"
+            )
             assert isinstance(runtime_target_snapshot, dict)
             assert runtime_target_snapshot["model_version_id"] == model_version_id
             assert runtime_target_snapshot["model_build_id"] == model_build_id
             assert runtime_target_snapshot["runtime_backend"] == "tensorrt"
             assert runtime_target_snapshot["runtime_precision"] == runtime_precision
             assert runtime_target_snapshot["device_name"] == "cuda:0"
-            assert runtime_target_snapshot["runtime_artifact_storage_uri"].endswith("constant-model.engine")
+            assert runtime_target_snapshot["runtime_artifact_storage_uri"].endswith(
+                "constant-model.engine"
+            )
 
             pending_result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -168,15 +186,31 @@ def test_tensorrt_inference_task_runs_through_real_async_deployment_process(
             assert payload["runtime_session_info"]["backend_name"] == "tensorrt"
             assert payload["runtime_session_info"]["device_name"] == "cuda:0"
             assert payload["runtime_session_info"]["input_spec"]["dtype"] == "float32"
-            assert payload["runtime_session_info"]["output_spec"]["dtype"] in {"float32", "float16"}
-            assert payload["runtime_session_info"]["metadata"]["model_build_id"] == model_build_id
-            assert payload["runtime_session_info"]["metadata"]["runtime_execution_mode"] == (
-                f"tensorrt:{runtime_precision}:cuda:0"
+            assert payload["runtime_session_info"]["output_spec"]["dtype"] in {
+                "float32",
+                "float16",
+            }
+            assert (
+                payload["runtime_session_info"]["metadata"]["model_build_id"]
+                == model_build_id
             )
-            assert payload["runtime_session_info"]["metadata"]["compiled_runtime_precision"] == runtime_precision
+            assert payload["runtime_session_info"]["metadata"][
+                "runtime_execution_mode"
+            ] == (f"tensorrt:{runtime_precision}:cuda:0")
+            assert (
+                payload["runtime_session_info"]["metadata"][
+                    "compiled_runtime_precision"
+                ]
+                == runtime_precision
+            )
 
-        task_detail = SqlAlchemyTaskService(session_factory).get_task(task_id, include_events=True)
-        assert any(event.message == "detection inference completed" for event in task_detail.events)
+        task_detail = SqlAlchemyTaskService(session_factory).get_task(
+            task_id, include_events=True
+        )
+        assert any(
+            event.message == "detection inference completed"
+            for event in task_detail.events
+        )
     finally:
         session_factory.engine.dispose()
 
@@ -194,7 +228,9 @@ def _create_real_test_client(
     """
 
     database_path = tmp_path / "amvision-tensorrt-inference-api.db"
-    session_factory = SessionFactory(DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url=f"sqlite:///{database_path.as_posix()}")
+    )
     Base.metadata.create_all(session_factory.engine)
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files"))
@@ -202,13 +238,7 @@ def _create_real_test_client(
     queue_backend = LocalFileQueueBackend(
         LocalFileQueueSettings(root_dir=str(tmp_path / "queue-files"))
     )
-    settings = BackendServiceSettings(
-        task_manager=BackendServiceTaskManagerConfig(
-            enabled=False,
-            max_concurrent_tasks=2,
-            poll_interval_seconds=0.05,
-        )
-    )
+    settings = BackendServiceSettings()
     application = create_app(
         settings=settings,
         session_factory=session_factory,
@@ -235,7 +265,9 @@ def _seed_model_version(
     """
 
     checkpoint_uri = "projects/project-1/models/tensorrt-inference-source-1/artifacts/checkpoints/best_ckpt.pth"
-    labels_uri = "projects/project-1/models/tensorrt-inference-source-1/artifacts/labels.txt"
+    labels_uri = (
+        "projects/project-1/models/tensorrt-inference-source-1/artifacts/labels.txt"
+    )
     dataset_storage.write_bytes(checkpoint_uri, b"placeholder-checkpoint")
     dataset_storage.write_text(labels_uri, "bolt\n")
 
@@ -254,9 +286,7 @@ def _seed_model_version(
             metadata={
                 "category_names": ["bolt"],
                 "input_size": {"width": 64, "height": 64},
-                "training_config": {
-                    "input_size": {"width": 64, "height": 64}
-                },
+                "training_config": {"input_size": {"width": 64, "height": 64}},
             },
         )
     )
@@ -281,12 +311,8 @@ def _seed_tensorrt_model_build(
     - 新建的 ModelBuild id。
     """
 
-    onnx_uri = (
-        f"projects/project-1/models/tensorrt-inference-build-{runtime_precision}/artifacts/builds/constant-model.onnx"
-    )
-    engine_uri = (
-        f"projects/project-1/models/tensorrt-inference-build-{runtime_precision}/artifacts/builds/constant-model.engine"
-    )
+    onnx_uri = f"projects/project-1/models/tensorrt-inference-build-{runtime_precision}/artifacts/builds/constant-model.onnx"
+    engine_uri = f"projects/project-1/models/tensorrt-inference-build-{runtime_precision}/artifacts/builds/constant-model.engine"
     _write_constant_onnx(dataset_storage=dataset_storage, onnx_uri=onnx_uri)
     _build_tensorrt_engine(
         dataset_storage=dataset_storage,
@@ -314,7 +340,9 @@ def _seed_tensorrt_model_build(
     )
 
 
-def _write_constant_onnx(*, dataset_storage: LocalDatasetStorage, onnx_uri: str) -> None:
+def _write_constant_onnx(
+    *, dataset_storage: LocalDatasetStorage, onnx_uri: str
+) -> None:
     """写出一个固定检测输出的最小 ONNX 模型。
 
     参数：
@@ -327,8 +355,12 @@ def _write_constant_onnx(*, dataset_storage: LocalDatasetStorage, onnx_uri: str)
     onnx_path = dataset_storage.resolve(onnx_uri)
     onnx_path.parent.mkdir(parents=True, exist_ok=True)
 
-    input_info = helper.make_tensor_value_info("images", TensorProto.FLOAT, [1, 3, 64, 64])
-    output_info = helper.make_tensor_value_info("predictions", TensorProto.FLOAT, [1, 1, 6])
+    input_info = helper.make_tensor_value_info(
+        "images", TensorProto.FLOAT, [1, 3, 64, 64]
+    )
+    output_info = helper.make_tensor_value_info(
+        "predictions", TensorProto.FLOAT, [1, 1, 6]
+    )
     reduce_node = helper.make_node(
         "ReduceMean",
         inputs=["images"],
@@ -343,8 +375,12 @@ def _write_constant_onnx(*, dataset_storage: LocalDatasetStorage, onnx_uri: str)
         [1, 1, 6],
         [32.0, 32.0, 16.0, 16.0, 0.95, 0.99],
     )
-    reshape_shape = helper.make_tensor("reshape_shape", TensorProto.INT64, [3], [1, 1, 1])
-    zero_node = helper.make_node("Constant", inputs=[], outputs=["zero_value"], value=zero_tensor)
+    reshape_shape = helper.make_tensor(
+        "reshape_shape", TensorProto.INT64, [3], [1, 1, 1]
+    )
+    zero_node = helper.make_node(
+        "Constant", inputs=[], outputs=["zero_value"], value=zero_tensor
+    )
     prediction_node = helper.make_node(
         "Constant",
         inputs=[],
@@ -357,7 +393,9 @@ def _write_constant_onnx(*, dataset_storage: LocalDatasetStorage, onnx_uri: str)
         outputs=["reshape_value"],
         value=reshape_shape,
     )
-    mul_node = helper.make_node("Mul", inputs=["pooled", "zero_value"], outputs=["zeroed"])
+    mul_node = helper.make_node(
+        "Mul", inputs=["pooled", "zero_value"], outputs=["zeroed"]
+    )
     reshape_node = helper.make_node(
         "Reshape",
         inputs=["zeroed", "reshape_value"],
@@ -421,14 +459,18 @@ def _build_tensorrt_engine(
     with onnx_path.open("rb") as handle:
         parsed = parser.parse(handle.read())
     if not parsed:
-        parser_errors = [str(parser.get_error(index)) for index in range(parser.num_errors)]
+        parser_errors = [
+            str(parser.get_error(index)) for index in range(parser.num_errors)
+        ]
         raise AssertionError("TensorRT 解析 ONNX 失败: " + " | ".join(parser_errors))
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)
     if runtime_precision == "fp16":
         if not builder.platform_has_fast_fp16:
-            pytest.skip("当前 TensorRT 平台不支持 fast fp16，跳过 fp16 inference-tasks API 测试")
+            pytest.skip(
+                "当前 TensorRT 平台不支持 fast fp16，跳过 fp16 inference-tasks API 测试"
+            )
         config.set_flag(trt.BuilderFlag.FP16)
 
     serialized_engine = builder.build_serialized_network(network, config)
@@ -509,4 +551,3 @@ def _build_task_headers() -> dict[str, str]:
     """
 
     return build_test_headers(scopes="tasks:read")
-
