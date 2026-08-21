@@ -1950,6 +1950,15 @@ def test_yolo26_pose_training_loop_closes_loader_after_epoch_failure() -> None:
     assert "training_loader_lifecycle.close()" in source
 
 
+def test_yolov8_detection_training_closes_loader_for_every_exit_path() -> None:
+    """验证 YOLOv8 detection 的完整 epoch 生命周期统一关闭 DataLoader。"""
+
+    source = inspect.getsource(run_yolov8_detection_training)
+
+    assert "try:\n        for epoch" in source
+    assert "\n    finally:\n        training_loader_lifecycle.close()" in source
+
+
 @pytest.mark.parametrize(
     "training_loop",
     (
@@ -1970,10 +1979,10 @@ def test_yolo26_pose_training_loop_closes_loader_after_epoch_failure() -> None:
         run_yolo26_obb_training_loop,
     ),
 )
-def test_yolo_training_loops_persist_latest_checkpoint_after_every_epoch(
+def test_yolo_training_loops_delegate_latest_checkpoint_to_shared_policy(
     training_loop: object,
 ) -> None:
-    """验证 latest checkpoint 落盘不依赖 best 改善或手动保存。"""
+    """验证 latest checkpoint 由共享周期策略控制，不绑定 best 或手动保存。"""
 
     source = inspect.getsource(training_loop)
 
@@ -3605,8 +3614,7 @@ def test_yolo_classification_fp16_evaluation_keeps_fp32_model_weights(
     np = pytest.importorskip("numpy")
     image_path = tmp_path / "classification-amp.jpg"
     assert (
-        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8))
-        is True
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8)) is True
     )
     sample = SimpleNamespace(image_path=str(image_path), class_id=1)
     imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)

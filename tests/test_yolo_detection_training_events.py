@@ -6,6 +6,7 @@ from backend.service.application.models.training.detection_training_rules import
 from backend.service.application.models.training.yolo_detection_task_events import (
     build_yolo_detection_training_epoch_progress_event,
     build_yolo_detection_training_paused_event,
+    build_yolo_detection_training_resume_reverted_event,
 )
 from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingEpochProgress,
@@ -72,3 +73,24 @@ def test_non_validation_epoch_preserves_latest_validation_snapshot() -> None:
     assert "validation_metrics" not in progress_payload
     assert "current_metric_name" not in progress_payload
     assert "current_metric_value" not in progress_payload
+
+
+def test_failed_resume_enqueue_revert_restores_previous_terminal_state() -> None:
+    """failed 任务恢复入队失败时必须恢复原错误，不能伪装成 paused。"""
+
+    event = build_yolo_detection_training_resume_reverted_event(
+        task_id="task-1",
+        model_type="yolov8",
+        control_metadata_key="training_control",
+        control={},
+        progress={"stage": "failed", "epoch": 10},
+        result={"latest_checkpoint_object_key": "task-runs/task-1/latest.pt"},
+        previous_state="failed",
+        previous_finished_at="2026-08-21T00:00:00+00:00",
+        previous_error_message="CUDA device lost",
+    )
+
+    assert event.payload["state"] == "failed"
+    assert event.payload["finished_at"] == "2026-08-21T00:00:00+00:00"
+    assert event.payload["error_message"] == "CUDA device lost"
+    assert event.payload["progress"]["stage"] == "failed"

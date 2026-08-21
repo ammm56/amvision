@@ -2231,7 +2231,7 @@ def test_resume_yolox_training_task_rejects_missing_latest_checkpoint_file(
         assert second_resume_payload["error"]["code"] == "invalid_request"
         assert (
             second_resume_payload["error"]["message"]
-            == "当前训练任务不处于 paused 状态，不能继续训练"
+            == "当前训练任务不处于 paused/failed 状态，不能继续训练"
         )
         assert detail_response.status_code == 200
         detail_payload = detail_response.json()
@@ -2506,11 +2506,18 @@ def test_resume_yolox_training_task_fails_when_latest_checkpoint_is_corrupted(
                 headers=_build_training_headers(),
                 params={"include_events": True},
             )
+            retry_response = client.post(
+                f"/api/v1/models/detection/training-tasks/{task_id}/resume",
+                headers=_build_training_headers(),
+            )
 
         assert detail_response.status_code == 200
         payload = detail_response.json()
         assert payload["state"] == "failed"
         assert payload["error_message"] == "resume checkpoint 读取失败"
+        assert payload["available_actions"] == ["resume", "delete"]
+        assert retry_response.status_code == 200
+        assert retry_response.json()["status"] == "queued"
         assert run_count == 2
         assert any(
             event["message"] == "yolox training resumed" for event in payload["events"]

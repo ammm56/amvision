@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field
 from .services import _resolve_detection_training_model_type_from_task
 
 
-DetectionTrainingTaskActionName = Literal["save", "pause", "resume", "terminate", "delete"]
+DetectionTrainingTaskActionName = Literal[
+    "save", "pause", "resume", "terminate", "delete"
+]
 DetectionTrainingTaskControlPhase = Literal[
     "idle",
     "save_requested",
@@ -23,17 +25,37 @@ class DetectionTrainingTaskControlStatusResponse(BaseModel):
     """描述训练详情中的正式控制状态。"""
 
     status: DetectionTrainingTaskControlPhase = Field(description="当前控制阶段")
-    pending_action: DetectionTrainingTaskActionName | None = Field(default=None, description="当前待处理的控制动作")
-    requested_at: str | None = Field(default=None, description="当前待处理动作的登记时间")
-    requested_by: str | None = Field(default=None, description="当前待处理动作的登记主体 id")
-    last_save_at: str | None = Field(default=None, description="最近一次 latest checkpoint 落盘时间")
-    last_save_epoch: int | None = Field(default=None, description="最近一次 latest checkpoint 对应 epoch")
-    last_save_reason: str | None = Field(default=None, description="最近一次 latest checkpoint 落盘原因")
-    last_save_by: str | None = Field(default=None, description="最近一次 latest checkpoint 请求主体 id")
-    last_resume_at: str | None = Field(default=None, description="最近一次 resume 请求时间")
-    last_resume_by: str | None = Field(default=None, description="最近一次 resume 请求主体 id")
+    pending_action: DetectionTrainingTaskActionName | None = Field(
+        default=None, description="当前待处理的控制动作"
+    )
+    requested_at: str | None = Field(
+        default=None, description="当前待处理动作的登记时间"
+    )
+    requested_by: str | None = Field(
+        default=None, description="当前待处理动作的登记主体 id"
+    )
+    last_save_at: str | None = Field(
+        default=None, description="最近一次 latest checkpoint 落盘时间"
+    )
+    last_save_epoch: int | None = Field(
+        default=None, description="最近一次 latest checkpoint 对应 epoch"
+    )
+    last_save_reason: str | None = Field(
+        default=None, description="最近一次 latest checkpoint 落盘原因"
+    )
+    last_save_by: str | None = Field(
+        default=None, description="最近一次 latest checkpoint 请求主体 id"
+    )
+    last_resume_at: str | None = Field(
+        default=None, description="最近一次 resume 请求时间"
+    )
+    last_resume_by: str | None = Field(
+        default=None, description="最近一次 resume 请求主体 id"
+    )
     resume_count: int = Field(default=0, description="当前任务累计 resume 次数")
-    resume_checkpoint_object_key: str | None = Field(default=None, description="最近一次 resume 使用或将使用的 checkpoint object key")
+    resume_checkpoint_object_key: str | None = Field(
+        default=None, description="最近一次 resume 使用或将使用的 checkpoint object key"
+    )
 
 
 class DetectionTrainingTaskEventResponse(BaseModel):
@@ -66,38 +88,75 @@ class DetectionTrainingTaskSummaryResponse(BaseModel):
     error_message: str | None = Field(default=None, description="错误消息")
     metadata: dict[str, object] = Field(default_factory=dict, description="附加元数据")
     model_type: str = Field(description="模型分类")
-    dataset_export_id: str | None = Field(default=None, description="训练输入使用的 DatasetExport id")
-    dataset_export_manifest_key: str | None = Field(default=None, description="训练输入使用的导出 manifest object key")
-    dataset_version_id: str | None = Field(default=None, description="训练输入使用的 DatasetVersion id")
+    dataset_export_id: str | None = Field(
+        default=None, description="训练输入使用的 DatasetExport id"
+    )
+    dataset_export_manifest_key: str | None = Field(
+        default=None, description="训练输入使用的导出 manifest object key"
+    )
+    dataset_version_id: str | None = Field(
+        default=None, description="训练输入使用的 DatasetVersion id"
+    )
     format_id: str | None = Field(default=None, description="训练输入导出格式 id")
     recipe_id: str | None = Field(default=None, description="训练 recipe id")
     model_scale: str | None = Field(default=None, description="训练目标的模型 scale")
-    evaluation_interval: int | None = Field(default=None, description="真实验证评估周期")
+    evaluation_interval: int | None = Field(
+        default=None, description="真实验证评估周期"
+    )
     gpu_count: int | None = Field(default=None, description="请求参与训练的 GPU 数量")
     precision: str | None = Field(default=None, description="请求使用的训练 precision")
     output_model_name: str | None = Field(default=None, description="训练输出模型名")
-    model_version_id: str | None = Field(default=None, description="训练输出登记后的 ModelVersion id")
-    latest_checkpoint_model_version_id: str | None = Field(default=None, description="自动或手动登记 latest checkpoint 得到的 ModelVersion id")
-    output_object_prefix: str | None = Field(default=None, description="训练输出目录前缀")
-    checkpoint_object_key: str | None = Field(default=None, description="checkpoint 文件 object key")
-    latest_checkpoint_object_key: str | None = Field(default=None, description="最新 checkpoint 文件 object key")
-    labels_object_key: str | None = Field(default=None, description="标签文件 object key")
-    metrics_object_key: str | None = Field(default=None, description="训练指标文件 object key")
-    validation_metrics_object_key: str | None = Field(default=None, description="验证指标文件 object key")
-    test_metrics_object_key: str | None = Field(default=None, description="独立测试指标文件 object key")
-    summary_object_key: str | None = Field(default=None, description="训练摘要文件 object key")
+    model_version_id: str | None = Field(
+        default=None, description="训练输出登记后的 ModelVersion id"
+    )
+    latest_checkpoint_model_version_id: str | None = Field(
+        default=None,
+        description="自动或手动登记 latest checkpoint 得到的 ModelVersion id",
+    )
+    output_object_prefix: str | None = Field(
+        default=None, description="训练输出目录前缀"
+    )
+    checkpoint_object_key: str | None = Field(
+        default=None, description="checkpoint 文件 object key"
+    )
+    latest_checkpoint_object_key: str | None = Field(
+        default=None, description="最新 checkpoint 文件 object key"
+    )
+    labels_object_key: str | None = Field(
+        default=None, description="标签文件 object key"
+    )
+    metrics_object_key: str | None = Field(
+        default=None, description="训练指标文件 object key"
+    )
+    validation_metrics_object_key: str | None = Field(
+        default=None, description="验证指标文件 object key"
+    )
+    test_metrics_object_key: str | None = Field(
+        default=None, description="独立测试指标文件 object key"
+    )
+    summary_object_key: str | None = Field(
+        default=None, description="训练摘要文件 object key"
+    )
     best_metric_name: str | None = Field(default=None, description="最佳指标名称")
     best_metric_value: float | None = Field(default=None, description="最佳指标值")
-    training_summary: dict[str, object] = Field(default_factory=dict, description="训练摘要")
+    training_summary: dict[str, object] = Field(
+        default_factory=dict, description="训练摘要"
+    )
 
 
 class DetectionTrainingTaskDetailResponse(DetectionTrainingTaskSummaryResponse):
     """描述 detection 训练任务详情响应。"""
 
-    available_actions: list[DetectionTrainingTaskActionName] = Field(description="当前建议展示的训练控制动作列表")
-    control_status: DetectionTrainingTaskControlStatusResponse = Field(description="正式训练控制状态")
+    available_actions: list[DetectionTrainingTaskActionName] = Field(
+        description="当前建议展示的训练控制动作列表"
+    )
+    control_status: DetectionTrainingTaskControlStatusResponse = Field(
+        description="正式训练控制状态"
+    )
     task_spec: dict[str, object] = Field(default_factory=dict, description="任务规格")
-    events: list[DetectionTrainingTaskEventResponse] = Field(default_factory=list, description="任务事件列表")
+    events: list[DetectionTrainingTaskEventResponse] = Field(
+        default_factory=list, description="任务事件列表"
+    )
 
 
 def build_detection_training_task_summary_response(
@@ -111,7 +170,9 @@ def build_detection_training_task_summary_response(
     result = dict(task.result)
     metadata = dict(task.metadata)
     training_summary = result.get("summary")
-    training_summary_payload = dict(training_summary) if isinstance(training_summary, dict) else {}
+    training_summary_payload = (
+        dict(training_summary) if isinstance(training_summary, dict) else {}
+    )
     best_metric_value = result.get("best_metric_value")
     return DetectionTrainingTaskSummaryResponse(
         task_id=task.task_id,
@@ -153,14 +214,20 @@ def build_detection_training_task_summary_response(
         output_object_prefix=_read_optional_str(result, "output_object_prefix")
         or _read_optional_str(metadata, "output_object_prefix"),
         checkpoint_object_key=_read_optional_str(result, "checkpoint_object_key"),
-        latest_checkpoint_object_key=_read_optional_str(result, "latest_checkpoint_object_key"),
+        latest_checkpoint_object_key=_read_optional_str(
+            result, "latest_checkpoint_object_key"
+        ),
         labels_object_key=_read_optional_str(result, "labels_object_key"),
         metrics_object_key=_read_optional_str(result, "metrics_object_key"),
-        validation_metrics_object_key=_read_optional_str(result, "validation_metrics_object_key"),
+        validation_metrics_object_key=_read_optional_str(
+            result, "validation_metrics_object_key"
+        ),
         test_metrics_object_key=_read_optional_str(result, "test_metrics_object_key"),
         summary_object_key=_read_optional_str(result, "summary_object_key"),
         best_metric_name=_read_optional_str(result, "best_metric_name"),
-        best_metric_value=float(best_metric_value) if isinstance(best_metric_value, int | float) else None,
+        best_metric_value=float(best_metric_value)
+        if isinstance(best_metric_value, int | float)
+        else None,
         training_summary=training_summary_payload,
     )
 
@@ -173,13 +240,17 @@ def build_detection_training_task_detail_response(
 ) -> DetectionTrainingTaskDetailResponse:
     """把 detection 训练任务和事件转换为详情响应。"""
 
-    summary = build_detection_training_task_summary_response(task, model_type=model_type)
+    summary = build_detection_training_task_summary_response(
+        task, model_type=model_type
+    )
     return DetectionTrainingTaskDetailResponse(
         **summary.model_dump(),
         available_actions=build_detection_training_task_available_actions(task),
         control_status=build_detection_training_task_control_status(task),
         task_spec=dict(task.task_spec),
-        events=[build_detection_training_task_event_response(event) for event in events],
+        events=[
+            build_detection_training_task_event_response(event) for event in events
+        ],
     )
 
 
@@ -205,7 +276,13 @@ def build_detection_training_task_available_actions(
             actions.append("resume")
         actions.extend(["terminate", "delete"])
         return actions
-    if task.state in {"succeeded", "failed", "cancelled"}:
+    if task.state == "failed":
+        actions = []
+        if _resolve_detection_training_resume_checkpoint_object_key(task, control):
+            actions.append("resume")
+        actions.append("delete")
+        return actions
+    if task.state in {"succeeded", "cancelled"}:
         return ["delete"]
     return []
 
@@ -252,7 +329,9 @@ def build_detection_training_task_control_status(
         last_resume_at=_read_optional_str(control, "last_resume_at"),
         last_resume_by=_read_optional_str(control, "last_resume_by"),
         resume_count=_read_optional_int(control, "resume_count") or 0,
-        resume_checkpoint_object_key=_resolve_detection_training_resume_checkpoint_object_key(task, control),
+        resume_checkpoint_object_key=_resolve_detection_training_resume_checkpoint_object_key(
+            task, control
+        ),
     )
 
 
@@ -342,14 +421,18 @@ def _resolve_detection_training_resume_checkpoint_object_key(
 ) -> str | None:
     """解析训练任务当前可用于 resume 的 checkpoint object key。"""
 
-    resume_checkpoint_object_key = _read_optional_str(control, "resume_checkpoint_object_key")
+    resume_checkpoint_object_key = _read_optional_str(
+        control, "resume_checkpoint_object_key"
+    )
     if resume_checkpoint_object_key is not None:
         return resume_checkpoint_object_key
     result = dict(task.result)
     return _read_optional_str(result, "latest_checkpoint_object_key")
 
 
-def _read_detection_training_manual_model_version_registration(task: object) -> dict[str, object]:
+def _read_detection_training_manual_model_version_registration(
+    task: object,
+) -> dict[str, object]:
     """从训练任务 metadata 中读取手动 latest checkpoint 登记信息。"""
 
     metadata = dict(task.metadata)

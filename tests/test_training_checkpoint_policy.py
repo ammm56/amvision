@@ -29,6 +29,20 @@ def test_checkpoint_policy_does_not_serialize_an_ordinary_epoch() -> None:
     assert decision.reasons == ()
 
 
+def test_checkpoint_policy_default_interval_is_five_epochs() -> None:
+    """默认恢复边界固定为每 5 轮，不为小概率异常增加逐轮存盘。"""
+
+    assert read_training_checkpoint_interval(None) == 5
+    assert [
+        resolve_training_checkpoint_decision(
+            completed_epoch=epoch,
+            max_epochs=20,
+            interval_epochs=read_training_checkpoint_interval(None),
+        ).should_serialize
+        for epoch in range(1, 6)
+    ] == [False, False, False, False, True]
+
+
 @pytest.mark.parametrize(
     ("kwargs", "expected_reason"),
     [
@@ -84,9 +98,7 @@ def test_checkpoint_keep_periodic_rejects_invalid_values(value: object) -> None:
     """周期历史保留数必须遵守公开 execution schema。"""
 
     with pytest.raises(InvalidRequestError):
-        read_training_checkpoint_keep_periodic(
-            {"checkpoint_keep_periodic": value}
-        )
+        read_training_checkpoint_keep_periodic({"checkpoint_keep_periodic": value})
 
 
 def test_periodic_checkpoint_retention_keeps_only_configured_history(

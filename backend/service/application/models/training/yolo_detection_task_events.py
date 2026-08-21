@@ -8,7 +8,9 @@ from backend.service.application.models.training.detection_training_rules import
 from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingEpochProgress,
 )
-from backend.service.application.task_failure_payloads import build_task_failure_payload_from_message
+from backend.service.application.task_failure_payloads import (
+    build_task_failure_payload_from_message,
+)
 from backend.service.application.tasks.task_service import AppendTaskEventRequest
 
 
@@ -177,6 +179,8 @@ def build_yolo_detection_training_resume_requested_event(
         message=f"{model_type} training resume requested",
         payload={
             "state": "queued",
+            "finished_at": None,
+            "error_message": None,
             "metadata": {control_metadata_key: control},
             "progress": queued_progress,
             "result": result,
@@ -192,6 +196,9 @@ def build_yolo_detection_training_resume_reverted_event(
     control: dict[str, object],
     progress: dict[str, object],
     result: dict[str, object],
+    previous_state: str = "paused",
+    previous_finished_at: str | None = None,
+    previous_error_message: str | None = None,
 ) -> AppendTaskEventRequest:
     """构造继续训练重新入队失败后的回滚事件。
 
@@ -201,18 +208,23 @@ def build_yolo_detection_training_resume_reverted_event(
     - control：回滚后的训练控制状态。
     - progress：任务进度快照。
     - result：任务结果快照。
+    - previous_state：重新入队前的任务状态。
+    - previous_finished_at：重新入队前的结束时间。
+    - previous_error_message：重新入队前的错误信息。
     """
 
-    paused_progress = dict(progress)
-    paused_progress["stage"] = "paused"
+    previous_progress = dict(progress)
+    previous_progress["stage"] = previous_state
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="status",
         message=f"{model_type} training resume reverted",
         payload={
-            "state": "paused",
+            "state": previous_state,
+            "finished_at": previous_finished_at,
+            "error_message": previous_error_message,
             "metadata": {control_metadata_key: control},
-            "progress": paused_progress,
+            "progress": previous_progress,
             "result": result,
         },
     )
@@ -517,7 +529,3 @@ def _build_output_file_result(
         "validation_metrics_object_key": output_files.validation_metrics_object_key,
         "summary_object_key": output_files.summary_object_key,
     }
-
-
-
-

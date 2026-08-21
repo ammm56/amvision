@@ -130,7 +130,11 @@ sequenceDiagram
     end
 ```
 
-训练失败态会把 `failed` 状态和当前可见输出路径写回 TaskRecord；`resume` 只用于 `paused` 任务，不用于已经 `failed` 的任务恢复。
+训练失败态会把 `failed` 状态和当前可见输出路径写回 TaskRecord。`paused` 任务以及
+仍有完整 `latest checkpoint` 的 `failed` 任务可以重新入队；恢复从最近一次已落盘
+checkpoint 的下一轮继续，不恢复异常前尚未落盘的 batch、epoch 或 RNG 状态。默认
+checkpoint 周期为 5，因此普通崩溃最多重跑最近 checkpoint 后的 4 轮。checkpoint
+不存在、损坏或与当前不可变训练参数不一致时必须拒绝恢复或再次进入 `failed`。
 
 ## 转换链
 

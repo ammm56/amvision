@@ -346,7 +346,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 
 - `save`：只登记一次保存请求，真正写盘要等到下一个 epoch 边界。
 - `pause`：先登记暂停请求，真正暂停也要等到下一个 epoch 边界，并且会先写 latest checkpoint。
-- `resume`：把 paused 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。
+- `resume`：把具有有效 latest checkpoint 的 paused 或 failed 任务重新放回队列；真正恢复执行要等 worker 再次开始处理。恢复从最近一次 checkpoint 的 epoch 继续，不承诺恢复到异常发生的 batch。
 - `terminate`：queued 或 paused 时会直接取消；running 时先登记终止请求，等到下一个 epoch 边界结束训练。
 - `delete`：只在任务已经停止后可用；是否连训练输出一起清理，取决于当前文件是否仍被 ModelVersion 引用。
 

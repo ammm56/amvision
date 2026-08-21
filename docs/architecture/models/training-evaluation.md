@@ -41,6 +41,18 @@ checkpoint、数据 split、评估产物和恢复训练规则。模型实现可�
 - `latest-checkpoint`：最近一次可恢复训练状态。
 - `best-checkpoint`：validation 指标提升时立即保存的真实模型状态。
 
+训练恢复以已经成功写入的 checkpoint 为边界，不追求进程异常前最后一个 batch
+或最后一轮的逐步恢复。公共 `checkpoint_interval` 默认是 5，即普通异常最多需要
+重跑最近 checkpoint 之后尚未落盘的 4 轮；手动保存、暂停、终止、best 改善和
+最后一轮仍会形成额外 checkpoint。resume 恢复模型、EMA、optimizer、scheduler、
+AMP scaler、已完成 epoch 和已有 best 状态，但不保存或恢复 DataLoader、sampler、
+Python、NumPy、PyTorch 或 CUDA RNG 的逐步状态。因此续训结果不承诺逐位一致，
+但不得改变训练总轮数、学习率调度、best 选择规则和统计准确率验收标准。
+
+`paused` 任务以及已经进入 `failed`、但仍有完整 latest checkpoint 的任务都可以
+resume。没有 checkpoint、checkpoint 文件缺失或 checkpoint 校验失败时必须明确
+拒绝或再次进入 failed，不能退回 warm start，也不能从损坏文件猜测状态。
+
 `best-checkpoint` 不能在训练结束时用 latest checkpoint 复制生成。暂停、恢复
 和中断后，已有 best 指标与 best checkpoint 必须继续有效。
 
@@ -188,6 +200,8 @@ dataloader。
 - test 不参与 best 选择。
 - validation 改善时 best checkpoint 立即更新。
 - resume 后 best 状态不丢失。
+- 默认周期在第 5、10、15...轮保存，异常恢复最多重跑一个周期内未落盘的轮次。
+- failed 任务只有在 latest checkpoint 完整存在时才提供 resume。
 - test 报告来自 best checkpoint。
 - 缺少 test 时报告明确 unavailable。
 - API、任务详情页和输出文件列表可读取 `test-metrics.json`。

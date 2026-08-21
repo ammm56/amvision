@@ -376,14 +376,14 @@ class SqlAlchemyRfdetrTrainingTaskService:
         *,
         resumed_by: str | None = None,
     ) -> RfdetrTrainingTaskSubmission:
-        """使用已保存的 Lightning latest checkpoint 继续 paused 任务。"""
+        """使用已保存的 Lightning latest checkpoint 继续 paused/failed 任务。"""
 
         queue_backend = self._require_queue_backend()
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
-        if task_record.state != "paused":
+        if task_record.state not in {"paused", "failed"}:
             raise InvalidRequestError(
-                "当前 RF-DETR 训练任务不处于 paused 状态，不能继续",
+                "当前 RF-DETR 训练任务不处于 paused/failed 状态，不能继续",
                 details={"task_id": task_id, "state": task_record.state},
             )
         resume_key = resolve_yolo_detection_resume_checkpoint_object_key(
@@ -431,6 +431,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 message="rfdetr training resume queued",
                 payload={
                     "state": "queued",
+                    "finished_at": None,
+                    "error_message": None,
                     "metadata": {
                         RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
                         "queue_name": queue_task.queue_name,

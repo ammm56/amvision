@@ -515,16 +515,19 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         *,
         resumed_by: str | None = None,
     ) -> YoloDetectionTrainingTaskSubmission:
-        """把一个 paused 的训练任务重新入队。"""
+        """把存在 latest checkpoint 的 paused/failed 训练任务重新入队。"""
 
         queue_backend = self._require_queue_backend()
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
-        if task_record.state != "paused":
+        if task_record.state not in {"paused", "failed"}:
             raise InvalidRequestError(
-                "当前训练任务不处于 paused 状态，不能继续训练",
+                "当前训练任务不处于 paused/failed 状态，不能继续训练",
                 details={"task_id": task_id, "state": task_record.state},
             )
+        previous_state = task_record.state
+        previous_finished_at = task_record.finished_at
+        previous_error_message = task_record.error_message
         request = self._build_request_from_task_record(task_record)
         dataset_export = self._resolve_dataset_export(request)
         resume_checkpoint_object_key = (
@@ -592,6 +595,9 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     control=reverted_control,
                     progress=dict(task_record.progress),
                     result=resume_result,
+                    previous_state=previous_state,
+                    previous_finished_at=previous_finished_at,
+                    previous_error_message=previous_error_message,
                 )
             )
             raise
@@ -677,10 +683,12 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 details={"task_id": task_id, "state": task_record.state},
             )
 
-        latest_checkpoint_object_key = resolve_yolo_detection_resume_checkpoint_object_key(
-            metadata=dict(task_record.metadata),
-            result=dict(task_record.result),
-            control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+        latest_checkpoint_object_key = (
+            resolve_yolo_detection_resume_checkpoint_object_key(
+                metadata=dict(task_record.metadata),
+                result=dict(task_record.result),
+                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+            )
         )
         if latest_checkpoint_object_key is None:
             raise InvalidRequestError(
@@ -1590,4 +1598,3 @@ def _require_hook_value(hook_name: str, value: object, *, model_label: str) -> A
             details={"hook_name": hook_name, "model_label": model_label},
         )
     return value
-

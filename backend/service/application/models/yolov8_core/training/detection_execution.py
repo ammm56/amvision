@@ -651,285 +651,289 @@ def run_yolov8_detection_training(
             ),
         )
 
-    for epoch in range(resume_epoch + 1, max_epochs + 1):
-        training_dataloader = _resolve_training_dataloader(epoch)
+    try:
+        for epoch in range(resume_epoch + 1, max_epochs + 1):
+            training_dataloader = _resolve_training_dataloader(epoch)
 
-        def on_yolov8_batch_progress(
-            progress: YoloV8DetectionTrainingBatchProgress,
-        ) -> None:
-            """把 YOLOv8 core batch 进度透传给平台回调。"""
+            def on_yolov8_batch_progress(
+                progress: YoloV8DetectionTrainingBatchProgress,
+            ) -> None:
+                """把 YOLOv8 core batch 进度透传给平台回调。"""
 
-            if request.batch_callback is None:
-                return
-            request.batch_callback(progress)
+                if request.batch_callback is None:
+                    return
+                request.batch_callback(progress)
 
-        epoch_result = run_yolov8_detection_training_epoch(
-            torch_module=imports.torch,
-            model=model,
-            samples=train_samples,
-            batch_size=batch_size,
-            input_size=input_size,
-            epoch=epoch,
-            max_epochs=max_epochs,
-            global_iteration=global_iteration,
-            total_iterations=total_iterations,
-            optimizer=optimizer,
-            scaler=scaler,
-            training_schedule=training_schedule,
-            autocast_context=autocast_context,
-            build_batch=lambda sample_batch, available_samples, current_epoch: (
-                _build_training_batch_for_epoch(
-                    imports=imports,
-                    samples=sample_batch,
-                    available_samples=available_samples,
-                    base_input_size=input_size,
-                    epoch=current_epoch,
-                    max_epochs=max_epochs,
-                    device=device,
-                    runtime_precision=runtime_precision,
-                    augmentation_options=augmentation_options,
-                )
-            ),
-            unwrap_outputs=_unwrap_detection_outputs,
-            compute_loss=lambda **kwargs: _compute_detection_loss(
-                imports=imports,
-                num_classes=len(category_names),
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                **kwargs,
-            ),
-            grad_clip_norm=grad_clip_norm,
-            ema=ema,
-            dataloader_batches=training_dataloader,
-            device=device,
-            runtime_precision=runtime_precision,
-            batch_callback=(
-                on_yolov8_batch_progress if request.batch_callback is not None else None
-            ),
-        )
-        global_iteration = epoch_result.global_iteration
-        successful_optimizer_steps += epoch_result.successful_optimizer_steps
-        skipped_optimizer_steps += epoch_result.skipped_optimizer_steps
-        train_metrics = build_yolo_completed_epoch_history_item(
-            completed_epoch=epoch,
-            metrics=epoch_result.train_metrics,
-        )
-        metrics_history.append(train_metrics)
-
-        validation_ran = should_run_yolov8_detection_validation(
-            epoch=epoch,
-            max_epochs=max_epochs,
-            evaluation_interval=evaluation_interval,
-            validation_sample_count=len(validation_samples),
-        )
-        validation_snapshot: dict[str, object] | None = None
-        validation_metrics: dict[str, float] = {}
-        current_metric_value: float | None = None
-        if validation_ran:
-            validation_snapshot = _evaluate_detection_model(
-                imports=imports,
-                model=ema.model,
-                samples=validation_samples,
-                category_ids=category_ids,
-                annotation_file=validation_split.annotation_file
-                if validation_split is not None
-                else None,
-                annotation_payload=validation_split.annotation_payload
-                if validation_split is not None
-                else None,
-                input_size=input_size,
+            epoch_result = run_yolov8_detection_training_epoch(
+                torch_module=imports.torch,
+                model=model,
+                samples=train_samples,
                 batch_size=batch_size,
+                input_size=input_size,
+                epoch=epoch,
+                max_epochs=max_epochs,
+                global_iteration=global_iteration,
+                total_iterations=total_iterations,
+                optimizer=optimizer,
+                scaler=scaler,
+                training_schedule=training_schedule,
+                autocast_context=autocast_context,
+                build_batch=lambda sample_batch, available_samples, current_epoch: (
+                    _build_training_batch_for_epoch(
+                        imports=imports,
+                        samples=sample_batch,
+                        available_samples=available_samples,
+                        base_input_size=input_size,
+                        epoch=current_epoch,
+                        max_epochs=max_epochs,
+                        device=device,
+                        runtime_precision=runtime_precision,
+                        augmentation_options=augmentation_options,
+                    )
+                ),
+                unwrap_outputs=_unwrap_detection_outputs,
+                compute_loss=lambda **kwargs: _compute_detection_loss(
+                    imports=imports,
+                    num_classes=len(category_names),
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    assign_topk=assign_topk,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    **kwargs,
+                ),
+                grad_clip_norm=grad_clip_norm,
+                ema=ema,
+                dataloader_batches=training_dataloader,
                 device=device,
                 runtime_precision=runtime_precision,
-                num_classes=len(category_names),
+                batch_callback=(
+                    on_yolov8_batch_progress
+                    if request.batch_callback is not None
+                    else None
+                ),
+            )
+            global_iteration = epoch_result.global_iteration
+            successful_optimizer_steps += epoch_result.successful_optimizer_steps
+            skipped_optimizer_steps += epoch_result.skipped_optimizer_steps
+            train_metrics = build_yolo_completed_epoch_history_item(
+                completed_epoch=epoch,
+                metrics=epoch_result.train_metrics,
+            )
+            metrics_history.append(train_metrics)
+
+            validation_ran = should_run_yolov8_detection_validation(
+                epoch=epoch,
+                max_epochs=max_epochs,
+                evaluation_interval=evaluation_interval,
+                validation_sample_count=len(validation_samples),
+            )
+            validation_snapshot: dict[str, object] | None = None
+            validation_metrics: dict[str, float] = {}
+            current_metric_value: float | None = None
+            if validation_ran:
+                validation_snapshot = _evaluate_detection_model(
+                    imports=imports,
+                    model=ema.model,
+                    samples=validation_samples,
+                    category_ids=category_ids,
+                    annotation_file=validation_split.annotation_file
+                    if validation_split is not None
+                    else None,
+                    annotation_payload=validation_split.annotation_payload
+                    if validation_split is not None
+                    else None,
+                    input_size=input_size,
+                    batch_size=batch_size,
+                    device=device,
+                    runtime_precision=runtime_precision,
+                    num_classes=len(category_names),
+                    class_loss_weight=class_loss_weight,
+                    box_loss_weight=box_loss_weight,
+                    dfl_loss_weight=dfl_loss_weight,
+                    assign_topk=assign_topk,
+                    assign_alpha=assign_alpha,
+                    assign_beta=assign_beta,
+                    confidence_threshold=evaluation_confidence_threshold,
+                    nms_threshold=evaluation_nms_threshold,
+                    dataloader_plan=dataloader_plan,
+                )
+                validation_snapshot = build_yolo_completed_epoch_history_item(
+                    completed_epoch=epoch,
+                    metrics=validation_snapshot,
+                )
+                validation_history.append(validation_snapshot)
+                validation_metrics = {
+                    "loss": float(validation_snapshot["loss"]),
+                    "map50": float(validation_snapshot["map50"]),
+                    "map50_95": float(validation_snapshot["map50_95"]),
+                }
+                evaluated_epochs.append(epoch)
+                current_metric_value = validation_metrics[best_metric_name]
+
+            best_metric_update = resolve_yolov8_detection_best_metric_update(
+                has_validation=has_validation,
+                validation_ran=validation_ran,
+                current_metric_value=current_metric_value,
+                train_loss=float(train_metrics["loss"]),
+                best_metric_value=best_metric_value,
+            )
+            improved_best = best_metric_update.improved
+            candidate_best_metric_value = best_metric_update.candidate_value
+
+            if epoch_result.successful_optimizer_steps > 0:
+                scheduler.step()
+            best_metric_value = candidate_best_metric_value
+            control_command = None
+            if request.epoch_callback is not None:
+                control_command = request.epoch_callback(
+                    YoloV8DetectionTrainingEpochProgress(
+                        epoch=epoch,
+                        max_epochs=max_epochs,
+                        evaluation_interval=evaluation_interval,
+                        validation_ran=validation_ran,
+                        evaluated_epochs=tuple(evaluated_epochs),
+                        train_metrics=train_metrics,
+                        validation_metrics=validation_metrics,
+                        train_metrics_snapshot={
+                            "history": metrics_history,
+                            "final_metrics": train_metrics,
+                        },
+                        validation_snapshot=validation_snapshot,
+                        current_metric_name=best_metric_name,
+                        current_metric_value=current_metric_value,
+                        best_metric_name=best_metric_name,
+                        best_metric_value=serialize_yolov8_detection_best_metric_value(
+                            has_validation=has_validation,
+                            best_metric_value=best_metric_value,
+                        ),
+                    )
+                )
+            control_decision = resolve_yolov8_detection_epoch_control(
+                save_checkpoint_requested=(
+                    control_command.save_checkpoint
+                    if control_command is not None
+                    else False
+                ),
+                pause_training_requested=(
+                    control_command.pause_training
+                    if control_command is not None
+                    else False
+                ),
+                terminate_training_requested=(
+                    control_command.terminate_training
+                    if control_command is not None
+                    else False
+                ),
+            )
+            checkpoint_decision = resolve_training_checkpoint_decision(
+                completed_epoch=epoch,
+                max_epochs=max_epochs,
+                interval_epochs=checkpoint_interval,
+                best_improved=improved_best,
+                manual_save_requested=control_decision.save_checkpoint,
+                pause_requested=control_decision.pause_training,
+                terminate_requested=control_decision.terminate_training,
+            )
+            checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
+                torch_module=imports.torch,
+                model=model,
+                ema_model=ema.model,
+                ema_updates=ema.updates,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                model_type=request.model_type,
+                model_scale=request.model_scale,
+                category_names=category_names,
+                input_size=input_size,
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                epoch=epoch,
+                precision=runtime_precision,
+                validation_split_name=validation_split_name,
+                evaluation_interval=evaluation_interval,
+                evaluation_confidence_threshold=(
+                    evaluation_confidence_threshold if has_validation else None
+                ),
+                evaluation_nms_threshold=(
+                    evaluation_nms_threshold if has_validation else None
+                ),
+                learning_rate=learning_rate,
+                weight_decay=weight_decay,
                 class_loss_weight=class_loss_weight,
                 box_loss_weight=box_loss_weight,
                 dfl_loss_weight=dfl_loss_weight,
                 assign_topk=assign_topk,
                 assign_alpha=assign_alpha,
                 assign_beta=assign_beta,
-                confidence_threshold=evaluation_confidence_threshold,
-                nms_threshold=evaluation_nms_threshold,
-                dataloader_plan=dataloader_plan,
+                min_lr_ratio=min_lr_ratio,
+                grad_clip_norm=grad_clip_norm,
+                metrics_history=metrics_history,
+                validation_history=validation_history,
+                evaluated_epochs=tuple(evaluated_epochs),
+                warm_start_summary=warm_start_summary,
+                implementation_mode=request.implementation_mode,
+                augmentation_options=_serialize_detection_augmentation_options(
+                    augmentation_options
+                ),
+                best_metric_name=best_metric_name,
+                candidate_best_metric_value=best_metric_value,
+                previous_best_checkpoint_bytes=best_checkpoint_bytes,
+                improved_best=improved_best,
+                serialize_checkpoint=checkpoint_decision.should_serialize,
+                previous_latest_checkpoint_bytes=latest_checkpoint_bytes,
             )
-            validation_snapshot = build_yolo_completed_epoch_history_item(
-                completed_epoch=epoch,
-                metrics=validation_snapshot,
-            )
-            validation_history.append(validation_snapshot)
-            validation_metrics = {
-                "loss": float(validation_snapshot["loss"]),
-                "map50": float(validation_snapshot["map50"]),
-                "map50_95": float(validation_snapshot["map50_95"]),
-            }
-            evaluated_epochs.append(epoch)
-            current_metric_value = validation_metrics[best_metric_name]
+            latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
+            best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
+            best_metric_value = checkpoint_update.best_metric_value
 
-        best_metric_update = resolve_yolov8_detection_best_metric_update(
-            has_validation=has_validation,
-            validation_ran=validation_ran,
-            current_metric_value=current_metric_value,
-            train_loss=float(train_metrics["loss"]),
-            best_metric_value=best_metric_value,
-        )
-        improved_best = best_metric_update.improved
-        candidate_best_metric_value = best_metric_update.candidate_value
-
-        if epoch_result.successful_optimizer_steps > 0:
-            scheduler.step()
-        best_metric_value = candidate_best_metric_value
-        control_command = None
-        if request.epoch_callback is not None:
-            control_command = request.epoch_callback(
-                YoloV8DetectionTrainingEpochProgress(
+            should_pause_training = control_decision.pause_training
+            should_terminate_training = control_decision.terminate_training
+            if (
+                checkpoint_decision.should_serialize
+                and request.savepoint_callback is not None
+            ):
+                savepoint_payload = build_yolov8_detection_training_savepoint_payload(
                     epoch=epoch,
-                    max_epochs=max_epochs,
-                    evaluation_interval=evaluation_interval,
-                    validation_ran=validation_ran,
-                    evaluated_epochs=tuple(evaluated_epochs),
-                    train_metrics=train_metrics,
-                    validation_metrics=validation_metrics,
-                    train_metrics_snapshot={
-                        "history": metrics_history,
-                        "final_metrics": train_metrics,
-                    },
-                    validation_snapshot=validation_snapshot,
-                    current_metric_name=best_metric_name,
-                    current_metric_value=current_metric_value,
+                    latest_checkpoint_bytes=latest_checkpoint_bytes,
+                    best_checkpoint_bytes=best_checkpoint_bytes,
                     best_metric_name=best_metric_name,
-                    best_metric_value=serialize_yolov8_detection_best_metric_value(
-                        has_validation=has_validation,
-                        best_metric_value=best_metric_value,
-                    ),
+                    best_metric_value=best_metric_value,
+                    has_validation=has_validation,
                 )
-            )
-        control_decision = resolve_yolov8_detection_epoch_control(
-            save_checkpoint_requested=(
-                control_command.save_checkpoint
-                if control_command is not None
-                else False
-            ),
-            pause_training_requested=(
-                control_command.pause_training if control_command is not None else False
-            ),
-            terminate_training_requested=(
-                control_command.terminate_training
-                if control_command is not None
-                else False
-            ),
-        )
-        checkpoint_decision = resolve_training_checkpoint_decision(
-            completed_epoch=epoch,
-            max_epochs=max_epochs,
-            interval_epochs=checkpoint_interval,
-            best_improved=improved_best,
-            manual_save_requested=control_decision.save_checkpoint,
-            pause_requested=control_decision.pause_training,
-            terminate_requested=control_decision.terminate_training,
-        )
-        checkpoint_update = build_yolov8_detection_epoch_checkpoint_update(
-            torch_module=imports.torch,
-            model=model,
-            ema_model=ema.model,
-            ema_updates=ema.updates,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            model_type=request.model_type,
-            model_scale=request.model_scale,
-            category_names=category_names,
-            input_size=input_size,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            epoch=epoch,
-            precision=runtime_precision,
-            validation_split_name=validation_split_name,
-            evaluation_interval=evaluation_interval,
-            evaluation_confidence_threshold=(
-                evaluation_confidence_threshold if has_validation else None
-            ),
-            evaluation_nms_threshold=(
-                evaluation_nms_threshold if has_validation else None
-            ),
-            learning_rate=learning_rate,
-            weight_decay=weight_decay,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            min_lr_ratio=min_lr_ratio,
-            grad_clip_norm=grad_clip_norm,
-            metrics_history=metrics_history,
-            validation_history=validation_history,
-            evaluated_epochs=tuple(evaluated_epochs),
-            warm_start_summary=warm_start_summary,
-            implementation_mode=request.implementation_mode,
-            augmentation_options=_serialize_detection_augmentation_options(
-                augmentation_options
-            ),
-            best_metric_name=best_metric_name,
-            candidate_best_metric_value=best_metric_value,
-            previous_best_checkpoint_bytes=best_checkpoint_bytes,
-            improved_best=improved_best,
-            serialize_checkpoint=checkpoint_decision.should_serialize,
-            previous_latest_checkpoint_bytes=latest_checkpoint_bytes,
-        )
-        latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
-        best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
-        best_metric_value = checkpoint_update.best_metric_value
-
-        should_pause_training = control_decision.pause_training
-        should_terminate_training = control_decision.terminate_training
-        if (
-            checkpoint_decision.should_serialize
-            and request.savepoint_callback is not None
-        ):
-            savepoint_payload = build_yolov8_detection_training_savepoint_payload(
-                epoch=epoch,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
-                best_checkpoint_bytes=best_checkpoint_bytes,
-                best_metric_name=best_metric_name,
-                best_metric_value=best_metric_value,
-                has_validation=has_validation,
-            )
-            savepoint = YoloV8DetectionTrainingSavePoint(
-                epoch=savepoint_payload.epoch,
-                latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
-                best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
-                best_metric_name=savepoint_payload.best_metric_name,
-                best_metric_value=savepoint_payload.best_metric_value,
-            )
-            request.savepoint_callback(savepoint)
-        if should_pause_training:
-            training_loader_lifecycle.close()
-            savepoint_payload = build_yolov8_detection_training_savepoint_payload(
-                epoch=epoch,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
-                best_checkpoint_bytes=best_checkpoint_bytes,
-                best_metric_name=best_metric_name,
-                best_metric_value=best_metric_value,
-                has_validation=has_validation,
-            )
-            raise YoloV8DetectionTrainingPausedError(
-                YoloV8DetectionTrainingSavePoint(
+                savepoint = YoloV8DetectionTrainingSavePoint(
                     epoch=savepoint_payload.epoch,
                     latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
                     best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
                     best_metric_name=savepoint_payload.best_metric_name,
                     best_metric_value=savepoint_payload.best_metric_value,
                 )
-            )
-        if should_terminate_training:
-            training_loader_lifecycle.close()
-            raise YoloV8DetectionTrainingTerminatedError()
+                request.savepoint_callback(savepoint)
+            if should_pause_training:
+                savepoint_payload = build_yolov8_detection_training_savepoint_payload(
+                    epoch=epoch,
+                    latest_checkpoint_bytes=latest_checkpoint_bytes,
+                    best_checkpoint_bytes=best_checkpoint_bytes,
+                    best_metric_name=best_metric_name,
+                    best_metric_value=best_metric_value,
+                    has_validation=has_validation,
+                )
+                raise YoloV8DetectionTrainingPausedError(
+                    YoloV8DetectionTrainingSavePoint(
+                        epoch=savepoint_payload.epoch,
+                        latest_checkpoint_bytes=savepoint_payload.latest_checkpoint_bytes,
+                        best_checkpoint_bytes=savepoint_payload.best_checkpoint_bytes,
+                        best_metric_name=savepoint_payload.best_metric_name,
+                        best_metric_value=savepoint_payload.best_metric_value,
+                    )
+                )
+            if should_terminate_training:
+                raise YoloV8DetectionTrainingTerminatedError()
 
-    training_loader_lifecycle.close()
+    finally:
+        training_loader_lifecycle.close()
     require_yolo_successful_optimizer_step(
         successful_optimizer_steps=successful_optimizer_steps,
         skipped_optimizer_steps=skipped_optimizer_steps,
