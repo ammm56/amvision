@@ -149,6 +149,19 @@ class _SlowMutationSupervisor(_FakeSupervisor):
         return super().reset_deployment(config)
 
 
+class _RecordingMmapClient:
+    """记录 mmap 请求，验证大预览响应不会进入固定容量数据面。"""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def request(self, payload: dict[str, object]) -> dict[str, object]:
+        self.requests.append(dict(payload))
+        if payload == {"action": "ping"}:
+            return {"ok": True, "result": {"ready": True}}
+        raise AssertionError("save_result_image 请求不应进入 inference mmap")
+
+
 def _run_mmap_echo_server(
     *, path: str, ready_queue, stop_event
 ) -> None:
@@ -282,6 +295,74 @@ def test_queue_backed_inference_control_round_trip_and_stages_image(
         dispatcher.stop()
 
     assert fake_supervisor.actions == ["start", "health", "infer", "stop"]
+    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
+    assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
+
+
+def test_preview_image_response_bypasses_fixed_capacity_mmap(
+    tmp_path: Path,
+) -> None:
+    """验证可能携带大预览图的推理经控制队列执行并物化输入。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-preview",
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    fake_supervisor = _FakeSupervisor(dataset_storage=dataset_storage)
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        service_id="test-daemon",
+        bindings_by_task_type={
+            "detection": InferenceControlBinding(
+                sync_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_gateway_registry=_FakeRegistry(),
+            )
+        },
+        poll_interval_seconds=0.01,
+    )
+    mmap_client = _RecordingMmapClient()
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+        startup_timeout_seconds=5.0,
+        local_mmap_client=mmap_client,  # type: ignore[arg-type]
+    )
+
+    dispatcher.start()
+    try:
+        result = client.run_inference(
+            config=config,
+            request=DetectionPredictionRequest(
+                input_image_bytes=_one_pixel_png(),
+                score_threshold=0.25,
+                save_result_image=True,
+            ),
+        )
+    finally:
+        dispatcher.stop()
+
+    assert result.instance_id == "instance-1"
+    assert fake_supervisor.actions == ["infer"]
+    assert mmap_client.requests == [{"action": "ping"}]
     staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
     assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
 

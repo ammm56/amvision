@@ -228,14 +228,21 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         config: DeploymentProcessConfig,
         request: PredictionRequest,
     ) -> DeploymentProcessExecution:
-        """通过 daemon 执行同步推理；LocalBufferRef 走 mmap 热路径。"""
+        """通过 daemon 执行同步推理；小响应走 mmap，大预览图走控制队列。"""
 
         request_id = uuid4().hex
         staged_root = f"runtime/inputs/inference-control/{request_id}"
+        # runtime 会在 save_result_image=True 时把预览图 bytes 放进响应。图片大小
+        # 不受 mmap 单槽容量约束，因此这类请求必须走可变长控制队列；否则较大
+        # 原图即使关闭 base64 API 预览，也会在 daemon 回传阶段溢出固定槽位。
+        use_local_mmap = (
+            self.local_mmap_client is not None
+            and not bool(getattr(request, "save_result_image", False))
+        )
         prepared_request = self._stage_prediction_input(
             request=request,
             object_key=f"{staged_root}/input.png",
-            preserve_local_refs=self.local_mmap_client is not None,
+            preserve_local_refs=use_local_mmap,
         )
         cleanup_staged_input = True
         try:
@@ -243,7 +250,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 task_type=config.runtime_target.task_type,
                 request=prepared_request,
             )
-            if self.local_mmap_client is not None:
+            if use_local_mmap:
                 response = self.local_mmap_client.request(
                     {
                         "action": "infer",
