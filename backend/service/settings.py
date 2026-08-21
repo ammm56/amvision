@@ -469,6 +469,7 @@ class BackendServiceInferenceMmapMailboxConfig(BaseModel):
     - overflow_page_capacity_bytes：单个固定溢出页正文容量。
     - max_overflow_pages_per_response：单次响应最多占用的溢出页数。
     - compression_threshold_bytes：开始尝试无损压缩的响应大小。
+    - max_concurrent_requests：mailbox 同时执行的请求上限。
     - poll_interval_seconds：客户端和 daemon 扫描槽位状态的间隔。
     """
 
@@ -485,6 +486,7 @@ class BackendServiceInferenceMmapMailboxConfig(BaseModel):
     )
     max_overflow_pages_per_response: int = Field(default=64, ge=1)
     compression_threshold_bytes: int = Field(default=256 * 1024, ge=0)
+    max_concurrent_requests: int = Field(default=16, ge=1)
     poll_interval_seconds: float = Field(default=0.001, gt=0)
 
     @model_validator(mode="after")

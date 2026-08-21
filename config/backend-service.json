@@ -155,6 +155,7 @@
       "overflow_page_capacity_bytes": 524288,
       "max_overflow_pages_per_response": 64,
       "compression_threshold_bytes": 262144,
+      "max_concurrent_requests": 16,
       "poll_interval_seconds": 0.001
     }
   }

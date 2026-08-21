@@ -95,8 +95,13 @@ def test_parallel_nodes_follow_existing_catalog_names_and_categories() -> None:
     assert PARALLEL_END_NODE_SPEC.node_definition.display_name == "Parallel End"
     assert PARALLEL_END_NODE_SPEC.node_definition.category == "core.logic.parallel"
     assert "localized_display_name" not in LIST_SPLIT_NODE_SPEC.node_definition.metadata
-    assert "localized_display_name" not in PARALLEL_START_NODE_SPEC.node_definition.metadata
-    assert "localized_display_name" not in PARALLEL_END_NODE_SPEC.node_definition.metadata
+    assert (
+        "localized_display_name"
+        not in PARALLEL_START_NODE_SPEC.node_definition.metadata
+    )
+    assert (
+        "localized_display_name" not in PARALLEL_END_NODE_SPEC.node_definition.metadata
+    )
 
 
 @pytest.mark.parametrize(
@@ -130,9 +135,15 @@ def test_split_list_supports_user_selected_partition_count(
     )
 
 
-@pytest.mark.parametrize("branch_count", (1, 3, 10))
-def test_parallel_boundary_uses_actual_visible_branch_count(branch_count: int) -> None:
-    """验证 1、3、10 个显式分支都能并发运行并有序 concat。"""
+@pytest.mark.parametrize(
+    ("branch_count", "item_count"),
+    ((1, 2), (3, 6), (10, 20), (2, 24)),
+)
+def test_parallel_boundary_uses_actual_visible_branch_count(
+    branch_count: int,
+    item_count: int,
+) -> None:
+    """验证可见分支数，以及双分支处理 24 个 item 的有序 concat。"""
 
     state_lock = Lock()
     active_count = 0
@@ -164,7 +175,7 @@ def test_parallel_boundary_uses_actual_visible_branch_count(branch_count: int) -
                 active_count -= 1
 
     registry = _build_registry(delayed_passthrough_handler)
-    source_items = list(range(branch_count * 2))
+    source_items = list(range(item_count))
     execution_metadata: dict[str, object] = {
         "workflow_variables": {"seed": "kept"},
     }

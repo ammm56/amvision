@@ -109,7 +109,9 @@ LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧�
 - WebSocket：状态订阅、日志流、实时事件推送
 - ZeroMQ：本地或受控网络里的高速触发、图片提交和消息转发
 - LocalBufferBroker：本机内部隔离进程之间的大图和帧数据引用
-- inference mmap v1 mailbox：backend-service 与 inference daemon 之间的同机推理控制元数据和结构化结果
+- inference mmap v1 mailbox：backend-service 与 inference daemon 之间的 infer、ping、status、health、控制元数据和结构化结果
+
+Mailbox 只定义内部传输，不改变公开 REST 结果契约。固定 descriptor、overflow page chain、压缩、ACK 和恢复规则见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 
 ## 事件格式
 

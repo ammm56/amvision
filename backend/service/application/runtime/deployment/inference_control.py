@@ -105,11 +105,10 @@ class InferenceControlBinding:
 
 
 class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
-    """通过共享本地持久化队列调用独立 inference daemon。
+    """通过 mmap 数据面和持久化控制面调用独立 inference daemon。
 
-    该类兼容现有 ``DeploymentProcessSupervisor`` 调用面，使 API、workflow 和
-    inference task 无需感知本地进程归属。它不初始化父类的进程资源，也不会在
-    backend-service 内创建模型子进程。
+    inference、ping、status 和 health 使用 mmap v1；start、stop、warmup 和
+    reset 使用持久化控制队列。该客户端不在 backend-service 内创建模型子进程。
     """
 
     def __init__(
@@ -193,10 +192,14 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         )
 
     def get_status(self, config: DeploymentProcessConfig) -> DeploymentProcessStatus:
-        """读取 daemon 中 deployment 状态。"""
+        """通过 mmap v1 读取 daemon 中 deployment 状态。"""
 
         return _deserialize_status(
-            self._request("status", config, timeout=self.control_read_timeout_seconds)
+            self._request_mmap_read(
+                "status",
+                config,
+                timeout_seconds=self.control_read_timeout_seconds,
+            )
         )
 
     def warmup_deployment(
@@ -210,10 +213,14 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         )
 
     def get_health(self, config: DeploymentProcessConfig) -> DeploymentProcessHealth:
-        """读取 daemon 中 deployment 健康状态。"""
+        """通过 mmap v1 读取 daemon 中 deployment 健康状态。"""
 
         return _deserialize_health(
-            self._request("health", config, timeout=self.control_read_timeout_seconds)
+            self._request_mmap_read(
+                "health",
+                config,
+                timeout_seconds=self.control_read_timeout_seconds,
+            )
         )
 
     def reset_deployment(
@@ -314,25 +321,52 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         )
 
     def ping(self, *, timeout_seconds: float | None = None) -> dict[str, object]:
-        """探测持久化控制线程和可选 mmap 热路径是否均可用。"""
+        """通过 mmap v1 探测 daemon 和 mailbox。"""
 
-        response = self._request(
+        return self._request_mmap_read(
             "ping",
             None,
-            timeout=timeout_seconds or self.control_read_timeout_seconds,
+            timeout_seconds=timeout_seconds or self.control_read_timeout_seconds,
         )
-        if self.local_mmap_client is not None:
-            mmap_response = self.local_mmap_client.request({"action": "ping"})
-            mmap_result = mmap_response.get("result")
-            if (
-                mmap_response.get("ok") is not True
-                or not isinstance(mmap_result, dict)
-                or mmap_result.get("ready") is not True
-            ):
-                raise ServiceConfigurationError("inference daemon mmap 热路径探测失败")
-            response = dict(response)
-            response["mmap_mailbox"] = mmap_result.get("mailbox")
-        return response
+
+    def _request_mmap_read(
+        self,
+        action: str,
+        config: DeploymentProcessConfig | None,
+        *,
+        timeout_seconds: float,
+    ) -> dict[str, object]:
+        """执行 ping、status 或 health，并返回已校验的 mmap 结果。"""
+
+        if action not in {"ping", "status", "health"}:
+            raise InvalidRequestError(
+                "inference mmap 只读 action 不合法",
+                details={"action": action},
+            )
+        if self.local_mmap_client is None:
+            raise ServiceConfigurationError("独立 inference daemon 缺少 mmap v1 热路径")
+        request: dict[str, object] = {"action": action}
+        if config is not None:
+            request["runtime_mode"] = self.runtime_mode
+            request["process_config"] = _serialize_process_config(config)
+        response = self.local_mmap_client.request(
+            request,
+            timeout_seconds=timeout_seconds,
+        )
+        if response.get("ok") is not True:
+            raise _deserialize_error(
+                response.get("error"),
+                fallback_message=f"inference daemon mmap {action} 失败",
+            )
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise InvalidRequestError(
+                "inference daemon mmap 只读响应缺少 result",
+                details={"action": action},
+            )
+        if action == "ping" and result.get("ready") is not True:
+            raise ServiceConfigurationError("inference daemon mmap 热路径探测失败")
+        return result
 
     def _require_daemon_available(self) -> None:
         """在长操作或变更操作前执行短探测，避免等待完整业务超时。"""
@@ -348,8 +382,11 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
     ) -> dict[str, object]:
         """提交一条持久化控制请求并等待专属响应队列。"""
 
-        if action == "infer":
-            raise InvalidRequestError("推理请求只能使用 mmap v1 热路径")
+        if action in {"infer", "ping", "status", "health"}:
+            raise InvalidRequestError(
+                "推理和只读状态请求只能使用 mmap v1",
+                details={"action": action},
+            )
 
         effective_timeout = max(0.1, timeout or self.request_timeout_seconds)
         request_id = f"control-{uuid4().hex}"
@@ -814,14 +851,6 @@ class InferenceControlDispatcher:
         try:
             if not request_id or not response_queue_name:
                 raise InvalidRequestError("inference control 请求缺少 id 或响应队列")
-            if str(payload.get("action") or "") == "ping":
-                response = {
-                    "request_id": request_id,
-                    "ok": True,
-                    "result": {"ready": True, "service_id": self.service_id},
-                }
-                self._send_response(message, response_queue_name, request_id, response)
-                return
             config = _deserialize_process_config(
                 payload.get("process_config"),
                 dataset_storage=self.dataset_storage,
@@ -874,16 +903,16 @@ class InferenceControlDispatcher:
     ) -> dict[str, object]:
         """执行本机 mmap 热路径请求。
 
-        该入口只允许无副作用的 ping 和 infer。启停、重置和预热仍通过持久化
-        控制队列执行，避免 daemon 重启时丢失控制意图。
+        该入口只允许 infer 和无副作用的 ping、status、health。启停、重置和
+        预热通过持久化控制队列执行，避免 daemon 重启时丢失控制意图。
         """
 
         action = str(payload.get("action") or "")
         if action == "ping":
             return {"ready": True, "service_id": self.service_id}
-        if action != "infer":
+        if action not in {"infer", "status", "health"}:
             raise InvalidRequestError(
-                "inference mmap 热路径只允许 infer",
+                "inference mmap v1 action 不合法",
                 details={"action": action},
             )
         config = _deserialize_process_config(
@@ -898,6 +927,10 @@ class InferenceControlDispatcher:
             )
         runtime_mode = str(payload.get("runtime_mode") or "")
         supervisor = binding.get_supervisor(runtime_mode)
+        if action == "status":
+            return asdict(supervisor.get_status(config))
+        if action == "health":
+            return asdict(supervisor.get_health(config))
         request_payload = payload.get("prediction_request")
         if not isinstance(request_payload, dict):
             raise InvalidRequestError("inference mmap 请求缺少 prediction_request")
@@ -1021,8 +1054,6 @@ class InferenceControlDispatcher:
                     config.deployment_instance_id
                 )
             return asdict(supervisor.stop_deployment(config))
-        if action == "status":
-            return asdict(supervisor.get_status(config))
         if action == "warmup":
             health = supervisor.warmup_deployment(config)
             if runtime_mode == "async":
@@ -1030,8 +1061,6 @@ class InferenceControlDispatcher:
                     config.deployment_instance_id
                 )
             return asdict(health)
-        if action == "health":
-            return asdict(supervisor.get_health(config))
         if action == "reset":
             return asdict(supervisor.reset_deployment(config))
         raise InvalidRequestError(

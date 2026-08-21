@@ -63,7 +63,7 @@ conda activate amvision
 python -m backend.inference_daemon.main --probe
 ```
 
-退出码为 `0` 后继续使用终端二启动 backend-service。probe 会验证控制队列和本机 mmap 推理传输，不应跳过。
+退出码为 `0` 后继续使用终端二启动 backend-service。probe 会验证 daemon ready 状态和本机 mmap mailbox，不应跳过。变更控制队列由后续 start/stop/warmup/reset 链路覆盖。
 
 ### 4. 启动 backend-service
 

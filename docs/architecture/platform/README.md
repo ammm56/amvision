@@ -8,6 +8,7 @@
 - [运行时与打包](runtime-packaging.md)：源码运行、bundled Python 和发行目录。
 - [WebSocket](websocket.md)：公开增量事件面和恢复规则。
 - [LocalBufferBroker](local-buffer-broker.md)：本机大对象租约与 mmap 数据面。
+- [Inference mailbox v1](inference-mailbox-v1.md)：固定 descriptor、overflow page chain、所有权与回收。
 - [图片数据面](image-data-plane.md)：ObjectStore、BufferRef、FrameRef、Base64 与 ZeroMQ 的边界。
 
 系统级入口见 [平台总览](../system-overview.md)。启动与排障分别见 [部署](../../deployment/README.md) 和 [运维](../../operations/README.md)。

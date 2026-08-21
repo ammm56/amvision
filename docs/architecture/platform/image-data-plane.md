@@ -86,8 +86,8 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 
 | 通道 | 数据 | 持久化 | 用途 |
 | --- | --- | --- | --- |
-| deployment 控制队列 | start、stop、warmup、reset、status、health | 是 | 恢复、审计、低频控制 |
-| inference mmap v1 mailbox | process config、BufferRef/FrameRef、阈值、结构化结果 | 否 | 同机低延迟推理 |
+| deployment 控制队列 | start、stop、warmup、reset | 是 | 恢复、审计、低频变更控制 |
+| inference mmap v1 mailbox | infer、ping、status、health、process config、BufferRef/FrameRef、结构化结果 | 否 | 同机低延迟推理和只读状态 |
 | LocalBufferBroker pool | raw BGR24 / encoded 输入和结果图片 bytes | 短期 lease | 图片主体 |
 | ObjectStore | 上传图片、保存结果、审计输入 | 是 | 低频和可追溯边界 |
 
@@ -101,10 +101,12 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 - mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
 - storage/inline 同步输入由 backend-service 写入主 LocalBuffer；持久异步任务由 daemon 领取 ObjectStore 引用后写入私有短期 LocalBuffer。要求同步结果图片时由 backend-service 预分配 writing lease，daemon 直接写入；mmap 和模型进程 Queue 都不携带图片 bytes 或 base64。
 - mmap 成功或收到 daemon 错误响应后立即释放临时 lease；传输状态不确定时保留 lease 到 TTL，由 Broker 回收，不能提前复用给下一请求。
-- mailbox descriptor 请求和响应包含 generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 generation、owner、ordinal、长度和 CRC32。
-- 溢出页不要求连续；client ACK 后由 daemon 回收。页池满载或单响应超过配置上限时直接返回容量错误，不退回持久化队列、不动态扩文件。
+- mailbox descriptor 请求和响应包含 server epoch、generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 descriptor identity、next page、长度和 CRC32。
+- 溢出页连续优先，碎片化时沿非连续 page chain 读取；client ACK 后由 daemon 回收。页池满载或单响应超过配置上限时返回 `mmap_response_capacity_exhausted`，不退回持久化队列、不动态扩文件。
 - daemon 对 ACK、超时、取消、调用进程崩溃和 daemon 重启执行统一回收。
 - 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
+
+Descriptor、page header、压缩、发布顺序和异常恢复见 [Inference mailbox v1](inference-mailbox-v1.md)。
 
 ## Workflow 图默认拓扑
 

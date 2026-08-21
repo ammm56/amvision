@@ -15,9 +15,9 @@
 
 ## 启动与探测
 
-发行目录根启动器在数据库迁移成功后启动 inference daemon，并同时校验 ready 日志和真实控制队列往返，再启动 backend-service 和 worker。开发环境的唯一命令入口见 [development-environment.md](development-environment.md)，本文不重复维护启动命令。
+发行目录根启动器在数据库迁移成功后启动 inference daemon，并同时校验 ready 日志和真实 mmap ping，再启动 backend-service 和 worker。开发环境的唯一命令入口见 [development-environment.md](development-environment.md)，本文不重复维护启动命令。
 
-`--probe` 通过实际控制队列往返判断 daemon 是否可达。`GET /api/v1/system/diagnostics` 的 `services.inference_daemon` 使用 1 秒短探测返回 `ok` 或 `unavailable`，不会仅根据客户端对象存在就误报健康。
+`--probe` 通过实际 mmap ping 判断 daemon 和 mailbox 是否可达。`GET /api/v1/system/diagnostics` 的 `services.inference_daemon` 使用 1 秒短探测返回 `ok` 或 `unavailable`，不会仅根据客户端对象存在就误报健康。
 
 ## 恢复语义
 
@@ -35,7 +35,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 ## 控制面和推理热路径
 
-启停、预热、重置、状态、健康检查和恢复意图继续使用本地持久化控制队列。这些低频操作需要在 service 或 daemon 重启后保留，不以最低延迟为首要目标。
+`start`、`stop`、`warmup`、`reset` 和恢复意图使用本地持久化控制队列。`ping`、`status`、`health` 是无副作用读操作，与 `infer` 一样使用 mmap v1，不创建临时响应队列。
 
 `infer` 不使用持久化文件队列。backend-service 和 inference daemon 通过同一个跨平台 mmap v1 mailbox 交换 JSON 控制信息和结构化推理结果；图片主体不进入 mailbox：
 
@@ -48,7 +48,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon `server_epoch`、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的槽位由 daemon 回收。
 
-描述符使用两阶段发布：先写完 body、generation、owner token、deadline、长度和 CRC32，最后单独发布 `REQUEST` 或 `RESPONSE` state。超过内联响应容量的结构化结果写入固定溢出页池；每页记录 descriptor、generation、owner、ordinal、长度和 CRC32，页不要求连续，client 按 ordinal 组合。请求发布、`REQUEST -> PROCESSING`、deadline 取消、`PROCESSING -> RESPONSE` 和 client ACK 使用同一跨进程 guard 串行化；页和描述符由 daemon 在 ACK、取消、超时或重启时统一回收。daemon 对 mailbox 持有生命周期单实例锁，禁止重叠 daemon 清空仍在使用的资源；停机先将 `server_epoch` 置为不可用，重启再发布新的 `server_epoch`，在途请求立即返回取消错误。当前 mailbox 协议固定为 v1，实现只接受当前描述符和固定页池布局。
+描述符使用两阶段发布：先写完 body 和 header，最后单独发布 `REQUEST` 或 `RESPONSE`。超过 inline 容量的结构化结果进入固定 overflow page chain；连续页不足时允许非连续链。请求发布、`REQUEST -> PROCESSING`、取消、`PROCESSING -> RESPONSE` 和 ACK 使用同一 descriptor guard；daemon 根据 allocator 记录在 ACK、取消、超时或重启时统一回收。完整布局、压缩、CRC、所有权和异常恢复见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 
 ### mmap mailbox 配置
 
@@ -65,17 +65,19 @@ mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 W
       "overflow_page_capacity_bytes": 524288,
       "max_overflow_pages_per_response": 64,
       "compression_threshold_bytes": 262144,
+      "max_concurrent_requests": 16,
       "poll_interval_seconds": 0.001
     }
   }
 }
 ```
 
-- `slot_count` 是可同时等待或执行的 inference 消息数量，不是 LocalBufferBroker 图片槽位数量。默认 128 可以覆盖 80 路 Workflow 分支同时提交；真正同时执行的 handler 数仍受 `control_max_concurrent_requests` 限制。
+- `slot_count` 是可同时等待或执行的 inference 消息数量，不是 LocalBufferBroker 图片槽位数量。默认 128；真正同时执行的 handler 数由 mailbox 的 `max_concurrent_requests` 限制，默认 16。控制队列另用 `control_max_concurrent_requests`，两者互不混用。
 - `message_capacity_bytes` 是每个槽位中请求 JSON 区和响应 JSON 区各自的容量。默认 512 KiB 不限制 2K、4K 或 20MP 图片，因为图片主体不进入 mailbox。
 - `overflow_page_count` 和 `overflow_page_capacity_bytes` 定义进程级固定页池。默认 256 × 512 KiB，共 128 MiB，不在请求时扩文件或创建临时文件。
 - 单个结构化响应上限为 `max(message_capacity_bytes, max_overflow_pages_per_response × overflow_page_capacity_bytes)`；默认为 32 MiB。上限同时约束压缩前 JSON 和编码后 body，防止解压膨胀。超限直接返回结构化容量错误，不退回控制队列。
 - `compression_threshold_bytes` 默认 256 KiB。只在 zlib level 1 至少节省 12.5% 时采用压缩，避免对不可压缩结果浪费 CPU。
+- `max_concurrent_requests` 是 mmap handler 的执行上限。Descriptor 和 page pool 是传输容量，不代表模型自身可并发执行数；deployment 的实例数和 runtime 限流继续独立生效。
 - 单个 mailbox 文件的逻辑大小约为 `文件头 + descriptor 区 + 固定页池`；默认约 256 MiB。descriptor 内联容量按 descriptor 数量成倍增长，页池容量只按页数增长，两者独立配置。
 - `poll_interval_seconds` 默认 1ms。继续降低会提高空闲扫描 CPU，增大会直接增加短请求唤醒延迟。
 
@@ -98,7 +100,7 @@ daemon 私有 broker 不是第三条业务传输协议，也不承载同步调�
 
 异步结果图在模型进程与 daemon 之间使用 LocalBuffer。必须跨持久 gateway 响应队列时，daemon 把结果图写入本次请求的临时 ObjectStore 目录，队列只返回 object key；worker 读取后删除目录，超时残留由 retention cleanup 回收。响应队列不携带图片 bytes 或 Base64。
 
-每个低频控制请求使用独立响应队列。daemon 定期按 `queue.response_queue_retention_seconds` 清理客户端超时后遗留的 `inference-control-response-*` 目录。控制请求必须携带明确 `expires_at`；缺少 deadline 的消息直接丢弃。请求队列使用 lease 恢复，瞬时文件系统错误只记录日志并继续消费，不会终止 dispatcher。
+每个变更控制请求使用独立响应队列。daemon 定期按 `queue.response_queue_retention_seconds` 清理客户端超时后遗留的 `inference-control-response-*` 目录。控制请求必须携带明确 `expires_at`；缺少 deadline 的消息直接丢弃。请求队列使用 lease 恢复，瞬时文件系统错误只记录日志并继续消费，不会终止 dispatcher。只读状态不会创建这些目录。
 
 ## 运维边界
 

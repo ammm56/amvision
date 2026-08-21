@@ -276,7 +276,7 @@ def build_inference_daemon_runtime(
                 settings.inference_daemon.mmap_mailbox.compression_threshold_bytes
             ),
             max_concurrent_requests=(
-                settings.inference_daemon.control_max_concurrent_requests
+                settings.inference_daemon.mmap_mailbox.max_concurrent_requests
             ),
             poll_interval_seconds=(
                 settings.inference_daemon.mmap_mailbox.poll_interval_seconds

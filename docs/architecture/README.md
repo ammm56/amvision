@@ -18,7 +18,7 @@
 - [数据和文件](platform/data-and-files.md)：ObjectStore、文件引用与生命周期。
 - [运行时与打包](platform/runtime-packaging.md)：源码运行、bundled Python 和发行目录。
 - [WebSocket](platform/websocket.md)：消息版本、订阅、游标和恢复。
-- [LocalBufferBroker](platform/local-buffer-broker.md) 与 [高性能图片数据面](platform/image-data-plane.md)：mmap、ZeroMQ 和图片引用。
+- [LocalBufferBroker](platform/local-buffer-broker.md)、[Inference mailbox v1](platform/inference-mailbox-v1.md) 与 [高性能图片数据面](platform/image-data-plane.md)：共享图片、结构化推理结果、ZeroMQ 和引用边界。
 
 ## 模型平台
 
