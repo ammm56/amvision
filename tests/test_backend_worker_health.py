@@ -6,6 +6,9 @@ from datetime import timedelta
 from pathlib import Path
 import time
 
+import pytest
+
+import backend.workers.contracts as worker_contracts_module
 from backend.workers.contracts import (
     WORKER_HEARTBEAT_FORMAT_ID,
     WORKER_PROFILE_FORMAT_ID,
@@ -118,6 +121,63 @@ def _start_heartbeat(
     heartbeat.start()
     heartbeat.mark_running()
     return heartbeat
+
+
+def test_worker_contract_write_retries_transient_windows_reader_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """目标契约被短暂读取占用时，应有界重试并清理临时文件。"""
+
+    target_path = tmp_path / "training-profile.json"
+    original_replace = Path.replace
+    sharing_violation_count = 0
+
+    def replace_with_transient_lock(
+        source_path: Path,
+        current_target_path: str | Path,
+    ) -> Path:
+        nonlocal sharing_violation_count
+        if (
+            Path(current_target_path) == target_path
+            and sharing_violation_count < 3
+        ):
+            sharing_violation_count += 1
+            error = PermissionError("simulated Windows worker contract reader lock")
+            error.winerror = 5  # type: ignore[attr-defined]
+            raise error
+        return original_replace(source_path, current_target_path)
+
+    monkeypatch.setattr(Path, "replace", replace_with_transient_lock)
+
+    write_worker_contract(target_path, _profile("training", "pose-training"))
+
+    assert sharing_violation_count == 3
+    assert target_path.is_file()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_worker_contract_write_cleans_temp_file_after_persistent_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """契约替换最终失败时，也不能遗留本次写入的临时文件。"""
+
+    target_path = tmp_path / "training-profile.json"
+
+    def fail_replace(*_args, **_kwargs) -> None:
+        raise PermissionError("simulated persistent worker contract failure")
+
+    monkeypatch.setattr(
+        worker_contracts_module,
+        "replace_path_with_retry",
+        fail_replace,
+    )
+
+    with pytest.raises(PermissionError, match="persistent worker contract failure"):
+        write_worker_contract(target_path, _profile("training", "pose-training"))
+
+    assert list(tmp_path.glob("*.tmp")) == []
 
 
 def test_worker_health_summary_reports_offline_without_active_topology(

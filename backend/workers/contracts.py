@@ -9,9 +9,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Mapping
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.service.infrastructure.filesystem.atomic_files import (
+    replace_path_with_retry,
+)
 from backend.workers.settings import SUPPORTED_BACKEND_WORKER_CONSUMER_KINDS
 
 
@@ -21,6 +25,7 @@ WORKER_TOPOLOGY_POINTER_FORMAT_ID = "amvision.worker-topology-pointer.v1"
 WORKER_HEARTBEAT_FORMAT_ID = "amvision.worker-heartbeat.v1"
 WORKER_TOPOLOGY_ID = "amvision-backend-workers"
 DEFAULT_WORKER_RUNTIME_ROOT = Path("./data/runtime/backend-workers")
+DEFAULT_WORKER_CONTRACT_WRITE_RETRY_TIMEOUT_SECONDS = 2.0
 
 WORKER_PROFILE_FILE_ENV = "AMVISION_WORKER_PROFILE_FILE"
 WORKER_TOPOLOGY_ID_ENV = "AMVISION_WORKER_TOPOLOGY_ID"
@@ -331,21 +336,36 @@ def load_backend_worker_launch_bundle(
 
 
 def write_worker_contract(path: str | Path, contract: BaseModel) -> None:
-    """原子写入一个严格 Worker JSON 契约。"""
+    """原子写入严格 Worker JSON 契约，并恢复 Windows 短暂占用。"""
 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = target.with_name(f"{target.name}.{os.getpid()}.tmp")
-    temp_path.write_text(
-        json.dumps(
-            contract.model_dump(mode="json"),
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    temp_path = target.with_name(
+        f"{target.name}.{os.getpid()}.{uuid4().hex}.tmp"
     )
-    temp_path.replace(target)
+    try:
+        temp_path.write_text(
+            json.dumps(
+                contract.model_dump(mode="json"),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        replace_path_with_retry(
+            temp_path,
+            target,
+            retry_timeout_seconds=(
+                DEFAULT_WORKER_CONTRACT_WRITE_RETRY_TIMEOUT_SECONDS
+            ),
+        )
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            # Windows 持续占用时不能让临时文件清理覆盖原始写入异常。
+            pass
 
 
 def build_topology_pointer(topology: WorkerTopologyManifest) -> WorkerTopologyPointer:
