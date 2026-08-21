@@ -7,6 +7,7 @@ import inspect
 import io
 from collections.abc import Sequence
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from backend.service.application.errors import ServiceConfigurationError
@@ -17,6 +18,10 @@ from backend.service.application.support.torch_compat import (
 
 TORCH_ONNX_DYNAMO_EXPORTER_MODE = "torch-onnx-dynamo-export"
 TORCH_ONNX_DYNAMO_EXPORTER_OPSET_VERSION = 18
+
+# torch.export 和 dynamo exporter 会修改进程级 dispatch mode 状态，不能在同一
+# Python 进程的多个线程中并发执行；stdout/stderr 重定向同样是进程级状态。
+_TORCH_ONNX_DYNAMO_EXPORT_LOCK = Lock()
 
 
 def export_torch_model_to_onnx(
@@ -55,12 +60,13 @@ def export_torch_model_to_onnx(
     }.items():
         if key in export_parameters:
             export_kwargs[key] = value
-    with (
-        suppress_torch_leafspec_deprecation_warning(),
-        contextlib.redirect_stdout(progress_stdout),
-        contextlib.redirect_stderr(progress_stderr),
-    ):
-        torch_module.onnx.export(**export_kwargs)
+    with _TORCH_ONNX_DYNAMO_EXPORT_LOCK:
+        with (
+            suppress_torch_leafspec_deprecation_warning(),
+            contextlib.redirect_stdout(progress_stdout),
+            contextlib.redirect_stderr(progress_stderr),
+        ):
+            torch_module.onnx.export(**export_kwargs)
 
 
 def ensure_torch_onnx_dynamo_exporter_dependencies() -> None:
