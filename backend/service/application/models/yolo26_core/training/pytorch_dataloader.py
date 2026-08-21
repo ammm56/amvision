@@ -11,6 +11,7 @@ from backend.service.application.models.yolo_core_common.training import (
     YoloInfiniteDataLoader,
     resolve_yolo_dataloader_batch_size,
     resolve_yolo_dataloader_worker_count,
+    serialize_yolo_worker_value,
 )
 from backend.service.application.models.yolo26_core.data.detection import (
     Yolo26DetectionPreparedTarget,
@@ -76,10 +77,19 @@ class Yolo26DetectionBatchCollator:
             available_samples=self.available_samples,
             augmentation_options=self.augmentation_options,
         )
-        return Yolo26DetectionDataLoaderBatch(
+        batch = Yolo26DetectionDataLoaderBatch(
             images=images,
             targets=targets,
             input_size=batch_input_size,
+        )
+        if imports.torch.utils.data.get_worker_info() is None:
+            return batch
+        # Windows DataLoader 直接发送 Tensor 会让 multiprocessing.Queue 的
+        # shared-memory storage 在 persistent worker 中逐 batch 累积。改成独立
+        # NumPy 载荷后由主进程恢复 Tensor，限制长训练的系统 commit 高水位。
+        return serialize_yolo_worker_value(
+            value=batch,
+            torch_module=imports.torch,
         )
 
     def _resolve_batch_input_size(self) -> tuple[int, int]:

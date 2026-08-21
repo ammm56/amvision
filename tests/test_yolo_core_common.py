@@ -57,8 +57,10 @@ from backend.service.application.models.yolo_core_common.losses import (
 )
 from backend.service.application.models.yolo26_core.losses import (
     build_yolo26_pose_rle_weights,
+    compute_yolo26_batched_rle_loss,
     compute_yolo26_rle_loss,
 )
+from backend.service.application.models.yolo26_core.nn.tasks.pose import RealNVP
 from backend.service.application.models.yolo_core_common.postprocess import (
     build_segmentation_postprocess_instances,
     normalize_segmentation_outputs,
@@ -88,6 +90,8 @@ from backend.service.application.models.yolo_core_common.training.task_dataloade
 )
 from backend.service.application.models.yolo_core_common.training.classification_dataloader import (
     YoloClassificationBatchCollator,
+    YoloClassificationDataLoaderPlan,
+    resolve_yolo_classification_evaluation_dataloader_plan,
 )
 from backend.service.application.models.yolo_core_common.training.worker_ipc import (
     serialize_yolo_worker_value,
@@ -126,6 +130,29 @@ def test_yolo26_heads_live_in_yolo26_core() -> None:
     assert Pose26.__module__.endswith("yolo26_core.nn.tasks.pose")
     assert OBB26.__module__.endswith("yolo26_core.nn.tasks.obb")
     assert not hasattr(Pose26, "_decode_keypoints_pose26")
+
+
+def test_classification_evaluation_dataloader_isolates_training_workers() -> None:
+    """验证 validation 不会复用训练 persistent worker 配置。"""
+
+    plan = resolve_yolo_classification_evaluation_dataloader_plan(
+        plan=YoloClassificationDataLoaderPlan(
+            num_workers=8,
+            pin_memory=True,
+            prefetch_factor=2,
+            persistent_workers=True,
+            seed=123,
+        ),
+        device="cuda:0",
+    )
+
+    assert plan == YoloClassificationDataLoaderPlan(
+        num_workers=0,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=False,
+        seed=123,
+    )
     assert not hasattr(OBB26, "_decode_angle_logits")
 
 
@@ -928,6 +955,208 @@ def test_yolo26_pose_rle_loss_promotes_extreme_fp16_sigma_to_fp32() -> None:
     assert rle_loss.item() > 0.0
 
 
+def test_yolo26_pose_batched_rle_preserves_per_image_reduction() -> None:
+    """验证整批 RealNVP 调用保持逐图均值、clamp 和 foreground 权重。"""
+
+    class _CountingPoseFlowModel(_DummyPoseFlowModel):
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def log_prob(self, x: torch.Tensor) -> torch.Tensor:
+            self.call_count += 1
+            return super().log_prob(x)
+
+    torch.manual_seed(17)
+    batch_items = tuple(
+        {
+            "pred_keypoints_xy": torch.randn(foreground_count, 4, 2),
+            "pred_sigma_logits": torch.randn(foreground_count, 4, 2),
+            "gt_keypoints_xy": torch.randn(foreground_count, 4, 2),
+            "keypoint_mask": mask,
+            "target_weights": torch.tensor([1.0, 1.2, 1.5, 0.8]),
+            "foreground_count": foreground_count,
+        }
+        for foreground_count, mask in (
+            (2, torch.tensor([[True, True, False, True], [True] * 4])),
+            (
+                3,
+                torch.tensor(
+                    [
+                        [True, False, True, True],
+                        [False, True, True, True],
+                        [True, True, True, False],
+                    ]
+                ),
+            ),
+        )
+    )
+    legacy_flow = _CountingPoseFlowModel()
+    legacy_loss = batch_items[0]["pred_keypoints_xy"].new_zeros(())
+    for item in batch_items:
+        legacy_loss = legacy_loss + compute_yolo26_rle_loss(
+            torch_module=torch,
+            flow_model=legacy_flow,
+            pred_keypoints_xy=item["pred_keypoints_xy"],
+            pred_sigma_logits=item["pred_sigma_logits"],
+            gt_keypoints_xy=item["gt_keypoints_xy"],
+            keypoint_mask=item["keypoint_mask"],
+            target_weights=item["target_weights"],
+        ).clamp_min(0.0) * item["foreground_count"]
+
+    batched_flow = _CountingPoseFlowModel()
+    batched_loss = compute_yolo26_batched_rle_loss(
+        torch_module=torch,
+        flow_model=batched_flow,
+        batch_items=batch_items,
+    )
+
+    torch.testing.assert_close(batched_loss, legacy_loss)
+    assert legacy_flow.call_count == len(batch_items)
+    assert batched_flow.call_count == 1
+
+
+def test_yolo26_pose_batched_rle_preserves_input_and_flow_gradients() -> None:
+    """验证向量化只改变执行形态，不改变输入和 RealNVP gradient。"""
+
+    torch.manual_seed(23)
+    legacy_flow = RealNVP()
+    batched_flow = RealNVP()
+    batched_flow.load_state_dict(legacy_flow.state_dict())
+
+    legacy_items: list[dict[str, object]] = []
+    batched_items: list[dict[str, object]] = []
+    for foreground_count in (2, 3):
+        pred_xy = torch.randn(foreground_count, 5, 2)
+        pred_sigma = torch.randn(foreground_count, 5, 2)
+        gt_xy = torch.randn(foreground_count, 5, 2)
+        mask = torch.rand(foreground_count, 5) > 0.2
+        weights = torch.linspace(0.8, 1.4, 5)
+        legacy_items.append(
+            {
+                "pred_keypoints_xy": pred_xy.clone().requires_grad_(),
+                "pred_sigma_logits": pred_sigma.clone().requires_grad_(),
+                "gt_keypoints_xy": gt_xy,
+                "keypoint_mask": mask,
+                "target_weights": weights,
+                "foreground_count": foreground_count,
+            }
+        )
+        batched_items.append(
+            {
+                "pred_keypoints_xy": pred_xy.clone().requires_grad_(),
+                "pred_sigma_logits": pred_sigma.clone().requires_grad_(),
+                "gt_keypoints_xy": gt_xy.clone(),
+                "keypoint_mask": mask.clone(),
+                "target_weights": weights.clone(),
+                "foreground_count": foreground_count,
+            }
+        )
+
+    legacy_loss = torch.zeros(())
+    for item in legacy_items:
+        legacy_loss = legacy_loss + compute_yolo26_rle_loss(
+            torch_module=torch,
+            flow_model=legacy_flow,
+            pred_keypoints_xy=item["pred_keypoints_xy"],
+            pred_sigma_logits=item["pred_sigma_logits"],
+            gt_keypoints_xy=item["gt_keypoints_xy"],
+            keypoint_mask=item["keypoint_mask"],
+            target_weights=item["target_weights"],
+        ).clamp_min(0.0) * item["foreground_count"]
+    legacy_loss.backward()
+
+    batched_loss = compute_yolo26_batched_rle_loss(
+        torch_module=torch,
+        flow_model=batched_flow,
+        batch_items=tuple(batched_items),
+    )
+    batched_loss.backward()
+
+    torch.testing.assert_close(batched_loss, legacy_loss, rtol=1e-5, atol=1e-6)
+    for legacy_item, batched_item in zip(
+        legacy_items,
+        batched_items,
+        strict=True,
+    ):
+        torch.testing.assert_close(
+            batched_item["pred_keypoints_xy"].grad,
+            legacy_item["pred_keypoints_xy"].grad,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+        torch.testing.assert_close(
+            batched_item["pred_sigma_logits"].grad,
+            legacy_item["pred_sigma_logits"].grad,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+    for legacy_parameter, batched_parameter in zip(
+        legacy_flow.parameters(),
+        batched_flow.parameters(),
+        strict=True,
+    ):
+        torch.testing.assert_close(
+            batched_parameter.grad,
+            legacy_parameter.grad,
+            rtol=2e-5,
+            atol=2e-6,
+        )
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="需要 CUDA 验证 FP16 autocast"
+)
+def test_yolo26_pose_rle_loss_keeps_realnvp_backward_in_fp32() -> None:
+    """验证外层 CUDA autocast 不会把 RealNVP 反向传播降到 FP16。"""
+
+    torch.manual_seed(0)
+    device = torch.device("cuda:0")
+    foreground_count = 16
+    keypoint_count = 21
+    flow_model = RealNVP().to(device)
+    pred_xy = (
+        torch.randn(foreground_count, keypoint_count, 2, device=device) * 2.0
+    ).requires_grad_()
+    gt_xy = torch.randn_like(pred_xy) * 2.0
+    pred_sigma_logits = (
+        torch.randn(foreground_count, keypoint_count, 2, device=device) * 2.0
+    ).requires_grad_()
+    keypoint_mask = torch.ones(
+        foreground_count,
+        keypoint_count,
+        dtype=torch.bool,
+        device=device,
+    )
+    target_weights = torch.ones(keypoint_count, device=device)
+
+    with torch.amp.autocast("cuda", dtype=torch.float16):
+        loss = (
+            compute_yolo26_rle_loss(
+                torch_module=torch,
+                flow_model=flow_model,
+                pred_keypoints_xy=pred_xy,
+                pred_sigma_logits=pred_sigma_logits,
+                gt_keypoints_xy=gt_xy,
+                keypoint_mask=keypoint_mask,
+                target_weights=target_weights,
+            )
+            * 47
+        )
+    loss.backward()
+
+    flow_gradients = [
+        parameter.grad
+        for parameter in flow_model.parameters()
+        if parameter.grad is not None
+    ]
+    assert loss.dtype == torch.float32
+    assert torch.isfinite(loss).item() is True
+    assert torch.isfinite(pred_xy.grad).all().item() is True
+    assert torch.isfinite(pred_sigma_logits.grad).all().item() is True
+    assert flow_gradients
+    assert all(torch.isfinite(gradient).all().item() for gradient in flow_gradients)
+
+
 def test_common_pose_target_normalizes_list_and_tensor_keypoints() -> None:
     """验证 pose target 编码会规整 list 和 tensor 两类关键点输入。"""
 
@@ -1371,7 +1600,9 @@ def test_common_segmentation_evaluation_masks_preserve_full_resolution() -> None
     assert sum(len(item["bits"]) for item in packed) < masks.nbytes
 
 
-def test_common_segmentation_polygon_rasterization_matches_reference_truncation() -> None:
+def test_common_segmentation_polygon_rasterization_matches_reference_truncation() -> (
+    None
+):
     """验证 polygon 坐标按参考实现直接转 int32，而不是四舍五入。"""
 
     mask, valid = rasterize_segmentation_polygons(

@@ -73,6 +73,7 @@ def compute_yolo26_pose_loss(
     assign_alpha: float = 0.5,
     assign_beta: float = 6.0,
     assign_topk2: int | None = None,
+    runtime_metrics: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """计算 YOLO26 pose 的 box、class、DFL、keypoint 和可见性损失。"""
 
@@ -118,6 +119,7 @@ def compute_yolo26_pose_loss(
     total_keypoint_loss = class_logits.new_zeros(())
     total_visibility_loss = class_logits.new_zeros(())
     total_rle_loss = class_logits.new_zeros(())
+    rle_batch_items: list[dict[str, Any]] = []
     total_foreground = 0
     total_target_score = class_logits.new_zeros(())
 
@@ -151,9 +153,22 @@ def compute_yolo26_pose_loss(
         total_dfl_loss = total_dfl_loss + loss_state["dfl_loss"]
         total_keypoint_loss = total_keypoint_loss + loss_state["keypoint_loss"]
         total_visibility_loss = total_visibility_loss + loss_state["visibility_loss"]
-        total_rle_loss = total_rle_loss + loss_state["rle_loss"]
+        rle_batch_item = loss_state["rle_batch_item"]
+        if rle_batch_item is not None:
+            rle_batch_items.append(rle_batch_item)
         total_target_score = total_target_score + loss_state["target_score"]
         total_foreground += int(loss_state["foreground_count"])
+
+    if rle_batch_items:
+        total_rle_loss = compute_yolo26_batched_rle_loss(
+            torch_module=torch,
+            flow_model=getattr(pose_head, "flow_model", None),
+            batch_items=tuple(rle_batch_items),
+            runtime_metrics=runtime_metrics,
+        )
+    if runtime_metrics is not None:
+        runtime_metrics["foreground_count"] = float(total_foreground)
+        runtime_metrics["rle_image_count"] = float(len(rle_batch_items))
 
     normalizer = total_target_score.clamp_min(1.0)
     foreground_normalizer = max(total_foreground, 1)
@@ -231,7 +246,7 @@ def _compute_yolo26_pose_image_loss(
             "dfl_loss": zero_loss,
             "keypoint_loss": zero_loss,
             "visibility_loss": zero_loss,
-            "rle_loss": zero_loss,
+            "rle_batch_item": None,
             "foreground_count": 0,
             "target_score": zero_loss,
         }
@@ -275,7 +290,7 @@ def _compute_yolo26_pose_image_loss(
             "dfl_loss": zero_loss,
             "keypoint_loss": zero_loss,
             "visibility_loss": zero_loss,
-            "rle_loss": zero_loss,
+            "rle_batch_item": None,
             "foreground_count": 0,
             "target_score": zero_loss,
         }
@@ -315,26 +330,28 @@ def _compute_yolo26_pose_image_loss(
     )
     keypoint_loss = zero_loss
     visibility_loss = zero_loss
-    rle_loss = zero_loss
+    rle_batch_item = None
     if (
         pred_keypoints is not None
         and gt_keypoints is not None
         and len(gt_keypoints) > 0
     ):
-        keypoint_loss, visibility_loss, rle_loss = _compute_yolo26_pose_keypoint_losses(
-            torch_module=torch_module,
-            pred_keypoints=pred_keypoints,
-            pred_keypoint_sigmas=pred_keypoint_sigmas,
-            batch_index=batch_index,
-            foreground_mask=foreground_mask,
-            assigned_indices=assigned_indices,
-            gt_keypoints=gt_keypoints,
-            keypoint_count=keypoint_count,
-            keypoint_dim=keypoint_dim,
-            foreground_anchor_points=anchor_points[foreground_mask],
-            foreground_stride=stride_tensor[foreground_mask],
-            foreground_gt_boxes=foreground_gt_boxes,
-            flow_model=flow_model,
+        keypoint_loss, visibility_loss, rle_batch_item = (
+            _compute_yolo26_pose_keypoint_losses(
+                torch_module=torch_module,
+                pred_keypoints=pred_keypoints,
+                pred_keypoint_sigmas=pred_keypoint_sigmas,
+                batch_index=batch_index,
+                foreground_mask=foreground_mask,
+                assigned_indices=assigned_indices,
+                gt_keypoints=gt_keypoints,
+                keypoint_count=keypoint_count,
+                keypoint_dim=keypoint_dim,
+                foreground_anchor_points=anchor_points[foreground_mask],
+                foreground_stride=stride_tensor[foreground_mask],
+                foreground_gt_boxes=foreground_gt_boxes,
+                flow_model=flow_model,
+            )
         )
 
     class_loss = torch_module.nn.functional.binary_cross_entropy_with_logits(
@@ -348,7 +365,7 @@ def _compute_yolo26_pose_image_loss(
         "dfl_loss": dfl_loss,
         "keypoint_loss": keypoint_loss * foreground_count,
         "visibility_loss": visibility_loss * foreground_count,
-        "rle_loss": rle_loss * foreground_count,
+        "rle_batch_item": rle_batch_item,
         "foreground_count": foreground_count,
         "target_score": quality_scores.sum(),
     }
@@ -411,8 +428,8 @@ def _compute_yolo26_pose_keypoint_losses(
     foreground_stride: Any,
     foreground_gt_boxes: Any,
     flow_model: Any | None,
-) -> tuple[Any, Any, Any]:
-    """计算 YOLO26 pose 关键点位置、可见性和 RLE 损失。"""
+) -> tuple[Any, Any, dict[str, Any] | None]:
+    """计算关键点损失，并收集当前图片的 RLE 批处理输入。"""
 
     foreground_pred_keypoints = pred_keypoints[batch_index][foreground_mask]
     foreground_gt_keypoints = normalize_yolo26_gt_keypoints_tensor(
@@ -462,28 +479,27 @@ def _compute_yolo26_pose_keypoint_losses(
             pred_visibility_logits=pred_keypoints_reshaped[..., 2],
             keypoint_mask=keypoint_mask,
         )
-    rle_loss = foreground_pred_keypoints.new_zeros(())
+    rle_batch_item = None
     if pred_keypoint_sigmas is not None and flow_model is not None:
         foreground_pred_sigmas = pred_keypoint_sigmas[batch_index][
             foreground_mask
         ].view(foreground_count, keypoint_count, 2)
-        rle_loss = compute_yolo26_rle_loss(
-            torch_module=torch_module,
-            flow_model=flow_model,
-            pred_keypoints_xy=(
+        rle_batch_item = {
+            "pred_keypoints_xy": (
                 decoded_keypoints_xy / stride_values.unsqueeze(1)
             ),
-            pred_sigma_logits=foreground_pred_sigmas,
-            gt_keypoints_xy=(gt_xy / stride_values.unsqueeze(1)),
-            keypoint_mask=keypoint_mask,
-            target_weights=build_yolo26_pose_rle_weights(
+            "pred_sigma_logits": foreground_pred_sigmas,
+            "gt_keypoints_xy": gt_xy / stride_values.unsqueeze(1),
+            "keypoint_mask": keypoint_mask,
+            "target_weights": build_yolo26_pose_rle_weights(
                 torch_module=torch_module,
                 num_keypoints=keypoint_count,
                 device=foreground_pred_keypoints.device,
                 dtype=foreground_pred_keypoints.dtype,
             ),
-        ).clamp_min(0.0)
-    return keypoint_loss, visibility_loss, rle_loss
+            "foreground_count": foreground_count,
+        }
+    return keypoint_loss, visibility_loss, rle_batch_item
 
 
 def _decode_yolo26_pose_keypoints_xy(
@@ -513,39 +529,144 @@ def compute_yolo26_rle_loss(
     if flow_model is None:
         return pred_keypoints_xy.new_zeros(())
 
-    # RLE 中坐标差和 sigmoid 极值不得在 FP16 中计算。
-    # ``1e-9`` 在 FP16 会下溢为 0，从而把有效样本误判为 Inf。
-    visible_pred_xy = pred_keypoints_xy.float()[keypoint_mask]
-    visible_gt_xy = gt_keypoints_xy.float()[keypoint_mask]
-    visible_sigma = pred_sigma_logits.float().sigmoid()[keypoint_mask]
-    if int(visible_pred_xy.shape[0]) <= 0:
-        return pred_keypoints_xy.new_zeros(())
-
-    expanded_target_weights = target_weights.unsqueeze(0).repeat(
-        keypoint_mask.shape[0], 1
+    image_losses = _compute_yolo26_rle_image_losses(
+        torch_module=torch_module,
+        flow_model=flow_model,
+        batch_items=(
+            {
+                "pred_keypoints_xy": pred_keypoints_xy,
+                "pred_sigma_logits": pred_sigma_logits,
+                "gt_keypoints_xy": gt_keypoints_xy,
+                "keypoint_mask": keypoint_mask,
+                "target_weights": target_weights,
+                "foreground_count": int(pred_keypoints_xy.shape[0]),
+            },
+        ),
     )
-    visible_target_weights = expanded_target_weights.float()[keypoint_mask]
+    return image_losses[0]
 
-    error = (visible_pred_xy - visible_gt_xy) / (visible_sigma + 1e-9)
-    valid_mask = ~(torch_module.isnan(error) | torch_module.isinf(error)).any(dim=-1)
-    if not bool(valid_mask.any()):
-        return pred_keypoints_xy.new_zeros(())
 
-    error = error[valid_mask].clamp(-100.0, 100.0)
-    visible_sigma = visible_sigma[valid_mask]
-    visible_target_weights = visible_target_weights[valid_mask]
+def compute_yolo26_batched_rle_loss(
+    *,
+    torch_module: Any,
+    flow_model: Any,
+    batch_items: tuple[dict[str, Any], ...],
+    runtime_metrics: dict[str, float] | None = None,
+) -> Any:
+    """一次执行整批 RealNVP，并保持原逐图 RLE reduction 语义。"""
 
-    log_phi = flow_model.log_prob(error)
-    visible_sigma_float = visible_sigma
-    loss = torch_module.log(visible_sigma_float + 1e-9) - log_phi.unsqueeze(1)
-    loss = (
-        loss
-        + torch_module.log(visible_sigma_float * 2.0 + 1e-9)
-        + torch_module.abs(error)
+    if not batch_items:
+        return torch_module.zeros((), dtype=torch_module.float32)
+    if flow_model is None:
+        return batch_items[0]["pred_keypoints_xy"].new_zeros(())
+
+    image_losses = _compute_yolo26_rle_image_losses(
+        torch_module=torch_module,
+        flow_model=flow_model,
+        batch_items=batch_items,
+        runtime_metrics=runtime_metrics,
     )
-    loss = loss * visible_target_weights.unsqueeze(1)
-    loss = loss.sum() / max(int(loss.shape[0]), 1)
-    return loss
+    total_loss = image_losses[0].new_zeros(())
+    for item, image_loss in zip(batch_items, image_losses, strict=True):
+        total_loss = total_loss + image_loss.clamp_min(0.0) * int(
+            item["foreground_count"]
+        )
+    return total_loss
+
+
+def _compute_yolo26_rle_image_losses(
+    *,
+    torch_module: Any,
+    flow_model: Any,
+    batch_items: tuple[dict[str, Any], ...],
+    runtime_metrics: dict[str, float] | None = None,
+) -> tuple[Any, ...]:
+    """合并可见关键点后调用一次 RealNVP，再按图片恢复原均值。"""
+
+    image_losses = [
+        item["pred_keypoints_xy"].new_zeros(()) for item in batch_items
+    ]
+    if flow_model is None or not batch_items:
+        return tuple(image_losses)
+
+    # RLE 中坐标差、sigmoid 极值和 RealNVP 都必须在 FP32 中计算。
+    # 仅把输入提升到 FP32 不够：外层 CUDA autocast 仍会把 RealNVP 的
+    # ``Linear`` 运算降回 FP16，scratch 训练时会让 flow 参数梯度持续溢出。
+    # 在当前设备的 autocast 区域内显式禁用混合精度，同时保留到 pose head
+    # FP16 输出的梯度连接。
+    with torch_module.amp.autocast(
+        device_type=batch_items[0]["pred_keypoints_xy"].device.type,
+        enabled=False,
+    ):
+        batched_errors: list[Any] = []
+        batched_sigmas: list[Any] = []
+        batched_target_weights: list[Any] = []
+        active_image_indexes: list[int] = []
+        active_image_lengths: list[int] = []
+
+        for image_index, item in enumerate(batch_items):
+            keypoint_mask = item["keypoint_mask"]
+            visible_pred_xy = item["pred_keypoints_xy"].float()[keypoint_mask]
+            visible_gt_xy = item["gt_keypoints_xy"].float()[keypoint_mask]
+            visible_sigma = item["pred_sigma_logits"].float().sigmoid()[
+                keypoint_mask
+            ]
+            if int(visible_pred_xy.shape[0]) <= 0:
+                continue
+
+            expanded_target_weights = item["target_weights"].unsqueeze(0).repeat(
+                keypoint_mask.shape[0], 1
+            )
+            visible_target_weights = expanded_target_weights.float()[keypoint_mask]
+            error = (visible_pred_xy - visible_gt_xy) / (visible_sigma + 1e-9)
+            valid_mask = ~(
+                torch_module.isnan(error) | torch_module.isinf(error)
+            ).any(dim=-1)
+            if not bool(valid_mask.any()):
+                continue
+
+            error = error[valid_mask].clamp(-100.0, 100.0)
+            visible_sigma = visible_sigma[valid_mask]
+            visible_target_weights = visible_target_weights[valid_mask]
+            active_image_indexes.append(image_index)
+            active_image_lengths.append(int(error.shape[0]))
+            batched_errors.append(error)
+            batched_sigmas.append(visible_sigma)
+            batched_target_weights.append(visible_target_weights)
+
+        if not batched_errors:
+            if runtime_metrics is not None:
+                runtime_metrics["rle_error_count"] = 0.0
+            return tuple(image_losses)
+
+        if runtime_metrics is not None:
+            runtime_metrics["rle_error_count"] = float(sum(active_image_lengths))
+
+        error = torch_module.cat(batched_errors, dim=0)
+        visible_sigma = torch_module.cat(batched_sigmas, dim=0)
+        visible_target_weights = torch_module.cat(
+            batched_target_weights,
+            dim=0,
+        )
+        log_phi = flow_model.log_prob(error)
+        loss_values = torch_module.log(visible_sigma + 1e-9) - log_phi.unsqueeze(1)
+        loss_values = (
+            loss_values
+            + torch_module.log(visible_sigma * 2.0 + 1e-9)
+            + torch_module.abs(error)
+        )
+        loss_values = loss_values * visible_target_weights.unsqueeze(1)
+
+        offset = 0
+        for image_index, image_length in zip(
+            active_image_indexes,
+            active_image_lengths,
+            strict=True,
+        ):
+            image_loss_values = loss_values[offset : offset + image_length]
+            image_losses[image_index] = image_loss_values.sum() / image_length
+            offset += image_length
+        return tuple(image_losses)
 
 
 def build_yolo26_pose_rle_weights(
@@ -566,6 +687,7 @@ def build_yolo26_pose_rle_weights(
 
 __all__ = [
     "build_yolo26_pose_rle_weights",
+    "compute_yolo26_batched_rle_loss",
     "compute_yolo26_pose_loss",
     "compute_yolo26_rle_loss",
 ]

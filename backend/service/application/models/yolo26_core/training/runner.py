@@ -115,6 +115,7 @@ def run_yolo26_detection_training_epoch(
                 sample_batch.images,
                 device=device or "cpu",
                 runtime_precision=runtime_precision,
+                torch_module=torch_module,
             )
             batch_targets = sample_batch.targets
         else:

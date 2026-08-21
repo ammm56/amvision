@@ -40,6 +40,7 @@ from backend.service.application.models.yolov8_core.training import (
     run_yolov8_detection_training_epoch,
 )
 from backend.service.application.models.yolov8_core.training.pytorch_dataloader import (
+    YoloV8DetectionBatchCollator,
     YoloV8DetectionDataLoaderBatch,
     YoloV8DetectionDataLoaderPlan,
     build_yolov8_detection_training_dataloader,
@@ -54,7 +55,9 @@ from backend.service.application.runtime.targets.yolov8 import (
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.files.detection_model_file_types import YOLOV8_DETECTION_FILE_TYPES
+from backend.service.domain.files.detection_model_file_types import (
+    YOLOV8_DETECTION_FILE_TYPES,
+)
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -62,7 +65,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
-from backend.workers.training.yolov8_training_queue_worker import YoloV8TrainingQueueWorker
+from backend.workers.training.yolov8_training_queue_worker import (
+    YoloV8TrainingQueueWorker,
+)
 
 
 def test_yolov8_model_service_registers_yolov8_specific_file_types() -> None:
@@ -100,7 +105,9 @@ def test_yolov8_model_service_registers_yolov8_specific_file_types() -> None:
     )
 
     model_version = service.get_model_version(model_version_id)
-    model = service.get_model(model_version.model_id if model_version is not None else "")
+    model = service.get_model(
+        model_version.model_id if model_version is not None else ""
+    )
     version_files = service.list_model_files(model_version_id=model_version_id)
     build_files = service.list_model_files(model_build_id=model_build_id)
 
@@ -130,8 +137,15 @@ def test_yolov8_conversion_planner_uses_yolov8_file_types() -> None:
         )
     )
 
-    assert plan.steps[0].required_file_type == YOLOV8_DETECTION_FILE_TYPES.checkpoint_file_type
-    assert tuple(step.produced_file_type for step in plan.steps if step.produced_file_type is not None) == (
+    assert (
+        plan.steps[0].required_file_type
+        == YOLOV8_DETECTION_FILE_TYPES.checkpoint_file_type
+    )
+    assert tuple(
+        step.produced_file_type
+        for step in plan.steps
+        if step.produced_file_type is not None
+    ) == (
         YOLOV8_DETECTION_FILE_TYPES.onnx_file_type,
         YOLOV8_DETECTION_FILE_TYPES.onnx_optimized_file_type,
         YOLOV8_DETECTION_FILE_TYPES.openvino_ir_file_type,
@@ -195,7 +209,10 @@ def test_yolov8_runtime_target_resolver_returns_yolov8_snapshot(tmp_path: Path) 
     assert snapshot.model_type == "yolov8"
     assert snapshot.runtime_backend == "onnxruntime"
     assert snapshot.runtime_precision == "fp32"
-    assert snapshot.runtime_artifact_file_type == YOLOV8_DETECTION_FILE_TYPES.onnx_file_type
+    assert (
+        snapshot.runtime_artifact_file_type
+        == YOLOV8_DETECTION_FILE_TYPES.onnx_file_type
+    )
     assert snapshot.runtime_artifact_path == dataset_storage.resolve(build_object_key)
     assert snapshot.checkpoint_path == dataset_storage.resolve(checkpoint_object_key)
     assert snapshot.labels == ("part",)
@@ -240,10 +257,13 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     )
 
     assert submission.status == "queued"
-    assert queue_backend.get_task(
-        queue_name=submission.queue_name,
-        task_id=submission.queue_task_id,
-    ) is not None
+    assert (
+        queue_backend.get_task(
+            queue_name=submission.queue_name,
+            task_id=submission.queue_task_id,
+        )
+        is not None
+    )
 
     assert worker.run_once() is True
 
@@ -257,25 +277,39 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     assert task_detail.task.task_spec["task_type"] == "detection"
     assert task_detail.task.error_message is None
     assert task_detail.task.result["checkpoint_object_key"].endswith("/best.pt")
-    assert task_detail.task.result["latest_checkpoint_object_key"].endswith("/latest.pt")
-    assert task_detail.task.result["summary"]["implementation_mode"] == "yolov8-detection-core"
-    assert task_detail.task.result["summary"]["dataset_export_id"] == "dataset-export-1"
-    assert task_detail.task.result["summary"]["dataset_version_id"] == "dataset-version-1"
-    assert task_detail.task.result["summary"]["training_config"]["recipe_id"] == "recipe-1"
-    assert task_detail.task.result["summary"]["output_files"]["checkpoint_object_key"].endswith(
-        "/best.pt"
+    assert task_detail.task.result["latest_checkpoint_object_key"].endswith(
+        "/latest.pt"
     )
+    assert (
+        task_detail.task.result["summary"]["implementation_mode"]
+        == "yolov8-detection-core"
+    )
+    assert task_detail.task.result["summary"]["dataset_export_id"] == "dataset-export-1"
+    assert (
+        task_detail.task.result["summary"]["dataset_version_id"] == "dataset-version-1"
+    )
+    assert (
+        task_detail.task.result["summary"]["training_config"]["recipe_id"] == "recipe-1"
+    )
+    assert task_detail.task.result["summary"]["output_files"][
+        "checkpoint_object_key"
+    ].endswith("/best.pt")
     assert task_detail.task.result["summary"]["model_version_id"]
     assert any(
-        event.message == "yolov8 training completed"
-        for event in task_detail.events
+        event.message == "yolov8 training completed" for event in task_detail.events
     )
     assert any(event.event_type == "progress" for event in task_detail.events)
-    assert dataset_storage.resolve(task_detail.task.result["checkpoint_object_key"]).is_file()
-    assert dataset_storage.resolve(task_detail.task.result["metrics_object_key"]).is_file()
+    assert dataset_storage.resolve(
+        task_detail.task.result["checkpoint_object_key"]
+    ).is_file()
+    assert dataset_storage.resolve(
+        task_detail.task.result["metrics_object_key"]
+    ).is_file()
 
     model_service = SqlAlchemyYoloV8ModelService(session_factory=session_factory)
-    model_version = model_service.get_model_version(task_detail.task.result["model_version_id"])
+    model_version = model_service.get_model_version(
+        task_detail.task.result["model_version_id"]
+    )
     assert model_version is not None
     assert model_version.training_task_id == submission.task_id
 
@@ -568,6 +602,30 @@ def test_yolov8_detection_dataloader_builds_cpu_batch(tmp_path: Path) -> None:
     dataloader.reset()
 
 
+def test_yolov8_detection_worker_collator_uses_numpy_ipc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """worker batch 必须使用 NumPy IPC，避免 persistent worker 内存线性增长。"""
+
+    monkeypatch.setattr(torch.utils.data, "get_worker_info", lambda: object())
+    monkeypatch.setattr(
+        "backend.service.application.models.yolov8_core.training.pytorch_dataloader."
+        "build_yolov8_detection_training_batch_cpu",
+        lambda **_kwargs: (torch.ones((1, 3, 2, 2)), (object(),)),
+    )
+    collator = YoloV8DetectionBatchCollator(
+        input_size=(2, 2),
+        augment_training=True,
+        available_samples=(),
+        augmentation_options=None,
+    )
+
+    batch = collator([object()])
+
+    assert isinstance(batch.images, np.ndarray)
+    assert batch.images.base is None
+
+
 def test_yolov8_detection_training_epoch_runner_updates_model() -> None:
     """验证 YOLOv8 detection 单轮训练执行器会推进 batch 并更新参数。"""
 
@@ -654,6 +712,44 @@ def test_yolov8_detection_training_epoch_runner_accepts_dataloader_batches() -> 
     assert torch.equal(model.weight.detach(), initial_weight) is False
 
 
+def test_yolov8_detection_training_epoch_runner_restores_numpy_worker_batch() -> None:
+    """epoch runner 会把 worker 的 NumPy image 载荷恢复为 Tensor。"""
+
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    initial_weight = model.weight.detach().clone()
+    batch = YoloV8DetectionDataLoaderBatch(
+        images=np.asarray([[1.0]], dtype=np.float32),
+        targets=(torch.tensor([[1.0]], dtype=torch.float32),),
+        input_size=(1, 1),
+    )
+
+    result = run_yolov8_detection_training_epoch(
+        torch_module=torch,
+        model=model,
+        samples=(1.0,),
+        batch_size=1,
+        input_size=(1, 1),
+        epoch=1,
+        max_epochs=1,
+        global_iteration=0,
+        total_iterations=1,
+        optimizer=optimizer,
+        scaler=_NoopGradScaler(),
+        autocast_context=nullcontext,
+        build_batch=_build_linear_training_batch,
+        unwrap_outputs=lambda output: {"prediction": output},
+        compute_loss=_compute_linear_training_loss,
+        grad_clip_norm=10.0,
+        dataloader_batches=(batch,),
+        device="cpu",
+        runtime_precision="fp32",
+    )
+
+    assert result.global_iteration == 1
+    assert torch.equal(model.weight.detach(), initial_weight) is False
+
+
 def test_yolov8_detection_amp_skip_does_not_update_ema_or_scheduler_state() -> None:
     """GradScaler overflow 跳步后 detection 必须保留 EMA 与成功 step 计数。"""
 
@@ -689,7 +785,9 @@ def test_yolov8_detection_amp_skip_does_not_update_ema_or_scheduler_state() -> N
     assert torch.equal(model.weight.detach(), initial_weight)
 
 
-def test_yolov8_training_task_service_rejects_unsupported_model_scale(tmp_path: Path) -> None:
+def test_yolov8_training_task_service_rejects_unsupported_model_scale(
+    tmp_path: Path,
+) -> None:
     """验证 YOLOv8 detection 训练入口会拒绝不支持的模型 scale。"""
 
     service = SqlAlchemyYoloV8TrainingTaskService(
@@ -812,7 +910,9 @@ def _compute_linear_training_loss(
 def _create_session_factory() -> SessionFactory:
     """创建绑定内存数据库的 SessionFactory。"""
 
-    session_factory = SessionFactory(DatabaseSettings(url="sqlite+pysqlite:///:memory:"))
+    session_factory = SessionFactory(
+        DatabaseSettings(url="sqlite+pysqlite:///:memory:")
+    )
     Base.metadata.create_all(session_factory.engine)
     return session_factory
 
@@ -826,7 +926,9 @@ def _create_model_service() -> SqlAlchemyYoloV8ModelService:
 def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
     """创建测试使用的本地数据文件存储。"""
 
-    return LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage")))
+    return LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
+    )
 
 
 def _save_completed_dataset_export(session_factory: SessionFactory) -> None:
@@ -873,13 +975,33 @@ def _write_completed_dataset_export_files(dataset_storage: LocalDatasetStorage) 
         assert cv2.imwrite(str(target_path), image)
 
     train_annotation = {
-        "images": [{"id": 1, "file_name": "sample-train.jpg", "width": 64, "height": 64}],
-        "annotations": [{"id": 1, "image_id": 1, "category_id": 0, "bbox": [18, 12, 22, 24], "iscrowd": 0, "area": 528}],
+        "images": [
+            {"id": 1, "file_name": "sample-train.jpg", "width": 64, "height": 64}
+        ],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 0,
+                "bbox": [18, 12, 22, 24],
+                "iscrowd": 0,
+                "area": 528,
+            }
+        ],
         "categories": [{"id": 0, "name": "part"}],
     }
     val_annotation = {
         "images": [{"id": 2, "file_name": "sample-val.jpg", "width": 64, "height": 64}],
-        "annotations": [{"id": 2, "image_id": 2, "category_id": 0, "bbox": [16, 10, 20, 22], "iscrowd": 0, "area": 440}],
+        "annotations": [
+            {
+                "id": 2,
+                "image_id": 2,
+                "category_id": 0,
+                "bbox": [16, 10, 20, 22],
+                "iscrowd": 0,
+                "area": 440,
+            }
+        ],
         "categories": [{"id": 0, "name": "part"}],
     }
     dataset_storage.write_json(train_annotation_key, train_annotation)

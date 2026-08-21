@@ -10,8 +10,9 @@ def move_yolo_tensor_to_training_device(
     *,
     device: str,
     runtime_precision: str | None = None,
+    torch_module: Any | None = None,
 ) -> Any:
-    """把 CPU tensor 按训练设备规则搬到目标设备。
+    """把 worker NumPy 载荷或 CPU tensor 按训练设备规则搬到目标设备。
 
     参考 Ultralytics 的训练预处理边界，CUDA 训练时优先使用 pinned memory
     和 non-blocking transfer，降低数据搬运对 GPU 计算流的阻塞。该函数只处理
@@ -19,6 +20,11 @@ def move_yolo_tensor_to_training_device(
     """
 
     transferred = tensor
+    if not callable(getattr(transferred, "to", None)):
+        if torch_module is None:
+            import torch as torch_module  # noqa: PLC0415
+
+        transferred = torch_module.from_numpy(transferred)
     if _should_pin_before_transfer(transferred, device=device):
         try:
             transferred = transferred.pin_memory()

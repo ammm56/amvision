@@ -36,6 +36,18 @@ class _FakeCuda:
     def utilization(_device: str) -> float:
         return 72.0
 
+    @staticmethod
+    def temperature(_device: str) -> int:
+        return 67
+
+    @staticmethod
+    def power_draw(_device: str) -> int:
+        return 321_500
+
+    @staticmethod
+    def clock_rate(_device: str) -> int:
+        return 2_625
+
 
 class _UnavailableNvmlCuda(_FakeCuda):
     """模拟显存 API 可用但 NVML utilization 不可用的 CUDA 环境。"""
@@ -72,6 +84,9 @@ def test_runtime_sampler_calculates_throughput_timing_and_gpu_metrics() -> None:
     )
 
     assert first["gpu_utilization_percent"] == 72.0
+    assert first["gpu_temperature_celsius"] == 67.0
+    assert first["gpu_power_draw_watts"] == 321.5
+    assert first["gpu_sm_clock_mhz"] == 2625.0
     assert second["step_time_ms"] == 500.0
     assert second["steps_per_second"] == 2.0
     assert second["samples_per_second"] == 8.0

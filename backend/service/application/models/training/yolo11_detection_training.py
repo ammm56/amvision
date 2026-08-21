@@ -101,6 +101,7 @@ from backend.service.application.models.yolo_core_common.weights import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionLossAccumulator,
     YoloModelEMA,
+    YoloTaskTrainingDataLoaderLifecycle,
     YoloUltralyticsTrainingSchedule,
     close_yolo_dataloader,
     normalize_yolo_detection_loss_metrics,
@@ -366,6 +367,33 @@ def run_yolo11_detection_training(
             augmentation_options=effective_augmentation_options,
         )
 
+    training_loader_lifecycle = YoloTaskTrainingDataLoaderLifecycle()
+
+    def _resolve_training_dataloader(epoch: int) -> Any:
+        """复用当前增强阶段的训练 DataLoader，避免每轮重启 Windows worker。"""
+
+        effective_augmentation_options = resolve_yolo11_task_augmentation_for_epoch(
+            augmentation_options=augmentation_options,
+            epoch_index=max(0, int(epoch) - 1),
+            max_epochs=max_epochs,
+        )
+        return training_loader_lifecycle.resolve(
+            augmentation_options=effective_augmentation_options,
+            build_loader=lambda: build_yolo11_detection_training_dataloader(
+                torch_module=imports.torch,
+                samples=train_samples,
+                batch_size=batch_size,
+                input_size=input_size,
+                augment_training=True,
+                augmentation_options=effective_augmentation_options,
+                plan=_replace_yolo11_dataloader_plan_seed(
+                    plan=dataloader_plan,
+                    seed=int(epoch),
+                ),
+                shuffle=True,
+            ),
+        )
+
     try:
         loop_result = run_yolo11_detection_training_loop(
             torch_module=imports.torch,
@@ -464,25 +492,7 @@ def run_yolo11_detection_training(
             validation_history=validation_history,
             evaluated_epochs=evaluated_epochs,
             previous_best_checkpoint_bytes=best_checkpoint_bytes,
-            training_dataloader_factory=lambda epoch: (
-                build_yolo11_detection_training_dataloader(
-                    torch_module=imports.torch,
-                    samples=train_samples,
-                    batch_size=batch_size,
-                    input_size=input_size,
-                    augment_training=True,
-                    augmentation_options=resolve_yolo11_task_augmentation_for_epoch(
-                        augmentation_options=augmentation_options,
-                        epoch_index=max(0, int(epoch) - 1),
-                        max_epochs=max_epochs,
-                    ),
-                    plan=_replace_yolo11_dataloader_plan_seed(
-                        plan=dataloader_plan,
-                        seed=int(epoch),
-                    ),
-                    shuffle=True,
-                )
-            ),
+            training_dataloader_factory=_resolve_training_dataloader,
             device=device,
             runtime_precision=runtime_precision,
             batch_callback=(
@@ -514,6 +524,8 @@ def run_yolo11_detection_training(
         ) from error
     except Yolo11DetectionTrainingTerminatedError as error:
         raise YoloDetectionTrainingTerminatedError() from error
+    finally:
+        training_loader_lifecycle.close()
 
     latest_checkpoint_bytes = loop_result.latest_checkpoint_bytes
     best_checkpoint_bytes = loop_result.best_checkpoint_bytes or latest_checkpoint_bytes
@@ -1064,6 +1076,7 @@ def _evaluate_yolo11_detection_model_once(
                     batch.images,
                     device=device,
                     runtime_precision=runtime_precision,
+                    torch_module=imports.torch,
                 )
                 batch_targets = batch.targets
                 with autocast_context():

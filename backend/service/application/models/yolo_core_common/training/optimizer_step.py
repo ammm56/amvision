@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 import time
 
@@ -15,7 +16,11 @@ from backend.service.application.models.yolo_core_common.training.ultralytics_sc
 )
 
 
-_MIN_RECOVERABLE_AMP_SCALE = 1.0
+# PyTorch GradScaler 不保证 scale 始终大于等于 1。RLE 等高梯度分支可能
+# 需要 sub-unit scale 才能让 FP16 中间 gradient 保持有限；在 1.0 处终止会
+# 把仍可恢复的 batch 误判成永久数值错误。2^-16 对应 FP16 最小 subnormal
+# 量级，在继续下降只会大量丢失有效 gradient 前保留明确的硬停止边界。
+_MIN_RECOVERABLE_AMP_SCALE = 2.0**-16
 _MAX_STALLED_AMP_SKIPPED_STEPS = 8
 
 
@@ -77,6 +82,7 @@ class YoloUltralyticsOptimizerStep:
         self.consecutive_skipped_optimizer_steps = 0
         self.last_scheduler_optimizer_step_count = 0
         self._forward_started_at: float | None = None
+        self._batch_runtime_metrics: dict[str, float] = {}
         self.optimizer.zero_grad(set_to_none=True)
 
     def prepare_batch(
@@ -95,8 +101,25 @@ class YoloUltralyticsOptimizerStep:
             epoch=max(1, int(epoch)),
             batch_size=max(1, int(batch_size)),
         )
+        self._batch_runtime_metrics = {
+            "gradient_accumulate": float(self.current_accumulate),
+        }
         self._forward_started_at = time.perf_counter()
         return self.current_accumulate
+
+    def record_batch_runtime_metrics(self, metrics: dict[str, float]) -> None:
+        """补充当前 batch 的低开销诊断字段。"""
+
+        self._batch_runtime_metrics.update(
+            {
+                str(name): float(value)
+                for name, value in metrics.items()
+                if isinstance(value, int | float)
+                and not isinstance(value, bool)
+                and math.isfinite(float(value))
+                and float(value) >= 0.0
+            }
+        )
 
     def backward_and_step(
         self,
@@ -120,6 +143,16 @@ class YoloUltralyticsOptimizerStep:
             or bool(is_last_batch)
         )
         if not should_step:
+            self.record_batch_runtime_metrics(
+                {
+                    "optimizer_step_attempted": 0.0,
+                    "optimizer_step_succeeded": 0.0,
+                    "optimizer_successful_steps": float(
+                        self.successful_optimizer_steps
+                    ),
+                    "optimizer_skipped_steps": float(self.skipped_optimizer_steps),
+                }
+            )
             self._record_stage_metrics(
                 forward_started_at=forward_started_at,
                 backward_started_at=backward_started_at,
@@ -130,13 +163,23 @@ class YoloUltralyticsOptimizerStep:
         optimizer_step_succeeded = True
         amp_scale_before: float | None = None
         amp_scale_after: float | None = None
+        nonfinite_gradient_parameters: tuple[str, ...] = ()
         if self.scaler is not None:
-            gradient_norm = self.torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                self.grad_clip_norm if self.grad_clip_norm > 0 else float("inf"),
-                error_if_nonfinite=False,
-            )
-            gradients_are_finite = bool(self.torch.isfinite(gradient_norm).item())
+            try:
+                self.torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    self.grad_clip_norm if self.grad_clip_norm > 0 else float("inf"),
+                    error_if_nonfinite=True,
+                )
+                gradients_are_finite = True
+            except RuntimeError:
+                # ``error_if_nonfinite=False`` 会继续执行裁剪；Inf * 0 会把
+                # 原本有限的 gradient 一并改成 NaN，导致无法定位首个源头。
+                # 异常路径先保留原始 gradient，再记录具体参数名供真实训练诊断。
+                gradients_are_finite = False
+                nonfinite_gradient_parameters = (
+                    self._find_nonfinite_gradient_parameters()
+                )
         else:
             try:
                 self.torch.nn.utils.clip_grad_norm_(
@@ -145,9 +188,14 @@ class YoloUltralyticsOptimizerStep:
                     error_if_nonfinite=True,
                 )
             except RuntimeError as error:
+                nonfinite_gradient_parameters = (
+                    self._find_nonfinite_gradient_parameters()
+                )
                 raise YoloTrainingNumericalError(
                     "YOLO 训练产生非有限 FP32 gradient "
-                    f"(global_iteration={int(iteration_index)})"
+                    f"(global_iteration={int(iteration_index)}, "
+                    f"nonfinite_gradient_parameters="
+                    f"{self._format_gradient_parameter_names(nonfinite_gradient_parameters)})"
                 ) from error
         if self.scaler is not None:
             scale_before_step = float(self.scaler.get_scale())
@@ -186,8 +234,24 @@ class YoloUltralyticsOptimizerStep:
                     f"consecutive_skipped_steps="
                     f"{self.consecutive_skipped_optimizer_steps}, "
                     f"scale_before={amp_scale_before}, "
-                    f"scale_after={amp_scale_after})"
+                    f"scale_after={amp_scale_after}, "
+                    f"nonfinite_gradient_parameters="
+                    f"{self._format_gradient_parameter_names(nonfinite_gradient_parameters)})"
                 )
+        optimizer_metrics = {
+            "optimizer_step_attempted": 1.0,
+            "optimizer_step_succeeded": float(optimizer_step_succeeded),
+            "optimizer_successful_steps": float(self.successful_optimizer_steps),
+            "optimizer_skipped_steps": float(self.skipped_optimizer_steps),
+            "optimizer_consecutive_skipped_steps": float(
+                self.consecutive_skipped_optimizer_steps
+            ),
+        }
+        if amp_scale_before is not None:
+            optimizer_metrics["amp_scale_before"] = amp_scale_before
+        if amp_scale_after is not None:
+            optimizer_metrics["amp_scale_after"] = amp_scale_after
+        self.record_batch_runtime_metrics(optimizer_metrics)
         if self.ema is not None and optimizer_step_succeeded:
             self.ema.update(self.model)
         self.optimizer.zero_grad(set_to_none=True)
@@ -199,6 +263,26 @@ class YoloUltralyticsOptimizerStep:
         if consecutive_overflow_error is not None:
             raise consecutive_overflow_error
         return optimizer_step_succeeded
+
+    def _find_nonfinite_gradient_parameters(self) -> tuple[str, ...]:
+        """返回含 NaN/Inf gradient 的参数名，限制数量避免错误文本失控。"""
+
+        names: list[str] = []
+        for name, parameter in self.model.named_parameters():
+            gradient = parameter.grad
+            if gradient is None:
+                continue
+            if not bool(self.torch.isfinite(gradient).all().item()):
+                names.append(str(name))
+                if len(names) >= 16:
+                    break
+        return tuple(names)
+
+    @staticmethod
+    def _format_gradient_parameter_names(names: tuple[str, ...]) -> str:
+        """把异常参数名压缩成稳定的单行诊断文本。"""
+
+        return "[" + ",".join(names) + "]"
 
     def _record_stage_metrics(
         self,
@@ -212,6 +296,7 @@ class YoloUltralyticsOptimizerStep:
         self._forward_started_at = None
         record_active_training_batch_stage_metrics(
             {
+                **self._batch_runtime_metrics,
                 "forward_loss_host_time_ms": (
                     backward_started_at - forward_started_at
                 )

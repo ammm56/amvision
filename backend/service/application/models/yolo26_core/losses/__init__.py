@@ -20,6 +20,7 @@ from backend.service.application.models.yolo26_core.losses.obb import (
 )
 from backend.service.application.models.yolo26_core.losses.pose import (
     build_yolo26_pose_rle_weights,
+    compute_yolo26_batched_rle_loss,
     compute_yolo26_pose_loss,
     compute_yolo26_rle_loss,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "compute_yolo26_classification_loss",
     "compute_yolo26_detection_loss",
     "compute_yolo26_obb_loss",
+    "compute_yolo26_batched_rle_loss",
     "compute_yolo26_pose_loss",
     "compute_yolo26_rle_loss",
     "compute_yolo26_segmentation_detection_loss",

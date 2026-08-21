@@ -101,6 +101,7 @@ from backend.service.application.models.yolo_core_common.geometry import (
 from backend.service.application.models.yolo_core_common.training import (
     YoloDetectionLossAccumulator,
     YoloModelEMA,
+    YoloTaskTrainingDataLoaderLifecycle,
     build_yolo_completed_epoch_history_item,
     close_yolo_dataloader,
     normalize_yolo_detection_loss_metrics,
@@ -623,24 +624,35 @@ def run_yolov8_detection_training(
     successful_optimizer_steps = 0
     skipped_optimizer_steps = 0
 
-    for epoch in range(resume_epoch + 1, max_epochs + 1):
-        training_dataloader = build_yolov8_detection_training_dataloader(
-            torch_module=imports.torch,
-            samples=train_samples,
-            batch_size=batch_size,
-            input_size=input_size,
-            augment_training=True,
-            augmentation_options=_resolve_detection_augmentation_for_epoch(
-                augmentation_options=augmentation_options,
-                epoch=epoch,
-                max_epochs=max_epochs,
-            ),
-            plan=_replace_dataloader_plan_seed(
-                plan=dataloader_plan,
-                seed=epoch,
-            ),
-            shuffle=True,
+    training_loader_lifecycle = YoloTaskTrainingDataLoaderLifecycle()
+
+    def _resolve_training_dataloader(epoch: int) -> Any:
+        """复用当前增强阶段的训练 DataLoader，避免每轮重启 Windows worker。"""
+
+        effective_augmentation_options = _resolve_detection_augmentation_for_epoch(
+            augmentation_options=augmentation_options,
+            epoch=epoch,
+            max_epochs=max_epochs,
         )
+        return training_loader_lifecycle.resolve(
+            augmentation_options=effective_augmentation_options,
+            build_loader=lambda: build_yolov8_detection_training_dataloader(
+                torch_module=imports.torch,
+                samples=train_samples,
+                batch_size=batch_size,
+                input_size=input_size,
+                augment_training=True,
+                augmentation_options=effective_augmentation_options,
+                plan=_replace_dataloader_plan_seed(
+                    plan=dataloader_plan,
+                    seed=epoch,
+                ),
+                shuffle=True,
+            ),
+        )
+
+    for epoch in range(resume_epoch + 1, max_epochs + 1):
+        training_dataloader = _resolve_training_dataloader(epoch)
 
         def on_yolov8_batch_progress(
             progress: YoloV8DetectionTrainingBatchProgress,
@@ -895,6 +907,7 @@ def run_yolov8_detection_training(
             )
             request.savepoint_callback(savepoint)
         if should_pause_training:
+            training_loader_lifecycle.close()
             savepoint_payload = build_yolov8_detection_training_savepoint_payload(
                 epoch=epoch,
                 latest_checkpoint_bytes=latest_checkpoint_bytes,
@@ -913,8 +926,10 @@ def run_yolov8_detection_training(
                 )
             )
         if should_terminate_training:
+            training_loader_lifecycle.close()
             raise YoloV8DetectionTrainingTerminatedError()
 
+    training_loader_lifecycle.close()
     require_yolo_successful_optimizer_step(
         successful_optimizer_steps=successful_optimizer_steps,
         skipped_optimizer_steps=skipped_optimizer_steps,
@@ -1864,8 +1879,11 @@ def _evaluate_detection_model_once(
     try:
         with torch.no_grad():
             for batch in validation_dataloader:
+                batch_images = batch.images
+                if not bool(torch.is_tensor(batch_images)):
+                    batch_images = torch.from_numpy(batch_images)
                 images = move_yolo_tensor_to_training_device(
-                    batch.images,
+                    batch_images,
                     device=device,
                     runtime_precision=runtime_precision,
                 )

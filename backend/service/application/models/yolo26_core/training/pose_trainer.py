@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import time
 from typing import Any
 
 from backend.service.application.models.training.metric_policy import (
@@ -200,36 +201,41 @@ def run_yolo26_pose_training_loop(
                 resolve_batch_input_size=resolve_yolo26_task_batch_input_size,
             ),
         )
-        epoch_metrics, global_iteration = _run_yolo26_pose_epoch(
-            imports=imports,
-            model=model,
-            optimizer=optimizer,
-            scaler=scaler,
-            optimizer_step=optimizer_step,
-            train_dataloader=train_dataloader,
-            precision=precision,
-            device_name=device_name,
-            epoch=epoch,
-            max_epochs=max_epochs,
-            global_iteration=global_iteration,
-            kpt_shape=kpt_shape,
-            class_loss_weight=class_loss_weight,
-            box_loss_weight=box_loss_weight,
-            dfl_loss_weight=dfl_loss_weight,
-            kpt_loss_weight=kpt_loss_weight,
-            assign_topk=assign_topk,
-            assign_alpha=assign_alpha,
-            assign_beta=assign_beta,
-            assign_topk2=assign_topk2,
-            autocast_context=autocast_context,
-            control_callback=control_callback,
-            input_size=input_size,
-            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+        try:
+            epoch_metrics, global_iteration = _run_yolo26_pose_epoch(
+                imports=imports,
+                model=model,
                 optimizer=optimizer,
-                initial_learning_rate=training_schedule.initial_lr,
-            ),
-            batch_callback=batch_callback,
-        )
+                scaler=scaler,
+                optimizer_step=optimizer_step,
+                train_dataloader=train_dataloader,
+                precision=precision,
+                device_name=device_name,
+                epoch=epoch,
+                max_epochs=max_epochs,
+                global_iteration=global_iteration,
+                kpt_shape=kpt_shape,
+                class_loss_weight=class_loss_weight,
+                box_loss_weight=box_loss_weight,
+                dfl_loss_weight=dfl_loss_weight,
+                kpt_loss_weight=kpt_loss_weight,
+                assign_topk=assign_topk,
+                assign_alpha=assign_alpha,
+                assign_beta=assign_beta,
+                assign_topk2=assign_topk2,
+                autocast_context=autocast_context,
+                control_callback=control_callback,
+                input_size=input_size,
+                learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                    optimizer=optimizer,
+                    initial_learning_rate=training_schedule.initial_lr,
+                ),
+                batch_callback=batch_callback,
+            )
+        except BaseException:
+            # 数值异常或人工中断都必须回收 persistent DataLoader 子进程。
+            training_loader_lifecycle.close()
+            raise
         metrics_history.append(
             build_yolo_epoch_history_item(epoch_index=epoch, metrics=epoch_metrics)
         )
@@ -341,8 +347,10 @@ def run_yolo26_pose_training_loop(
                 )
             )
         if command is not None and command.pause_training:
+            training_loader_lifecycle.close()
             raise Yolo26PoseTrainingPausedError()
         if command is not None and command.terminate_training:
+            training_loader_lifecycle.close()
             raise Yolo26PoseTrainingTerminatedError()
 
     training_loader_lifecycle.close()
@@ -410,14 +418,20 @@ def _run_yolo26_pose_epoch(
             epoch=epoch + 1,
             batch_size=len(batch.targets),
         )
+        batch_height = int(batch.images.shape[-2])
+        batch_width = int(batch.images.shape[-1])
+        model_forward_started_at = time.perf_counter()
         with autocast_context():
             raw_outputs = model(batch.images)
+            model_forward_completed_at = time.perf_counter()
             if (
                 isinstance(raw_outputs, dict)
                 and "one2many" in raw_outputs
                 and "one2one" in raw_outputs
             ):
                 raw_for_loss = raw_outputs["one2many"]
+                one2many_runtime: dict[str, float] = {}
+                one2many_loss_started_at = time.perf_counter()
                 one2many_payload = compute_yolo26_pose_loss(
                     torch=imports.torch,
                     model=model,
@@ -433,7 +447,10 @@ def _run_yolo26_pose_epoch(
                     assign_alpha=assign_alpha,
                     assign_beta=assign_beta,
                     assign_topk2=None,
+                    runtime_metrics=one2many_runtime,
                 )
+                one2many_loss_completed_at = time.perf_counter()
+                one2one_runtime: dict[str, float] = {}
                 one2one_payload = compute_yolo26_pose_loss(
                     torch=imports.torch,
                     model=model,
@@ -449,7 +466,9 @@ def _run_yolo26_pose_epoch(
                     assign_alpha=assign_alpha,
                     assign_beta=assign_beta,
                     assign_topk2=1,
+                    runtime_metrics=one2one_runtime,
                 )
+                one2one_loss_completed_at = time.perf_counter()
                 one2many_weight, one2one_weight = resolve_yolo26_end2end_loss_weights(
                     epoch=epoch + 1,
                     max_epochs=max_epochs,
@@ -460,8 +479,36 @@ def _run_yolo26_pose_epoch(
                     one2many_weight=one2many_weight,
                     one2one_weight=one2one_weight,
                 )
+                optimizer_step.record_batch_runtime_metrics(
+                    {
+                        "batch_input_height": float(batch_height),
+                        "batch_input_width": float(batch_width),
+                        "model_forward_host_time_ms": (
+                            model_forward_completed_at - model_forward_started_at
+                        )
+                        * 1000.0,
+                        "one2many_loss_host_time_ms": (
+                            one2many_loss_completed_at - one2many_loss_started_at
+                        )
+                        * 1000.0,
+                        "one2one_loss_host_time_ms": (
+                            one2one_loss_completed_at - one2many_loss_completed_at
+                        )
+                        * 1000.0,
+                        **{
+                            f"one2many_{name}": value
+                            for name, value in one2many_runtime.items()
+                        },
+                        **{
+                            f"one2one_{name}": value
+                            for name, value in one2one_runtime.items()
+                        },
+                    }
+                )
             else:
                 raw_for_loss = raw_outputs
+                single_runtime: dict[str, float] = {}
+                single_loss_started_at = time.perf_counter()
                 loss_payload = compute_yolo26_pose_loss(
                     torch=imports.torch,
                     model=model,
@@ -477,6 +524,23 @@ def _run_yolo26_pose_epoch(
                     assign_alpha=assign_alpha,
                     assign_beta=assign_beta,
                     assign_topk2=assign_topk2,
+                    runtime_metrics=single_runtime,
+                )
+                single_loss_completed_at = time.perf_counter()
+                optimizer_step.record_batch_runtime_metrics(
+                    {
+                        "batch_input_height": float(batch_height),
+                        "batch_input_width": float(batch_width),
+                        "model_forward_host_time_ms": (
+                            model_forward_completed_at - model_forward_started_at
+                        )
+                        * 1000.0,
+                        "pose_loss_host_time_ms": (
+                            single_loss_completed_at - single_loss_started_at
+                        )
+                        * 1000.0,
+                        **single_runtime,
+                    }
                 )
         non_finite_components = {
             key: float(value.detach().item())

@@ -39,6 +39,7 @@ from backend.service.application.models.yolo_core_common.training.classification
     move_yolo_classification_batch_to_device,
     replace_yolo_classification_dataloader_plan_seed,
     resolve_yolo_classification_dataloader_plan,
+    resolve_yolo_classification_evaluation_dataloader_plan,
 )
 from backend.service.application.models.yolo_core_common.training.task_dataloader import (
     YoloTaskDataLoaderPlan,
@@ -97,6 +98,7 @@ __all__ = [
     "replace_yolo_classification_dataloader_plan_seed",
     "replace_yolo_task_dataloader_plan_seed",
     "resolve_yolo_classification_dataloader_plan",
+    "resolve_yolo_classification_evaluation_dataloader_plan",
     "resolve_yolo_dataloader_batch_size",
     "resolve_yolo_dataloader_worker_count",
     "resolve_yolo_task_evaluation_dataloader_plan",

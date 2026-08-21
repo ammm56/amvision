@@ -37,6 +37,7 @@ from backend.service.application.models.yolo11_core.evaluation import (
     Yolo11ObbEvaluationRequest,
     Yolo11PoseEvaluationRequest,
     Yolo11SegmentationEvaluationRequest,
+    evaluate_yolo11_classification_samples,
     evaluate_yolo11_obb_samples,
     evaluate_yolo11_pose_samples,
     evaluate_yolo11_segmentation_samples,
@@ -454,6 +455,7 @@ from backend.service.application.models.yolo26_core.evaluation import (
     Yolo26ObbEvaluationRequest,
     Yolo26PoseEvaluationRequest,
     Yolo26SegmentationEvaluationRequest,
+    evaluate_yolo26_classification_samples,
     evaluate_yolo26_obb_samples,
     evaluate_yolo26_pose_samples,
     evaluate_yolo26_segmentation_samples,
@@ -1937,6 +1939,15 @@ def test_yolo_remaining_task_training_loops_poll_control_inside_batch_loop(
 
     assert "control_callback" in source
     assert "control_callback()" in source
+
+
+def test_yolo26_pose_training_loop_closes_loader_after_epoch_failure() -> None:
+    """验证 YOLO26 pose 数值异常不会残留 persistent DataLoader 进程。"""
+
+    source = inspect.getsource(run_yolo26_pose_training_loop)
+
+    assert "except BaseException:" in source
+    assert "training_loader_lifecycle.close()" in source
 
 
 @pytest.mark.parametrize(
@@ -3582,6 +3593,54 @@ def test_yolov8_classification_core_data_eval_and_preview_entries(
     assert metrics["top1_accuracy"] == 1.0
     assert len(control_calls) >= 2
     assert preview_bytes.startswith(b"\xff\xd8")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="需要 CUDA AMP 运行时")
+def test_yolo_classification_fp16_evaluation_keeps_fp32_model_weights(
+    tmp_path: Path,
+) -> None:
+    """验证三代 classification validation 可用 FP16 输入和 FP32 主权重。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image_path = tmp_path / "classification-amp.jpg"
+    assert (
+        cv2.imwrite(str(image_path), np.full((16, 16, 3), 255, dtype=np.uint8))
+        is True
+    )
+    sample = SimpleNamespace(image_path=str(image_path), class_id=1)
+    imports = SimpleNamespace(cv2=cv2, np=np, torch=torch)
+
+    class _CudaClassificationModel(torch.nn.Module):
+        """用 FP32 Conv2d 暴露缺失 autocast 时的 dtype 冲突。"""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.features = torch.nn.Conv2d(3, 2, kernel_size=1)
+
+        def forward(self, images: object) -> object:
+            logits = self.features(images).mean(dim=(2, 3))
+            return logits
+
+    evaluators = (
+        evaluate_yolov8_classification_samples,
+        evaluate_yolo11_classification_samples,
+        evaluate_yolo26_classification_samples,
+    )
+    for evaluator in evaluators:
+        model = _CudaClassificationModel().cuda().float()
+        metrics = evaluator(
+            model=model,
+            samples=[sample],
+            labels=("bad", "good"),
+            batch_size=1,
+            input_size=(16, 16),
+            device="cuda:0",
+            precision="fp16",
+            imports=imports,
+        )
+        assert metrics["top1_accuracy"] in {0.0, 1.0}
+        assert next(model.parameters()).dtype == torch.float32
 
 
 def test_yolov8_pose_core_data_and_eval_entries(tmp_path: Path) -> None:

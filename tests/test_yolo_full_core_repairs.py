@@ -348,7 +348,9 @@ def test_yolo_task_entrypoints_reject_zero_optimizer_updates(
     )
 
 
-def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
+def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """GradScaler 跳过 overflow step 时不得伪装成一次有效模型更新。"""
 
     class _OverflowGradScaler:
@@ -390,6 +392,13 @@ def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
         ema=ema,
         grad_clip_norm=10.0,
     )
+    recorded_runtime: list[dict[str, float]] = []
+    monkeypatch.setattr(
+        "backend.service.application.models.yolo_core_common.training."
+        "optimizer_step.record_active_training_batch_stage_metrics",
+        lambda metrics: recorded_runtime.append(metrics),
+    )
+    optimizer_step.record_batch_runtime_metrics({"batch_input_height": 640.0})
     original = model.weight.detach().clone()
 
     did_step = optimizer_step.backward_and_step(
@@ -402,6 +411,12 @@ def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
     assert optimizer_step.successful_optimizer_steps == 0
     assert optimizer_step.skipped_optimizer_steps == 1
     assert optimizer_step.consecutive_skipped_optimizer_steps == 1
+    assert recorded_runtime[-1]["batch_input_height"] == 640.0
+    assert recorded_runtime[-1]["optimizer_step_attempted"] == 1.0
+    assert recorded_runtime[-1]["optimizer_step_succeeded"] == 0.0
+    assert recorded_runtime[-1]["optimizer_skipped_steps"] == 1.0
+    assert recorded_runtime[-1]["amp_scale_before"] == 65536.0
+    assert recorded_runtime[-1]["amp_scale_after"] == 32768.0
     assert ema.updates == 0
     assert torch.equal(model.weight.detach(), original)
     scheduler_calls: list[bool] = []
@@ -415,7 +430,7 @@ def test_amp_overflow_does_not_advance_ema_or_report_optimizer_step() -> None:
 
 
 def test_amp_overflow_allows_scale_recovery_until_minimum_scale() -> None:
-    """持续下降的 loss scale 可恢复；低于 1 仍 overflow 才终止。"""
+    """持续下降的 loss scale 可低于 1；低于 FP16 subnormal 边界才终止。"""
 
     class _AlwaysOverflowGradScaler:
         def __init__(self) -> None:
@@ -456,7 +471,7 @@ def test_amp_overflow_allows_scale_recovery_until_minimum_scale() -> None:
         grad_clip_norm=10.0,
     )
 
-    for iteration in range(1, 17):
+    for iteration in range(1, 33):
         assert (
             optimizer_step.backward_and_step(
                 loss=model(torch.ones((1, 2))).square().mean(),
@@ -472,13 +487,138 @@ def test_amp_overflow_allows_scale_recovery_until_minimum_scale() -> None:
     ):
         optimizer_step.backward_and_step(
             loss=model(torch.ones((1, 2))).square().mean(),
-            iteration_index=17,
+            iteration_index=33,
             is_last_batch=True,
         )
 
     assert optimizer_step.successful_optimizer_steps == 0
-    assert optimizer_step.skipped_optimizer_steps == 17
-    assert optimizer_step.consecutive_skipped_optimizer_steps == 17
+    assert optimizer_step.skipped_optimizer_steps == 33
+    assert optimizer_step.consecutive_skipped_optimizer_steps == 33
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+
+def test_amp_overflow_recovers_with_subunit_scale() -> None:
+    """验证 scale 降到 0.5 后恢复的有效 batch 不会被提前终止。"""
+
+    class _SubunitRecoveryGradScaler:
+        def __init__(self) -> None:
+            self.scale_value = 1.0
+
+        def scale(self, loss):
+            return loss
+
+        def unscale_(self, _optimizer) -> None:
+            return None
+
+        def step(self, optimizer) -> None:
+            if self.scale_value <= 0.5:
+                optimizer.step()
+
+        def update(self) -> None:
+            if self.scale_value > 0.5:
+                self.scale_value = 0.5
+
+        def get_scale(self) -> float:
+            return self.scale_value
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=1,
+        train_sample_count=2,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=_SubunitRecoveryGradScaler(),
+        schedule=schedule,
+        ema=None,
+        grad_clip_norm=10.0,
+    )
+
+    first_step = optimizer_step.backward_and_step(
+        loss=model(torch.ones((1, 2))).square().mean(),
+        iteration_index=1,
+        is_last_batch=True,
+    )
+    second_step = optimizer_step.backward_and_step(
+        loss=model(torch.ones((1, 2))).square().mean(),
+        iteration_index=2,
+        is_last_batch=True,
+    )
+
+    assert first_step is False
+    assert second_step is True
+    assert optimizer_step.skipped_optimizer_steps == 1
+    assert optimizer_step.successful_optimizer_steps == 1
+
+
+def test_amp_overflow_reports_original_nonfinite_gradient_parameter() -> None:
+    """AMP 不可恢复时必须保留并报告最初出现 Inf gradient 的参数。"""
+
+    class _InfiniteGradient(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, value):
+            return value.clone()
+
+        @staticmethod
+        def backward(ctx, gradient):
+            return torch.full_like(gradient, float("inf"))
+
+    class _MinimumScaleGradScaler:
+        def __init__(self) -> None:
+            self.scale_value = 2.0**-16
+
+        def scale(self, loss):
+            return loss
+
+        def unscale_(self, _optimizer) -> None:
+            return None
+
+        def step(self, _optimizer) -> None:
+            return None
+
+        def update(self) -> None:
+            self.scale_value = 2.0**-17
+
+        def get_scale(self) -> float:
+            return self.scale_value
+
+    model = nn.Linear(2, 1)
+    optimizer, schedule = build_yolo_ultralytics_optimizer(
+        torch_module=torch,
+        model=model,
+        num_classes=1,
+        batch_size=1,
+        train_sample_count=1,
+        max_epochs=1,
+        warmup_epochs=0.0,
+    )
+    optimizer_step = YoloUltralyticsOptimizerStep(
+        torch_module=torch,
+        model=model,
+        optimizer=optimizer,
+        scaler=_MinimumScaleGradScaler(),
+        schedule=schedule,
+        ema=None,
+        grad_clip_norm=10.0,
+    )
+
+    with pytest.raises(
+        YoloTrainingNumericalError,
+        match=r"nonfinite_gradient_parameters=\[weight\]",
+    ):
+        optimizer_step.backward_and_step(
+            loss=_InfiniteGradient.apply(model.weight).sum(),
+            iteration_index=1,
+            is_last_batch=True,
+        )
+
     assert all(parameter.grad is None for parameter in model.parameters())
 
 

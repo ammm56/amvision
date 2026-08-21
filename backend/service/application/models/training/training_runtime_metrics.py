@@ -185,14 +185,19 @@ class TrainingRuntimeMetricsSampler:
                 pass
 
         if now - state.last_gpu_sample_at >= self._gpu_sample_interval_seconds:
-            utilization = getattr(cuda, "utilization", None)
-            if callable(utilization):
+            for output_name, reader_name, transform in (
+                ("gpu_utilization_percent", "utilization", float),
+                ("gpu_temperature_celsius", "temperature", float),
+                ("gpu_power_draw_watts", "power_draw", lambda value: float(value) / 1000.0),
+                ("gpu_sm_clock_mhz", "clock_rate", float),
+            ):
+                reader = getattr(cuda, reader_name, None)
+                if not callable(reader):
+                    continue
                 try:
-                    state.cached_gpu_metrics["gpu_utilization_percent"] = float(
-                        utilization(device)
-                    )
+                    state.cached_gpu_metrics[output_name] = transform(reader(device))
                 except Exception:
-                    state.cached_gpu_metrics.pop("gpu_utilization_percent", None)
+                    state.cached_gpu_metrics.pop(output_name, None)
             state.last_gpu_sample_at = now
         metrics.update(state.cached_gpu_metrics)
         return metrics

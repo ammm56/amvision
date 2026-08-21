@@ -10,6 +10,7 @@ import pytest
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.amp_policy import (
     build_training_autocast_context,
+    build_training_autocast_context_for_precision,
     resolve_training_amp_runtime,
 )
 
@@ -87,3 +88,19 @@ def test_legacy_fp16_request_remains_supported() -> None:
         extra_options={},
     )
     assert runtime.precision == "fp16"
+
+
+def test_resolved_fp16_evaluation_uses_cuda_autocast() -> None:
+    """验证训练期评估按已解析 FP16 precision 进入 CUDA autocast。"""
+
+    torch_module = _torch()
+    with build_training_autocast_context_for_precision(
+        torch_module=torch_module,
+        device_name="cuda:0",
+        precision="fp16",
+    )():
+        pass
+
+    assert torch_module.amp.autocast.calls == [
+        (("cuda",), {"dtype": "torch.float16", "enabled": True})
+    ]

@@ -10,12 +10,16 @@ from backend.service.application.models.evaluation.model_mode import evaluating_
 from backend.service.application.models.training.classification_evaluation_report import (
     build_classification_evaluation_report,
 )
+from backend.service.application.models.training.amp_policy import (
+    build_training_autocast_context_for_precision,
+)
 from backend.service.application.models.yolo_core_common.training import (
     YoloClassificationDataLoaderPlan,
     build_yolo_classification_training_dataloader,
     load_yolo_classification_dataloader_imports,
     managed_yolo_task_evaluation_dataloader,
     move_yolo_classification_batch_to_device,
+    resolve_yolo_classification_evaluation_dataloader_plan,
 )
 from backend.service.application.models.yolov8_core.data import (
     build_yolov8_classification_training_batch,
@@ -43,12 +47,9 @@ def evaluate_yolov8_classification_samples(
 ) -> dict[str, object]:
     """对验证样本执行 YOLOv8 classification 训练期评估。"""
 
-    plan = dataloader_plan or YoloClassificationDataLoaderPlan(
-        num_workers=0,
-        pin_memory=str(device).startswith("cuda"),
-        prefetch_factor=4,
-        persistent_workers=False,
-        seed=100_000,
+    plan = resolve_yolo_classification_evaluation_dataloader_plan(
+        plan=dataloader_plan,
+        device=device,
     )
     validation_dataloader = build_yolo_classification_training_dataloader(
         torch_module=imports.torch,
@@ -67,6 +68,11 @@ def evaluate_yolov8_classification_samples(
     total = 0
     targets: list[int] = []
     predictions: list[int] = []
+    autocast_context = build_training_autocast_context_for_precision(
+        torch_module=imports.torch,
+        device_name=device,
+        precision=precision,
+    )
     with (
         managed_yolo_task_evaluation_dataloader(validation_dataloader),
         evaluating_model(model),
@@ -83,7 +89,8 @@ def evaluate_yolov8_classification_samples(
                 precision=precision,
                 torch_module=imports.torch,
             )
-            outputs = model(batch.images)
+            with autocast_context():
+                outputs = model(batch.images)
             _, probabilities = normalize_yolov8_classification_training_outputs(
                 outputs=outputs,
             )

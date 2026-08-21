@@ -66,7 +66,9 @@ def run_yolov8_detection_training_epoch(
     optimizer: Any,
     scaler: Any,
     autocast_context: Callable[[], Any],
-    build_batch: Callable[[list[Any], tuple[Any, ...], int], tuple[Any, tuple[Any, ...]]],
+    build_batch: Callable[
+        [list[Any], tuple[Any, ...], int], tuple[Any, tuple[Any, ...]]
+    ],
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
     grad_clip_norm: float,
@@ -75,7 +77,8 @@ def run_yolov8_detection_training_epoch(
     device: str | None = None,
     runtime_precision: str = "fp32",
     training_schedule: YoloUltralyticsTrainingSchedule | None = None,
-    batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None] | None = None,
+    batch_callback: Callable[[YoloV8DetectionTrainingBatchProgress], None]
+    | None = None,
 ) -> YoloV8DetectionTrainingEpochResult:
     """执行 YOLOv8 detection 一个 epoch 的 batch 循环。"""
 
@@ -108,8 +111,11 @@ def run_yolov8_detection_training_epoch(
         )
         if isinstance(sample_batch, YoloV8DetectionDataLoaderBatch):
             resolved_device = device or "cpu"
+            batch_images = sample_batch.images
+            if not bool(torch_module.is_tensor(batch_images)):
+                batch_images = torch_module.from_numpy(batch_images)
             images = move_yolo_tensor_to_training_device(
-                sample_batch.images,
+                batch_images,
                 device=resolved_device,
                 runtime_precision=runtime_precision,
             )
@@ -153,7 +159,9 @@ def run_yolov8_detection_training_epoch(
             scaler.update()
             scale_after = float(scale_reader()) if callable(scale_reader) else None
             step_succeeded = gradients_are_finite and (
-                scale_before is None or scale_after is None or scale_after >= scale_before
+                scale_before is None
+                or scale_after is None
+                or scale_after >= scale_before
             )
             if step_succeeded:
                 successful_optimizer_steps += 1
@@ -166,15 +174,12 @@ def run_yolov8_detection_training_epoch(
         completed_at = time.perf_counter()
         record_active_training_batch_stage_metrics(
             {
-                "forward_loss_host_time_ms": (
-                    backward_started_at - forward_started_at
-                ) * 1000.0,
-                "backward_optimizer_host_time_ms": (
-                    completed_at - backward_started_at
-                ) * 1000.0,
-                "batch_compute_host_time_ms": (
-                    completed_at - forward_started_at
-                ) * 1000.0,
+                "forward_loss_host_time_ms": (backward_started_at - forward_started_at)
+                * 1000.0,
+                "backward_optimizer_host_time_ms": (completed_at - backward_started_at)
+                * 1000.0,
+                "batch_compute_host_time_ms": (completed_at - forward_started_at)
+                * 1000.0,
             }
         )
 
@@ -225,7 +230,7 @@ def _iter_yolov8_detection_batches(
 
     resolved_batch_size = max(1, int(batch_size))
     return [
-        samples[start:start + resolved_batch_size]
+        samples[start : start + resolved_batch_size]
         for start in range(0, len(samples), resolved_batch_size)
     ]
 

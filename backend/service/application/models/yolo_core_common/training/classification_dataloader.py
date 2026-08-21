@@ -136,6 +136,34 @@ def replace_yolo_classification_dataloader_plan_seed(
     )
 
 
+def resolve_yolo_classification_evaluation_dataloader_plan(
+    *,
+    plan: YoloClassificationDataLoaderPlan | None,
+    device: str,
+) -> YoloClassificationDataLoaderPlan:
+    """构建与训练 persistent worker 池隔离的 classification 评估计划。
+
+    Windows 上同时保留训练池并为 validation 临时创建第二个 persistent
+    worker 池，会在 validation 池关闭后让训练池下一轮取数永久等待。评估
+    固定在主进程完成预处理，同时保留 pin-memory 与 seed 语义。
+    """
+
+    source = plan or YoloClassificationDataLoaderPlan(
+        num_workers=0,
+        pin_memory=str(device).startswith("cuda"),
+        prefetch_factor=4,
+        persistent_workers=False,
+        seed=100_000,
+    )
+    return YoloClassificationDataLoaderPlan(
+        num_workers=0,
+        pin_memory=source.pin_memory,
+        prefetch_factor=source.prefetch_factor,
+        persistent_workers=False,
+        seed=source.seed,
+    )
+
+
 def resolve_yolo_classification_dataloader_plan(
     *,
     extra_options: dict[str, object],
@@ -262,5 +290,6 @@ __all__ = [
     "load_yolo_classification_dataloader_imports",
     "move_yolo_classification_batch_to_device",
     "replace_yolo_classification_dataloader_plan_seed",
+    "resolve_yolo_classification_evaluation_dataloader_plan",
     "resolve_yolo_classification_dataloader_plan",
 ]

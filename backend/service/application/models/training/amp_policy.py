@@ -131,6 +131,45 @@ def build_training_autocast_context(
     return lambda: torch_module.cuda.amp.autocast(enabled=True)
 
 
+def build_training_autocast_context_for_precision(
+    *,
+    torch_module: Any,
+    device_name: str,
+    precision: str,
+) -> Any:
+    """按已解析的 precision 构建训练期评估 autocast context factory。
+
+    classification 训练会把输入按 AMP precision 搬到 CUDA，同时保留
+    FP32 模型主权重。训练循环已经位于 autocast 内，validation 和 test
+    也必须复用相同数值语义，避免 HalfTensor 输入直接进入 FP32 权重。
+    """
+
+    normalized_precision = str(precision).strip().lower()
+    enabled = str(device_name).startswith("cuda") and normalized_precision in {
+        "fp16",
+        "bf16",
+    }
+    dtype = None
+    if enabled:
+        dtype_name = "float16" if normalized_precision == "fp16" else "bfloat16"
+        dtype = getattr(torch_module, dtype_name, None)
+        if dtype is None:
+            raise InvalidRequestError(
+                "当前 PyTorch 运行时缺少请求的 AMP dtype",
+                details={"amp_dtype": normalized_precision},
+            )
+    return build_training_autocast_context(
+        torch_module=torch_module,
+        device_name=device_name,
+        runtime=TrainingAmpRuntime(
+            enabled=enabled,
+            precision=normalized_precision if enabled else "fp32",
+            dtype=dtype,
+            scaler_enabled=False,
+        ),
+    )
+
+
 def _cuda_bf16_is_supported(torch_module: Any) -> bool:
     """兼容不同 PyTorch 版本判断 CUDA BF16 能力。"""
 
@@ -142,5 +181,6 @@ def _cuda_bf16_is_supported(torch_module: Any) -> bool:
 __all__ = [
     "TrainingAmpRuntime",
     "build_training_autocast_context",
+    "build_training_autocast_context_for_precision",
     "resolve_training_amp_runtime",
 ]
