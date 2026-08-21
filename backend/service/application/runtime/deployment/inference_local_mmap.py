@@ -11,6 +11,7 @@ from threading import Event, Lock, Thread
 from time import monotonic_ns, sleep
 from typing import BinaryIO
 import json
+import logging
 import mmap
 import os
 import struct
@@ -40,6 +41,9 @@ _STATE_REQUEST = 1
 _STATE_PROCESSING = 2
 _STATE_RESPONSE = 3
 _STATE_CANCELLED = 4
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class _SlotGuardBusyError(Exception):
@@ -91,9 +95,7 @@ class InferenceLocalMmapClient:
 
         _reject_inline_image_bytes(payload)
         encoded_request = _encode_payload(payload)
-        deadline_ns = monotonic_ns() + int(
-            self.request_timeout_seconds * 1_000_000_000
-        )
+        deadline_ns = monotonic_ns() + int(self.request_timeout_seconds * 1_000_000_000)
         view = self._require_open()
         server_epoch = _read_server_epoch(view, path=self.path)
         owner_token = _new_u64_token()
@@ -350,13 +352,8 @@ class InferenceLocalMmapClient:
                 current_generation,
                 current_owner_token,
                 _,
-            ) = (
-                _SLOT_HEADER.unpack_from(view, slot_offset)
-            )
-            if (
-                current_generation != generation
-                or current_owner_token != owner_token
-            ):
+            ) = _SLOT_HEADER.unpack_from(view, slot_offset)
+            if current_generation != generation or current_owner_token != owner_token:
                 # generation 和 owner_token 是两个独立 uint64 字段。正常轮询保持
                 # 无锁；只有观察到不一致时才进入现有 slot guard 复核，避免把
                 # Windows 跨进程 mmap 的复合 header 交错读取误判为所有权丢失。
@@ -404,7 +401,10 @@ class InferenceLocalMmapClient:
                     and stable_lock_owner == owner_token
                 ):
                     continue
-                if monotonic_ns() + int(self.poll_interval_seconds * 2e9) >= deadline_ns:
+                if (
+                    monotonic_ns() + int(self.poll_interval_seconds * 2e9)
+                    >= deadline_ns
+                ):
                     break
                 raise OperationCancelledError(
                     "inference mmap 槽位所有权在请求处理中失效",
@@ -426,7 +426,10 @@ class InferenceLocalMmapClient:
                 if response_size <= 0 or response_size > self._payload_capacity:
                     raise ServiceConfigurationError(
                         "inference mmap 响应长度不合法",
-                        details={"slot_index": slot_index, "response_size": response_size},
+                        details={
+                            "slot_index": slot_index,
+                            "response_size": response_size,
+                        },
                     )
                 response_offset = (
                     slot_offset + _SLOT_HEADER.size + self._payload_capacity
@@ -459,9 +462,10 @@ class InferenceLocalMmapClient:
                     _read_server_epoch(view, path=self.path) == server_epoch
                     and current_generation == generation
                     and current_owner_token == owner_token
-                    and state in (
-                    _STATE_REQUEST,
-                    _STATE_PROCESSING,
+                    and state
+                    in (
+                        _STATE_REQUEST,
+                        _STATE_PROCESSING,
                     )
                 ):
                     _publish_slot_state(
@@ -699,9 +703,7 @@ class InferenceLocalMmapServer:
         while not self._stop_event.is_set():
             dispatched = False
             scan_time_ns = monotonic_ns()
-            sweep_abandoned_claims = (
-                scan_time_ns >= self._next_abandoned_claim_sweep_ns
-            )
+            sweep_abandoned_claims = scan_time_ns >= self._next_abandoned_claim_sweep_ns
             if sweep_abandoned_claims:
                 self._next_abandoned_claim_sweep_ns = (
                     scan_time_ns + _ABANDONED_CLAIM_SWEEP_INTERVAL_NS
@@ -797,8 +799,7 @@ class InferenceLocalMmapServer:
                             continue
                         with self._active_lock:
                             if (
-                                len(self._active_slots)
-                                >= self.max_concurrent_requests
+                                len(self._active_slots) >= self.max_concurrent_requests
                                 or slot_index in self._active_slots
                             ):
                                 continue
@@ -835,10 +836,7 @@ class InferenceLocalMmapServer:
         lock_path = _slot_lock_path(self.path, slot_index)
         lock_metadata = _read_slot_lock_metadata(lock_path)
         lock_deadline_ns = lock_metadata.get("deadline_ns")
-        if (
-            not isinstance(lock_deadline_ns, int)
-            or monotonic_ns() < lock_deadline_ns
-        ):
+        if not isinstance(lock_deadline_ns, int) or monotonic_ns() < lock_deadline_ns:
             return False
         try:
             with _acquire_slot_guard(
@@ -898,7 +896,28 @@ class InferenceLocalMmapServer:
             except Exception as error:  # noqa: BLE001 - mmap 边界需要稳定错误响应
                 response = _error_response(error)
             encoded_response = _encode_payload(response)
+            response_size = len(encoded_response)
+            task_type = _read_mmap_task_type(request)
+            if LOGGER.isEnabledFor(logging.DEBUG):
+                LOGGER.debug(
+                    "inference mmap 响应已序列化",
+                    extra={
+                        "serialized_response_bytes": response_size,
+                        "mmap_capacity_bytes": self.slot_payload_capacity_bytes,
+                        "transport_kind": "mmap",
+                        "task_type": task_type,
+                    },
+                )
             if len(encoded_response) > self.slot_payload_capacity_bytes:
+                LOGGER.warning(
+                    "inference mmap 响应超过单槽容量",
+                    extra={
+                        "serialized_response_bytes": response_size,
+                        "mmap_capacity_bytes": self.slot_payload_capacity_bytes,
+                        "transport_kind": "mmap",
+                        "task_type": task_type,
+                    },
+                )
                 encoded_response = _encode_payload(
                     _error_response(
                         ServiceConfigurationError(
@@ -935,10 +954,7 @@ class InferenceLocalMmapServer:
                         != self._server_epoch
                     ):
                         return
-                    if (
-                        state == _STATE_CANCELLED
-                        or monotonic_ns() >= stored_deadline
-                    ):
+                    if state == _STATE_CANCELLED or monotonic_ns() >= stored_deadline:
                         _clear_slot(
                             view,
                             slot_offset=slot_offset,
@@ -1016,10 +1032,7 @@ class InferenceLocalMmapServer:
                     or state not in allowed_states
                 ):
                     return False
-                if (
-                    require_expired
-                    and monotonic_ns() < deadline_ns + deadline_grace_ns
-                ):
+                if require_expired and monotonic_ns() < deadline_ns + deadline_grace_ns:
                     return False
                 _clear_slot(view, slot_offset=slot_offset, generation=generation)
                 _slot_lock_path(self.path, slot_index).unlink(missing_ok=True)
@@ -1050,10 +1063,7 @@ class InferenceLocalMmapServer:
                 state, _, _, _, stored_generation, stored_owner_token, deadline_ns = (
                     _SLOT_HEADER.unpack_from(view, slot_offset)
                 )
-                if (
-                    stored_generation != generation
-                    or stored_owner_token != owner_token
-                ):
+                if stored_generation != generation or stored_owner_token != owner_token:
                     return
                 if state != _STATE_CANCELLED and monotonic_ns() < deadline_ns:
                     return
@@ -1261,6 +1271,21 @@ def _decode_payload(content: bytes) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise InvalidRequestError("inference mmap payload 必须是对象")
     return payload
+
+
+def _read_mmap_task_type(payload: dict[str, object]) -> str | None:
+    """从 mmap infer 请求读取 task type，仅用于轻量容量诊断。"""
+
+    process_config = payload.get("process_config")
+    if not isinstance(process_config, dict):
+        return None
+    runtime_target = process_config.get("runtime_target_snapshot")
+    if not isinstance(runtime_target, dict):
+        return None
+    task_type = runtime_target.get("task_type")
+    if not isinstance(task_type, str) or not task_type.strip():
+        return None
+    return task_type.strip().lower()
 
 
 def _reject_inline_image_bytes(payload: dict[str, object]) -> None:

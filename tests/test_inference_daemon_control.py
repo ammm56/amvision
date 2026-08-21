@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import BoundedSemaphore
@@ -18,6 +20,13 @@ from backend.contracts.buffers import BufferRef
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
+from backend.service.application.runtime.contracts.segmentation.prediction import (
+    SegmentationPredictionExecutionResult,
+    SegmentationPredictionInstance,
+    SegmentationPredictionRequest,
+    SegmentationRuntimeSessionInfo,
+    SegmentationRuntimeTensorSpec,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
     DeploymentProcessExecution,
@@ -29,6 +38,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlBinding,
     InferenceControlDispatcher,
     QueueBackedInferenceControlClient,
+    _should_use_local_mmap,
 )
 from backend.service.application.runtime.deployment.inference_local_mmap import (
     InferenceLocalMmapClient,
@@ -149,6 +159,49 @@ class _SlowMutationSupervisor(_FakeSupervisor):
         return super().reset_deployment(config)
 
 
+class _FakeSegmentationSupervisor(_FakeSupervisor):
+    """返回带实例轮廓的 segmentation 结果，验证其固定走控制队列。"""
+
+    def run_inference(self, *, config, request):
+        self.actions.append("infer")
+        assert request.input_image_bytes is None
+        assert request.input_uri is not None
+        assert self.dataset_storage.resolve(request.input_uri).is_file()
+        return DeploymentProcessExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-segmentation",
+            execution_result=SegmentationPredictionExecutionResult(
+                instances=(
+                    SegmentationPredictionInstance(
+                        bbox_xyxy=(1.0, 1.0, 3.0, 3.0),
+                        score=0.9,
+                        class_id=0,
+                        class_name="bolt",
+                        segments=(((1.0, 1.0), (3.0, 1.0), (3.0, 3.0), (1.0, 3.0)),),
+                        mask_area=4.0,
+                    ),
+                ),
+                latency_ms=2.0,
+                image_width=4,
+                image_height=4,
+                preview_image_bytes=None,
+                runtime_session_info=SegmentationRuntimeSessionInfo(
+                    backend_name=config.runtime_target.runtime_backend,
+                    model_uri=config.runtime_target.runtime_artifact_storage_uri,
+                    device_name=config.runtime_target.device_name,
+                    input_spec=SegmentationRuntimeTensorSpec(
+                        name="images", shape=(1, 3, 4, 4), dtype="float32"
+                    ),
+                    output_specs=(
+                        SegmentationRuntimeTensorSpec(
+                            name="masks", shape=(1, 4, 4), dtype="float32"
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+
 class _RecordingMmapClient:
     """记录 mmap 请求，验证大预览响应不会进入固定容量数据面。"""
 
@@ -159,12 +212,32 @@ class _RecordingMmapClient:
         self.requests.append(dict(payload))
         if payload == {"action": "ping"}:
             return {"ok": True, "result": {"ready": True}}
-        raise AssertionError("save_result_image 请求不应进入 inference mmap")
+        raise AssertionError("当前请求不应进入固定容量 inference mmap")
 
 
-def _run_mmap_echo_server(
-    *, path: str, ready_queue, stop_event
-) -> None:
+@pytest.mark.parametrize("task_type", ("classification", "detection", "obb", "pose"))
+def test_fixed_size_inference_results_use_mmap(task_type: str) -> None:
+    """验证有界小结果任务保留固定容量 mmap 热路径。"""
+
+    assert _should_use_local_mmap(
+        local_mmap_available=True,
+        task_type=task_type,
+        save_result_image=False,
+    )
+
+
+@pytest.mark.parametrize("task_type", ("segmentation", "future-unbounded-task"))
+def test_unbounded_inference_results_use_control_queue(task_type: str) -> None:
+    """验证无界或未知结果不进入固定容量 mmap。"""
+
+    assert not _should_use_local_mmap(
+        local_mmap_available=True,
+        task_type=task_type,
+        save_result_image=False,
+    )
+
+
+def _run_mmap_echo_server(*, path: str, ready_queue, stop_event) -> None:
     """在独立 spawn 进程中运行最小 mmap echo server。"""
 
     server = InferenceLocalMmapServer(
@@ -205,9 +278,7 @@ def _run_busy_mmap_client(
         start_event.wait(timeout=30.0)
         for request_index in range(request_count):
             try:
-                response = client.request(
-                    {"value": f"{worker_index}-{request_index}"}
-                )
+                response = client.request({"value": f"{worker_index}-{request_index}"})
                 if response.get("ok") is True:
                     success_count += 1
                 elif "满载" in str(response):
@@ -361,6 +432,77 @@ def test_preview_image_response_bypasses_fixed_capacity_mmap(
         dispatcher.stop()
 
     assert result.instance_id == "instance-1"
+    assert fake_supervisor.actions == ["infer"]
+    assert mmap_client.requests == [{"action": "ping"}]
+    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
+    assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
+
+
+def test_segmentation_response_without_preview_bypasses_fixed_capacity_mmap(
+    tmp_path: Path,
+) -> None:
+    """验证轮廓长度不固定的 segmentation 无预览图时也只执行一次控制队列推理。"""
+
+    dataset_storage = create_test_dataset_storage(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    detection_target = build_test_runtime_target(
+        dataset_storage=dataset_storage,
+        runtime_backend="pytorch",
+        device_name="cpu",
+        runtime_precision="fp32",
+        runtime_artifact_file_name="model.pt",
+        runtime_artifact_file_type="pytorch-state-dict",
+    )
+    target = replace(detection_target, task_type="segmentation")
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-segmentation",
+        runtime_target=target,
+        project_id="project-1",
+        runtime_configuration=DeploymentRuntimeConfiguration(),
+    )
+    fake_supervisor = _FakeSegmentationSupervisor(dataset_storage=dataset_storage)
+    dispatcher = InferenceControlDispatcher(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        service_id="test-daemon",
+        bindings_by_task_type={
+            "segmentation": InferenceControlBinding(
+                sync_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_supervisor=fake_supervisor,  # type: ignore[arg-type]
+                async_gateway_registry=_FakeRegistry(),
+            )
+        },
+        poll_interval_seconds=0.01,
+    )
+    mmap_client = _RecordingMmapClient()
+    client = QueueBackedInferenceControlClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        runtime_mode="sync",
+        service_id="test-daemon",
+        request_timeout_seconds=5.0,
+        startup_timeout_seconds=5.0,
+        local_mmap_client=mmap_client,  # type: ignore[arg-type]
+    )
+
+    dispatcher.start()
+    try:
+        result = client.run_inference(
+            config=config,
+            request=SegmentationPredictionRequest(
+                input_image_bytes=_one_pixel_png(),
+                score_threshold=0.25,
+                mask_threshold=0.5,
+                save_result_image=False,
+            ),
+        )
+    finally:
+        dispatcher.stop()
+
+    assert result.instance_id == "instance-segmentation"
+    assert len(result.execution_result.instances) == 1
     assert fake_supervisor.actions == ["infer"]
     assert mmap_client.requests == [{"action": "ping"}]
     staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
@@ -604,6 +746,58 @@ def test_local_mmap_client_mapping_survives_daemon_server_restart(
         second_server.stop()
 
 
+def test_local_mmap_overflow_logs_capacity_diagnostics(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """验证固定槽溢出直接报错，并记录容量与任务类型诊断。"""
+
+    mmap_path = tmp_path / "overflow" / "inference.mmap"
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": "x" * (70 * 1024)},
+        slot_count=2,
+        slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    caplog.set_level(
+        logging.WARNING,
+        logger="backend.service.application.runtime.deployment.inference_local_mmap",
+    )
+
+    server.start()
+    try:
+        response = client.request(
+            {
+                "action": "infer",
+                "process_config": {
+                    "runtime_target_snapshot": {"task_type": "detection"}
+                },
+            }
+        )
+    finally:
+        client.close()
+        server.stop()
+
+    assert response["ok"] is False
+    assert response["error"]["code"] == "service_configuration_error"
+    record = next(
+        item
+        for item in caplog.records
+        if item.message == "inference mmap 响应超过单槽容量"
+    )
+    assert record.serialized_response_bytes > 64 * 1024
+    assert record.mmap_capacity_bytes == 64 * 1024
+    assert record.transport_kind == "mmap"
+    assert record.task_type == "detection"
+
+
 def test_local_mmap_rejects_second_server_for_same_mailbox(tmp_path: Path) -> None:
     """验证同一 mailbox 只能由一个 daemon 实例初始化和回收。"""
 
@@ -827,9 +1021,7 @@ def test_local_mmap_concurrent_publication_never_exposes_partial_generation(
         client.close()
         server.stop()
 
-    assert [response["result"]["value"] for response in responses] == list(
-        range(1000)
-    )
+    assert [response["result"]["value"] for response in responses] == list(range(1000))
 
 
 def test_local_mmap_multi_process_busy_responses_keep_slot_ownership(
@@ -963,7 +1155,9 @@ def test_inference_control_timeout_removes_pending_request_and_response_queue(
 
     queue_root = Path(queue_backend.root_dir)
     control_pending_dir = queue_root / "inference-control-missing-daemon" / "pending"
-    assert not control_pending_dir.exists() or not any(control_pending_dir.glob("*.json"))
+    assert not control_pending_dir.exists() or not any(
+        control_pending_dir.glob("*.json")
+    )
     assert not list(queue_root.glob("inference-control-response-*"))
 
 

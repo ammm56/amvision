@@ -61,8 +61,29 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 INFERENCE_CONTROL_QUEUE_PREFIX = "inference-control"
 INFERENCE_CONTROL_RESPONSE_QUEUE_PREFIX = "inference-control-response"
 
+# 只有结果结构有明确上界的任务进入固定容量 mmap。segmentation 的实例轮廓点数
+# 随图片内容变化，即使不返回预览图也可能超过单槽容量，因此固定走现有控制队列。
+_FIXED_RESPONSE_MMAP_TASK_TYPES = frozenset(
+    {"classification", "detection", "obb", "pose"}
+)
+
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _should_use_local_mmap(
+    *,
+    local_mmap_available: bool,
+    task_type: str,
+    save_result_image: bool,
+) -> bool:
+    """按任务结果边界静态选择固定容量 mmap，不执行溢出回退或重试。"""
+
+    return (
+        local_mmap_available
+        and not save_result_image
+        and task_type.strip().lower() in _FIXED_RESPONSE_MMAP_TASK_TYPES
+    )
 
 
 def _parse_utc_datetime(value: object) -> datetime | None:
@@ -228,16 +249,14 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         config: DeploymentProcessConfig,
         request: PredictionRequest,
     ) -> DeploymentProcessExecution:
-        """通过 daemon 执行同步推理；小响应走 mmap，大预览图走控制队列。"""
+        """通过 daemon 执行同步推理；有界小响应走 mmap，其余走控制队列。"""
 
         request_id = uuid4().hex
         staged_root = f"runtime/inputs/inference-control/{request_id}"
-        # runtime 会在 save_result_image=True 时把预览图 bytes 放进响应。图片大小
-        # 不受 mmap 单槽容量约束，因此这类请求必须走可变长控制队列；否则较大
-        # 原图即使关闭 base64 API 预览，也会在 daemon 回传阶段溢出固定槽位。
-        use_local_mmap = (
-            self.local_mmap_client is not None
-            and not bool(getattr(request, "save_result_image", False))
+        use_local_mmap = _should_use_local_mmap(
+            local_mmap_available=self.local_mmap_client is not None,
+            task_type=config.runtime_target.task_type,
+            save_result_image=bool(getattr(request, "save_result_image", False)),
         )
         prepared_request = self._stage_prediction_input(
             request=request,
@@ -322,9 +341,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 or not isinstance(mmap_result, dict)
                 or mmap_result.get("ready") is not True
             ):
-                raise ServiceConfigurationError(
-                    "inference daemon mmap 热路径探测失败"
-                )
+                raise ServiceConfigurationError("inference daemon mmap 热路径探测失败")
         return response
 
     def _require_daemon_available(self) -> None:
@@ -436,7 +453,9 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             try:
                 payload = dict(message.payload)
                 if payload.get("request_id") != request_id:
-                    raise InvalidRequestError("inference control response request_id 不匹配")
+                    raise InvalidRequestError(
+                        "inference control response request_id 不匹配"
+                    )
                 if payload.get("ok") is not True:
                     raise _deserialize_error(
                         payload.get("error"),
@@ -447,7 +466,9 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                     raise InvalidRequestError("inference control response 缺少 result")
                 return result
             finally:
-                self.queue_backend.complete(message, metadata={"request_id": request_id})
+                self.queue_backend.complete(
+                    message, metadata={"request_id": request_id}
+                )
         raise OperationTimeoutError(
             "等待 inference daemon 响应超时",
             details={"request_id": request_id, "timeout_seconds": timeout_seconds},
@@ -471,7 +492,9 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 if preserve_local_refs:
                     return request
                 if self.local_buffer_reader is None:
-                    raise InvalidRequestError("inference control client 缺少 buffer reader")
+                    raise InvalidRequestError(
+                        "inference control client 缺少 buffer reader"
+                    )
                 image_bytes = self.local_buffer_reader.read_buffer_ref(
                     BufferRef.model_validate(normalized.get("buffer_ref"))
                 )
@@ -479,7 +502,9 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 if preserve_local_refs:
                     return request
                 if self.local_buffer_reader is None:
-                    raise InvalidRequestError("inference control client 缺少 frame reader")
+                    raise InvalidRequestError(
+                        "inference control client 缺少 frame reader"
+                    )
                 image_bytes = self.local_buffer_reader.read_frame_ref(
                     FrameRef.model_validate(normalized.get("frame_ref"))
                 )
@@ -489,7 +514,10 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             return request
 
         encoded_bytes = bytes(image_bytes)
-        if isinstance(image_payload, dict) and str(image_payload.get("media_type")) == "image/raw":
+        if (
+            isinstance(image_payload, dict)
+            and str(image_payload.get("media_type")) == "image/raw"
+        ):
             import cv2
             import numpy as np
 
@@ -789,7 +817,9 @@ class InferenceControlDispatcher:
         created_at = _parse_utc_datetime(message.created_at)
         if created_at is None:
             return True
-        return (now - created_at).total_seconds() >= self.control_request_max_age_seconds
+        return (
+            now - created_at
+        ).total_seconds() >= self.control_request_max_age_seconds
 
     def _discard_expired_request(
         self,
@@ -888,7 +918,9 @@ class InferenceControlDispatcher:
         if action == "infer":
             request_payload = payload.get("prediction_request")
             if not isinstance(request_payload, dict):
-                raise InvalidRequestError("inference control 请求缺少 prediction_request")
+                raise InvalidRequestError(
+                    "inference control 请求缺少 prediction_request"
+                )
             request = build_prediction_request_from_payload(
                 task_type=config.runtime_target.task_type,
                 payload=request_payload,
