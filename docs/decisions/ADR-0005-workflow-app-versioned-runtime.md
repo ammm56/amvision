@@ -22,7 +22,7 @@ Workflow App 草稿会持续编辑，但第三方系统需要稳定的 Runtime i
 12. 正式 invoke 热路径不查询版本列表、不解析 latest、不计算发布 fingerprint，也不比较草稿。
 13. Version 可归档和恢复。归档不破坏既有 active/desired revision；新建和选版只接受 published Version。
 
-完整行为见 [Workflow App 版本管理](../architecture/workflow-app-versioning.md)。
+完整行为见 [Workflow App 版本管理](../architecture/workflows/app-versioning.md)。
 
 ## 未采用方案
 

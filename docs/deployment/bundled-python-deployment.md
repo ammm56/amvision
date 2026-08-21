@@ -152,6 +152,6 @@
 
 ## 推荐后续文档
 
-- [docs/architecture/runtime-packaging.md](../architecture/runtime-packaging.md)
+- [docs/architecture/platform/runtime-packaging.md](../architecture/platform/runtime-packaging.md)
 - [docs/api/communication-contracts.md](../api/communication-contracts.md)
-- [docs/architecture/backend-service.md](../architecture/backend-service.md)
+- [docs/architecture/platform/backend-service.md](../architecture/platform/backend-service.md)

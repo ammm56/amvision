@@ -21,13 +21,15 @@ POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versi
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}
 GET  /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/compare
+POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/archive
+POST /api/v1/workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/restore
 ```
 
 版本列表支持统一的 `offset`、`limit` 查询参数和分页响应头。
 
 ## 发布版本
 
-发布使用草稿指纹做 compare-and-swap。调用方必须先读取 Application，取得响应中的 `draft_fingerprint`，再把同一个值放入 `expected_draft_fingerprint`。编辑器保存使用 Application PUT 的可选 `template` bundle，而不是先后发出独立 Template PUT 和 Application PUT。发布和旧 `application_id` Runtime 自动导入都按 Application claim→Template resource claim 的固定顺序读取草稿；bundle 保存使用相同顺序，独立 Template PUT/COPY/DELETE 也占用 Template claim。因此共享 Template 被修改时，任意引用 App 的发布或自动导入都会立即返回 409，不会持久化新 Template + 旧 Application 的混合快照。普通 GET 是两个独立文件的无锁读取，不承诺跨两个并发 GET 的线性化视图；调用方在并发保存期间读取后，应以新的 `draft_fingerprint` 刷新。
+发布使用草稿指纹做 compare-and-swap。调用方必须先读取 Application，取得响应中的 `draft_fingerprint`，再把同一个值放入 `expected_draft_fingerprint`。编辑器保存使用 Application PUT 的可选 `template` bundle，而不是先后发出独立 Template PUT 和 Application PUT。发布和使用 `application_id` 引导创建 Runtime 都按 Application claim→Template resource claim 的固定顺序读取草稿；bundle 保存使用相同顺序，独立 Template PUT/COPY/DELETE 也占用 Template claim。因此共享 Template 被修改时，任意引用 App 的发布或引导创建都会立即返回 409，不会持久化新 Template + 旧 Application 的混合快照。普通 GET 是两个独立文件的无锁读取，不承诺跨两个并发 GET 的线性化视图；调用方在并发保存期间读取后，应以新的 `draft_fingerprint` 刷新。
 
 请求示例：
 
@@ -58,9 +60,23 @@ Project 删除使用同表中的保留 sentinel 与 Project 资源写入建立�
 
 `compare` 固定表示“指定已发布版本 -> 当前草稿”的公开契约差异，返回 `compatible`、`changes`、`breaking_changes` 和 source/target contract fingerprint。非破坏性修改仍需要显式发布和 Runtime 停机选择版本，不会自动生效。
 
+## 归档和恢复
+
+归档只把版本从 `published` 改为 `archived`，不会删除 snapshot、修改 fingerprint 或影响已经引用该版本的 Runtime、Trigger 和 Run。归档版本不再用于新建 Runtime 或切换版本；恢复为 `published` 后才会重新成为候选。
+
+两个操作都使用调用方读取到的状态做 compare-and-swap：
+
+```json
+{
+  "expected_state": "published"
+}
+```
+
+归档请求只接受 `published`；恢复请求使用同一结构并把值改为 `archived`。状态已经变化时返回 409，不排队、不自动重试。
+
 ## Runtime 使用规则
 
-新建 Runtime 应传准确的 `workflow_app_version_id`。`application_id` 只保留给旧客户端和存量数据迁移，两个字段必须且只能提供一个。Runtime 升级与回滚统一使用 `select-version`，详见 [WorkflowAppRuntime 接口文档](workflow-app-runtimes.md)。
+新建 Runtime 优先传准确的 `workflow_app_version_id`。也可以传 `application_id`，由服务基于当前一致草稿创建不可变初始版本；两个字段必须且只能提供一个。Runtime 升级与回滚统一使用 `select-version`，详见 [WorkflowAppRuntime 接口文档](workflow-app-runtimes.md)。
 
 create 和 `select-version` 会在最终数据库事务内用目标版本行的条件 UPDATE 再确认版本仍为 `published`，随后才写 Runtime/revision。archive 使用同一版本行完成状态 CAS，所以 archive 成功提交后不会再出现指向该 archived 版本的新 Runtime/revision；已经先提交的历史引用继续有效。竞争失败立即返回 409，不排队、不自动重试。restore 只把版本从 `archived` CAS 回 `published`，之后的新引用仍必须经过相同 fence。
 
@@ -77,7 +93,7 @@ python -m backend.maintenance.main migrate-database --output text
 
 ## 相关文档
 
-- [Workflow App 版本管理与 Runtime 稳定切换设计](../architecture/workflow-app-versioning.md)
+- [Workflow App 版本管理与 Runtime 稳定切换设计](../architecture/workflows/app-versioning.md)
 - [WorkflowAppRuntime 接口文档](workflow-app-runtimes.md)
 - [WorkflowRun 接口文档](workflow-runs.md)
 - [SDK 配置包](sdk-config-packages.md)

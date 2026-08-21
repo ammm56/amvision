@@ -386,12 +386,12 @@ Runtime 通过不可变 `WorkflowRuntimeRevision` 选择准确的 `WorkflowAppVe
 
 ## 相关文档
 
-- [docs/api/current-api.md](current-api.md)
+- [docs/api/conventions.md](conventions.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.create.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
-- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
-- [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)
+- [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
+- [docs/architecture/workflows/app-versioning.md](../architecture/workflows/app-versioning.md)

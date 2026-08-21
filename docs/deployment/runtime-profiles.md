@@ -19,21 +19,8 @@
 | --- | --- | --- | --- | --- |
 | `full-windows-x64-nvidia` | 已实现，推荐 | Windows x64 NVIDIA | Windows FFmpeg、TensorRT、cuDNN | 全部六类 worker |
 | `full-windows-x64-cpu` | 已实现，推荐 | Windows x64 CPU | Windows FFmpeg，不含 NVIDIA 资产 | 全部六类 worker |
-| `full-ubuntu-x64-nvidia` | 仅预留名称，未实现 | Ubuntu x64 NVIDIA | 未组装 | 未定义 |
-| `full-ubuntu-x64-cpu` | 仅预留名称，未实现 | Ubuntu x64 CPU | 未组装 | 未定义 |
 
-发布只接受表中完整 profile id，不提供缩写或旧名称。Ubuntu 名称只用于固定未来目录和 profile 命名，本阶段调用会明确失败，不会生成看似可用但未经实现的包。
-
-## 根因说明：CPU 机器前端无内容
-
-CPU-only 机器如果使用 NVIDIA 完整包，常见现象是启动脚本显示 backend-service 已 ready，随后前端一直停在 checking 或空白。根本原因通常不是前端页面本身，而是：
-
-1. NVIDIA 完整包会启动训练、转换、评估、推理等全部 worker。
-2. CPU-only 机器缺少 NVIDIA driver、TensorRT、CUDA 运行时或相关 Python 包可用环境。
-3. 某个 worker 启动失败退出后，`start-amvision-full` 会把整个 stack 视为不健康并停止其余组件。
-4. backend-service 被停止后，前端无法获取 bootstrap/session 状态，所以界面没有内容。
-
-因此 CPU-only 发布需要从 profile 层面隔离，而不是依赖前端兜底或现场手工删文件。
+发布只接受表中状态为“已实现”的完整 profile id，不提供缩写、别名或未验收 profile。其他值会明确失败，不生成看似可用的发行包。
 
 ## 组装命令
 
@@ -155,8 +142,8 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 - 核对厂商 runtime、驱动和目标设备兼容性。
 - 核对各 worker profile 是否与现场职责匹配。
 
-## 后续文档入口
+## 相关文档
 
-- 首次部署顺序和最小验收：`full-first-deploy-checklist.md`
-- 生产环境入口和根脚本参数：`production-environment.md`
-- 现场日志和故障排查：`../operations/release-full-troubleshooting.md`
+- [首次部署顺序和最小验收](full-first-deploy-checklist.md)
+- [生产环境入口和根脚本参数](production-environment.md)
+- [现场日志和故障排查](../operations/release-full-troubleshooting.md)

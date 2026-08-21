@@ -4,7 +4,7 @@
 
 本文档用于给现场、本地验证和 workflow app 受控接入场景提供 `YOLOE / SAM3` 常见问题排查顺序。
 
-本文档是操作手册，不重复解释长期架构边界；受控接入策略见 [docs/architecture/yoloe-sam3-workflow-app-operations.md](../architecture/yoloe-sam3-workflow-app-operations.md)。
+本文档是操作手册，不重复解释长期架构边界；受控接入策略见 [YOLOE / SAM3 Workflow 操作](yoloe-sam3-workflow.md)。
 
 ## 推荐排查顺序
 
@@ -47,7 +47,7 @@
 
 - 先跑基础 soak
 - 再跑扩展 soak
-- 对照 [docs/architecture/yoloe-sam3-soak-baseline.md](../architecture/yoloe-sam3-soak-baseline.md)
+- 对照 [YOLOE / SAM3 soak 方法](yoloe-sam3-soak.md)
 
 ### 是否应该默认启用
 

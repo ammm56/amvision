@@ -21,7 +21,7 @@
 
 workflow runtime 控制面当前已经公开 preview-runs、app-runtimes、runs、execution-policies、TriggerSource 和对应 WebSocket 事件流。
 
-FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppVersion，WorkflowAppRuntime 再通过 revision 选择准确版本。版本切换保留稳定 Runtime/Trigger id，规则见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
+FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppVersion，WorkflowAppRuntime 再通过 revision 选择准确版本。版本切换保留稳定 Runtime/Trigger id，规则见 [docs/api/workflow-app-versions.md](workflow-app-versions.md) 和 [docs/architecture/workflows/app-versioning.md](../architecture/workflows/app-versioning.md)。本文档中的 `template_version` 不等于完整生产发布版本。
 
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
@@ -69,7 +69,7 @@ FlowApplication 是可变保存文档；生产发布使用不可变 WorkflowAppV
 
 - Workflow App 发布版本：`workflows/projects/{project_id}/applications/{application_id}/versions/{workflow_app_version_id}/`
 
-Runtime revision 通过数据库记录引用上面的不可变发布对象；ExecutionPolicy snapshot 继续保存在 Runtime 自己的受控目录。完整路径和 manifest 规则见 [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)。
+Runtime revision 通过数据库记录引用上面的不可变发布对象；ExecutionPolicy snapshot 继续保存在 Runtime 自己的受控目录。完整路径和 manifest 规则见 [docs/architecture/workflows/app-versioning.md](../architecture/workflows/app-versioning.md)。
 
 本文档配套的 deployment lifecycle detection 手工调试示例使用下面这组真实 object key：
 
@@ -88,7 +88,7 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 - template 与 application 使用真实 workflow object key 路径
 - application.template_ref.source_uri 直接写成真实 template object key
 - deployment_instance_id 保留为占位字符串，需要替换成真实可用实例 id
-- 当前示例只覆盖 template/application 持久化输入边界，runtime 调用路径见 current-api 总览
+- 当前示例只覆盖 Template/Application 持久化输入边界；Runtime 调用见 [App Runtime](workflow-app-runtimes.md) 与 [Workflow Run](workflow-runs.md)。
 
 ## 接口清单
 
@@ -360,7 +360,7 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 - /ws/v1/workflows/app-runtimes/events：订阅 app runtime 实时事件
 - /ws/v1/workflows/runs/events：订阅 WorkflowRun 实时事件
 
-这组路径的字段、状态和最小返回规则见 [docs/api/current-api.md](current-api.md)、[docs/api/workflow-preview-runs.md](workflow-preview-runs.md)、[docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)、[docs/api/workflow-runs.md](workflow-runs.md) 和 [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)。
+这组路径的字段、状态和最小返回规则见 [docs/api/conventions.md](conventions.md)、[docs/api/workflow-preview-runs.md](workflow-preview-runs.md)、[docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)、[docs/api/workflow-runs.md](workflow-runs.md) 和 [docs/architecture/platform/websocket.md](../architecture/platform/websocket.md)。
 
 ## 当前边界说明
 
@@ -387,9 +387,9 @@ Runtime revision 通过数据库记录引用上面的不可变发布对象；Exe
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflows/README.md](postman/workflows/README.md)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
-- [docs/api/current-api.md](current-api.md)
-- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)
-- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
-- [docs/architecture/websocket-architecture.md](../architecture/websocket-architecture.md)
+- [docs/api/conventions.md](conventions.md)
+- [docs/architecture/workflows/json-contracts.md](../architecture/workflows/json-contracts.md)
+- [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
+- [docs/architecture/platform/websocket.md](../architecture/platform/websocket.md)
 
 

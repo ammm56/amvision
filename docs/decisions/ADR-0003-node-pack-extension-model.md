@@ -13,7 +13,7 @@
 采用节点扩展优先模型。
 
 - 场景化能力优先通过 `custom_nodes` 下的自定义节点和 node pack 实现，而不是直接进入核心模块
-- 节点扩展体系向 ComfyUI custom nodes 与 workflow 的灵活性看齐，但保留版本、权限、超时、禁用和回滚管理
+- 节点扩展体系向 ComfyUI custom nodes 与 workflow 的灵活性看齐，但保留版本、依赖、timeout、启用、回滚和审计管理
 - 外部触发、结果回传、数据上报和后处理能力通过受控的节点定义、node pack manifest 和 runtime handler 接入
 
 ## 备选方案

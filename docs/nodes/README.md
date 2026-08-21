@@ -1,40 +1,35 @@
-# 节点扩展文档目录
+# 节点扩展
 
-## 文档目的
+本目录保存 Node Pack、Custom Node、runtime hook 和节点示例。系统分层见 [节点系统](../architecture/workflows/node-system.md)，Node Catalog 与 Workflow JSON 见 [Workflow JSON](../architecture/workflows/json-contracts.md)。
 
-本目录用于存放 node pack、custom node、runtime hook 和节点扩展生命周期相关文档。
+## 文档
 
-## 当前文档
+- [Node Pack manifest](node-pack-manifest.md)：manifest、版本、依赖、capability、timeout、启用和兼容范围。
+- [Runtime hook 与回调](runtime-hooks-callbacks.md)：Trigger、hook、结果上报和外部调用边界。
+- [OpenCV 圆节点](opencv-circle-nodes.md)：Hough Circles、Circle Measure 与四圆角点组合。
+- [节点分类](../architecture/workflows/node-taxonomy.md)：Core/Custom 分类、命名和职责。
 
-- [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)：node pack manifest、capability、permission scope 和兼容性规范
-- [docs/architecture/node-taxonomy.md](../architecture/node-taxonomy.md)：node pack 边界、包内 categories/providers/recipes、core 分类和兼容迁移规则
-- [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)：节点扩展 trigger、hook、完成回调和数据上报规范
-- [docs/nodes/opencv-circle-nodes.md](opencv-circle-nodes.md)：Hough Circles、Circle Measure 和四圆角点组合的职责、参数与调试方法
-- [docs/nodes/examples/example.simple-node-pack.manifest.json](examples/example.simple-node-pack.manifest.json)：简单节点包可直接复制的 manifest 示例
-- [docs/nodes/examples/barcode.nodes.manifest.dependency-example.json](examples/barcode.nodes.manifest.dependency-example.json)：基于 barcode.nodes 的 pack 依赖案例 manifest
-- [custom_nodes/_scaffold/README.md](../../custom_nodes/_scaffold/README.md)：custom_nodes 初始化模板目录，包含 simple 和 dependent 两种骨架
-- [custom_nodes/hello_world_nodes/manifest.json](../../custom_nodes/hello_world_nodes/manifest.json)：最小 hello-world 自定义节点包示例
-- [custom_nodes/barcode_nodes/manifest.json](../../custom_nodes/barcode_nodes/manifest.json)：真实的 pack 级依赖节点包示例
-- [docs/architecture/workflow-json-contracts.md](../architecture/workflow-json-contracts.md)：workflow 节点目录 JSON 规则，以及 barcode.nodes 的 catalog.json 手动生成流程
+## 示例
 
-## 建议内容
+- `examples/example.simple-node-pack.manifest.json`
+- `examples/barcode.nodes.manifest.dependency-example.json`
+- `custom_nodes/_scaffold/`
+- `custom_nodes/hello_world_nodes/`
+- `custom_nodes/barcode_nodes/`
 
-- node pack manifest 规范
-- version、config schema、timeout 和禁用机制说明
-- capability scope、permission scope 和依赖约束说明
-- 流程节点输入输出规则
-- 硬件桥接节点包和协议节点包的边界说明
-- 模块连接节点包和 custom nodes 扩展说明
-- node pack 安装、加载、回滚和兼容性说明
+## 当前执行模型
 
-## 存放规则
+- 安装或启用 Node Pack 表示使用者信任其代码。
+- Core Node、内置 Node Pack 和第三方 Node Pack 使用同一套进程内直接调用路径。
+- 正常节点执行不创建 per-node 隔离进程，也不经过跨进程 RPC。
+- manifest 声明版本、依赖、capability、config schema、timeout 与启用状态，不维护 permission scope。
+- Workflow Runtime worker、Deployment 常驻进程和后台 Worker 属于服务生命周期边界，不是节点权限沙箱。
 
-- 节点扩展能力说明必须围绕公开扩展边界组织，不泄漏平台内部实现细节
-- 示例、模板和兼容性限制应与 manifest 规范同步维护
-- 核心平台与节点扩展平台的边界应明确，硬件直连能力默认归入可选节点包而非核心模块
+外部 HTTP、数据库、PLC、相机和模型调用由对应节点实现连接、超时、取消和错误映射。未经信任的代码需要操作系统级进程或 container 隔离，不通过隐藏的 per-node 兼容路径接入。
 
-## 相关架构文档
+## 维护规则
 
-- [docs/architecture/node-system.md](../architecture/node-system.md)
-- [docs/architecture/system-overview.md](../architecture/system-overview.md)
-- [docs/architecture/backend-service.md](../architecture/backend-service.md)
+- 节点输入输出与参数由 NodeDefinition 和 Catalog 定义，前端不维护第二套 Python 节点规则。
+- `node_type_id`、payload type 和公开字段变化必须同步示例、测试与 Workflow 迁移。
+- 场景化协议、硬件桥接和行业规则优先进入 Node Pack，不膨胀核心平台。
+- 当前实现不保留已删除节点、旧 schema 或隐藏转发别名。

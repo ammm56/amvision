@@ -1998,7 +1998,8 @@ def test_workflow_postman_directory_contains_ordered_formal_workflow_collections
     assert "不写入当前通用 Postman 请求体" in readme_text
     assert "当前 multipart 上传入口只支持这类 zip 包文件输入" in readme_text
     assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
-    assert "已接入 LocalBufferBroker direct mmap 数据面" in readme_text
+    assert "LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox" in readme_text
+    assert "inference daemon 中的常驻 deployment worker" in readme_text
     assert 'outputs[binding_id] = {"status_code": 200, "body": {...}}' in readme_text
     assert "不替 workflow 图做跨 payload type 转换" in readme_text
 
@@ -2042,7 +2043,8 @@ def test_workflow_api_examples_are_classified_by_numbered_directories() -> None:
     assert "独立的 TriggerSource / directory-poll 调试示例" in readme_text
     assert "正式的工业单帧交付示例" in readme_text
     assert "编辑器同步 preview 复用 backend-service 已加载的节点 registry" in readme_text
-    assert "已接入 LocalBufferBroker direct mmap 数据面" in readme_text
+    assert "LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox" in readme_text
+    assert "inference daemon 中的常驻 deployment worker" in readme_text
     assert "BufferRef" in readme_text
     assert "FrameRef" in readme_text
     assert "不适合作为固定 checked-in 请求体" in readme_text
@@ -2307,9 +2309,9 @@ def test_trigger_source_postman_collections_include_runtime_prepare_steps(
 def test_local_buffer_broker_architecture_document_is_indexed() -> None:
     """验证 LocalBufferBroker 架构文档已接入文档入口和通信边界说明。"""
 
-    document_text = (ARCHITECTURE_DIR / "local-buffer-broker.md").read_text(
-        encoding="utf-8"
-    )
+    document_text = (
+        ARCHITECTURE_DIR / "platform" / "local-buffer-broker.md"
+    ).read_text(encoding="utf-8")
     architecture_readme_text = (ARCHITECTURE_DIR / "README.md").read_text(
         encoding="utf-8"
     )
@@ -2324,13 +2326,12 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
         REPO_ROOT / "docs" / "api" / "workflow-trigger-sources.md"
     ).read_text(encoding="utf-8")
 
-    assert "# LocalBufferBroker 设计与实现状态" in document_text
-    assert "Broker + mmap 文件池" in document_text
-    assert "本机独立 companion process" in document_text
-    assert "写入采用两阶段状态" in document_text
-    assert "broker_epoch" in document_text
-    assert "mmap ring buffer channel" in document_text
-    assert "PublishedInferenceGateway" in document_text
+    assert "# LocalBufferBroker" in document_text
+    assert "mmap pool、slot、lease 和控制协议" in document_text
+    assert "broker companion process" in document_text
+    assert "allocate -> write -> commit -> acquire -> read -> release" in document_text
+    assert "generation 与 owner fence" in document_text
+    assert "不在 broker 内引入业务请求队列" in document_text
     assert "LocalBufferBroker" in architecture_readme_text
     assert "LocalBufferBroker" in docs_readme_text
     assert "docs/examples/workflows/README.md" in docs_readme_text
@@ -2338,24 +2339,16 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
     assert "BufferRef" in workflow_examples_readme_text
     assert "FrameRef" in workflow_examples_readme_text
     assert "不适合作为 checked-in 示例中的固定请求体" in workflow_examples_readme_text
-    assert (
-        "ZeroMQ 可作为 workstation 或 standalone 场景下的高速外部触发"
-        in trigger_sources_text
-    )
-    assert "HTTP JSON invoke 是当前已公开" in trigger_sources_text
-    assert "本地 adapter 收到图像或帧后先写入 LocalBufferBroker" in trigger_sources_text
-    assert "PublishedInferenceGateway" in trigger_sources_text
-    assert 'outputs["http_response"]' in trigger_sources_text
-    assert "FrameRef 的有效期很短" in trigger_sources_text
-    assert "TriggerSource 不负责图级转换" in trigger_sources_text
-    assert (
-        "如果同一个 workflow app 既要接 HTTP base64，又要接 ZeroMQ image-ref"
-        in trigger_sources_text
-    )
-    assert "当前可用性核查" in document_text
-    assert "示例与节点同步规则" in document_text
-    assert "C# / .NET 外部调用方 SDK 首版已实现" in document_text
-    assert "06/07 双输入 workflow app 与调试文档已补齐" in document_text
+    assert "`zeromq-topic`" in trigger_sources_text
+    assert "ZeroMQ adapter 接收 envelope 与图片 bytes" in trigger_sources_text
+    assert "把图片写入 LocalBufferBroker" in trigger_sources_text
+    assert "`image-ref.v1`" in trigger_sources_text
+    assert "Workflow 图显式发布 `request_image_ref`" in trigger_sources_text
+    assert "大图热路径不得把图片转成 Base64 JSON" in trigger_sources_text
+    assert "不执行图内图片转换、模型推理或业务规则" in trigger_sources_text
+    assert "TriggerSource id 和外部 endpoint 不变" in trigger_sources_text
+    assert "status/health 不修改 slot 所有权" in document_text
+    assert "不把 LocalBuffer 引用写成长期公开业务资源" in document_text
 
 
 def test_workflow_example_documents_postman_collection_contains_remaining_debug_examples() -> (

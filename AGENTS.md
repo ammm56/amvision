@@ -62,8 +62,8 @@
 - 部署和发布默认提供项目同目录 Python 运行时，启动脚本、worker、CLI 和服务进程统一从该解释器启动，整体形态与 ComfyUI 的自带 Python 分发方式保持一致
 - 发行包默认不要求目标机器额外安装系统 Python、conda 或其他 Python 级运行时；无法内置的 GPU 驱动、推理厂商运行时或操作系统级通信依赖必须单独列明
 - Python 依赖、前端静态资源、启动脚本和必要的本地运行时配置应能一起打包，并可在 standalone、workstation、edge 形态中复用
-- `release/full/` 视为 `assemble-release` 生成结果，仓库内不得把 `release/full/app/` 当作手工维护源码面；任何发布目录代码更新都应先修改源目录，再重新执行 `python -m backend.maintenance.main assemble-release --profile-id full`
-- TensorRT 和 cuDNN 这类 GPU 用户态运行时按本地资产管理，不放进 git；开发态默认放在 `runtimes/tensorrt_bin/` 和 `runtimes/cudnn_dll/`，发布态由 `assemble-release` 复制运行所需内容到 `release/full/tools/tensorrt/` 和 `release/full/tools/cudnn/`
+- `release/<profile-id>/` 视为 `assemble-release` 生成结果，仓库内不得把 `release/<profile-id>/app/` 当作手工维护源码面；任何发布目录代码更新都应先修改源目录，再按目标 profile 重新执行 `python -m backend.maintenance.main assemble-release --profile-id <profile-id>`
+- TensorRT 和 cuDNN 这类 GPU 用户态运行时按本地资产管理，不放进 git；开发态默认放在 `runtimes/tensorrt_bin/` 和 `runtimes/cudnn_dll/`，NVIDIA 发布态由 `assemble-release` 复制运行所需内容到 `release/<profile-id>/tools/tensorrt/` 和 `release/<profile-id>/tools/cudnn/`
 - TensorRT Python wheel、TensorRT DLL 和 `trtexec` 必须使用同一版本；如果使用本地 TensorRT SDK，bundled Python 也必须安装 `runtimes/tensorrt_bin/python/` 中与 Python 版本匹配的 wheel，不能和不同版本的 pip 包混用
 - 目标客户机默认要求安装可支持当前 CUDA/TensorRT 版本的 NVIDIA driver；CUDA Toolkit 按现场系统依赖单独安装，不整体放进项目 `runtimes/`；无法随包提供的系统依赖必须单独列明
 
@@ -82,7 +82,7 @@
 - 本地实现优先，但从第一天起保留可切换接口
 - 平台核心不是单一模型，而是模型运行时、流程节点和自定义节点体系
 - 欠缺能力、行业特化能力和特殊集成能力优先通过自定义节点补充，而不是直接膨胀核心模块
-- 自定义节点体系和节点编辑能力向 ComfyUI 的 custom nodes 与 workflow 体验看齐，但保持版本、权限、回滚和审计约束
+- 自定义节点体系和节点编辑能力向 ComfyUI 的 custom nodes 与 workflow 体验看齐，但保持版本、依赖、timeout、启用、回滚和审计约束
 - 浏览器前端与后端通过版本化 REST API、WebSocket 和任务状态流协作，避免把前端交互状态散落到后端实现细节里
 
 ## 必须先稳定的接口
@@ -112,7 +112,7 @@
 - 公开 API、文档标题、字段名和接口说明优先使用规则、训练输出文件、文件列表、摘要这类直白词，避免使用套话、空话和官话词
 - Python 代码默认写中文注释，名词保持英文不变；模块、类、方法、参数、字段和属性都要说明
 - 前端主栈以 Vue 3 为准，新增界面能力不得引入并行前端框架破坏维护边界
-- 核心平台不内置相机、PLC、传感器等硬件驱动；如需要直连能力，必须通过自定义节点实现并接受额外权限和隔离约束
+- 核心平台不内置相机、PLC、传感器等硬件驱动；如需要直连能力，必须通过受信任的自定义节点实现，并显式声明外部依赖、timeout、启停和恢复边界
 - projectsrc/ 下的代码仅作为开发阶段参考，不得作为本项目运行时代码直接依赖、对外响应字段来源或实现边界说明；相关模型与训练能力必须按本项目长期目标、分层边界和公开接口重新实现
 
 ## 本地优先实现约定
@@ -135,8 +135,10 @@
 - 文档总览： [docs/README.md](docs/README.md)
 - 平台整体框架、整体流程和功能总览： [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 - 项目结构、目录层级和模块关系总览： [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
-- 模型发布运行时配置、OpenVINO CPU / GPU / NPU 与 TensorRT 参数边界： [docs/architecture/model-deployment-runtime-policy.md](docs/architecture/model-deployment-runtime-policy.md)
-- 节点系统与节点扩展架构： [docs/architecture/node-system.md](docs/architecture/node-system.md)
+- 模型支持范围、数据格式和参数规则： [docs/reference/README.md](docs/reference/README.md)
+- 源码开发与生产发行启动： [docs/deployment/README.md](docs/deployment/README.md)
+- 模型发布运行时配置、OpenVINO CPU / GPU / NPU 与 TensorRT 参数边界： [docs/architecture/models/deployment-runtime.md](docs/architecture/models/deployment-runtime.md)
+- 节点系统与节点扩展架构： [docs/architecture/workflows/node-system.md](docs/architecture/workflows/node-system.md)
 - AGENTS.md 保持简明，详细架构规划统一沉淀到 docs/architecture/ 下
 
 ## Agent Routing

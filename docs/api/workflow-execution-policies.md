@@ -189,7 +189,7 @@
 
 ## 相关文档
 
-- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
+- [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)

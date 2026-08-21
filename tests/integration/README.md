@@ -2,7 +2,7 @@
 
 - `tests/`：默认常规快速测试，只验证代码逻辑、规则、编排和错误处理。
 - `tests/integration/`：真实数据、真实模型、真实 runtime、真实子进程或真实链路回归。
-- `docs/architecture/yoloe-sam3-soak-baseline.md`：YOLOE / SAM3 显式 soak / benchmark 的目标机器基线结果。
+- `docs/operations/yoloe-sam3-soak.md`：YOLOE / SAM3 显式 soak / benchmark 的执行和判定方法。
 
 # 默认行为
 

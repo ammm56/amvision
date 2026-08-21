@@ -104,7 +104,7 @@ YOLOX 参数分为 runtime、data、optimization、evaluation 和 augmentation�
 }
 ```
 
-YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数值范围、输入步长和后处理能力由 `GET /api/v1/models/training-parameter-schemas` 的 `default_parameters`、`parameter_schema`、`numeric_fields` 和 `capabilities` 提供；其中 `numeric_fields[].step` 与 JSON Schema `multipleOf` 一致。YOLO26 detection 是 end-to-end 模型，`supports_nms_threshold=false`，因此训练参数不接受 NMS threshold。Swagger 和 [训练参数协议](../architecture/training-parameter-support.md) 提供同一规则的说明。未知分组、未知字段、其他模型族的字段、超出步长精度的数值和旧扁平参数会在入队前返回 422。
+YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数值范围、输入步长和后处理能力由 `GET /api/v1/models/training-parameter-schemas` 的 `default_parameters`、`parameter_schema`、`numeric_fields` 和 `capabilities` 提供；其中 `numeric_fields[].step` 与 JSON Schema `multipleOf` 一致。YOLO26 detection 是 end-to-end 模型，`supports_nms_threshold=false`，因此训练参数不接受 NMS threshold。Swagger 和 [训练参数协议](../reference/models/training-parameters.md) 提供同一规则的说明。未知分组、未知字段、其他模型族的字段、超出步长精度的数值和旧扁平参数会在入队前返回 422。
 
 当前架构固定为一任务一设备。`parameters.runtime.device` 选择 CPU 或单张 GPU，多任务 GPU 调度由 worker 设备租约负责；创建请求不再接收 `gpu_count`。
 
@@ -461,16 +461,6 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 3. 若返回 200，立即刷新 detail 或列表，页面应切回 `queued`。
 4. 等待 `yolox training resumed` 事件后再切到 `running`。
 5. 如果任务后续进入 `failed`，应直接显示 detail 中的 `error_message`。
-
-## 当前前端接入缺口与后续优化建议
-
-当前接口已经够前端实现训练控制，但仍有几项值得后续补齐的地方。
-
-- 当前 detail 响应已经正式公开 `available_actions` 和 `control_status`，前端不必再直接依赖 `metadata.training_control` 做主分支判断。
-- `metadata.training_control` 仍然保留；后续如果要进一步收口，可以只在 detail 中保留 `control_status`，把原始 metadata 控制字段降级为调试信息。
-- `resume` 当前返回 submission，而不是 detail；这并不错误，但会让前端必须补一次 detail/list 刷新。后续如要减少页面跳变，可以考虑给 resume 返回更完整的 queued 态摘要。
-- 当前还没有专门面向 latest checkpoint 的“人工验证”接口；暂停后的人工验证仍需外部系统直接消费输出文件或后续新增验证接口。
-- 当前也没有“停止训练 / 终止任务”接口；如果后续产品需要硬停止语义，应单独定义停止后的 checkpoint 与状态流转规则。
 
 ### GET /api/v1/models/detection/training-tasks/{task_id}/validation-metrics
 
@@ -956,7 +946,7 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 - 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
 - 同步 `/infer` 与异步 `inference-tasks` 共用同一套 `input_transport_mode` 语义：
   - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
-  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录；同步链直接以内存字节进入 deployment 推理进程，异步链会先固化到任务 `normalized_input`，再由 worker 通过 queue IPC 把字节转给 backend-service 持有的 async deployment 子进程
+  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录；同步链通过 inference daemon 的 mmap mailbox 调用常驻 deployment，异步链先固化任务 `normalized_input`，再由 inference worker 通过 deployment 专属队列调用 inference daemon 持有的 async deployment
 - 当 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当 `input_transport_mode=memory` 时：
   - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
@@ -1011,21 +1001,14 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 - 当前 deployment create 允许绑定 `ModelVersion` 或 `ModelBuild`；其中 `pytorch`、`onnxruntime`、`openvino`、`tensorrt` 已接通真实 runtime
 - 当前 inference 执行通过 DeploymentInstance 解析运行时快照，并在 deployment 子进程内部复用常驻会话
 - 当前同步 `/infer` 与异步 `inference-tasks` 使用同一套结果载荷字段
-- 当前同步 `/infer` 与异步 `inference-tasks` 已共用同一套输入归一化、`input_transport_mode` 和 `DetectionPredictionRequest` 构造逻辑；异步链额外通过 `detection-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列把推理请求转回 backend-service 持有的 async deployment supervisor
+- 当前同步 `/infer` 与异步 `inference-tasks` 共用同一套输入归一化、`input_transport_mode` 和 `DetectionPredictionRequest` 构造逻辑；异步链通过 `detection-ai-gw-{service_id}-{deployment_id}` 这类 deployment 专属队列调用 inference daemon 持有的 async deployment supervisor
 - 当前正式 HTTP inference 公开入口支持本地文件、Base64 和 multipart 上传；image-ref / local buffer 仍主要用于 workflow / published inference 这类进程间图片引用路径，不作为当前 REST inference task 的公开输入字段
-- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 detection deployment 节点，继续通过 `PublishedInferenceGateway` 命中 backend-service 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
+- 当前 workflow preview run、WorkflowAppRuntime 和已发布应用里的 detection deployment 节点通过 `PublishedInferenceGateway` 与 mmap mailbox 调用 inference daemon 持有的 sync deployment worker；这条路径不走公开 `inference-tasks` 接口，也不复用 async deployment 通道
 - 当前 inference 响应已经拆出 `decode_ms`、`preprocess_ms`、`infer_ms`、`postprocess_ms`、`serialize_ms`；其中 `latency_ms` 表示前四段总耗时，不包含 `serialize_ms`
 - 当前 `preview_image_base64` 仅在 `return_preview_image_base64=true` 时生成
 - 当前 `preview_image_object_key` 仅在 `save_result_image=true` 时生成
-- 当前 sync 和 async 已经提升为独立 deployment 进程监督单元；如果启动多个 backend-service 或 worker 进程，每个父进程仍只负责自己装配出来的监督器与子进程
+- 正式拓扑由唯一 inference daemon 统一持有 sync / async deployment supervisor；backend-service 和任务 worker 只调用对应控制面或推理通道，不各自创建 deployment 子进程
 - 当前 正式推理 已经对外隐藏 checkpoint 路径，并已接通 `onnxruntime` 对 `onnx-optimized` ModelBuild、`openvino` 对 `openvino-ir` ModelBuild、`tensorrt` 对 `tensorrt-engine` ModelBuild 的真实消费
-
-### 当前下一步建议
-
-1. 基于现有 `validation-sessions`、`evaluation-tasks` 和 deployment health 接口补齐前端 / 工作站的验证、评估和运维视图。
-2. 为当前已支持的 pytorch、onnxruntime、openvino、tensorrt 组合补齐 smoke test、精度回归和 benchmark 基线。
-3. 把独立 worker profile、release 组装流程和 bundled Python 目录一起打磨到交付级，避免训练/评估/推理链路虽然可用但发布方式仍依赖人工拼装。
-4. 在现有闭环稳定后，再继续扩展 RKNN 等新增目标格式或更多 detection 模型类型。
 
 ## 当前能力边界
 

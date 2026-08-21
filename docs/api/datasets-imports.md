@@ -489,16 +489,14 @@ Construction-PPE 的原始类别 5 为 `none`、类别 6 为 `Person`。在已�
 - package_path、staging_path、version_path 都是 data/files 根目录下的相对路径，不是可直接下载的 HTTP URL。
 - detected_profile 和 validation_report 已经收敛为显式响应模型；metadata 仍保留为通用 object，并以本文档字段说明为准。
 - 当前单次 multipart 上传接口不提供“请求未完成时的服务端上传百分比查询”。如果需要真正的大文件分片上传和可恢复进度，应新增 upload session 或对象存储 multipart 直传接口。
-- 各模型和任务类型的输入格式选择见 [docs/architecture/model-dataset-format-contract.md](../architecture/model-dataset-format-contract.md)。
-- COCO detection 的标准导入目录、JSON 字段、类别映射和图片格式限制见 [docs/architecture/coco-detection-dataset-import-format.md](../architecture/coco-detection-dataset-import-format.md)。
-- COCO segmentation 的标准导入目录、polygon/RLE segmentation、类别映射和图片格式限制见 [docs/architecture/coco-segmentation-dataset-import-format.md](../architecture/coco-segmentation-dataset-import-format.md)。
-- COCO pose 的标准导入目录、keypoints 字段、num_keypoints、类别和骨架定义、图片格式限制见 [docs/architecture/coco-pose-dataset-import-format.md](../architecture/coco-pose-dataset-import-format.md)。
-- VOC detection 的标准导入目录、XML 字段、split 文件和图片格式限制见 [docs/architecture/voc-detection-dataset-import-format.md](../architecture/voc-detection-dataset-import-format.md)。
-- VOC instance segmentation 的 indexed mask、XML 辅助关系、结构化校验和 VOC2012 审计规则见 [docs/architecture/voc-instance-segmentation-dataset-format.md](../architecture/voc-instance-segmentation-dataset-format.md)。
-- YOLO detection 的标准导入目录、标签行、类别配置和图片格式限制见 [docs/architecture/yolo-detection-dataset-import-format.md](../architecture/yolo-detection-dataset-import-format.md)。
-- YOLO segmentation 的标准导入目录、polygon 标注行、类别配置和图片格式限制见 [docs/architecture/yolo-segmentation-dataset-import-format.md](../architecture/yolo-segmentation-dataset-import-format.md)。
-- YOLO pose 的标准导入目录、bbox+keypoints 标注行、kpt_shape、类别配置和图片格式限制见 [docs/architecture/yolo-pose-dataset-import-format.md](../architecture/yolo-pose-dataset-import-format.md)。
-- DOTA OBB 的标准导入目录、四点 polygon 标注行、类别规则和图片格式限制见 [docs/architecture/dota-obb-dataset-import-format.md](../architecture/dota-obb-dataset-import-format.md)。
+- 各模型和任务类型的输入格式选择见 [模型与数据集格式契约](../reference/datasets/model-contract.md)。
+- [COCO detection](../reference/datasets/coco-detection.md)：标准目录、JSON 字段、类别映射和图片限制。
+- [COCO segmentation](../reference/datasets/coco-segmentation.md)：标准目录、polygon/RLE 与类别映射。
+- [COCO pose](../reference/datasets/coco-pose.md)：keypoints、num_keypoints、类别和骨架定义。
+- [VOC detection](../reference/datasets/voc-detection.md)：XML、split 文件和图片限制。
+- [VOC instance segmentation](../reference/datasets/voc-instance-segmentation.md)：indexed mask、XML 辅助关系和 VOC2012 规则。
+- [YOLO detection](../reference/datasets/yolo-detection.md)、[YOLO segmentation](../reference/datasets/yolo-segmentation.md) 与 [YOLO pose](../reference/datasets/yolo-pose.md)：标签行和类别配置。
+- [DOTA OBB](../reference/datasets/dota-obb.md)：四点 polygon、类别规则和图片限制。
 
 ## 调试建议
 

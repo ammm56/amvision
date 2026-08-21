@@ -1,0 +1,311 @@
+# 高性能图片数据面
+
+## 文档目的
+
+本文档固定上位机、ZeroMQ TriggerSource、LocalBufferBroker、workflow app 节点和模型推理节点之间的大图高速传递规则，防止维护中把现场高帧率链路退回到 JPEG、PNG、Bitmap 或 base64 转换路径。
+
+这里讨论的是本机高速图片数据面，不替代 HTTP API、workflow app 管理接口、SDK 配置包、模型 DeploymentInstance 管理页面或普通调试示例。
+
+## 现场目标
+
+典型现场上位机从工业相机获得 2000 万像素左右的图片，常见分辨率约为 5000x4000。每秒几十帧调用时，图片传输和 workflow 节点处理的额外耗时必须控制在可接受范围内，除模型推理本身外，数据面和节点桥接目标应尽量控制在 50ms 到 100ms 以内。
+
+HTTP JSON、base64、PNG、JPEG 和 Bitmap 转换可以继续作为低频调试、远程调用和结果查看入口使用，但不应作为本机高频 TriggerSource 的默认链路。
+
+## 数据面规则
+
+- SDK、adapter、LocalBufferBroker、workflow 节点和模型 runtime 以 raw image-ref 为本机高频默认路径。
+- `BufferRef` / `FrameRef` 只跨进程传递 mmap 元数据，backend-service 不把图片读回后重新编码或落盘。
+- workflow 图不得在模型推理前插入不必要的 Base64 编码、合并和解码节点。
+- TriggerSource 必须显式声明 `result_binding`；高频入口默认只返回小型结构化结果，不返回所有图输出。
+- 只有预览、保存、HTTP 响应或外部系统协议明确要求时，才生成 PNG、JPEG、Bitmap 或 Base64。
+- 推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。
+
+## 数据模式
+
+| 模式 | 适用场景 | 规则 |
+| --- | --- | --- |
+| `image-base64.v1` | HTTP 调试、低频远程调用、旧系统桥接 | 可用但不是高频默认路径 |
+| encoded image bytes | JPEG/PNG/BMP 文件上传、模型直接 HTTP multipart | 需要解码，适合普通同步调用和调试 |
+| storage `image-ref.v1` | 已落盘图片、长期文件引用 | 用于可复现和审计，不代表内存高速 |
+| buffer/frame `image-ref.v1` | 本机高速 TriggerSource、workflow runtime、deployment worker | 默认高性能路径 |
+| raw BGR24 BufferRef | 工业相机高频图片输入 | 默认高速图片格式 |
+
+高性能链路中的图片应尽量保持为 buffer/frame `image-ref.v1`，只在明确需要预览、保存、HTTP 响应或外部系统要求时编码成 PNG、JPEG 或 base64。
+
+## BGR24 输入约定
+
+ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
+
+```json
+{
+  "media_type": "image/raw",
+  "pixel_format": "bgr24",
+  "dtype": "uint8",
+  "layout": "HWC",
+  "shape": [2160, 3840, 3],
+  "width": 3840,
+  "height": 2160
+}
+```
+
+约束如下：
+
+- 字节长度必须等于 `width * height * 3`。
+- 通道顺序为 B、G、R，每通道 8 bit。
+- 新代码和文档统一使用 `pixel_format=bgr24`，不要继续新增 `BGR`、`BGR24` 等大小写变体。
+- 当前 BufferRef 要求连续内存，不处理行填充。只有协议显式增加 `row_stride_bytes` 后才能接收带 pitch/stride 的工业相机内存，不能隐式猜测。
+- SDK 在发送前必须校验宽、高、shape、dtype、layout、pixel_format 和 bytes 长度。
+- 后端写入 LocalBufferBroker 时必须保留 shape、dtype、layout、pixel_format 和 media_type。
+
+## 推荐高速调用链
+
+```text
+工业相机 / 上位机
+  -> BGR24 byte[]
+  -> .NET SDK AmvisionTriggerClient
+  -> ZeroMQ multipart
+       frame 1: JSON envelope
+       frame 2: raw BGR24 bytes
+  -> ZeroMQ TriggerSource adapter
+  -> LocalBufferBroker BufferRef / FrameRef
+  -> workflow app request_image_ref
+  -> raw-aware image matrix loader
+  -> OpenCV / Barcode / Preview / Export 节点
+  -> Detection 节点
+  -> 跨平台 mmap inference mailbox（只传 BufferRef / FrameRef 元数据）
+  -> deployment worker 直接只读 mmap / raw NumPy view
+  -> 小 JSON result_binding
+```
+
+这条链路中，图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
+
+## 独立 inference daemon 传输规则
+
+功能隔离不能改变图片数据面的性能边界。正式 daemon 模式固定采用以下拆分：
+
+| 通道 | 数据 | 持久化 | 用途 |
+| --- | --- | --- | --- |
+| deployment 控制队列 | start、stop、warmup、reset、status、health | 是 | 恢复、审计、低频控制 |
+| inference mmap mailbox | process config、BufferRef/FrameRef、阈值、小型结果 | 否 | 同机低延迟推理 |
+| LocalBufferBroker pool | raw BGR24 / encoded image bytes | 短期 lease | 图片主体 |
+| ObjectStore | 上传图片、保存结果、审计输入 | 是 | 低频和可追溯边界 |
+
+约束如下：
+
+- 每次 `infer` 不执行额外 daemon `ping`；本次 mailbox 请求本身就是可用性判断。
+- `infer` 不创建一次性文件响应队列，不扫描 queue 目录。
+- BufferRef/FrameRef 在同步调用返回前由 Workflow owner 保持 lease；deployment worker 复制完成或推理完成后，节点再释放临时 lease。
+- raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
+- encoded JPEG/PNG/BMP 在 direct mmap reader 中同样保持为只读 `memoryview`，只在 `cv2.imdecode` 内部生成目标矩阵，不先复制一份 encoded bytes。
+- mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
+- mailbox 请求和响应包含 generation、deadline 和 CRC32；客户端超时、进程崩溃和 daemon 重启后可回收槽位。
+- 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
+
+## Workflow 图默认拓扑
+
+高性能 workflow app 的默认双入口拓扑应按 image-ref 优先组织：
+
+```text
+request_image_ref --------------------\
+                                       -> Image Ref Coalesce -> Detection / OpenCV / Barcode
+request_image_base64 -> Base64 Decode /
+```
+
+当前默认高性能模板不再包含 `request_image_ref -> Image Base64 Encode -> Image Base64 Coalesce -> Image Base64 Decode` 绕路。需要 base64 的场景应明确放在 HTTP 调试、预览、保存或外部回传边界，不进入高频 TriggerSource 热路径。
+
+前端图编辑和模板生成需要表达以下规则：
+
+- `request_image_ref` 是 ZeroMQ 图片触发的默认输入。
+- `request_image_base64` 是 HTTP/JSON 调试入口。
+- 用户选择返回预览图、保存结果图或 inline-base64 时，界面应提示这会增加编码和传输耗时。
+- `Response Envelope` 默认只绑定小 JSON 检测结果、判定结果或业务摘要，不默认绑定全分辨率图片。
+
+## SDK 当前实现
+
+.NET SDK 已经具备 ZeroMQ envelope、shape、dtype、layout、pixel_format 等字段，并提供面向现场的 BGR24 helper：
+
+- `ImageTriggerRequest.FromBgr24(byte[] bytes, int width, int height, ...)`
+- `InvokeZeroMqBgr24Async(...)` 或同等 Console 封装
+- 配置 key 调用保持现有 `Config/config_*.json + key + 方法` 模式
+- 高频调用时复用 `AmvisionTriggerClient` 和底层 socket，不要每帧创建和释放
+- 高频调用方法不做 Bitmap、JPEG、PNG 或 base64 转换
+- 如果现场相机 SDK 只能给出 RGB、Mono、Bayer 或带 stride 的 buffer，转换规则应在上位机侧显式完成，并在配置或方法名里表达清楚
+
+现有 `FromFile`、`FromBase64`、`FromBytes(..., "image/jpeg")` 继续保留给低频调试和普通集成使用，但文档、Console 默认调用和高性能示例应优先展示 BGR24。
+
+## 后端实现要求
+
+### ZeroMQ adapter
+
+ZeroMQ TriggerSource adapter 接收第二帧图片 bytes 后写入 LocalBufferBroker。写入时必须完整保存：
+
+- `media_type`
+- `shape`
+- `dtype`
+- `layout`
+- `pixel_format`
+- `pool_name`
+
+如果没有第二帧，adapter 仍按纯事件触发执行 workflow app，满足 PLC、传感器和空参数触发场景。纯事件触发不应被 BGR24 规则限制。
+
+### 图片读取 helper
+
+当前已经收口 raw-aware 图片矩阵读取 helper，统一给模型节点和 OpenCV 节点使用：
+
+- encoded JPEG/PNG/BMP：继续 `cv2.imdecode`。
+- raw `bgr24`：通过 `np.frombuffer(...).reshape(height, width, 3)` 获得 BGR matrix，不执行 decode。
+- 节点只读时尽量使用 view；节点会修改像素时再 copy。
+- helper 负责校验 shape、dtype、layout、pixel_format 和 bytes 长度。
+
+不要让每个节点单独解析 BufferRef 或单独判断 BGR24，否则后续会再次出现行为分叉。
+
+### 模型推理节点
+
+YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 的 detection、classification、segmentation、pose、obb 节点和 DeploymentInstance runtime 都应接入 raw-aware loader。当前主要 YOLO runtime IO、YOLOE 自定义节点图片入口、SAM3 单图/视频节点、SAHI 切片节点、deployment worker 输入 payload 透传、regions/ROI mask helper 和 video overlay helper 已切到 raw-aware loader；后续新增或调整的独立图片入口必须继续按同一 helper 接入，并补专项回归。
+
+BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded 输入的 `decode_ms` 与 raw 输入的 `raw_view_ms` 或等价指标分开记录。
+
+模型 predictor 的 `input_image_bytes` 是历史字段名，内部实际契约为非空 buffer protocol 内容，允许 `bytes`、`bytearray` 和 `memoryview`。不能再用 `isinstance(value, bytes)` 判断图片是否存在，否则 daemon direct mmap 返回的合法 `memoryview` 会被错误判定为缺少输入。
+
+### 核心节点与自定义节点同步矩阵
+
+| 节点范围 | 当前高速实现 | 禁止回退 |
+| --- | --- | --- |
+| Detection、Classification、Segmentation、Pose、OBB | 原样传递 BufferRef/FrameRef 到 inference mmap mailbox | 在 workflow worker 读取、编码或写 ObjectStore |
+| SAHI Inference | 每个 raw 切片临时写入 LocalBufferBroker，推理返回后立即释放 lease | 每个切片通过 memory bytes 和持久化文件队列中转 |
+| OpenCV、Barcode/QR、ROI、regions、video overlay | 共用 raw-aware matrix loader 和单次执行 decode cache | 各节点自行读取 object path 或重复 decode |
+| YOLOE、SAM3 | 共用 `load_image_content`，buffer/frame 输入借用只读 mmap view | 先复制整帧 bytes 再进入预处理 |
+| Camera/ZeroMQ/视频帧入口 | Camera/OpenCV 帧默认输出 raw memory image-ref，跨进程入口输出 BufferRef/FrameRef，并保留 shape、dtype、layout、pixel_format | 默认生成 base64 或临时 PNG |
+| model-inference-submit 等异步任务提交节点 | 使用 storage ref 作为可恢复任务输入 | 把短生命周期 BufferRef 持久化进异步队列 |
+
+storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用。
+
+### OpenCV 和显示节点
+
+以下节点类型必须支持 BGR24 image-ref：
+
+- Image Preview
+- Draw Detections / Draw Regions / Overlay 类节点
+- Crop / Crop Export
+- OpenCV preprocess、measure、matching、geometry、defect 节点
+- Barcode / QR 节点
+- image-ref / image-base64 桥接节点
+
+节点输出规则：
+
+- 中间链路默认继续输出 `image-ref.v1`。
+- 只有用户选择预览、保存、HTTP 响应、外部回调或 ObjectStore 输出时才编码 PNG/JPEG/base64。
+- `Crop Export` 写文件时可以编码输出；给后续节点使用时应优先输出 raw image-ref。
+- `Draw Detections` 给后续节点使用时应优先输出 raw image-ref；给前端预览时才编码。
+
+需要保存文件或目录的 workflow 节点统一使用 `save_location`，并遵循双路径规则：
+
+- 相对路径表示 ObjectStore 目录，例如 `workflow/roi` 会写入默认本地 ObjectStore 根目录下的 `workflow/roi`。
+- 当前系统可解析的绝对路径表示本机文件系统目录，例如 Windows 的 `T:\temp\roi`；绝对路径不得伪装成 object key，也不得写入数据库中的 object key 字段。
+- `Crop Export` 无论保存到哪一种目录，给后续节点的结果都继续使用 raw memory image-ref；落盘位置单独记录在每个图片结果的 `saved_output` 中，避免保存动作把后续推理链路降级为磁盘读取和重复解码。
+- 系统绝对路径依赖 runtime 所在主机的挂载和权限。发布后的 Workflow App 与 Trigger 会在 runtime 主机上解释该路径，不在浏览器所在主机上解释。
+- `save_location` 是节点保存接口的唯一公开参数。
+
+OpenCV shared runtime、Barcode/QR runtime、SAM3/YOLOE 图片入口、图片预览与保存、regions/ROI/video overlay 和 ZeroMQ 示例均遵守同一规则：中间结果默认走 raw BGR24 memory image-ref，只在 JSON、预览和落盘边界编码。
+
+### 高分辨率预览和交互取参
+
+20MP、4K、8K 图片的性能优化只允许发生在前端显示边界，不能改变节点算法输入或正式 payload：
+
+- `Image Preview`、节点卡片底部 `debug_preview` 和只读结果图可以生成显示图。显示图只用于前端快速查看，当前在图片超过 1920x1080 像素量或长边超过 1920px 时才缩放，display 图按最长边 1920px 等比例生成，横图、竖图和细长图都不能改变长宽比。
+- `ImageViewer` 交互式参数面板必须使用原图坐标空间。ROI、找圆、找线、模板区域、手动点对和 Homography overlay 写回的参数必须对应原图像素，不能对应显示图像素。
+- preview payload 需要保留原图元数据，例如 `source_width/source_height`、`source_media_type`、`source_object_key` 或等价 source image 引用；显示图元数据单独放在 `display_width/display_height` 或 `display_image` 中。
+- 生产 runtime、WorkflowAppRuntime、TriggerSource、模型 DeploymentInstance 和节点间 image-ref 链路不得因为 preview 优化而产生缩略图中间结果。
+- 交互式取参始终写回原图坐标；显示层优化不得改变正式节点输入和参数语义。
+
+## 结果返回规则
+
+TriggerSource 高频 reply 默认返回小 JSON：
+
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "items": []
+  }
+}
+```
+
+不应默认返回：
+
+- 全分辨率 inline-base64 图片
+- PNG/JPEG 编码后的图片体
+- 所有 workflow outputs
+- 大型 node_records 或调试快照
+
+如果用户确实需要返回图片，应通过 workflow 图和 TriggerSource `result_binding` 明确选择，并在前端和文档中标明这不是高帧率默认方式。
+
+## 运行记录和诊断开关
+
+高帧率 Trigger 不应每帧都走完整 WorkflowRun 持久化和完整 diagnostics 返回。当前执行元数据使用以下字段控制：
+
+- `workflow_run_record_mode=full`：完整记录，保留 dispatch/final 事件，并按 retention 开关保留 input、outputs 和 node_records。
+- `workflow_run_record_mode=minimal`：高速触发默认值；同步调用完成后只写一条轻量 WorkflowRun 状态记录。普通 minimal 会保留公开 outputs；ZeroMQ 高速图片入口同时设置 `retain_input_payload_enabled=false` 和 `retain_outputs_enabled=false`，因此不持久化输入、输出、template_outputs 和 node_records，结果直接通过当前同步 reply 返回。
+- `workflow_run_record_mode=none`：同步调用不写 WorkflowRun 数据库记录，仅返回当前调用结果；不适用于 async run。
+- `return_timing_metadata_enabled=false`：生产默认值；关闭外层 `metadata.timings`，同时清理模型节点业务输出里的 `metadata.timings`。
+- `return_node_timings_enabled=false`：生产默认值；关闭 `metadata.node_timings`。
+
+前端设置位置：
+
+- Workflow App 详情页的 Runtime 栏：设置新建 WorkflowAppRuntime 的默认记录模式和诊断返回策略。
+- 集成页 TriggerSource 的高级设置：按触发入口覆盖记录模式和诊断返回策略；ZeroMQ 图片触发默认 `minimal + 不返回诊断数据`。
+
+调试性能时再临时打开 `return_timing_metadata_enabled` 和 `return_node_timings_enabled`。需要历史事件、节点输入输出或完整追踪时，再把 `workflow_run_record_mode` 调整为 `full`，并打开 `retain_trace_enabled`、`retain_node_records_enabled` 和非 `none` 的 `trace_level`。
+
+## 并发边界
+
+当前 ZeroMQ SDK 和后端 adapter 的基本形态是 REQ/REP：
+
+- 一个 `AmvisionTriggerClient` 复用一个 socket，适合单调用链顺序请求。
+- 一个 TriggerSource adapter 使用 REP socket 时天然串行处理请求。
+- 当前 WorkflowAppRuntime worker 内部仍有运行锁，单 runtime 默认一次处理一个 run。
+- 模型 DeploymentInstance 可以配置多实例，但 workflow app trigger 不会自动把一个 runtime 的请求并行分发到多个 workflow worker。
+
+因此，高并发高帧率不能通过给同一个 runtime 增加 Trigger 自动获得。需要扩展并发时，必须明确选择并实现以下一种拓扑：
+
+- 多个 TriggerSource endpoint + 多个 WorkflowAppRuntime worker，按产线、相机或工位分片。
+- ZeroMQ ROUTER/DEALER + worker pool。
+- WorkflowAppRuntime 多 worker 实例和内部队列。
+- 连续帧场景使用 LocalBufferBroker ring channel，并明确 latest、strict、drop-oldest、drop-newest 或 block-with-timeout 策略。
+
+## 性能观测字段
+
+高性能链路应补齐以下观测：
+
+- SDK：相机取图后到发送前的 copy/convert 时间、send 等待时间、reply 等待时间。
+- Adapter：ZeroMQ 收包、LocalBufferBroker 写入、WorkflowRun submit 时间。
+- LocalBufferBroker：pool、slot、写入 bytes、等待、拒绝、覆盖、lease 生命周期。
+- Workflow 节点：raw view、copy、encode、decode、节点执行耗时。
+- 模型 runtime：decode/raw_view、preprocess、infer、postprocess、serialize。
+- Result：reply payload bytes、是否包含 inline-base64、图片编码耗时。
+
+没有这些指标时，不要只凭总耗时判断 ZeroMQ、模型或 workflow 节点谁慢。
+
+## 验收规则
+
+高性能图片链路完成时至少满足以下规则：
+
+- .NET SDK 能直接发送 BGR24 bytes，并自动写入正确 envelope metadata。
+- Backend ZeroMQ adapter 能把 BGR24 第二帧写入 LocalBufferBroker，并把 `request_image_ref` 映射给 workflow app。
+- 模型推理节点和 OpenCV 节点能直接读取 BGR24 BufferRef，不执行 PNG/JPEG 解码。
+- 默认高性能 workflow 模板不包含 `request_image_ref -> base64 encode -> base64 decode` 的绕路。
+- TriggerSource 默认 `result_binding` 返回小 JSON，不默认返回 inline-base64 图片。
+- 1080p、4K、20MP 图片都有端到端 fixture 或 smoke 测试，至少覆盖 SDK envelope、adapter 写入、workflow 节点读取和模型节点推理。
+- 文档、Postman 示例和 Console 默认调用明确区分“高性能 BGR24 image-ref 路径”和“HTTP/base64 调试路径”。
+
+## 相关文档
+
+- [docs/architecture/platform/local-buffer-broker.md](local-buffer-broker.md)
+- [docs/architecture/workflows/runtime.md](../workflows/runtime.md)
+- [docs/architecture/workflows/node-system.md](../workflows/node-system.md)
+- [docs/api/workflow-trigger-sources.md](../../api/workflow-trigger-sources.md)
+- [docs/api/workflow-sdks.md](../../api/workflow-sdks.md)
+- [docs/api/examples/workflows/README.md](../../api/examples/workflows/README.md)
+- [sdks/dotnet/README.md](../../../sdks/dotnet/README.md)

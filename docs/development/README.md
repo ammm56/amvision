@@ -1,67 +1,39 @@
-# 开发指南
+# 源码开发
 
-本目录保存可重复执行的开发、测试和专项验证流程。开发环境启动与生产发行启动采用不同入口，不能混用。
+本目录保存可重复执行的开发、检查和迁移门禁。系统设计见 [架构](../architecture/README.md)，完整启动顺序见 [开发环境](../deployment/development-environment.md)。
 
-## 1. 准备环境
-
-从仓库根目录开始：
+## 环境
 
 ```powershell
 conda activate amvision
 python -c "import sys; print(sys.version); print(sys.executable)"
 python -m pip install -r requirements.txt
-```
 
-项目基线为 Python 3.12+。开发代码不能依赖系统 Python 的隐式状态。
-
-首次准备前端：
-
-```powershell
 Set-Location frontend/web-ui
 npm ci
 Set-Location ../..
 ```
 
-前端要求 Node.js 24.15+，具体版本约束以 `frontend/web-ui/package.json` 为准。
+项目基线为 Python 3.12+；Node.js 版本以 `frontend/web-ui/package.json` 为准。源码不能依赖系统 Python 的隐式状态。
 
-## 2. 选择启动模式
+## 启动选择
 
-### API/UI 快速调试
+- API/UI 局部调试：Alembic、Uvicorn、Vite。后台任务不会推进。
+- 完整业务链路：Alembic、inference daemon、backend-service、源码 Worker Supervisor、Vite。
 
-适用于接口、页面和不依赖后台队列消费的修改：
+开发环境不组装或进入 `release/`。完整命令按顺序列在 [开发环境启动](../deployment/development-environment.md)。
 
-1. 执行 Alembic 迁移。
-2. 启动 `backend-service` 热重载。
-3. 启动 Vite。
-
-完整命令见 [开发环境启动](../deployment/development-environment.md)。这种模式不包含六个 Worker Profile，不应拿来验证数据集导入导出、训练、转换、评估或异步推理的完整推进。
-
-### 完整业务链路
-
-适用于 Worker、Inference Daemon、Deployment、Workflow Runtime、Trigger 和端到端任务：
-
-1. 在源码目录完成 Alembic 迁移。
-2. 分别启动 inference daemon、backend-service 和源码 Worker Supervisor。
-3. 启动 Vite 作为开发 UI。
-
-开发环境不组装或进入 `release/`。当前 Worker 仍只能由 Supervisor 注入 Topology 身份；源码入口为 `python -m backend.workers.supervisor`，不要直接执行 `python -m backend.workers.main`，也不要手工调用低层 Worker launcher。
-
-## 3. 常用检查
-
-后端快速检查：
+## 后端检查
 
 ```powershell
 python -m ruff check backend custom_nodes tests
 python -m pytest --collect-only -q
-```
-
-按修改范围运行定向测试，完整门禁再运行：
-
-```powershell
 python -m pytest
 ```
 
-前端门禁：
+Python 检查边界见 [Python 代码检查](python-code-checks.md)，模型链路的分层验收见 [模型验证](model-validation.md)。
+
+## 前端检查
 
 ```powershell
 Set-Location frontend/web-ui
@@ -72,11 +44,7 @@ npm run test:e2e
 Set-Location ../..
 ```
 
-pytest 默认使用 `.tmp/pytest` 和 `.tmp/pytest-cache`。并发或长链测试需要隔离时使用 `.tmp/<task-name>`；任务完成后只删除已确认不再使用的临时目录。
-
-## 4. 数据库变更
-
-开发态显式迁移：
+## 数据库迁移
 
 ```powershell
 python -m alembic -c backend/alembic.ini upgrade head
@@ -84,29 +52,15 @@ python -m alembic -c backend/alembic.ini current
 python -m alembic -c backend/alembic.ini check
 ```
 
-也可以通过维护入口升级：
+schema 变化必须带 Alembic revision，并验证空库、真实历史形态、数据保留、索引、外键和 downgrade 边界。默认 SQLite，迁移必须兼容 MySQL/PostgreSQL。Workflow App 版本迁移的跨库门禁见 [跨数据库迁移](workflow-app-version-cross-database-migrations.md)。
 
-```powershell
-python -m backend.maintenance.main migrate-database --output text
-```
+## 临时目录
 
-schema 变更必须带 Alembic revision，并至少验证空库升级、历史形态升级、数据保留、外键和 downgrade 边界。默认 SQLite，迁移代码必须兼容 MySQL/PostgreSQL。
+pytest 默认使用 `.tmp/pytest` 与 `.tmp/pytest-cache`。长链或并发测试使用 `.tmp/<task-name>` 隔离；只删除已经确认没有进程使用的准确子目录，不递归清空整个 `.tmp/`。
 
-## 5. 当前编辑器开发规范
+## 维护规则
 
-- [图像交互取参](workflow-image-parameter-editor.md)：图片面板、ROI、圆、直线和模板区域取参。
-- [Workflow 节点组](workflow-graph-groups.md)：分组、拖动、锁定、启用和禁用。
-- [ROI 节点边界](roi-node-boundaries.md)：创建、转换、使用、绘制和判定职责。
-- [Workflow App 版本迁移跨库门禁](workflow-app-version-cross-database-migrations.md)。
-
-这些文档描述当前实现，不再保存阶段计划。
-
-## 6. 专项验证资料
-
-- [开发数据集审计](development-dataset-audit.md)
-- [Construction-PPE 语义审计](construction-ppe-semantic-audit.md)
-- [barcodeqrcode YOLO 对照验证](barcodeqrcode-yolo-benchmark.md)
-- [空盘检测 Workflow App](empty-tray-detection-workflow-app.md)
-- [Python 代码检查](python-code-checks.md)
-
-专项数据记录用于复现实验，不是平台能力清单。平台能力以 [模型支持矩阵](../architecture/model-support-matrix.md) 为准。
+- 本目录不保存日期化测试结果、具体 task id、客户数据审计或一次性会话记录。
+- 稳定的模型支持范围进入 [参考资料](../reference/README.md)。
+- 稳定的 Workflow 编辑器边界进入 [Workflow 编辑器架构](../architecture/workflows/editor.md)。
+- `projectsrc/` 对照结论可用于实现审计，但不能替代本项目契约。

@@ -70,13 +70,13 @@
 
 - 所有 trigger 与 hook 执行都必须受 timeout 约束
 - 节点扩展超时不能阻塞 backend-service 主链路长期悬挂
-- 失败时应按能力类型决定是记录错误、重试、降级还是隔离
-- 对外回调失败时应支持重试策略和失败审计
+- 失败时必须记录稳定错误码、关联 id 和目标摘要，并按公开契约返回终态
+- 不在节点层加入隐藏无限重试；确需重试时由显式策略限定次数、退避和终态
 
 ## 外部触发规则
 
 - 外部系统请求先进入 backend-service 公开边界
-- backend-service 依据 integration endpoint、manifest 和 permission scope 决定是否允许触发 node pack
+- backend-service 依据公开 integration endpoint、已启用 manifest 和节点契约触发 node pack
 - 节点扩展如需创建任务，应通过受控任务创建接口进入 QueueBackend，而不是自行绕开后端服务排队
 
 ## 完成回调与数据上报规则
@@ -107,5 +107,5 @@
 ## 推荐后续文档
 
 - [docs/nodes/node-pack-manifest.md](node-pack-manifest.md)
-- [docs/architecture/node-system.md](../architecture/node-system.md)
+- [docs/architecture/workflows/node-system.md](../architecture/workflows/node-system.md)
 - [docs/api/communication-contracts.md](../api/communication-contracts.md)

@@ -157,4 +157,4 @@ launchers/service/start-backend-service.bat
 - [Worker Topology](backend-worker-startup.md)
 - [inference daemon](inference-daemon.md)
 - [数据库与维护](backend-maintenance.md)
-- [后端架构](../architecture/backend-service.md)
+- [后端架构](../architecture/platform/backend-service.md)

@@ -1,59 +1,71 @@
 # AMVision 文档
 
-本目录只保存当前可执行的使用说明、长期稳定的架构约束和仍然有效的参考资料。已经完成的实施计划、阶段清单、临时审计记录和重复说明不再保留为正式文档。
+AMVision 是面向本地工作站、工控机和边缘设备的工业视觉服务平台。本目录只保存当前可执行的说明、稳定的架构约束和可复用参考；实施计划、会话结论、一次性审计结果与重复接口清单不属于正式文档。
 
-## 快速入口
+## 从这里开始
 
 | 目标 | 入口 |
 | --- | --- |
-| 第一次了解项目 | [平台总览](architecture/system-overview.md) → [当前实现](architecture/current-implementation-status.md) |
-| 搭建开发环境 | [开发指南](development/README.md) |
-| 启动 API 与前端 | [开发环境启动](deployment/development-environment.md) |
-| 组装和部署发行包 | [部署指南](deployment/README.md) |
-| 核对系统边界 | [架构文档](architecture/README.md) |
-| 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 文档](api/README.md) |
-| 开发节点或 Node Pack | [节点扩展](nodes/README.md) |
-| 排查现场问题 | [运维与排障](operations/README.md) |
+| 理解产品定位、模块关系和完整链路 | [平台总览](architecture/system-overview.md) |
+| 查看项目目录和代码分层 | [项目结构](architecture/project-structure.md) |
+| 完整启动源码开发环境 | [开发环境启动](deployment/development-environment.md) |
+| 组装并启动生产发行包 | [生产环境](deployment/production-environment.md) |
+| 调用 REST、WebSocket、ZeroMQ 或 SDK | [API 与集成](api/README.md) |
+| 核对模型和数据格式支持范围 | [参考资料](reference/README.md) |
+| 开发 Core Node、Custom Node 或 Node Pack | [节点扩展](nodes/README.md) |
+| 排查日志、服务和现场集成 | [运维与排障](operations/README.md) |
 | 查看关键设计取舍 | [架构决策记录](decisions/README.md) |
+| 查看前端产品和界面规范 | [前端设计](design/frontend/README.md) |
 
-## 文档分层
+## 信息架构
 
 ```text
 docs/
-├─ architecture/   当前系统结构、边界、契约和运行时设计
-├─ api/            已公开的 API、协议、SDK 和调用示例
-├─ development/    开发环境、代码检查、测试和专项验证
-├─ deployment/     发行包、运行时、启动、升级和首次部署
-├─ operations/     日志、健康检查、恢复和现场排障
-├─ nodes/          Node Pack、Custom Node 和扩展接口
-├─ decisions/      仍然有效的 ADR；记录“为什么这样设计”
-├─ design/         前端产品与视觉设计规范
-├─ examples/       可复用的输入、Workflow 和协议示例
+├─ architecture/   系统设计、模块边界、运行时和稳定不变量
+├─ api/            公开 API、协议、SDK、请求语义和调试入口
+├─ reference/      数据格式、模型支持范围和参数规则
+├─ development/    源码开发、代码检查、测试和迁移门禁
+├─ deployment/     开发启动、发行组装、生产启动和运行时布局
+├─ operations/     日志、健康检查、现场操作、恢复和故障处理
+├─ nodes/          节点定义、Node Pack、runtime hook 和扩展示例
+├─ decisions/      仍然有效的 ADR
+├─ design/         当前产品、信息架构、设计系统和页面规格
+├─ examples/       可复用 Workflow 与协议示例
 └─ legal/          第三方来源与许可证说明
 ```
 
-`architecture/` 不保存开发任务单，`development/` 不重复架构正文，`operations/` 不承担安装教程。目录入口负责导航，专题文档负责完整说明。
+目录职责互斥：架构文档不保存操作步骤，参考文档不宣称运行时状态，开发文档不重复产品设计，运维文档不承担安装教程。
+
+## 唯一事实来源
+
+| 内容 | 事实来源 |
+| --- | --- |
+| 产品范围与技术约束 | [AGENTS.md](../AGENTS.md) |
+| 模块关系和运行拓扑 | [平台总览](architecture/system-overview.md) 与当前代码 |
+| REST 字段与 endpoint | backend-service 生成的 `/openapi.json`；专题文档只解释语义 |
+| Workflow 节点与端口 | 运行时 Node Catalog；Template 不复制节点定义 |
+| 模型/任务组合 | [模型支持矩阵](reference/models/support-matrix.md) 与模型注册表 |
+| 数据集格式 | [数据格式参考](reference/datasets/README.md) 与格式注册表 |
+| 数据库结构 | SQLAlchemy ORM 与 Alembic head |
+| 开发和生产启动命令 | [开发环境](deployment/development-environment.md) 与 [生产环境](deployment/production-environment.md) |
+| 可复用 Workflow | `docs/examples/workflows/` 及其自动化测试 |
 
 ## 当前运行形态
 
-AMVision 当前采用模块化单体与独立执行器：
+- `backend-service` 提供 REST、WebSocket、前端静态资源和控制面，不消费后台任务队列。
+- `inference daemon` 独立托管 DeploymentInstance 与推理进程。
+- Worker Supervisor 启动数据集导入、导出、训练、转换、评估和异步推理六个 Profile。
+- Workflow App 发布为不可变版本；稳定 Runtime/Trigger id 通过 revision 与 generation 切换实现。
+- LocalBufferBroker、mmap 和 ZeroMQ 构成本机高性能图片数据面；大图不在进程间反复复制 Base64 JSON。
+- 生产日志按本地日期写入 `*-YYYYMMDD.log`，避免单文件无限增长。
 
-- `backend-service` 提供 REST API、WebSocket、静态前端和控制面，不消费后台任务队列。
-- `inference daemon` 独立托管 DeploymentInstance、预热和推理进程。
-- 六个严格 Worker Profile 分别处理数据集导入、数据集导出、训练、转换、评估和异步推理。
-- full Supervisor 是完整运行拓扑的唯一所有者，负责数据库迁移、组件启动、健康检查、按 Profile 恢复和停止。
-- Workflow App 发布为不可变版本；稳定的 Runtime 与 Trigger id 通过 revision/generation 切换版本，不要求第三方更换调用地址。
-- 生产日志按本地日期写入 `*-YYYYMMDD.log`，不会持续追加到一个无限增长的单文件。
-
-更完整的实现状态见 [当前实现](architecture/current-implementation-status.md)。
+可复用 Workflow 清单见 [docs/examples/workflows/README.md](examples/workflows/README.md)。
 
 ## 维护规则
 
-- 文档描述当前行为；未来方案只在仍需决策时保留，并明确标记为“未实现”。
-- 已完成的计划要把稳定结论合并到架构或开发文档，然后删除计划和阶段记录。
-- 命令必须从仓库根目录或发行目录实测，路径、参数和输出名称与代码保持一致。
-- 公共 API、持久化结构、启动拓扑或发布目录变化时，同一提交同步更新对应文档。
-- 时间点验收只保留可复用的测试入口和通过标准，不在架构正文累计每轮执行流水账。
-- 参考源码只用于审计和比对，不能写成运行时依赖。
-
-项目级约束、技术基线和完成标准见 [AGENTS.md](../AGENTS.md)。
+- 文档只描述当前行为；尚未实现的方案必须标明状态，并优先记录在 ADR。
+- 同一事实只在一个专题完整定义，其他页面只给摘要和链接。
+- 已完成计划的稳定结论合并到正式专题后，删除计划、批次记录和日期流水账。
+- 命令、路径、端口和 profile 必须与源码或发行脚本一致。
+- 公共契约、schema、启动拓扑或目录变化时，同一提交更新代码、测试和文档。
+- `projectsrc/` 只用于参考审计，不是运行时依赖或公开契约来源。

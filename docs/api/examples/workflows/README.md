@@ -46,11 +46,11 @@
 
 本目录中的请求体示例面向已公开 HTTP 控制面和 TriggerSource 管理控制面，继续保留可复制的 `image-base64.v1`、storage `image-ref.v1` 和 multipart 输入形状。`BufferRef` 和 `FrameRef` 属于本机 LocalBufferBroker 短期引用，包含当前机器上的 mmap path、offset、broker_epoch 和 generation，不适合作为固定 checked-in 请求体。
 
-最新运行链路已经在服务内部使用 LocalBufferBroker。HTTP base64 图片进入 workflow 后会先变成 execution memory image-ref；图里的 detection deployment 节点会在存在 broker writer 时写入 LocalBufferBroker，并通过 PublishedInferenceGateway 调用 backend-service 持有的长期 deployment worker。OpenCV 与 Barcode/QR 自定义节点通过公共 image helper 读取图片，因此同一张图可以同时接收 HTTP base64 输入和 TriggerSource 传入的 buffer/frame image-ref。
+运行链路在服务内部使用 LocalBufferBroker。HTTP base64 图片进入 workflow 后会先变成 execution memory image-ref；图里的 detection deployment 节点会在存在 broker writer 时写入 LocalBufferBroker，并通过 PublishedInferenceGateway 和 mmap mailbox 调用 inference daemon 持有的常驻 deployment worker。OpenCV 与 Barcode/QR 自定义节点通过公共 image helper 读取图片，因此同一张图可以同时接收 HTTP base64 输入和 TriggerSource 传入的 buffer/frame image-ref。
 
 TriggerSource 示例目录在完整本地调试链路之外额外描述协议入口和运行时准备，不把图内转换塞进触发层。当前 `06-*`、`07-*` 已显式发布 `request_image_base64` 和 `request_image_ref` 两个 input binding，并在图里使用 `Image Ref Coalesce` 让 ZeroMQ `request_image_ref` 直连后续链路，HTTP/base64 调试入口只作为 fallback。
 
-当前 `06-*`、`07-*` 的默认路径已经是 `request_image_ref -> Image Ref Coalesce -> Detection/OpenCV/Barcode`。只有用户明确选择 HTTP/base64 调试、预览、保存或外部回传时，才执行 PNG、JPEG 或 base64 编码。BGR24 raw image-ref 数据面规则见 [docs/architecture/high-performance-image-data-plane.md](../../../architecture/high-performance-image-data-plane.md)。
+当前 `06-*`、`07-*` 的默认路径已经是 `request_image_ref -> Image Ref Coalesce -> Detection/OpenCV/Barcode`。只有用户明确选择 HTTP/base64 调试、预览、保存或外部回传时，才执行 PNG、JPEG 或 base64 编码。BGR24 raw image-ref 数据面规则见 [docs/architecture/platform/image-data-plane.md](../../../architecture/platform/image-data-plane.md)。
 
 `08-*` 当前则显式保留另一条边界：`plc-register` 的 `input_binding_mapping` 目前只读取标准化后的 `payload / event` 原始对象，不会自动包装成 `value.v1`。因此该示例把 `request_trigger_payload` 与 `request_trigger_event` 定义为 `response-body.v1`，再在图内使用 `payload-to-value` 桥接为后续规则节点需要的 `value.v1`。
 
@@ -60,4 +60,4 @@ TriggerSource 示例目录在完整本地调试链路之外额外描述协议入
 
 第二到第五类 workflow 当前没有像第一类训练链路那样的 template 内动态默认请求拼装。`02-*`、`03-*`、`04-*` 的示例请求体只显式展示真实输入 `deployment_instance_id`，`05-*` 只显式展示 `request_image_base64`；检测阈值、OpenCV 处理参数、health 摘要字段等固定值保留在 `save-template.request.json` 的节点参数中。
 
-对于 `02-*`、`03-*`、`04-*` 这类依赖已有 `deployment_instance_id` 的 workflow，`preview-run.request.json` 主要用于校验 template/application 绑定和输入形状。编辑器同步 preview 复用 backend-service 已加载的节点 registry 和 deployment gateway；当前主干已接入 LocalBufferBroker direct mmap 数据面，推理节点会通过 BufferRef / FrameRef 调用长期运行 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。
+对于 `02-*`、`03-*`、`04-*` 这类依赖已有 `deployment_instance_id` 的 workflow，`preview-run.request.json` 主要用于校验 template/application 绑定和输入形状。编辑器同步 preview 复用 backend-service 已加载的节点 registry 和 PublishedInferenceGateway；推理节点通过 LocalBufferBroker 的 BufferRef / FrameRef 和 mmap mailbox 调用 inference daemon 中的常驻 deployment worker。目标 deployment 仍需提前通过 sync/start 或 sync/warmup 启动，或者在节点参数中显式允许 `auto_start_process`。

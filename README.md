@@ -9,9 +9,10 @@ AMVision 是本地优先的工业视觉服务平台，覆盖数据集导入导�
 - [部署指南](docs/deployment/README.md)
 - [架构总览](docs/architecture/README.md)
 - [API 文档](docs/api/README.md)
+- [模型与数据格式参考](docs/reference/README.md)
 - [运维与排障](docs/operations/README.md)
 
-开发环境和完整链路使用不同入口。需要执行训练、转换、异步推理或长期运行服务时，应由组装后的 full Supervisor 启动完整 Topology，不能直接运行低层 Worker。
+源码开发和生产发行使用不同入口。开发态完整链路依次启动 inference daemon、backend-service、`python -m backend.workers.supervisor` 和 Vite；生产态进入组装后的发行目录运行 `start-amvision-full.bat`。两种环境都不能直接运行低层 Worker launcher。
 
 ## License
 

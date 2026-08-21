@@ -24,7 +24,7 @@ API -> Application -> Domain <- Infrastructure
 | `config/` | 可提交的默认配置和 profile |
 | `runtimes/` | 发布启动器、bundled runtime 输入和本地厂商 runtime 资产 |
 | `sdks/` | 对外 SDK、schema 和契约测试 |
-| `docs/` | 当前架构、API、开发、部署、运维和设计资料 |
+| `docs/` | 架构、API、参考、开发、部署、运维和设计资料 |
 | `tests/` | 后端、集成、迁移和 E2E 测试 |
 | `data/` | 本地开发数据库和 ObjectStore 数据，不作为源码 |
 | `release/` | assemble-release 生成结果，不手工维护 |
@@ -152,10 +152,15 @@ Node Pack 必须声明 version、capabilities、config schema、timeout 和 enab
 ```text
 docs/
 ├─ architecture/  当前系统结构和不变量
+│  ├─ platform/   服务、任务、文件、事件、打包和本机数据面
+│  ├─ models/     模型 Core、训练评估、产物和 Deployment
+│  ├─ workflows/  图、版本、Runtime、编辑器和节点执行
+│  └─ frontend/   Vue 3 工程、会话和前端边界
 ├─ api/           公开契约与调用示例
-├─ development/   开发、测试和专项验证
-├─ deployment/    发行组装和启动
-├─ operations/    健康、日志和恢复
+├─ reference/     数据格式、模型支持和参数规则
+├─ development/   源码开发、测试和迁移门禁
+├─ deployment/    开发启动、发行组装和生产启动
+├─ operations/    健康、日志、现场操作和恢复
 ├─ nodes/         Node Pack 扩展文档
 ├─ decisions/     ADR
 ├─ design/        产品与视觉规范
@@ -171,7 +176,7 @@ docs/
 - application/domain 不写方言 SQL；
 - Worker/Runtime 不 import API route；
 - `projectsrc/` 不进入生产 import；
-- `release/full/app/` 不作为源码修改；
+- `release/<profile-id>/app/` 不作为源码修改；
 - custom node 不替代 ModelVersion、DatasetVersion、Deployment 或 Runtime 等核心资源；
 - 大图片跨进程使用 LocalBuffer/ObjectStore 引用，不进入通用 JSON 大对象；
 - 对外 contract 只来自 `backend/contracts`、OpenAPI、Node Catalog 或 SDK schema。

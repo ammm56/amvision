@@ -356,11 +356,11 @@
 
 ## 相关文档
 
-- [docs/api/current-api.md](current-api.md)
+- [docs/api/conventions.md](conventions.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
 - [docs/api/workflow-preview-runs.md](workflow-preview-runs.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/app-runtime.invoke.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
-- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
-- [docs/architecture/workflow-app-versioning.md](../architecture/workflow-app-versioning.md)
+- [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
+- [docs/architecture/workflows/app-versioning.md](../architecture/workflows/app-versioning.md)

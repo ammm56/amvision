@@ -233,5 +233,5 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 ## 推荐后续文档
 
 - [docs/nodes/runtime-hooks-callbacks.md](runtime-hooks-callbacks.md)
-- [docs/architecture/node-system.md](../architecture/node-system.md)
-- [docs/architecture/backend-service.md](../architecture/backend-service.md)
+- [docs/architecture/workflows/node-system.md](../architecture/workflows/node-system.md)
+- [docs/architecture/platform/backend-service.md](../architecture/platform/backend-service.md)

@@ -1,6 +1,6 @@
 # Postman 使用说明
 
-本文档说明仓库内 Postman collection 的当前用途。接口语义以真实 backend-service 代码和 [current-api.md](../current-api.md) 为准。
+本文档说明仓库内 Postman collection 的当前用途。接口语义以真实 backend-service 代码和 [conventions.md](../conventions.md) 为准。
 
 ## 根入口 collection
 

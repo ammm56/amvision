@@ -30,7 +30,7 @@
 7. 同一进程内多个 session 不表述为进程级故障隔离；需要故障隔离时显式使用 `isolation_level=process`。
 8. TensorRT optimization profile 的前端形态和部署校验只读取所选 `ModelBuild` 的 engine capability 元数据，不按模型系列或任务类型维护条件分支；静态 engine 固定 profile 0，动态多 profile 才允许选择。
 
-详细字段、设备矩阵和实施顺序见 [模型发布运行时配置](../architecture/model-deployment-runtime-policy.md)。
+详细字段、设备矩阵和实施顺序见 [模型发布运行时配置](../architecture/models/deployment-runtime.md)。
 
 ## 备选方案
 

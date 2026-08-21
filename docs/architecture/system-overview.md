@@ -86,7 +86,7 @@ zip upload
   -> DatasetExport
 ```
 
-统一支持 detection、classification、segmentation、pose 和 OBB 的 COCO/VOC/YOLO/ImageNet/DOTA 版本化格式。训练只读取 DatasetExport/Version，不直接读取原始 zip。
+导入、导出和训练只接受格式注册表中已实现的组合；准确范围见 [数据格式参考](../reference/datasets/README.md)。训练读取经过校验的 DatasetVersion / DatasetExport，不直接读取原始 zip。
 
 ### 模型
 
@@ -100,13 +100,7 @@ DatasetExport
   -> sync / async inference
 ```
 
-当前模型矩阵：
-
-- YOLOX：detection；
-- YOLOv8 / YOLO11 / YOLO26：detection、classification、segmentation、pose、OBB；
-- RF-DETR：detection、segmentation。
-
-准确组合与后端见 [模型支持矩阵](model-support-matrix.md)。
+模型和任务组合以运行时注册表与 [模型支持矩阵](../reference/models/support-matrix.md) 为准，架构文档不复制第二份静态矩阵。
 
 ### Workflow
 
@@ -152,12 +146,11 @@ Workflow 节点可调用已发布 Deployment，也可执行 OpenCV、逻辑、�
 
 ## 文档入口
 
-- [当前实现状态](current-implementation-status.md)
 - [项目结构](project-structure.md)
-- [Backend Service](backend-service.md)
-- [任务系统](task-system.md)
-- [模型工作流边界](model-workflow-boundaries.md)
-- [Workflow Runtime](workflow-runtime.md)
-- [数据与文件](data-and-files.md)
+- [Backend Service](platform/backend-service.md)
+- [任务系统](platform/task-system.md)
+- [模型工作流边界](models/workflow-boundaries.md)
+- [Workflow Runtime](workflows/runtime.md)
+- [数据与文件](platform/data-and-files.md)
 - [部署指南](../deployment/README.md)
 - [API 与集成](../api/README.md)

@@ -465,8 +465,8 @@ workflow runtime 当前没有独立 TaskRecord；preview 和 sync invoke 的失�
 
 ## 相关文档
 
-- [docs/architecture/current-implementation-status.md](current-implementation-status.md)
-- [docs/architecture/backend-service.md](backend-service.md)
-- [docs/architecture/task-system.md](task-system.md)
-- [docs/architecture/workflow-json-contracts.md](workflow-json-contracts.md)
+- [docs/architecture/system-overview.md](system-overview.md)
+- [docs/architecture/platform/backend-service.md](platform/backend-service.md)
+- [docs/architecture/platform/task-system.md](platform/task-system.md)
+- [docs/architecture/workflows/json-contracts.md](workflows/json-contracts.md)
 

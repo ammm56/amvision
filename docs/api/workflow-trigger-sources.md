@@ -86,10 +86,19 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
 
 ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBroker，再向 Workflow 提交 `image-ref.v1`。Workflow 图显式发布 `request_image_ref`，需要兼容 HTTP Base64 时在图内通过 coalesce 节点汇合。
 
-大图热路径不得把图片转成 Base64 JSON。BGR24、mmap、owner/generation/deadline 与槽位回收规则见 [高性能图片数据面](../architecture/high-performance-image-data-plane.md)。
+大图热路径不得把图片转成 Base64 JSON。BGR24、mmap、owner/generation/deadline 与槽位回收规则见 [高性能图片数据面](../architecture/platform/image-data-plane.md)。
 
 ## 诊断
 
 health 至少区分 desired/observed state、adapter 是否注册和运行、绑定 Runtime、验证 generation、endpoint、heartbeat 与最近错误。
+
+## 本地目录示例
+
+两个正式 Postman 场景覆盖本地目录接入：
+
+- `09-industrial-local-directory-watch-detection-position-gate/`：事件监听，应用文件为 `industrial_local_directory_watch_detection_position_gate.application.json`。示例包含 `request_roi`、`input_binding_mapping.deployment_request.value`、`idempotency_key_path": "payload.batch_id"` 和 `force_polling = true`。
+- `11-industrial-local-directory-poll-detection-position-gate/`：周期扫描，应用文件为 `industrial_local_directory_poll_detection_position_gate.application.json`，并显式配置 `scan_interval_seconds`。
+
+完整请求、环境变量和现场占位值见 [Workflow Postman](postman/workflows/README.md)。示例中的目录、Deployment id 和 token 必须替换为当前环境值。
 
 Postman 与场景示例见 [Workflow Postman](postman/workflows/README.md)，.NET 调用见 [Workflow SDK](workflow-sdks.md)。

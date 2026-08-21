@@ -303,10 +303,10 @@
 
 ## 相关文档
 
-- [docs/api/current-api.md](current-api.md)
+- [docs/api/conventions.md](conventions.md)
 - [docs/api/workflows.md](workflows.md)
 - [docs/api/workflow-app-runtimes.md](workflow-app-runtimes.md)
 - [docs/api/workflow-runs.md](workflow-runs.md)
 - [docs/api/examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json](examples/workflows/00-short-dev-examples/detection_deployment_lifecycle_real_path/preview-run.request.json)
 - [docs/api/postman/workflow-runtime.postman_collection.json](postman/workflow-runtime.postman_collection.json)
-- [docs/architecture/workflow-runtime.md](../architecture/workflow-runtime.md)
+- [docs/architecture/workflows/runtime.md](../architecture/workflows/runtime.md)
