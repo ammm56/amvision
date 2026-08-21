@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import os
-from pathlib import Path
 from threading import BoundedSemaphore, Event, Lock, Thread
 from typing import Any
 
-from backend.contracts.buffers import BufferRef, FrameRef
+from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
     IMAGE_TRANSPORT_FRAME,
-    IMAGE_TRANSPORT_LOCAL_PATH,
     IMAGE_TRANSPORT_MEMORY,
-    IMAGE_TRANSPORT_STORAGE,
     require_image_payload,
 )
 from backend.service.application.errors import (
@@ -24,6 +21,7 @@ from backend.service.application.errors import (
 )
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
+    DirectMmapLocalBufferWriter,
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
 )
@@ -43,6 +41,7 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionRequest,
     build_dummy_prediction_request,
     build_prediction_request_from_payload,
+    detect_prediction_preview_media_type,
     replace_prediction_request_inputs,
     serialize_prediction_execution_result,
 )
@@ -132,6 +131,81 @@ class _LocalBufferBrokerRuntimeHealth:
     lock: Lock = field(default_factory=Lock, repr=False)
 
 
+class _RoutedLocalBufferAccess:
+    """按固定 pool 归属路由 backend 主池和 daemon 私有池。
+
+    backend 主池由 backend-service 管理，独立 daemon worker 只能通过 direct
+    mmap reader/writer 访问已授权区间；daemon 私有池由本进程树内的 broker
+    管理，用于持久异步任务进入模型子进程前的短期图片暂存。路由只检查固定
+    pool 路径，不复制图片，也不允许任意磁盘路径绕过 LocalBuffer 状态机。
+    """
+
+    def __init__(
+        self,
+        *,
+        broker_client: LocalBufferBrokerClient,
+        direct_reader: DirectMmapLocalBufferReader,
+        direct_writer: DirectMmapLocalBufferWriter,
+    ) -> None:
+        """保存两类 LocalBuffer 访问器。"""
+
+        self.broker_client = broker_client
+        self.direct_reader = direct_reader
+        self.direct_writer = direct_writer
+        self.channel = broker_client.channel
+
+    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes | memoryview:
+        """按 BufferRef 所属 pool 读取有效区间。"""
+
+        if self.direct_reader.accepts_path(buffer_ref.path):
+            return self.direct_reader.read_buffer_ref(buffer_ref)
+        return self.broker_client.read_buffer_ref(buffer_ref)
+
+    def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview:
+        """按 FrameRef 所属 pool 读取有效区间。"""
+
+        if self.direct_reader.accepts_path(frame_ref.path):
+            return self.direct_reader.read_frame_ref(frame_ref)
+        return self.broker_client.read_frame_ref(frame_ref)
+
+    def write_lease_bytes(
+        self,
+        *,
+        lease: BufferLease,
+        content: bytes | bytearray | memoryview,
+    ) -> None:
+        """按 writing lease 所属 pool 写入结果图片。"""
+
+        if self.direct_writer.accepts_lease(lease):
+            self.direct_writer.write_lease_bytes(lease=lease, content=content)
+            return
+        self.broker_client.write_lease_bytes(lease=lease, content=content)
+
+    def get_health_summary(self) -> dict[str, object]:
+        """返回双 LocalBuffer 数据面的健康摘要。"""
+
+        return {
+            **self.broker_client.get_health_summary(),
+            "transport": "routed-local-buffer",
+            "backend_direct": self.direct_reader.get_health_summary(),
+        }
+
+    def close(self) -> None:
+        """关闭 broker client 和 direct mmap view。"""
+
+        self.broker_client.close()
+        self.direct_reader.close()
+        self.direct_writer.close()
+
+
+_LocalBufferReader = (
+    LocalBufferBrokerClient | DirectMmapLocalBufferReader | _RoutedLocalBufferAccess
+)
+_LocalBufferWriter = (
+    LocalBufferBrokerClient | DirectMmapLocalBufferWriter | _RoutedLocalBufferAccess
+)
+
+
 def run_deployment_process_worker(
     *,
     config: Any,
@@ -160,6 +234,10 @@ def run_deployment_process_worker(
     local_buffer_reader = _build_local_buffer_reader(
         local_buffer_broker_event_channel,
         direct_reader_settings=local_buffer_direct_reader_settings,
+    )
+    local_buffer_writer = _build_local_buffer_writer(
+        local_buffer_reader,
+        direct_writer_settings=local_buffer_direct_reader_settings,
     )
     local_buffer_health = _build_local_buffer_health(local_buffer_reader)
     dataset_storage = LocalDatasetStorage(
@@ -214,6 +292,11 @@ def run_deployment_process_worker(
             runtime_pool.close_deployment(config.deployment_instance_id)
             if local_buffer_reader is not None:
                 local_buffer_reader.close()
+            if (
+                local_buffer_writer is not None
+                and local_buffer_writer is not local_buffer_reader
+            ):
+                local_buffer_writer.close()
             _put_ok_response(
                 response_queue=response_queue,
                 request_id=request_id,
@@ -365,6 +448,7 @@ def run_deployment_process_worker(
                     "runtime_pool_config": runtime_pool_config,
                     "payload": payload,
                     "local_buffer_reader": local_buffer_reader,
+                    "local_buffer_writer": local_buffer_writer,
                     "local_buffer_health": local_buffer_health,
                     "infer_slots": infer_slots,
                     "keep_warm_state": keep_warm_state,
@@ -391,7 +475,8 @@ def _run_inference_request(
     runtime_pool: DeploymentRuntimePool,
     runtime_pool_config: DeploymentRuntimePoolConfig,
     payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
+    local_buffer_writer: _LocalBufferWriter | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
     infer_slots: BoundedSemaphore,
     keep_warm_state: _KeepWarmState | None,
@@ -409,6 +494,27 @@ def _run_inference_request(
             request=prediction_request,
         )
         task_type = runtime_pool_config.runtime_target.task_type
+        preview_image_bytes = execution.execution_result.preview_image_bytes
+        preview_image_transfer: dict[str, object] | None = None
+        if preview_image_bytes is not None:
+            lease_payload = payload.get("preview_output_lease")
+            if not isinstance(lease_payload, dict):
+                raise ServiceConfigurationError(
+                    "结果图片请求缺少预分配 LocalBuffer lease"
+                )
+            if local_buffer_writer is None:
+                raise ServiceConfigurationError(
+                    "deployment worker 缺少 LocalBuffer 结果写入能力"
+                )
+            lease = BufferLease.model_validate(lease_payload)
+            local_buffer_writer.write_lease_bytes(
+                lease=lease,
+                content=preview_image_bytes,
+            )
+            preview_image_transfer = {
+                "size": len(preview_image_bytes),
+                "media_type": detect_prediction_preview_media_type(preview_image_bytes),
+            }
         _put_ok_response(
             response_queue=response_queue,
             request_id=request_id,
@@ -418,6 +524,7 @@ def _run_inference_request(
                     task_type=task_type,
                     execution_result=execution.execution_result,
                 ),
+                "preview_image_transfer": preview_image_transfer,
             },
         )
     except Exception as error:
@@ -432,7 +539,7 @@ def _run_inference_request(
 def _build_prediction_request(
     *,
     payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> PredictionRequest:
     """把 deployment worker 控制 payload 转换为预测请求。"""
@@ -461,7 +568,7 @@ def _build_prediction_request(
 def _resolve_input_image_payload(
     *,
     image_payload: dict[str, object],
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> tuple[
     str | None,
@@ -472,22 +579,6 @@ def _resolve_input_image_payload(
 
     normalized_payload = require_image_payload(image_payload)
     transport_kind = str(normalized_payload.get("transport_kind") or "")
-    if transport_kind == IMAGE_TRANSPORT_STORAGE:
-        return str(normalized_payload.get("object_key") or ""), None, None
-    if transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
-        local_path = Path(str(normalized_payload.get("local_path") or ""))
-        if not local_path.is_file():
-            raise InvalidRequestError(
-                "本地图片文件不存在",
-                details={"local_path": str(local_path)},
-            )
-        try:
-            return None, local_path.read_bytes(), normalized_payload
-        except OSError as error:
-            raise InvalidRequestError(
-                "本地图片文件无法读取",
-                details={"local_path": str(local_path)},
-            ) from error
     if transport_kind == IMAGE_TRANSPORT_BUFFER:
         if local_buffer_reader is None:
             raise ServiceConfigurationError(
@@ -527,9 +618,15 @@ def _build_local_buffer_reader(
     channel: LocalBufferBrokerEventChannel | None,
     *,
     direct_reader_settings: dict[str, object] | None = None,
-) -> LocalBufferBrokerClient | DirectMmapLocalBufferReader | None:
-    """优先创建 broker client，否则创建跨 daemon 只读 mmap reader。"""
+) -> _LocalBufferReader | None:
+    """创建单池访问器或 backend 主池与 daemon 私有池的路由访问器。"""
 
+    if channel is not None and direct_reader_settings is not None:
+        return _RoutedLocalBufferAccess(
+            broker_client=LocalBufferBrokerClient(channel),
+            direct_reader=DirectMmapLocalBufferReader(direct_reader_settings),
+            direct_writer=DirectMmapLocalBufferWriter(direct_reader_settings),
+        )
     if channel is not None:
         return LocalBufferBrokerClient(channel)
     if direct_reader_settings is not None:
@@ -537,8 +634,25 @@ def _build_local_buffer_reader(
     return None
 
 
+def _build_local_buffer_writer(
+    local_buffer_reader: _LocalBufferReader | None,
+    *,
+    direct_writer_settings: dict[str, object] | None = None,
+) -> _LocalBufferWriter | None:
+    """复用 reader 对应的 LocalBuffer 写入能力。"""
+
+    if isinstance(
+        local_buffer_reader,
+        (LocalBufferBrokerClient, _RoutedLocalBufferAccess),
+    ):
+        return local_buffer_reader
+    if direct_writer_settings is not None:
+        return DirectMmapLocalBufferWriter(direct_writer_settings)
+    return None
+
+
 def _build_local_buffer_health(
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
 ) -> _LocalBufferBrokerRuntimeHealth:
     """构造 deployment worker 内 broker 健康计数容器。"""
 
@@ -970,7 +1084,7 @@ def _serialize_health_with_keep_warm(
     health: object,
     behavior: _DeploymentWarmupBehavior,
     keep_warm_state: _KeepWarmState | None,
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> dict[str, object]:
     """把 runtime health 与 keep-warm 状态一起转换为跨进程字典。"""
@@ -989,7 +1103,7 @@ def _serialize_health_with_keep_warm(
 
 def _snapshot_local_buffer_health(
     *,
-    local_buffer_reader: LocalBufferBrokerClient | DirectMmapLocalBufferReader | None,
+    local_buffer_reader: _LocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
 ) -> dict[str, object]:
     """生成 deployment worker 的 broker health 快照。"""

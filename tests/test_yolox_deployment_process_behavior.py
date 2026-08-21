@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from threading import Event, Thread
+from queue import Queue
+from threading import BoundedSemaphore, Event, Thread
 
+from backend.contracts.buffers import BufferLease
+from backend.service.application.local_buffers import (
+    DirectMmapLocalBufferWriter,
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerSettings,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
@@ -22,11 +31,13 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
     _finish_real_inference,
     _resolve_warmup_behavior,
     _run_dummy_warmup_passes,
+    _run_inference_request,
     _run_keep_warm_loop,
     _snapshot_local_buffer_health,
     _snapshot_keep_warm_state,
 )
 from backend.service.application.runtime.deployment.deployment_runtime_pool import (
+    DeploymentRuntimeExecution,
     DeploymentRuntimePoolConfig,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
@@ -42,6 +53,7 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
     TensorRtRuntimeOptions,
 )
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
+from tests.runtime_pool_test_support import build_test_execution_result
 
 
 def test_deployment_keep_warm_is_disabled_by_default() -> None:
@@ -103,6 +115,141 @@ class _FakeRuntimePool:
             self.stop_state.stop_event.set()
         if self.error_message is not None:
             raise RuntimeError(self.error_message)
+
+
+class _PreviewRuntimePool:
+    """返回一张测试预览图并核对 LocalBuffer 输入的 runtime pool。"""
+
+    def __init__(self, *, execution_result) -> None:
+        self.execution_result = execution_result
+
+    def run_inference(self, *, config, request) -> DeploymentRuntimeExecution:
+        """返回固定结果，并确认 worker 已把 BufferRef 解析为图片 view。"""
+
+        assert isinstance(request.input_image_bytes, memoryview)
+        assert request.input_image_bytes.tobytes() == b"input-image"
+        return DeploymentRuntimeExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-preview",
+            execution_result=self.execution_result,
+        )
+
+
+class _PreviewInputReader:
+    """返回固定输入图片 view 的最小 LocalBuffer reader。"""
+
+    def read_buffer_ref(self, _buffer_ref) -> memoryview:
+        """返回只读输入图片 view。"""
+
+        return memoryview(b"input-image")
+
+
+def test_deployment_worker_returns_preview_only_through_localbuffer(
+    tmp_path: Path,
+) -> None:
+    """验证 worker 响应不携带图片 bytes/Base64，只返回 LocalBuffer 元数据。"""
+
+    settings = LocalBufferBrokerSettings(
+        root_dir=str(tmp_path / "buffers"),
+        default_pool_name="image-test",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-test",
+                slot_size_bytes=64 * 1024,
+                slot_count=1,
+            ),
+        ),
+    )
+    pool = settings.pools[0]
+    pool_path = Path(settings.root_dir) / pool.pool_name / pool.file_name
+    pool_path.parent.mkdir(parents=True)
+    pool_path.write_bytes(b"\x00" * pool.slot_size_bytes)
+    created_at = datetime.now(timezone.utc)
+    lease = BufferLease(
+        lease_id="lease-preview",
+        buffer_id="image-test:0",
+        owner_kind="test",
+        owner_id="test-preview",
+        pool_name=pool.pool_name,
+        file_path=str(pool_path),
+        offset=0,
+        size=pool.slot_size_bytes,
+        created_at=created_at,
+        expires_at=created_at + timedelta(seconds=60),
+        state="writing",
+        broker_epoch="epoch-test",
+        generation=1,
+    )
+    runtime_target = _build_runtime_target(tmp_path)
+    preview_bytes = b"\xff\xd8\xffpreview-image"
+    execution_result = replace(
+        build_test_execution_result(runtime_target=runtime_target),
+        preview_image_bytes=preview_bytes,
+    )
+    response_queue: Queue = Queue()
+    infer_slots = BoundedSemaphore(1)
+    assert infer_slots.acquire(blocking=False) is True
+
+    writer = DirectMmapLocalBufferWriter(settings)
+    try:
+        _run_inference_request(
+            response_queue=response_queue,
+            request_id="request-preview",
+            runtime_pool=_PreviewRuntimePool(execution_result=execution_result),
+            runtime_pool_config=DeploymentRuntimePoolConfig(
+                deployment_instance_id="deployment-preview",
+                runtime_target=runtime_target,
+            ),
+            payload={
+                "task_type": "detection",
+                "prediction_request": {
+                    "input_uri": None,
+                    "input_image_payload": {
+                        "transport_kind": "buffer",
+                        "media_type": "image/jpeg",
+                        "buffer_ref": {
+                            "buffer_id": "buffer-input",
+                            "lease_id": "lease-input",
+                            "path": str(pool_path),
+                            "offset": 0,
+                            "size": len(b"input-image"),
+                            "shape": [],
+                            "dtype": None,
+                            "layout": None,
+                            "pixel_format": None,
+                            "media_type": "image/jpeg",
+                            "broker_epoch": "epoch-test",
+                            "generation": 1,
+                        },
+                    },
+                    "score_threshold": 0.3,
+                    "save_result_image": True,
+                    "extra_options": {},
+                },
+                "preview_output_lease": lease.model_dump(mode="json"),
+            },
+            local_buffer_reader=_PreviewInputReader(),
+            local_buffer_writer=writer,
+            local_buffer_health=_LocalBufferBrokerRuntimeHealth(
+                connected=True,
+                channel_id="direct-mmap",
+            ),
+            infer_slots=infer_slots,
+            keep_warm_state=None,
+        )
+    finally:
+        writer.close()
+
+    response = response_queue.get_nowait()
+    assert response["ok"] is True
+    payload = response["payload"]
+    assert payload["preview_image_transfer"] == {
+        "size": len(preview_bytes),
+        "media_type": "image/jpeg",
+    }
+    assert "preview_image_bytes" not in payload["execution_result"]
+    assert "preview_image_bytes_base64" not in payload["execution_result"]
+    assert pool_path.read_bytes()[: len(preview_bytes)] == preview_bytes
 
 
 def test_increment_safe_counter_normalizes_negative_value_and_rolls_over() -> None:

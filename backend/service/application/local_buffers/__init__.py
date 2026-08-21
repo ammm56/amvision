@@ -6,8 +6,11 @@ from backend.service.application.local_buffers.broker_settings import (
 )
 from backend.service.application.local_buffers.direct_mmap_reader import (
     DirectMmapLocalBufferReader,
+    DirectMmapLocalBufferWriter,
 )
-from backend.service.application.local_buffers.local_buffer_broker_supervisor import LocalBufferBrokerProcessSupervisor
+from backend.service.application.local_buffers.local_buffer_broker_supervisor import (
+    LocalBufferBrokerProcessSupervisor,
+)
 from backend.service.application.local_buffers.local_buffer_client import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
@@ -22,4 +25,5 @@ __all__ = [
     "LocalBufferBrokerSettings",
     "LocalBufferReader",
     "DirectMmapLocalBufferReader",
+    "DirectMmapLocalBufferWriter",
 ]

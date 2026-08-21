@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from backend.service.application.models.inference.inference_gateway import (
     ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX as DETECTION_ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX,
     ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX as DETECTION_ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX,
@@ -16,13 +14,6 @@ from backend.service.application.models.inference.inference_gateway import (
     normalize_async_inference_deployment_id,
     normalize_async_inference_owner_id,
     serialize_async_inference_execution_result,
-)
-from backend.service.application.runtime.contracts.detection.prediction import (
-    DetectionPredictionExecutionResult,
-)
-from backend.service.application.runtime.serialization.detection.prediction import (
-    deserialize_detection,
-    deserialize_runtime_session_info,
 )
 
 
@@ -51,45 +42,17 @@ def normalize_detection_async_inference_deployment_id(value: object) -> str:
     return normalize_async_inference_deployment_id(value)
 
 
-def serialize_detection_async_inference_execution_result(result: object) -> dict[str, object]:
+def serialize_detection_async_inference_execution_result(
+    result: object,
+    *,
+    preview_image_object_key: str | None = None,
+) -> dict[str, object]:
     """序列化 detection async inference 执行结果。"""
 
-    if getattr(result, "execution_result", None) is None and hasattr(result, "detections"):
-        normalized_detections = []
-        for item in getattr(result, "detections", ()):
-            if isinstance(item, dict):
-                parsed_item = deserialize_detection(item)
-                if parsed_item is not None:
-                    normalized_detections.append(parsed_item)
-                continue
-            normalized_detections.append(item)
-        runtime_session_info = getattr(result, "runtime_session_info", None)
-        normalized_result = SimpleNamespace(
-            instance_id=getattr(result, "instance_id", None),
-            execution_result=DetectionPredictionExecutionResult(
-                detections=tuple(normalized_detections),
-                latency_ms=getattr(result, "latency_ms", None),
-                image_width=int(getattr(result, "image_width", 0) or 0),
-                image_height=int(getattr(result, "image_height", 0) or 0),
-                preview_image_bytes=(
-                    getattr(result, "preview_image_bytes", None)
-                    if isinstance(getattr(result, "preview_image_bytes", None), bytes)
-                    else None
-                ),
-                runtime_session_info=(
-                    deserialize_runtime_session_info(runtime_session_info)
-                    if isinstance(runtime_session_info, dict)
-                    else runtime_session_info
-                ),
-            ),
-        )
-        return serialize_async_inference_execution_result(
-            task_type="detection",
-            result=normalized_result,
-        )
     return serialize_async_inference_execution_result(
         task_type="detection",
         result=result,
+        preview_image_object_key=preview_image_object_key,
     )
 
 

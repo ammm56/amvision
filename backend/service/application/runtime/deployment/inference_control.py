@@ -5,16 +5,20 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
 import logging
+import mimetypes
 
-from backend.contracts.buffers import BufferRef, FrameRef
+from backend.contracts.buffers import BufferLease, BufferRef
 from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_BUFFER,
     IMAGE_TRANSPORT_FRAME,
+    IMAGE_TRANSPORT_LOCAL_PATH,
+    IMAGE_TRANSPORT_STORAGE,
     require_image_payload,
 )
 from backend.queue import QueueBackend, QueueMessage
@@ -24,7 +28,6 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ServiceConfigurationError,
 )
-from backend.service.application.images.image_matrix import decode_image_bytes_to_matrix
 from backend.service.application.models.inference.inference_gateway import (
     _deserialize_error,
     _deserialize_process_config,
@@ -60,30 +63,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 INFERENCE_CONTROL_QUEUE_PREFIX = "inference-control"
 INFERENCE_CONTROL_RESPONSE_QUEUE_PREFIX = "inference-control-response"
-
-# 只有结果结构有明确上界的任务进入固定容量 mmap。segmentation 的实例轮廓点数
-# 随图片内容变化，即使不返回预览图也可能超过单槽容量，因此固定走现有控制队列。
-_FIXED_RESPONSE_MMAP_TASK_TYPES = frozenset(
-    {"classification", "detection", "obb", "pose"}
-)
+_INFERENCE_BUFFER_TTL_GRACE_SECONDS = 60.0
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-def _should_use_local_mmap(
-    *,
-    local_mmap_available: bool,
-    task_type: str,
-    save_result_image: bool,
-) -> bool:
-    """按任务结果边界静态选择固定容量 mmap，不执行溢出回退或重试。"""
-
-    return (
-        local_mmap_available
-        and not save_result_image
-        and task_type.strip().lower() in _FIXED_RESPONSE_MMAP_TASK_TYPES
-    )
 
 
 def _parse_utc_datetime(value: object) -> datetime | None:
@@ -249,57 +232,62 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         config: DeploymentProcessConfig,
         request: PredictionRequest,
     ) -> DeploymentProcessExecution:
-        """通过 daemon 执行同步推理；有界小响应走 mmap，其余走控制队列。"""
+        """通过 v1 mmap 执行同步推理；图片统一使用 LocalBuffer。"""
 
+        if self.local_mmap_client is None:
+            raise ServiceConfigurationError("独立 inference daemon 缺少 mmap v1 热路径")
         request_id = uuid4().hex
-        staged_root = f"runtime/inputs/inference-control/{request_id}"
-        use_local_mmap = _should_use_local_mmap(
-            local_mmap_available=self.local_mmap_client is not None,
-            task_type=config.runtime_target.task_type,
-            save_result_image=bool(getattr(request, "save_result_image", False)),
-        )
-        prepared_request = self._stage_prediction_input(
+        prepared_request, owned_buffer = self._stage_prediction_input(
             request=request,
-            object_key=f"{staged_root}/input.png",
-            preserve_local_refs=use_local_mmap,
+            owner_id=f"inference-request-{request_id}",
         )
-        cleanup_staged_input = True
+        preview_output_lease = self._allocate_preview_output(
+            request=request,
+            owner_id=f"inference-preview-{request_id}",
+        )
+        mmap_request_started = False
+        mmap_request_completed = False
         try:
             serialized_request = serialize_prediction_request(
                 task_type=config.runtime_target.task_type,
                 request=prepared_request,
             )
-            if use_local_mmap:
-                response = self.local_mmap_client.request(
-                    {
-                        "action": "infer",
-                        "runtime_mode": self.runtime_mode,
-                        "process_config": _serialize_process_config(config),
-                        "prediction_request": serialized_request,
-                    }
+            mmap_payload: dict[str, object] = {
+                "action": "infer",
+                "runtime_mode": self.runtime_mode,
+                "process_config": _serialize_process_config(config),
+                "prediction_request": serialized_request,
+            }
+            if preview_output_lease is not None:
+                mmap_payload["preview_output_lease"] = preview_output_lease.model_dump(
+                    mode="json"
                 )
-                if response.get("ok") is not True:
-                    raise _deserialize_error(
-                        response.get("error"),
-                        fallback_message="inference daemon mmap 执行失败",
-                    )
-                payload = response.get("result")
-                if not isinstance(payload, dict):
-                    raise InvalidRequestError("inference daemon mmap 响应缺少 result")
-            else:
-                self._require_daemon_available()
-                payload = self._request(
-                    "infer",
-                    config,
-                    extra_payload={"prediction_request": serialized_request},
+            mmap_request_started = True
+            response = self.local_mmap_client.request(mmap_payload)
+            mmap_request_completed = True
+            if response.get("ok") is not True:
+                raise _deserialize_error(
+                    response.get("error"),
+                    fallback_message="inference daemon mmap 执行失败",
                 )
-        except OperationTimeoutError:
-            # daemon 可能仍在读取输入；保留文件，由运行时存储清理任务回收。
-            cleanup_staged_input = False
-            raise
+            payload = response.get("result")
+            if not isinstance(payload, dict):
+                raise InvalidRequestError("inference daemon mmap 响应缺少 result")
+            self._materialize_preview_output(
+                payload=payload,
+                preview_output_lease=preview_output_lease,
+            )
+            preview_output_lease = None
         finally:
-            if cleanup_staged_input:
-                self.dataset_storage.delete_tree(staged_root)
+            if not mmap_request_started or mmap_request_completed:
+                self._release_owned_input_buffer(owned_buffer)
+                self._release_preview_output(preview_output_lease)
+            elif owned_buffer is not None or preview_output_lease is not None:
+                LOGGER.warning(
+                    "inference mmap 状态不确定，LocalBuffer lease 保留到 TTL 后回收: "
+                    "request_id=%s",
+                    request_id,
+                )
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=str(payload.get("instance_id") or ""),
@@ -342,6 +330,8 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 or mmap_result.get("ready") is not True
             ):
                 raise ServiceConfigurationError("inference daemon mmap 热路径探测失败")
+            response = dict(response)
+            response["mmap_mailbox"] = mmap_result.get("mailbox")
         return response
 
     def _require_daemon_available(self) -> None:
@@ -354,10 +344,12 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         action: str,
         config: DeploymentProcessConfig | None,
         *,
-        extra_payload: dict[str, object] | None = None,
         timeout: float | None = None,
     ) -> dict[str, object]:
-        """提交一条控制请求并等待专属响应队列。"""
+        """提交一条持久化控制请求并等待专属响应队列。"""
+
+        if action == "infer":
+            raise InvalidRequestError("推理请求只能使用 mmap v1 热路径")
 
         effective_timeout = max(0.1, timeout or self.request_timeout_seconds)
         request_id = f"control-{uuid4().hex}"
@@ -374,7 +366,6 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         }
         if config is not None:
             payload["process_config"] = _serialize_process_config(config)
-        payload.update(extra_payload or {})
         queue_message = self.queue_backend.enqueue(
             queue_name=_build_control_queue_name(self.service_id),
             payload=payload,
@@ -478,67 +469,187 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         self,
         *,
         request: PredictionRequest,
-        object_key: str,
-        preserve_local_refs: bool = False,
-    ) -> PredictionRequest:
-        """把 bytes 或 broker ref 转为共享对象存储图片，避免控制队列承载大数据。"""
+        owner_id: str,
+    ) -> tuple[PredictionRequest, tuple[str, str | None] | None]:
+        """把图片统一转换为 LocalBuffer 引用，并返回当前请求拥有的 lease。"""
 
         image_bytes = getattr(request, "input_image_bytes", None)
+        source_name = getattr(request, "input_uri", None)
+        source_is_local_path = False
         image_payload = getattr(request, "input_image_payload", None)
         if image_bytes is None and isinstance(image_payload, dict):
             normalized = require_image_payload(image_payload)
             transport_kind = normalized.get("transport_kind")
-            if transport_kind == IMAGE_TRANSPORT_BUFFER:
-                if preserve_local_refs:
-                    return request
-                if self.local_buffer_reader is None:
-                    raise InvalidRequestError(
-                        "inference control client 缺少 buffer reader"
-                    )
-                image_bytes = self.local_buffer_reader.read_buffer_ref(
-                    BufferRef.model_validate(normalized.get("buffer_ref"))
-                )
-            elif transport_kind == IMAGE_TRANSPORT_FRAME:
-                if preserve_local_refs:
-                    return request
-                if self.local_buffer_reader is None:
-                    raise InvalidRequestError(
-                        "inference control client 缺少 frame reader"
-                    )
-                image_bytes = self.local_buffer_reader.read_frame_ref(
-                    FrameRef.model_validate(normalized.get("frame_ref"))
-                )
-            else:
-                return request
+            if transport_kind in {IMAGE_TRANSPORT_BUFFER, IMAGE_TRANSPORT_FRAME}:
+                return request, None
+            if transport_kind == IMAGE_TRANSPORT_STORAGE:
+                source_name = str(normalized.get("object_key") or "")
+            elif transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+                source_name = str(normalized.get("local_path") or "")
+                source_is_local_path = True
         if image_bytes is None:
-            return request
-
-        encoded_bytes = bytes(image_bytes)
-        if (
-            isinstance(image_payload, dict)
-            and str(image_payload.get("media_type")) == "image/raw"
-        ):
-            import cv2
-            import numpy as np
-
-            matrix = decode_image_bytes_to_matrix(
-                cv2_module=cv2,
-                np_module=np,
-                image_bytes=encoded_bytes,
-                image_payload=image_payload,
-                copy_raw=False,
+            if not isinstance(source_name, str) or not source_name.strip():
+                raise InvalidRequestError("inference 请求缺少可传输的图片输入")
+            source_path = (
+                Path(source_name)
+                if source_is_local_path
+                else self.dataset_storage.resolve(source_name)
             )
-            ok, encoded = cv2.imencode(".png", matrix)
-            if not ok:
-                raise InvalidRequestError("raw inference 输入无法编码为 PNG")
-            encoded_bytes = encoded.tobytes()
-        self.dataset_storage.write_bytes(object_key, encoded_bytes)
-        return replace_prediction_request_inputs(
-            request=request,
-            input_uri=object_key,
-            input_image_bytes=None,
-            input_image_payload=None,
+            if not source_path.is_file():
+                raise InvalidRequestError(
+                    "inference 请求图片不存在",
+                    details={"source": source_name},
+                )
+            image_bytes = source_path.read_bytes()
+            media_type = (
+                mimetypes.guess_type(source_name)[0] or "application/octet-stream"
+            )
+            image_payload = {"media_type": media_type}
+        writer = getattr(self.local_buffer_reader, "write_bytes", None)
+        if not callable(writer):
+            raise ServiceConfigurationError(
+                "inference client 缺少 LocalBuffer 写入能力"
+            )
+        normalized_payload = dict(image_payload or {})
+        media_type = str(
+            normalized_payload.get("media_type") or "application/octet-stream"
         )
+        shape_value = normalized_payload.get("shape")
+        shape = (
+            tuple(int(item) for item in shape_value)
+            if isinstance(shape_value, list | tuple)
+            else ()
+        )
+        write_result = writer(
+            content=bytes(image_bytes),
+            owner_kind="inference-request",
+            owner_id=owner_id,
+            media_type=media_type,
+            shape=shape,
+            dtype=_optional_text(normalized_payload.get("dtype")),
+            layout=_optional_text(normalized_payload.get("layout")),
+            pixel_format=_optional_text(normalized_payload.get("pixel_format")),
+            ttl_seconds=(
+                self.request_timeout_seconds + _INFERENCE_BUFFER_TTL_GRACE_SECONDS
+            ),
+        )
+        buffer_ref = write_result.buffer_ref
+        prepared = replace_prediction_request_inputs(
+            request=request,
+            input_uri=None,
+            input_image_bytes=None,
+            input_image_payload={
+                "transport_kind": IMAGE_TRANSPORT_BUFFER,
+                "media_type": buffer_ref.media_type,
+                "buffer_ref": buffer_ref.model_dump(mode="json"),
+            },
+        )
+        return prepared, (write_result.lease.lease_id, write_result.lease.pool_name)
+
+    def _release_owned_input_buffer(
+        self,
+        owned_buffer: tuple[str, str | None] | None,
+    ) -> None:
+        """释放本次推理临时创建的 LocalBuffer lease。"""
+
+        if owned_buffer is None:
+            return
+        release = getattr(self.local_buffer_reader, "release", None)
+        if not callable(release):
+            return
+        lease_id, pool_name = owned_buffer
+        release(lease_id, pool_name=pool_name)
+
+    def _allocate_preview_output(
+        self,
+        *,
+        request: PredictionRequest,
+        owner_id: str,
+    ) -> BufferLease | None:
+        """为结果图片预留 LocalBuffer 固定槽位；未请求图片时不占用。"""
+
+        if not bool(getattr(request, "save_result_image", False)):
+            return None
+        allocate = getattr(self.local_buffer_reader, "allocate_buffer", None)
+        settings = getattr(self.local_buffer_reader, "settings", None)
+        if not callable(allocate) or settings is None:
+            raise ServiceConfigurationError("结果图片推理缺少 LocalBuffer 预分配能力")
+        pool_name = str(settings.default_pool_name)
+        pool = next(
+            (item for item in settings.pools if item.pool_name == pool_name),
+            None,
+        )
+        if pool is None:
+            raise ServiceConfigurationError(
+                "LocalBuffer 默认图片 pool 不存在",
+                details={"pool_name": pool_name},
+            )
+        return allocate(
+            size=int(pool.slot_size_bytes),
+            owner_kind="inference-preview",
+            owner_id=owner_id,
+            pool_name=pool_name,
+            ttl_seconds=(
+                self.request_timeout_seconds + _INFERENCE_BUFFER_TTL_GRACE_SECONDS
+            ),
+        )
+
+    def _materialize_preview_output(
+        self,
+        *,
+        payload: dict[str, object],
+        preview_output_lease: BufferLease | None,
+    ) -> None:
+        """提交 daemon 写完的 lease，并在 backend 边界读取结果图片。"""
+
+        execution_result = payload.get("execution_result")
+        if not isinstance(execution_result, dict):
+            raise InvalidRequestError("inference daemon 响应缺少 execution_result")
+        transfer = execution_result.pop("preview_image_transfer", None)
+        if transfer is None:
+            self._release_preview_output(preview_output_lease)
+            return
+        if preview_output_lease is None or not isinstance(transfer, dict):
+            raise ServiceConfigurationError(
+                "inference preview LocalBuffer 传输状态不一致"
+            )
+        size = transfer.get("size")
+        media_type = transfer.get("media_type")
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise ServiceConfigurationError("inference preview LocalBuffer 长度不合法")
+        if not isinstance(media_type, str) or not media_type.strip():
+            raise ServiceConfigurationError(
+                "inference preview LocalBuffer 媒体类型缺失"
+            )
+        if size > preview_output_lease.size:
+            raise ServiceConfigurationError(
+                "inference preview 超出预分配 LocalBuffer 槽位"
+            )
+        commit = getattr(self.local_buffer_reader, "commit_buffer", None)
+        read = getattr(self.local_buffer_reader, "read_buffer_ref", None)
+        if not callable(commit) or not callable(read):
+            raise ServiceConfigurationError(
+                "inference client 缺少 LocalBuffer 提交能力"
+            )
+        committed = commit(
+            lease=preview_output_lease.model_copy(update={"size": size}),
+            media_type=media_type.strip(),
+        )
+        try:
+            execution_result["preview_image_bytes"] = bytes(
+                read(BufferRef.model_validate(committed.buffer_ref))
+            )
+        finally:
+            self._release_preview_output(committed.lease)
+
+    def _release_preview_output(self, lease: BufferLease | None) -> None:
+        """幂等释放预分配或已提交的结果图片 lease。"""
+
+        if lease is None:
+            return
+        release = getattr(self.local_buffer_reader, "release", None)
+        if callable(release):
+            release(lease.lease_id, pool_name=lease.pool_name)
 
 
 class InferenceControlDispatcher:
@@ -557,7 +668,6 @@ class InferenceControlDispatcher:
         lease_timeout_seconds: float = 900.0,
         response_queue_retention_seconds: float = 3600.0,
         response_queue_cleanup_interval_seconds: float = 60.0,
-        control_request_max_age_seconds: float = 300.0,
     ) -> None:
         """绑定队列、共享存储和 daemon 运行组件。"""
 
@@ -576,10 +686,6 @@ class InferenceControlDispatcher:
         self.response_queue_cleanup_interval_seconds = max(
             1.0,
             response_queue_cleanup_interval_seconds,
-        )
-        self.control_request_max_age_seconds = max(
-            1.0,
-            control_request_max_age_seconds,
         )
         self._stop_event = Event()
         self._thread: Thread | None = None
@@ -617,7 +723,7 @@ class InferenceControlDispatcher:
         self._stop_event.set()
         thread = self._thread
         if thread is not None:
-            thread.join(timeout=2.0)
+            thread.join()
         executor = self._executor
         if executor is not None:
             executor.shutdown(wait=True, cancel_futures=True)
@@ -698,7 +804,7 @@ class InferenceControlDispatcher:
         payload = dict(message.payload)
         request_id = str(payload.get("request_id") or "")
         response_queue_name = str(payload.get("response_queue_name") or "")
-        if self._is_request_expired(message=message, payload=payload):
+        if self._is_request_expired(payload=payload):
             self._discard_expired_request(
                 message=message,
                 request_id=request_id,
@@ -734,7 +840,6 @@ class InferenceControlDispatcher:
                 binding=binding,
                 supervisor=supervisor,
                 config=config,
-                payload=payload,
             )
             response = {"request_id": request_id, "ok": True, "result": result}
         except Exception as error:  # noqa: BLE001 - 远端异常必须稳定序列化
@@ -755,7 +860,7 @@ class InferenceControlDispatcher:
                 error_message="inference control 请求缺少响应队列",
             )
             return
-        if self._is_request_expired(message=message, payload=payload):
+        if self._is_request_expired(payload=payload):
             self._discard_expired_request(
                 message=message,
                 request_id=request_id,
@@ -793,33 +898,48 @@ class InferenceControlDispatcher:
             )
         runtime_mode = str(payload.get("runtime_mode") or "")
         supervisor = binding.get_supervisor(runtime_mode)
-        return self._execute_action(
-            action=action,
-            runtime_mode=runtime_mode,
-            binding=binding,
-            supervisor=supervisor,
-            config=config,
-            payload=payload,
+        request_payload = payload.get("prediction_request")
+        if not isinstance(request_payload, dict):
+            raise InvalidRequestError("inference mmap 请求缺少 prediction_request")
+        request = build_prediction_request_from_payload(
+            task_type=config.runtime_target.task_type,
+            payload=request_payload,
         )
+        lease_payload = payload.get("preview_output_lease")
+        preview_output_lease = (
+            BufferLease.model_validate(lease_payload)
+            if isinstance(lease_payload, dict)
+            else None
+        )
+        execution = supervisor.run_inference(
+            config=config,
+            request=request,
+            preview_output_lease=preview_output_lease,
+        )
+        if execution.execution_result.preview_image_bytes is not None:
+            raise ServiceConfigurationError(
+                "deployment worker 不得通过进程队列返回结果图片 bytes"
+            )
+        serialized_result = serialize_prediction_execution_result(
+            task_type=config.runtime_target.task_type,
+            execution_result=execution.execution_result,
+        )
+        serialized_result["preview_image_transfer"] = execution.preview_image_transfer
+        return {
+            "instance_id": execution.instance_id,
+            "execution_result": serialized_result,
+        }
 
     def _is_request_expired(
         self,
         *,
-        message: QueueMessage,
         payload: dict[str, object],
     ) -> bool:
-        """判断控制请求是否超过客户端 deadline 或兼容消息最大年龄。"""
+        """判断控制请求是否已超过客户端明确写入的 deadline。"""
 
         now = datetime.now(timezone.utc)
         expires_at = _parse_utc_datetime(payload.get("expires_at"))
-        if expires_at is not None:
-            return now >= expires_at
-        created_at = _parse_utc_datetime(message.created_at)
-        if created_at is None:
-            return True
-        return (
-            now - created_at
-        ).total_seconds() >= self.control_request_max_age_seconds
+        return expires_at is None or now >= expires_at
 
     def _discard_expired_request(
         self,
@@ -879,7 +999,6 @@ class InferenceControlDispatcher:
         binding: InferenceControlBinding,
         supervisor: DeploymentProcessSupervisor,
         config: DeploymentProcessConfig,
-        payload: dict[str, object],
     ) -> dict[str, object]:
         """执行一条已校验控制动作。"""
 
@@ -915,24 +1034,6 @@ class InferenceControlDispatcher:
             return asdict(supervisor.get_health(config))
         if action == "reset":
             return asdict(supervisor.reset_deployment(config))
-        if action == "infer":
-            request_payload = payload.get("prediction_request")
-            if not isinstance(request_payload, dict):
-                raise InvalidRequestError(
-                    "inference control 请求缺少 prediction_request"
-                )
-            request = build_prediction_request_from_payload(
-                task_type=config.runtime_target.task_type,
-                payload=request_payload,
-            )
-            execution = supervisor.run_inference(config=config, request=request)
-            return {
-                "instance_id": execution.instance_id,
-                "execution_result": serialize_prediction_execution_result(
-                    task_type=config.runtime_target.task_type,
-                    execution_result=execution.execution_result,
-                ),
-            }
         raise InvalidRequestError(
             "inference control action 不合法",
             details={"action": action},
@@ -1000,6 +1101,12 @@ def _normalize_queue_part(value: str) -> str:
 
     normalized = value.strip().replace("/", "-").replace("\\", "-").replace(":", "-")
     return normalized or "main"
+
+
+def _optional_text(value: object) -> str | None:
+    """把可选 metadata 规范为非空字符串。"""
+
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _deserialize_status(payload: dict[str, object]) -> DeploymentProcessStatus:

@@ -15,12 +15,19 @@ import logging
 import multiprocessing
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
-from backend.service.application.errors import OperationTimeoutError, ServiceConfigurationError
+from backend.service.application.errors import (
+    OperationTimeoutError,
+    ServiceConfigurationError,
+)
 from backend.service.application.local_buffers.backend_service_process_takeover import (
     take_over_backend_service_owner,
 )
-from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
-from backend.service.application.local_buffers.local_buffer_broker_process import run_local_buffer_broker_process
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
+from backend.service.application.local_buffers.local_buffer_broker_process import (
+    run_local_buffer_broker_process,
+)
 from backend.service.application.local_buffers.local_buffer_client import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
@@ -145,27 +152,42 @@ class _LocalBufferBrokerEventRouter:
             client_channel_ids = sorted(self._client_routes.keys())
             response_thread = self._response_thread
             active_forward_thread_count = sum(
-                1 for route in self._client_routes.values() if route.forward_thread.is_alive()
+                1
+                for route in self._client_routes.values()
+                if route.forward_thread.is_alive()
             )
             closed_channel_snapshot = snapshot_safe_counter(self._closed_channel_count)
             forward_error_snapshot = snapshot_safe_counter(self._forward_error_count)
-            dropped_response_snapshot = snapshot_safe_counter(self._dropped_response_count)
+            dropped_response_snapshot = snapshot_safe_counter(
+                self._dropped_response_count
+            )
             return {
                 "configured": True,
-                "response_router_running": response_thread is not None and response_thread.is_alive(),
+                "response_router_running": response_thread is not None
+                and response_thread.is_alive(),
                 "active_client_channel_count": len(self._client_routes),
                 "pending_response_route_count": len(self._response_routes),
                 "active_forward_thread_count": active_forward_thread_count,
                 "closed_channel_count": closed_channel_snapshot["value"],
-                "closed_channel_count_rollover_count": closed_channel_snapshot["rollover_count"],
+                "closed_channel_count_rollover_count": closed_channel_snapshot[
+                    "rollover_count"
+                ],
                 "forward_error_count": forward_error_snapshot["value"],
-                "forward_error_count_rollover_count": forward_error_snapshot["rollover_count"],
+                "forward_error_count_rollover_count": forward_error_snapshot[
+                    "rollover_count"
+                ],
                 "dropped_response_count": dropped_response_snapshot["value"],
-                "dropped_response_count_rollover_count": dropped_response_snapshot["rollover_count"],
+                "dropped_response_count_rollover_count": dropped_response_snapshot[
+                    "rollover_count"
+                ],
                 "active_client_channel_ids": client_channel_ids[:8],
-                "active_client_channel_overflow_count": max(0, len(client_channel_ids) - 8),
+                "active_client_channel_overflow_count": max(
+                    0, len(client_channel_ids) - 8
+                ),
                 "last_router_error": (
-                    dict(self._last_router_error) if self._last_router_error is not None else None
+                    dict(self._last_router_error)
+                    if self._last_router_error is not None
+                    else None
                 ),
             }
 
@@ -196,7 +218,9 @@ class _LocalBufferBrokerEventRouter:
             channel_id=channel_id,
         )
 
-    def _forward_client_requests(self, channel_id: str, request_queue: Any, response_queue: Any) -> None:
+    def _forward_client_requests(
+        self, channel_id: str, request_queue: Any, response_queue: Any
+    ) -> None:
         """把单个客户端通道的请求转发给 broker 进程。"""
 
         try:
@@ -206,7 +230,9 @@ class _LocalBufferBrokerEventRouter:
                 except Empty:
                     continue
                 except Exception as exc:
-                    self._record_router_error(action="read-client-request", channel_id=channel_id, error=exc)
+                    self._record_router_error(
+                        action="read-client-request", channel_id=channel_id, error=exc
+                    )
                     if self._stop_event.is_set():
                         break
                     continue
@@ -228,7 +254,9 @@ class _LocalBufferBrokerEventRouter:
                     with self._lock:
                         self._response_routes.pop(request_id, None)
                         increment_safe_counter(self._forward_error_count)
-                    self._record_router_error(action="forward-request", channel_id=channel_id, error=exc)
+                    self._record_router_error(
+                        action="forward-request", channel_id=channel_id, error=exc
+                    )
                     _safe_put(
                         response_queue,
                         {
@@ -243,7 +271,7 @@ class _LocalBufferBrokerEventRouter:
                                     "error_message": str(exc) or type(exc).__name__,
                                 },
                             },
-                        }
+                        },
                     )
         finally:
             self._remove_client_route(channel_id)
@@ -441,7 +469,11 @@ class LocalBufferBrokerProcessSupervisor:
                 return
 
             self.stop()
-            error_payload = message.get("error") if isinstance(message, dict) and isinstance(message.get("error"), dict) else {}
+            error_payload = (
+                message.get("error")
+                if isinstance(message, dict) and isinstance(message.get("error"), dict)
+                else {}
+            )
             if self._should_take_over_existing_process(error_payload):
                 error_details = error_payload.get("details")
                 owner_metadata = (
@@ -470,8 +502,7 @@ class LocalBufferBrokerProcessSupervisor:
                     )
                 except ServiceConfigurationError as exc:
                     if (
-                        exc.details.get("reason")
-                        == "owner-exited-during-takeover"
+                        exc.details.get("reason") == "owner-exited-during-takeover"
                         and monotonic() < deadline
                     ):
                         sleep(min(0.2, max(0.05, deadline - monotonic())))
@@ -491,12 +522,17 @@ class LocalBufferBrokerProcessSupervisor:
                         "root_dir": self.settings.root_dir,
                     },
                 )
-            if self._is_retryable_startup_error(error_payload) and monotonic() < deadline:
+            if (
+                self._is_retryable_startup_error(error_payload)
+                and monotonic() < deadline
+            ):
                 sleep(min(0.2, max(0.05, deadline - monotonic())))
                 continue
             raise ServiceConfigurationError(
                 str(error_payload.get("message") or "LocalBufferBroker 启动失败"),
-                details=error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {},
+                details=error_payload.get("details")
+                if isinstance(error_payload.get("details"), dict)
+                else {},
             )
 
     def stop(self) -> None:
@@ -650,6 +686,62 @@ class LocalBufferBrokerProcessSupervisor:
         finally:
             client.close()
 
+    def allocate_buffer(
+        self,
+        *,
+        size: int,
+        owner_kind: str,
+        owner_id: str,
+        pool_name: str | None = None,
+        ttl_seconds: float | None = None,
+        trace_id: str | None = None,
+    ) -> BufferLease:
+        """分配 writing lease，供独立 daemon 直接写入结果图片。"""
+
+        client = self._require_client()
+        try:
+            return client.allocate_buffer(
+                size=size,
+                owner_kind=owner_kind,
+                owner_id=owner_id,
+                pool_name=pool_name,
+                ttl_seconds=ttl_seconds,
+                trace_id=trace_id,
+            )
+        except Exception as exc:
+            self._record_recent_error(action="allocate-buffer", error=exc)
+            raise
+        finally:
+            client.close()
+
+    def commit_buffer(
+        self,
+        *,
+        lease: BufferLease,
+        media_type: str,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
+    ) -> MmapBufferWriteResult:
+        """提交由独立 daemon 写完的结果图片 lease。"""
+
+        client = self._require_client()
+        try:
+            return client.commit_buffer(
+                lease=lease,
+                media_type=media_type,
+                shape=shape,
+                dtype=dtype,
+                layout=layout,
+                pixel_format=pixel_format,
+            )
+        except Exception as exc:
+            self._record_recent_error(action="commit-buffer", error=exc)
+            raise
+        finally:
+            client.close()
+
     def write_lease_bytes(
         self,
         *,
@@ -794,7 +886,9 @@ class LocalBufferBrokerProcessSupervisor:
 
         client = self._require_client()
         try:
-            return client.destroy_frame_channel(stream_id=stream_id, pool_name=pool_name)
+            return client.destroy_frame_channel(
+                stream_id=stream_id, pool_name=pool_name
+            )
         except Exception as exc:
             self._record_recent_error(action="destroy-frame-channel", error=exc)
             raise
@@ -905,7 +999,9 @@ class LocalBufferBrokerProcessSupervisor:
                 continue
             try:
                 self.expire_leases()
-            except Exception as exc:  # pragma: no cover - 后台线程错误由 health recent_error 暴露
+            except (
+                Exception
+            ) as exc:  # pragma: no cover - 后台线程错误由 health recent_error 暴露
                 self._record_recent_error(action="expire-loop", error=exc)
 
     def _is_expire_loop_running(self) -> bool:
@@ -1008,11 +1104,19 @@ class LocalBufferBrokerProcessSupervisor:
     def _is_retryable_startup_error(self, error_payload: dict[str, object]) -> bool:
         """判断 broker 启动失败是否属于可短暂重试的映射占用场景。"""
 
-        error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
+        error_details = (
+            error_payload.get("details")
+            if isinstance(error_payload.get("details"), dict)
+            else {}
+        )
         error_type = str(error_details.get("error_type") or "")
         file_path = str(error_details.get("file_path") or "")
         detail_message = str(error_details.get("error_message") or "")
-        return error_type == "OSError" and file_path.endswith(".dat") and "Invalid argument" in detail_message
+        return (
+            error_type == "OSError"
+            and file_path.endswith(".dat")
+            and "Invalid argument" in detail_message
+        )
 
     def _should_take_over_existing_process(
         self,

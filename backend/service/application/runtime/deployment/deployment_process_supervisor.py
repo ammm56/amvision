@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 import multiprocessing
+import mimetypes
 import weakref
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
+from backend.contracts.buffers import BufferLease, BufferRef
+from backend.nodes.runtime_support import (
+    IMAGE_TRANSPORT_BUFFER,
+    IMAGE_TRANSPORT_FRAME,
+    IMAGE_TRANSPORT_LOCAL_PATH,
+    IMAGE_TRANSPORT_STORAGE,
+    require_image_payload,
+)
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -55,6 +65,7 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionExecutionResult,
     PredictionRequest,
     deserialize_prediction_execution_result,
+    replace_prediction_request_inputs,
     serialize_prediction_request,
 )
 from backend.service.application.runtime.targets.runtime_target import (
@@ -224,6 +235,7 @@ class DeploymentProcessExecution:
     deployment_instance_id: str
     instance_id: str
     execution_result: PredictionExecutionResult
+    preview_image_transfer: dict[str, object] | None = None
 
 
 @dataclass
@@ -351,6 +363,7 @@ class DeploymentProcessSupervisor:
         ]
         | None = None,
         local_buffer_direct_reader_settings: dict[str, object] | None = None,
+        local_buffer_io: object | None = None,
         cpu_device_resource_manager: CpuDeviceResourceManager | None = None,
         worker_target: Callable[..., None] = run_deployment_process_worker,
     ) -> None:
@@ -366,6 +379,7 @@ class DeploymentProcessSupervisor:
         - local_buffer_broker_event_channel：固定的 broker 事件通道。
         - local_buffer_broker_event_channel_provider：启动子进程时读取 broker 事件通道的函数。
         - local_buffer_direct_reader_settings：独立 daemon worker 的只读 mmap 配置。
+        - local_buffer_io：embedded owner 用于暂存输入和提交结果图的 broker 边界。
         - cpu_device_resource_manager：全部 supervisor 共享的 CPU 有效配置记录器。
         - worker_target：子进程入口函数；测试时可替换为 fake worker。
         """
@@ -385,6 +399,7 @@ class DeploymentProcessSupervisor:
             if local_buffer_direct_reader_settings is not None
             else None
         )
+        self.local_buffer_io = local_buffer_io
         self.worker_target = worker_target
         self.cpu_device_resource_manager = (
             cpu_device_resource_manager or get_global_cpu_device_resource_manager()
@@ -681,31 +696,267 @@ class DeploymentProcessSupervisor:
         *,
         config: DeploymentProcessConfig,
         request: PredictionRequest,
+        preview_output_lease: BufferLease | None = None,
     ) -> DeploymentProcessExecution:
-        """通过 deployment 子进程执行一次推理请求。"""
+        """通过 deployment 子进程执行推理，图片只经 LocalBuffer 跨进程。"""
 
         state = self._ensure_state(config)
         self._require_running_process(state)
-        payload = self._send_request(
-            state=state,
-            action="infer",
-            payload={
+        request_id = uuid4().hex
+        prepared_request, owned_input = self._stage_prediction_input(
+            request=request,
+            owner_id=f"deployment-request-{request_id}",
+        )
+        managed_preview_lease = preview_output_lease is None
+        try:
+            if preview_output_lease is None:
+                preview_output_lease = self._allocate_preview_output(
+                    request=request,
+                    owner_id=f"deployment-preview-{request_id}",
+                )
+        except Exception:
+            self._release_local_buffer(owned_input)
+            raise
+        request_started = False
+        request_completed = False
+        try:
+            request_payload: dict[str, object] = {
                 "task_type": config.runtime_target.task_type,
                 "prediction_request": serialize_prediction_request(
                     task_type=config.runtime_target.task_type,
-                    request=request,
+                    request=prepared_request,
                 ),
-            },
-        )
-        instance_id = _require_response_str(payload, "instance_id")
+            }
+            if preview_output_lease is not None:
+                request_payload["preview_output_lease"] = (
+                    preview_output_lease.model_dump(mode="json")
+                )
+            request_started = True
+            payload = self._send_request(
+                state=state,
+                action="infer",
+                payload=request_payload,
+            )
+            request_completed = True
+            preview_transfer = _read_optional_payload_dict(
+                payload,
+                "preview_image_transfer",
+            )
+            execution_result = deserialize_prediction_execution_result(
+                task_type=config.runtime_target.task_type,
+                payload=payload.get("execution_result"),
+            )
+            if managed_preview_lease:
+                execution_result = self._materialize_preview_output(
+                    execution_result=execution_result,
+                    preview_output_lease=preview_output_lease,
+                    preview_transfer=preview_transfer,
+                )
+                preview_output_lease = None
+            instance_id = _require_response_str(payload, "instance_id")
+        finally:
+            if not request_started or request_completed:
+                self._release_local_buffer(owned_input)
+                if managed_preview_lease:
+                    self._release_local_buffer_lease(preview_output_lease)
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id=instance_id,
-            execution_result=deserialize_prediction_execution_result(
-                task_type=config.runtime_target.task_type,
-                payload=payload.get("execution_result"),
-            ),
+            execution_result=execution_result,
+            preview_image_transfer=preview_transfer,
         )
+
+    def _stage_prediction_input(
+        self,
+        *,
+        request: PredictionRequest,
+        owner_id: str,
+    ) -> tuple[PredictionRequest, tuple[str, str | None] | None]:
+        """把 embedded owner 收到的图片写入 LocalBuffer；daemon 只接受既有引用。"""
+
+        image_payload = getattr(request, "input_image_payload", None)
+        if isinstance(image_payload, dict):
+            normalized_payload = require_image_payload(image_payload)
+            if normalized_payload.get("transport_kind") in {
+                IMAGE_TRANSPORT_BUFFER,
+                IMAGE_TRANSPORT_FRAME,
+            }:
+                return request, None
+        else:
+            normalized_payload = {}
+        local_buffer_io = self.local_buffer_io
+        if local_buffer_io is None:
+            raise ServiceConfigurationError(
+                "deployment 推理图片必须使用 LocalBuffer 引用"
+            )
+        image_bytes = getattr(request, "input_image_bytes", None)
+        source_name = getattr(request, "input_uri", None)
+        source_is_local_path = False
+        if image_bytes is None and normalized_payload:
+            transport_kind = normalized_payload.get("transport_kind")
+            if transport_kind == IMAGE_TRANSPORT_STORAGE:
+                source_name = str(normalized_payload.get("object_key") or "")
+            elif transport_kind == IMAGE_TRANSPORT_LOCAL_PATH:
+                source_name = str(normalized_payload.get("local_path") or "")
+                source_is_local_path = True
+        if image_bytes is None:
+            if not isinstance(source_name, str) or not source_name.strip():
+                raise InvalidRequestError("deployment 推理缺少图片输入")
+            source_path = (
+                Path(source_name)
+                if source_is_local_path
+                else (
+                    self.dataset_storage.resolve(source_name)
+                    if self.dataset_storage is not None
+                    else None
+                )
+            )
+            if source_path is None or not source_path.is_file():
+                raise InvalidRequestError(
+                    "deployment 推理图片不存在",
+                    details={"source": source_name},
+                )
+            image_bytes = source_path.read_bytes()
+        writer = getattr(local_buffer_io, "write_bytes", None)
+        if not callable(writer):
+            raise ServiceConfigurationError("deployment 缺少 LocalBuffer 写入能力")
+        media_type = str(
+            normalized_payload.get("media_type")
+            or mimetypes.guess_type(str(source_name or ""))[0]
+            or "application/octet-stream"
+        )
+        shape_value = normalized_payload.get("shape")
+        shape = (
+            tuple(int(item) for item in shape_value)
+            if isinstance(shape_value, list | tuple)
+            else ()
+        )
+        write_result = writer(
+            content=bytes(image_bytes),
+            owner_kind="deployment-request",
+            owner_id=owner_id,
+            media_type=media_type,
+            shape=shape,
+            dtype=_optional_text(normalized_payload.get("dtype")),
+            layout=_optional_text(normalized_payload.get("layout")),
+            pixel_format=_optional_text(normalized_payload.get("pixel_format")),
+            ttl_seconds=self.settings.request_timeout_seconds + 60.0,
+        )
+        buffer_ref = write_result.buffer_ref
+        return (
+            replace_prediction_request_inputs(
+                request=request,
+                input_uri=None,
+                input_image_bytes=None,
+                input_image_payload={
+                    "transport_kind": IMAGE_TRANSPORT_BUFFER,
+                    "media_type": buffer_ref.media_type,
+                    "buffer_ref": buffer_ref.model_dump(mode="json"),
+                },
+            ),
+            (write_result.lease.lease_id, write_result.lease.pool_name),
+        )
+
+    def _allocate_preview_output(
+        self,
+        *,
+        request: PredictionRequest,
+        owner_id: str,
+    ) -> BufferLease | None:
+        """为 embedded 结果图片预分配 LocalBuffer 槽位。"""
+
+        if not bool(getattr(request, "save_result_image", False)):
+            return None
+        local_buffer_io = self.local_buffer_io
+        if local_buffer_io is None:
+            raise ServiceConfigurationError(
+                "结果图片请求必须提供预分配 LocalBuffer lease"
+            )
+        settings = getattr(local_buffer_io, "settings", None)
+        allocate = getattr(local_buffer_io, "allocate_buffer", None)
+        if settings is None or not callable(allocate):
+            raise ServiceConfigurationError("deployment 缺少 LocalBuffer 预分配能力")
+        pool_name = str(settings.default_pool_name)
+        pool = next(
+            (item for item in settings.pools if item.pool_name == pool_name),
+            None,
+        )
+        if pool is None:
+            raise ServiceConfigurationError(
+                "LocalBuffer 默认图片 pool 不存在",
+                details={"pool_name": pool_name},
+            )
+        return allocate(
+            size=int(pool.slot_size_bytes),
+            owner_kind="deployment-preview",
+            owner_id=owner_id,
+            pool_name=pool_name,
+            ttl_seconds=self.settings.request_timeout_seconds + 60.0,
+        )
+
+    def _materialize_preview_output(
+        self,
+        *,
+        execution_result: PredictionExecutionResult,
+        preview_output_lease: BufferLease | None,
+        preview_transfer: dict[str, object] | None,
+    ) -> PredictionExecutionResult:
+        """提交 worker 写完的结果图，并只在业务进程公开边界读取 bytes。"""
+
+        if preview_transfer is None:
+            self._release_local_buffer_lease(preview_output_lease)
+            return execution_result
+        if preview_output_lease is None:
+            raise ServiceConfigurationError("结果图片 LocalBuffer 传输状态不一致")
+        size = preview_transfer.get("size")
+        media_type = preview_transfer.get("media_type")
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise ServiceConfigurationError("结果图片 LocalBuffer 长度不合法")
+        if size > preview_output_lease.size:
+            raise ServiceConfigurationError("结果图片超出 LocalBuffer 槽位")
+        if not isinstance(media_type, str) or not media_type.strip():
+            raise ServiceConfigurationError("结果图片 LocalBuffer 媒体类型缺失")
+        local_buffer_io = self.local_buffer_io
+        commit = getattr(local_buffer_io, "commit_buffer", None)
+        read = getattr(local_buffer_io, "read_buffer_ref", None)
+        if not callable(commit) or not callable(read):
+            raise ServiceConfigurationError("deployment 缺少 LocalBuffer 提交能力")
+        committed = commit(
+            lease=preview_output_lease.model_copy(update={"size": size}),
+            media_type=media_type.strip(),
+        )
+        try:
+            preview_image_bytes = bytes(
+                read(BufferRef.model_validate(committed.buffer_ref))
+            )
+        finally:
+            self._release_local_buffer_lease(committed.lease)
+        return replace(
+            execution_result,
+            preview_image_bytes=preview_image_bytes,
+        )
+
+    def _release_local_buffer(
+        self,
+        owned_input: tuple[str, str | None] | None,
+    ) -> None:
+        """释放当前请求创建的图片输入 lease。"""
+
+        if owned_input is None:
+            return
+        lease_id, pool_name = owned_input
+        release = getattr(self.local_buffer_io, "release", None)
+        if callable(release):
+            release(lease_id, pool_name=pool_name)
+
+    def _release_local_buffer_lease(self, lease: BufferLease | None) -> None:
+        """释放当前请求创建的结果图片 lease。"""
+
+        if lease is None:
+            return
+        release = getattr(self.local_buffer_io, "release", None)
+        if callable(release):
+            release(lease.lease_id, pool_name=lease.pool_name)
 
     def _ensure_state(self, config: DeploymentProcessConfig) -> _DeploymentProcessState:
         """读取或初始化指定 deployment 的监督状态。"""
@@ -857,7 +1108,7 @@ class DeploymentProcessSupervisor:
             worker_kwargs["local_buffer_broker_event_channel"] = (
                 local_buffer_broker_event_channel
             )
-        elif self.local_buffer_direct_reader_settings is not None:
+        if self.local_buffer_direct_reader_settings is not None:
             worker_kwargs["local_buffer_direct_reader_settings"] = dict(
                 self.local_buffer_direct_reader_settings
             )
@@ -1126,11 +1377,10 @@ class DeploymentProcessSupervisor:
 
         status = self._build_status(state)
         allocated_configuration = (
-            state.effective_runtime_configuration
-            or state.config.runtime_configuration
+            state.effective_runtime_configuration or state.config.runtime_configuration
         )
-        allocated_configuration_payload = (
-            serialize_deployment_runtime_configuration(allocated_configuration)
+        allocated_configuration_payload = serialize_deployment_runtime_configuration(
+            allocated_configuration
         )
         cpu_resource_snapshot = self.cpu_device_resource_manager.snapshot()
         cpu_resource_warnings = self.cpu_device_resource_manager.warnings(
@@ -1342,9 +1592,7 @@ class DeploymentProcessSupervisor:
         self._publish_project_summary_event(event)
         return event
 
-    def _publish_project_summary_event(
-        self, event: DeploymentProcessEvent
-    ) -> None:
+    def _publish_project_summary_event(self, event: DeploymentProcessEvent) -> None:
         """按需为 deployment 生命周期事件发布项目级聚合更新。"""
 
         if not should_publish_project_summary_for_deployment_event(event.event_type):
@@ -1545,6 +1793,29 @@ def _require_response_str(payload: dict[str, object], key: str) -> str:
     raise ServiceConfigurationError(
         "deployment 子进程返回缺少必要字符串字段", details={"field": key}
     )
+
+
+def _read_optional_payload_dict(
+    payload: dict[str, object],
+    key: str,
+) -> dict[str, object] | None:
+    """读取可选对象字段；存在但类型错误时拒绝静默降级。"""
+
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ServiceConfigurationError(
+            "deployment 子进程返回对象字段格式无效",
+            details={"field": key},
+        )
+    return {str(item_key): item_value for item_key, item_value in value.items()}
+
+
+def _optional_text(value: object) -> str | None:
+    """把可选元数据规整为非空字符串。"""
+
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _require_response_int(payload: dict[str, object], key: str) -> int:

@@ -943,15 +943,16 @@ YOLOv8、YOLO11、YOLO26 和 RF-DETR 使用不同 schema。完整默认值、数
 - `application/json` 场景下，`image_base64` 必须是单行 JSON 字符串；如果把带原始换行的 base64 直接贴进 JSON，请求会在 JSON 解析阶段返回 `请求体不是合法的 JSON`
 - `input_file_id` 现在支持 Project 公开文件 id；稳定来源可直接使用 `GET /api/v1/projects/{project_id}/files` 或 `GET /api/v1/projects/{project_id}/files/metadata` 返回的 `file_id`
 - multipart 场景下，`extra_options` 以 JSON 字符串传入
-- 服务会在写入临时输入前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
+- 服务会在推理前校验 `image_base64` 与 `input_image` 是否为可读取图片；损坏图片会直接返回 `invalid_request`，不会继续下发到 deployment 推理进程
 - 同步 `/infer` 与异步 `inference-tasks` 共用同一套 `input_transport_mode` 语义：
   - `storage`：保持当前默认行为，Base64 或上传文件会先写入临时输入文件，再按 `input_uri` 进入 deployment 推理进程
-  - `memory`：只允许 `image_base64` 或 `input_image`，请求图片不会落到临时目录；同步链通过 inference daemon 的 mmap mailbox 调用常驻 deployment，异步链先固化任务 `normalized_input`，再由 inference worker 通过 deployment 专属队列调用 inference daemon 持有的 async deployment
+  - `memory`：只允许 `image_base64` 或 `input_image`。同步链把已解码图片写入 backend 主 LocalBuffer，mmap mailbox 只传 BufferRef/FrameRef 元数据和结构化结果，不产生推理输入临时文件。异步链需要跨重启的持久队列语义：队列中只保存临时 ObjectStore 引用，daemon 领取后转入私有 LocalBuffer，请求完成后删除临时引用。图片 bytes 不进入持久队列、mmap mailbox 或模型进程 Queue
 - 当 `input_transport_mode=memory` 时，不支持 `input_file_id`
 - 当 `input_transport_mode=memory` 时：
   - 响应里的 `input_uri` 会返回 `memory://...` 形式的虚拟 URI，用于标识这次调用没有输入落盘
   - 同步 `/infer` 的响应 `result_object_key` 为 `null`，因为不会写 `raw-result.json`
   - 如果同时设置 `save_result_image=true`，预览图仍会按现有语义写盘；如果只需要直接返回图像，应使用 `return_preview_image_base64=true`
+- 异步 worker 和 daemon 之间如需预览图，daemon 先通过 LocalBuffer 接收模型结果图，再在持久 gateway 边界临时写入 ObjectStore；响应队列只携带 object key。worker 读取后立即删除本次传输目录，超时残留由有界 retention cleanup 回收
 - 同步 `/infer` 真正执行前，需要先通过 `sync/start` 或 `sync/warmup` 拉起对应 deployment 的 sync 子进程
 - 异步 `inference-tasks` 创建前，需要先通过 `async/start` 或 `async/warmup` 拉起对应 deployment 的 async 子进程；未启动时 create 接口会直接返回 `invalid_request`
 

@@ -15,17 +15,17 @@ HTTP JSON、base64、PNG、JPEG 和 Bitmap 转换可以继续作为低频调试�
 ## 数据面规则
 
 - SDK、adapter、LocalBufferBroker、workflow 节点和模型 runtime 以 raw image-ref 为本机高频默认路径。
-- `BufferRef` / `FrameRef` 只跨进程传递 mmap 元数据，backend-service 不把图片读回后重新编码或落盘。
+- `BufferRef` / `FrameRef` 只跨进程传递 mmap 元数据；同步高频节点链不把图片读回后重新编码或落盘。
 - workflow 图不得在模型推理前插入不必要的 Base64 编码、合并和解码节点。
 - TriggerSource 必须显式声明 `result_binding`；高频入口默认只返回小型结构化结果，不返回所有图输出。
 - 只有预览、保存、HTTP 响应或外部系统协议明确要求时，才生成 PNG、JPEG、Bitmap 或 Base64。
-- 推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。
+- 同步推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。持久异步任务只在必须跨重启的队列边界使用临时 ObjectStore 引用。
 
 ## 数据模式
 
 | 模式 | 适用场景 | 规则 |
 | --- | --- | --- |
-| `image-base64.v1` | HTTP 调试、低频远程调用、旧系统桥接 | 可用但不是高频默认路径 |
+| `image-base64.v1` | HTTP 调试、低频远程调用、小图片集成 | 可用但不是高频默认路径 |
 | encoded image bytes | JPEG/PNG/BMP 文件上传、模型直接 HTTP multipart | 需要解码，适合普通同步调用和调试 |
 | storage `image-ref.v1` | 已落盘图片、长期文件引用 | 用于可复现和审计，不代表内存高速 |
 | buffer/frame `image-ref.v1` | 本机高速 TriggerSource、workflow runtime、deployment worker | 默认高性能路径 |
@@ -73,9 +73,9 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
   -> raw-aware image matrix loader
   -> OpenCV / Barcode / Preview / Export 节点
   -> Detection 节点
-  -> 跨平台 mmap inference mailbox（只传 BufferRef / FrameRef 元数据）
+  -> 跨平台 mmap inference mailbox（图片只传 BufferRef / FrameRef 元数据）
   -> deployment worker 直接只读 mmap / raw NumPy view
-  -> 小 JSON result_binding
+  -> 结构化 result_binding；结果图片仍使用 LocalBuffer
 ```
 
 这条链路中，图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
@@ -87,8 +87,8 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 | 通道 | 数据 | 持久化 | 用途 |
 | --- | --- | --- | --- |
 | deployment 控制队列 | start、stop、warmup、reset、status、health | 是 | 恢复、审计、低频控制 |
-| inference mmap mailbox | process config、BufferRef/FrameRef、阈值、小型结果 | 否 | 同机低延迟推理 |
-| LocalBufferBroker pool | raw BGR24 / encoded image bytes | 短期 lease | 图片主体 |
+| inference mmap v1 mailbox | process config、BufferRef/FrameRef、阈值、结构化结果 | 否 | 同机低延迟推理 |
+| LocalBufferBroker pool | raw BGR24 / encoded 输入和结果图片 bytes | 短期 lease | 图片主体 |
 | ObjectStore | 上传图片、保存结果、审计输入 | 是 | 低频和可追溯边界 |
 
 约束如下：
@@ -99,7 +99,11 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 - raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
 - encoded JPEG/PNG/BMP 在 direct mmap reader 中同样保持为只读 `memoryview`，只在 `cv2.imdecode` 内部生成目标矩阵，不先复制一份 encoded bytes。
 - mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
-- mailbox 请求和响应包含 generation、deadline 和 CRC32；客户端超时、进程崩溃和 daemon 重启后可回收槽位。
+- storage/inline 同步输入由 backend-service 写入主 LocalBuffer；持久异步任务由 daemon 领取 ObjectStore 引用后写入私有短期 LocalBuffer。要求同步结果图片时由 backend-service 预分配 writing lease，daemon 直接写入；mmap 和模型进程 Queue 都不携带图片 bytes 或 base64。
+- mmap 成功或收到 daemon 错误响应后立即释放临时 lease；传输状态不确定时保留 lease 到 TTL，由 Broker 回收，不能提前复用给下一请求。
+- mailbox descriptor 请求和响应包含 generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 generation、owner、ordinal、长度和 CRC32。
+- 溢出页不要求连续；client ACK 后由 daemon 回收。页池满载或单响应超过配置上限时直接返回容量错误，不退回持久化队列、不动态扩文件。
+- daemon 对 ACK、超时、取消、调用进程崩溃和 daemon 重启执行统一回收。
 - 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
 
 ## Workflow 图默认拓扑
@@ -166,7 +170,7 @@ YOLOX、YOLOv8、YOLO11、YOLO26、RF-DETR 的 detection、classification、segm
 
 BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded 输入的 `decode_ms` 与 raw 输入的 `raw_view_ms` 或等价指标分开记录。
 
-模型 predictor 的 `input_image_bytes` 是历史字段名，内部实际契约为非空 buffer protocol 内容，允许 `bytes`、`bytearray` 和 `memoryview`。不能再用 `isinstance(value, bytes)` 判断图片是否存在，否则 daemon direct mmap 返回的合法 `memoryview` 会被错误判定为缺少输入。
+模型 predictor 的 `input_image_bytes` 接受非空 buffer protocol 内容，包括 `bytes`、`bytearray` 和 `memoryview`。不能用 `isinstance(value, bytes)` 判断图片是否存在，否则 daemon direct mmap 返回的合法 `memoryview` 会被错误判定为缺少输入。
 
 ### 核心节点与自定义节点同步矩阵
 
@@ -179,7 +183,7 @@ BGR24 输入下不应再走 `cv2.imdecode`。运行时指标可以把 encoded �
 | Camera/ZeroMQ/视频帧入口 | Camera/OpenCV 帧默认输出 raw memory image-ref，跨进程入口输出 BufferRef/FrameRef，并保留 shape、dtype、layout、pixel_format | 默认生成 base64 或临时 PNG |
 | model-inference-submit 等异步任务提交节点 | 使用 storage ref 作为可恢复任务输入 | 把短生命周期 BufferRef 持久化进异步队列 |
 
-storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用。
+storage 输入属于持久化任务边界。短期 mmap 引用不能跨服务重启或长队列等待，异步任务必须使用可恢复的 ObjectStore 引用；daemon 真正领取任务后才写入私有 LocalBuffer，模型子进程仍只读取 BufferRef/FrameRef。
 
 ### OpenCV 和显示节点
 

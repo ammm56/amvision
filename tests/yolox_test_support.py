@@ -13,6 +13,9 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     serialize_detection_async_inference_execution_result,
 )
+from backend.service.application.models.inference.inference_gateway import (
+    build_async_inference_preview_object_key,
+)
 from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
@@ -56,6 +59,10 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationPredictionInstance,
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.serialization.detection.prediction import (
+    deserialize_detection_items,
+    deserialize_runtime_session_info,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -171,7 +178,13 @@ def create_yolox_api_test_context(
         )
         if gateway_dispatcher_registry is not None:
             gateway_dispatcher_registry.execution_handler = (
-                _build_fake_async_inference_gateway_handler(async_supervisor)
+                _build_fake_async_inference_gateway_handler(
+                    async_supervisor,
+                    dataset_storage=context.dataset_storage,
+                    async_inference_service_id=(
+                        context.client.app.state.detection_async_inference_service_id
+                    ),
+                )
             )
             gateway_dispatcher_registry.dataset_storage = context.dataset_storage
 
@@ -828,10 +841,13 @@ class FakeDeploymentProcessSupervisor(DeploymentProcessSupervisor):
 
 def _build_fake_async_inference_gateway_handler(
     async_supervisor: FakeDeploymentProcessSupervisor,
+    *,
+    dataset_storage: LocalDatasetStorage,
+    async_inference_service_id: str,
 ):
     """构造绑定 fake async supervisor 的 service-side gateway 处理器。"""
 
-    def _execute(*, process_config, request):
+    def _execute(*, request_id, process_config, request):
         """通过 fake async supervisor 执行一次 queue-backed 推理请求。"""
 
         execution_result = (
@@ -846,6 +862,34 @@ def _build_fake_async_inference_gateway_handler(
                 extra_options=dict(request.extra_options),
             )
         )
-        return serialize_detection_async_inference_execution_result(execution_result)
+        preview_image_object_key: str | None = None
+        if execution_result.preview_image_bytes is not None:
+            preview_image_object_key = build_async_inference_preview_object_key(
+                owner_id=async_inference_service_id,
+                deployment_instance_id=process_config.deployment_instance_id,
+                request_id=request_id,
+            )
+            dataset_storage.write_bytes(
+                preview_image_object_key,
+                execution_result.preview_image_bytes,
+            )
+        deployment_execution = DeploymentProcessExecution(
+            deployment_instance_id=process_config.deployment_instance_id,
+            instance_id=execution_result.instance_id or "",
+            execution_result=DetectionPredictionExecutionResult(
+                detections=deserialize_detection_items(execution_result.detections),
+                latency_ms=execution_result.latency_ms,
+                image_width=execution_result.image_width,
+                image_height=execution_result.image_height,
+                preview_image_bytes=execution_result.preview_image_bytes,
+                runtime_session_info=deserialize_runtime_session_info(
+                    execution_result.runtime_session_info
+                ),
+            ),
+        )
+        return serialize_detection_async_inference_execution_result(
+            deployment_execution,
+            preview_image_object_key=preview_image_object_key,
+        )
 
     return _execute

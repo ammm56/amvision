@@ -162,6 +162,10 @@ def build_prediction_request_from_payload(
 ) -> PredictionRequest:
     """从 worker payload 构造 task-native prediction request。"""
 
+    if "input_image_bytes_base64" in payload:
+        raise InvalidRequestError(
+            "prediction IPC 不支持图片 Base64，请使用 LocalBuffer 或 ObjectStore 引用"
+        )
     normalized_task_type = require_supported_platform_task_type(
         task_type,
         empty_message="task_type 不能为空",
@@ -172,7 +176,6 @@ def build_prediction_request_from_payload(
             score_threshold=_read_required_float(payload, "score_threshold"),
             save_result_image=bool(payload.get("save_result_image") is True),
             input_uri=_read_optional_str(payload, "input_uri"),
-            input_image_bytes=_read_optional_bytes(payload, "input_image_bytes_base64"),
             input_image_payload=_read_optional_dict(payload, "input_image_payload"),
             extra_options=_read_dict(payload, "extra_options"),
         )
@@ -181,7 +184,6 @@ def build_prediction_request_from_payload(
             top_k=_read_required_int(payload, "top_k"),
             save_result_image=bool(payload.get("save_result_image") is True),
             input_uri=_read_optional_str(payload, "input_uri"),
-            input_image_bytes=_read_optional_bytes(payload, "input_image_bytes_base64"),
             input_image_payload=_read_optional_dict(payload, "input_image_payload"),
             extra_options=_read_dict(payload, "extra_options"),
         )
@@ -191,7 +193,6 @@ def build_prediction_request_from_payload(
             mask_threshold=_read_required_float(payload, "mask_threshold"),
             save_result_image=bool(payload.get("save_result_image") is True),
             input_uri=_read_optional_str(payload, "input_uri"),
-            input_image_bytes=_read_optional_bytes(payload, "input_image_bytes_base64"),
             input_image_payload=_read_optional_dict(payload, "input_image_payload"),
             extra_options=_read_dict(payload, "extra_options"),
         )
@@ -204,7 +205,6 @@ def build_prediction_request_from_payload(
             ),
             save_result_image=bool(payload.get("save_result_image") is True),
             input_uri=_read_optional_str(payload, "input_uri"),
-            input_image_bytes=_read_optional_bytes(payload, "input_image_bytes_base64"),
             input_image_payload=_read_optional_dict(payload, "input_image_payload"),
             extra_options=_read_dict(payload, "extra_options"),
         )
@@ -213,7 +213,6 @@ def build_prediction_request_from_payload(
             score_threshold=_read_required_float(payload, "score_threshold"),
             save_result_image=bool(payload.get("save_result_image") is True),
             input_uri=_read_optional_str(payload, "input_uri"),
-            input_image_bytes=_read_optional_bytes(payload, "input_image_bytes_base64"),
             input_image_payload=_read_optional_dict(payload, "input_image_payload"),
             extra_options=_read_dict(payload, "extra_options"),
         )
@@ -228,24 +227,25 @@ def serialize_prediction_request(
     task_type: str,
     request: PredictionRequest,
 ) -> dict[str, object]:
-    """把 task-native prediction request 转换为可跨进程传输的字典。"""
+    """把 prediction request 转换为不含图片 bytes 的 IPC 载荷。"""
 
     normalized_task_type = require_supported_platform_task_type(
         task_type,
         empty_message="task_type 不能为空",
         unsupported_message="prediction request 缺少支持的 task_type",
     )
-    common_payload = {
+    common_payload: dict[str, object] = {
         "save_result_image": bool(getattr(request, "save_result_image", False)),
         "input_uri": getattr(request, "input_uri", None),
-        "input_image_bytes_base64": _encode_optional_bytes(
-            getattr(request, "input_image_bytes", None)
-        ),
         "input_image_payload": dict(
             getattr(request, "input_image_payload", None) or {}
         ),
         "extra_options": dict(getattr(request, "extra_options", {}) or {}),
     }
+    if getattr(request, "input_image_bytes", None) is not None:
+        raise InvalidRequestError(
+            "prediction IPC 图片必须先转换为 LocalBuffer 或 ObjectStore 引用"
+        )
     if normalized_task_type == "detection":
         return {
             **common_payload,
@@ -359,20 +359,17 @@ def serialize_prediction_execution_result(
     task_type: str,
     execution_result: PredictionExecutionResult,
 ) -> dict[str, object]:
-    """把 task-native execution result 转换为可跨进程传输的字典。"""
+    """把 execution result 转为不含结果图片 bytes 的 IPC 载荷。"""
 
     normalized_task_type = require_supported_platform_task_type(
         task_type,
         empty_message="task_type 不能为空",
         unsupported_message="prediction execution result 缺少支持的 task_type",
     )
-    common_payload = {
+    common_payload: dict[str, object] = {
         "latency_ms": execution_result.latency_ms,
         "image_width": execution_result.image_width,
         "image_height": execution_result.image_height,
-        "preview_image_bytes_base64": _encode_optional_bytes(
-            execution_result.preview_image_bytes
-        ),
     }
     if normalized_task_type == "detection":
         return {
@@ -437,6 +434,20 @@ def serialize_prediction_execution_result(
     )
 
 
+def detect_prediction_preview_media_type(content: bytes) -> str:
+    """按图片签名识别推理预览图媒体类型。"""
+
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"BM"):
+        return "image/bmp"
+    if content.startswith((b"II*\x00", b"MM\x00*")):
+        return "image/tiff"
+    raise ServiceConfigurationError("inference preview 图片格式无法识别")
+
+
 def deserialize_prediction_execution_result(
     *,
     task_type: str,
@@ -446,6 +457,10 @@ def deserialize_prediction_execution_result(
 
     if not isinstance(payload, dict):
         raise InvalidRequestError("prediction execution result 格式不合法")
+    if "preview_image_bytes_base64" in payload:
+        raise InvalidRequestError(
+            "prediction IPC 不支持结果图片 Base64，请使用 LocalBuffer 或 ObjectStore 引用"
+        )
     normalized_task_type = require_supported_platform_task_type(
         task_type,
         empty_message="task_type 不能为空",
@@ -454,7 +469,12 @@ def deserialize_prediction_execution_result(
     latency_ms = _read_optional_float(payload, "latency_ms")
     image_width = _read_required_int(payload, "image_width")
     image_height = _read_required_int(payload, "image_height")
-    preview_image_bytes = _read_optional_bytes(payload, "preview_image_bytes_base64")
+    direct_preview_image_bytes = payload.get("preview_image_bytes")
+    preview_image_bytes = (
+        bytes(direct_preview_image_bytes)
+        if isinstance(direct_preview_image_bytes, bytes | bytearray | memoryview)
+        else None
+    )
     if normalized_task_type == "detection":
         return DetectionPredictionExecutionResult(
             detections=deserialize_detection_items(payload.get("detections")),
@@ -586,35 +606,3 @@ def _read_dict(payload: dict[str, object], key: str) -> dict[str, object]:
     """从字典中读取对象，缺失时返回空字典。"""
 
     return _read_optional_dict(payload, key) or {}
-
-
-def _encode_optional_bytes(value: object) -> str | None:
-    """把可选 bytes-like 内容转换为 base64 字符串。"""
-
-    if not isinstance(value, (bytes, bytearray, memoryview)) or not value:
-        return None
-    import base64  # noqa: PLC0415
-
-    return base64.b64encode(value).decode("ascii")
-
-
-def _read_optional_bytes(payload: dict[str, object], key: str) -> bytes | None:
-    """从 base64 字段读取可选 bytes。"""
-
-    return _decode_optional_bytes(payload.get(key))
-
-
-def _decode_optional_bytes(value: object) -> bytes | None:
-    """把可选 base64 字符串恢复为 bytes。"""
-
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise InvalidRequestError("bytes base64 字段格式不合法")
-    import base64  # noqa: PLC0415
-    import binascii  # noqa: PLC0415
-
-    try:
-        return base64.b64decode(value.encode("ascii"), validate=True)
-    except (ValueError, binascii.Error) as error:
-        raise InvalidRequestError("bytes base64 字段格式不合法") from error

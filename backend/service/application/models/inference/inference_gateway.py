@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
-from time import monotonic, sleep
+from time import monotonic, sleep, time
 from typing import Callable, Protocol
 from uuid import uuid4
 import logging
@@ -42,6 +42,8 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX = "inference-gateway"
 ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX = "inference-gateway-response"
+_ASYNC_INFERENCE_TRANSFER_ROOT = "runtime/transfers/async-inference"
+_ASYNC_INFERENCE_PREVIEW_FILE_NAME = "preview.bin"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -65,10 +67,10 @@ class QueueBackedAsyncInferenceClient:
     """通过共享本地队列调用 backend-service async deployment owner。"""
 
     queue_backend: QueueBackend
+    dataset_storage: LocalDatasetStorage
     request_timeout_seconds: float = 30.0
     response_poll_interval_seconds: float = 0.05
     client_id: str = "async-inference-client"
-    dataset_storage: LocalDatasetStorage | None = None
 
     def execute_inference(
         self,
@@ -91,11 +93,14 @@ class QueueBackedAsyncInferenceClient:
             owner_id=owner_id,
             deployment_instance_id=process_config.deployment_instance_id,
         )
-        staged_root: str | None = None
+        transfer_root = _build_async_inference_transfer_root(
+            owner_id=normalized_owner_id,
+            deployment_instance_id=normalized_deployment_instance_id,
+            request_id=request_id,
+        )
         prepared_request = request
-        if self.dataset_storage is not None and request.input_image_bytes is not None:
-            staged_root = f"runtime/inputs/async-inference/{request_id}"
-            object_key = f"{staged_root}/input.bin"
+        if request.input_image_bytes is not None:
+            object_key = f"{transfer_root}/input.bin"
             self.dataset_storage.write_bytes(object_key, request.input_image_bytes)
             prepared_request = replace_prediction_request_inputs(
                 request=request,
@@ -129,20 +134,25 @@ class QueueBackedAsyncInferenceClient:
             return self._wait_for_response(
                 request_id=request_id,
                 response_queue_name=response_queue_name,
+                transfer_root=transfer_root,
             )
         except OperationTimeoutError:
             # daemon 可能仍在读取共享输入；超时文件交由 retention cleanup 回收。
             cleanup_staged_input = False
             raise
         finally:
-            if staged_root is not None and cleanup_staged_input:
-                self.dataset_storage.delete_tree(staged_root)
+            if cleanup_staged_input:
+                _delete_async_inference_transfer_tree(
+                    dataset_storage=self.dataset_storage,
+                    transfer_root=transfer_root,
+                )
 
     def _wait_for_response(
         self,
         *,
         request_id: str,
         response_queue_name: str,
+        transfer_root: str,
     ) -> dict[str, object]:
         """等待 service dispatcher 把结果写入专属响应队列。"""
 
@@ -178,6 +188,10 @@ class QueueBackedAsyncInferenceClient:
                         "async inference gateway 响应缺少 result",
                         details={"request_id": request_id},
                     )
+                self._materialize_preview_image(
+                    result=result,
+                    transfer_root=transfer_root,
+                )
                 return result
             if monotonic() >= deadline:
                 raise OperationTimeoutError(
@@ -189,6 +203,34 @@ class QueueBackedAsyncInferenceClient:
                     },
                 )
             sleep(max(0.01, self.response_poll_interval_seconds))
+
+    def _materialize_preview_image(
+        self,
+        *,
+        result: dict[str, object],
+        transfer_root: str,
+    ) -> None:
+        """读取异步结果图片引用；图片 bytes 从不进入持久响应队列。"""
+
+        preview_object_key = result.pop("preview_image_object_key", None)
+        if preview_object_key is None:
+            return
+        expected_object_key = f"{transfer_root}/{_ASYNC_INFERENCE_PREVIEW_FILE_NAME}"
+        if preview_object_key != expected_object_key:
+            raise InvalidRequestError(
+                "async inference gateway 返回的结果图片引用不合法",
+                details={"preview_image_object_key": preview_object_key},
+            )
+        execution_result = result.get("execution_result")
+        if not isinstance(execution_result, dict):
+            raise InvalidRequestError(
+                "async inference gateway 返回的 execution_result 不合法"
+            )
+        execution_result["preview_image_bytes"] = (
+            self.dataset_storage.resolve_filesystem_path(
+                expected_object_key
+            ).read_bytes()
+        )
 
     def _delete_response_queue(self, response_queue_name: str) -> None:
         """尽量删除已经完成消费的一次性响应队列。"""
@@ -258,12 +300,12 @@ class AsyncInferenceGatewayDispatcher:
             self._thread.start()
 
     def stop(self) -> None:
-        """停止 async inference gateway dispatcher。"""
+        """停止领取新请求，并等待当前有界推理完成后退出。"""
 
         self._stop_event.set()
         thread = self._thread
         if thread is not None:
-            thread.join(timeout=1.0)
+            thread.join()
         with self._lock:
             self._thread = None
 
@@ -315,6 +357,7 @@ class AsyncInferenceGatewayDispatcher:
                 "request_id": request_id,
                 "ok": True,
                 "result": self.execution_handler(
+                    request_id=request_id,
                     process_config=process_config,
                     request=request,
                 ),
@@ -390,6 +433,33 @@ class AsyncInferenceGatewayDispatcher:
                 queue_name_prefix=f"{ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX}-",
                 retention_seconds=self.response_queue_retention_seconds,
             )
+        self._cleanup_expired_transfers()
+
+    def _cleanup_expired_transfers(self) -> None:
+        """清理当前 owner/deployment 已超过响应保留期的临时图片传输。"""
+
+        dataset_storage = self._require_dataset_storage()
+        transfer_scope = _build_async_inference_transfer_scope(
+            owner_id=self.service_id,
+            deployment_instance_id=self.deployment_instance_id,
+        )
+        scope_path = dataset_storage.resolve(transfer_scope)
+        if not scope_path.is_dir():
+            return
+        cutoff = time() - self.response_queue_retention_seconds
+        for request_path in tuple(scope_path.iterdir()):
+            try:
+                if request_path.is_dir() and request_path.stat().st_mtime < cutoff:
+                    _delete_async_inference_transfer_tree(
+                        dataset_storage=dataset_storage,
+                        transfer_root=f"{transfer_scope}/{request_path.name}",
+                    )
+            except OSError:
+                LOGGER.warning(
+                    "清理 async inference 临时传输目录失败: path=%s",
+                    request_path,
+                    exc_info=True,
+                )
 
 
 @dataclass
@@ -504,6 +574,68 @@ def build_async_inference_gateway_queue_name(
     )
 
 
+def _build_async_inference_transfer_scope(
+    *,
+    owner_id: str,
+    deployment_instance_id: str,
+) -> str:
+    """构建一个 dispatcher 独占清理的临时文件传输目录。"""
+
+    return (
+        f"{_ASYNC_INFERENCE_TRANSFER_ROOT}/"
+        f"{normalize_async_inference_owner_id(owner_id)}/"
+        f"{normalize_async_inference_deployment_id(deployment_instance_id)}"
+    )
+
+
+def _build_async_inference_transfer_root(
+    *,
+    owner_id: str,
+    deployment_instance_id: str,
+    request_id: str,
+) -> str:
+    """构建一次异步推理请求独占的临时文件传输目录。"""
+
+    normalized_request_id = _normalize_owner_id(request_id)
+    if normalized_request_id is None:
+        raise InvalidRequestError("async inference gateway request_id 不能为空")
+    return (
+        f"{_build_async_inference_transfer_scope(owner_id=owner_id, deployment_instance_id=deployment_instance_id)}/"
+        f"{normalized_request_id}"
+    )
+
+
+def build_async_inference_preview_object_key(
+    *,
+    owner_id: str,
+    deployment_instance_id: str,
+    request_id: str,
+) -> str:
+    """构建异步推理结果图片的临时 ObjectStore key。"""
+
+    return (
+        f"{_build_async_inference_transfer_root(owner_id=owner_id, deployment_instance_id=deployment_instance_id, request_id=request_id)}/"
+        f"{_ASYNC_INFERENCE_PREVIEW_FILE_NAME}"
+    )
+
+
+def _delete_async_inference_transfer_tree(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    transfer_root: str,
+) -> None:
+    """删除一次异步推理临时传输目录；失败时保留目录供后续清理重试。"""
+
+    dataset_storage.delete_tree(transfer_root)
+    transfer_path = dataset_storage.resolve(transfer_root)
+    if transfer_path.exists():
+        LOGGER.warning(
+            "async inference 临时传输目录未完全删除，将由 retention cleanup 重试: "
+            "path=%s",
+            transfer_path,
+        )
+
+
 def normalize_async_inference_owner_id(value: object) -> str:
     """把 async inference owner id 规范化为非空队列名片段。"""
 
@@ -530,18 +662,22 @@ def serialize_async_inference_execution_result(
     *,
     task_type: str,
     result: object,
+    preview_image_object_key: str | None = None,
 ) -> dict[str, object]:
-    """把推理执行结果转换为可通过本地队列持久化的 JSON 载荷。"""
+    """把结构化结果转换为队列载荷；结果图片仅携带 ObjectStore 引用。"""
 
     execution_result = getattr(result, "execution_result", result)
     instance_id = getattr(result, "instance_id", None)
-    return {
+    payload: dict[str, object] = {
         "instance_id": instance_id,
         "execution_result": serialize_prediction_execution_result(
             task_type=task_type,
             execution_result=execution_result,
         ),
     }
+    if preview_image_object_key is not None:
+        payload["preview_image_object_key"] = preview_image_object_key
+    return payload
 
 
 def deserialize_async_inference_execution_result_payload(

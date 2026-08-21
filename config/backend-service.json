@@ -147,11 +147,14 @@
     "control_lease_timeout_seconds": 900.0,
     "control_read_timeout_seconds": 2.0,
     "availability_probe_timeout_seconds": 1.0,
-    "control_request_max_age_seconds": 300.0,
     "mmap_mailbox": {
       "enabled": true,
       "slot_count": 128,
       "message_capacity_bytes": 524288,
+      "overflow_page_count": 256,
+      "overflow_page_capacity_bytes": 524288,
+      "max_overflow_pages_per_response": 64,
+      "compression_threshold_bytes": 262144,
       "poll_interval_seconds": 0.001
     }
   }

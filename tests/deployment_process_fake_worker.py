@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import os
 from queue import Empty
 from typing import Any
@@ -16,6 +15,7 @@ def fake_deployment_process_worker(
     response_queue: Any,
     operator_thread_count: int,
     supervisor_settings: dict[str, object] | None = None,
+    local_buffer_broker_event_channel: Any | None = None,
 ) -> None:
     """提供可预测响应的 fake deployment 子进程。
 
@@ -25,6 +25,7 @@ def fake_deployment_process_worker(
     del dataset_storage_root_dir
     del operator_thread_count
     del supervisor_settings
+    del local_buffer_broker_event_channel
 
     warmed_instance_indexes: set[int] = set()
     keep_warm_activated = False
@@ -38,7 +39,9 @@ def fake_deployment_process_worker(
 
         request_id = str(message.get("request_id") or "")
         action = str(message.get("action") or "")
-        payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        payload = (
+            message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        )
 
         if action == "shutdown":
             response_queue.put({"request_id": request_id, "ok": True, "payload": {}})
@@ -109,6 +112,21 @@ def fake_deployment_process_worker(
             instance_index = next_instance_index % config.instance_count
             next_instance_index += 1
             warmed_instance_indexes.add(instance_index)
+            preview_image_transfer = None
+            if prediction_request.get("save_result_image"):
+                lease_payload = payload.get("preview_output_lease")
+                if not isinstance(lease_payload, dict):
+                    raise RuntimeError("fake worker 缺少 preview_output_lease")
+                preview_content = b"preview-jpg"
+                lease_path = str(lease_payload["file_path"])
+                lease_offset = int(lease_payload["offset"])
+                with open(lease_path, "r+b", buffering=0) as lease_file:
+                    lease_file.seek(lease_offset)
+                    lease_file.write(preview_content)
+                preview_image_transfer = {
+                    "size": len(preview_content),
+                    "media_type": "image/jpeg",
+                }
             response_queue.put(
                 {
                     "request_id": request_id,
@@ -127,24 +145,31 @@ def fake_deployment_process_worker(
                             "latency_ms": 7.5,
                             "image_width": 64,
                             "image_height": 64,
-                            "preview_image_bytes_base64": (
-                                base64.b64encode(b"preview-jpg").decode("ascii")
-                                if prediction_request.get("save_result_image")
-                                else None
-                            ),
                             "runtime_session_info": {
                                 "backend_name": config.runtime_target.runtime_backend,
                                 "model_uri": config.runtime_target.runtime_artifact_storage_uri,
                                 "device_name": config.runtime_target.device_name,
-                                "input_spec": {"name": "images", "shape": [1, 3, 64, 64], "dtype": "float32"},
-                                "output_spec": {"name": "detections", "shape": [-1, 7], "dtype": "float32"},
+                                "input_spec": {
+                                    "name": "images",
+                                    "shape": [1, 3, 64, 64],
+                                    "dtype": "float32",
+                                },
+                                "output_spec": {
+                                    "name": "detections",
+                                    "shape": [-1, 7],
+                                    "dtype": "float32",
+                                },
                                 "metadata": {
                                     "model_version_id": config.runtime_target.model_version_id,
-                                    "input_uri": prediction_request.get("input_uri"),
+                                    "input_transport_kind": (
+                                        prediction_request.get("input_image_payload")
+                                        or {}
+                                    ).get("transport_kind"),
                                     "worker_pid": os.getpid(),
                                 },
                             },
                         },
+                        "preview_image_transfer": preview_image_transfer,
                     },
                 }
             )

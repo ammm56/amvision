@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -459,12 +459,16 @@ class BackendServiceDeploymentRuntimeReconcilerConfig(BaseModel):
 
 
 class BackendServiceInferenceMmapMailboxConfig(BaseModel):
-    """描述跨平台 inference mmap 控制 mailbox。
+    """描述跨平台 inference mmap v1 mailbox。
 
     字段：
     - enabled：是否启用 mmap inference 热路径。
     - slot_count：可同时占用的请求/响应消息槽位数，不是图片槽位数。
-    - message_capacity_bytes：每个槽位的请求区和响应区各自容量。
+    - message_capacity_bytes：每个描述符的请求区和内联响应区各自容量。
+    - overflow_page_count：大响应固定溢出页总数。
+    - overflow_page_capacity_bytes：单个固定溢出页正文容量。
+    - max_overflow_pages_per_response：单次响应最多占用的溢出页数。
+    - compression_threshold_bytes：开始尝试无损压缩的响应大小。
     - poll_interval_seconds：客户端和 daemon 扫描槽位状态的间隔。
     """
 
@@ -474,32 +478,47 @@ class BackendServiceInferenceMmapMailboxConfig(BaseModel):
         default=512 * 1024,
         ge=64 * 1024,
     )
+    overflow_page_count: int = Field(default=256, ge=8)
+    overflow_page_capacity_bytes: int = Field(
+        default=512 * 1024,
+        ge=64 * 1024,
+    )
+    max_overflow_pages_per_response: int = Field(default=64, ge=1)
+    compression_threshold_bytes: int = Field(default=256 * 1024, ge=0)
     poll_interval_seconds: float = Field(default=0.001, gt=0)
+
+    @model_validator(mode="after")
+    def validate_page_pool(self) -> BackendServiceInferenceMmapMailboxConfig:
+        """校验单响应页数不能超过固定页池。"""
+
+        if self.max_overflow_pages_per_response > self.overflow_page_count:
+            raise ValueError(
+                "max_overflow_pages_per_response 不能超过 overflow_page_count"
+            )
+        return self
 
 
 class BackendServiceInferenceDaemonConfig(BaseModel):
     """描述独立 inference daemon 所有权和本地控制通道。
 
     字段：
-    - runtime_owner：embedded 表示兼容开发模式；daemon 表示服务只使用控制客户端。
+    - runtime_owner：embedded 仅供进程内单元测试；daemon 表示服务只使用控制客户端。
     - service_id：控制队列和 async inference 队列使用的稳定 daemon id。
     - control_max_concurrent_requests：daemon 控制请求执行池上限。
     - control_poll_interval_seconds：控制队列空闲轮询间隔。
     - control_lease_timeout_seconds：异常退出后控制请求 lease 恢复时间。
     - control_read_timeout_seconds：ping、status、health 等轻量只读控制请求最长等待时间；不用于 stop、reset。
     - availability_probe_timeout_seconds：执行长操作前探测 daemon 的最长等待时间。
-    - control_request_max_age_seconds：daemon 可执行控制消息的最长年龄，超过后直接丢弃。
     - mmap_mailbox：跨平台低延迟 inference 控制消息 mailbox 配置。
     """
 
-    runtime_owner: Literal["embedded", "daemon"] = "embedded"
+    runtime_owner: Literal["embedded", "daemon"] = "daemon"
     service_id: str = "inference-daemon-main"
     control_max_concurrent_requests: int = Field(default=8, gt=0)
     control_poll_interval_seconds: float = Field(default=0.05, gt=0)
     control_lease_timeout_seconds: float = Field(default=900.0, gt=0)
     control_read_timeout_seconds: float = Field(default=2.0, gt=0)
     availability_probe_timeout_seconds: float = Field(default=1.0, gt=0)
-    control_request_max_age_seconds: float = Field(default=300.0, gt=0)
     mmap_mailbox: BackendServiceInferenceMmapMailboxConfig = Field(
         default_factory=BackendServiceInferenceMmapMailboxConfig
     )

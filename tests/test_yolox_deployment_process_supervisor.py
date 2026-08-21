@@ -26,6 +26,15 @@ from backend.service.application.runtime.contracts.detection.prediction import (
 from backend.service.application.runtime.support.safe_counter import (
     JSON_SAFE_INTEGER_MAX,
 )
+from backend.service.application.local_buffers import (
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerProcessSupervisor,
+    LocalBufferBrokerSettings,
+)
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
@@ -52,6 +61,25 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
             execution=DeploymentExecutionPolicy(instance_count=2)
         ),
     )
+    (tmp_path / "runtime-inputs").mkdir()
+    (tmp_path / "runtime-inputs" / "image-1.jpg").write_bytes(b"image-1")
+    (tmp_path / "runtime-inputs" / "image-2.jpg").write_bytes(b"image-2")
+    buffer_broker = LocalBufferBrokerProcessSupervisor(
+        settings=LocalBufferBrokerSettings(
+            root_dir=str(tmp_path / "buffers"),
+            default_pool_name="image-test",
+            pools=(
+                LocalBufferBrokerPoolSettings(
+                    pool_name="image-test",
+                    slot_size_bytes=64 * 1024,
+                    slot_count=8,
+                ),
+            ),
+        )
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path))
+    )
     supervisor = DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(tmp_path),
         runtime_mode="sync",
@@ -62,9 +90,13 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
             shutdown_timeout_seconds=1.0,
             operator_thread_count=1,
         ),
+        dataset_storage=dataset_storage,
+        local_buffer_broker_event_channel_provider=buffer_broker.get_event_channel,
+        local_buffer_io=buffer_broker,
         worker_target=fake_deployment_process_worker,
     )
 
+    buffer_broker.start()
     supervisor.start()
     try:
         initial_status = supervisor.get_status(config)
@@ -112,8 +144,10 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
         assert execution_1.instance_id != execution_2.instance_id
         assert execution_1.execution_result.preview_image_bytes == b"preview-jpg"
         assert (
-            execution_1.execution_result.runtime_session_info.metadata["input_uri"]
-            == "runtime-inputs/image-1.jpg"
+            execution_1.execution_result.runtime_session_info.metadata[
+                "input_transport_kind"
+            ]
+            == "buffer"
         )
 
         state = supervisor._deployments[config.deployment_instance_id]
@@ -154,6 +188,7 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
             )
     finally:
         supervisor.stop()
+        buffer_broker.stop()
 
 
 def test_deployment_process_supervisor_limits_running_processes_across_supervisors(
@@ -269,9 +304,12 @@ def test_deployment_process_supervisor_applies_and_releases_cpu_configuration(
         supervisor.start_deployment(config)
         health = _wait_for_health(supervisor, config)
 
-        assert health.requested_runtime_configuration["backend_options"][
-            "inference_num_threads"
-        ] == 4
+        assert (
+            health.requested_runtime_configuration["backend_options"][
+                "inference_num_threads"
+            ]
+            == 4
+        )
         allocated = health.effective_runtime_configuration[
             "allocated_runtime_configuration"
         ]
@@ -349,7 +387,9 @@ def test_sync_and_async_openvino_deployments_share_cpu_without_startup_rejection
     async_supervisor.start()
     try:
         assert sync_supervisor.start_deployment(sync_config).process_state == "running"
-        assert async_supervisor.start_deployment(async_config).process_state == "running"
+        assert (
+            async_supervisor.start_deployment(async_config).process_state == "running"
+        )
 
         sync_health = _wait_for_health(sync_supervisor, sync_config)
         async_health = _wait_for_health(async_supervisor, async_config)

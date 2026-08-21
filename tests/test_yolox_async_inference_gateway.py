@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,11 +15,18 @@ from backend.service.application.models.inference.detection_async_inference_gate
     DetectionAsyncInferenceGatewayDispatcherRegistry,
     QueueBackedDetectionAsyncInferenceClient,
 )
+from backend.service.application.models.inference.inference_gateway import (
+    build_async_inference_preview_object_key,
+    serialize_async_inference_execution_result,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
 from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
@@ -56,17 +64,12 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
         captured_request = kwargs["request"]
         assert captured_request.input_image_bytes is None
         assert isinstance(captured_request.input_uri, str)
-        assert dataset_storage.resolve(captured_request.input_uri).read_bytes() == b"fake-image"
+        assert (
+            dataset_storage.resolve(captured_request.input_uri).read_bytes()
+            == b"fake-image"
+        )
         captured_input_uris.append(captured_request.input_uri)
-        return {
-            "instance_id": "deployment-instance-1:instance-0",
-            "detections": [],
-            "latency_ms": 1.0,
-            "image_width": 2,
-            "image_height": 2,
-            "preview_image_bytes_base64": None,
-            "runtime_session_info": {"runtime_backend": "onnxruntime"},
-        }
+        return _build_gateway_result(instance_id="deployment-instance-1:instance-0")
 
     dispatcher = DetectionAsyncInferenceGatewayDispatcher(
         queue_backend=queue_backend,
@@ -121,6 +124,7 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
     process_config = _build_process_config(dataset_storage=dataset_storage)
     client = QueueBackedDetectionAsyncInferenceClient(
         queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
         request_timeout_seconds=0.1,
         response_poll_interval_seconds=0.01,
         client_id="worker-1",
@@ -139,6 +143,97 @@ def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:
 
     assert not (tmp_path / "queue" / "detection-async-inference-gateway").exists()
     assert not list((tmp_path / "queue").glob("detection-ai-rsp-*"))
+
+
+def test_async_gateway_persists_only_preview_reference_in_response_queue(
+    tmp_path: Path,
+) -> None:
+    """验证异步响应队列不含图片 bytes，client 从临时 ObjectStore 引用读取。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    process_config = _build_process_config(dataset_storage=dataset_storage)
+    queued_results: list[dict[str, object]] = []
+
+    def _execute(**kwargs: object) -> dict[str, object]:
+        request_id = str(kwargs["request_id"])
+        preview_object_key = build_async_inference_preview_object_key(
+            owner_id="backend-service-owner-1",
+            deployment_instance_id="deployment-instance-1",
+            request_id=request_id,
+        )
+        dataset_storage.write_bytes(preview_object_key, b"preview-image")
+        payload = serialize_async_inference_execution_result(
+            task_type="detection",
+            result=SimpleNamespace(
+                instance_id="deployment-instance-1:instance-0",
+                execution_result=DetectionPredictionExecutionResult(
+                    detections=(),
+                    latency_ms=1.0,
+                    image_width=2,
+                    image_height=2,
+                    preview_image_bytes=b"preview-image",
+                    runtime_session_info=DetectionRuntimeSessionInfo(
+                        backend_name="onnxruntime",
+                        model_uri="models/model.onnx",
+                        device_name="cpu",
+                        input_spec=DetectionRuntimeTensorSpec(
+                            name="images", shape=(1, 3, 2, 2), dtype="float32"
+                        ),
+                        output_spec=DetectionRuntimeTensorSpec(
+                            name="detections", shape=(-1, 7), dtype="float32"
+                        ),
+                    ),
+                ),
+            ),
+            preview_image_object_key=preview_object_key,
+        )
+        queued_results.append(payload)
+        return payload
+
+    dispatcher = DetectionAsyncInferenceGatewayDispatcher(
+        queue_backend=queue_backend,
+        execution_handler=_execute,
+        service_id="backend-service-owner-1",
+        deployment_instance_id="deployment-instance-1",
+        poll_interval_seconds=0.01,
+    )
+    dispatcher.dataset_storage = dataset_storage
+    client = QueueBackedDetectionAsyncInferenceClient(
+        queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
+        request_timeout_seconds=2.0,
+        response_poll_interval_seconds=0.01,
+        client_id="worker-1",
+    )
+    dispatcher.start()
+    try:
+        result = client.execute_inference(
+            process_config=process_config,
+            request=DetectionPredictionRequest(
+                input_uri="models/labels.txt",
+                score_threshold=0.3,
+                save_result_image=True,
+            ),
+            owner_id="backend-service-owner-1",
+        )
+    finally:
+        dispatcher.stop()
+
+    assert len(queued_results) == 1
+    queued_execution = queued_results[0]["execution_result"]
+    assert isinstance(queued_execution, dict)
+    assert "preview_image_bytes" not in queued_execution
+    assert "preview_image_bytes_base64" not in queued_execution
+    result_execution = result["execution_result"]
+    assert isinstance(result_execution, dict)
+    assert result_execution["preview_image_bytes"] == b"preview-image"
+    transfer_root = dataset_storage.resolve("runtime/transfers/async-inference")
+    assert not list(transfer_root.rglob("preview.bin"))
 
 
 def test_async_gateway_routes_multiple_service_ids_independently(
@@ -162,15 +257,9 @@ def test_async_gateway_routes_multiple_service_ids_independently(
             captured_process_config = kwargs["process_config"]
             assert isinstance(captured_process_config, DeploymentProcessConfig)
             captured_service_ids.append(service_id)
-            return {
-                "instance_id": f"{service_id}:deployment-instance-1:instance-0",
-                "detections": [],
-                "latency_ms": 1.0,
-                "image_width": 2,
-                "image_height": 2,
-                "preview_image_bytes_base64": None,
-                "runtime_session_info": {"runtime_backend": "onnxruntime"},
-            }
+            return _build_gateway_result(
+                instance_id=f"{service_id}:deployment-instance-1:instance-0"
+            )
 
         return _execute
 
@@ -194,6 +283,7 @@ def test_async_gateway_routes_multiple_service_ids_independently(
     dispatcher_b.dataset_storage = dataset_storage
     client = QueueBackedDetectionAsyncInferenceClient(
         queue_backend=queue_backend,
+        dataset_storage=dataset_storage,
         request_timeout_seconds=2.0,
         response_poll_interval_seconds=0.01,
         client_id="worker-1",
@@ -253,15 +343,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(
         assert isinstance(captured_process_config, DeploymentProcessConfig)
         deployment_instance_id = captured_process_config.deployment_instance_id
         captured_deployment_ids.append(deployment_instance_id)
-        return {
-            "instance_id": f"{deployment_instance_id}:instance-0",
-            "detections": [],
-            "latency_ms": 1.0,
-            "image_width": 2,
-            "image_height": 2,
-            "preview_image_bytes_base64": None,
-            "runtime_session_info": {"runtime_backend": "onnxruntime"},
-        }
+        return _build_gateway_result(instance_id=f"{deployment_instance_id}:instance-0")
 
     registry = DetectionAsyncInferenceGatewayDispatcherRegistry(
         queue_backend=queue_backend,
@@ -281,6 +363,7 @@ def test_async_gateway_registry_routes_multiple_deployments_independently(
         )
         client = QueueBackedDetectionAsyncInferenceClient(
             queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
             request_timeout_seconds=2.0,
             response_poll_interval_seconds=0.01,
             client_id="worker-1",
@@ -362,5 +445,38 @@ def _build_process_config(
             checkpoint_storage_uri=None,
             checkpoint_path=None,
             labels_storage_uri=labels_storage_uri,
+        ),
+    )
+
+
+def _build_gateway_result(*, instance_id: str) -> dict[str, object]:
+    """按当前 gateway 结构化响应合同生成最小 detection 结果。"""
+
+    return serialize_async_inference_execution_result(
+        task_type="detection",
+        result=SimpleNamespace(
+            instance_id=instance_id,
+            execution_result=DetectionPredictionExecutionResult(
+                detections=(),
+                latency_ms=1.0,
+                image_width=2,
+                image_height=2,
+                preview_image_bytes=None,
+                runtime_session_info=DetectionRuntimeSessionInfo(
+                    backend_name="onnxruntime",
+                    model_uri="models/model.onnx",
+                    device_name="cpu",
+                    input_spec=DetectionRuntimeTensorSpec(
+                        name="images",
+                        shape=(1, 3, 2, 2),
+                        dtype="float32",
+                    ),
+                    output_spec=DetectionRuntimeTensorSpec(
+                        name="detections",
+                        shape=(-1, 7),
+                        dtype="float32",
+                    ),
+                ),
+            ),
         ),
     )

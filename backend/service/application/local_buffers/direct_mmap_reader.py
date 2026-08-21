@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
 import mmap
 
-from backend.contracts.buffers import BufferRef, FrameRef
+from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.local_buffers.broker_settings import (
     LocalBufferBrokerSettings,
@@ -48,6 +49,11 @@ class DirectMmapLocalBufferReader:
             reference_kind="buffer",
             media_type=buffer_ref.media_type,
         )
+
+    def accepts_path(self, path: str) -> bool:
+        """返回给定绝对路径是否属于当前 direct reader 的固定 pool。"""
+
+        return Path(path).resolve() in self._pool_settings_by_path
 
     def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview:
         """直接映射并读取 FrameRef 指向的有效区间。"""
@@ -171,3 +177,133 @@ class DirectMmapLocalBufferReader:
             view = mmap.mmap(file.fileno(), length=0, access=mmap.ACCESS_READ)
             self._mapped_files[path] = (file, view)
             return view
+
+
+class DirectMmapLocalBufferWriter:
+    """把结果图片写入 backend-service 预先分配的 writing lease。"""
+
+    def __init__(self, settings: LocalBufferBrokerSettings | dict[str, Any]) -> None:
+        """加载允许写入的固定 pool 路径与槽位大小。"""
+
+        self.settings = (
+            settings
+            if isinstance(settings, LocalBufferBrokerSettings)
+            else LocalBufferBrokerSettings.model_validate(settings)
+        )
+        root_dir = Path(self.settings.root_dir).resolve()
+        self._pool_settings_by_path = {
+            (root_dir / pool.pool_name / pool.file_name).resolve(): pool
+            for pool in self.settings.pools
+        }
+        self._lock = Lock()
+        self._mapped_files: dict[Path, tuple[Any, mmap.mmap]] = {}
+
+    def write_lease_bytes(
+        self,
+        *,
+        lease: BufferLease,
+        content: bytes | bytearray | memoryview,
+    ) -> None:
+        """校验 writing lease 后直接写入有效字节，不刷新临时 mmap。"""
+
+        normalized = bytes(content)
+        if not normalized:
+            raise InvalidRequestError("LocalBuffer 结果图片不能为空")
+        if lease.state != "writing":
+            raise InvalidRequestError(
+                "LocalBuffer 结果图片 lease 不是 writing 状态",
+                details={"lease_id": lease.lease_id, "state": lease.state},
+            )
+        if lease.expires_at is None:
+            raise InvalidRequestError(
+                "LocalBuffer 结果图片 lease 必须包含 expires_at",
+                details={"lease_id": lease.lease_id},
+            )
+        remaining_seconds = (
+            lease.expires_at.astimezone(timezone.utc) - datetime.now(timezone.utc)
+        ).total_seconds()
+        if remaining_seconds < 30.0:
+            raise InvalidRequestError(
+                "LocalBuffer 结果图片 lease 剩余有效期不足",
+                details={
+                    "lease_id": lease.lease_id,
+                    "remaining_seconds": max(0.0, remaining_seconds),
+                    "required_seconds": 30.0,
+                },
+            )
+        path = Path(lease.file_path).resolve()
+        pool = self._pool_settings_by_path.get(path)
+        if pool is None or pool.pool_name != lease.pool_name:
+            raise InvalidRequestError(
+                "LocalBuffer 结果图片 lease 不属于已配置 pool",
+                details={"lease_id": lease.lease_id, "path": str(path)},
+            )
+        if (
+            lease.offset < 0
+            or lease.offset % pool.slot_size_bytes != 0
+            or lease.size > pool.slot_size_bytes
+            or lease.offset + lease.size > pool.slot_count * pool.slot_size_bytes
+            or len(normalized) > lease.size
+        ):
+            raise InvalidRequestError(
+                "LocalBuffer 结果图片 lease 超出固定槽位",
+                details={
+                    "lease_id": lease.lease_id,
+                    "lease_size": lease.size,
+                    "content_size": len(normalized),
+                },
+            )
+        with self._lock:
+            try:
+                view = self._require_mapping(
+                    path=path,
+                    expected_pool_size=pool.slot_count * pool.slot_size_bytes,
+                )
+                view[lease.offset : lease.offset + len(normalized)] = normalized
+            except OSError as error:
+                raise InvalidRequestError(
+                    "写入 LocalBuffer 结果图片失败",
+                    details={"lease_id": lease.lease_id, "path": str(path)},
+                ) from error
+
+    def accepts_lease(self, lease: BufferLease) -> bool:
+        """返回 lease 是否属于当前 direct writer 的固定 pool。"""
+
+        path = Path(lease.file_path).resolve()
+        pool = self._pool_settings_by_path.get(path)
+        return pool is not None and pool.pool_name == lease.pool_name
+
+    def close(self) -> None:
+        """关闭当前进程缓存的可写 mmap view。"""
+
+        with self._lock:
+            mapped_files = tuple(self._mapped_files.values())
+            self._mapped_files.clear()
+        for file, view in mapped_files:
+            view.close()
+            file.close()
+
+    def _require_mapping(self, *, path: Path, expected_pool_size: int) -> mmap.mmap:
+        """惰性打开已授权 pool，并校验固定文件容量。"""
+
+        current = self._mapped_files.get(path)
+        if current is not None:
+            return current[1]
+        file = path.open("r+b", buffering=0)
+        try:
+            actual_size = path.stat().st_size
+            if actual_size != expected_pool_size:
+                raise InvalidRequestError(
+                    "LocalBuffer 结果图片 pool 文件容量不合法",
+                    details={
+                        "path": str(path),
+                        "actual_size": actual_size,
+                        "expected_size": expected_pool_size,
+                    },
+                )
+            view = mmap.mmap(file.fileno(), length=0, access=mmap.ACCESS_WRITE)
+        except Exception:
+            file.close()
+            raise
+        self._mapped_files[path] = (file, view)
+        return view

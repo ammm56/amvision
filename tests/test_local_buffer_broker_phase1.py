@@ -538,7 +538,9 @@ def test_local_buffer_broker_rejects_unmanaged_duplicate_root_without_killing_ow
 
         assert monotonic() - started_at < settings.startup_timeout_seconds
         assert exc_info.value.details["reason"] == "unsafe-owner-process"
-        assert exc_info.value.details["root_dir"] == str(Path(settings.root_dir).resolve())
+        assert exc_info.value.details["root_dir"] == str(
+            Path(settings.root_dir).resolve()
+        )
         assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
         assert first_supervisor.get_status()["state"] == "running"
     finally:
@@ -1317,7 +1319,24 @@ def test_deployment_supervisor_passes_broker_event_channel_to_worker(
         execution = supervisor.run_inference(
             config=process_config,
             request=DetectionPredictionRequest(
-                input_uri="runtime-inputs/image.jpg",
+                input_image_payload={
+                    "transport_kind": "buffer",
+                    "media_type": "image/raw",
+                    "buffer_ref": BufferRef(
+                        buffer_id="buffer-test",
+                        lease_id="lease-test",
+                        path=str(tmp_path / "buffers.dat"),
+                        offset=0,
+                        size=12,
+                        shape=(2, 2, 3),
+                        dtype="uint8",
+                        layout="HWC",
+                        pixel_format="BGR",
+                        media_type="image/raw",
+                        broker_epoch="epoch-test",
+                        generation=1,
+                    ).model_dump(mode="json"),
+                },
                 score_threshold=0.3,
                 save_result_image=False,
                 extra_options={},

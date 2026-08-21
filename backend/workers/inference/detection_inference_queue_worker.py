@@ -13,7 +13,9 @@ from backend.service.application.models.inference.detection_inference_task_servi
     SqlAlchemyDetectionInferenceTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 
 
@@ -35,10 +37,14 @@ class DetectionInferenceQueueWorker:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
-        self.async_inference_executor = async_inference_executor or QueueBackedDetectionAsyncInferenceClient(
-            queue_backend=queue_backend,
-            request_timeout_seconds=async_inference_request_timeout_seconds,
-            client_id=worker_id,
+        self.async_inference_executor = (
+            async_inference_executor
+            or QueueBackedDetectionAsyncInferenceClient(
+                queue_backend=queue_backend,
+                request_timeout_seconds=async_inference_request_timeout_seconds,
+                client_id=worker_id,
+                dataset_storage=dataset_storage,
+            )
         )
         self.worker_id = worker_id
 

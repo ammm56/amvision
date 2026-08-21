@@ -12,6 +12,7 @@ from backend.service.application.models.inference.detection_async_inference_gate
     DetectionAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.models.inference.inference_gateway import (
+    build_async_inference_preview_object_key,
     serialize_async_inference_execution_result,
 )
 from backend.service.application.models.inference.obb_async_inference_gateway import (
@@ -82,6 +83,8 @@ def build_task_type_deployment_runtimes(
         queue_backend=queue_backend,
         execution_handler=_build_async_inference_gateway_execution_handler(
             deployment_process_supervisor=async_supervisor,
+            dataset_storage=dataset_storage,
+            async_inference_service_id=async_inference_service_id,
         ),
         service_id=async_inference_service_id,
         dataset_storage=dataset_storage,
@@ -123,17 +126,21 @@ def _build_deployment_supervisor(
             if enable_direct_mmap_reader
             else None
         ),
+        local_buffer_io=local_buffer_broker_supervisor,
     )
 
 
 def _build_async_inference_gateway_execution_handler(
     *,
     deployment_process_supervisor: DeploymentProcessSupervisor,
+    dataset_storage: LocalDatasetStorage,
+    async_inference_service_id: str,
 ):
     """构造 async gateway 的 deployment 执行处理器。"""
 
     def execute(
         *,
+        request_id: str,
         process_config: DeploymentProcessConfig,
         request: object,
     ) -> dict[str, object]:
@@ -143,9 +150,22 @@ def _build_async_inference_gateway_execution_handler(
             config=process_config,
             request=request,
         )
+        preview_image_object_key: str | None = None
+        preview_image_bytes = execution_result.execution_result.preview_image_bytes
+        if preview_image_bytes is not None:
+            preview_image_object_key = build_async_inference_preview_object_key(
+                owner_id=async_inference_service_id,
+                deployment_instance_id=process_config.deployment_instance_id,
+                request_id=request_id,
+            )
+            dataset_storage.write_bytes(
+                preview_image_object_key,
+                preview_image_bytes,
+            )
         return serialize_async_inference_execution_result(
             task_type=process_config.runtime_target.task_type,
             result=execution_result,
+            preview_image_object_key=preview_image_object_key,
         )
 
     return execute

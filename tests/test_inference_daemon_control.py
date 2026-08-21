@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Event, Thread
 from time import monotonic_ns, perf_counter, sleep
 
 import pytest
@@ -38,7 +37,6 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlBinding,
     InferenceControlDispatcher,
     QueueBackedInferenceControlClient,
-    _should_use_local_mmap,
 )
 from backend.service.application.runtime.deployment.inference_local_mmap import (
     InferenceLocalMmapClient,
@@ -46,11 +44,14 @@ from backend.service.application.runtime.deployment.inference_local_mmap import 
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     OperationTimeoutError,
     ServiceConfigurationError,
 )
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
+    DirectMmapLocalBufferWriter,
+    LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
 )
@@ -98,7 +99,8 @@ class _FakeSupervisor:
         self.actions.append("reset")
         return _health(config)
 
-    def run_inference(self, *, config, request):
+    def run_inference(self, *, config, request, preview_output_lease=None):
+        del preview_output_lease
         self.actions.append("infer")
         assert request.input_image_bytes is None
         assert request.input_uri is not None
@@ -126,12 +128,21 @@ class _FakeRegistry:
             self.started.remove(deployment_instance_id)
 
 
+class _TimeoutMmapClient:
+    """模拟请求发布后传输状态不确定的 mmap client。"""
+
+    def request(self, payload: dict[str, object]) -> dict[str, object]:
+        del payload
+        raise OperationTimeoutError("等待 inference mmap 响应超时")
+
+
 class _FakeRefSupervisor(_FakeSupervisor):
     """验证 mmap 热路径保持 BufferRef，不读取或物化图片。"""
 
-    def run_inference(self, *, config, request):
+    def run_inference(self, *, config, request, preview_output_lease=None):
         """记录 infer 并校验 task-native request 仍携带 BufferRef。"""
 
+        del preview_output_lease
         self.actions.append("infer")
         assert request.input_image_bytes is None
         assert request.input_uri is None
@@ -144,6 +155,34 @@ class _FakeRefSupervisor(_FakeSupervisor):
             execution_result=build_test_execution_result(
                 runtime_target=config.runtime_target
             ),
+        )
+
+
+class _FakePreviewSupervisor(_FakeRefSupervisor):
+    """模拟 worker 直接写 LocalBuffer，响应只返回传输元数据。"""
+
+    def __init__(self, *, dataset_storage, preview_buffer_writer) -> None:
+        super().__init__(dataset_storage=dataset_storage)
+        self.preview_buffer_writer = preview_buffer_writer
+
+    def run_inference(self, *, config, request, preview_output_lease=None):
+        execution = super().run_inference(
+            config=config,
+            request=request,
+        )
+        if not request.save_result_image:
+            return execution
+        assert preview_output_lease is not None
+        self.preview_buffer_writer.write_lease_bytes(
+            lease=preview_output_lease,
+            content=_one_pixel_png(),
+        )
+        return replace(
+            execution,
+            preview_image_transfer={
+                "size": len(_one_pixel_png()),
+                "media_type": "image/png",
+            },
         )
 
 
@@ -160,13 +199,15 @@ class _SlowMutationSupervisor(_FakeSupervisor):
 
 
 class _FakeSegmentationSupervisor(_FakeSupervisor):
-    """返回带实例轮廓的 segmentation 结果，验证其固定走控制队列。"""
+    """返回带实例轮廓的 segmentation 结果，验证其走 mmap 页池。"""
 
-    def run_inference(self, *, config, request):
+    def run_inference(self, *, config, request, preview_output_lease=None):
+        del preview_output_lease
         self.actions.append("infer")
         assert request.input_image_bytes is None
-        assert request.input_uri is not None
-        assert self.dataset_storage.resolve(request.input_uri).is_file()
+        assert request.input_uri is None
+        assert request.input_image_payload is not None
+        assert request.input_image_payload["transport_kind"] == "buffer"
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id="instance-segmentation",
@@ -200,41 +241,6 @@ class _FakeSegmentationSupervisor(_FakeSupervisor):
                 ),
             ),
         )
-
-
-class _RecordingMmapClient:
-    """记录 mmap 请求，验证大预览响应不会进入固定容量数据面。"""
-
-    def __init__(self) -> None:
-        self.requests: list[dict[str, object]] = []
-
-    def request(self, payload: dict[str, object]) -> dict[str, object]:
-        self.requests.append(dict(payload))
-        if payload == {"action": "ping"}:
-            return {"ok": True, "result": {"ready": True}}
-        raise AssertionError("当前请求不应进入固定容量 inference mmap")
-
-
-@pytest.mark.parametrize("task_type", ("classification", "detection", "obb", "pose"))
-def test_fixed_size_inference_results_use_mmap(task_type: str) -> None:
-    """验证有界小结果任务保留固定容量 mmap 热路径。"""
-
-    assert _should_use_local_mmap(
-        local_mmap_available=True,
-        task_type=task_type,
-        save_result_image=False,
-    )
-
-
-@pytest.mark.parametrize("task_type", ("segmentation", "future-unbounded-task"))
-def test_unbounded_inference_results_use_control_queue(task_type: str) -> None:
-    """验证无界或未知结果不进入固定容量 mmap。"""
-
-    assert not _should_use_local_mmap(
-        local_mmap_available=True,
-        task_type=task_type,
-        save_result_image=False,
-    )
 
 
 def _run_mmap_echo_server(*, path: str, ready_queue, stop_event) -> None:
@@ -299,10 +305,10 @@ def _run_busy_mmap_client(
     )
 
 
-def test_queue_backed_inference_control_round_trip_and_stages_image(
+def test_queue_backed_inference_control_round_trip(
     tmp_path: Path,
 ) -> None:
-    """验证控制、状态和大图片数据面不会在 backend-service 创建模型进程。"""
+    """验证持久化队列只承载 deployment 控制和状态动作。"""
 
     dataset_storage = create_test_dataset_storage(tmp_path)
     queue_backend = LocalFileQueueBackend(
@@ -351,29 +357,17 @@ def test_queue_backed_inference_control_round_trip_and_stages_image(
         assert client.ping() == {"ready": True, "service_id": "test-daemon"}
         assert client.start_deployment(config).process_state == "running"
         assert client.get_health(config).process_state == "running"
-        result = client.run_inference(
-            config=config,
-            request=DetectionPredictionRequest(
-                input_image_bytes=_one_pixel_png(),
-                score_threshold=0.25,
-                save_result_image=False,
-            ),
-        )
-        assert result.instance_id == "instance-1"
-        assert len(result.execution_result.detections) == 1
         assert client.stop_deployment(config).process_state == "stopped"
     finally:
         dispatcher.stop()
 
-    assert fake_supervisor.actions == ["start", "health", "infer", "stop"]
-    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
-    assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
+    assert fake_supervisor.actions == ["start", "health", "stop"]
 
 
-def test_preview_image_response_bypasses_fixed_capacity_mmap(
+def test_preview_image_request_uses_mmap_v1(
     tmp_path: Path,
 ) -> None:
-    """验证可能携带大预览图的推理经控制队列执行并物化输入。"""
+    """验证要求结果图的推理仍使用 mmap，而不是控制队列。"""
 
     dataset_storage = create_test_dataset_storage(tmp_path)
     queue_backend = LocalFileQueueBackend(
@@ -393,7 +387,24 @@ def test_preview_image_response_bypasses_fixed_capacity_mmap(
         project_id="project-1",
         runtime_configuration=DeploymentRuntimeConfiguration(),
     )
-    fake_supervisor = _FakeSupervisor(dataset_storage=dataset_storage)
+    buffer_settings = LocalBufferBrokerSettings(
+        enabled=True,
+        root_dir=str(tmp_path / "preview-buffers"),
+        default_pool_name="image-test",
+        pools=(
+            LocalBufferBrokerPoolSettings(
+                pool_name="image-test",
+                slot_size_bytes=64 * 1024,
+                slot_count=4,
+            ),
+        ),
+    )
+    buffer_broker = LocalBufferBrokerProcessSupervisor(settings=buffer_settings)
+    preview_buffer_writer = DirectMmapLocalBufferWriter(buffer_settings)
+    fake_supervisor = _FakePreviewSupervisor(
+        dataset_storage=dataset_storage,
+        preview_buffer_writer=preview_buffer_writer,
+    )
     dispatcher = InferenceControlDispatcher(
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
@@ -407,7 +418,24 @@ def test_preview_image_response_bypasses_fixed_capacity_mmap(
         },
         poll_interval_seconds=0.01,
     )
-    mmap_client = _RecordingMmapClient()
+    mmap_path = tmp_path / "preview" / "inference.mmap"
+    captured_mmap_results: list[dict[str, object]] = []
+
+    def handle_request(payload: dict[str, object]) -> dict[str, object]:
+        result = dispatcher.handle_local_mmap_request(payload)
+        captured_mmap_results.append(result)
+        return result
+
+    mmap_server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=handle_request,
+        slot_count=4,
+        slot_payload_capacity_bytes=64 * 1024,
+    )
+    mmap_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+    )
     client = QueueBackedInferenceControlClient(
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
@@ -415,33 +443,116 @@ def test_preview_image_response_bypasses_fixed_capacity_mmap(
         service_id="test-daemon",
         request_timeout_seconds=5.0,
         startup_timeout_seconds=5.0,
-        local_mmap_client=mmap_client,  # type: ignore[arg-type]
+        local_buffer_reader=buffer_broker,
+        local_mmap_client=mmap_client,
     )
 
-    dispatcher.start()
+    buffer_broker.start()
+    expiring_lease = buffer_broker.allocate_buffer(
+        size=12,
+        owner_kind="test",
+        owner_id="expiring-preview",
+        pool_name="image-test",
+        ttl_seconds=1.0,
+    )
     try:
-        result = client.run_inference(
+        with pytest.raises(InvalidRequestError, match="剩余有效期不足"):
+            preview_buffer_writer.write_lease_bytes(
+                lease=expiring_lease,
+                content=b"abcdefghijkl",
+            )
+    finally:
+        buffer_broker.release(
+            expiring_lease.lease_id,
+            pool_name=expiring_lease.pool_name,
+        )
+    mmap_server.start()
+    try:
+        preview_result = client.run_inference(
             config=config,
             request=DetectionPredictionRequest(
-                input_image_bytes=_one_pixel_png(),
+                input_image_payload=_buffer_image_payload(tmp_path),
                 score_threshold=0.25,
                 save_result_image=True,
             ),
         )
+        inline_result = client.run_inference(
+            config=config,
+            request=DetectionPredictionRequest(
+                input_image_bytes=b"abcdefghijkl",
+                score_threshold=0.25,
+                save_result_image=False,
+            ),
+        )
+        dataset_storage.write_bytes("inputs/source.raw", b"abcdefghijkl")
+        object_store_result = client.run_inference(
+            config=config,
+            request=DetectionPredictionRequest(
+                input_uri="inputs/source.raw",
+                score_threshold=0.25,
+                save_result_image=False,
+            ),
+        )
+        absolute_image_path = tmp_path / "absolute-input.bmp"
+        absolute_image_path.write_bytes(b"abcdefghijkl")
+        absolute_path_result = client.run_inference(
+            config=config,
+            request=DetectionPredictionRequest(
+                input_image_payload={
+                    "transport_kind": "local-path",
+                    "local_path": str(absolute_image_path.resolve()),
+                    "media_type": "image/bmp",
+                },
+                score_threshold=0.25,
+                save_result_image=False,
+            ),
+        )
+        timeout_client = QueueBackedInferenceControlClient(
+            queue_backend=queue_backend,
+            dataset_storage=dataset_storage,
+            runtime_mode="sync",
+            service_id="test-daemon",
+            request_timeout_seconds=0.1,
+            startup_timeout_seconds=0.1,
+            local_buffer_reader=buffer_broker,
+            local_mmap_client=_TimeoutMmapClient(),  # type: ignore[arg-type]
+        )
+        with pytest.raises(OperationTimeoutError, match="mmap 响应超时"):
+            timeout_client.run_inference(
+                config=config,
+                request=DetectionPredictionRequest(
+                    input_image_bytes=b"abcdefghijkl",
+                    score_threshold=0.25,
+                    save_result_image=True,
+                ),
+            )
+        retained_pool_status = buffer_broker.get_status()["pools"][0]
     finally:
-        dispatcher.stop()
+        mmap_client.close()
+        mmap_server.stop()
+        buffer_broker.stop()
 
-    assert result.instance_id == "instance-1"
-    assert fake_supervisor.actions == ["infer"]
-    assert mmap_client.requests == [{"action": "ping"}]
-    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
-    assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
+    assert preview_result.instance_id == "instance-mmap"
+    assert preview_result.execution_result.preview_image_bytes == _one_pixel_png()
+    assert inline_result.execution_result.preview_image_bytes is None
+    assert object_store_result.execution_result.preview_image_bytes is None
+    assert absolute_path_result.execution_result.preview_image_bytes is None
+    assert fake_supervisor.actions == ["infer", "infer", "infer", "infer"]
+    assert retained_pool_status["used_count"] == 2
+    assert retained_pool_status["active_count"] == 1
+    assert retained_pool_status["writing_count"] == 1
+    assert len(captured_mmap_results) == 4
+    for result in captured_mmap_results:
+        execution_result = result["execution_result"]
+        assert isinstance(execution_result, dict)
+        assert "preview_image_bytes_base64" not in execution_result
+    assert not dataset_storage.resolve("runtime/inputs/inference-control").exists()
 
 
-def test_segmentation_response_without_preview_bypasses_fixed_capacity_mmap(
+def test_segmentation_response_uses_mmap_v1_overflow_capability(
     tmp_path: Path,
 ) -> None:
-    """验证轮廓长度不固定的 segmentation 无预览图时也只执行一次控制队列推理。"""
+    """验证 segmentation 结构化结果统一使用 mmap v1。"""
 
     dataset_storage = create_test_dataset_storage(tmp_path)
     queue_backend = LocalFileQueueBackend(
@@ -476,7 +587,17 @@ def test_segmentation_response_without_preview_bypasses_fixed_capacity_mmap(
         },
         poll_interval_seconds=0.01,
     )
-    mmap_client = _RecordingMmapClient()
+    mmap_path = tmp_path / "segmentation" / "inference.mmap"
+    mmap_server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=dispatcher.handle_local_mmap_request,
+        slot_count=4,
+        slot_payload_capacity_bytes=64 * 1024,
+    )
+    mmap_client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+    )
     client = QueueBackedInferenceControlClient(
         queue_backend=queue_backend,
         dataset_storage=dataset_storage,
@@ -484,29 +605,27 @@ def test_segmentation_response_without_preview_bypasses_fixed_capacity_mmap(
         service_id="test-daemon",
         request_timeout_seconds=5.0,
         startup_timeout_seconds=5.0,
-        local_mmap_client=mmap_client,  # type: ignore[arg-type]
+        local_mmap_client=mmap_client,
     )
 
-    dispatcher.start()
+    mmap_server.start()
     try:
         result = client.run_inference(
             config=config,
             request=SegmentationPredictionRequest(
-                input_image_bytes=_one_pixel_png(),
+                input_image_payload=_buffer_image_payload(tmp_path),
                 score_threshold=0.25,
                 mask_threshold=0.5,
                 save_result_image=False,
             ),
         )
     finally:
-        dispatcher.stop()
+        mmap_client.close()
+        mmap_server.stop()
 
     assert result.instance_id == "instance-segmentation"
     assert len(result.execution_result.instances) == 1
     assert fake_supervisor.actions == ["infer"]
-    assert mmap_client.requests == [{"action": "ping"}]
-    staged_root = dataset_storage.resolve("runtime/inputs/inference-control")
-    assert not staged_root.exists() or not any(staged_root.rglob("input.png"))
 
 
 def test_local_mmap_hot_path_keeps_buffer_ref_and_handles_eighty_calls(
@@ -746,18 +865,69 @@ def test_local_mmap_client_mapping_survives_daemon_server_restart(
         second_server.stop()
 
 
-def test_local_mmap_overflow_logs_capacity_diagnostics(
+def test_local_mmap_v1_stop_invalidates_epoch_before_waiting_for_handler(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """验证固定槽溢出直接报错，并记录容量与任务类型诊断。"""
+    """验证 daemon 停机立即取消等待请求，不让 client 等到业务超时。"""
 
-    mmap_path = tmp_path / "overflow" / "inference.mmap"
+    mmap_path = tmp_path / "stop-epoch" / "inference.mmap"
+    handler_started = Event()
+    release_handler = Event()
+
+    def blocking_handler(_payload: dict[str, object]) -> dict[str, object]:
+        handler_started.set()
+        assert release_handler.wait(timeout=5.0)
+        return {"value": "late"}
+
     server = InferenceLocalMmapServer(
         path=mmap_path,
-        request_handler=lambda _payload: {"value": "x" * (70 * 1024)},
+        request_handler=blocking_handler,
         slot_count=2,
         slot_payload_capacity_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=5.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    stopper = Thread(target=server.stop)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            request_future = executor.submit(client.request, {"value": "blocked"})
+            assert handler_started.wait(timeout=2.0)
+            stopper.start()
+            with pytest.raises(OperationCancelledError):
+                request_future.result(timeout=1.0)
+    finally:
+        release_handler.set()
+        if stopper.ident is not None:
+            stopper.join(timeout=5.0)
+        client.close()
+        if server.is_running:
+            server.stop()
+
+    assert not stopper.is_alive()
+
+
+def test_local_mmap_v1_uses_fixed_overflow_pages_and_reclaims_after_ack(
+    tmp_path: Path,
+) -> None:
+    """验证大结果跨多个固定页传输，ACK 后由 daemon 完整回收。"""
+
+    mmap_path = tmp_path / "overflow" / "inference.mmap"
+    expected_value = os.urandom(96 * 1024).hex()
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": expected_value},
+        slot_count=2,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=8,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=4,
+        compression_threshold_bytes=1024 * 1024,
         max_concurrent_requests=1,
         poll_interval_seconds=0.0005,
     )
@@ -766,11 +936,6 @@ def test_local_mmap_overflow_logs_capacity_diagnostics(
         request_timeout_seconds=2.0,
         poll_interval_seconds=0.0005,
     )
-    caplog.set_level(
-        logging.WARNING,
-        logger="backend.service.application.runtime.deployment.inference_local_mmap",
-    )
-
     server.start()
     try:
         response = client.request(
@@ -781,21 +946,382 @@ def test_local_mmap_overflow_logs_capacity_diagnostics(
                 },
             }
         )
+        deadline = perf_counter() + 1.0
+        while server._count_free_pages() != 8 and perf_counter() < deadline:
+            sleep(0.001)
+        free_page_count = server._count_free_pages()
+    finally:
+        client.close()
+        server.stop()
+
+    assert response == {"ok": True, "result": {"value": expected_value}}
+    assert server._page_pool_high_watermark == 4
+    assert free_page_count == 8
+
+
+def test_local_mmap_v1_compresses_repetitive_payload_before_page_allocation(
+    tmp_path: Path,
+) -> None:
+    """验证高压缩率结构化结果保留在内联区，不占用页池。"""
+
+    mmap_path = tmp_path / "compression" / "inference.mmap"
+    expected_value = "segment-point," * 20_000
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": expected_value},
+        slot_count=2,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=8,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=8,
+        compression_threshold_bytes=64 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        response = client.request({"action": "infer"})
+    finally:
+        client.close()
+        server.stop()
+
+    assert response == {"ok": True, "result": {"value": expected_value}}
+    assert server._page_pool_high_watermark == 0
+
+
+def test_local_mmap_v1_uses_fragmented_free_pages_without_contiguous_requirement(
+    tmp_path: Path,
+) -> None:
+    """验证页池碎片化时按序号组合非连续页，不要求物理连续。"""
+
+    server = InferenceLocalMmapServer(
+        path=tmp_path / "fragmented" / "inference.mmap",
+        request_handler=lambda payload: payload,
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=4,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=4,
+    )
+    server.start()
+    allocations: list[list[int]] = []
+    fragmented: list[int] = []
+    try:
+        for index in range(4):
+            allocations.append(
+                server._allocate_pages(
+                    slot_index=index,
+                    generation=index + 1,
+                    owner_token=index + 10,
+                    page_count=1,
+                )
+            )
+        server._free_pages(allocations[1])
+        server._free_pages(allocations[3])
+        fragmented = server._allocate_pages(
+            slot_index=9,
+            generation=9,
+            owner_token=99,
+            page_count=2,
+        )
+        assert fragmented == [1, 3]
+    finally:
+        server._free_pages(allocations[0] if allocations else [])
+        server._free_pages(allocations[2] if len(allocations) > 2 else [])
+        server._free_pages(fragmented)
+        free_page_count = server._count_free_pages()
+        server.stop()
+
+    assert free_page_count == 4
+
+
+def test_local_mmap_v1_pool_exhaustion_is_explicit_and_does_not_block_inline(
+    tmp_path: Path,
+) -> None:
+    """验证页池满载立即返回明确错误，内联请求和回收后请求仍可执行。"""
+
+    mmap_path = tmp_path / "pool-exhaustion" / "inference.mmap"
+    large_value = os.urandom(40 * 1024).hex()
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda payload: (
+            {"value": large_value}
+            if payload.get("large") is True
+            else {"value": "inline"}
+        ),
+        slot_count=2,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=2,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=2,
+        compression_threshold_bytes=1024 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    occupied = server._allocate_pages(
+        slot_index=99,
+        generation=1,
+        owner_token=99,
+        page_count=2,
+    )
+    try:
+        exhausted = client.request({"large": True})
+        inline = client.request({"large": False})
+        health = client.request({"action": "ping", "large": False})
+        server._free_pages(occupied)
+        occupied = []
+        recovered = client.request({"large": True})
+    finally:
+        server._free_pages(occupied)
+        client.close()
+        server.stop()
+
+    assert exhausted["ok"] is False
+    assert "固定溢出页池暂时不足" in exhausted["error"]["error_message"]
+    assert inline == {"ok": True, "result": {"value": "inline"}}
+    assert health["result"]["mailbox"]["protocol_version"] == 1
+    assert health["result"]["mailbox"]["free_overflow_page_count"] == 0
+    assert health["result"]["mailbox"]["max_response_bytes"] == 128 * 1024
+    assert recovered == {"ok": True, "result": {"value": large_value}}
+
+
+def test_local_mmap_v1_rejects_response_above_configured_page_limit(
+    tmp_path: Path,
+) -> None:
+    """验证单请求超过固定页上限时返回容量错误，不扩容或改走其他通道。"""
+
+    mmap_path = tmp_path / "response-limit" / "inference.mmap"
+    oversized_value = os.urandom(80 * 1024).hex()
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": oversized_value},
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=2,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=2,
+        compression_threshold_bytes=1024 * 1024,
+        max_concurrent_requests=1,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        response = client.request({"action": "infer"})
     finally:
         client.close()
         server.stop()
 
     assert response["ok"] is False
-    assert response["error"]["code"] == "service_configuration_error"
-    record = next(
-        item
-        for item in caplog.records
-        if item.message == "inference mmap 响应超过单槽容量"
+    assert "超过固定页池单请求上限" in response["error"]["error_message"]
+
+
+def test_local_mmap_v1_keeps_larger_inline_capacity_as_response_limit(
+    tmp_path: Path,
+) -> None:
+    """验证内联区大于分页上限时仍可完整返回内联结构化结果。"""
+
+    mmap_path = tmp_path / "inline-response-limit" / "inference.mmap"
+    value = "x" * (90 * 1024)
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": value},
+        slot_count=1,
+        slot_payload_capacity_bytes=128 * 1024,
+        overflow_page_count=2,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=1,
+        compression_threshold_bytes=1024 * 1024,
+        poll_interval_seconds=0.0005,
     )
-    assert record.serialized_response_bytes > 64 * 1024
-    assert record.mmap_capacity_bytes == 64 * 1024
-    assert record.transport_kind == "mmap"
-    assert record.task_type == "detection"
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        response = client.request({"action": "infer"})
+        health = server.get_health_summary()
+    finally:
+        client.close()
+        server.stop()
+
+    assert response == {"ok": True, "result": {"value": value}}
+    assert health["max_response_bytes"] == 128 * 1024
+    assert health["overflow_page_high_watermark"] == 0
+
+
+def test_local_mmap_v1_restart_reclaims_orphaned_overflow_pages(
+    tmp_path: Path,
+) -> None:
+    """验证 daemon 重启会初始化固定页池并清除上个 epoch 的孤儿页。"""
+
+    mmap_path = tmp_path / "page-restart" / "inference.mmap"
+
+    def build_server() -> InferenceLocalMmapServer:
+        return InferenceLocalMmapServer(
+            path=mmap_path,
+            request_handler=lambda payload: {"value": payload.get("value")},
+            slot_count=1,
+            slot_payload_capacity_bytes=64 * 1024,
+            overflow_page_count=4,
+            overflow_page_capacity_bytes=64 * 1024,
+            max_overflow_pages_per_response=4,
+        )
+
+    first = build_server()
+    first.start()
+    orphaned = first._allocate_pages(
+        slot_index=0,
+        generation=1,
+        owner_token=1,
+        page_count=3,
+    )
+    assert orphaned == [0, 1, 2]
+    assert first._count_free_pages() == 1
+    first.stop()
+
+    second = build_server()
+    second.start()
+    try:
+        assert second._count_free_pages() == 4
+    finally:
+        second.stop()
+
+
+def test_local_mmap_v1_rejects_corrupted_page_and_reclaims_after_ack(
+    tmp_path: Path,
+) -> None:
+    """验证页 CRC 失败不会交付半损坏结果，client ACK 后立即回收。"""
+
+    mmap_path = tmp_path / "page-corruption" / "inference.mmap"
+    large_value = os.urandom(48 * 1024).hex()
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": large_value},
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=4,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=4,
+        compression_threshold_bytes=1024 * 1024,
+        poll_interval_seconds=0.0005,
+    )
+    original_write_pages = server._write_pages
+
+    def write_corrupted_pages(**kwargs) -> None:
+        original_write_pages(**kwargs)
+        page_indexes = kwargs["page_indexes"]
+        view = server._mmap
+        assert isinstance(page_indexes, list) and page_indexes
+        assert view is not None
+        page_body_offset = (
+            server._page_offset(page_indexes[0])
+            + server.page_stride
+            - server.overflow_page_capacity_bytes
+        )
+        view[page_body_offset] ^= 0xFF
+
+    server._write_pages = write_corrupted_pages  # type: ignore[method-assign]
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=0.5,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    try:
+        with pytest.raises(ServiceConfigurationError, match="溢出页校验失败"):
+            client.request({"action": "infer"})
+        deadline = perf_counter() + 2.0
+        while server._count_free_pages() != 4 and perf_counter() < deadline:
+            sleep(0.005)
+        assert server._count_free_pages() == 4
+        assert server.get_health_summary()["descriptor_states"]["free"] == 1
+    finally:
+        client.close()
+        server.stop()
+
+
+def test_local_mmap_v1_reclaims_unacked_response_after_client_exit(
+    tmp_path: Path,
+) -> None:
+    """验证 client 读取分页响应后退出且未 ACK 时 daemon 有界回收资源。"""
+
+    mmap_path = tmp_path / "unacked-client" / "inference.mmap"
+    large_value = os.urandom(48 * 1024).hex()
+    server = InferenceLocalMmapServer(
+        path=mmap_path,
+        request_handler=lambda _payload: {"value": large_value},
+        slot_count=1,
+        slot_payload_capacity_bytes=64 * 1024,
+        overflow_page_count=4,
+        overflow_page_capacity_bytes=64 * 1024,
+        max_overflow_pages_per_response=4,
+        compression_threshold_bytes=1024 * 1024,
+        poll_interval_seconds=0.0005,
+    )
+    client = InferenceLocalMmapClient(
+        path=mmap_path,
+        request_timeout_seconds=0.5,
+        poll_interval_seconds=0.0005,
+    )
+    server.start()
+    view = client._require_open()
+    server_epoch = server._server_epoch
+    owner_token = 928_374
+    deadline_ns = monotonic_ns() + 500_000_000
+    slot_index, lock_path = client._claim_slot(
+        view=view,
+        server_epoch=server_epoch,
+        owner_token=owner_token,
+        deadline_ns=deadline_ns,
+    )
+    generation = client._write_request(
+        view=view,
+        slot_index=slot_index,
+        lock_path=lock_path,
+        server_epoch=server_epoch,
+        owner_token=owner_token,
+        encoded_request=b'{"action":"infer"}',
+        deadline_ns=deadline_ns,
+    )
+    response = client._wait_response(
+        view=view,
+        slot_index=slot_index,
+        generation=generation,
+        server_epoch=server_epoch,
+        owner_token=owner_token,
+        deadline_ns=deadline_ns,
+    )
+    assert response == {"ok": True, "result": {"value": large_value}}
+    assert server._count_free_pages() == 2
+
+    client.close()
+    try:
+        deadline = perf_counter() + 2.0
+        while server._count_free_pages() != 4 and perf_counter() < deadline:
+            sleep(0.005)
+        assert server._count_free_pages() == 4
+        assert server.get_health_summary()["descriptor_states"]["free"] == 1
+        assert not lock_path.exists()
+    finally:
+        server.stop()
 
 
 def test_local_mmap_rejects_second_server_for_same_mailbox(tmp_path: Path) -> None:
@@ -1322,3 +1848,27 @@ def _one_pixel_png() -> bytes:
         "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
         "0000000d49444154789c6360000000020001e221bc330000000049454e44ae426082"
     )
+
+
+def _buffer_image_payload(tmp_path: Path) -> dict[str, object]:
+    """构造无需物化图片内容的 LocalBuffer 引用载荷。"""
+
+    buffer_ref = BufferRef(
+        buffer_id="buffer-test",
+        lease_id="lease-test",
+        path=str(tmp_path / "buffers" / "image.dat"),
+        offset=0,
+        size=12,
+        shape=(2, 2, 3),
+        dtype="uint8",
+        layout="HWC",
+        pixel_format="BGR",
+        media_type="image/raw",
+        broker_epoch="epoch-test",
+        generation=1,
+    )
+    return {
+        "transport_kind": "buffer",
+        "media_type": "image/raw",
+        "buffer_ref": buffer_ref.model_dump(mode="json"),
+    }

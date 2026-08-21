@@ -407,10 +407,10 @@ def test_async_inference_task_accepts_base64_input(
         session_factory.engine.dispose()
 
 
-def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
+def test_async_inference_task_memory_transport_uses_temporary_storage_reference(
     tmp_path: Path,
 ) -> None:
-    """验证异步推理任务的 memory 模式会把 base64 图片字节跨进程传到 async deployment。"""
+    """验证异步任务只在持久队列传临时图片引用，并在完成后清理。"""
 
     client, session_factory, dataset_storage, queue_backend = _create_test_client(
         tmp_path
@@ -527,20 +527,20 @@ def test_async_inference_task_memory_transport_uses_in_memory_base64_bytes(
         assert payload["input_source_kind"] == "image_base64"
         assert payload["input_uri"].startswith("memory://")
         assert payload["preview_image_base64"] is not None
-        assert async_supervisor.inference_requests[-1].input_uri is None
-        assert (
-            async_supervisor.inference_requests[-1].input_image_bytes
-            == _build_valid_test_image_bytes()
-        )
+        transferred_input_uri = async_supervisor.inference_requests[-1].input_uri
+        assert isinstance(transferred_input_uri, str)
+        assert transferred_input_uri.startswith("runtime/transfers/async-inference/")
+        assert async_supervisor.inference_requests[-1].input_image_bytes is None
+        assert not dataset_storage.resolve(transferred_input_uri).exists()
         assert not runtime_input_dir.exists()
     finally:
         session_factory.engine.dispose()
 
 
-def test_async_inference_task_memory_transport_accepts_multipart_without_input_disk_write(
+def test_async_inference_task_memory_transport_accepts_multipart_reference(
     tmp_path: Path,
 ) -> None:
-    """验证异步推理任务的 memory 模式可以直接处理 multipart 上传图片，而不会写临时输入文件。"""
+    """验证 multipart 图片通过临时引用进入 daemon 且完成后不残留。"""
 
     client, session_factory, dataset_storage, queue_backend = _create_test_client(
         tmp_path
@@ -617,11 +617,11 @@ def test_async_inference_task_memory_transport_accepts_multipart_without_input_d
         assert payload["input_source_kind"] == "multipart"
         assert payload["input_uri"].startswith("memory://")
         assert payload["preview_image_base64"] is not None
-        assert async_supervisor.inference_requests[-1].input_uri is None
-        assert (
-            async_supervisor.inference_requests[-1].input_image_bytes
-            == _build_valid_test_image_bytes()
-        )
+        transferred_input_uri = async_supervisor.inference_requests[-1].input_uri
+        assert isinstance(transferred_input_uri, str)
+        assert transferred_input_uri.startswith("runtime/transfers/async-inference/")
+        assert async_supervisor.inference_requests[-1].input_image_bytes is None
+        assert not dataset_storage.resolve(transferred_input_uri).exists()
         assert not runtime_input_dir.exists()
     finally:
         session_factory.engine.dispose()

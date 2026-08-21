@@ -87,12 +87,12 @@ ZeroMQ 用来做 workstation 或 standalone 场景下的高速协议接入、触
 
 ### LocalBufferBroker
 
-LocalBufferBroker 用来做本机内部隔离进程之间的大图、帧和中间结果引用传递。
+LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧引用传递。检测框、分类、segmentation polygon/RLE、pose 和 OBB 等结构化推理结果不放入 LocalBuffer，由 inference mmap v1 mailbox 返回。
 
 #### 适合做的事
 
 - workflow preview 进程、workflow runtime worker 和发布推理 worker 之间传递图片引用
-- 用 mmap 文件池承载单张图和普通中间结果
+- 用固定容量 mmap pool 承载单张图片和短生命周期结果图片
 - 用 ring buffer channel 承载连续帧和高速输入源
 - 通过租约、TTL、引用计数和清理机制管理短期数据
 
@@ -109,6 +109,7 @@ LocalBufferBroker 用来做本机内部隔离进程之间的大图、帧和中�
 - WebSocket：状态订阅、日志流、实时事件推送
 - ZeroMQ：本地或受控网络里的高速触发、图片提交和消息转发
 - LocalBufferBroker：本机内部隔离进程之间的大图和帧数据引用
+- inference mmap v1 mailbox：backend-service 与 inference daemon 之间的同机推理控制元数据和结构化结果
 
 ## 事件格式
 

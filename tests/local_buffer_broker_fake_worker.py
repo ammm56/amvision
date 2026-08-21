@@ -50,14 +50,23 @@ def fake_deployment_worker_records_broker_event_channel(
                             "latency_ms": 1.0,
                             "image_width": 1,
                             "image_height": 1,
-                            "preview_image_bytes_base64": None,
                             "runtime_session_info": {
                                 "backend_name": config.runtime_target.runtime_backend,
                                 "model_uri": config.runtime_target.runtime_artifact_storage_uri,
                                 "device_name": config.runtime_target.device_name,
-                                "input_spec": {"name": "images", "shape": [1, 3, 1, 1], "dtype": "float32"},
-                                "output_spec": {"name": "detections", "shape": [0, 7], "dtype": "float32"},
-                                "metadata": {"broker_timeout_seconds": broker_timeout_seconds},
+                                "input_spec": {
+                                    "name": "images",
+                                    "shape": [1, 3, 1, 1],
+                                    "dtype": "float32",
+                                },
+                                "output_spec": {
+                                    "name": "detections",
+                                    "shape": [0, 7],
+                                    "dtype": "float32",
+                                },
+                                "metadata": {
+                                    "broker_timeout_seconds": broker_timeout_seconds
+                                },
                             },
                         },
                     },
