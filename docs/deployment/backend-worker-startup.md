@@ -1,16 +1,27 @@
 # backend-worker Topology
 
-backend-worker 是后台任务执行层。正式运行只允许 full Supervisor 激活一代 Topology，再按 release manifest 启动严格 Worker Profile。`backend-service` 不创建进程内消费者。
+backend-worker 是后台任务执行层。`backend-service` 不创建进程内消费者。开发和生产都由明确的 Supervisor 激活一代 Topology，再启动严格 Worker Profile，但两种环境使用不同入口。
 
-## 正式入口
+## 源码开发入口
 
-开发完整链路和生产发布都从已组装的发行目录启动：
+从源码仓库根目录执行：
+
+```powershell
+conda activate amvision
+python -m backend.workers.supervisor
+```
+
+源码开发 Supervisor 使用当前 conda Python，激活 Topology 后启动六个 Profile，并把各 Profile 的标准输出保留在当前开发终端。完整顺序见 [开发环境启动](development-environment.md)。
+
+## 生产发行入口
+
+进入已组装的发行目录执行：
 
 ```powershell
 .\start-amvision-full.bat
 ```
 
-源码目录必须先执行 `assemble-release`，完整步骤见 [开发环境启动](development-environment.md)。
+生产 full Supervisor 统一负责数据库迁移、inference daemon、backend-service、Worker Topology、按日日志和完整进程回收。生产步骤见 [生产环境](production-environment.md)。
 
 以下入口不是独立运行方式：
 

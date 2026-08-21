@@ -11,7 +11,7 @@
 - backend-service：API、Workflow 控制面、Trigger 和前端静态资源。
 - six Worker Profiles：后台任务消费。
 
-开发 API/UI 时可以单独启动 backend-service；生产和完整链路必须使用 full Supervisor。
+开发 API/UI 时可以单独启动 backend-service；完整源码开发还必须分别启动 inference daemon 和源码 Worker Supervisor。生产发行由 full Supervisor 统一启动。
 
 ## 配置
 
@@ -66,13 +66,15 @@ python -m alembic -c backend/alembic.ini current
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600 --reload --reload-dir backend --reload-dir custom_nodes
 ```
 
+这条命令只启动 backend-service。它不会拉起独立 inference daemon 或后台任务 Worker；默认 daemon 配置下，未单独启动 daemon 时模型相关 health 可以处于降级状态。
+
 不带 reload 的诊断：
 
 ```powershell
 python -m uvicorn backend.service.api.app:app --host 127.0.0.1 --port 5600
 ```
 
-`--reload` 只用于开发。性能、稳定性、进程恢复和 Workflow/Deployment 延迟测试必须使用完整 Supervisor 或至少不启用 reload。
+`--reload` 只用于开发。性能、稳定性、进程恢复和 Workflow/Deployment 延迟测试至少不得启用 reload，并应按开发环境文档启动完整源码进程组。
 
 ### 4. 健康检查
 
@@ -96,6 +98,8 @@ Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 ```powershell
 .\start-amvision-full.bat
 ```
+
+full 启动器默认监听 `0.0.0.0:5600`，并统一启动 inference daemon、backend-service 和六个 Worker Profile。
 
 低层 service launcher：
 
@@ -137,7 +141,7 @@ launchers/service/start-backend-service.bat
 
 ### health 正常但任务不推进
 
-单独 service 不消费队列。必须使用完整 Supervisor，并检查目标 Worker Profile 心跳与日期日志。
+单独 service 不消费队列。源码开发必须运行 `python -m backend.workers.supervisor`，生产环境必须运行 full Supervisor；同时检查目标 Worker Profile 心跳。
 
 ### Deployment 不可用
 

@@ -30,11 +30,11 @@
             }
         },
         {
-            "name": "Python 调试程序: worker",
+            "name": "Python 调试程序: backend-worker 开发拓扑",
             "type": "debugpy",
             "request": "launch",
             "python": "${command:python.interpreterPath}",
-            "module": "backend.workers.main",
+            "module": "backend.workers.supervisor",
             "args": [
             ],
             "jinja": true,

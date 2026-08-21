@@ -73,8 +73,10 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 ## 5. 启动完整服务
 
 ```powershell
-.\start-amvision-full.bat --host 0.0.0.0 --port 5600
+.\start-amvision-full.bat
 ```
+
+默认监听地址为 `0.0.0.0`，默认端口为 `5600`。只有需要改变监听范围或端口时才传 `--host`、`--port`。
 
 启动器按顺序：
 

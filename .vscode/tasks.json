@@ -2,12 +2,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "amvision: 启动 backend-worker",
+            "label": "amvision: 启动 backend-worker 开发拓扑",
             "type": "shell",
             "command": "python",
             "args": [
                 "-m",
-                "backend.workers.main"
+                "backend.workers.supervisor"
             ],
             "options": {
                 "cwd": "${workspaceFolder}",
@@ -23,16 +23,16 @@
             }
         },
         {
-            "label": "amvision: 停止 backend-worker",
+            "label": "amvision: 停止 backend-worker 开发拓扑",
             "type": "shell",
             "windows": {
-                "command": "$processIds = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'backend\\.workers\\.main' } | Select-Object -ExpandProperty ProcessId -Unique; foreach ($processId in $processIds) { Stop-Process -Id $processId -Force }"
+                "command": "$processIds = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'backend\\.workers\\.(supervisor|main)' } | Select-Object -ExpandProperty ProcessId -Unique; foreach ($processId in $processIds) { Stop-Process -Id $processId -Force }"
             },
             "linux": {
-                "command": "pkill -f 'backend.workers.main' || true"
+                "command": "pkill -f 'backend.workers.supervisor' || true; pkill -f 'backend.workers.main' || true"
             },
             "osx": {
-                "command": "pkill -f 'backend.workers.main' || true"
+                "command": "pkill -f 'backend.workers.supervisor' || true; pkill -f 'backend.workers.main' || true"
             },
             "problemMatcher": []
         }

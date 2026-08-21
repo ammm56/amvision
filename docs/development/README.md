@@ -40,12 +40,11 @@ Set-Location ../..
 
 适用于 Worker、Inference Daemon、Deployment、Workflow Runtime、Trigger 和端到端任务：
 
-1. 构建前端。
-2. 组装本地 Windows release。
-3. 让 full Supervisor 启动迁移、daemon、service 和六个 Worker Profile。
-4. 单独启动 Vite 时将其作为开发 UI；发行目录中的静态前端仍可用于生产形态验收。
+1. 在源码目录完成 Alembic 迁移。
+2. 分别启动 inference daemon、backend-service 和源码 Worker Supervisor。
+3. 启动 Vite 作为开发 UI。
 
-当前 Worker 只能由 Supervisor 注入 Topology 身份后启动。不要直接执行 `python -m backend.workers.main`，也不要手工调用低层 Worker launcher。
+开发环境不组装或进入 `release/`。当前 Worker 仍只能由 Supervisor 注入 Topology 身份；源码入口为 `python -m backend.workers.supervisor`，不要直接执行 `python -m backend.workers.main`，也不要手工调用低层 Worker launcher。
 
 ## 3. 常用检查
 

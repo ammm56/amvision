@@ -60,7 +60,7 @@ full Supervisor 启动六类 Worker Profile：
 
 在线 deployment 推理和 Workflow 常驻执行不进入这些任务池，它们由各自的长期 Runtime 进程管理。
 
-Worker 不能直接用 `python -m backend.workers.main` 启动。Supervisor 负责注入 topology id、profile、owner identity、日志和停止信号；直接启动缺少这些不变量并会被拒绝。
+Worker 不能直接用 `python -m backend.workers.main` 启动。源码开发使用 `python -m backend.workers.supervisor`，生产发行使用 full Supervisor；二者负责注入 topology id、profile、owner identity 和停止信号，直接启动单 Profile 缺少这些不变量并会被拒绝。
 
 ## GPU 与并发
 
