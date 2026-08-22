@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.datasets.tasks import DATASET_EXPORT_QUEUE_NAME
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.ports.object_store import ObjectStore
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.datasets.dataset_export_runner import (
     DatasetExportRunRequest,
     SqlAlchemyDatasetExportRunner,
@@ -20,7 +20,7 @@ class DatasetExportQueueWorker:
         self,
         *,
         session_factory: SessionFactory,
-        dataset_storage: LocalDatasetStorage,
+        dataset_storage: ObjectStore,
         queue_backend: QueueBackend,
         worker_id: str = "dataset-export-worker",
     ) -> None:
@@ -28,7 +28,7 @@ class DatasetExportQueueWorker:
 
         参数：
         - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
+        - dataset_storage：持久对象存储端口。
         - queue_backend：任务队列后端。
         - worker_id：当前 worker 的稳定标识。
         """

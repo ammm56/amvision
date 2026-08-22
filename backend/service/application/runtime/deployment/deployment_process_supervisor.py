@@ -61,6 +61,12 @@ from backend.service.application.runtime.deployment.deployment_process_worker im
 from backend.service.application.runtime.device_capabilities import (
     validate_runtime_target_available,
 )
+from backend.service.application.runtime.device_leases import (
+    DeviceLease,
+    DeviceLeaseMode,
+    DeviceLeaseProvider,
+    DeviceLeaseUnavailableError,
+)
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionExecutionResult,
     PredictionRequest,
@@ -266,6 +272,7 @@ class _DeploymentProcessState:
     last_error: str | None = None
     started_at_monotonic: float | None = None
     lock: Lock = field(default_factory=Lock, repr=False)
+    device_lease: DeviceLease | None = field(default=None, repr=False)
 
 
 class _DeploymentProcessFleetLimiter:
@@ -365,6 +372,7 @@ class DeploymentProcessSupervisor:
         local_buffer_direct_reader_settings: dict[str, object] | None = None,
         local_buffer_io: object | None = None,
         cpu_device_resource_manager: CpuDeviceResourceManager | None = None,
+        device_lease_provider: DeviceLeaseProvider | None = None,
         worker_target: Callable[..., None] = run_deployment_process_worker,
     ) -> None:
         """初始化 deployment 进程监督器。
@@ -403,6 +411,9 @@ class DeploymentProcessSupervisor:
         self.worker_target = worker_target
         self.cpu_device_resource_manager = (
             cpu_device_resource_manager or get_global_cpu_device_resource_manager()
+        )
+        self.device_lease_provider = device_lease_provider or (
+            DeviceLeaseProvider.from_config(settings.device_leases)
         )
         self._resource_owner_id = uuid4().hex
         self._context = multiprocessing.get_context("spawn")
@@ -448,6 +459,7 @@ class DeploymentProcessSupervisor:
             with state.lock:
                 state.desired_running = False
                 self._stop_process_locked(state)
+                self._release_device_lease_locked(state)
         self.cpu_device_resource_manager.release_owner(self._resource_owner_id)
 
     def ensure_deployment(
@@ -532,6 +544,7 @@ class DeploymentProcessSupervisor:
             state.desired_running = False
             state.last_error = error_message
             self._stop_process_locked(state)
+            self._release_device_lease_locked(state)
             self.cpu_device_resource_manager.release(
                 owner_id=self._resource_owner_id,
                 deployment_instance_id=state.config.deployment_instance_id,
@@ -548,6 +561,7 @@ class DeploymentProcessSupervisor:
             previous_status = self._build_status_from_locked_state(state)
             state.desired_running = False
             self._stop_process_locked(state)
+            self._release_device_lease_locked(state)
             current_status = self._build_status_from_locked_state(state)
         self.cpu_device_resource_manager.release(
             owner_id=self._resource_owner_id,
@@ -964,9 +978,22 @@ class DeploymentProcessSupervisor:
         self._validate_config(config)
         with self._lock:
             state = self._deployments.get(config.deployment_instance_id)
-            if state is None or _build_config_signature(
+            if state is not None and _build_config_signature(
                 state.config
             ) != _build_config_signature(config):
+                # 同一 deployment id 切换 runtime 配置前必须先完整关闭旧进程。
+                # 否则旧 state 会从字典中消失，其进程、CPU reservation 和 GPU lease
+                # 都无法再被 supervisor 回收。
+                with state.lock:
+                    state.desired_running = False
+                    self._stop_process_locked(state)
+                    self._release_device_lease_locked(state)
+                self.cpu_device_resource_manager.release(
+                    owner_id=self._resource_owner_id,
+                    deployment_instance_id=config.deployment_instance_id,
+                )
+                state = None
+            if state is None:
                 state = _DeploymentProcessState(config=config)
                 self._deployments[config.deployment_instance_id] = state
             return state
@@ -1076,43 +1103,51 @@ class DeploymentProcessSupervisor:
 
         if state.process is not None and state.process.is_alive():
             return
-        effective_runtime_configuration = self.cpu_device_resource_manager.reserve(
-            owner_id=self._resource_owner_id,
-            deployment_instance_id=state.config.deployment_instance_id,
-            runtime_mode=self.runtime_mode,
-            runtime_configuration=state.config.runtime_configuration,
-        )
+        self._acquire_device_lease_locked(state)
+        try:
+            effective_runtime_configuration = self.cpu_device_resource_manager.reserve(
+                owner_id=self._resource_owner_id,
+                deployment_instance_id=state.config.deployment_instance_id,
+                runtime_mode=self.runtime_mode,
+                runtime_configuration=state.config.runtime_configuration,
+            )
+        except BaseException:
+            self._release_device_lease_locked(state)
+            raise
         state.effective_runtime_configuration = effective_runtime_configuration
         worker_config = replace(
             state.config,
             effective_runtime_configuration=effective_runtime_configuration,
         )
-        request_queue = self._context.Queue()
-        response_queue = self._context.Queue()
-        state.response_stop_event.clear()
-        worker_kwargs: dict[str, object] = {
-            "config": worker_config,
-            "dataset_storage_root_dir": self.dataset_storage_root_dir,
-            "request_queue": request_queue,
-            "response_queue": response_queue,
-            "operator_thread_count": _resolve_worker_operator_thread_count(
-                effective_runtime_configuration,
-                configured_thread_count=self.settings.operator_thread_count,
-            ),
-            "supervisor_settings": self.settings.model_dump(mode="python"),
-        }
-        local_buffer_broker_event_channel = (
-            self._resolve_local_buffer_broker_event_channel()
-        )
-        if local_buffer_broker_event_channel is not None:
-            worker_kwargs["local_buffer_broker_event_channel"] = (
-                local_buffer_broker_event_channel
-            )
-        if self.local_buffer_direct_reader_settings is not None:
-            worker_kwargs["local_buffer_direct_reader_settings"] = dict(
-                self.local_buffer_direct_reader_settings
-            )
+        request_queue = None
+        response_queue = None
+        local_buffer_broker_event_channel = None
         try:
+            request_queue = self._context.Queue()
+            response_queue = self._context.Queue()
+            state.response_stop_event.clear()
+            worker_kwargs: dict[str, object] = {
+                "config": worker_config,
+                "dataset_storage_root_dir": self.dataset_storage_root_dir,
+                "request_queue": request_queue,
+                "response_queue": response_queue,
+                "operator_thread_count": _resolve_worker_operator_thread_count(
+                    effective_runtime_configuration,
+                    configured_thread_count=self.settings.operator_thread_count,
+                ),
+                "supervisor_settings": self.settings.model_dump(mode="python"),
+            }
+            local_buffer_broker_event_channel = (
+                self._resolve_local_buffer_broker_event_channel()
+            )
+            if local_buffer_broker_event_channel is not None:
+                worker_kwargs["local_buffer_broker_event_channel"] = (
+                    local_buffer_broker_event_channel
+                )
+            if self.local_buffer_direct_reader_settings is not None:
+                worker_kwargs["local_buffer_direct_reader_settings"] = dict(
+                    self.local_buffer_direct_reader_settings
+                )
             process = self._context.Process(
                 target=self.worker_target,
                 kwargs=worker_kwargs,
@@ -1126,8 +1161,14 @@ class DeploymentProcessSupervisor:
                 deployment_instance_id=state.config.deployment_instance_id,
             )
             state.effective_runtime_configuration = None
-            request_queue.close()
-            response_queue.close()
+            self._release_device_lease_locked(state)
+            if request_queue is not None:
+                request_queue.close()
+            if response_queue is not None:
+                response_queue.close()
+            _close_local_buffer_broker_event_channel(
+                local_buffer_broker_event_channel
+            )
             raise
         state.process = process
         state.request_queue = request_queue
@@ -1156,7 +1197,7 @@ class DeploymentProcessSupervisor:
                 max_running_process_count=self.settings.max_running_process_count,
                 starter=lambda: self._start_process_locked(state),
             )
-        except InvalidRequestError as error:
+        except (InvalidRequestError, DeviceLeaseUnavailableError) as error:
             state.last_error = error.message
             self.cpu_device_resource_manager.release(
                 owner_id=self._resource_owner_id,
@@ -1221,6 +1262,36 @@ class DeploymentProcessSupervisor:
             pending.event.set()
         state.pending_responses.clear()
 
+    def _acquire_device_lease_locked(self, state: _DeploymentProcessState) -> None:
+        """在 deployment 启动边界登记常驻 shared GPU reservation。"""
+
+        if state.device_lease is not None:
+            return
+        target = state.config.runtime_target
+        if not _runtime_target_uses_cuda(target):
+            return
+        state.device_lease = self.device_lease_provider.acquire_cuda(
+            target.device_name,
+            mode=DeviceLeaseMode.SHARED,
+            purpose="deployment",
+            owner_id=(
+                f"{self._resource_owner_id}:{self.runtime_mode}:"
+                f"{state.config.deployment_instance_id}"
+            ),
+            timeout_seconds=(
+                self.settings.device_leases.shared_acquire_timeout_seconds
+            ),
+        )
+
+    @staticmethod
+    def _release_device_lease_locked(state: _DeploymentProcessState) -> None:
+        """在 deployment 停止或放弃自动恢复时释放常驻 reservation。"""
+
+        lease = state.device_lease
+        state.device_lease = None
+        if lease is not None:
+            lease.release()
+
     def _run_response_loop(self, state: _DeploymentProcessState) -> None:
         """持续消费指定 deployment 的子进程响应队列。"""
 
@@ -1258,7 +1329,7 @@ class DeploymentProcessSupervisor:
                         if state.desired_running and self.settings.auto_restart:
                             try:
                                 self._start_process_with_capacity_locked(state)
-                            except InvalidRequestError:
+                            except (InvalidRequestError, DeviceLeaseUnavailableError):
                                 pass
                             else:
                                 restarted_status = self._build_status_from_locked_state(
@@ -1276,7 +1347,7 @@ class DeploymentProcessSupervisor:
                             increment_safe_counter(state.restart_counter)
                             try:
                                 self._start_process_with_capacity_locked(state)
-                            except InvalidRequestError:
+                            except (InvalidRequestError, DeviceLeaseUnavailableError):
                                 restart_deferred_status = (
                                     self._build_status_from_locked_state(state)
                                 )
@@ -1291,6 +1362,7 @@ class DeploymentProcessSupervisor:
                                     state.config.deployment_instance_id
                                 ),
                             )
+                            self._release_device_lease_locked(state)
                 if crashed_status is not None:
                     self._record_deployment_status_event(
                         crashed_status,
@@ -1387,6 +1459,12 @@ class DeploymentProcessSupervisor:
             owner_id=self._resource_owner_id,
             deployment_instance_id=state.config.deployment_instance_id,
         )
+        device_lease_payload = (
+            state.device_lease.info.to_dict()
+            if state.device_lease is not None
+            else None
+        )
+        device_lease_provider_snapshot = self.device_lease_provider.snapshot()
         if payload is None:
             return DeploymentProcessHealth(
                 deployment_instance_id=status.deployment_instance_id,
@@ -1410,6 +1488,8 @@ class DeploymentProcessSupervisor:
                         allocated_configuration_payload
                     ),
                     "cpu_device_resource_manager": cpu_resource_snapshot,
+                    "device_lease": device_lease_payload,
+                    "device_lease_provider": device_lease_provider_snapshot,
                 },
                 configuration_warnings=cpu_resource_warnings,
             )
@@ -1452,6 +1532,10 @@ class DeploymentProcessSupervisor:
         )
         effective_runtime_configuration["cpu_device_resource_manager"] = (
             cpu_resource_snapshot
+        )
+        effective_runtime_configuration["device_lease"] = device_lease_payload
+        effective_runtime_configuration["device_lease_provider"] = (
+            device_lease_provider_snapshot
         )
         configuration_warnings = tuple(
             dict.fromkeys(
@@ -1660,6 +1744,16 @@ def _build_config_signature(config: DeploymentProcessConfig) -> tuple[object, ..
         runtime_target.input_size,
         runtime_target.labels,
         repr(config.runtime_configuration),
+    )
+
+
+def _runtime_target_uses_cuda(runtime_target: RuntimeTargetSnapshot) -> bool:
+    """只识别 NVIDIA CUDA runtime；OpenVINO GPU 可能是 Intel GPU，不在此协调。"""
+
+    device_name = runtime_target.device_name.strip().lower()
+    return (
+        runtime_target.runtime_backend in {"pytorch", "tensorrt"}
+        and (device_name == "cuda" or device_name.startswith("cuda:"))
     )
 
 

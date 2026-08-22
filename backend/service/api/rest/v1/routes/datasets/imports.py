@@ -8,14 +8,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.datasets.imports import (
 	DatasetImportRequest,
 	SqlAlchemyDatasetImportService,
+)
+from backend.service.application.datasets.imports.service import (
+	DATASET_IMPORT_QUEUE_NAME,
 )
 from backend.service.application.errors import (
 	InvalidRequestError,
@@ -50,15 +51,12 @@ from .schemas import (
 
 dataset_imports_router = APIRouter()
 
-DATASET_IMPORT_QUEUE_NAME = "dataset-imports"
-
 
 @dataset_imports_router.post("/imports", response_model=DatasetImportSubmissionResponse, status_code=202)
 async def import_dataset_zip(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 	project_id: Annotated[str, Form()],
 	dataset_id: Annotated[str, Form()],
 	package: Annotated[UploadFile, File()],
@@ -109,31 +107,21 @@ async def import_dataset_zip(
 		),
 		package_file=package.file,
 	)
-	queue_task = queue_backend.enqueue(
-		queue_name=DATASET_IMPORT_QUEUE_NAME,
-		payload={"dataset_import_id": submitted_import.dataset_import_id},
-		metadata={
-			"project_id": project_id,
-			"dataset_id": dataset_id,
-		},
-	)
-	queued_import = service.mark_dataset_import_queued(
-		submitted_import.dataset_import_id,
-		queue_name=queue_task.queue_name,
-		queue_task_id=queue_task.task_id,
-	)
+	queue_task_id = _read_optional_str(submitted_import.metadata, "queue_task_id")
+	if queue_task_id is None:
+		raise InvalidRequestError("DatasetImport 缺少队列消息 id")
 
 	return DatasetImportSubmissionResponse(
-		dataset_import_id=queued_import.dataset_import_id,
-		task_id=_read_optional_str(queued_import.metadata, "task_id"),
-		status=queued_import.status,
-		upload_state=_read_optional_str(queued_import.metadata, "upload_state") or "uploaded",
-		processing_state=_derive_processing_state(queued_import),
-		package_size=_read_optional_int(queued_import.metadata, "package_size") or 0,
-		package_path=queued_import.package_path,
-		staging_path=queued_import.staging_path,
-		queue_name=queue_task.queue_name,
-		queue_task_id=queue_task.task_id,
+		dataset_import_id=submitted_import.dataset_import_id,
+		task_id=_read_optional_str(submitted_import.metadata, "task_id"),
+		status=submitted_import.status,
+		upload_state=_read_optional_str(submitted_import.metadata, "upload_state") or "uploaded",
+		processing_state=_derive_processing_state(submitted_import),
+		package_size=_read_optional_int(submitted_import.metadata, "package_size") or 0,
+		package_path=submitted_import.package_path,
+		staging_path=submitted_import.staging_path,
+		queue_name=DATASET_IMPORT_QUEUE_NAME,
+		queue_task_id=queue_task_id,
 	)
 
 

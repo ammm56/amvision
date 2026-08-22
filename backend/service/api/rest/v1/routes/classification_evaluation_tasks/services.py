@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.classification_evaluation_tasks.responses import (
     ClassificationEvaluationDetailResponse,
@@ -34,7 +33,6 @@ def create_classification_evaluation_task_response(
     body: ClassificationEvaluationCreateBody,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> ClassificationEvaluationSubmissionResponse:
     """创建 classification evaluation 任务并返回提交响应。"""
@@ -43,7 +41,6 @@ def create_classification_evaluation_task_response(
     service = SqlAlchemyYoloV8ClassificationEvaluationService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     submission = service.submit_evaluation_task(
         YoloV8ClassificationEvaluationRequest(

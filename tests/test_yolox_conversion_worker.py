@@ -7,12 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.conversions.yolox_conversion_task_service import (
     SqlAlchemyYoloXConversionTaskService,
     YoloXConversionTaskRequest,
 )
-from backend.service.application.models.registry.model_service import SqlAlchemyModelService
+from backend.service.application.errors import OperationTimeoutError
+from backend.service.application.models.registry.model_service import (
+    SqlAlchemyModelService,
+)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
@@ -24,14 +27,16 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.workers.conversion.yolox_conversion_queue_worker import (
+    YoloXConversionQueueWorker,
+)
 from backend.workers.conversion.yolox_conversion_runner import (
     YoloXConversionOutput,
     YoloXConversionRunRequest,
     YoloXConversionRunResult,
 )
 from tests.yolox_test_support import create_yolox_test_runtime, seed_yolox_model_version
-
 
 
 @pytest.mark.parametrize(
@@ -93,7 +98,6 @@ def test_conversion_queue_worker_executes_supported_targets(
     service = SqlAlchemyYoloXConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
 
     submission = service.submit_conversion_task(
@@ -103,6 +107,13 @@ def test_conversion_queue_worker_executes_supported_targets(
             target_formats=target_formats,
             extra_options=extra_options,
         )
+    )
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
     )
 
     worker = YoloXConversionQueueWorker(
@@ -162,6 +173,58 @@ def test_conversion_queue_worker_executes_supported_targets(
             assert "build_precision" not in model_build.metadata
 
 
+def test_conversion_timeout_is_persisted_as_task_and_attempt_state(
+    tmp_path: Path,
+) -> None:
+    """验证 conversion hard timeout 不再降级成普通 failed。"""
+
+    session_factory, dataset_storage, queue_backend = _create_test_runtime(tmp_path)
+    source_model_version_id = _seed_placeholder_model_version(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    )
+    submission = SqlAlchemyYoloXConversionTaskService(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+    ).submit_conversion_task(
+        YoloXConversionTaskRequest(
+            project_id="project-1",
+            source_model_version_id=source_model_version_id,
+            target_formats=("onnx",),
+        )
+    )
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
+    )
+    worker = YoloXConversionQueueWorker(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+        conversion_runner=_TimedOutYoloXConversionRunner(),
+    )
+
+    assert worker.run_once() is True
+
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_detail = task_service.get_task(submission.task_id, include_events=True)
+    attempts = task_service.list_task_attempts(submission.task_id)
+    assert task_detail.task.state == "timed_out"
+    assert task_detail.task.finished_at is not None
+    assert len(attempts) == 1
+    assert attempts[0].state == "timed_out"
+    assert attempts[0].exit_code == 124
+    assert attempts[0].ended_at is not None
+    assert any(
+        event.attempt_id == attempts[0].attempt_id
+        and event.payload.get("state") == "timed_out"
+        for event in task_detail.events
+    )
+
+
 def _create_test_runtime(
     tmp_path: Path,
 ) -> tuple[SessionFactory, LocalDatasetStorage, LocalFileQueueBackend]:
@@ -187,6 +250,18 @@ def _seed_placeholder_model_version(
         checkpoint_file_id="checkpoint-file-conversion-1",
         labels_file_id="labels-file-conversion-1",
     )
+
+
+class _TimedOutYoloXConversionRunner:
+    """模拟整个 conversion attempt 触发 hard timeout。"""
+
+    def run_conversion(self, request: YoloXConversionRunRequest) -> YoloXConversionRunResult:
+        """抛出与进程树监督器一致的 timeout 错误。"""
+
+        raise OperationTimeoutError(
+            "conversion 子进程树执行超时",
+            details={"conversion_task_id": request.conversion_task_id},
+        )
 
 
 class _FakeYoloXConversionRunner:

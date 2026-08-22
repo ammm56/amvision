@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceGatewayDispatcher,
@@ -19,14 +18,14 @@ from backend.service.application.models.inference.inference_gateway import (
     build_async_inference_preview_object_key,
     serialize_async_inference_execution_result,
 )
-from backend.service.application.runtime.deployment.deployment_process_supervisor import (
-    DeploymentProcessConfig,
-)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionExecutionResult,
     DetectionPredictionRequest,
     DetectionRuntimeSessionInfo,
     DetectionRuntimeTensorSpec,
+)
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessConfig,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
@@ -37,6 +36,10 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
 )
 
 

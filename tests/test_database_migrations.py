@@ -31,7 +31,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
 
 
-_DATABASE_HEAD = "fa4c6e8b1d25"
+_DATABASE_HEAD = "c7a9e2d4f6b8"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -64,6 +64,7 @@ def test_migrate_database_adopts_unversioned_create_all_database(
         inspector = inspect(verification_factory.engine)
         assert "workflow_app_versions" in inspector.get_table_names()
         assert "workflow_runtime_revisions" in inspector.get_table_names()
+        assert "queue_outbox_messages" in inspector.get_table_names()
         runtime_columns = {
             item["name"] for item in inspector.get_columns("workflow_app_runtimes")
         }
@@ -74,6 +75,7 @@ def test_migrate_database_adopts_unversioned_create_all_database(
             "worker_instance_id",
         } <= runtime_columns
         _assert_workflow_run_worker_instance_column(inspector)
+        _assert_task_attempt_claim_uniqueness(inspector)
         _assert_workflow_publish_deduplication(inspector)
         _assert_workflow_application_lifecycle(inspector)
     finally:
@@ -104,10 +106,12 @@ def test_migrate_database_initializes_empty_sqlite_database(tmp_path: Path) -> N
         assert "deployment_runtime_states" in table_names
         assert "workflow_app_versions" in table_names
         assert "workflow_runtime_revisions" in table_names
+        assert "queue_outbox_messages" in table_names
         assert "alembic_version" in table_names
         _assert_worker_instance_column(inspector)
         _assert_workflow_run_worker_instance_column(inspector)
         _assert_training_task_supports_multiple_model_versions(inspector)
+        _assert_task_attempt_claim_uniqueness(inspector)
         _assert_workflow_publish_deduplication(inspector)
         _assert_workflow_application_lifecycle(inspector)
     finally:
@@ -134,7 +138,9 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("f7d1e3a5b9c2").down_revision == "e6c9b2d4f8a1"
     assert script.get_revision("f8a2c4e6b1d3").down_revision == "f7d1e3a5b9c2"
     assert script.get_revision("f9b3d5e7c2a4").down_revision == "f8a2c4e6b1d3"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "f9b3d5e7c2a4"
+    assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"
+    assert script.get_revision("b6e4f1a8c2d7").down_revision == "fa4c6e8b1d25"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "b6e4f1a8c2d7"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")
@@ -791,6 +797,16 @@ def _assert_training_task_supports_multiple_model_versions(
     assert not any(bool(item.get("unique")) for item in matching_indexes.values())
     canonical_index = matching_indexes["ix_model_versions_training_task_id"]
     assert bool(canonical_index.get("unique")) is False
+
+
+def _assert_task_attempt_claim_uniqueness(inspector: Inspector) -> None:
+    """断言同一 Task 的 attempt_no 只能被一个 worker 原子领取。"""
+
+    unique_column_sets = {
+        tuple(str(value) for value in item.get("column_names") or ())
+        for item in inspector.get_unique_constraints("task_attempts")
+    }
+    assert ("task_id", "attempt_no") in unique_column_sets
 
 
 def _assert_workflow_publish_deduplication(inspector: Inspector) -> None:

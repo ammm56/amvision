@@ -6,19 +6,24 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
-from backend.service.application.errors import ResourceNotFoundError
-from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.api.rest.v1.routes.training_execution_schemas import (
     merge_training_execution_options,
 )
+from backend.service.application.errors import ResourceNotFoundError
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
-from .schemas import DetectionTrainingTaskCreateRequestBody, DetectionTrainingTaskSubmissionResponse
-from .services import _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE, _normalize_detection_training_model_type
-
+from .schemas import (
+    DetectionTrainingTaskCreateRequestBody,
+    DetectionTrainingTaskSubmissionResponse,
+)
+from .services import (
+    _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE,
+    _normalize_detection_training_model_type,
+)
 
 detection_training_create_router = APIRouter()
 

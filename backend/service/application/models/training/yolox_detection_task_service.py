@@ -4,25 +4,35 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.queue import QueueBackend
+from backend.service.application.datasets.formats import (
+    require_supported_dataset_export_format,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.task_failure_payloads import build_task_failure_payload
-from backend.service.application.datasets.formats import (
-    require_supported_dataset_export_format,
+from backend.service.application.models.training.checkpoint_policy import (
+    build_training_periodic_checkpoint_retention,
+)
+from backend.service.application.models.training.detection_training_rules import (
+    DetectionTrainingOutputFiles,
+    build_detection_training_config_payload,
+    build_detection_training_summary_base,
+    build_detection_validation_summary_payload,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
 )
 from backend.service.application.models.training.yolox_detection import (
+    YoloXDetectionTrainingExecutionRequest,
     YoloXTrainingBatchProgress,
     YoloXTrainingControlCommand,
     YoloXTrainingEpochProgress,
     YoloXTrainingPausedError,
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
-    YoloXDetectionTrainingExecutionRequest,
     run_yolox_detection_training,
 )
 from backend.service.application.models.training.yolox_detection_task_control import (
@@ -34,14 +44,14 @@ from backend.service.application.models.training.yolox_detection_task_control im
     read_yolox_training_control_counter,
     read_yolox_training_control_flag,
 )
+from backend.service.application.models.training.yolox_detection_task_outputs import (
+    YoloXTrainingTaskOutputsMixin,
+)
 from backend.service.application.models.training.yolox_detection_task_payload import (
     YoloXTrainingTaskPayloadMixin,
 )
 from backend.service.application.models.training.yolox_detection_task_registration import (
     YoloXTrainingTaskRegistrationMixin,
-)
-from backend.service.application.models.training.yolox_detection_task_outputs import (
-    YoloXTrainingTaskOutputsMixin,
 )
 from backend.service.application.models.training.yolox_detection_task_types import (
     YOLOX_TRAINING_CONTROL_METADATA_KEY,
@@ -54,31 +64,25 @@ from backend.service.application.models.training.yolox_detection_task_types impo
 from backend.service.application.models.training.yolox_detection_task_warm_start import (
     YoloXTrainingTaskWarmStartMixin,
 )
-from backend.service.application.models.training.checkpoint_policy import (
-    build_training_periodic_checkpoint_retention,
-)
-from backend.service.application.models.training.training_telemetry import (
-    publish_training_batch_telemetry,
-)
-from backend.service.application.models.training.detection_training_rules import (
-    DetectionTrainingOutputFiles,
-    build_detection_training_config_payload,
-    build_detection_training_summary_base,
-    build_detection_validation_summary_payload,
-)
-from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
-from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
-from backend.service.domain.models.yolox_model_spec import (
-    DEFAULT_YOLOX_MODEL_SPEC,
-    YoloXModelSpec,
+from backend.service.application.ports.queue import QueueBackend
+from backend.service.application.task_failure_payloads import build_task_failure_payload
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
+from backend.service.domain.models.yolox_model_spec import (
+    DEFAULT_YOLOX_MODEL_SPEC,
+    YoloXModelSpec,
+)
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.domain.tasks.yolox_task_specs import YoloXTrainingTaskSpec
 from backend.service.infrastructure.db.session import SessionFactory
@@ -129,7 +133,6 @@ class SqlAlchemyYoloXTrainingTaskService(
         """创建并入队一条 YOLOX 训练任务。"""
 
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         dataset_export = self._resolve_dataset_export(request)
         task_spec = self._build_task_spec(
             request=request, dataset_export=dataset_export
@@ -150,57 +153,24 @@ class SqlAlchemyYoloXTrainingTaskService(
                     "dataset_version_id": dataset_export.dataset_version_id,
                     "format_id": dataset_export.format_id,
                 },
-            )
-        )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=YOLOX_TRAINING_QUEUE_NAME,
-                payload={"task_id": created_task.task_id},
-                metadata={
-                    "project_id": request.project_id,
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                    "dataset_version_id": dataset_export.dataset_version_id,
-                    "format_id": dataset_export.format_id,
-                },
-            )
-        except Exception as error:
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=created_task.task_id,
-                    event_type="result",
-                    message="yolox training queue submission failed",
-                    payload=build_task_failure_payload(
-                        error,
-                        progress={"stage": "failed"},
-                        result={
-                            "dataset_export_id": dataset_export.dataset_export_id,
-                            "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                        },
-                    ),
-                )
-            )
-            raise
-
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message="yolox training queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=YOLOX_TRAINING_QUEUE_NAME,
+                    metadata={
+                        "project_id": request.project_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
                     },
-                },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return YoloXTrainingTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -481,6 +451,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         updated_control["resume_count"] = (
             read_yolox_training_control_counter(control, "resume_count") + 1
         )
+        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
 
         self.task_service.append_task_event(
             AppendTaskEventRequest(
@@ -509,7 +480,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         try:
             queue_task = queue_backend.enqueue(
                 queue_name=YOLOX_TRAINING_QUEUE_NAME,
-                payload={"task_id": task_id},
+                payload={"task_id": task_id, "attempt_no": next_attempt_no},
                 metadata={
                     "project_id": request.project_id,
                     "dataset_export_id": dataset_export.dataset_export_id,

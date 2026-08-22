@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from backend.queue import QueueBackend
+from backend.service.application.models.registry.yolo11_model_service import (
+    SqlAlchemyYolo11ModelService,
+    Yolo11TrainingOutputRegistration,
+)
 from backend.service.application.models.training.yolo11_detection_training import (
     YOLO11_IMPLEMENTATION_MODE,
     Yolo11DetectionTrainingExecutionRequest,
     run_yolo11_detection_training,
 )
-from backend.service.application.models.registry.yolo11_model_service import (
-    SqlAlchemyYolo11ModelService,
-    Yolo11TrainingOutputRegistration,
-)
 from backend.service.application.models.training.yolo_detection_training_service import (
     SqlAlchemyYoloDetectionTrainingTaskService,
 )
+from backend.service.application.ports.queue import QueueBackend
 from backend.service.domain.files.detection_model_file_types import (
     YOLO11_DETECTION_FILE_TYPES,
 )
@@ -29,7 +29,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 YOLO11_TRAINING_TASK_KIND = "yolo11-training"
 YOLO11_TRAINING_QUEUE_NAME = "yolo11-trainings"

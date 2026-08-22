@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.service.application.conversions.rfdetr_conversion_task_service import (
+    SqlAlchemyRfdetrConversionTaskService,
+)
+from backend.service.application.conversions.yolo11_conversion_task_service import (
+    SqlAlchemyYolo11ConversionTaskService,
+)
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
 )
@@ -13,66 +19,59 @@ from backend.service.application.deployments.obb_deployment_service import (
 from backend.service.application.deployments.segmentation_deployment_service import (
     SqlAlchemySegmentationDeploymentService,
 )
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.application.conversions.yolo11_conversion_task_service import (
-    SqlAlchemyYolo11ConversionTaskService,
-)
-from backend.service.application.conversions.rfdetr_conversion_task_service import (
-    SqlAlchemyRfdetrConversionTaskService,
-)
-from backend.service.application.models.validation.classification_session_service import (
-    LocalClassificationValidationSessionService,
-)
-from backend.service.application.models.inference.classification_inference_task_service import (
-    SqlAlchemyClassificationInferenceTaskService,
-)
 from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     SqlAlchemyDetectionEvaluationTaskService,
-)
-from backend.service.application.models.inference.detection_inference_task_service import (
-    SqlAlchemyDetectionInferenceTaskService,
-)
-from backend.service.application.models.validation.detection_session_service import (
-    LocalDetectionValidationSessionService,
 )
 from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     SqlAlchemyObbEvaluationTaskService,
 )
-from backend.service.application.models.inference.obb_inference_task_service import (
-    SqlAlchemyObbInferenceTaskService,
+from backend.service.application.models.evaluation.segmentation_evaluation_service import (
+    SqlAlchemySegmentationEvaluationService,
 )
 from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
     SqlAlchemyYoloV8ClassificationEvaluationService,
 )
-from backend.service.application.models.evaluation.segmentation_evaluation_service import (
-    SqlAlchemySegmentationEvaluationService,
+from backend.service.application.models.inference.classification_inference_task_service import (
+    SqlAlchemyClassificationInferenceTaskService,
+)
+from backend.service.application.models.inference.detection_inference_task_service import (
+    SqlAlchemyDetectionInferenceTaskService,
+)
+from backend.service.application.models.inference.obb_inference_task_service import (
+    SqlAlchemyObbInferenceTaskService,
 )
 from backend.service.application.models.inference.segmentation_inference_task_service import (
     SqlAlchemySegmentationInferenceTaskService,
 )
-from backend.service.application.models.training.yolov8_classification_training_service import (
-    SqlAlchemyYoloV8ClassificationTrainingService,
+from backend.service.application.models.training.rfdetr_detection_task_service import (
+    SqlAlchemyRfdetrTrainingTaskService,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
 )
-from backend.service.application.models.training.yolov8_pose_training_service import (
-    SqlAlchemyYoloV8PoseTrainingService,
-)
-from backend.service.application.models.training.yolo11_segmentation_training_service import (
-    SqlAlchemyYolo11SegmentationTrainingTaskService,
+from backend.service.application.models.training.yolo11_obb_training_service import (
+    SqlAlchemyYolo11ObbTrainingTaskService,
 )
 from backend.service.application.models.training.yolo11_pose_training_service import (
     SqlAlchemyYolo11PoseTrainingTaskService,
 )
-from backend.service.application.models.training.yolo11_obb_training_service import (
-    SqlAlchemyYolo11ObbTrainingTaskService,
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
+    SqlAlchemyYolo11SegmentationTrainingTaskService,
 )
-from backend.service.application.models.training.rfdetr_detection_task_service import (
-    SqlAlchemyRfdetrTrainingTaskService,
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    SqlAlchemyYoloV8ClassificationTrainingService,
+)
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
 )
 from backend.service.application.models.training.yolox_detection_task_service import (
     SqlAlchemyYoloXTrainingTaskService,
+)
+from backend.service.application.models.validation.classification_session_service import (
+    LocalClassificationValidationSessionService,
+)
+from backend.service.application.models.validation.detection_session_service import (
+    LocalDetectionValidationSessionService,
 )
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
@@ -92,11 +91,9 @@ def test_workflow_runtime_can_build_platform_services_by_task_type(
 
     session_factory = _create_session_factory()
     dataset_storage = _create_dataset_storage(tmp_path)
-    queue_backend = _create_queue_backend(tmp_path)
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
 
     assert isinstance(
@@ -194,11 +191,9 @@ def test_workflow_runtime_can_build_detection_platform_services(tmp_path: Path) 
 
     session_factory = _create_session_factory()
     dataset_storage = _create_dataset_storage(tmp_path)
-    queue_backend = _create_queue_backend(tmp_path)
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
         detection_async_deployment_process_supervisor=object(),
         classification_async_deployment_process_supervisor=object(),
         segmentation_async_deployment_process_supervisor=object(),
@@ -248,13 +243,5 @@ def _create_dataset_storage(tmp_path: Path) -> LocalDatasetStorage:
 
     return LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-storage"))
-    )
-
-
-def _create_queue_backend(tmp_path: Path) -> LocalFileQueueBackend:
-    """创建测试使用的本地文件队列。"""
-
-    return LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-storage"))
     )
 

@@ -217,6 +217,95 @@ def test_register_build_rejects_unsupported_build_format() -> None:
         )
 
 
+def test_register_builds_commits_all_model_builds_and_files_together() -> None:
+    """验证同一次 conversion 的多个 build 使用一个事务完成登记。"""
+
+    service = _create_model_service()
+    model_version_id = service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-batch-build",
+            model_name="yolox",
+            model_scale="s",
+            dataset_version_id="dataset-version-1",
+            checkpoint_file_id="checkpoint-file-batch-build",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        )
+    )
+
+    build_ids = service.register_builds(
+        (
+            ModelBuildRegistration(
+                project_id="project-1",
+                source_model_version_id=model_version_id,
+                build_format="onnx",
+                runtime_backend="onnxruntime",
+                runtime_precision="fp32",
+                build_file_id="build-file-batch-onnx",
+                conversion_task_id="conversion-batch-1",
+            ),
+            ModelBuildRegistration(
+                project_id="project-1",
+                source_model_version_id=model_version_id,
+                build_format="openvino-ir",
+                runtime_backend="openvino",
+                runtime_precision="fp32",
+                build_file_id="build-file-batch-openvino",
+                conversion_task_id="conversion-batch-1",
+            ),
+        )
+    )
+
+    assert len(build_ids) == 2
+    assert all(service.get_model_build(build_id) is not None for build_id in build_ids)
+    assert service.get_model_file("build-file-batch-onnx") is not None
+    assert service.get_model_file("build-file-batch-openvino") is not None
+
+
+def test_register_builds_rolls_back_whole_batch_when_one_build_is_invalid() -> None:
+    """验证批次中任一目标无效时不会留下前一个 ModelFile 半登记。"""
+
+    service = _create_model_service()
+    model_version_id = service.register_training_output(
+        TrainingOutputRegistration(
+            project_id="project-1",
+            training_task_id="training-batch-rollback",
+            model_name="yolox",
+            model_scale="s",
+            dataset_version_id="dataset-version-1",
+            checkpoint_file_id="checkpoint-file-batch-rollback",
+            metadata={"input_size": {"width": 640, "height": 640}},
+        )
+    )
+
+    with pytest.raises(ValueError, match="build"):
+        service.register_builds(
+            (
+                ModelBuildRegistration(
+                    project_id="project-1",
+                    source_model_version_id=model_version_id,
+                    build_format="onnx",
+                    runtime_backend="onnxruntime",
+                    runtime_precision="fp32",
+                    build_file_id="build-file-rollback-first",
+                    conversion_task_id="conversion-batch-rollback",
+                ),
+                ModelBuildRegistration(
+                    project_id="project-1",
+                    source_model_version_id=model_version_id,
+                    build_format="invalid",
+                    runtime_backend="onnxruntime",
+                    runtime_precision="fp32",
+                    build_file_id="build-file-rollback-second",
+                    conversion_task_id="conversion-batch-rollback",
+                ),
+            )
+        )
+
+    assert service.get_model_file("build-file-rollback-first") is None
+    assert service.get_model_file("build-file-rollback-second") is None
+
+
 def _create_model_service() -> SqlAlchemyModelService:
     """创建绑定测试数据库的模型登记服务。
 

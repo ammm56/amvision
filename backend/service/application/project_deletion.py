@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.contracts.workflows import (
     build_workflow_app_runtime_storage_dir,
     build_workflow_preview_run_storage_dir,
@@ -19,6 +18,7 @@ from backend.service.application.errors import (
     ResourceInUseError,
     ResourceNotFoundError,
 )
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.application.workflows.application_lifecycle import (
     WorkflowApplicationLifecycleService,
 )
@@ -33,7 +33,6 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.infrastructure.persistence.project_deletion_repository import (
     ProjectDatabaseInventory,
 )
-
 
 _ACTIVE_TASK_STATES = {"queued", "running", "paused"}
 _ACTIVE_QUEUE_STATES = {"queued", "leased"}

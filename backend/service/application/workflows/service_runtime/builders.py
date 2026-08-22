@@ -219,7 +219,6 @@ def build_training_task_service(context: Any, *, task_type: str, model_type: str
     return service_cls(
         session_factory=context.session_factory,
         dataset_storage=context.dataset_storage,
-        queue_backend=context.require_queue_backend(),
     )
 
 
@@ -243,7 +242,6 @@ def build_conversion_task_service(context: Any, *, task_type: str, model_type: s
     return service_cls(
         session_factory=context.session_factory,
         dataset_storage=context.dataset_storage,
-        queue_backend=context.require_queue_backend(),
     )
 
 
@@ -266,7 +264,6 @@ def build_dataset_export_task_service(context: Any) -> SqlAlchemyDatasetExportTa
     return SqlAlchemyDatasetExportTaskService(
         session_factory=context.session_factory,
         dataset_storage=context.dataset_storage,
-        queue_backend=context.require_queue_backend(),
     )
 
 
@@ -307,7 +304,6 @@ def build_evaluation_task_service(context: Any, *, task_type: str) -> Any:
     return service_cls(
         session_factory=context.session_factory,
         dataset_storage=context.dataset_storage,
-        queue_backend=context.require_queue_backend(),
     )
 
 
@@ -413,7 +409,6 @@ def build_inference_task_service(context: Any, *, task_type: str) -> Any:
     service_kwargs: dict[str, object] = {
         "session_factory": context.session_factory,
         "dataset_storage": context.dataset_storage,
-        "queue_backend": context.require_queue_backend(),
         "deployment_process_supervisor": context.require_async_deployment_process_supervisor(
             task_type=normalized_task_type
         ),

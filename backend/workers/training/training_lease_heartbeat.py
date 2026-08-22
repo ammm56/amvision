@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 from threading import Event, Lock, Thread
 
-from backend.queue import QueueBackend, QueueMessage
-
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_LEASE_TIMEOUT_SECONDS = 86400.0

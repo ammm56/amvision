@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
-from backend.service.application.backends import TrainingBackend, TrainingBackendRunRequest
+from backend.service.application.backends import (
+    TrainingBackend,
+    TrainingBackendRunRequest,
+)
 from backend.service.application.errors import InvalidRequestError, ServiceError
-from backend.service.application.models.training.yolo26_training_service import YOLO26_TRAINING_QUEUE_NAME
+from backend.service.application.models.training.yolo26_training_service import (
+    YOLO26_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 from backend.workers.training.training_queue_claim import (

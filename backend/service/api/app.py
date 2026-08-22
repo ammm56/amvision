@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import mimetypes
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,15 +12,17 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.bootstrap import BackendServiceBootstrap
-from backend.service.api.seeders import BackendServiceSeeder
 from backend.service.api.error_handlers import register_exception_handlers
 from backend.service.api.middleware.request_context import RequestContextMiddleware
 from backend.service.api.rest.router import rest_router
+from backend.service.api.seeders import BackendServiceSeeder
 from backend.service.api.ws.router import ws_router
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import BackendServiceSettings
 
 

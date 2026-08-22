@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
 
 def get_queue_backend(request: Request) -> LocalFileQueueBackend:

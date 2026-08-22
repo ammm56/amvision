@@ -16,6 +16,7 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessConfig,
     DeploymentProcessSupervisor,
 )
+import backend.service.application.runtime.deployment.deployment_process_supervisor as deployment_supervisor_module
 from backend.service.application.runtime.deployment import cpu_device_resource_manager
 from backend.service.application.runtime.deployment.cpu_device_resource_manager import (
     CpuDeviceResourceManager,
@@ -38,6 +39,13 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
 )
+from backend.service.application.runtime.device_leases import (
+    CudaDeviceResource,
+    DeviceLeaseMode,
+    DeviceLeaseProvider,
+    DeviceLeaseProviderConfig,
+    DeviceLeaseUnavailableError,
+)
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentExecutionPolicy,
     DeploymentRuntimeConfiguration,
@@ -45,6 +53,39 @@ from backend.service.domain.deployments.deployment_runtime_configuration import 
 )
 from backend.service.settings import BackendServiceDeploymentProcessSupervisorConfig
 from tests.deployment_process_fake_worker import fake_deployment_process_worker
+
+
+class _StaticCudaResolver:
+    """为 deployment 集成测试提供不依赖硬件的 GPU UUID。"""
+
+    resource = CudaDeviceResource(
+        cuda_index=0,
+        device_name="cuda:0",
+        resource_key="GPU-bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+    )
+
+    def list_visible_devices(self, *, torch_module: object | None = None):
+        return (self.resource,)
+
+    def resolve(self, device_name: str, *, torch_module: object | None = None):
+        assert device_name == "cuda:0"
+        return self.resource
+
+
+@pytest.mark.parametrize("device_name", ("cuda", "cuda:0"))
+def test_cuda_runtime_target_requires_lifecycle_reservation(
+    tmp_path: Path,
+    device_name: str,
+) -> None:
+    """公开支持的 CUDA device 写法都必须进入 deployment lease 边界。"""
+
+    target = replace(
+        _build_runtime_target(tmp_path / "model.pt"),
+        runtime_backend="pytorch",
+        device_name=device_name,
+    )
+
+    assert deployment_supervisor_module._runtime_target_uses_cuda(target) is True
 
 
 def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
@@ -407,6 +448,119 @@ def test_sync_and_async_openvino_deployments_share_cpu_without_startup_rejection
     finally:
         sync_supervisor.stop()
         async_supervisor.stop()
+
+
+def test_deployment_holds_shared_gpu_reservation_until_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """多个 deployment 可共享 GPU；全部停止前 training exclusive 必须被拒绝。"""
+
+    runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
+    runtime_artifact_path.write_bytes(b"fake-onnx")
+    target = replace(
+        _build_runtime_target(runtime_artifact_path),
+        runtime_backend="tensorrt",
+        device_name="cuda:0",
+    )
+    lock_root = tmp_path / "device-leases"
+    resolver = _StaticCudaResolver()
+    settings = BackendServiceDeploymentProcessSupervisorConfig(
+        auto_restart=False,
+        monitor_interval_seconds=0.05,
+        startup_timeout_seconds=30.0,
+        shutdown_timeout_seconds=1.0,
+        device_leases=DeviceLeaseProviderConfig(
+            root_dir=str(lock_root),
+            shared_acquire_timeout_seconds=0.0,
+        ),
+    )
+    first = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="sync",
+        settings=settings,
+        device_lease_provider=DeviceLeaseProvider(
+            root_dir=lock_root,
+            resolver=resolver,
+        ),
+        worker_target=fake_deployment_process_worker,
+    )
+    second = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(tmp_path),
+        runtime_mode="async",
+        settings=settings,
+        device_lease_provider=DeviceLeaseProvider(
+            root_dir=lock_root,
+            resolver=resolver,
+        ),
+        worker_target=fake_deployment_process_worker,
+    )
+    exclusive_provider = DeviceLeaseProvider(root_dir=lock_root, resolver=resolver)
+    first_config = DeploymentProcessConfig(
+        deployment_instance_id="gpu-deployment-1",
+        runtime_target=target,
+    )
+    second_config = DeploymentProcessConfig(
+        deployment_instance_id="gpu-deployment-2",
+        runtime_target=target,
+    )
+    monkeypatch.setattr(
+        "backend.service.application.runtime.deployment.deployment_process_supervisor.validate_runtime_target_available",
+        lambda _target: None,
+    )
+    first.start()
+    second.start()
+    try:
+        with exclusive_provider.acquire_resource(
+            resolver.resource,
+            requested_device="cuda:0",
+            mode=DeviceLeaseMode.EXCLUSIVE,
+            purpose="training",
+            owner_id="training-before-deployment",
+            timeout_seconds=0.0,
+        ):
+            with pytest.raises(DeviceLeaseUnavailableError):
+                first.start_deployment(first_config)
+
+        assert first.start_deployment(first_config).process_state == "running"
+        assert second.start_deployment(second_config).process_state == "running"
+        first_health = _wait_for_health(first, first_config)
+        lease = first_health.effective_runtime_configuration["device_lease"]
+        assert lease["resource_key"] == resolver.resource.resource_key
+        assert lease["mode"] == "shared"
+
+        with pytest.raises(DeviceLeaseUnavailableError):
+            exclusive_provider.acquire_resource(
+                resolver.resource,
+                requested_device="cuda:0",
+                mode=DeviceLeaseMode.EXCLUSIVE,
+                purpose="training",
+                owner_id="training-before-stop",
+                timeout_seconds=0.0,
+            )
+        first.stop_deployment(first_config)
+        with pytest.raises(DeviceLeaseUnavailableError):
+            exclusive_provider.acquire_resource(
+                resolver.resource,
+                requested_device="cuda:0",
+                mode=DeviceLeaseMode.EXCLUSIVE,
+                purpose="training",
+                owner_id="training-one-deployment-left",
+                timeout_seconds=0.0,
+            )
+        second.stop_deployment(second_config)
+        with exclusive_provider.acquire_resource(
+            resolver.resource,
+            requested_device="cuda:0",
+            mode=DeviceLeaseMode.EXCLUSIVE,
+            purpose="training",
+            owner_id="training-after-stop",
+            timeout_seconds=0.0,
+        ) as training_lease:
+            assert training_lease.info.mode == "exclusive"
+    finally:
+        first.stop()
+        second.stop()
 
 
 def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:

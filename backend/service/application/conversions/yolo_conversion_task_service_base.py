@@ -4,18 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import os
 from typing import Any, Callable
 from uuid import uuid4
 
-from backend.queue import QueueBackend
 from backend.service.application.backends import ConversionBackend, DetectionConversionPlanStep
 from backend.service.application.conversions.conversion_result_snapshot import ConversionResultSnapshot
+from backend.service.application.conversions.publication import (
+    find_recoverable_conversion_publication,
+    mark_conversion_publication_registered,
+)
 from backend.service.application.conversions.yolo_model_conversion_planner import (
     YoloModelConversionPlan,
     YoloModelConversionTarget,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationTimeoutError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
@@ -45,6 +50,10 @@ from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
     TaskDetail,
     TaskQueryFilters,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.tasks.task_records import TaskRecord, TaskRecordState
 from backend.service.infrastructure.db.session import SessionFactory
@@ -154,7 +163,6 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
-        queue_backend: QueueBackend | None = None,
         planner: object,
         conversion_runner: ConversionBackend | None = None,
     ) -> None:
@@ -162,7 +170,6 @@ class SqlAlchemyYoloConversionTaskServiceBase:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.queue_backend = queue_backend
         self.planner = planner
         self.conversion_runner = conversion_runner
         self.task_service = SqlAlchemyTaskService(session_factory)
@@ -177,7 +184,6 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         """创建并入队一条 YOLO 系列转换任务。"""
 
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         task_kind = self._resolve_task_kind()
         queue_name = self._resolve_queue_name()
         source_runtime_target = self._resolve_source_runtime_target(
@@ -212,67 +218,25 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     "model_type": self.model_type,
                     "task_type": source_runtime_target.task_type,
                 },
+                queue_submission=TaskQueueSubmission(
+                    queue_name=queue_name,
+                    metadata={
+                        "project_id": request.project_id,
+                        "source_model_version_id": request.source_model_version_id,
+                        "target_formats": list(plan.target_formats),
+                        "runtime_profile_id": request.runtime_profile_id,
+                        "model_type": self.model_type,
+                        "task_type": source_runtime_target.task_type,
+                    },
+                ),
             )
         )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=queue_name,
-                payload={"task_id": created_task.task_id},
-                metadata={
-                    "project_id": request.project_id,
-                    "source_model_version_id": request.source_model_version_id,
-                    "target_formats": list(plan.target_formats),
-                    "runtime_profile_id": request.runtime_profile_id,
-                    "model_type": self.model_type,
-                    "task_type": source_runtime_target.task_type,
-                },
-            )
-        except Exception as error:
-            error_payload = serialize_error(error)
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=created_task.task_id,
-                    event_type="result",
-                    message=f"{self.model_type} conversion queue submission failed",
-                    payload={
-                        "state": "failed",
-                        "error_message": str(error),
-                        "error": error_payload,
-                        "error_details": error_payload.get("details", {}),
-                        "progress": {"stage": "failed"},
-                        "metadata": {
-                            "error": error_payload,
-                        },
-                        "result": {
-                            "source_model_version_id": request.source_model_version_id,
-                            "target_formats": list(plan.target_formats),
-                            "error": error_payload,
-                            "error_details": error_payload.get("details", {}),
-                        },
-                    },
-                )
-            )
-            raise
-
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message=f"{self.model_type} conversion queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
-                    },
-                },
-            )
-        )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return self._resolve_request_submission_cls()(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             source_model_version_id=request.source_model_version_id,
             target_formats=plan.target_formats,
         )
@@ -322,12 +286,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
         conversion_runner = self._require_conversion_runner()
-        if task_record.state == "running":
-            raise InvalidRequestError(
-                "当前转换任务正在执行，不能重复执行",
-                details={"task_id": task_id},
-            )
-        if task_record.state in {"failed", "cancelled"}:
+        if task_record.state in {"failed", "timed_out", "cancelled"}:
             raise InvalidRequestError(
                 "当前转换任务已经结束，不能重复执行",
                 details={"task_id": task_id, "state": task_record.state},
@@ -346,7 +305,6 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 details={"source_model_version_id": request.source_model_version_id},
             )
 
-        attempt_no = max(1, task_record.current_attempt_no + 1)
         output_object_prefix = self._build_output_object_prefix(task_id)
         output_files = DetectionConversionOutputFiles(
             output_object_prefix=output_object_prefix,
@@ -355,9 +313,35 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         )
         plan_object_key = output_files.plan_object_key
         report_object_key = output_files.report_object_key
+        attempt, recovering = self._resolve_conversion_attempt(task_record)
+        attempt_no = attempt.attempt_no
+        if recovering:
+            recovered_result = self._recover_published_conversion(
+                task_record=task_record,
+                request=request,
+                plan=plan,
+                source_runtime_target=source_runtime_target,
+                output_files=output_files,
+                attempt_id=attempt.attempt_id,
+                attempt_no=attempt_no,
+            )
+            if recovered_result is not None:
+                return recovered_result
+            if attempt.state != "running":
+                self._publish_unrecoverable_attempt_failure(
+                    task_record=task_record,
+                    attempt=attempt,
+                    request=request,
+                    output_files=output_files,
+                )
+                raise ServiceConfigurationError(
+                    "conversion Attempt 已结束但缺少可恢复 publication",
+                    details={"task_id": task_id, "attempt_id": attempt.attempt_id},
+                )
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
+                attempt_id=attempt.attempt_id,
                 event_type="status",
                 message=f"{self.model_type} conversion started",
                 payload={
@@ -369,8 +353,11 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             )
         )
 
-        dataset_storage.write_json(plan_object_key, self._resolve_serialize_plan()(plan))
         try:
+            dataset_storage.write_json(
+                plan_object_key,
+                self._resolve_serialize_plan()(plan),
+            )
             with model_task_resource_cleanup():
                 run_result = conversion_runner.run_conversion(
                     YoloModelConversionRunRequest(
@@ -395,6 +382,13 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 conversion_task_id=task_id,
                 outputs=run_result.outputs,
             )
+            mark_conversion_publication_registered(
+                dataset_storage=dataset_storage,
+                conversion_metadata=dict(run_result.metadata),
+                model_build_ids=tuple(
+                    summary.model_build_id for summary in build_summaries
+                ),
+            )
             report_summary = self._build_report_summary(
                 plan=plan,
                 source_runtime_target=source_runtime_target,
@@ -406,13 +400,17 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             dataset_storage.write_json(report_object_key, report_summary)
         except Exception as error:
             error_payload = serialize_error(error)
+            terminal_state = (
+                "timed_out" if isinstance(error, OperationTimeoutError) else "failed"
+            )
             self.task_service.append_task_event(
                 AppendTaskEventRequest(
                     task_id=task_id,
+                    attempt_id=attempt.attempt_id,
                     event_type="result",
-                    message=f"{self.model_type} conversion failed",
+                    message=f"{self.model_type} conversion {terminal_state}",
                     payload={
-                        "state": "failed",
+                        "state": terminal_state,
                         "finished_at": self._now_iso(),
                         "attempt_no": attempt_no,
                         "error_message": str(error),
@@ -435,6 +433,15 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     },
                 )
             )
+            self.task_service.finish_task_attempt(
+                attempt_id=attempt.attempt_id,
+                state=terminal_state,
+                exit_code=124 if terminal_state == "timed_out" else 1,
+                error_message=str(error),
+                metadata={"error": error_payload},
+                expected_worker_id=attempt.worker_id,
+                expected_heartbeat_at=attempt.heartbeat_at,
+            )
             raise
 
         primary_model_build_id = _select_primary_yolo_model_build_id(
@@ -444,6 +451,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         self.task_service.append_task_event(
             AppendTaskEventRequest(
                 task_id=task_id,
+                attempt_id=attempt.attempt_id,
                 event_type="result",
                 message=f"{self.model_type} conversion succeeded",
                 payload={
@@ -464,6 +472,17 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     },
                 },
             )
+        )
+        self.task_service.finish_task_attempt(
+            attempt_id=attempt.attempt_id,
+            state="succeeded",
+            exit_code=0,
+            result={
+                "produced_formats": [item.build_format for item in build_summaries],
+                "conversion_metadata": dict(run_result.metadata),
+            },
+            expected_worker_id=attempt.worker_id,
+            expected_heartbeat_at=attempt.heartbeat_at,
         )
         return self._resolve_result_cls()(
             task_id=task_id,
@@ -674,7 +693,10 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         """把 runner 产出的 build 文件登记为 ModelBuild。"""
 
         model_service = self._resolve_model_service_cls()(session_factory=self.session_factory)
-        build_summaries: list[YoloConversionBuildSummary] = []
+        registrations: list[ModelBuildRegistration] = []
+        prepared_outputs: list[
+            tuple[YoloModelConversionOutput, str, dict[str, object]]
+        ] = []
         for output in outputs:
             build_file_id = self._next_id("model-file")
             output_metadata = attach_model_artifact_provenance(
@@ -686,7 +708,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     "build_format": output.target_format,
                 },
             )
-            model_build_id = model_service.register_build(
+            registrations.append(
                 self._resolve_build_registration_cls()(
                     project_id=project_id,
                     source_model_version_id=source_model_version_id,
@@ -700,6 +722,16 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     metadata=output_metadata,
                 )
             )
+            prepared_outputs.append((output, build_file_id, output_metadata))
+
+        model_build_ids = model_service.register_builds(tuple(registrations))
+        build_summaries: list[YoloConversionBuildSummary] = []
+        for model_build_id, prepared_output in zip(
+            model_build_ids,
+            prepared_outputs,
+            strict=True,
+        ):
+            output, build_file_id, output_metadata = prepared_output
             build_summaries.append(
                 self._resolve_build_summary_cls()(
                     model_build_id=model_build_id,
@@ -712,6 +744,283 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 )
             )
         return tuple(build_summaries)
+
+    def _resolve_conversion_attempt(self, task_record: TaskRecord):
+        """复用 queue claim 的 Attempt，并识别 lease 恢复或最终发布恢复。"""
+
+        attempts = self.task_service.list_task_attempts(task_record.task_id)
+        latest_attempt = max(attempts, key=lambda item: item.attempt_no, default=None)
+        if latest_attempt is not None and latest_attempt.state == "running":
+            if task_record.state == "running":
+                lease_recovery_count = latest_attempt.metadata.get(
+                    "lease_recovery_count", 0
+                )
+                if (
+                    isinstance(lease_recovery_count, bool)
+                    or not isinstance(lease_recovery_count, int)
+                    or lease_recovery_count <= 0
+                ):
+                    raise InvalidRequestError(
+                        "当前转换任务正在执行，不能重复执行",
+                        details={"task_id": task_record.task_id},
+                    )
+            return (
+                self.task_service.start_task_attempt(
+                    task_id=task_record.task_id,
+                    attempt_no=latest_attempt.attempt_no,
+                    process_id=os.getpid(),
+                    metadata={"operation_kind": "conversion"},
+                ),
+                task_record.state == "running",
+            )
+        if task_record.state == "running":
+            if latest_attempt is None:
+                raise ServiceConfigurationError(
+                    "运行中的 conversion Task 缺少 TaskAttempt",
+                    details={"task_id": task_record.task_id},
+                )
+            return latest_attempt, True
+        next_attempt_no = max(
+            task_record.current_attempt_no + 1,
+            (latest_attempt.attempt_no + 1) if latest_attempt is not None else 1,
+        )
+        return (
+            self.task_service.start_task_attempt(
+                task_id=task_record.task_id,
+                attempt_no=next_attempt_no,
+                process_id=os.getpid(),
+                metadata={"operation_kind": "conversion"},
+            ),
+            False,
+        )
+
+    def _recover_published_conversion(
+        self,
+        *,
+        task_record: TaskRecord,
+        request: YoloConversionTaskRequest,
+        plan: YoloModelConversionPlan,
+        source_runtime_target: RuntimeTargetSnapshot,
+        output_files: DetectionConversionOutputFiles,
+        attempt_id: str,
+        attempt_no: int,
+    ) -> YoloConversionTaskResult | None:
+        """从不可变 publication 和原子 ModelBuild 批次完成 Task 最终发布。"""
+
+        dataset_storage = self._require_dataset_storage()
+        snapshot = find_recoverable_conversion_publication(
+            dataset_storage=dataset_storage,
+            task_id=task_record.task_id,
+            output_object_prefix=output_files.output_object_prefix,
+        )
+        if snapshot is None:
+            return None
+        produced_formats = tuple(output.target_format for output in snapshot.run_result.outputs)
+        if set(produced_formats) != set(plan.target_formats):
+            raise ServiceConfigurationError(
+                "conversion publication 输出格式与固化计划不一致",
+                details={
+                    "planned_target_formats": list(plan.target_formats),
+                    "published_target_formats": list(produced_formats),
+                },
+            )
+
+        model_service = self._resolve_model_service_cls()(
+            session_factory=self.session_factory
+        )
+        registered_builds = model_service.list_model_builds_by_conversion_task_id(
+            task_record.task_id
+        )
+        if registered_builds:
+            build_summaries = self._build_registered_conversion_summaries(
+                model_service=model_service,
+                conversion_task_id=task_record.task_id,
+                request=request,
+                outputs=snapshot.run_result.outputs,
+                registered_builds=registered_builds,
+            )
+        else:
+            if snapshot.state == "registered":
+                raise ServiceConfigurationError(
+                    "conversion publication 已登记但数据库缺少 ModelBuild",
+                    details={"task_id": task_record.task_id},
+                )
+            build_summaries = self._register_conversion_outputs(
+                project_id=request.project_id,
+                source_model_version_id=request.source_model_version_id,
+                runtime_profile_id=request.runtime_profile_id,
+                conversion_task_id=task_record.task_id,
+                outputs=snapshot.run_result.outputs,
+            )
+        model_build_ids = tuple(item.model_build_id for item in build_summaries)
+        if snapshot.model_build_ids and set(snapshot.model_build_ids) != set(model_build_ids):
+            raise ServiceConfigurationError(
+                "conversion publication 与数据库 ModelBuild 不一致",
+                details={"task_id": task_record.task_id},
+            )
+        mark_conversion_publication_registered(
+            dataset_storage=dataset_storage,
+            conversion_metadata=dict(snapshot.run_result.metadata),
+            model_build_ids=model_build_ids,
+        )
+        report_summary = self._build_report_summary(
+            plan=plan,
+            source_runtime_target=source_runtime_target,
+            run_result=snapshot.run_result,
+            build_summaries=build_summaries,
+            requested_target_formats=request.target_formats,
+            output_files=output_files,
+        )
+        dataset_storage.write_json(output_files.report_object_key, report_summary)
+        primary_model_build_id = _select_primary_yolo_model_build_id(
+            builds=build_summaries,
+            requested_target_formats=request.target_formats,
+        )
+        result_payload = {
+            "source_model_version_id": request.source_model_version_id,
+            "output_object_prefix": output_files.output_object_prefix,
+            "plan_object_key": output_files.plan_object_key,
+            "report_object_key": output_files.report_object_key,
+            "requested_target_formats": list(request.target_formats),
+            "produced_formats": [item.build_format for item in build_summaries],
+            "model_build_id": primary_model_build_id,
+            "builds": [serialize_yolo_conversion_build_summary(item) for item in build_summaries],
+            "report_summary": report_summary,
+        }
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_record.task_id,
+                attempt_id=attempt_id,
+                event_type="result",
+                message=f"{self.model_type} conversion recovered and succeeded",
+                payload={
+                    "state": "succeeded",
+                    "finished_at": self._now_iso(),
+                    "attempt_no": attempt_no,
+                    "progress": {"stage": "succeeded", "percent": 100.0},
+                    "metadata": {"publication_recovered": True},
+                    "result": result_payload,
+                },
+            )
+        )
+        recovered_attempt = next(
+            (
+                item
+                for item in self.task_service.list_task_attempts(task_record.task_id)
+                if item.attempt_id == attempt_id
+            ),
+            None,
+        )
+        if recovered_attempt is not None:
+            self.task_service.finish_task_attempt(
+                attempt_id=attempt_id,
+                state="succeeded",
+                exit_code=0,
+                result={
+                    "produced_formats": [
+                        item.build_format for item in build_summaries
+                    ],
+                    "conversion_metadata": dict(snapshot.run_result.metadata),
+                },
+                expected_worker_id=recovered_attempt.worker_id,
+                expected_heartbeat_at=recovered_attempt.heartbeat_at,
+            )
+        return self._resolve_result_cls()(
+            task_id=task_record.task_id,
+            status="succeeded",
+            source_model_version_id=request.source_model_version_id,
+            output_object_prefix=output_files.output_object_prefix,
+            plan_object_key=output_files.plan_object_key,
+            report_object_key=output_files.report_object_key,
+            requested_target_formats=request.target_formats,
+            produced_formats=tuple(item.build_format for item in build_summaries),
+            model_build_id=primary_model_build_id,
+            builds=build_summaries,
+            report_summary=report_summary,
+        )
+
+    def _build_registered_conversion_summaries(
+        self,
+        *,
+        model_service,
+        conversion_task_id: str,
+        request: YoloConversionTaskRequest,
+        outputs: tuple[YoloModelConversionOutput, ...],
+        registered_builds: tuple,
+    ) -> tuple[YoloConversionBuildSummary, ...]:
+        """严格把已原子登记的 build 与 publication 输出逐项配对。"""
+
+        builds_by_format = {build.build_format: build for build in registered_builds}
+        if len(builds_by_format) != len(registered_builds):
+            raise ServiceConfigurationError("同一 conversion 存在重复 build format")
+        summaries: list[YoloConversionBuildSummary] = []
+        for output in outputs:
+            build = builds_by_format.get(output.target_format)
+            if (
+                build is None
+                or build.source_model_version_id != request.source_model_version_id
+                or build.conversion_task_id != conversion_task_id
+                or len(build.file_ids) != 1
+            ):
+                raise ServiceConfigurationError(
+                    "conversion ModelBuild 与 publication 不一致",
+                    details={"target_format": output.target_format},
+                )
+            build_file = model_service.get_model_file(build.file_ids[0])
+            if build_file is None or build_file.storage_uri != output.object_uri:
+                raise ServiceConfigurationError(
+                    "conversion ModelFile 与 publication 不一致",
+                    details={"target_format": output.target_format},
+                )
+            summaries.append(
+                self._resolve_build_summary_cls()(
+                    model_build_id=build.model_build_id,
+                    build_format=build.build_format,
+                    runtime_backend=build.runtime_backend,
+                    runtime_precision=build.runtime_precision,
+                    build_file_id=build_file.file_id,
+                    build_file_uri=build_file.storage_uri,
+                    metadata=dict(build.metadata),
+                )
+            )
+        if set(builds_by_format) != {output.target_format for output in outputs}:
+            raise ServiceConfigurationError("conversion ModelBuild 集合存在额外格式")
+        return tuple(summaries)
+
+    def _publish_unrecoverable_attempt_failure(
+        self,
+        *,
+        task_record: TaskRecord,
+        attempt,
+        request: YoloConversionTaskRequest,
+        output_files: DetectionConversionOutputFiles,
+    ) -> None:
+        """把 Attempt 已终态但无 publication 的不一致显式投影到 Task。"""
+
+        error_message = attempt.error_message or "conversion 最终发布未完成"
+        self.task_service.append_task_event(
+            AppendTaskEventRequest(
+                task_id=task_record.task_id,
+                attempt_id=attempt.attempt_id,
+                event_type="result",
+                message=f"{self.model_type} conversion failed during finalization",
+                payload={
+                    "state": "failed",
+                    "finished_at": self._now_iso(),
+                    "attempt_no": attempt.attempt_no,
+                    "error_message": error_message,
+                    "progress": {"stage": "failed", "percent": 100.0},
+                    "result": {
+                        "source_model_version_id": request.source_model_version_id,
+                        "output_object_prefix": output_files.output_object_prefix,
+                        "plan_object_key": output_files.plan_object_key,
+                        "report_object_key": output_files.report_object_key,
+                        "requested_target_formats": list(request.target_formats),
+                        "model_build_id": None,
+                    },
+                },
+            )
+        )
 
     def _build_existing_result(self, task_record: TaskRecord) -> YoloConversionTaskResult | None:
         """从已经成功的 TaskRecord 中恢复结果对象。"""
@@ -878,13 +1187,6 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         if self.dataset_storage is None:
             raise ServiceConfigurationError("当前服务未配置 dataset_storage")
         return self.dataset_storage
-
-    def _require_queue_backend(self) -> QueueBackend:
-        """返回当前服务绑定的队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("当前服务未配置 queue_backend")
-        return self.queue_backend
 
     def _require_conversion_runner(self) -> ConversionBackend:
         """返回当前服务绑定的转换执行器。"""

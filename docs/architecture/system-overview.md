@@ -16,8 +16,12 @@ Browser / SDK / HMI / MES / PLC gateway
         ┌─────────┼──────────┐
         │         │          │
         ▼         ▼          ▼
- Database +   QueueBackend  LocalBufferBroker
- ObjectStore      │          (mmap data plane)
+ Database +   Outbox       LocalBufferBroker
+ ObjectStore  Dispatcher    (mmap data plane)
+                  │
+                  ▼
+             QueueBackend
+                  │
                   ▼
           six Worker Profiles
 
@@ -43,7 +47,7 @@ FastAPI 控制面，负责：
 
 - 本地鉴权、Project scope 和公开 API；
 - 数据集、任务、模型、部署、Workflow 与 Trigger 资源；
-- QueueBackend 提交和状态查询；
+- 同一事务写 Task/事件/Outbox，由 Dispatcher 可靠提交 QueueBackend，并提供状态查询；
 - inference daemon 与 Workflow Runtime 控制；
 - ObjectStore、LocalBuffer 和事件流装配；
 - 版本发布、恢复、归档、回滚和 mutation fence。
@@ -52,11 +56,13 @@ FastAPI 控制面，负责：
 
 ### Worker Profiles
 
-独立 Profile 分别消费 dataset-import、dataset-export、training、conversion、evaluation 和 batch-inference。Worker 执行 Runner 并回写 Task/Attempt/Event，不拥有公开 API。
+独立 Profile 分别消费 dataset-import、dataset-export、training、conversion、evaluation 和 batch-inference。持久任务先按 `task_id + attempt_no` 原子领取 TaskAttempt，再执行 Runner 并回写 Task/Attempt/Event；重复投递或失去 lease 的旧执行者不能重复副作用或覆盖终态。Worker 不拥有公开 API。
 
 ### inference daemon 与 Deployment
 
 inference daemon 是 DeploymentInstance 进程的唯一控制 owner。模型通过 PyTorch、ONNXRuntime、OpenVINO 或 TensorRT predictor 长期加载，支持 sync/async、warmup、health、reset、stop 和进程恢复。
+
+Training/CUDA Conversion 使用跨进程独占 GPU/MIG lease，CUDA Deployment 在实例生命周期持有共享 reservation；单次 inference 请求不获取 OS 锁。
 
 Deployment 数量表示已发布实例，不等于同时调用数。OpenVINO CPU effective thread 只按当前 deployment 自身 instance_count 和主机能力计算；不同空闲 deployment 不静态瓜分全部物理核心。
 

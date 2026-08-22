@@ -191,6 +191,23 @@ RF-DETR 使用 Lightning 原生 checkpoint 回调维护 best 和 latest 文件�
 冒充 best。`trainer.test` 必须显式使用 best checkpoint，并且只绑定 test
 dataloader。
 
+RF-DETR grouped-query warm-start 不允许按 Tensor 第一维做模糊 flat slice。正式
+预训练资产的 `manifest.json` 必须包含 checkpoint 的原始布局：
+
+```json
+{
+  "checkpoint_model_config": {
+    "num_queries": 300,
+    "group_detr": 13
+  }
+}
+```
+
+加载时优先读取 checkpoint 自带的 `args.num_queries/group_detr`；缺失时只允许使用
+与该 checkpoint 精确对应的 catalog manifest。需要改变 query 数量或 group 布局但
+两处都缺少元数据时直接拒绝 warm-start，不猜测分组，也不保留旧 flat-slice
+兼容路径。catalog 启动扫描同样会拒绝缺少上述正整数配置的 RF-DETR manifest。
+
 ## 验收
 
 每个模型和任务类型至少覆盖：

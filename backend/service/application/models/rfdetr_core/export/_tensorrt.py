@@ -1,6 +1,7 @@
 """RF-DETR core 导出处理模块：`export._tensorrt`。"""
 
 import argparse
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -17,6 +18,7 @@ from backend.service.domain.models.tensorrt_engine_capabilities import (
 from backend.service.domain.models.model_artifact_provenance import (
     MODEL_ARTIFACT_ORIGIN_MARKER,
 )
+from backend.workers.shared.process_tree_supervisor import ProcessTreeSupervisor
 
 logger = get_logger()
 
@@ -40,19 +42,32 @@ def run_command(
     if dry_run:
         logger.info("\n%s\n", display_command)
         return subprocess.CompletedProcess(display_command, 0, "", "")
+    process_env = build_tensorrt_process_environment()
+    raw_timeout = os.environ.get(
+        "AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS",
+        "7200",
+    )
     try:
-        result = subprocess.run(
+        timeout_seconds = float(raw_timeout)
+    except ValueError as error:
+        raise RuntimeError(
+            "AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS 必须是数字"
+        ) from error
+    result = ProcessTreeSupervisor(timeout_seconds=timeout_seconds).run(
+        command,
+        env=process_env,
+        tee_output=True,
+    ).to_completed_process()
+    if result.returncode != 0:
+        logger.error("Command failed with exit code %s", result.returncode)
+        logger.error("Error output:\n%s", result.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode,
             command,
-            env=build_tensorrt_process_environment(),
-            capture_output=True,
-            text=True,
-            check=True,
+            output=result.stdout,
+            stderr=result.stderr,
         )
-        return result
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed with exit code {e.returncode}")
-        logger.error(f"Error output:\n{e.stderr}")
-        raise
+    return result
 
 
 def build_tensorrt_engine(
@@ -137,6 +152,11 @@ def build_tensorrt_engine(
         "trtexec_stats": stats,
         "trtexec_stdout": output.stdout,
         "trtexec_stderr": output.stderr,
+        "runtime_smoke": {
+            "passed": not dry_run,
+            "engine_built_and_executed": not dry_run,
+            "runtime": "trtexec",
+        },
     }
 
 

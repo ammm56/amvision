@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-import logging
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
 )
-from backend.service.application.deployments.detection_deployment_service import (
-    SqlAlchemyDetectionDeploymentService,
-)
 from backend.service.application.deployments.deployment_instance_service import (
     SqlAlchemyDeploymentInstanceService,
+)
+from backend.service.application.deployments.detection_deployment_service import (
+    SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
@@ -54,8 +53,8 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import BackendServiceSettings
-
 
 LOGGER = logging.getLogger(__name__)
 

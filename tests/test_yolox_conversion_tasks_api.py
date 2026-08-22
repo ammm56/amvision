@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.application.errors import ResourceNotFoundError
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.files.yolox_file_types import (
     YOLOX_ONNX_FILE,
     YOLOX_ONNX_OPTIMIZED_FILE,
@@ -19,9 +20,16 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.service.infrastructure.persistence.model_file_repository import SqlAlchemyModelFileRepository
-from backend.service.infrastructure.persistence.model_repository import SqlAlchemyModelRepository
-from backend.workers.conversion.yolox_conversion_queue_worker import YoloXConversionQueueWorker
+from backend.service.infrastructure.persistence.model_file_repository import (
+    SqlAlchemyModelFileRepository,
+)
+from backend.service.infrastructure.persistence.model_repository import (
+    SqlAlchemyModelRepository,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.workers.conversion.yolox_conversion_queue_worker import (
+    YoloXConversionQueueWorker,
+)
 from backend.workers.conversion.yolox_conversion_runner import (
     YoloXConversionOutput,
     YoloXConversionRunRequest,
@@ -32,8 +40,6 @@ from tests.yolox_test_support import (
     create_yolox_api_test_context,
     seed_yolox_model_version,
 )
-
-import pytest
 
 
 @pytest.mark.parametrize(
@@ -145,7 +151,11 @@ def test_create_yolox_conversion_task_and_read_result_after_worker(
             assert pending_detail_response.status_code == 200
             assert pending_detail_response.json()["state"] == "queued"
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             detail_response = client.get(
                 f"/api/v1/models/detection/conversion-tasks/{task_id}",
@@ -251,7 +261,11 @@ def test_delete_yolox_conversion_task_removes_task_run_builds_and_files(tmp_path
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             detail_response = client.get(
                 f"/api/v1/models/detection/conversion-tasks/{task_id}",
@@ -318,7 +332,11 @@ def test_delete_yolox_conversion_task_rejects_deployed_model_build(tmp_path: Pat
             )
             assert create_response.status_code == 202
             task_id = create_response.json()["task_id"]
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             detail_response = client.get(
                 f"/api/v1/models/detection/conversion-tasks/{task_id}",
@@ -356,6 +374,24 @@ def test_delete_yolox_conversion_task_rejects_deployed_model_build(tmp_path: Pat
             assert kept_detail_response.status_code == 200
     finally:
         session_factory.engine.dispose()
+
+
+def _dispatch_and_run_once(
+    *,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+    worker: YoloXConversionQueueWorker,
+) -> bool:
+    """先投递事务 Outbox，再执行一轮 conversion worker。"""
+
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
+    )
+    return worker.run_once()
 
 
 def _create_test_client(

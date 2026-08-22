@@ -26,6 +26,7 @@ from backend.workers.settings import (
     BackendWorkerWorkspaceConfig,
     get_backend_worker_settings,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 
 
 def test_get_backend_worker_settings_reads_json_files_and_environment_overrides(
@@ -157,6 +158,11 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
             "DetectionEvaluationQueueWorker",
             "InferenceQueueWorker",
         ]
+        assert isinstance(
+            manager.consumers[0].queue_backend,
+            TaskAttemptClaimingQueueBackend,
+        )
+        assert manager.consumers[1].queue_backend is runtime.queue_backend
     finally:
         runtime.session_factory.engine.dispose()
 

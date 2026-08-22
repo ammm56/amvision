@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 import torch
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
     SqlAlchemyRfdetrConversionTaskService,
@@ -26,15 +25,17 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.application.models.rfdetr_core.factory import (
     build_rfdetr_full_core_model,
 )
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
+from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.models.model_task_types import (
     DETECTION_TASK_TYPE,
     SEGMENTATION_TASK_TYPE,
 )
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.conversion.rfdetr_conversion_queue_worker import (
     RfdetrConversionQueueWorker,
 )
@@ -62,7 +63,6 @@ def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(
     service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
         conversion_runner=_PatchedRfdetrConversionRunner(
             dataset_storage=dataset_storage
         ),
@@ -76,6 +76,7 @@ def test_rfdetr_detection_conversion_worker_exports_full_core_onnx(
             task_type="detection",
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     worker = RfdetrConversionQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -122,7 +123,6 @@ def test_rfdetr_segmentation_conversion_worker_exports_full_core_onnx(
     service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
         conversion_runner=_PatchedRfdetrConversionRunner(
             dataset_storage=dataset_storage
         ),
@@ -136,6 +136,7 @@ def test_rfdetr_segmentation_conversion_worker_exports_full_core_onnx(
             task_type="segmentation",
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     worker = RfdetrConversionQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
@@ -245,7 +246,6 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
     service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
         conversion_runner=_PatchedRfdetrConversionRunner(
             dataset_storage=dataset_storage
         ),
@@ -260,6 +260,7 @@ def test_rfdetr_segmentation_conversion_worker_executes_deployable_targets(
             extra_options=extra_options,
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
 
     worker = RfdetrConversionQueueWorker(
         session_factory=session_factory,
@@ -542,3 +543,15 @@ class _PatchedRfdetrConversionRunner(LocalRfdetrConversionRunner):
             int(dimension.dim_value)
             for dimension in graph_input.type.tensor_type.shape.dim
         ]
+
+
+def _dispatch_queue_outbox(
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+) -> int:
+    """显式模拟 backend-service dispatcher 投递本次业务提交。"""
+
+    return QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()

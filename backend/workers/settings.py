@@ -12,15 +12,16 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from backend.version import BACKEND_VERSION
-
 from backend.bootstrap.settings import build_json_config_sources
-from backend.queue import LocalFileQueueSettings
+from backend.service.application.runtime.device_leases import (
+    DeviceLeaseProviderConfig,
+)
 from backend.service.infrastructure.db.session import DatabaseSettings
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
 )
-
+from backend.service.infrastructure.queue.local_file import LocalFileQueueSettings
+from backend.version import BACKEND_VERSION
 
 CONFIG_DIR = Path("config")
 BACKEND_WORKER_CONFIG_FILE = CONFIG_DIR / "backend-worker.json"
@@ -166,6 +167,15 @@ class BackendWorkerTrainingTelemetryConfig(BaseModel):
     min_publish_interval_seconds: float = Field(default=0.1, ge=0)
 
 
+class BackendWorkerConversionConfig(BaseModel):
+    """描述 conversion attempt 的 worker 私有执行时限。"""
+
+    attempt_timeout_seconds: float = Field(default=7200.0, gt=0)
+    helper_timeout_seconds: float = Field(default=7200.0, gt=0)
+    termination_grace_seconds: float = Field(default=5.0, ge=0)
+    publication_orphan_grace_seconds: float = Field(default=3600.0, ge=0)
+
+
 class BackendWorkerSettings(BaseSettings):
     """描述 backend-worker 启动阶段使用的统一配置。
 
@@ -175,6 +185,8 @@ class BackendWorkerSettings(BaseSettings):
     - database：数据库连接配置。
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
+    - conversion：conversion attempt 进程树和发布恢复配置。
+    - device_leases：Training/CUDA Conversion 跨进程独占设备 lease 配置。
     - Profile Manifest：消费者集合、并发数和轮询间隔的唯一配置来源。
     - async_inference_gateway_request_timeout_seconds：等待 backend-service async inference gateway 响应的最长秒数。
     """
@@ -198,6 +210,12 @@ class BackendWorkerSettings(BaseSettings):
     queue: BackendWorkerQueueConfig = Field(default_factory=BackendWorkerQueueConfig)
     training_telemetry: BackendWorkerTrainingTelemetryConfig = Field(
         default_factory=BackendWorkerTrainingTelemetryConfig
+    )
+    conversion: BackendWorkerConversionConfig = Field(
+        default_factory=BackendWorkerConversionConfig
+    )
+    device_leases: DeviceLeaseProviderConfig = Field(
+        default_factory=DeviceLeaseProviderConfig
     )
     async_inference_gateway_request_timeout_seconds: float = Field(
         default=30.0,

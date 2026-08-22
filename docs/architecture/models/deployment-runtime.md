@@ -27,6 +27,7 @@
 - capability API 按当前机器和 OpenVINO plugin 的 `SUPPORTED_PROPERTIES` 返回可用字段、设备信息和发布默认值。
 - 前端只显示目标 backend/device 支持的参数，并展示运行时实际生效配置和警告。
 - CPU device resource manager 在 worker 启动前按当前 deployment 自身的 `instance_count` 和物理核心数生成每实例 effective 线程数；其他已启动但空闲的 deployment 不扣减线程容量，也不阻止当前 deployment 启动。
+- PyTorch/TensorRT CUDA Deployment 在进程启动边界持有 GPU/MIG `shared` reservation，停止边界释放；多个 Deployment 可并存，Training/CUDA Conversion 的 `exclusive` lease 与其双向冲突。inference 请求热路径不获取设备锁。
 
 当前仍有下面这些限制：
 
@@ -50,6 +51,7 @@
 8. 运行状态同时返回请求值和实际生效值，现场性能分析不得只读取创建请求。
 9. 创建和启动 OpenVINO CPU deployment 不按其他常驻 deployment 的数量或静态线程配置做准入。每个实例至少配置一个线程；多个 deployment 或多个实例同时满载时允许操作系统共享调度，并明确提示可能的延迟上升。
 10. 工业同步推理保持立即执行、立即返回结果的调用边界；当前实现不引入内部等待队列，不自动把 workflow 的多次同步调用合并成 list、batch 或隐藏队列，也不自动改写显式并行分支。
+11. CUDA 资源协调只发生在 Training/Conversion attempt 与 Deployment 生命周期边界；禁止在每次 inference 请求中获取 GPU lease。完整规则见 [GPU 设备资源协调](device-resource-coordination.md)。
 
 ## 概念边界
 

@@ -43,10 +43,12 @@ def test_workflow_version_migration_chain_has_one_head() -> None:
     )
     script = ScriptDirectory.from_config(_build_alembic_config(settings))
 
-    assert tuple(script.get_heads()) == ("fa4c6e8b1d25",)
+    assert tuple(script.get_heads()) == ("c7a9e2d4f6b8",)
     assert script.get_revision("f8a2c4e6b1d3").down_revision == "f7d1e3a5b9c2"
     assert script.get_revision("f9b3d5e7c2a4").down_revision == "f8a2c4e6b1d3"
     assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"
+    assert script.get_revision("b6e4f1a8c2d7").down_revision == "fa4c6e8b1d25"
+    assert script.get_revision("c7a9e2d4f6b8").down_revision == "b6e4f1a8c2d7"
 
 
 def test_lifecycle_boolean_validation_only_accepts_mysql_tinyint_one() -> None:

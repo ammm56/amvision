@@ -2,24 +2,36 @@
 
 from __future__ import annotations
 
+import multiprocessing
 from multiprocessing.queues import Queue
 from threading import Event, Lock, Thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any
-import multiprocessing
 
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
     WorkflowGraphTemplate,
 )
-from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.queue import LocalFileQueueBackend
+from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.local_buffers import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
+)
+from backend.service.application.workflows.app_version_service import (
+    compute_workflow_app_content_fingerprint,
+)
+from backend.service.application.workflows.model_sessions import (
+    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
+    WorkflowModelSessionManager,
+)
+from backend.service.application.workflows.process_threads import (
+    configure_workflow_process_threads,
+)
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
 )
 from backend.service.application.workflows.service_runtime.context import (
     WorkflowServiceNodeRuntimeContext,
@@ -31,27 +43,14 @@ from backend.service.application.workflows.snapshot_execution import (
     SnapshotExecutionService,
     WorkflowSnapshotExecutionRequest,
 )
-from backend.service.application.workflows.app_version_service import (
-    compute_workflow_app_content_fingerprint,
-)
-from backend.service.application.workflows.runtime_registry_loader import (
-    WorkflowNodeRuntimeRegistryLoader,
-)
-from backend.service.application.workflows.process_threads import (
-    configure_workflow_process_threads,
-)
-from backend.service.application.workflows.model_sessions import (
-    WORKFLOW_MODEL_SESSION_SCOPE_ID_METADATA_KEY,
-    WorkflowModelSessionManager,
-)
 from backend.service.application.workflows.worker.health import (
     build_runtime_health_summary,
     build_runtime_state_message,
     now_isoformat,
-    require_payload_dict,
-    require_payload_str,
     read_optional_int,
     read_optional_str,
+    require_payload_dict,
+    require_payload_str,
 )
 from backend.service.application.workflows.worker.heartbeat import (
     run_workflow_runtime_heartbeat_loop,
@@ -102,7 +101,6 @@ def run_workflow_runtime_worker_process(
         )
         session_factory = SessionFactory(settings.to_database_settings())
         dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
-        queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
         local_buffer_reader = build_local_buffer_reader(
             local_buffer_broker_event_channel
         )
@@ -148,7 +146,6 @@ def run_workflow_runtime_worker_process(
         runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
             detection_sync_deployment_process_supervisor=sync_supervisor,
             detection_async_deployment_process_supervisor=async_supervisor,
             classification_sync_deployment_process_supervisor=sync_supervisor,

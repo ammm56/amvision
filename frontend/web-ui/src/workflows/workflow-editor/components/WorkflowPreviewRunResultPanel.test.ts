@@ -2,13 +2,14 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { i18n, setI18nLocale } from '@/platform/i18n'
+import type { WorkflowPreviewRun } from '../types'
 import WorkflowPreviewRunResultPanel from './WorkflowPreviewRunResultPanel.vue'
 
 describe('WorkflowPreviewRunResultPanel', () => {
   beforeEach(() => setI18nLocale('zh-CN'))
 
   it('在属性面板直接显示完整 PreviewRun 原始 JSON', async () => {
-    const previewRun = {
+    const previewRun: WorkflowPreviewRun = {
       format_id: 'amvision.workflow-preview-run.v1',
       preview_run_id: 'preview-run-1',
       project_id: 'project-1',

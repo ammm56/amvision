@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 from threading import Lock
 
 from backend.contracts.buffers import BufferRef
@@ -27,6 +28,32 @@ from backend.service.domain.workflows.workflow_runtime_records import (
     WorkflowRunEvent,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+
+
+WORKFLOW_RUN_LIFECYCLE_EVENT_TYPES = frozenset(
+    {
+        "run.queued",
+        "run.running",
+        "run.started",
+        "run.succeeded",
+        "run.failed",
+        "run.cancelled",
+        "run.timed_out",
+    }
+)
+"""不受 trace 开关影响、始终持久化的 WorkflowRun 生命周期事件。"""
+
+WORKFLOW_RUN_TERMINAL_EVENT_TYPES = frozenset(
+    {
+        "run.succeeded",
+        "run.failed",
+        "run.cancelled",
+        "run.timed_out",
+    }
+)
+"""WorkflowRun 终态事件；写入后可以释放进程内 sequence 缓存。"""
+
+_JSONL_TAIL_READ_CHUNK_SIZE = 64 * 1024
 
 
 def apply_workflow_run_result(
@@ -85,18 +112,28 @@ def append_workflow_run_event(
     dataset_storage: LocalDatasetStorage,
     workflow_run: WorkflowRun,
     event_lock: Lock,
+    event_sequences: dict[str, int],
+    event_sequence_lock: Lock,
     event_type: str,
     message: str,
     payload: dict[str, object] | None = None,
 ) -> WorkflowRunEvent:
-    """按 WorkflowRun 保留策略直接追加一行 events.jsonl。"""
+    """按 WorkflowRun 保留策略直接追加一行 events.jsonl。
 
-    if not should_retain_workflow_run_trace(workflow_run):
+    生命周期事件始终写入；节点和诊断事件仍由 trace 策略控制。sequence
+    在进程内缓存，服务重启后的首次追加只从文件尾恢复最后一个有效序号。
+    """
+
+    normalized_event_type = event_type.strip() or "run.updated"
+    if (
+        normalized_event_type not in WORKFLOW_RUN_LIFECYCLE_EVENT_TYPES
+        and not should_retain_workflow_run_trace(workflow_run)
+    ):
         return WorkflowRunEvent(
             workflow_run_id=workflow_run.workflow_run_id,
             workflow_runtime_id=workflow_run.workflow_runtime_id,
             sequence=0,
-            event_type=event_type.strip() or "run.updated",
+            event_type=normalized_event_type,
             created_at=_now_isoformat(),
             message=message.strip() or "workflow run 事件",
             payload={},
@@ -109,23 +146,29 @@ def append_workflow_run_event(
         }
     )
     with event_lock:
-        existing_events = read_workflow_run_events(
-            dataset_storage,
-            workflow_run.workflow_run_id,
+        events_path = dataset_storage.resolve(
+            build_workflow_run_events_object_key(workflow_run.workflow_run_id)
         )
+        sequence_key = str(events_path.resolve())
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        with event_sequence_lock:
+            last_sequence = event_sequences.get(sequence_key)
+        if last_sequence is None:
+            _ensure_jsonl_append_boundary(events_path)
+            last_sequence = _read_last_valid_workflow_run_event_sequence(
+                events_path,
+                workflow_run_id=workflow_run.workflow_run_id,
+            )
+        sequence = last_sequence + 1
         event = WorkflowRunEvent(
             workflow_run_id=workflow_run.workflow_run_id,
             workflow_runtime_id=workflow_run.workflow_runtime_id,
-            sequence=max((item.sequence for item in existing_events), default=0) + 1,
-            event_type=event_type.strip() or "run.updated",
+            sequence=sequence,
+            event_type=normalized_event_type,
             created_at=_now_isoformat(),
             message=message.strip() or "workflow run 事件",
             payload=event_payload,
         )
-        events_path = dataset_storage.resolve(
-            build_workflow_run_events_object_key(workflow_run.workflow_run_id)
-        )
-        events_path.parent.mkdir(parents=True, exist_ok=True)
         with events_path.open("ab") as event_stream:
             event_stream.write(
                 json.dumps(
@@ -135,6 +178,8 @@ def append_workflow_run_event(
                 ).encode("utf-8")
                 + b"\n"
             )
+        with event_sequence_lock:
+            event_sequences[sequence_key] = sequence
     return event
 
 
@@ -153,47 +198,133 @@ def read_workflow_run_events(
         encoding="utf-8",
         errors="replace",
     ) as event_stream:
-        raw_items: list[object] = []
         for line in event_stream:
             try:
-                raw_items.append(json.loads(line))
+                item = json.loads(line)
             except json.JSONDecodeError:
                 continue
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        sequence = item.get("sequence")
-        created_at = item.get("created_at")
-        event_type = item.get("event_type")
-        message = item.get("message")
-        workflow_runtime_id = item.get("workflow_runtime_id")
-        if (
-            not isinstance(sequence, int)
-            or isinstance(sequence, bool)
-            or sequence <= 0
-            or not isinstance(created_at, str)
-            or not created_at
-            or not isinstance(event_type, str)
-            or not event_type
-            or not isinstance(message, str)
-            or not message
-            or not isinstance(workflow_runtime_id, str)
-            or not workflow_runtime_id
-        ):
-            continue
-        payload_value = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-        events.append(
-            WorkflowRunEvent(
-                workflow_run_id=workflow_run_id,
-                workflow_runtime_id=workflow_runtime_id,
-                sequence=sequence,
-                event_type=event_type,
-                created_at=created_at,
-                message=message,
-                payload=payload_value,
-            )
-        )
+            event = _deserialize_workflow_run_event(workflow_run_id, item)
+            if event is not None:
+                events.append(event)
     return tuple(events)
+
+
+def release_workflow_run_event_sequence(
+    *,
+    dataset_storage: LocalDatasetStorage,
+    workflow_run_id: str,
+    event_sequences: dict[str, int],
+    event_sequence_lock: Lock,
+) -> None:
+    """释放已终止 WorkflowRun 的进程内 sequence，避免长期运行持续增长。"""
+
+    events_path = dataset_storage.resolve(
+        build_workflow_run_events_object_key(workflow_run_id)
+    )
+    with event_sequence_lock:
+        event_sequences.pop(str(events_path.resolve()), None)
+
+
+def _deserialize_workflow_run_event(
+    workflow_run_id: str,
+    value: object,
+) -> WorkflowRunEvent | None:
+    """把一行 JSON 字典转换为 WorkflowRunEvent，无效行返回 None。"""
+
+    if not isinstance(value, dict):
+        return None
+    sequence = value.get("sequence")
+    created_at = value.get("created_at")
+    event_type = value.get("event_type")
+    message = value.get("message")
+    workflow_runtime_id = value.get("workflow_runtime_id")
+    if (
+        not isinstance(sequence, int)
+        or isinstance(sequence, bool)
+        or sequence <= 0
+        or not isinstance(created_at, str)
+        or not created_at
+        or not isinstance(event_type, str)
+        or not event_type
+        or not isinstance(message, str)
+        or not message
+        or not isinstance(workflow_runtime_id, str)
+        or not workflow_runtime_id
+    ):
+        return None
+    payload_value = value.get("payload") if isinstance(value.get("payload"), dict) else {}
+    return WorkflowRunEvent(
+        workflow_run_id=workflow_run_id,
+        workflow_runtime_id=workflow_runtime_id,
+        sequence=sequence,
+        event_type=event_type,
+        created_at=created_at,
+        message=message,
+        payload=payload_value,
+    )
+
+
+def _read_last_valid_workflow_run_event_sequence(
+    events_path: Path,
+    *,
+    workflow_run_id: str,
+) -> int:
+    """从 JSONL 文件尾向前读取最后一个有效 WorkflowRun 事件序号。"""
+
+    if not events_path.is_file():
+        return 0
+    with events_path.open("rb") as event_stream:
+        event_stream.seek(0, 2)
+        position = event_stream.tell()
+        suffix = b""
+        while position > 0:
+            read_size = min(_JSONL_TAIL_READ_CHUNK_SIZE, position)
+            position -= read_size
+            event_stream.seek(position)
+            chunk = event_stream.read(read_size) + suffix
+            lines = chunk.split(b"\n")
+            suffix = lines[0]
+            for raw_line in reversed(lines[1:]):
+                sequence = _read_workflow_run_event_sequence_from_line(
+                    raw_line,
+                    workflow_run_id=workflow_run_id,
+                )
+                if sequence is not None:
+                    return sequence
+        sequence = _read_workflow_run_event_sequence_from_line(
+            suffix,
+            workflow_run_id=workflow_run_id,
+        )
+        return sequence or 0
+
+
+def _read_workflow_run_event_sequence_from_line(
+    raw_line: bytes,
+    *,
+    workflow_run_id: str,
+) -> int | None:
+    """解析单行并返回有效 WorkflowRun 事件序号。"""
+
+    if not raw_line.strip():
+        return None
+    try:
+        value = json.loads(raw_line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    event = _deserialize_workflow_run_event(workflow_run_id, value)
+    return event.sequence if event is not None else None
+
+
+def _ensure_jsonl_append_boundary(events_path: Path) -> None:
+    """为异常退出留下的 JSONL 半行补换行，确保后续事件保持独立。"""
+
+    if not events_path.is_file() or events_path.stat().st_size == 0:
+        return
+    with events_path.open("rb+") as event_stream:
+        event_stream.seek(-1, 2)
+        if event_stream.read(1) != b"\n":
+            event_stream.seek(0, 2)
+            event_stream.write(b"\n")
 
 
 def _serialize_workflow_run_event(event: WorkflowRunEvent) -> dict[str, object]:

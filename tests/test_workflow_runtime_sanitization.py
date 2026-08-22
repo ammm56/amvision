@@ -323,7 +323,7 @@ def test_invoke_workflow_run_sanitizes_input_payload_outputs_and_node_records(
 
 
 def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> None:
-    """验证正式 WorkflowRun 默认只保留最小状态且不写磁盘 trace。
+    """验证正式 WorkflowRun 默认保留最小状态和生命周期事件。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
@@ -393,10 +393,9 @@ def test_invoke_workflow_run_defaults_to_light_persistence(tmp_path: Path) -> No
     assert persisted_run.outputs == {"http_response": {"status_code": 200}}
     assert persisted_run.template_outputs == {}
     assert persisted_run.node_records == ()
-    assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
-    assert not service.dataset_storage.resolve(
-        f"workflows/runtime/{workflow_run.workflow_run_id}"
-    ).exists()
+    events = service.get_workflow_run_events(workflow_run.workflow_run_id)
+    assert [event.event_type for event in events] == ["run.succeeded"]
+    assert events[0].payload["state"] == "succeeded"
 
 
 def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(
@@ -480,7 +479,10 @@ def test_invoke_workflow_run_minimal_record_persists_public_result_and_status(
     assert persisted_run.template_outputs == {}
     assert persisted_run.node_records == ()
     assert "timings" not in persisted_run.metadata
-    assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
+    assert [
+        event.event_type
+        for event in service.get_workflow_run_events(workflow_run.workflow_run_id)
+    ] == ["run.succeeded"]
 
 
 def test_invoke_workflow_run_none_record_mode_skips_database_record(
@@ -1143,10 +1145,10 @@ def test_runtime_payload_sanitizer_bounds_large_database_values() -> None:
     assert sanitized["image_base64_char_length"] == MAX_PERSISTED_STRING_CHARS + 1
 
 
-def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file(
+def test_invoke_workflow_run_registers_input_buffer_cleanup_and_keeps_lifecycle_event(
     tmp_path: Path,
 ) -> None:
-    """验证正式调用会释放输入 BufferRef 且可跳过 workflow-run 事件文件。
+    """验证正式调用释放输入 BufferRef，关闭 trace 后仍保留生命周期事件。
 
     参数：
     - tmp_path：pytest 提供的临时目录。
@@ -1219,10 +1221,10 @@ def test_invoke_workflow_run_registers_input_buffer_cleanup_and_skips_trace_file
         }
     ]
     assert WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY not in persisted_run.metadata
-    assert service.get_workflow_run_events(workflow_run.workflow_run_id) == ()
-    assert not service.dataset_storage.resolve(
-        f"workflows/runtime/{workflow_run.workflow_run_id}"
-    ).exists()
+    assert [
+        event.event_type
+        for event in service.get_workflow_run_events(workflow_run.workflow_run_id)
+    ] == ["run.succeeded"]
 
 
 def _build_runtime_service(
@@ -1267,7 +1269,6 @@ def _build_runtime_service(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     service = WorkflowRuntimeService(
         settings=settings,

@@ -62,6 +62,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
 )
+from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.dataset_import import (
     DatasetImport,
     IMPLEMENTED_DATASET_IMPORT_FORMAT_TYPES_BY_TASK_TYPE,
@@ -78,6 +79,9 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetVersionLayout,
     LocalDatasetStorage,
 )
+
+
+DATASET_IMPORT_QUEUE_NAME = "dataset-imports"
 
 
 class SqlAlchemyDatasetImportService(
@@ -146,6 +150,7 @@ class SqlAlchemyDatasetImportService(
         self._validate_request(request, package_file=package_file)
         dataset_import_id = self._next_id("dataset-import")
         task_id = self._next_id("task")
+        queue_task_id = f"queue-message-{task_id}"
         created_at = datetime.now(timezone.utc).isoformat()
         import_layout = self.dataset_storage.prepare_import_layout(
             project_id=request.project_id,
@@ -195,6 +200,9 @@ class SqlAlchemyDatasetImportService(
                 "upload_state": "uploaded",
                 "uploaded_at": created_at,
                 "task_id": task_id,
+                "queue_name": DATASET_IMPORT_QUEUE_NAME,
+                "queue_task_id": queue_task_id,
+                "processing_state": "queued",
                 **request.metadata,
             },
         )
@@ -212,6 +220,7 @@ class SqlAlchemyDatasetImportService(
                         request=request,
                         dataset_import=initial_import,
                     ),
+                    queue_task_id=queue_task_id,
                 )
         except Exception:
             # 上传包先写入 staging，最终登记被 Project tombstone 拒绝时必须清理。
@@ -219,49 +228,6 @@ class SqlAlchemyDatasetImportService(
             raise
 
         return initial_import
-
-    def mark_dataset_import_queued(
-        self,
-        dataset_import_id: str,
-        *,
-        queue_name: str,
-        queue_task_id: str,
-    ) -> DatasetImport:
-        """为已提交的 DatasetImport 记录队列任务信息。
-
-        参数：
-        - dataset_import_id：已提交的导入记录 id。
-        - queue_name：入队后的队列名称。
-        - queue_task_id：入队后的任务 id。
-
-        返回：
-        - 已更新队列元数据的 DatasetImport 记录。
-        """
-
-        current_import = self._get_dataset_import(dataset_import_id)
-        queued_import = replace(
-            current_import,
-            metadata={
-                **current_import.metadata,
-                "queue_name": queue_name,
-                "queue_task_id": queue_task_id,
-                "processing_state": "queued",
-            },
-        )
-        self._save_dataset_import(queued_import)
-        self._append_dataset_import_task_event(
-            queued_import,
-            event_type="status",
-            message="dataset import queued",
-            payload={
-                "state": "queued",
-                "metadata": {
-                    "queue_name": queue_name,
-                    "queue_task_id": queue_task_id,
-                },
-            },
-        )
-        return queued_import
 
     def process_dataset_import(self, dataset_import_id: str) -> DatasetImportResult:
         """处理一条已登记的 DatasetImport。
@@ -979,8 +945,10 @@ class SqlAlchemyDatasetImportService(
         self,
         dataset_import: DatasetImport,
         task_record: TaskRecord,
+        *,
+        queue_task_id: str,
     ) -> None:
-        """在同一事务里保存 DatasetImport 和 TaskRecord。
+        """同事务保存 DatasetImport、Task、Event 和 Queue Outbox。
 
         参数：
         - dataset_import：要保存的导入记录。
@@ -996,8 +964,30 @@ class SqlAlchemyDatasetImportService(
                     task_id=task_record.task_id,
                     event_type="status",
                     created_at=task_record.created_at,
-                    message="dataset import task created",
-                    payload={"state": task_record.state},
+                    message="dataset import queued",
+                    payload={
+                        "state": task_record.state,
+                        "metadata": {
+                            "queue_name": DATASET_IMPORT_QUEUE_NAME,
+                            "queue_task_id": queue_task_id,
+                        },
+                    },
+                )
+            )
+            unit_of_work.queue_outbox.add_message(
+                build_queue_outbox_message(
+                    message_id=queue_task_id,
+                    queue_name=DATASET_IMPORT_QUEUE_NAME,
+                    payload={
+                        "dataset_import_id": dataset_import.dataset_import_id,
+                        "task_id": task_record.task_id,
+                        "attempt_no": 1,
+                    },
+                    metadata={
+                        "project_id": dataset_import.project_id,
+                        "dataset_id": dataset_import.dataset_id,
+                    },
+                    created_at=task_record.created_at,
                 )
             )
             unit_of_work.commit()
@@ -1061,6 +1051,8 @@ class SqlAlchemyDatasetImportService(
                 "source_import_id": dataset_import.dataset_import_id,
                 "dataset_id": request.dataset_id,
                 "source_file_name": request.package_file_name,
+                "queue_name": DATASET_IMPORT_QUEUE_NAME,
+                "queue_task_id": dataset_import.metadata["queue_task_id"],
             },
             state="queued",
         )

@@ -320,6 +320,22 @@ class LocalDetectionValidationSessionService:
             )
         return _build_session_from_payload(payload)
 
+    def get_visible_session(
+        self,
+        session_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> DetectionValidationSessionView:
+        """按公开调用方的 Project 可见范围读取 validation session。"""
+
+        session = self.get_session(session_id)
+        if visible_project_ids and session.project_id not in visible_project_ids:
+            raise ResourceNotFoundError(
+                "指定的 validation session 不存在",
+                details={"session_id": session_id},
+            )
+        return session
+
     def predict(
         self,
         session_id: str,

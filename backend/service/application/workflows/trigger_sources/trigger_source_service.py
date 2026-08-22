@@ -205,21 +205,16 @@ class WorkflowTriggerSourceService:
                     "trigger_source_id 已存在",
                     details={"trigger_source_id": request.trigger_source_id},
                 )
-            workflow_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
-                request.workflow_runtime_id
+            workflow_runtime = (
+                unit_of_work.workflow_runtime.get_visible_workflow_app_runtime(
+                    request.workflow_runtime_id,
+                    visible_project_ids=(request.project_id,),
+                )
             )
             if workflow_runtime is None:
                 raise ResourceNotFoundError(
                     "绑定的 WorkflowAppRuntime 不存在",
                     details={"workflow_runtime_id": request.workflow_runtime_id},
-                )
-            if workflow_runtime.project_id != request.project_id:
-                raise InvalidRequestError(
-                    "TriggerSource 与 WorkflowAppRuntime 不属于同一 Project",
-                    details={
-                        "project_id": request.project_id,
-                        "workflow_runtime_project_id": workflow_runtime.project_id,
-                    },
                 )
             if request.enabled and workflow_runtime.observed_state != "running":
                 raise InvalidRequestError(
@@ -324,6 +319,31 @@ class WorkflowTriggerSourceService:
         with self._open_unit_of_work() as unit_of_work:
             trigger_source = unit_of_work.workflow_trigger_sources.get_trigger_source(
                 normalized_trigger_source_id
+            )
+        if trigger_source is None:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowTriggerSource 不存在",
+                details={"trigger_source_id": normalized_trigger_source_id},
+            )
+        return trigger_source
+
+    def get_visible_trigger_source(
+        self,
+        trigger_source_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowTriggerSource:
+        """按公开调用方的 Project 可见范围读取 TriggerSource。"""
+
+        normalized_trigger_source_id = _require_stripped_text(
+            trigger_source_id, "trigger_source_id"
+        )
+        with self._open_unit_of_work() as unit_of_work:
+            trigger_source = (
+                unit_of_work.workflow_trigger_sources.get_visible_trigger_source(
+                    normalized_trigger_source_id,
+                    visible_project_ids=visible_project_ids,
+                )
             )
         if trigger_source is None:
             raise ResourceNotFoundError(

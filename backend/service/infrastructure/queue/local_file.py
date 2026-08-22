@@ -2,151 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from time import time
-from typing import Protocol
 from uuid import uuid4
 
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.application.ports.queue import (
+    QueueMessage,
+    normalize_queue_path_component,
+)
 from backend.service.infrastructure.filesystem.atomic_files import (
     replace_path_with_retry,
 )
 
-
 _CLAIM_TRANSITION_RECOVERY_GRACE_SECONDS = 30.0
-
-
-@dataclass(frozen=True)
-class QueueMessage:
-    """描述一条队列消息。
-
-    字段：
-    - queue_name：所属队列名称。
-    - task_id：队列任务 id。
-    - payload：任务负载。
-    - status：当前队列状态。
-    - created_at：入队时间。
-    - leased_at：被 worker 领取时间。
-    - completed_at：处理完成时间。
-    - failed_at：处理失败时间。
-    - worker_id：当前领取该任务的 worker id。
-    - attempt_count：累计处理尝试次数。
-    - error_message：失败时的错误消息。
-    - metadata：附加元数据。
-    """
-
-    queue_name: str
-    task_id: str
-    payload: dict[str, object] = field(default_factory=dict)
-    status: str = "queued"
-    created_at: str = ""
-    leased_at: str | None = None
-    completed_at: str | None = None
-    failed_at: str | None = None
-    worker_id: str | None = None
-    attempt_count: int = 0
-    error_message: str | None = None
-    metadata: dict[str, object] = field(default_factory=dict)
-
-
-class QueueBackend(Protocol):
-    """描述最小任务队列后端接口。"""
-
-    def enqueue(
-        self,
-        *,
-        queue_name: str,
-        payload: dict[str, object],
-        metadata: dict[str, object] | None = None,
-    ) -> QueueMessage:
-        """提交一条新任务到队列。
-
-        参数：
-        - queue_name：目标队列名称。
-        - payload：任务负载。
-        - metadata：附加元数据。
-
-        返回：
-        - 已持久化的队列消息。
-        """
-
-        ...
-
-    def claim_next(self, *, queue_name: str, worker_id: str) -> QueueMessage | None:
-        """领取指定队列中的下一条任务。
-
-        参数：
-        - queue_name：目标队列名称。
-        - worker_id：当前 worker 标识。
-
-        返回：
-        - 已领取的队列消息；没有待处理任务时返回 None。
-        """
-
-        ...
-
-    def refresh_lease(
-        self,
-        queue_message: QueueMessage,
-        *,
-        metadata: dict[str, object] | None = None,
-    ) -> QueueMessage:
-        """刷新当前 worker 持有的任务 lease，并返回最新队列消息。"""
-
-        ...
-
-    def complete(
-        self,
-        queue_message: QueueMessage,
-        *,
-        metadata: dict[str, object] | None = None,
-    ) -> QueueMessage:
-        """把一条已领取任务标记为完成。"""
-
-        ...
-
-    def fail(
-        self,
-        queue_message: QueueMessage,
-        *,
-        error_message: str,
-        metadata: dict[str, object] | None = None,
-    ) -> QueueMessage:
-        """把一条已领取任务标记为失败。"""
-
-        ...
-
-    def get_task(self, *, queue_name: str, task_id: str) -> QueueMessage | None:
-        """按任务 id 读取队列消息。"""
-
-        ...
-
-    def delete_queue(self, *, queue_name: str) -> bool:
-        """删除指定队列目录。"""
-
-        ...
-
-    def list_tasks_by_references(
-        self, *, references: tuple[tuple[str, object], ...]
-    ) -> tuple[QueueMessage, ...]:
-        """列出 metadata 或 payload 中匹配任一引用的队列消息。"""
-
-        ...
-
-    def delete_tasks_by_references(
-        self,
-        *,
-        references: tuple[tuple[str, object], ...],
-        statuses: tuple[str, ...],
-    ) -> int:
-        """删除匹配任一引用和指定状态的队列消息。"""
-
-        ...
 
 
 @dataclass(frozen=True)
@@ -191,6 +66,7 @@ class LocalFileQueueBackend:
         queue_name: str,
         payload: dict[str, object],
         metadata: dict[str, object] | None = None,
+        message_id: str | None = None,
     ) -> QueueMessage:
         """提交一条新任务到队列。
 
@@ -198,21 +74,117 @@ class LocalFileQueueBackend:
         - queue_name：目标队列名称。
         - payload：任务负载。
         - metadata：附加元数据。
+        - message_id：可选的确定性消息 id；重复投递相同 payload 时返回现有消息。
 
         返回：
         - 已持久化的队列消息。
         """
 
+        normalized_queue_name = self._normalize_path_component(
+            queue_name,
+            field_name="queue_name",
+        )
+        normalized_message_id = self._normalize_message_id(message_id)
+        self._json_fingerprint(payload, field_name="payload")
+        normalized_metadata = dict(metadata or {})
+        self._json_fingerprint(normalized_metadata, field_name="metadata")
+        if normalized_message_id is not None:
+            existing_task = self.get_task(
+                queue_name=normalized_queue_name,
+                task_id=normalized_message_id,
+            )
+            if existing_task is not None:
+                self._validate_idempotent_enqueue(
+                    existing_task=existing_task,
+                    payload=payload,
+                )
+                return existing_task
+
         queue_task = QueueMessage(
-            queue_name=queue_name,
-            task_id=self._next_id("queue-task"),
+            queue_name=normalized_queue_name,
+            task_id=normalized_message_id or self._next_id("queue-task"),
             payload=dict(payload),
             status="queued",
             created_at=self._now(),
-            metadata=dict(metadata or {}),
+            metadata=normalized_metadata,
         )
         self._write_task(queue_task, state_name="pending")
         return queue_task
+
+    @staticmethod
+    def _normalize_message_id(message_id: str | None) -> str | None:
+        """规范化确定性消息 id，禁止通过文件名逃逸队列状态目录。"""
+
+        if message_id is None:
+            return None
+        return LocalFileQueueBackend._normalize_path_component(
+            message_id,
+            field_name="message_id",
+        )
+
+    @staticmethod
+    def _normalize_path_component(value: str, *, field_name: str) -> str:
+        """限制文件队列的目录与文件名组件，禁止目录逃逸。"""
+
+        try:
+            return normalize_queue_path_component(value, field_name=field_name)
+        except ValueError as error:
+            raise PersistenceOperationError(
+                f"队列 {field_name} 不合法",
+                details={field_name: value},
+            ) from error
+
+    @classmethod
+    def _validate_idempotent_enqueue(
+        cls,
+        *,
+        existing_task: QueueMessage,
+        payload: dict[str, object],
+    ) -> None:
+        """校验确定性消息 id 的重复投递仍表示同一份任务负载。"""
+
+        expected_fingerprint = cls._json_fingerprint(payload, field_name="payload")
+        actual_fingerprint = cls._json_fingerprint(
+            existing_task.payload,
+            field_name="payload",
+        )
+        if actual_fingerprint == expected_fingerprint:
+            return
+        raise PersistenceOperationError(
+            "队列消息 id 已对应不同任务负载",
+            details={
+                "queue_name": existing_task.queue_name,
+                "task_id": existing_task.task_id,
+                "existing_payload_fingerprint": actual_fingerprint,
+                "requested_payload_fingerprint": expected_fingerprint,
+            },
+        )
+
+    @staticmethod
+    def _json_fingerprint(
+        value: dict[str, object],
+        *,
+        field_name: str,
+    ) -> str:
+        """校验 JSON 映射并计算与字段顺序无关的稳定 fingerprint。"""
+
+        try:
+            serialized_payload = json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError) as error:
+            raise PersistenceOperationError(
+                f"队列消息 {field_name} 不是合法 JSON",
+                details={
+                    "field_name": field_name,
+                    "error_type": error.__class__.__name__,
+                },
+            ) from error
+        return hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
 
     def claim_next(self, *, queue_name: str, worker_id: str) -> QueueMessage | None:
         """领取指定队列中的下一条任务。
@@ -278,7 +250,9 @@ class LocalFileQueueBackend:
         - int：本次恢复的任务数量。
         """
 
-        timeout_seconds = max(0.1, float(lease_timeout_seconds or self.settings.lease_timeout_seconds))
+        timeout_seconds = max(
+            0.1, float(lease_timeout_seconds or self.settings.lease_timeout_seconds)
+        )
         leased_dir = self._get_state_dir(queue_name, "leased")
         pending_dir = self._get_state_dir(queue_name, "pending")
         recovered_count = 0
@@ -298,7 +272,9 @@ class LocalFileQueueBackend:
                     retention_seconds=_CLAIM_TRANSITION_RECOVERY_GRACE_SECONDS,
                 ):
                     continue
-                if not self._is_lease_expired(queue_task, timeout_seconds=timeout_seconds):
+                if not self._is_lease_expired(
+                    queue_task, timeout_seconds=timeout_seconds
+                ):
                     continue
                 pending_path = pending_dir / task_path.name
                 recovered_task = self._build_recovered_task(queue_task)
@@ -351,7 +327,10 @@ class LocalFileQueueBackend:
                 **dict(metadata or {}),
             },
         )
-        task_path = self._get_state_dir(queue_message.queue_name, "leased") / f"{queue_message.task_id}.json"
+        task_path = (
+            self._get_state_dir(queue_message.queue_name, "leased")
+            / f"{queue_message.task_id}.json"
+        )
         self._assert_current_lease(task_path=task_path, queue_message=queue_message)
         self._overwrite_task_file(task_path, refreshed_task)
         return refreshed_task
@@ -377,12 +356,16 @@ class LocalFileQueueBackend:
         completed_deleted = self._cleanup_state_dir(
             queue_name=queue_name,
             state_name="completed",
-            retention_seconds=float(completed_retention_seconds or self.settings.completed_retention_seconds),
+            retention_seconds=float(
+                completed_retention_seconds or self.settings.completed_retention_seconds
+            ),
         )
         failed_deleted = self._cleanup_state_dir(
             queue_name=queue_name,
             state_name="failed",
-            retention_seconds=float(failed_retention_seconds or self.settings.failed_retention_seconds),
+            retention_seconds=float(
+                failed_retention_seconds or self.settings.failed_retention_seconds
+            ),
         )
         return {"completed": completed_deleted, "failed": failed_deleted}
 
@@ -402,15 +385,23 @@ class LocalFileQueueBackend:
         - int：本次删除的队列目录数量。
         """
 
-        normalized_prefix = queue_name_prefix.strip()
-        if not normalized_prefix:
-            return 0
-        timeout_seconds = max(0.1, float(retention_seconds or self.settings.response_queue_retention_seconds))
+        normalized_prefix = self._normalize_path_component(
+            queue_name_prefix,
+            field_name="queue_name_prefix",
+        )
+        timeout_seconds = max(
+            0.1,
+            float(retention_seconds or self.settings.response_queue_retention_seconds),
+        )
         deleted_count = 0
         for queue_dir in self.root_dir.iterdir() if self.root_dir.exists() else ():
-            if not queue_dir.is_dir() or not queue_dir.name.startswith(normalized_prefix):
+            if not queue_dir.is_dir() or not queue_dir.name.startswith(
+                normalized_prefix
+            ):
                 continue
-            if not self._is_path_tree_expired(queue_dir, retention_seconds=timeout_seconds):
+            if not self._is_path_tree_expired(
+                queue_dir, retention_seconds=timeout_seconds
+            ):
                 continue
             try:
                 shutil.rmtree(queue_dir)
@@ -435,22 +426,29 @@ class LocalFileQueueBackend:
         - bool：实际删除目录时返回 True，目录不存在时返回 False。
         """
 
-        normalized_queue_name = queue_name.strip()
-        if not normalized_queue_name:
-            return False
+        normalized_queue_name = self._normalize_path_component(
+            queue_name,
+            field_name="queue_name",
+        )
         root_dir = self.root_dir.resolve()
         queue_dir = (self.root_dir / normalized_queue_name).resolve()
         if queue_dir.parent != root_dir:
             raise PersistenceOperationError(
                 "删除队列目录失败",
-                details={"queue_name": normalized_queue_name, "reason": "invalid_queue_name"},
+                details={
+                    "queue_name": normalized_queue_name,
+                    "reason": "invalid_queue_name",
+                },
             )
         if not queue_dir.exists():
             return False
         if not queue_dir.is_dir():
             raise PersistenceOperationError(
                 "删除队列目录失败",
-                details={"queue_name": normalized_queue_name, "reason": "not_a_directory"},
+                details={
+                    "queue_name": normalized_queue_name,
+                    "reason": "not_a_directory",
+                },
             )
         try:
             shutil.rmtree(queue_dir)
@@ -494,7 +492,9 @@ class LocalFileQueueBackend:
         """删除匹配任一引用和指定状态的队列消息。"""
 
         normalized_references = self._normalize_references(references)
-        allowed_statuses = frozenset(status.strip() for status in statuses if status.strip())
+        allowed_statuses = frozenset(
+            status.strip() for status in statuses if status.strip()
+        )
         if not normalized_references or not allowed_statuses:
             return 0
         deleted_count = 0
@@ -585,7 +585,9 @@ class LocalFileQueueBackend:
                 **dict(metadata or {}),
             },
         )
-        self._move_task(queue_message, target_state_name="completed", next_task=completed_task)
+        self._move_task(
+            queue_message, target_state_name="completed", next_task=completed_task
+        )
         return completed_task
 
     def fail(
@@ -622,7 +624,9 @@ class LocalFileQueueBackend:
                 **dict(metadata or {}),
             },
         )
-        self._move_task(queue_message, target_state_name="failed", next_task=failed_task)
+        self._move_task(
+            queue_message, target_state_name="failed", next_task=failed_task
+        )
         return failed_task
 
     def get_task(self, *, queue_name: str, task_id: str) -> QueueMessage | None:
@@ -636,8 +640,12 @@ class LocalFileQueueBackend:
         - 读取到的队列消息；不存在时返回 None。
         """
 
+        normalized_task_id = self._normalize_path_component(
+            task_id,
+            field_name="task_id",
+        )
         for state_name in ("pending", "leased", "completed", "failed"):
-            task_path = self._get_state_dir(queue_name, state_name) / f"{task_id}.json"
+            task_path = self._get_state_dir(queue_name, state_name) / f"{normalized_task_id}.json"
             if task_path.is_file():
                 return self._read_task(task_path)
 
@@ -667,10 +675,18 @@ class LocalFileQueueBackend:
     ) -> None:
         """把任务文件从 leased 目录移动到目标目录。"""
 
-        source_path = self._get_state_dir(queue_message.queue_name, "leased") / f"{queue_message.task_id}.json"
-        target_path = self._get_state_dir(queue_message.queue_name, target_state_name) / f"{queue_message.task_id}.json"
+        source_path = (
+            self._get_state_dir(queue_message.queue_name, "leased")
+            / f"{queue_message.task_id}.json"
+        )
+        target_path = (
+            self._get_state_dir(queue_message.queue_name, target_state_name)
+            / f"{queue_message.task_id}.json"
+        )
         try:
-            self._assert_current_lease(task_path=source_path, queue_message=queue_message)
+            self._assert_current_lease(
+                task_path=source_path, queue_message=queue_message
+            )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             # 先把当前 lease 原子更新为终态内容，再原子移动到终态目录。
             # 这样任意读者看到的 JSON 都是完整文档，不会观察到截断写入。
@@ -686,7 +702,9 @@ class LocalFileQueueBackend:
                 },
             ) from error
 
-    def _assert_current_lease(self, *, task_path: Path, queue_message: QueueMessage) -> None:
+    def _assert_current_lease(
+        self, *, task_path: Path, queue_message: QueueMessage
+    ) -> None:
         """确认当前 leased 文件仍属于传入的队列消息。"""
 
         if not task_path.is_file():
@@ -716,7 +734,10 @@ class LocalFileQueueBackend:
     def _write_task(self, queue_task: QueueMessage, *, state_name: str) -> None:
         """把队列消息写入指定状态目录。"""
 
-        target_path = self._get_state_dir(queue_task.queue_name, state_name) / f"{queue_task.task_id}.json"
+        target_path = (
+            self._get_state_dir(queue_task.queue_name, state_name)
+            / f"{queue_task.task_id}.json"
+        )
         self._write_task_to_path(target_path, queue_task)
 
     def _overwrite_task_file(self, task_path: Path, queue_task: QueueMessage) -> None:
@@ -728,9 +749,7 @@ class LocalFileQueueBackend:
         """把队列消息原子写入指定路径。"""
 
         payload = self._build_task_payload(queue_task)
-        temp_path = task_path.with_name(
-            f".{task_path.name}.{uuid4().hex}.tmp"
-        )
+        temp_path = task_path.with_name(f".{task_path.name}.{uuid4().hex}.tmp")
         try:
             task_path.parent.mkdir(parents=True, exist_ok=True)
             temp_path.write_text(
@@ -760,9 +779,7 @@ class LocalFileQueueBackend:
         replace_path_with_retry(
             source_path,
             target_path,
-            retry_timeout_seconds=(
-                self.settings.file_operation_retry_timeout_seconds
-            ),
+            retry_timeout_seconds=(self.settings.file_operation_retry_timeout_seconds),
         )
 
     def _build_task_payload(self, queue_task: QueueMessage) -> dict[str, object]:
@@ -840,21 +857,29 @@ class LocalFileQueueBackend:
             },
         )
 
-    def _is_lease_expired(self, queue_task: QueueMessage, *, timeout_seconds: float) -> bool:
+    def _is_lease_expired(
+        self, queue_task: QueueMessage, *, timeout_seconds: float
+    ) -> bool:
         """判断队列消息的 lease 是否已经超时。"""
 
         leased_at = self._parse_time(queue_task.leased_at)
         if leased_at is None:
             return True
-        return (datetime.now(timezone.utc) - leased_at).total_seconds() >= timeout_seconds
+        return (
+            datetime.now(timezone.utc) - leased_at
+        ).total_seconds() >= timeout_seconds
 
-    def _cleanup_state_dir(self, *, queue_name: str, state_name: str, retention_seconds: float) -> int:
+    def _cleanup_state_dir(
+        self, *, queue_name: str, state_name: str, retention_seconds: float
+    ) -> int:
         """清理指定状态目录中过期的任务文件。"""
 
         state_dir = self._get_state_dir(queue_name, state_name)
         deleted_count = 0
         for task_path in sorted(state_dir.glob("*.json")):
-            if not self._is_file_expired(task_path, retention_seconds=max(0.1, retention_seconds)):
+            if not self._is_file_expired(
+                task_path, retention_seconds=max(0.1, retention_seconds)
+            ):
                 continue
             try:
                 task_path.unlink()
@@ -894,7 +919,15 @@ class LocalFileQueueBackend:
     def _get_state_dir(self, queue_name: str, state_name: str) -> Path:
         """返回指定队列状态目录并确保目录存在。"""
 
-        target_dir = self.root_dir / queue_name / state_name
+        normalized_queue_name = self._normalize_path_component(
+            queue_name,
+            field_name="queue_name",
+        )
+        normalized_state_name = self._normalize_path_component(
+            state_name,
+            field_name="state_name",
+        )
+        target_dir = self.root_dir / normalized_queue_name / normalized_state_name
         target_dir.mkdir(parents=True, exist_ok=True)
         return target_dir
 

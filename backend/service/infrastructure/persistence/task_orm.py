@@ -89,6 +89,13 @@ class TaskAttemptEntity(Base):
     """映射 TaskAttempt 对象。"""
 
     __tablename__ = "task_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_id",
+            "attempt_no",
+            name="uq_task_attempts_task_attempt_no",
+        ),
+    )
 
     attempt_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     task_id: Mapped[str] = mapped_column(

@@ -350,7 +350,15 @@ export interface WorkflowAppVersionComparison {
   target_contract_fingerprint: string
 }
 
-export type WorkflowRunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timeout' | string
+export type WorkflowRunState =
+  | 'created'
+  | 'queued'
+  | 'dispatching'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out'
 export type WorkflowAppRuntimeState = 'created' | 'starting' | 'running' | 'stopping' | 'stopped' | 'failed' | string
 
 export interface WorkflowPreviewRun {

@@ -7,20 +7,28 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_platform_model_type,
 )
-from backend.service.application.task_type_support import require_supported_platform_task_type
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService, TaskQueryFilters
+from backend.service.application.task_type_support import (
+    require_supported_platform_task_type,
+)
+from backend.service.application.tasks.task_service import (
+    SqlAlchemyTaskService,
+    TaskQueryFilters,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 from .deletion import delete_conversion_task_outputs
 from .outputs import read_task_conversion_result_response
@@ -75,7 +83,6 @@ def create_task_conversion_router(
         body: TaskConversionTaskCreateRequestBody,
         principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
         session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-        queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
         dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     ) -> TaskConversionTaskSubmissionResponse:
         """创建一个 task_type 专用 conversion 任务。"""
@@ -87,7 +94,6 @@ def create_task_conversion_router(
             service_entries=service_entries,
             principal=principal,
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
 
@@ -261,7 +267,6 @@ def submit_task_conversion_task(
     service_entries: dict[str, TaskConversionServiceEntry],
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> TaskConversionTaskSubmissionResponse:
     """提交一条 task-native conversion 任务。"""
@@ -290,7 +295,6 @@ def submit_task_conversion_task(
     submission = entry.service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     ).submit_conversion_task(
         entry.request_cls(**request_kwargs),
         created_by=principal.principal_id,

@@ -16,7 +16,8 @@
 
 ## 当前边界
 
-- 训练和转换都先创建 TaskRecord，再写入 LocalFileQueueBackend，由独立 worker 消费。
+- 训练和转换提交都在一个 Unit of Work 中写业务记录、TaskRecord、初始 TaskEvent 和 QueueOutboxMessage；Dispatcher 提交事务后再写 LocalFileQueueBackend。
+- 持久任务进入业务 Worker 前必须按 `task_id + attempt_no` 原子领取 TaskAttempt；重复消息和失去 owner 的旧执行者不能重复副作用或覆盖终态。
 - 部署推理顺序图覆盖同步直返接口，不展开异步 inference task 链。
 - 同步 deployment 推理接口不会自动启动 sync 子进程；未启动时会要求先调用 start 或 warmup。
 - workflow runtime 当前公开接口已经拆成两条路径：preview-runs 在 backend-service 当前进程同步直调；app-runtimes/{workflow_runtime_id}/invoke 走长期 worker。
@@ -33,9 +34,10 @@ sequenceDiagram
     actor Client as 调用方
     participant API as detection_training_tasks.create_detection_training_task
     participant TrainSvc as model_type 对应 TrainingTaskService
-    participant TaskSvc as SqlAlchemyTaskService
-    participant DB as TaskRecord / TaskEvent
+    participant DB as 业务记录 / Task / Event / Outbox
+    participant Dispatcher as QueueOutboxDispatcher
     participant Queue as LocalFileQueueBackend<br/>model-specific training queue
+    participant Claim as TaskAttempt CAS claim
     participant Worker as model_type 对应 TrainingQueueWorker
     participant Runner as model_type 对应 TrainerRunner
     participant TrainProc as process_training_task
@@ -46,37 +48,35 @@ sequenceDiagram
     API->>API: 校验 project scope、task_type=detection 与 model_type
     API->>TrainSvc: submit_training_task(request)
     TrainSvc->>TrainSvc: 解析 DatasetExport\n构建 task_spec
-    TrainSvc->>TaskSvc: create_task(..., worker_pool=model-specific training kind)
-    TaskSvc->>DB: 写入 TaskRecord
-    DB-->>TaskSvc: created_task
-    TaskSvc-->>TrainSvc: created_task
-    TrainSvc->>Queue: enqueue(task_id)
-    Queue-->>TrainSvc: queue_task
-    TrainSvc->>TaskSvc: append_task_event(state=queued)
-    TaskSvc->>DB: 写入 TaskEvent / 回写任务状态
+    TrainSvc->>DB: 单事务写业务记录、Task queued、Event、Outbox
+    DB-->>TrainSvc: commit(task_id, deterministic message_id)
     TrainSvc-->>API: submission
-    API-->>Client: 202 Accepted(task_id, queue_task_id)
+    API-->>Client: 202 Accepted(task_id, message_id)
+
+    Dispatcher->>DB: 短事务 CAS claim pending Outbox
+    Dispatcher->>Queue: enqueue(deterministic message)
+    Dispatcher->>DB: CAS mark dispatched
 
     loop worker 轮询
-        Worker->>Queue: claim_next(model-specific training queue)
-        Queue-->>Worker: queue_task
+        Claim->>Queue: claim_next(model-specific training queue)
+        Claim->>DB: claim TaskAttempt(task_id, attempt_no, owner, heartbeat)
+        Claim-->>Worker: 当前 owner 获得的 queue task
     end
     Worker->>Runner: run_training(training_task_id)
     Runner->>TrainProc: process_training_task(task_id)
     TrainProc->>DB: 读取 TaskRecord / TaskSpec
     TrainProc->>Storage: 读取 DatasetExport manifest
-    TrainProc->>TaskSvc: append_task_event(state=running)
-    TaskSvc->>DB: 写入 running 事件
+    TrainProc->>DB: 写入 running 事件
+    TrainProc->>TrainProc: 获取 Training exclusive GPU/MIG lease（CUDA 时）
     TrainProc->>TrainProc: 执行当前 model_type 的 detection training runner
     TrainProc->>Storage: 写 best_ckpt/latest_ckpt/metrics/summary/labels
     TrainProc->>ModelReg: _register_training_output_model_version(best checkpoint)
     ModelReg->>DB: 写 ModelVersion / ModelFile 关联
-    TrainProc->>TaskSvc: append_task_event(state=succeeded, result=...)
-    TaskSvc->>DB: 写 succeeded 事件并回写状态
+    TrainProc->>DB: 写 succeeded 事件并回写 Task 状态
     TrainProc-->>Runner: TrainingTaskResult
     Runner-->>Worker: TrainingRunResult
-    Worker->>Queue: complete(queue_task, metadata=...)
-    Queue-->>Worker: completed
+    Worker->>DB: owner + heartbeat CAS 完成 TaskAttempt
+    Worker->>Queue: complete/ACK(queue_task)
 ```
 
 训练链的关键点是 REST 层只负责创建任务和入队，真正的训练、训练输出文件写入和 ModelVersion 登记都在 worker 消费阶段完成。
@@ -91,9 +91,10 @@ sequenceDiagram
     actor Client as 调用方
     participant API as create_detection_training_task
     participant TrainSvc as model_type 对应 TrainingTaskService
-    participant TaskSvc as SqlAlchemyTaskService
-    participant DB as TaskRecord / TaskEvent
+    participant DB as 业务记录 / Task / Event / Outbox / Attempt
+    participant Dispatcher as QueueOutboxDispatcher
     participant Queue as LocalFileQueueBackend
+    participant Claim as TaskAttempt CAS claim
     participant Worker as model_type 对应 TrainingQueueWorker
     participant Proc as process_training_task
 
@@ -103,27 +104,27 @@ sequenceDiagram
         TrainSvc-->>API: InvalidRequestError
         API-->>Client: 400 / 403
         Note over Client: 修复输入边界后重新提交
-    else TaskRecord 已创建但入队失败
-        TrainSvc->>TaskSvc: create_task(...)
-        TaskSvc->>DB: 写入 TaskRecord
-        TrainSvc->>Queue: enqueue(task_id)
-        Queue-->>TrainSvc: exception
-        TrainSvc->>TaskSvc: append_task_event(state=failed)
-        TaskSvc->>DB: 写 failed 事件并回写状态
-        API-->>Client: 500
-        Client->>API: GET /api/v1/models/detection/training-tasks/{task_id}
-        API-->>Client: failed + error_message
-        Note over Client: 修复队列或配置后重新创建 training task
+    else 提交事务失败
+        TrainSvc->>DB: 写业务记录、Task、Event、Outbox
+        DB-->>TrainSvc: rollback
+        API-->>Client: 500（不会留下孤立 Task）
+    else Dispatcher 写队列暂时失败
+        Dispatcher->>DB: claim pending Outbox
+        Dispatcher->>Queue: enqueue
+        Queue-->>Dispatcher: exception
+        Dispatcher->>DB: release_for_retry(next_attempt_at, error)
+        Note over Dispatcher: Task 保持 queued；不伪造 failed，也不要求调用方重建任务
     else worker 执行阶段失败
-        Worker->>Queue: claim_next(model-specific training queue)
-        Queue-->>Worker: queue_task
+        Claim->>Queue: claim_next(model-specific training queue)
+        Claim->>DB: CAS claim TaskAttempt
+        Claim-->>Worker: 当前 owner 的 queue task
         Worker->>Proc: process_training_task(task_id)
-        Proc->>TaskSvc: append_task_event(state=running)
-        TaskSvc->>DB: 写 running 事件
+        Proc->>DB: 写 running 事件
         Proc->>Proc: 执行当前 model_type 的 detection training runner
         Proc-->>Proc: exception
-        Proc->>TaskSvc: append_task_event(state=failed, result=partial outputs)
-        TaskSvc->>DB: 写 failed 事件并回写状态
+        Proc->>DB: 写 failed 事件并回写 Task 状态
+        Worker->>DB: owner + heartbeat CAS 完成 failed Attempt
+        Worker->>Queue: fail/ACK queue task
         Client->>API: GET /api/v1/models/detection/training-tasks/{task_id}
         API-->>Client: failed + progress + output_object_prefix
         Note over Client: 修复数据、warm start 权重或运行环境后重新提交新任务
@@ -150,14 +151,15 @@ sequenceDiagram
     participant API as detection_conversion_tasks.create
     participant ConvSvc as model_type 对应 ConversionTaskService
     participant Planner as model_type 对应 ConversionPlanner
-    participant TaskSvc as SqlAlchemyTaskService
-    participant DB as TaskRecord / TaskEvent / ModelBuild
+    participant DB as 业务记录 / Task / Event / Outbox / Attempt / ModelBuild
+    participant Dispatcher as QueueOutboxDispatcher
     participant Queue as LocalFileQueueBackend<br/>model-specific conversion queue
+    participant Claim as TaskAttempt CAS claim
     participant Worker as model_type 对应 ConversionQueueWorker
     participant Proc as process_conversion_task
-    participant Runner as model_type 对应 ConversionRunner
+    participant Supervisor as SupervisedConversionRunner
+    participant AttemptProc as conversion attempt process tree
     participant Storage as LocalDatasetStorage
-    participant Script as OpenVINO/TensorRT 子进程脚本
 
     Client->>API: POST /api/v1/models/detection/conversion-tasks/*
     API->>API: 校验 project scope、task_type=detection 与 model_type
@@ -165,48 +167,47 @@ sequenceDiagram
     ConvSvc->>Planner: build_plan(source_model_version_id, target_formats)
     Planner-->>ConvSvc: ConversionPlan
     ConvSvc->>ConvSvc: 校验目标格式\n解析 source runtime target
-    ConvSvc->>TaskSvc: create_task(..., worker_pool=model-specific conversion kind)
-    TaskSvc->>DB: 写入 TaskRecord
-    ConvSvc->>Queue: enqueue(task_id)
-    Queue-->>ConvSvc: queue_task
-    ConvSvc->>TaskSvc: append_task_event(state=queued)
-    TaskSvc->>DB: 写入 queued 事件
+    ConvSvc->>DB: 单事务写 conversion、Task queued、Event、Outbox
+    DB-->>ConvSvc: commit(task_id, deterministic message_id)
     ConvSvc-->>API: submission
     API-->>Client: 202 Accepted(task_id, target_formats)
 
+    Dispatcher->>DB: 短事务 CAS claim pending Outbox
+    Dispatcher->>Queue: enqueue(deterministic message)
+    Dispatcher->>DB: CAS mark dispatched
+
     loop worker 轮询
-        Worker->>Queue: claim_next(model-specific conversion queue)
-        Queue-->>Worker: queue_task
+        Claim->>Queue: claim_next(model-specific conversion queue)
+        Claim->>DB: claim TaskAttempt(task_id, attempt_no, owner, heartbeat)
+        Claim-->>Worker: 当前 owner 获得的 queue task
     end
     Worker->>Proc: process_conversion_task(task_id)
     Proc->>DB: 读取 TaskRecord / TaskSpec
     Proc->>Proc: 解析 plan 与 source runtime target
-    Proc->>TaskSvc: append_task_event(state=running, stage=planning)
-    TaskSvc->>DB: 写入 running 事件
+    Proc->>DB: 写入 running 事件
     Proc->>Storage: write conversion-plan.json
-    Proc->>Runner: run_conversion(plan_steps, output_object_prefix)
-    Runner->>Storage: 读取 checkpoint / 输出目录
-    Runner->>Runner: export ONNX / validate / optimize
-    opt 目标包含 OpenVINO IR
-        Runner->>Script: subprocess build_openvino_ir.py
-        Script-->>Runner: xml/bin 结果
+    Proc->>Supervisor: run_conversion(plan, immutable output prefix)
+    opt TensorRT 或来源 CUDA
+        Supervisor->>Supervisor: 获取 Conversion exclusive GPU/MIG lease
     end
-    opt 目标包含 TensorRT engine
-        Runner->>Script: subprocess build_tensorrt_engine.py
-        Script-->>Runner: engine 结果
-    end
-    Runner->>Storage: 写 builds 产物
-    Runner-->>Proc: outputs + metadata
-    Proc->>DB: 注册 ModelBuild / ModelFile
+    Supervisor->>AttemptProc: 启动受监督完整进程树（单一硬 deadline）
+    AttemptProc->>Storage: 写 attempt staging 与 stdout/stderr 日志
+    AttemptProc-->>Supervisor: staged outputs
+    Supervisor->>Supervisor: 文件、数值一致性、OpenVINO/TensorRT smoke
+    Supervisor->>Storage: write publication(publishing)
+    Supervisor->>Storage: 原子 rename staging -> immutable builds
+    Supervisor->>Storage: write publication(published_pending_registration)
+    Supervisor-->>Proc: immutable outputs + metadata
+    Proc->>DB: 单 UoW 注册全部 ModelBuild / ModelFile
     Proc->>Storage: write conversion-report.json
-    Proc->>TaskSvc: append_task_event(state=succeeded, result=...)
-    TaskSvc->>DB: 写入 succeeded 事件
+    Proc->>Storage: mark publication registered
+    Proc->>DB: 写入 succeeded 事件并回写 Task 状态
     Proc-->>Worker: ConversionTaskResult
-    Worker->>Queue: complete(queue_task, metadata=...)
-    Queue-->>Worker: completed
+    Worker->>DB: owner + heartbeat CAS 完成 TaskAttempt
+    Worker->>Queue: complete/ACK(queue_task)
 ```
 
-转换链的关键点是规划阶段先在 service 层固化，真正的 ONNX、OpenVINO、TensorRT 构建发生在 worker 侧；其中 OpenVINO 和 TensorRT 进一步通过独立脚本子进程执行。
+转换链的关键点是规划阶段先在 service 层固化，整个构建与其辅助程序都位于一个可终止的子进程树内；任何产物在通过完整门禁和原子 rename 前都不是正式 ModelBuild。
 
 当前公开入口按 `task_type` 组织，detection 转换统一走 `/api/v1/models/detection/conversion-tasks/*`；具体转换仍按 `model_type` 进入 `yolox-conversion`、`yolov8-conversion`、`yolo11-conversion`、`yolo26-conversion` 或 `rfdetr-conversion`。这里的队列和 runner 是模型实现边界，不应被重命名成单一 `detection-conversion`。
 
@@ -219,13 +220,15 @@ sequenceDiagram
     participant API as _submit_detection_conversion_task
     participant ConvSvc as model_type 对应 ConversionTaskService
     participant Planner as model_type 对应 ConversionPlanner
-    participant TaskSvc as SqlAlchemyTaskService
-    participant DB as TaskRecord / TaskEvent
+    participant DB as 业务记录 / Task / Event / Outbox / Attempt / ModelBuild
+    participant Dispatcher as QueueOutboxDispatcher
     participant Queue as LocalFileQueueBackend
+    participant Claim as TaskAttempt CAS claim
     participant Worker as model_type 对应 ConversionQueueWorker
     participant Proc as process_conversion_task
-    participant Runner as model_type 对应 ConversionRunner
-    participant Script as OpenVINO/TensorRT 子进程脚本
+    participant Supervisor as SupervisedConversionRunner
+    participant AttemptProc as conversion attempt process tree
+    participant Storage as LocalDatasetStorage
 
     Client->>API: POST /api/v1/models/detection/conversion-tasks/*
     API->>ConvSvc: submit_conversion_task(request)
@@ -234,38 +237,42 @@ sequenceDiagram
         Planner-->>ConvSvc: InvalidRequestError
         API-->>Client: 400
         Note over Client: 修复来源版本、目标格式或 runtime 参数后重新提交
-    else TaskRecord 已创建但入队失败
-        ConvSvc->>TaskSvc: create_task(...)
-        TaskSvc->>DB: 写入 TaskRecord
-        ConvSvc->>Queue: enqueue(task_id)
-        Queue-->>ConvSvc: exception
-        ConvSvc->>TaskSvc: append_task_event(state=failed)
-        TaskSvc->>DB: 写 failed 事件并回写状态
-        API-->>Client: 500
-        Client->>API: GET /api/v1/models/detection/conversion-tasks/{task_id}
-        API-->>Client: failed + error_message
-        Note over Client: 修复队列或配置后重新创建 conversion task
-    else worker 构建阶段失败
-        Worker->>Queue: claim_next(model-specific conversion queue)
-        Queue-->>Worker: queue_task
+    else 提交事务失败
+        ConvSvc->>DB: 写 conversion、Task、Event、Outbox
+        DB-->>ConvSvc: rollback
+        API-->>Client: 500（不会留下孤立 Task）
+    else Dispatcher 写队列暂时失败
+        Dispatcher->>DB: claim pending Outbox
+        Dispatcher->>Queue: enqueue
+        Queue-->>Dispatcher: exception
+        Dispatcher->>DB: release_for_retry(next_attempt_at, error)
+        Note over Dispatcher: Task 保持 queued，后续继续投递同一确定性 message
+    else 完整 attempt 超时或构建失败
+        Claim->>Queue: claim_next(model-specific conversion queue)
+        Claim->>DB: CAS claim TaskAttempt
+        Claim-->>Worker: 当前 owner 的 queue task
         Worker->>Proc: process_conversion_task(task_id)
-        Proc->>TaskSvc: append_task_event(state=running, stage=planning)
-        TaskSvc->>DB: 写 running 事件
-        Proc->>Runner: run_conversion(...)
-        opt OpenVINO / TensorRT 子步骤
-            Runner->>Script: build_openvino_ir.py / build_tensorrt_engine.py
-            Script-->>Runner: exception
-        end
-        Runner-->>Proc: exception
-        Proc->>TaskSvc: append_task_event(state=failed, result=plan/report key)
-        TaskSvc->>DB: 写 failed 事件并回写状态
+        Proc->>Supervisor: run_conversion(...)
+        Supervisor->>AttemptProc: 启动完整进程树
+        AttemptProc-->>Supervisor: timeout / exception
+        Supervisor->>AttemptProc: 终止完整子孙进程树
+        Proc->>DB: 写 timed_out/failed Task 终态
+        Worker->>DB: owner + heartbeat CAS 写 Attempt 终态
+        Note over Storage: 未通过门禁的 staging 不发布为 builds
         Client->>API: GET /api/v1/models/detection/conversion-tasks/{task_id}
-        API-->>Client: failed + plan_object_key + report_object_key
+        API-->>Client: failed/timed_out + plan/report/log key
         Note over Client: 修复 OpenVINO、TensorRT 或来源 checkpoint 后重新创建 conversion task
+    else 原子发布后进程在 DB 登记前退出
+        Supervisor->>Storage: 已存在不可变 builds + publication
+        Claim->>DB: lease recovery 接管同一 Attempt
+        Claim-->>Worker: finalization recovery
+        Worker->>Storage: 校验 publication 与正式文件
+        Worker->>DB: 登记或核对 ModelBuild/ModelFile，不重放转换
+        Worker->>DB: 收敛 Task 与 Attempt succeeded
     end
 ```
 
-转换失败态会稳定回写 `plan_object_key`，并预留 `report_object_key`；如果失败发生在报告真正写出之前，`result` 接口可能返回文件缺失，此时应先查看任务详情和事件流定位失败阶段。
+转换失败态会保留 plan、attempt stdout/stderr 和可用报告诊断。已发布文件与 DB 之间的崩溃窗口由不可变 publication 恢复；任务已终止、没有任何 DB build 且超过 grace 的孤儿才由 reconciler 回收，运行中或状态不明确的目录不会被猜测删除。
 
 ## 部署推理链
 

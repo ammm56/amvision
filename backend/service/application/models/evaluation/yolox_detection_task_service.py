@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError, ServiceConfigurationError
 from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.models.evaluation.yolox_detection import (
@@ -39,6 +38,10 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -75,13 +78,11 @@ class SqlAlchemyYoloXEvaluationTaskService(
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
-        queue_backend: QueueBackend | None = None,
     ) -> None:
         """初始化 YOLOX 评估任务服务。"""
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.queue_backend = queue_backend
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_evaluation_task(
@@ -94,7 +95,6 @@ class SqlAlchemyYoloXEvaluationTaskService(
         """创建并入队一条 YOLOX 数据集级评估任务。"""
 
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         dataset_export = self._resolve_dataset_export(request)
         self._resolve_runtime_target(request)
         task_spec = self._build_task_spec(request=request, dataset_export=dataset_export)
@@ -115,59 +115,25 @@ class SqlAlchemyYoloXEvaluationTaskService(
                     "format_id": dataset_export.format_id,
                     "model_version_id": request.model_version_id,
                 },
-            )
-        )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=YOLOX_EVALUATION_QUEUE_NAME,
-                payload={"task_id": created_task.task_id},
-                metadata={
-                    "project_id": request.project_id,
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                    "dataset_version_id": dataset_export.dataset_version_id,
-                    "format_id": dataset_export.format_id,
-                    "model_version_id": request.model_version_id,
-                },
-            )
-        except Exception as error:
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=created_task.task_id,
-                    event_type="result",
-                    message="yolox evaluation queue submission failed",
-                    payload=build_task_failure_payload(
-                        error,
-                        progress={"stage": "failed"},
-                        result={
-                            "dataset_export_id": dataset_export.dataset_export_id,
-                            "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                            "model_version_id": request.model_version_id,
-                        },
-                    ),
-                )
-            )
-            raise
-
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message="yolox evaluation queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=YOLOX_EVALUATION_QUEUE_NAME,
+                    metadata={
+                        "project_id": request.project_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
+                        "model_version_id": request.model_version_id,
                     },
-                },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return YoloXEvaluationTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -396,13 +362,6 @@ class SqlAlchemyYoloXEvaluationTaskService(
         if self.dataset_storage is None:
             raise ServiceConfigurationError("处理评估任务时缺少 dataset storage")
         return self.dataset_storage
-
-    def _require_queue_backend(self) -> QueueBackend:
-        """返回提交评估任务必需的队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("提交评估任务时缺少 queue backend")
-        return self.queue_backend
 
     def _resolve_dataset_export(self, request: YoloXEvaluationTaskRequest) -> DatasetExport:
         """根据 dataset_export_id 或 manifest_object_key 解析评估输入资源。"""

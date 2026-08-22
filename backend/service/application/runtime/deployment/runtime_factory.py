@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.models.inference.classification_async_inference_gateway import (
@@ -32,8 +31,8 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import BackendServiceSettings
-
 
 _GATEWAY_REGISTRY_CLASSES: dict[str, type] = {
     "detection": DetectionAsyncInferenceGatewayDispatcherRegistry,

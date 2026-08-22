@@ -4,29 +4,32 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 
 import pytest
 
-from backend.queue import QueueMessage
 from backend.service.application.error_serialization import serialize_error
-from backend.service.application.errors import InvalidRequestError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ServiceConfigurationError,
+)
+from backend.service.application.ports.queue import QueueMessage
 from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.workers.conversion.conversion_queue_failures import (
     build_conversion_queue_failure_metadata,
 )
-from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.conversion.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     optimize_onnx_model,
-    resolve_conversion_project_root,
     resolve_conversion_phase,
+    resolve_conversion_project_root,
     resolve_openvino_ir_build_precision,
     resolve_tensorrt_engine_build_precision,
     run_conversion_script,
 )
+from backend.workers.queue_failure_metadata import build_queue_failure_metadata
+from backend.workers.shared.process_tree_supervisor import ProcessTreeResult
 
 
 def test_model_conversion_common_resolves_phase_and_options() -> None:
@@ -117,34 +120,36 @@ def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pyt
     captured: dict[str, object] = {}
 
     def fake_run(
+        self: object,
         command: list[str],
         *,
-        capture_output: bool,
-        text: bool,
-        encoding: str,
-        errors: str,
-        check: bool,
-        cwd: str,
+        cwd: Path,
         env: dict[str, str],
-    ) -> subprocess.CompletedProcess[str]:
-        """记录 subprocess.run 调用参数。"""
+        tee_output: bool,
+    ) -> ProcessTreeResult:
+        """记录 ProcessTreeSupervisor.run 调用参数。"""
 
         captured.update(
             {
                 "command": command,
-                "capture_output": capture_output,
-                "text": text,
-                "encoding": encoding,
-                "errors": errors,
-                "check": check,
-                "cwd": cwd,
+                "cwd": str(cwd),
                 "env": env,
+                "tee_output": tee_output,
             }
         )
-        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+        return ProcessTreeResult(
+            command=tuple(command),
+            returncode=0,
+            stdout="ok",
+            stderr="",
+            duration_seconds=0.1,
+        )
 
     monkeypatch.setenv("PYTHONPATH", "existing-path")
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "backend.workers.conversion.model_conversion_common.ProcessTreeSupervisor.run",
+        fake_run,
+    )
 
     result = run_conversion_script(
         script_file_name="build_openvino_ir.py",
@@ -153,6 +158,7 @@ def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pyt
 
     assert result.returncode == 0
     assert captured["cwd"] == str(project_root)
+    assert captured["tee_output"] is True
     command = captured["command"]
     assert isinstance(command, list)
     assert command[1].endswith("backend\\workers\\conversion\\scripts\\build_openvino_ir.py")

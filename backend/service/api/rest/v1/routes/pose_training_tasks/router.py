@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.queue import get_queue_backend
@@ -30,20 +29,20 @@ from backend.service.api.rest.v1.routes.pose_training_tasks.schemas import (
 from backend.service.api.rest.v1.routes.pose_training_tasks.services import (
     submit_pose_training_task,
 )
+from backend.service.api.rest.v1.routes.task_training.output_files import (
+    TrainingOutputFileDetailResponse,
+    TrainingOutputFileSummaryResponse,
+)
 from backend.service.api.rest.v1.routes.task_training.services import (
     get_training_task_output_file,
     list_training_task_output_files,
     require_project_access,
 )
-from backend.service.api.rest.v1.routes.task_training.output_files import (
-    TrainingOutputFileDetailResponse,
-    TrainingOutputFileSummaryResponse,
-)
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
 pose_training_tasks_router = APIRouter(prefix="/models", tags=["models"])
 
@@ -59,7 +58,6 @@ def create_pose_training_task(
         AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))
     ],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> PoseTrainingTaskSubmissionResponse:
     """创建 pose 训练任务。"""
@@ -72,7 +70,6 @@ def create_pose_training_task(
         body=body,
         created_by=principal.principal_id,
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
 

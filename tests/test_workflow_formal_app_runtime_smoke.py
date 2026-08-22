@@ -1050,7 +1050,6 @@ def _build_example_runtime(
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     executor = WorkflowApplicationRuntimeExecutor(
         dataset_storage=dataset_storage,

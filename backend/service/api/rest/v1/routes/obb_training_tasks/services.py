@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.rest.v1.routes.obb_training_tasks.schemas import (
     ObbTrainingTaskCreateRequestBody,
     ObbTrainingTaskSubmissionResponse,
@@ -37,7 +36,6 @@ def submit_obb_training_task(
     body: ObbTrainingTaskCreateRequestBody,
     created_by: str,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> ObbTrainingTaskSubmissionResponse:
     """提交 OBB 训练任务。"""
@@ -50,7 +48,6 @@ def submit_obb_training_task(
     service_cls, request_cls = _resolve_obb_training_service_and_request(model_type)
     service = service_cls(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     result = service.submit_training_task(

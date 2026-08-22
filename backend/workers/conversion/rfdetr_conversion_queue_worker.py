@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
-from backend.service.application.errors import InvalidRequestError, ServiceError
+from pathlib import Path
+
+from backend.service.application.backends import ConversionBackend
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     SqlAlchemyRfdetrConversionTaskService,
 )
+from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
+from backend.service.application.runtime.device_leases import DeviceLeaseProviderConfig
 from backend.service.application.tasks.task_service import (
     SqlAlchemyTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.conversion.conversion_queue_failures import (
     build_conversion_queue_failure_metadata,
 )
-from backend.workers.conversion.rfdetr_conversion_runner import LocalRfdetrConversionRunner
-
+from backend.workers.conversion.supervised_conversion_runner import (
+    SupervisedConversionRunner,
+)
 
 RFDETR_CONVERSION_QUEUE_NAME = "rfdetr-conversions"
 RFDETR_CONVERSION_TASK_KIND = "rfdetr-conversion"
@@ -31,8 +38,13 @@ class RfdetrConversionQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
-        conversion_runner: LocalRfdetrConversionRunner | None = None,
+        conversion_runner: ConversionBackend | None = None,
         worker_id: str = "rfdetr-conversion-worker",
+        conversion_workspace_dir: str | Path = "./data/worker",
+        conversion_attempt_timeout_seconds: float = 7200.0,
+        conversion_helper_timeout_seconds: float = 7200.0,
+        conversion_termination_grace_seconds: float = 5.0,
+        device_lease_config: DeviceLeaseProviderConfig | None = None,
     ) -> None:
         """初始化 RF-DETR 转换队列 worker。
 
@@ -48,6 +60,11 @@ class RfdetrConversionQueueWorker:
         self.queue_backend = queue_backend
         self.conversion_runner = conversion_runner
         self.worker_id = worker_id
+        self.conversion_workspace_dir = Path(conversion_workspace_dir)
+        self.conversion_attempt_timeout_seconds = conversion_attempt_timeout_seconds
+        self.conversion_helper_timeout_seconds = conversion_helper_timeout_seconds
+        self.conversion_termination_grace_seconds = conversion_termination_grace_seconds
+        self.device_lease_config = device_lease_config or DeviceLeaseProviderConfig()
 
     def run_once(self) -> bool:
         """消费并执行一条 RF-DETR 转换队列任务。"""
@@ -63,8 +80,18 @@ class RfdetrConversionQueueWorker:
             service = SqlAlchemyRfdetrConversionTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
-                conversion_runner=self.conversion_runner,
+                conversion_runner=self.conversion_runner
+                or SupervisedConversionRunner(
+                    runner_kind="rfdetr",
+                    dataset_storage=self.dataset_storage,
+                    workspace_dir=self.conversion_workspace_dir,
+                    timeout_seconds=self.conversion_attempt_timeout_seconds,
+                    helper_timeout_seconds=self.conversion_helper_timeout_seconds,
+                    termination_grace_seconds=(
+                        self.conversion_termination_grace_seconds
+                    ),
+                    device_lease_config=self.device_lease_config,
+                ),
             )
             task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
             task_service.get_task(task_id)

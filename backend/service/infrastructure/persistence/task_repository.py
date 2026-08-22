@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy import and_, or_, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.service.application.errors import PersistenceOperationError
@@ -210,6 +210,150 @@ class SqlAlchemyTaskRepository:
             return None
 
         return self._to_task_attempt_domain(record)
+
+    def get_task_attempt_by_number(
+        self,
+        task_id: str,
+        attempt_no: int,
+    ) -> TaskAttempt | None:
+        """按 Task id 和 attempt_no 读取唯一执行尝试。"""
+
+        statement = select(TaskAttemptEntity).where(
+            TaskAttemptEntity.task_id == task_id,
+            TaskAttemptEntity.attempt_no == attempt_no,
+        )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 attempt_no 读取 TaskAttempt 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        if record is None:
+            return None
+        return self._to_task_attempt_domain(record)
+
+    def try_create_task_attempt(self, task_attempt: TaskAttempt) -> bool:
+        """通过唯一约束原子创建 TaskAttempt。"""
+
+        try:
+            with self.session.begin_nested():
+                self.session.add(self._to_task_attempt_entity(task_attempt))
+                self.session.flush()
+            return True
+        except IntegrityError:
+            # SAVEPOINT 已回滚，本事务仍可读取胜出的并发记录。
+            return False
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "原子创建 TaskAttempt 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+
+    def try_reclaim_running_task_attempt(
+        self,
+        task_attempt: TaskAttempt,
+        *,
+        expected_worker_id: str | None,
+        expected_heartbeat_at: str | None,
+    ) -> bool:
+        """按旧 owner 与 heartbeat CAS 接管 lease 已恢复的 attempt。"""
+
+        statement = (
+            update(TaskAttemptEntity)
+            .where(
+                TaskAttemptEntity.attempt_id == task_attempt.attempt_id,
+                TaskAttemptEntity.state == "running",
+                TaskAttemptEntity.worker_id == expected_worker_id,
+                TaskAttemptEntity.heartbeat_at == expected_heartbeat_at,
+            )
+            .values(
+                worker_id=task_attempt.worker_id,
+                heartbeat_at=task_attempt.heartbeat_at,
+                metadata_json=dict(task_attempt.metadata),
+            )
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "原子接管 TaskAttempt 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
+
+    def try_heartbeat_running_task_attempt(
+        self,
+        *,
+        attempt_id: str,
+        worker_id: str,
+        heartbeat_at: str,
+    ) -> bool:
+        """仅由当前 owner 原子刷新 running TaskAttempt heartbeat。"""
+
+        statement = (
+            update(TaskAttemptEntity)
+            .where(
+                TaskAttemptEntity.attempt_id == attempt_id,
+                TaskAttemptEntity.state == "running",
+                TaskAttemptEntity.worker_id == worker_id,
+            )
+            .values(heartbeat_at=heartbeat_at)
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "刷新 TaskAttempt heartbeat 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
+
+    def try_finish_running_task_attempt(
+        self,
+        task_attempt: TaskAttempt,
+        *,
+        expected_worker_id: str | None = None,
+        expected_heartbeat_at: str | None = None,
+    ) -> bool:
+        """仅把 running TaskAttempt 原子推进到传入终态。"""
+
+        if task_attempt.state == "running":
+            raise ValueError("结束 TaskAttempt 时 state 不能是 running")
+        conditions = [
+            TaskAttemptEntity.attempt_id == task_attempt.attempt_id,
+            TaskAttemptEntity.state == "running",
+        ]
+        if expected_worker_id is not None:
+            conditions.append(TaskAttemptEntity.worker_id == expected_worker_id)
+        if expected_heartbeat_at is not None:
+            conditions.append(
+                TaskAttemptEntity.heartbeat_at == expected_heartbeat_at
+            )
+        statement = (
+            update(TaskAttemptEntity)
+            .where(*conditions)
+            .values(
+                worker_id=task_attempt.worker_id,
+                host_id=task_attempt.host_id,
+                process_id=task_attempt.process_id,
+                state=task_attempt.state,
+                heartbeat_at=task_attempt.heartbeat_at,
+                ended_at=task_attempt.ended_at,
+                exit_code=task_attempt.exit_code,
+                result_json=dict(task_attempt.result),
+                error_message=task_attempt.error_message,
+                metadata_json=dict(task_attempt.metadata),
+            )
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "原子结束 TaskAttempt 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
 
     def list_task_attempts(self, task_id: str) -> tuple[TaskAttempt, ...]:
         """按 TaskRecord id 列出执行尝试。

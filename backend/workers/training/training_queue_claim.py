@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.workers.training.training_lease_heartbeat import (
     TRAINING_LEASE_TIMEOUT_SECONDS,
 )

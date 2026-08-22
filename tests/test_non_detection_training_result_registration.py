@@ -7,21 +7,8 @@ from pathlib import Path
 from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
-    YOLO_POSE_DATASET_FORMAT,
     YOLO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
-)
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.application.models.training import (
-    yolo11_classification_training_service as yolo11_classification_service_module,
-)
-from backend.service.application.models.training import (
-    yolov8_pose_training_service as pose_service_module,
-)
-from backend.service.application.models.training import (
-    yolo26_obb_training_service as yolo26_obb_service_module,
-)
-from backend.service.application.models.training import (
-    segmentation_training_service as segmentation_service_module,
+    YOLO_POSE_DATASET_FORMAT,
 )
 from backend.service.application.models.registry.yolo11_model_service import (
     SqlAlchemyYolo11ModelService,
@@ -32,19 +19,28 @@ from backend.service.application.models.registry.yolo26_model_service import (
 from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
 )
+from backend.service.application.models.training import (
+    segmentation_training_service as segmentation_service_module,
+)
+from backend.service.application.models.training import (
+    yolo11_classification_training_service as yolo11_classification_service_module,
+)
+from backend.service.application.models.training import (
+    yolo26_obb_training_service as yolo26_obb_service_module,
+)
+from backend.service.application.models.training import (
+    yolov8_pose_training_service as pose_service_module,
+)
+from backend.service.application.models.training.segmentation_training_service import (
+    SegmentationTrainingRequest,
+    SqlAlchemySegmentationTrainingService,
+)
 from backend.service.application.models.training.yolo11_classification_training import (
     Yolo11ClassificationTrainingExecutionResult,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     SqlAlchemyYolo11ClassificationTrainingTaskService,
     Yolo11ClassificationTrainingTaskRequest,
-)
-from backend.service.application.models.training.yolov8_pose_training import (
-    YoloV8PoseTrainingExecutionResult,
-)
-from backend.service.application.models.training.yolov8_pose_training_service import (
-    SqlAlchemyYoloV8PoseTrainingService,
-    YoloV8PoseTrainingRequest,
 )
 from backend.service.application.models.training.yolo26_obb_training import (
     Yolo26ObbTrainingExecutionResult,
@@ -53,12 +49,15 @@ from backend.service.application.models.training.yolo26_obb_training_service imp
     SqlAlchemyYolo26ObbTrainingTaskService,
     Yolo26ObbTrainingTaskRequest,
 )
+from backend.service.application.models.training.yolov8_pose_training import (
+    YoloV8PoseTrainingExecutionResult,
+)
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    SqlAlchemyYoloV8PoseTrainingService,
+    YoloV8PoseTrainingRequest,
+)
 from backend.service.application.models.training.yolov8_segmentation_training import (
     YoloV8SegmentationTrainingExecutionResult,
-)
-from backend.service.application.models.training.segmentation_training_service import (
-    SqlAlchemySegmentationTrainingService,
-    SegmentationTrainingRequest,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetResolveRequest,
@@ -72,6 +71,7 @@ from backend.service.application.runtime.targets.yolo26 import (
 from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -81,6 +81,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 
 
 def test_classification_training_registers_model_version_and_preserves_model_type(
@@ -122,7 +126,6 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
 
     service = SqlAlchemyYolo11ClassificationTrainingTaskService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
@@ -140,6 +143,7 @@ def test_classification_training_registers_model_version_and_preserves_model_typ
             extra_options={"device": "cpu"},
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     queue_task = queue_backend.claim_next(
         queue_name=submission["queue_name"],
         worker_id="classification-worker",
@@ -229,7 +233,6 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
 
     service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
@@ -247,6 +250,7 @@ def test_segmentation_training_registers_model_version_and_preserves_model_type(
             extra_options={"device": "cpu"},
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     queue_task = queue_backend.claim_next(
         queue_name=submission["queue_name"],
         worker_id="segmentation-worker",
@@ -336,7 +340,6 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
 
     service = SqlAlchemyYoloV8PoseTrainingService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
@@ -354,6 +357,7 @@ def test_pose_training_registers_model_version_and_preserves_model_type(
             extra_options={"device": "cpu"},
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     queue_task = queue_backend.claim_next(
         queue_name=submission["queue_name"],
         worker_id="pose-worker",
@@ -443,7 +447,6 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
 
     service = SqlAlchemyYolo26ObbTrainingTaskService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     submission = service.submit_training_task(
@@ -461,6 +464,7 @@ def test_obb_training_registers_model_version_and_preserves_model_type(
             extra_options={"device": "cpu"},
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     queue_task = queue_backend.claim_next(
         queue_name=submission["queue_name"],
         worker_id="obb-worker",
@@ -599,4 +603,16 @@ def _seed_dataset_export(
         unit_of_work.commit()
     finally:
         unit_of_work.close()
+
+
+def _dispatch_queue_outbox(
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+) -> int:
+    """显式模拟 backend-service dispatcher 投递本次业务提交。"""
+
+    return QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()
 

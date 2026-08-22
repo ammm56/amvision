@@ -2,36 +2,38 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
+
 import pytest
 import torch
-
 from fastapi.testclient import TestClient
 
-from backend.service.application.models.training.yolo26_training_service import (
-    SqlAlchemyYolo26TrainingTaskService,
+import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
 )
-from backend.service.application.models.training.yolo11_training_service import (
-    SqlAlchemyYolo11TrainingTaskService,
-)
-from backend.service.application.models.training.yolov8_training_service import (
-    SqlAlchemyYoloV8TrainingTaskService,
+from backend.service.application.models.registry.model_service import (
+    SqlAlchemyModelService,
 )
 from backend.service.application.models.training.rfdetr_detection_task_service import (
     RFDETR_TRAINING_TASK_KIND,
 )
-import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
-from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import (
-    COCO_DETECTION_DATASET_FORMAT,
+from backend.service.application.models.training.yolo11_training_service import (
+    SqlAlchemyYolo11TrainingTaskService,
+)
+from backend.service.application.models.training.yolo26_training_service import (
+    SqlAlchemyYolo26TrainingTaskService,
 )
 from backend.service.application.models.training.yolo_detection_training_control import (
     YoloDetectionTrainingEpochProgress,
     YoloDetectionTrainingPausedError,
     YoloDetectionTrainingSavePoint,
+)
+from backend.service.application.models.training.yolov8_training_service import (
+    SqlAlchemyYoloV8TrainingTaskService,
 )
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionResult,
@@ -40,15 +42,14 @@ from backend.service.application.models.training.yolox_detection import (
     YoloXTrainingSavePoint,
     YoloXTrainingTerminatedError,
 )
-from backend.service.application.models.yolox_core.training import (
-    build_yolox_checkpoint_state as _build_checkpoint_state,
-    load_yolox_resume_checkpoint,
-)
-from backend.service.application.models.registry.model_service import (
-    SqlAlchemyModelService,
-)
 from backend.service.application.models.training.yolox_detection_task_service import (
     YOLOX_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.yolox_core.training import (
+    build_yolox_checkpoint_state as _build_checkpoint_state,
+)
+from backend.service.application.models.yolox_core.training import (
+    load_yolox_resume_checkpoint,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
@@ -62,11 +63,12 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.workers.training.yolo26_training_queue_worker import (
-    Yolo26TrainingQueueWorker,
-)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.training.yolo11_training_queue_worker import (
     Yolo11TrainingQueueWorker,
+)
+from backend.workers.training.yolo26_training_queue_worker import (
+    Yolo26TrainingQueueWorker,
 )
 from backend.workers.training.yolov8_training_queue_worker import (
     YoloV8TrainingQueueWorker,
@@ -78,6 +80,7 @@ from tests.api_test_support import (
     build_test_headers,
     build_test_jpeg_bytes,
     create_api_test_context,
+    dispatch_queue_outbox,
 )
 
 
@@ -170,10 +173,22 @@ def test_create_yolox_training_task_accepts_dataset_export_id(tmp_path: Path) ->
         assert task_detail.task.task_spec["precision"] == "fp16"
         assert task_detail.task.task_spec["evaluation_interval"] == 3
         assert task_detail.task.state == "queued"
-        assert any(
-            event.message == "yolox training queued" for event in task_detail.events
-        )
+        assert [event.message for event in task_detail.events] == ["task created"]
+        assert task_detail.task.metadata["queue_name"] == YOLOX_TRAINING_QUEUE_NAME
+        assert task_detail.task.metadata["queue_task_id"] == payload["queue_task_id"]
 
+        queue_task = queue_backend.get_task(
+            queue_name=YOLOX_TRAINING_QUEUE_NAME,
+            task_id=payload["queue_task_id"],
+        )
+        assert queue_task is None
+        assert (
+            dispatch_queue_outbox(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+            )
+            == 1
+        )
         queue_task = queue_backend.get_task(
             queue_name=YOLOX_TRAINING_QUEUE_NAME,
             task_id=payload["queue_task_id"],
@@ -3380,13 +3395,17 @@ def _run_yolox_training_worker_once(
     dataset_storage: LocalDatasetStorage,
     queue_backend: LocalFileQueueBackend,
 ) -> bool:
-    """执行一次 YOLOX 训练队列 worker。"""
+    """先投递事务 Outbox，再执行一次 YOLOX 训练队列 worker。"""
 
     worker = YoloXTrainingQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
         worker_id="test-yolox-training-worker",
+    )
+    dispatch_queue_outbox(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
     )
     return worker.run_once()
 
@@ -3398,12 +3417,16 @@ def _run_yolo_detection_training_worker_once(
     dataset_storage: LocalDatasetStorage,
     queue_backend: LocalFileQueueBackend,
 ) -> bool:
-    """执行一次普通 YOLO detection 训练队列 worker。"""
+    """先投递事务 Outbox，再执行一次普通 YOLO detection 训练队列 worker。"""
 
     worker = worker_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
         worker_id=f"test-{worker_cls.__name__}",
+    )
+    dispatch_queue_outbox(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
     )
     return worker.run_once()

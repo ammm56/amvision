@@ -2,23 +2,34 @@
 
 from __future__ import annotations
 
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-import zipfile
 
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend
 import backend.service.application.models.evaluation.detection_evaluation_task_service as detection_evaluation_task_service_module
-from backend.service.application.models.evaluation.detection_evaluation import DetectionEvaluationResult
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.voc_detection_export import (
+    VOC_DETECTION_DATASET_FORMAT,
+)
+from backend.service.application.models.evaluation.detection_evaluation import (
+    DetectionEvaluationResult,
+)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.evaluation.model_evaluation_queue_worker import DetectionEvaluationQueueWorker
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.workers.evaluation.model_evaluation_queue_worker import (
+    DetectionEvaluationQueueWorker,
+)
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
@@ -134,6 +145,13 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
             assert pending_report_response.status_code == 200
             assert pending_report_response.json()["file_status"] == "pending"
 
+            assert (
+                QueueOutboxDispatcher(
+                    session_factory=session_factory,
+                    queue_backend=queue_backend,
+                ).dispatch_once()
+                == 1
+            )
             assert worker.run_once() is True
 
             detail_response = client.get(
@@ -275,7 +293,6 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
     service = detection_evaluation_task_service_module.SqlAlchemyDetectionEvaluationTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
 
     try:
@@ -289,6 +306,13 @@ def test_package_yolox_evaluation_result_to_temporary_object_without_changing_ta
             ),
             created_by="workflow-user",
             display_name="evaluation package test",
+        )
+        assert (
+            QueueOutboxDispatcher(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+            ).dispatch_once()
+            == 1
         )
         assert worker.run_once() is True
 

@@ -25,6 +25,7 @@ def build_trigger_source_contract(
     runtime_summary = try_build_runtime_reference_summary(
         request=request,
         workflow_runtime_id=trigger_source.workflow_runtime_id,
+        project_id=trigger_source.project_id,
     )
     application_summary = None
     if runtime_summary is not None:
@@ -66,4 +67,3 @@ def build_trigger_source_contract(
         runtime_summary=runtime_summary,
         application_summary=application_summary,
     )
-

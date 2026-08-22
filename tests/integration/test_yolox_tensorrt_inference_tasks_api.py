@@ -6,11 +6,10 @@ import base64
 import importlib.util
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from onnx import TensorProto, helper
-import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
 from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
@@ -24,12 +23,15 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 from backend.service.settings import BackendServiceSettings
 from backend.workers.inference.detection_inference_queue_worker import (
     DetectionInferenceQueueWorker,
 )
 from tests.api_test_support import build_test_headers
-
 
 pytest.importorskip("onnx")
 

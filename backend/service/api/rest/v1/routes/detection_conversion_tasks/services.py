@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.detection_conversion_tasks.schemas import (
+    DetectionConversionTargetLiteral,
     DetectionConversionTaskCreateRequestBody,
     DetectionConversionTaskSubmissionResponse,
-    DetectionConversionTargetLiteral,
 )
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RFDETR_CONVERSION_TASK_KIND,
@@ -34,13 +33,21 @@ from backend.service.application.conversions.yolox_conversion_task_service impor
     SqlAlchemyYoloXConversionTaskService,
     YoloXConversionTaskRequest,
 )
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
-from backend.service.application.model_type_support import require_supported_platform_model_type
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
+from backend.service.application.model_type_support import (
+    require_supported_platform_model_type,
+)
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
-from backend.service.domain.models.platform_model_support import normalize_platform_model_type
+from backend.service.domain.models.platform_model_support import (
+    normalize_platform_model_type,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 
 DETECTION_CONVERSION_SERVICE_BY_MODEL_TYPE = {
     "yolox": (SqlAlchemyYoloXConversionTaskService, YoloXConversionTaskRequest),
@@ -71,7 +78,6 @@ def submit_detection_conversion_task(
     extra_options_override: dict[str, object] | None = None,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> DetectionConversionTaskSubmissionResponse:
     """按固定 target_format 提交一条 detection conversion task。"""
@@ -86,7 +92,6 @@ def submit_detection_conversion_task(
     service = service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     request_kwargs = {
         "project_id": body.project_id,

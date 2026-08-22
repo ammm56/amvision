@@ -7,11 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
-    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
-)
 from backend.contracts.datasets.dataset_formats import (
     DOTA_OBB_DATASET_FORMAT,
     IMAGENET_CLASSIFICATION_DATASET_FORMAT,
@@ -19,8 +14,18 @@ from backend.contracts.datasets.dataset_formats import (
     YOLO_OBB_DATASET_FORMAT,
     YOLO_POSE_DATASET_FORMAT,
 )
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
-from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
+    COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.voc_detection_export import (
+    VOC_DETECTION_DATASET_FORMAT,
+)
+from backend.service.application.auth.default_local_auth_seeder import (
+    DEFAULT_LOCAL_AUTH_USERNAME,
+)
 from backend.service.application.datasets.exports import (
     DatasetExportRequest,
     SqlAlchemyDatasetExporter,
@@ -38,6 +43,7 @@ from backend.service.application.models.yolo26_core.training.obb_manifest import
 from backend.service.application.models.yolov8_core.training.obb_execution import (
     _load_obb_manifest,
 )
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_version import (
     ClassificationAnnotation,
@@ -57,7 +63,13 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
-from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
+from backend.workers.datasets.dataset_export_queue_worker import (
+    DatasetExportQueueWorker,
+)
 
 
 def test_export_dataset_generates_minimal_coco_detection_payload(tmp_path: Path) -> None:
@@ -965,6 +977,9 @@ def test_export_task_worker_persists_export_artifact_for_training_input_boundary
         unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
         try:
             queued_export = unit_of_work.dataset_exports.get_dataset_export(submission.dataset_export_id)
+            queued_outbox = unit_of_work.queue_outbox.get_message(
+                submission.queue_task_id
+            )
         finally:
             unit_of_work.close()
 
@@ -980,6 +995,12 @@ def test_export_task_worker_persists_export_artifact_for_training_input_boundary
         assert queued_export.status == "queued"
         assert queued_export.task_id == submission.task_id
         assert queued_export.metadata["queue_task_id"] == submission.queue_task_id
+        assert queued_outbox is not None
+        assert queued_outbox.payload["dataset_export_id"] == submission.dataset_export_id
+        assert queue_backend.get_task(
+            queue_name=DATASET_EXPORT_QUEUE_NAME,
+            task_id=submission.queue_task_id,
+        ) is None
 
         assert _run_export_worker_once(
             session_factory=session_factory,
@@ -1133,7 +1154,6 @@ def _create_export_task_service_with_storage(
         SqlAlchemyDatasetExportTaskService(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
         ),
         session_factory,
         dataset_storage,
@@ -1158,6 +1178,10 @@ def _run_export_worker_once(
     - 当成功处理一条导出任务时返回 True；否则返回 False。
     """
 
+    QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()
     worker = DatasetExportQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.pose_evaluation_tasks.responses import (
     PoseEvaluationDetailResponse,
@@ -32,7 +31,6 @@ def create_pose_evaluation_task_response(
     body: PoseEvaluationCreateBody,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> PoseEvaluationSubmissionResponse:
     """创建 pose evaluation 任务并返回提交响应。"""
@@ -41,7 +39,6 @@ def create_pose_evaluation_task_response(
     service = SqlAlchemyPoseEvaluationTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     submission = service.submit_evaluation_task(
         PoseEvaluationTaskRequest(

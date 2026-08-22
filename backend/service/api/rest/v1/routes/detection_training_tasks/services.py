@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
-from backend.service.application.errors import InvalidRequestError, ResourceNotFoundError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    ResourceNotFoundError,
+)
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
     require_supported_platform_model_type,
@@ -38,8 +40,10 @@ from backend.service.application.project_access import require_explicit_project_
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
 _DETECTION_TRAINING_SERVICE_BY_MODEL_TYPE = {
     "yolox": (SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest),

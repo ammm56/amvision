@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from backend.service.application.datasets.exports.contracts import (
         DatasetExportResult,
     )
+    from backend.service.application.ports.object_store import ObjectStore
 
 
 class DatasetExportFileWriterMixin(
@@ -51,7 +52,9 @@ class DatasetExportFileWriterMixin(
     DotaExportMixin,
     YoloExportMixin,
 ):
-    """按导出格式调度本地文件写入。"""
+    """按导出格式调度 ObjectStore artifact 写入。"""
+
+    dataset_storage: ObjectStore | None
 
     def _write_export_files(
         self,
@@ -60,7 +63,7 @@ class DatasetExportFileWriterMixin(
         split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
         export_result: DatasetExportResult,
     ) -> None:
-        """把导出结果正式写入本地文件存储。"""
+        """把导出结果正式写入 ObjectStore。"""
 
         if self.dataset_storage is None or export_result.export_path is None:
             return

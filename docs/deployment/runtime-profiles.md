@@ -69,7 +69,7 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 | `evaluation` | `detection-evaluation`、`classification-evaluation`、`segmentation-evaluation`、`pose-evaluation`、`obb-evaluation` | 数据集级评估和指标回写 |
 | `inference` | `detection-inference`、`classification-inference`、`segmentation-inference`、`pose-inference`、`obb-inference` | async inference 队列消费和 gateway 转发 |
 
-训练 profile 默认 `max_concurrent_tasks = 16`，用于支持多张 GPU 上同时运行多个单卡训练任务；其他 profile 默认 `max_concurrent_tasks = 1`。
+当前所有内置 profile 默认 `max_concurrent_tasks = 1`。Training 已具备跨进程 GPU/MIG `exclusive` lease；多 GPU 机器完成显存、功耗和持续负载验证后，可以提高 training profile 的并发数，`auto` 会选择可获得的可见 GPU。CUDA Conversion 使用同一独占协调边界，CUDA Deployment 持有常驻 shared reservation。具体规则见 [GPU 设备资源协调](../architecture/models/device-resource-coordination.md)。
 
 ## 发布目录关键路径
 

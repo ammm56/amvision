@@ -6,10 +6,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks.outputs import (
     DetectionEvaluationOutputFileSummaryResponse,
@@ -46,7 +44,6 @@ def create_detection_evaluation_task(
     body: DetectionEvaluationTaskCreateRequestBody,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:read", "models:read", "tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
 ) -> DetectionEvaluationTaskSubmissionResponse:
     """创建一个用于数据集级回归验证的 detection evaluation task。"""
@@ -55,7 +52,6 @@ def create_detection_evaluation_task(
         body=body,
         principal=principal,
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
 

@@ -6,10 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import backend.service.application.models.inference.detection_inference_task_service as detection_inference_task_service_module
-
-from backend.queue import LocalFileQueueBackend
-from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     serialize_detection_async_inference_execution_result,
 )
@@ -21,19 +19,17 @@ from backend.service.application.models.registry.model_service import (
     SqlAlchemyModelService,
     TrainingOutputRegistration,
 )
-from backend.service.application.runtime.deployment.deployment_process_supervisor import (
-    DeploymentProcessConfig,
-    DeploymentProcessExecution,
-    DeploymentProcessHealth,
-    DeploymentProcessInstanceHealth,
-    DeploymentProcessStatus,
-    DeploymentProcessSupervisor,
-)
 from backend.service.application.runtime.contracts.classification.prediction import (
     ClassificationPredictionCategory,
     ClassificationPredictionExecutionResult,
     ClassificationRuntimeSessionInfo,
     ClassificationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.contracts.detection.prediction import (
+    DetectionPredictionDetection,
+    DetectionPredictionExecutionResult,
+    DetectionRuntimeSessionInfo,
+    DetectionRuntimeTensorSpec,
 )
 from backend.service.application.runtime.contracts.obb.prediction import (
     ObbPredictionExecutionResult,
@@ -48,17 +44,19 @@ from backend.service.application.runtime.contracts.pose.prediction import (
     PoseRuntimeSessionInfo,
     PoseRuntimeTensorSpec,
 )
-from backend.service.application.runtime.contracts.detection.prediction import (
-    DetectionPredictionDetection,
-    DetectionPredictionExecutionResult,
-    DetectionRuntimeSessionInfo,
-    DetectionRuntimeTensorSpec,
-)
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionExecutionResult,
     SegmentationPredictionInstance,
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+    DeploymentProcessConfig,
+    DeploymentProcessExecution,
+    DeploymentProcessHealth,
+    DeploymentProcessInstanceHealth,
+    DeploymentProcessStatus,
+    DeploymentProcessSupervisor,
 )
 from backend.service.application.runtime.serialization.detection.prediction import (
     deserialize_detection_items,
@@ -68,12 +66,12 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from tests.api_test_support import (
     ApiTestContext,
     create_api_test_context,
     create_test_runtime,
 )
-
 
 _TEST_RUNTIME_BACKEND_BY_BUILD_FORMAT = {
     "onnx": "onnxruntime",

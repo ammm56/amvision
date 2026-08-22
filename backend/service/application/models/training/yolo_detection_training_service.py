@@ -6,25 +6,20 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from backend.queue import QueueBackend
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
     ServiceConfigurationError,
 )
-from backend.service.application.models.training.detection_training_rules import (
-    DetectionTrainingOutputFiles,
-)
 from backend.service.application.models.training.checkpoint_policy import (
     TrainingPeriodicCheckpointRetention,
     build_training_periodic_checkpoint_retention,
 )
+from backend.service.application.models.training.detection_training_rules import (
+    DetectionTrainingOutputFiles,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
-)
-from backend.service.application.models.training.yolo_detection_task_registration import (
-    register_yolo_detection_checkpoint_model_version,
-    register_yolo_detection_training_output_model_version,
 )
 from backend.service.application.models.training.yolo_detection_task_control import (
     build_requested_yolo_detection_training_control,
@@ -36,6 +31,9 @@ from backend.service.application.models.training.yolo_detection_task_control imp
     read_yolo_detection_training_control_flag,
     resolve_yolo_detection_resume_checkpoint_object_key,
 )
+from backend.service.application.models.training.yolo_detection_task_dataset import (
+    resolve_yolo_detection_training_dataset_export,
+)
 from backend.service.application.models.training.yolo_detection_task_events import (
     build_yolo_detection_training_cancelled_event,
     build_yolo_detection_training_checkpoint_saved_event,
@@ -44,27 +42,11 @@ from backend.service.application.models.training.yolo_detection_task_events impo
     build_yolo_detection_training_epoch_progress_event,
     build_yolo_detection_training_failed_event,
     build_yolo_detection_training_paused_event,
-    build_yolo_detection_training_queue_failed_event,
     build_yolo_detection_training_queued_event,
     build_yolo_detection_training_resume_requested_event,
     build_yolo_detection_training_resume_reverted_event,
     build_yolo_detection_training_started_event,
     build_yolo_detection_training_terminated_result_event,
-)
-from backend.service.application.models.training.yolo_detection_task_dataset import (
-    resolve_yolo_detection_training_dataset_export,
-)
-from backend.service.application.models.training.yolo_detection_training_control import (
-    YoloDetectionTrainingBatchProgress,
-    YoloDetectionTrainingControlCommand,
-    YoloDetectionTrainingEpochProgress,
-    YoloDetectionTrainingPausedError,
-    YoloDetectionTrainingSavePoint,
-    YoloDetectionTrainingTerminatedError,
-)
-from backend.service.application.models.training.yolo_detection_training_execution import (
-    YoloDetectionTrainingExecutionRequest,
-    YoloDetectionTrainingExecutionResult,
 )
 from backend.service.application.models.training.yolo_detection_task_outputs import (
     build_yolo_detection_training_output_files,
@@ -85,6 +67,10 @@ from backend.service.application.models.training.yolo_detection_task_payload imp
     build_yolo_detection_task_spec_payload,
     serialize_yolo_detection_training_task_result,
 )
+from backend.service.application.models.training.yolo_detection_task_registration import (
+    register_yolo_detection_checkpoint_model_version,
+    register_yolo_detection_training_output_model_version,
+)
 from backend.service.application.models.training.yolo_detection_task_summary import (
     build_yolo_detection_training_summary,
 )
@@ -92,11 +78,28 @@ from backend.service.application.models.training.yolo_detection_task_warm_start 
     build_yolo_detection_warm_start_source_summary,
     resolve_yolo_detection_warm_start_reference,
 )
+from backend.service.application.models.training.yolo_detection_training_control import (
+    YoloDetectionTrainingBatchProgress,
+    YoloDetectionTrainingControlCommand,
+    YoloDetectionTrainingEpochProgress,
+    YoloDetectionTrainingPausedError,
+    YoloDetectionTrainingSavePoint,
+    YoloDetectionTrainingTerminatedError,
+)
+from backend.service.application.models.training.yolo_detection_training_execution import (
+    YoloDetectionTrainingExecutionRequest,
+    YoloDetectionTrainingExecutionResult,
+)
+from backend.service.application.ports.queue import QueueBackend
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
+)
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -104,7 +107,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 YOLO_DETECTION_TRAINING_TASK_KIND = "yolo-detection-training"
 YOLO_DETECTION_TRAINING_QUEUE_NAME = "yolo-detection-trainings"
@@ -305,7 +307,6 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         """创建并入队一条 YOLO detection 训练任务。"""
 
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         training_task_kind = self._resolve_training_task_kind()
         training_queue_name = self._resolve_training_queue_name()
         dataset_export = self._resolve_dataset_export(request)
@@ -325,44 +326,22 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     dataset_export=dataset_export,
                     model_name=self.spec.model_name,
                 ),
-            )
-        )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=training_queue_name,
-                payload={"task_id": created_task.task_id},
-                metadata=build_yolo_detection_queue_metadata(
-                    project_id=request.project_id,
-                    dataset_export=dataset_export,
-                    model_name=self.spec.model_name,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=training_queue_name,
+                    metadata=build_yolo_detection_queue_metadata(
+                        project_id=request.project_id,
+                        dataset_export=dataset_export,
+                        model_name=self.spec.model_name,
+                    ),
                 ),
             )
-        except Exception as error:
-            self.task_service.append_task_event(
-                build_yolo_detection_training_queue_failed_event(
-                    task_id=created_task.task_id,
-                    model_type=self.model_type,
-                    error_message=str(error),
-                    error=error,
-                    dataset_export_id=dataset_export.dataset_export_id,
-                    dataset_export_manifest_key=dataset_export.manifest_object_key,
-                )
-            )
-            raise
-
-        self.task_service.append_task_event(
-            build_yolo_detection_training_queued_event(
-                task_id=created_task.task_id,
-                model_type=self.model_type,
-                queue_name=queue_task.queue_name,
-                queue_task_id=queue_task.task_id,
-            )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return YoloDetectionTrainingTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -565,6 +544,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             **dict(task_record.result),
             "latest_checkpoint_object_key": resume_checkpoint_object_key,
         }
+        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
         self.task_service.append_task_event(
             build_yolo_detection_training_resume_requested_event(
                 task_id=task_id,
@@ -578,7 +558,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         try:
             queue_task = queue_backend.enqueue(
                 queue_name=self._resolve_training_queue_name(),
-                payload={"task_id": task_id},
+                payload={"task_id": task_id, "attempt_no": next_attempt_no},
                 metadata=build_yolo_detection_queue_metadata(
                     project_id=request.project_id,
                     dataset_export=dataset_export,

@@ -6,16 +6,20 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
 from backend.contracts.datasets.dataset_formats import (
-    IMPLEMENTED_DATASET_EXPORT_FORMATS,
     IMPLEMENTED_DATASET_EXPORT_FORMAT_TYPES_BY_TASK_TYPE,
+    IMPLEMENTED_DATASET_EXPORT_FORMATS,
+)
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
 )
 from backend.contracts.datasets.exports.coco_instance_segmentation_export import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
+from backend.contracts.datasets.exports.voc_detection_export import (
+    VOC_DETECTION_DATASET_FORMAT,
+)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.domain.datasets.dataset_version import (
     DatasetCategory,
     DatasetSample,
@@ -24,8 +28,13 @@ from backend.service.domain.datasets.dataset_version import (
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.datasets.dataset_export_queue_worker import DatasetExportQueueWorker
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.workers.datasets.dataset_export_queue_worker import (
+    DatasetExportQueueWorker,
+)
 from tests.api_test_support import build_test_headers, create_api_test_context
 
 
@@ -517,6 +526,10 @@ def _run_export_worker_once(
 ) -> bool:
     """执行一次 DatasetExport 队列 worker。"""
 
+    QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()
     worker = DatasetExportQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,

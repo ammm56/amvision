@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.runtime.device_leases import (
+    DeviceLeaseProviderConfig,
+)
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_CLASSIFICATION_INFERENCE,
@@ -21,6 +26,7 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_DATASET_EXPORT,
     BACKEND_WORKER_CONSUMER_DATASET_IMPORT,
     BACKEND_WORKER_CONSUMER_DETECTION_EVALUATION,
+    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_EVALUATION,
     BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_TRAINING,
@@ -32,16 +38,16 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_SEGMENTATION_EVALUATION,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_TRAINING,
-    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
+    BACKEND_WORKER_CONSUMER_YOLO11_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION,
-    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
+    BACKEND_WORKER_CONSUMER_YOLO26_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
+    BACKEND_WORKER_CONSUMER_YOLOV8_TRAINING,
     BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
-    BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
     BACKEND_WORKER_CONSUMER_YOLOX_TRAINING,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 from backend.workers.task_manager import BackgroundTaskConsumer
 
 
@@ -62,6 +68,14 @@ class BackgroundTaskConsumerResources:
     queue_backend: LocalFileQueueBackend
     worker_id_prefix: str
     async_inference_request_timeout_seconds: float = 30.0
+    conversion_workspace_dir: str = "./data/worker"
+    conversion_attempt_timeout_seconds: float = 7200.0
+    conversion_helper_timeout_seconds: float = 7200.0
+    conversion_termination_grace_seconds: float = 5.0
+    conversion_publication_orphan_grace_seconds: float = 3600.0
+    device_lease_config: DeviceLeaseProviderConfig = field(
+        default_factory=DeviceLeaseProviderConfig
+    )
 
 
 # ── 工厂函数类型 ──
@@ -99,11 +113,49 @@ def _std_factory(module_name: str, class_name: str, suffix: str) -> _ConsumerFac
 
     def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
         worker_cls = _load_worker_class(module_name, class_name)
+        queue_backend = TaskAttemptClaimingQueueBackend(
+            queue_backend=resources.queue_backend,
+            session_factory=resources.session_factory,
+        )
         return worker_cls(
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
-            queue_backend=resources.queue_backend,
+            queue_backend=queue_backend,
             worker_id=f"{resources.worker_id_prefix}-{suffix}",
+        )
+
+    return _factory
+
+
+def _conversion_factory(
+    module_name: str,
+    class_name: str,
+    suffix: str,
+) -> _ConsumerFactory:
+    """构建带 attempt 硬时限和控制目录的 conversion worker。"""
+
+    def _factory(resources: BackgroundTaskConsumerResources) -> BackgroundTaskConsumer:
+        worker_cls = _load_worker_class(module_name, class_name)
+        queue_backend = TaskAttemptClaimingQueueBackend(
+            queue_backend=resources.queue_backend,
+            session_factory=resources.session_factory,
+        )
+        return worker_cls(
+            session_factory=resources.session_factory,
+            dataset_storage=resources.dataset_storage,
+            queue_backend=queue_backend,
+            worker_id=f"{resources.worker_id_prefix}-{suffix}",
+            conversion_workspace_dir=resources.conversion_workspace_dir,
+            conversion_attempt_timeout_seconds=(
+                resources.conversion_attempt_timeout_seconds
+            ),
+            conversion_helper_timeout_seconds=(
+                resources.conversion_helper_timeout_seconds
+            ),
+            conversion_termination_grace_seconds=(
+                resources.conversion_termination_grace_seconds
+            ),
+            device_lease_config=resources.device_lease_config,
         )
 
     return _factory
@@ -165,7 +217,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "YoloXTrainingQueueWorker",
         "yolox-training",
     ),
-    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _std_factory(
+    BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION: _conversion_factory(
         "backend.workers.conversion.yolox_conversion_queue_worker",
         "YoloXConversionQueueWorker",
         "yolox-conversion",
@@ -177,7 +229,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "YoloV8TrainingQueueWorker",
         "yolov8-training",
     ),
-    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _std_factory(
+    BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION: _conversion_factory(
         "backend.workers.conversion.yolov8_conversion_queue_worker",
         "YoloV8ConversionQueueWorker",
         "yolov8-conversion",
@@ -188,7 +240,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "Yolo11TrainingQueueWorker",
         "yolo11-training",
     ),
-    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION: _std_factory(
+    BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION: _conversion_factory(
         "backend.workers.conversion.yolo11_conversion_queue_worker",
         "Yolo11ConversionQueueWorker",
         "yolo11-conversion",
@@ -199,7 +251,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "Yolo26TrainingQueueWorker",
         "yolo26-training",
     ),
-    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION: _std_factory(
+    BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION: _conversion_factory(
         "backend.workers.conversion.yolo26_conversion_queue_worker",
         "Yolo26ConversionQueueWorker",
         "yolo26-conversion",
@@ -210,7 +262,7 @@ _CONSUMER_FACTORIES: dict[str, _ConsumerFactory] = {
         "RfdetrTrainingQueueWorker",
         "rfdetr-training",
     ),
-    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION: _std_factory(
+    BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION: _conversion_factory(
         "backend.workers.conversion.rfdetr_conversion_queue_worker",
         "RfdetrConversionQueueWorker",
         "rfdetr-conversion",
@@ -271,6 +323,15 @@ _DYNAMIC_INFERENCE_KINDS: frozenset[str] = frozenset({
     BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
     BACKEND_WORKER_CONSUMER_OBB_INFERENCE,
 })
+_CONVERSION_CONSUMER_KINDS = frozenset(
+    {
+        BACKEND_WORKER_CONSUMER_YOLOX_CONVERSION,
+        BACKEND_WORKER_CONSUMER_YOLOV8_CONVERSION,
+        BACKEND_WORKER_CONSUMER_YOLO11_CONVERSION,
+        BACKEND_WORKER_CONSUMER_YOLO26_CONVERSION,
+        BACKEND_WORKER_CONSUMER_RFDETR_CONVERSION,
+    }
+)
 
 
 def build_background_task_consumers(
@@ -287,6 +348,19 @@ def build_background_task_consumers(
     返回：
     - tuple[BackgroundTaskConsumer, ...]：按稳定顺序排列的消费者元组。
     """
+
+    if _CONVERSION_CONSUMER_KINDS.intersection(enabled_consumer_kinds):
+        reconciler_cls = _load_worker_class(
+            "backend.workers.conversion.publication_reconciler",
+            "ConversionPublicationReconciler",
+        )
+        reconciler_cls(
+            session_factory=resources.session_factory,
+            dataset_storage=resources.dataset_storage,
+            minimum_orphan_age_seconds=(
+                resources.conversion_publication_orphan_grace_seconds
+            ),
+        ).reconcile_once()
 
     consumers: list[BackgroundTaskConsumer] = []
     for consumer_kind in enabled_consumer_kinds:

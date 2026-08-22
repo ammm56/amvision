@@ -434,7 +434,7 @@ class VocExportMixin:
                     dataset_version=dataset_version,
                     sample=sample,
                 )
-                self.dataset_storage.copy_relative_file(
+                self.dataset_storage.copy_object(
                     source_relative_path,
                     (
                         f"{export_result.export_path}/JPEGImages/"

@@ -226,6 +226,15 @@ class LocalDatasetStorage:
             manifest_path=str(export_root / "manifest.json"),
         )
 
+    def prepare_prefix(self, object_prefix: str) -> None:
+        """在本地实现中创建 object prefix 对应的目录。
+
+        参数：
+        - object_prefix：POSIX 风格相对对象前缀。
+        """
+
+        self._mkdir(self.resolve(object_prefix))
+
     def resolve(self, relative_path: str) -> Path:
         """把相对路径解析为当前本地存储根目录下的绝对路径。
 
@@ -406,7 +415,21 @@ class LocalDatasetStorage:
         - destination_path：目标文件相对路径。
         """
 
-        self.copy_file(self.resolve(source_relative_path), destination_path)
+        self.copy_object(source_relative_path, destination_path)
+
+    def copy_object(
+        self,
+        source_object_key: str,
+        destination_object_key: str,
+    ) -> None:
+        """在本地 ObjectStore 内复制对象。
+
+        参数：
+        - source_object_key：源对象的相对 key。
+        - destination_object_key：目标对象的相对 key。
+        """
+
+        self.copy_file(self.resolve(source_object_key), destination_object_key)
 
     def create_zip_from_directory(
         self,

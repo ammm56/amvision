@@ -27,8 +27,6 @@ from backend.nodes.core_nodes.support.service import (
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.workflows.graph_executor import WorkflowNodeExecutionRequest
 
-DATASET_IMPORT_QUEUE_NAME = "dataset-imports"
-
 
 def _dataset_import_submit_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
     """调用现有 DatasetImport 提交服务并入队。"""
@@ -44,6 +42,9 @@ def _dataset_import_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
         metadata = {**metadata, "principal_id": created_by}
 
     from backend.service.application.datasets.imports import DatasetImportRequest
+    from backend.service.application.datasets.imports.service import (
+        DATASET_IMPORT_QUEUE_NAME,
+    )
 
     import_service = runtime_context.build_dataset_import_service()
     submitted_import = import_service.submit_dataset_import(
@@ -59,31 +60,27 @@ def _dataset_import_submit_handler(request: WorkflowNodeExecutionRequest) -> dic
             metadata=metadata,
         )
     )
-    queue_task = runtime_context.require_queue_backend().enqueue(
-        queue_name=DATASET_IMPORT_QUEUE_NAME,
-        payload={"dataset_import_id": submitted_import.dataset_import_id},
-        metadata={
-            "project_id": project_id,
-            "dataset_id": dataset_id,
-        },
-    )
-    queued_import = import_service.mark_dataset_import_queued(
-        submitted_import.dataset_import_id,
-        queue_name=queue_task.queue_name,
-        queue_task_id=queue_task.task_id,
-    )
+    queue_task_id = _read_optional_text(submitted_import.metadata, "queue_task_id")
+    if queue_task_id is None:
+        raise InvalidRequestError("DatasetImport 缺少队列消息 id")
     return build_response_body_output(
         {
-            "dataset_import_id": queued_import.dataset_import_id,
-            "task_id": _read_optional_text(queued_import.metadata, "task_id"),
-            "status": queued_import.status,
-            "upload_state": _read_optional_text(queued_import.metadata, "upload_state") or "uploaded",
-            "processing_state": _read_optional_text(queued_import.metadata, "processing_state") or "queued",
-            "package_size": _read_optional_int(queued_import.metadata, "package_size") or 0,
-            "package_path": queued_import.package_path,
-            "staging_path": queued_import.staging_path,
-            "queue_name": queue_task.queue_name,
-            "queue_task_id": queue_task.task_id,
+            "dataset_import_id": submitted_import.dataset_import_id,
+            "task_id": _read_optional_text(submitted_import.metadata, "task_id"),
+            "status": submitted_import.status,
+            "upload_state": _read_optional_text(submitted_import.metadata, "upload_state")
+            or "uploaded",
+            "processing_state": _read_optional_text(
+                submitted_import.metadata,
+                "processing_state",
+            )
+            or "queued",
+            "package_size": _read_optional_int(submitted_import.metadata, "package_size")
+            or 0,
+            "package_path": submitted_import.package_path,
+            "staging_path": submitted_import.staging_path,
+            "queue_name": DATASET_IMPORT_QUEUE_NAME,
+            "queue_task_id": queue_task_id,
         }
     )
 

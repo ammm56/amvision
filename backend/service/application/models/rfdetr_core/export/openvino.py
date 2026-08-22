@@ -8,6 +8,9 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.models.model_artifact_metadata import (
     attach_openvino_model_artifact_provenance,
 )
+from backend.service.application.models.model_artifact_runtime_smoke import (
+    validate_openvino_ir_against_onnx,
+)
 from backend.service.domain.models.model_artifact_provenance import (
     build_model_artifact_provenance,
 )
@@ -67,6 +70,11 @@ def build_rfdetr_openvino_ir(
         str(output_path.resolve()),
         compress_to_fp16=normalized_precision == "fp16",
     )
+    runtime_smoke = validate_openvino_ir_against_onnx(
+        source_path=source_path,
+        openvino_model_path=output_path,
+        build_precision=normalized_precision,
+    )
 
     weights_path = output_path.with_suffix(".bin")
     if not output_path.is_file() or not weights_path.is_file():
@@ -95,6 +103,7 @@ def build_rfdetr_openvino_ir(
             for dimension in model_input.get_partial_shape()
         ],
         "input_dtype": str(model_input.get_element_type().get_type_name()),
+        "runtime_smoke": runtime_smoke,
     }
 
 

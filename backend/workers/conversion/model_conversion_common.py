@@ -18,6 +18,7 @@ from backend.service.domain.models.model_artifact_provenance import (
     attach_model_artifact_provenance,
     build_model_artifact_provenance,
 )
+from backend.workers.shared.process_tree_supervisor import ProcessTreeSupervisor
 
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
@@ -242,8 +243,9 @@ def run_conversion_script(
     *,
     script_file_name: str,
     args: list[str],
+    timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """执行 conversion 隔离子进程脚本。"""
+    """在受监督进程树中执行 conversion helper，并持续排空日志。"""
 
     script_path = resolve_conversion_script_path(script_file_name)
     project_root = resolve_conversion_project_root()
@@ -253,16 +255,29 @@ def run_conversion_script(
     if current_python_path:
         python_path_parts.append(current_python_path)
     process_env["PYTHONPATH"] = os.pathsep.join(python_path_parts)
-    return subprocess.run(
+    resolved_timeout_seconds = timeout_seconds
+    if resolved_timeout_seconds is None:
+        raw_timeout = process_env.get(
+            "AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS",
+            "7200",
+        )
+        try:
+            resolved_timeout_seconds = float(raw_timeout)
+        except ValueError as error:
+            raise ServiceConfigurationError(
+                "conversion helper timeout 配置无效",
+                details={"value": raw_timeout},
+            ) from error
+    result = ProcessTreeSupervisor(
+        timeout_seconds=resolved_timeout_seconds,
+    ).run(
         [sys.executable, str(script_path), *args],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-        cwd=str(project_root),
+        cwd=project_root,
         env=process_env,
+        # helper 输出继续流入 attempt 根进程，外层监督器会持续写 attempt 日志。
+        tee_output=True,
     )
+    return result.to_completed_process()
 
 
 def resolve_conversion_script_path(script_file_name: str) -> Path:

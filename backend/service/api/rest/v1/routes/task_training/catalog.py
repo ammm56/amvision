@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.model_type_support import (
     normalize_optional_platform_model_type,
@@ -194,7 +193,6 @@ def build_service_for_task(
     *,
     session_factory: SessionFactory,
     dataset_storage: LocalDatasetStorage,
-    queue_backend: LocalFileQueueBackend,
 ) -> TrainingServiceWithControl:
     """按 task_kind 构造对应的训练服务实例。"""
 
@@ -202,73 +200,61 @@ def build_service_for_task(
     if kind == YOLOV8_CLASSIFICATION_TRAINING_TASK_KIND:
         return SqlAlchemyYoloV8ClassificationTrainingService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO11_CLASSIFICATION_TRAINING_TASK_KIND:
         return SqlAlchemyYolo11ClassificationTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO26_CLASSIFICATION_TRAINING_TASK_KIND:
         return SqlAlchemyYolo26ClassificationTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == SEGMENTATION_TRAINING_TASK_KIND:
         return SqlAlchemySegmentationTrainingService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO11_SEGMENTATION_TRAINING_TASK_KIND:
         return SqlAlchemyYolo11SegmentationTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO26_SEGMENTATION_TRAINING_TASK_KIND:
         return SqlAlchemyYolo26SegmentationTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLOV8_POSE_TRAINING_TASK_KIND:
         return SqlAlchemyYoloV8PoseTrainingService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO11_POSE_TRAINING_TASK_KIND:
         return SqlAlchemyYolo11PoseTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO26_POSE_TRAINING_TASK_KIND:
         return SqlAlchemyYolo26PoseTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLOV8_OBB_TRAINING_TASK_KIND:
         return SqlAlchemyYoloV8ObbTrainingService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO11_OBB_TRAINING_TASK_KIND:
         return SqlAlchemyYolo11ObbTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     if kind == YOLO26_OBB_TRAINING_TASK_KIND:
         return SqlAlchemyYolo26ObbTrainingTaskService(
             session_factory=session_factory,
-            queue_backend=queue_backend,
             dataset_storage=dataset_storage,
         )
     raise InvalidRequestError("不支持的训练任务类型", details={"task_kind": kind})

@@ -18,6 +18,10 @@ from backend.service.application.task_failure_payloads import build_task_failure
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.tasks.task_records import TaskRecord
 
@@ -86,7 +90,6 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
         self._validate_request(request)
         if not self.task_kind or not self.queue_name or not self.task_label:
             raise InvalidRequestError("task-native inference service 缺少 task 配置")
-        queue_backend = self._require_queue_backend()
         deployment_service = self._build_deployment_service()
         process_config = deployment_service.resolve_process_config(request.deployment_instance_id)
         self._ensure_async_inference_gateway_dispatcher(process_config)
@@ -111,38 +114,24 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                     "model_build_id": process_config.runtime_target.model_build_id,
                     "task_type": process_config.runtime_target.task_type,
                 },
-            )
-        )
-        queue_task = queue_backend.enqueue(
-            queue_name=self.queue_name,
-            payload={"task_id": created_task.task_id},
-            metadata={
-                "project_id": request.project_id,
-                "deployment_instance_id": request.deployment_instance_id,
-                "model_version_id": process_config.runtime_target.model_version_id,
-                "model_build_id": process_config.runtime_target.model_build_id,
-                "task_type": process_config.runtime_target.task_type,
-            },
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message=f"{self.task_label} inference queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.queue_name,
+                    metadata={
+                        "project_id": request.project_id,
+                        "deployment_instance_id": request.deployment_instance_id,
+                        "model_version_id": process_config.runtime_target.model_version_id,
+                        "model_build_id": process_config.runtime_target.model_build_id,
+                        "task_type": process_config.runtime_target.task_type,
                     },
-                },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return TaskNativeInferenceTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             deployment_instance_id=request.deployment_instance_id,
             input_uri=normalized_input.input_uri,
         )

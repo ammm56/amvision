@@ -14,20 +14,19 @@ from pydantic_settings import (
 )
 
 from backend.bootstrap.settings import build_json_config_sources
-from backend.queue import LocalFileQueueSettings
-from backend.version import BACKEND_VERSION
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
-from backend.service.application.workflows.trigger_sources.zeromq_transport import (
-    ZeroMqTriggerRuntimeConfig,
-)
 from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
+)
+from backend.service.application.workflows.trigger_sources.zeromq_transport import (
+    ZeroMqTriggerRuntimeConfig,
 )
 from backend.service.infrastructure.db.session import DatabaseSettings
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
 )
-
+from backend.service.infrastructure.queue.local_file import LocalFileQueueSettings
+from backend.version import BACKEND_VERSION
 
 CONFIG_DIR = Path("config")
 BACKEND_SERVICE_CONFIG_FILE = CONFIG_DIR / "backend-service.json"
@@ -537,6 +536,26 @@ class BackendServiceTrainingTelemetryConfig(BaseModel):
     scan_interval_seconds: float = Field(default=1.0, gt=0)
 
 
+class BackendServiceQueueOutboxConfig(BaseModel):
+    """描述 Transactional Outbox 的投递、租约与退避边界。"""
+
+    enabled: bool = True
+    batch_size: int = Field(default=32, ge=1, le=1000)
+    poll_interval_seconds: float = Field(default=0.2, gt=0)
+    lease_seconds: float = Field(default=30.0, gt=0)
+    retry_base_seconds: float = Field(default=0.5, gt=0)
+    retry_max_seconds: float = Field(default=30.0, gt=0)
+    shutdown_timeout_seconds: float = Field(default=5.0, gt=0)
+
+    @model_validator(mode="after")
+    def validate_retry_window(self) -> BackendServiceQueueOutboxConfig:
+        """校验最大退避不能小于初始退避。"""
+
+        if self.retry_max_seconds < self.retry_base_seconds:
+            raise ValueError("retry_max_seconds 不能小于 retry_base_seconds")
+        return self
+
+
 class BackendServiceSettings(BaseSettings):
     """描述 backend-service 启动阶段使用的统一配置。
 
@@ -576,6 +595,9 @@ class BackendServiceSettings(BaseSettings):
         default_factory=BackendServiceDatasetStorageConfig
     )
     queue: BackendServiceQueueConfig = Field(default_factory=BackendServiceQueueConfig)
+    queue_outbox: BackendServiceQueueOutboxConfig = Field(
+        default_factory=BackendServiceQueueOutboxConfig
+    )
     async_inference_gateway: BackendServiceAsyncInferenceGatewayConfig = Field(
         default_factory=BackendServiceAsyncInferenceGatewayConfig
     )

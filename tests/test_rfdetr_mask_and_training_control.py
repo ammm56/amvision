@@ -9,7 +9,25 @@ import numpy as np
 import pytest
 import torch
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
+from backend.service.application.models.rfdetr_core.datasets.coco import (
+    _build_train_resize_config,
+    convert_coco_poly_to_mask,
+)
+from backend.service.application.models.rfdetr_core.models import (
+    matcher as rfdetr_matcher_module,
+)
+from backend.service.application.models.rfdetr_core.models.matcher import (
+    HungarianMatcher,
+)
+from backend.service.application.models.rfdetr_core.segmentation import (
+    RfdetrSegmentationPostProcess,
+    mask_logits_to_xyxy,
+)
+from backend.service.application.models.rfdetr_core.training.platform_control import (
+    RfdetrPlatformTrainingControlCommand,
+    RfdetrPlatformTrainingControlSignal,
+    build_rfdetr_platform_training_callback,
+)
 from backend.service.application.models.training import (
     rfdetr_detection_task_service as rfdetr_task_service_module,
 )
@@ -24,27 +42,8 @@ from backend.service.application.models.training.rfdetr_detection_task_service i
     SqlAlchemyRfdetrTrainingTaskService,
 )
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
-from backend.service.application.models.rfdetr_core.datasets.coco import (
-    _build_train_resize_config,
-    convert_coco_poly_to_mask,
-)
-from backend.service.application.models.rfdetr_core.segmentation import (
-    RfdetrSegmentationPostProcess,
-    mask_logits_to_xyxy,
-)
-from backend.service.application.models.rfdetr_core.models import (
-    matcher as rfdetr_matcher_module,
-)
-from backend.service.application.models.rfdetr_core.models.matcher import (
-    HungarianMatcher,
-)
-from backend.service.application.models.rfdetr_core.training.platform_control import (
-    RfdetrPlatformTrainingControlCommand,
-    RfdetrPlatformTrainingControlSignal,
-    build_rfdetr_platform_training_callback,
-)
-from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.domain.datasets.dataset_export import DatasetExport
+from backend.service.domain.models.model_task_types import SEGMENTATION_TASK_TYPE
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -52,6 +51,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 
 
 def test_rfdetr_matcher_uses_configured_focal_alpha(monkeypatch) -> None:

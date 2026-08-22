@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.classification_deployment_process_supervisor import (
     get_classification_async_deployment_process_supervisor,
@@ -14,7 +13,6 @@ from backend.service.api.deps.classification_deployment_process_supervisor impor
     get_classification_sync_deployment_process_supervisor,
 )
 from backend.service.api.deps.db import get_session_factory
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.classification_inference_tasks.responses import (
     ClassificationInferenceTaskSubmissionResponse,
@@ -55,7 +53,6 @@ async def create_classification_inference_task(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     deployment_process_supervisor: Annotated[DeploymentProcessSupervisor, Depends(get_classification_async_deployment_process_supervisor)],
     gateway_dispatcher_registry: Annotated[ClassificationAsyncInferenceGatewayDispatcherRegistry, Depends(get_classification_async_inference_gateway_dispatcher_registry)],
@@ -66,7 +63,6 @@ async def create_classification_inference_task(
         request=request,
         principal=principal,
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
         deployment_process_supervisor=deployment_process_supervisor,
         gateway_dispatcher_registry=gateway_dispatcher_registry,

@@ -10,6 +10,7 @@ import backend.service.application.workflows.worker.manager as manager_module
 import pytest
 
 from backend.service.application.errors import (
+    OperationTimeoutError,
     ResourceConflictError,
     ServiceConfigurationError,
 )
@@ -97,6 +98,142 @@ def test_sync_invoke_rejects_stale_worker_epoch_before_dispatch() -> None:
         exc_info.value.details["actual_worker_instance_id"]
         == "worker-recovered-same-version"
     )
+
+
+def test_sync_invoke_timeout_includes_request_lock_wait() -> None:
+    """同步调用的总 timeout 必须包含等待前一个请求释放执行槽位的时间。"""
+
+    workflow_app_runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-lock-timeout",
+        generation=1,
+        fingerprint="fingerprint-lock-timeout",
+    )
+    request_lock = Lock()
+    request_lock.acquire()
+    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._lock = Lock()  # noqa: SLF001
+    worker_manager._handles = {  # noqa: SLF001
+        workflow_app_runtime.workflow_runtime_id: SimpleNamespace(
+            process=SimpleNamespace(is_alive=lambda: True),
+            workflow_runtime_revision_id=workflow_app_runtime.active_revision_id,
+            runtime_generation=workflow_app_runtime.revision_generation,
+            expected_snapshot_fingerprint=(
+                workflow_app_runtime.loaded_snapshot_fingerprint
+            ),
+            worker_instance_id=workflow_app_runtime.worker_instance_id,
+            request_lock=request_lock,
+        )
+    }
+
+    try:
+        with pytest.raises(OperationTimeoutError) as exc_info:
+            worker_manager.invoke_runtime(
+                workflow_app_runtime=workflow_app_runtime,
+                workflow_run_id="workflow-run-lock-timeout",
+                input_bindings={},
+                execution_metadata={},
+                timeout_seconds=0.05,  # type: ignore[arg-type]
+                expected_revision_id=workflow_app_runtime.active_revision_id,
+                expected_generation=workflow_app_runtime.revision_generation,
+                expected_snapshot_fingerprint=(
+                    workflow_app_runtime.loaded_snapshot_fingerprint
+                ),
+            )
+    finally:
+        request_lock.release()
+
+    assert exc_info.value.details["timeout_phase"] == "request_lock"
+    assert request_lock.acquire(blocking=False) is True
+    request_lock.release()
+
+
+def test_sync_invoke_timeout_includes_runtime_lifecycle_lock_wait() -> None:
+    """同步调用总 timeout 也必须覆盖 Runtime 启停或切版锁等待。"""
+
+    workflow_app_runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-lifecycle-timeout",
+        generation=1,
+        fingerprint="fingerprint-lifecycle-timeout",
+    )
+    lifecycle_lock = Lock()
+    lifecycle_lock.acquire()
+    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._runtime_lifecycle_locks = (lifecycle_lock,)  # noqa: SLF001
+    worker_manager._lock = Lock()  # noqa: SLF001
+    worker_manager._handles = {}  # noqa: SLF001
+
+    try:
+        with pytest.raises(OperationTimeoutError) as exc_info:
+            worker_manager.invoke_runtime(
+                workflow_app_runtime=workflow_app_runtime,
+                workflow_run_id="workflow-run-lifecycle-timeout",
+                input_bindings={},
+                execution_metadata={},
+                timeout_seconds=0.05,  # type: ignore[arg-type]
+                expected_revision_id=workflow_app_runtime.active_revision_id,
+                expected_generation=workflow_app_runtime.revision_generation,
+                expected_snapshot_fingerprint=(
+                    workflow_app_runtime.loaded_snapshot_fingerprint
+                ),
+            )
+    finally:
+        lifecycle_lock.release()
+
+    assert exc_info.value.details["timeout_phase"] == "runtime_lifecycle_lock"
+
+
+def test_sync_invoke_releases_request_lock_when_identity_changes_after_wait() -> None:
+    """获得执行槽位后的版本复核失败不能永久占用 request lock。"""
+
+    workflow_app_runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-identity-race",
+        generation=1,
+        fingerprint="fingerprint-identity-race",
+    )
+    request_lock = Lock()
+    handle = SimpleNamespace(
+        process=SimpleNamespace(is_alive=lambda: True),
+        workflow_runtime_revision_id=workflow_app_runtime.active_revision_id,
+        runtime_generation=workflow_app_runtime.revision_generation,
+        expected_snapshot_fingerprint=(
+            workflow_app_runtime.loaded_snapshot_fingerprint
+        ),
+        worker_instance_id=workflow_app_runtime.worker_instance_id,
+        request_lock=request_lock,
+    )
+    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._lock = Lock()  # noqa: SLF001
+    worker_manager._handles = {  # noqa: SLF001
+        workflow_app_runtime.workflow_runtime_id: handle
+    }
+    validation_count = 0
+
+    def validate_identity(*_args: object, **_kwargs: object) -> None:
+        nonlocal validation_count
+        validation_count += 1
+        if validation_count == 2:
+            raise ResourceConflictError("worker identity changed")
+
+    worker_manager._validate_handle_identity = validate_identity  # type: ignore[method-assign]  # noqa: SLF001
+
+    with pytest.raises(ResourceConflictError, match="identity changed"):
+        worker_manager.invoke_runtime(
+            workflow_app_runtime=workflow_app_runtime,
+            workflow_run_id="workflow-run-identity-race",
+            input_bindings={},
+            execution_metadata={},
+            timeout_seconds=1,
+            expected_revision_id=workflow_app_runtime.active_revision_id,
+            expected_generation=workflow_app_runtime.revision_generation,
+            expected_snapshot_fingerprint=(
+                workflow_app_runtime.loaded_snapshot_fingerprint
+            ),
+        )
+
+    assert request_lock.acquire(blocking=False) is True
+    request_lock.release()
 
 
 def test_manager_start_waits_for_desired_runtime_recovery_before_monitor() -> None:

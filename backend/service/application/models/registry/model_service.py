@@ -384,6 +384,22 @@ class ModelService(Protocol):
 
         ...
 
+    def register_builds(
+        self,
+        requests: tuple[ModelBuildRegistration, ...],
+    ) -> tuple[str, ...]:
+        """在一个 Unit of Work 中登记同一次 conversion 的全部 build。"""
+
+        ...
+
+    def list_model_builds_by_conversion_task_id(
+        self,
+        conversion_task_id: str,
+    ) -> tuple[ModelBuild, ...]:
+        """读取同一 conversion 已原子登记的全部 build。"""
+
+        ...
+
 
 class SqlAlchemyModelService:
     """使用 SQLAlchemy Repository 与 Unit of Work 实现通用模型登记。"""
@@ -572,21 +588,56 @@ class SqlAlchemyModelService:
     def register_build(self, request: ModelBuildRegistration) -> str:
         """在 Project 删除边界内登记转换 build。"""
 
-        with self.project_mutations.operation(
-            project_id=request.project_id,
-            mutation_kind="model-build",
-            resource_id=request.build_file_id,
-        ):
-            return self._register_build(request)
+        return self.register_builds((request,))[0]
 
-    def _register_build(self, request: ModelBuildRegistration) -> str:
-        """登记模型 build 并返回新的 ModelBuild id。
+    def register_builds(
+        self,
+        requests: tuple[ModelBuildRegistration, ...],
+    ) -> tuple[str, ...]:
+        """在 Project 删除边界内原子登记一批 ModelBuild/ModelFile。"""
+
+        if not requests:
+            return ()
+        project_ids = {request.project_id for request in requests}
+        if len(project_ids) != 1:
+            raise InvalidRequestError(
+                "同一批模型 build 必须属于同一个 Project",
+                details={"project_ids": sorted(project_ids)},
+            )
+        project_id = requests[0].project_id
+        mutation_resource_id = (
+            requests[0].conversion_task_id or requests[0].build_file_id
+        )
+        with self.project_mutations.operation(
+            project_id=project_id,
+            mutation_kind="model-build",
+            resource_id=mutation_resource_id,
+        ):
+            with self._open_unit_of_work() as unit_of_work:
+                model_build_ids = tuple(
+                    self._stage_build(
+                        unit_of_work=unit_of_work,
+                        request=request,
+                    )
+                    for request in requests
+                )
+                unit_of_work.commit()
+                return model_build_ids
+
+    def _stage_build(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        request: ModelBuildRegistration,
+    ) -> str:
+        """在现有 Unit of Work 中暂存一个 ModelBuild 和对应 ModelFile。
 
         参数：
+        - unit_of_work：承载整批 build 的 Unit of Work。
         - request：模型 build 登记请求。
 
         返回：
-        - 新登记的 ModelBuild id。
+        - 暂存的 ModelBuild id。
         """
 
         build_format = request.build_format.strip().lower()
@@ -599,88 +650,85 @@ class SqlAlchemyModelService:
             build_format=build_format,
             runtime_precision=request.runtime_precision,
         )
-        with self._open_unit_of_work() as unit_of_work:
-            source_version = unit_of_work.models.get_visible_model_version(
-                request.source_model_version_id,
-                (request.project_id,),
+        source_version = unit_of_work.models.get_visible_model_version(
+            request.source_model_version_id,
+            (request.project_id,),
+        )
+        if source_version is None:
+            raise ValueError(
+                f"未知的 ModelVersion: {request.source_model_version_id}"
             )
-            if source_version is None:
-                raise ValueError(
-                    f"未知的 ModelVersion: {request.source_model_version_id}"
+
+        model = unit_of_work.models.get_visible_model(
+            source_version.model_id,
+            (request.project_id,),
+        )
+        if model is None:
+            raise ValueError(f"未知的 Model: {source_version.model_id}")
+
+        model_build_id = self._next_id("model-build")
+        normalized_build_metadata = self._normalize_yolo_build_input_metadata(
+            source_version_metadata=source_version.metadata,
+            build_metadata=request.metadata,
+        )
+        build_metadata = attach_model_artifact_provenance(
+            self._strip_deprecated_build_runtime_metadata(
+                normalized_build_metadata
+            ),
+            artifact_kind="converted-model",
+            trace={
+                "model_build_id": model_build_id,
+                "source_model_version_id": request.source_model_version_id,
+                "conversion_task_id": request.conversion_task_id,
+                "build_format": build_format,
+            },
+        )
+        build_file = self._create_model_file(
+            unit_of_work=unit_of_work,
+            file_id=request.build_file_id,
+            project_id=model.project_id,
+            scope_kind=model.scope_kind,
+            model_id=model.model_id,
+            model_build_id=model_build_id,
+            file_type=self._resolve_build_file_type(build_format),
+            logical_name=build_default_file_name(
+                YoloXFileNamingContext(
+                    model_name=model.model_name,
+                    model_scale=model.model_scale,
+                    source_version=source_version.model_version_id,
+                    file_kind=build_format,
+                    suffix=self._guess_suffix(
+                        request.build_file_uri or request.build_file_id
+                    ),
                 )
-
-            model = unit_of_work.models.get_visible_model(
-                source_version.model_id,
-                (request.project_id,),
-            )
-            if model is None:
-                raise ValueError(f"未知的 Model: {source_version.model_id}")
-
-            model_build_id = self._next_id("model-build")
-            normalized_build_metadata = self._normalize_yolo_build_input_metadata(
-                source_version_metadata=source_version.metadata,
-                build_metadata=request.metadata,
-            )
-            build_metadata = attach_model_artifact_provenance(
-                self._strip_deprecated_build_runtime_metadata(
-                    normalized_build_metadata
-                ),
-                artifact_kind="converted-model",
+            ),
+            storage_uri=request.build_file_uri
+            or f"registered://{request.build_file_id}",
+            metadata=attach_model_artifact_provenance(
+                {"build_format": build_format},
+                artifact_kind="converted-model-file",
                 trace={
                     "model_build_id": model_build_id,
                     "source_model_version_id": request.source_model_version_id,
                     "conversion_task_id": request.conversion_task_id,
                     "build_format": build_format,
                 },
-            )
-            build_file = self._create_model_file(
-                unit_of_work=unit_of_work,
-                file_id=request.build_file_id,
-                project_id=model.project_id,
-                scope_kind=model.scope_kind,
-                model_id=model.model_id,
-                model_build_id=model_build_id,
-                file_type=self._resolve_build_file_type(build_format),
-                logical_name=build_default_file_name(
-                    YoloXFileNamingContext(
-                        model_name=model.model_name,
-                        model_scale=model.model_scale,
-                        source_version=source_version.model_version_id,
-                        file_kind=build_format,
-                        suffix=self._guess_suffix(
-                            request.build_file_uri or request.build_file_id
-                        ),
-                    )
-                ),
-                storage_uri=request.build_file_uri
-                or f"registered://{request.build_file_id}",
-                metadata=attach_model_artifact_provenance(
-                    {"build_format": build_format},
-                    artifact_kind="converted-model-file",
-                    trace={
-                        "model_build_id": model_build_id,
-                        "source_model_version_id": request.source_model_version_id,
-                        "conversion_task_id": request.conversion_task_id,
-                        "build_format": build_format,
-                    },
-                ),
-            )
-            model_build = ModelBuild(
-                model_build_id=model_build_id,
-                model_id=model.model_id,
-                source_model_version_id=request.source_model_version_id,
-                build_format=build_format,
-                runtime_backend=runtime_backend,
-                runtime_precision=runtime_precision,
-                runtime_profile_id=request.runtime_profile_id,
-                conversion_task_id=request.conversion_task_id,
-                file_ids=(build_file.file_id,),
-                metadata=build_metadata,
-            )
-            unit_of_work.models.save_model_build(model_build)
-            unit_of_work.commit()
-
-            return model_build_id
+            ),
+        )
+        model_build = ModelBuild(
+            model_build_id=model_build_id,
+            model_id=model.model_id,
+            source_model_version_id=request.source_model_version_id,
+            build_format=build_format,
+            runtime_backend=runtime_backend,
+            runtime_precision=runtime_precision,
+            runtime_profile_id=request.runtime_profile_id,
+            conversion_task_id=request.conversion_task_id,
+            file_ids=(build_file.file_id,),
+            metadata=build_metadata,
+        )
+        unit_of_work.models.save_model_build(model_build)
+        return model_build_id
 
     def get_model(self, model_id: str) -> Model | None:
         """按 id 读取 Model。
@@ -748,6 +796,19 @@ class SqlAlchemyModelService:
 
         with self._open_unit_of_work() as unit_of_work:
             return unit_of_work.models.get_model_build(model_build_id)
+
+    def list_model_builds_by_conversion_task_id(
+        self,
+        conversion_task_id: str,
+    ) -> tuple[ModelBuild, ...]:
+        """按 conversion task id 读取已经原子提交的全部 build。"""
+
+        if not conversion_task_id.strip():
+            raise InvalidRequestError("conversion_task_id 不能为空")
+        with self._open_unit_of_work() as unit_of_work:
+            return unit_of_work.models.list_model_builds_by_conversion_task_id(
+                conversion_task_id
+            )
 
     def get_visible_model_build(
         self,

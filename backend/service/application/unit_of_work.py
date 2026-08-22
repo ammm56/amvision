@@ -26,6 +26,7 @@ from backend.service.domain.models.model_repository import ModelRepository
 from backend.service.domain.tasks.resource_profile_repository import (
     ResourceProfileRepository,
 )
+from backend.service.domain.tasks.outbox_repository import QueueOutboxRepository
 from backend.service.domain.tasks.task_repository import TaskRepository
 from backend.service.domain.workflows.workflow_runtime_repository import (
     WorkflowRuntimeRepository,
@@ -56,6 +57,7 @@ class UnitOfWork(Protocol):
     model_files: ModelFileRepository
     tasks: TaskRepository
     resource_profiles: ResourceProfileRepository
+    queue_outbox: QueueOutboxRepository
     workflow_runtime: WorkflowRuntimeRepository
 
     def scalar(self, statement: Executable) -> object | None:

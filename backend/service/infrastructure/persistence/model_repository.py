@@ -367,6 +367,26 @@ class SqlAlchemyModelRepository:
 
         return tuple(self._to_model_build_domain(record) for record in records)
 
+    def list_model_builds_by_conversion_task_id(
+        self,
+        conversion_task_id: str,
+    ) -> tuple[ModelBuild, ...]:
+        """按 conversion task id 列出 ModelBuild。"""
+
+        statement = (
+            select(ModelBuildRecord)
+            .where(ModelBuildRecord.conversion_task_id == conversion_task_id)
+            .order_by(ModelBuildRecord.model_build_id)
+        )
+        try:
+            records = self.session.execute(statement).scalars().all()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按 conversion task 列出 ModelBuild 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return tuple(self._to_model_build_domain(record) for record in records)
+
     def _to_model_record(self, model: Model) -> ModelRecord:
         """把 Model 领域对象转换为 ORM 实体。"""
 

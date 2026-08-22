@@ -39,6 +39,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 
 
 LOGGER = logging.getLogger(__name__)
+_JSONL_TAIL_READ_CHUNK_SIZE = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -396,21 +397,50 @@ def _read_last_valid_event_sequence(
     *,
     preview_run_id: str,
 ) -> int:
-    """服务重启后从 JSONL 恢复最后一个有效序号。"""
+    """服务重启后从 JSONL 文件尾恢复最后一个有效序号。"""
 
     if not events_path.is_file():
         return 0
-    last_sequence = 0
-    with events_path.open("r", encoding="utf-8", errors="replace") as event_stream:
-        for line in event_stream:
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            event = _deserialize_preview_run_event(preview_run_id, value)
-            if event is not None:
-                last_sequence = max(last_sequence, event.sequence)
-    return last_sequence
+    with events_path.open("rb") as event_stream:
+        event_stream.seek(0, 2)
+        position = event_stream.tell()
+        suffix = b""
+        while position > 0:
+            read_size = min(_JSONL_TAIL_READ_CHUNK_SIZE, position)
+            position -= read_size
+            event_stream.seek(position)
+            chunk = event_stream.read(read_size) + suffix
+            lines = chunk.split(b"\n")
+            suffix = lines[0]
+            for raw_line in reversed(lines[1:]):
+                sequence = _read_preview_event_sequence_from_line(
+                    raw_line,
+                    preview_run_id=preview_run_id,
+                )
+                if sequence is not None:
+                    return sequence
+        sequence = _read_preview_event_sequence_from_line(
+            suffix,
+            preview_run_id=preview_run_id,
+        )
+        return sequence or 0
+
+
+def _read_preview_event_sequence_from_line(
+    raw_line: bytes,
+    *,
+    preview_run_id: str,
+) -> int | None:
+    """解析单行并返回有效 Preview 事件序号。"""
+
+    if not raw_line.strip():
+        return None
+    try:
+        value = json.loads(raw_line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    event = _deserialize_preview_run_event(preview_run_id, value)
+    return event.sequence if event is not None else None
 
 
 def _ensure_jsonl_append_boundary(events_path: Path) -> None:

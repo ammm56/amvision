@@ -88,7 +88,13 @@ def test_create_list_detail_and_pending_result_for_non_detection_conversion_task
             assert detail_payload["model_type"] == model_type
             assert detail_payload["source_model_version_id"] == source_model_version_id
             assert detail_payload["target_formats"] == ["onnx"]
-            assert any(event["message"].endswith("conversion queued") for event in detail_payload["events"])
+            assert any(
+                event["message"] == "task created"
+                and event["payload"].get("state") == "queued"
+                and event["payload"].get("metadata", {}).get("queue_task_id")
+                == submission["queue_task_id"]
+                for event in detail_payload["events"]
+            )
 
             list_response = context.client.get(
                 (

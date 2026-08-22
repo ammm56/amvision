@@ -2,7 +2,8 @@ import { ref } from 'vue'
 import { translate } from '@/platform/i18n'
 import { validateWorkflowApplication } from '../services/workflow-application.service'
 import { saveWorkflowApp, type WorkflowAppSaveResult } from '../services/workflow-app.service'
-import { createWorkflowPreviewRun } from '../services/workflow-runtime.service'
+import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
+import { createWorkflowPreviewRun, getWorkflowPreviewRun } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewExecutionScope } from '../services/workflow-runtime.service'
 import type { WorkflowPreviewImageUpload } from '../preview/useWorkflowPreviewInputs'
 import { validateWorkflowTemplate } from '../services/workflow-template.service'
@@ -51,6 +52,14 @@ export function useWorkflowEditorActions() {
   const errorMessage = ref<string | null>(null)
   const statusMessage = ref<string | null>(null)
   const lastPreviewRun = ref<WorkflowPreviewRun | null>(null)
+  const previewRunStream = useWorkflowResourceStream<WorkflowPreviewRun>({
+    kind: 'preview-run',
+    getSnapshot: getWorkflowPreviewRun,
+    onSnapshot: (previewRun) => {
+      lastPreviewRun.value = previewRun
+    },
+    isTerminal: isTerminalPreviewRun,
+  })
 
   async function saveWorkflowDocument(input: WorkflowSaveActionInput): Promise<WorkflowAppSaveResult | null> {
     saving.value = true
@@ -98,6 +107,9 @@ export function useWorkflowEditorActions() {
         executionScope: input.executionScope,
       })
       lastPreviewRun.value = previewRun
+      if (!isTerminalPreviewRun(previewRun)) {
+        previewRunStream.start(previewRun.preview_run_id)
+      }
       statusMessage.value = null
       return previewRun
     } catch (error) {
@@ -122,6 +134,7 @@ export function useWorkflowEditorActions() {
   }
 
   function resetPreviewRun(): void {
+    previewRunStream.stop()
     lastPreviewRun.value = null
   }
 
@@ -138,4 +151,8 @@ export function useWorkflowEditorActions() {
     setActionStatus,
     resetPreviewRun,
   }
+}
+
+function isTerminalPreviewRun(previewRun: WorkflowPreviewRun): boolean {
+  return ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(previewRun.state)
 }

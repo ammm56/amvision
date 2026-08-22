@@ -6,7 +6,6 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.queue import QueueBackend
 from backend.contracts.datasets.dataset_formats import (
     IMPLEMENTED_DATASET_EXPORT_FORMATS,
 )
@@ -28,19 +27,18 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.service.application.ports.object_store import ObjectStore
 from backend.service.application.project_mutation import ProjectMutationAdmissionService
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
 )
+from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.datasets.dataset_version import DatasetVersion
 from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import (
-    LocalDatasetStorage,
-)
 
 
 DATASET_EXPORT_TASK_KIND = "dataset-export"
@@ -54,20 +52,17 @@ class SqlAlchemyDatasetExportTaskService:
         self,
         *,
         session_factory: SessionFactory,
-        dataset_storage: LocalDatasetStorage,
-        queue_backend: QueueBackend | None = None,
+        dataset_storage: ObjectStore,
     ) -> None:
         """初始化 DatasetExport 任务服务。
 
         参数：
         - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
-        - queue_backend：可选的任务队列后端；提交任务时必填。
+        - dataset_storage：持久对象存储端口。
         """
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.queue_backend = queue_backend
         self.task_service = SqlAlchemyTaskService(session_factory)
         self.project_mutations = ProjectMutationAdmissionService(session_factory)
         self.exporter = SqlAlchemyDatasetExporter(
@@ -85,7 +80,6 @@ class SqlAlchemyDatasetExportTaskService:
         """创建并入队一条 DatasetExport 任务。"""
 
         self._validate_submission_request(request)
-        queue_backend = self._require_queue_backend()
         dataset_version = self._require_dataset_version(request.dataset_version_id)
         self._validate_dataset_version_identity(
             request=request,
@@ -93,6 +87,7 @@ class SqlAlchemyDatasetExportTaskService:
         )
         created_at = self._now_iso()
         task_id = self._next_id("task")
+        queue_task_id = f"queue-message-{task_id}"
         dataset_export_id = request.dataset_export_id or self._next_id("dataset-export")
         task_record = self._build_task_record(
             request=request,
@@ -101,14 +96,21 @@ class SqlAlchemyDatasetExportTaskService:
             created_at=created_at,
             created_by=created_by,
             display_name=display_name,
+            queue_task_id=queue_task_id,
         )
         created_event = TaskEvent(
             event_id=self._next_id("task-event"),
             task_id=task_id,
             event_type="status",
             created_at=created_at,
-            message="task created",
-            payload={"state": "queued"},
+            message="dataset export queued",
+            payload={
+                "state": "queued",
+                "metadata": {
+                    "queue_name": DATASET_EXPORT_QUEUE_NAME,
+                    "queue_task_id": queue_task_id,
+                },
+            },
         )
         dataset_export = DatasetExport(
             dataset_export_id=dataset_export_id,
@@ -126,6 +128,8 @@ class SqlAlchemyDatasetExportTaskService:
                 "output_object_prefix": request.output_object_prefix,
                 "created_by": created_by,
                 "target_format": request.format_id,
+                "queue_name": DATASET_EXPORT_QUEUE_NAME,
+                "queue_task_id": queue_task_id,
             },
         )
         with self.project_mutations.operation(
@@ -137,72 +141,13 @@ class SqlAlchemyDatasetExportTaskService:
                 dataset_export=dataset_export,
                 task_record=task_record,
                 created_event=created_event,
+                queue_task_id=queue_task_id,
             )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=DATASET_EXPORT_QUEUE_NAME,
-                payload={"dataset_export_id": dataset_export_id},
-                metadata={
-                    "dataset_export_id": dataset_export_id,
-                    "task_id": task_id,
-                    "project_id": request.project_id,
-                    "dataset_id": request.dataset_id,
-                    "dataset_version_id": request.dataset_version_id,
-                    "format_id": request.format_id,
-                },
-            )
-        except Exception as error:
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_id,
-                    event_type="result",
-                    message="dataset export queue submission failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": self._now_iso(),
-                        "error_message": str(error),
-                        "progress": {"stage": "failed"},
-                    },
-                )
-            )
-            self._save_dataset_export(
-                replace(
-                    dataset_export,
-                    status="failed",
-                    error_message=str(error),
-                )
-            )
-            raise
-
-        self._save_dataset_export(
-            replace(
-                dataset_export,
-                metadata={
-                    **dataset_export.metadata,
-                    "queue_name": queue_task.queue_name,
-                    "queue_task_id": queue_task.task_id,
-                },
-            )
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task_id,
-                event_type="status",
-                message="dataset export queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
-                    },
-                },
-            )
-        )
         return DatasetExportTaskSubmission(
             dataset_export_id=dataset_export_id,
             task_id=task_id,
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=DATASET_EXPORT_QUEUE_NAME,
+            queue_task_id=queue_task_id,
             dataset_version_id=request.dataset_version_id,
             format_id=request.format_id,
             status="queued",
@@ -349,14 +294,6 @@ class SqlAlchemyDatasetExportTaskService:
                 details={"format_id": request.format_id},
             )
 
-    def _require_queue_backend(self) -> QueueBackend:
-        """返回提交任务必需的队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("提交导出任务时缺少 queue backend")
-
-        return self.queue_backend
-
     def _build_task_spec(
         self,
         request: DatasetExportRequest,
@@ -384,6 +321,7 @@ class SqlAlchemyDatasetExportTaskService:
         created_at: str,
         created_by: str | None,
         display_name: str,
+        queue_task_id: str,
     ) -> TaskRecord:
         """构建与 DatasetExport 资源绑定的 TaskRecord。"""
 
@@ -405,6 +343,8 @@ class SqlAlchemyDatasetExportTaskService:
                 "dataset_id": request.dataset_id,
                 "dataset_version_id": request.dataset_version_id,
                 "target_format": request.format_id,
+                "queue_name": DATASET_EXPORT_QUEUE_NAME,
+                "queue_task_id": queue_task_id,
             },
             state="queued",
         )
@@ -415,14 +355,35 @@ class SqlAlchemyDatasetExportTaskService:
         dataset_export: DatasetExport,
         task_record: TaskRecord,
         created_event: TaskEvent,
+        queue_task_id: str,
     ) -> None:
-        """把 DatasetExport 与 TaskRecord 一起落盘。"""
+        """同事务保存 DatasetExport、Task、Event 和 Queue Outbox。"""
 
         unit_of_work = SqlAlchemyUnitOfWork(self.session_factory.create_session())
         try:
             unit_of_work.dataset_exports.save_dataset_export(dataset_export)
             unit_of_work.tasks.save_task(task_record)
             unit_of_work.tasks.save_task_event(created_event)
+            unit_of_work.queue_outbox.add_message(
+                build_queue_outbox_message(
+                    message_id=queue_task_id,
+                    queue_name=DATASET_EXPORT_QUEUE_NAME,
+                    payload={
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "task_id": task_record.task_id,
+                        "attempt_no": 1,
+                    },
+                    metadata={
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "task_id": task_record.task_id,
+                        "project_id": dataset_export.project_id,
+                        "dataset_id": dataset_export.dataset_id,
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
+                    },
+                    created_at=task_record.created_at,
+                )
+            )
             unit_of_work.commit()
         finally:
             unit_of_work.close()

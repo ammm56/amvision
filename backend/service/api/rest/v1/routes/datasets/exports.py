@@ -7,10 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory, get_unit_of_work
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.application.datasets.exports import DatasetExportRequest
 from backend.service.application.datasets.exports.delivery import SqlAlchemyDatasetExportDeliveryService
@@ -58,7 +56,6 @@ def create_dataset_export(
 	principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("datasets:write"))],
 	session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
 	dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
-	queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
 ) -> DatasetExportSubmissionResponse:
 	"""创建一个新的 DatasetExport 资源并提交后台导出任务。"""
 
@@ -71,7 +68,6 @@ def create_dataset_export(
 	service = SqlAlchemyDatasetExportTaskService(
 		session_factory=session_factory,
 		dataset_storage=dataset_storage,
-		queue_backend=queue_backend,
 	)
 	submission = service.submit_export_task(
 		DatasetExportRequest(

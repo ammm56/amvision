@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -228,6 +229,7 @@ def analyze_rfdetr_checkpoint_load_coverage(
     source_state_dict = _build_load_path_coverage_state_dict(
         model=model,
         checkpoint=normalized,
+        checkpoint_path=checkpoint_path_obj,
     )
     return analyze_state_dict_coverage(
         model=model,
@@ -241,6 +243,7 @@ def _build_load_path_coverage_state_dict(
     *,
     model: torch.nn.Module,
     checkpoint: dict[str, Any],
+    checkpoint_path: Path,
 ) -> dict[str, torch.Tensor]:
     """执行 `_build_load_path_coverage_state_dict`。
     
@@ -257,6 +260,7 @@ def _build_load_path_coverage_state_dict(
         model=model,
         source_state_dict=source_state_dict,
         checkpoint_args=checkpoint.get("args"),
+        checkpoint_path=checkpoint_path,
     )
     return source_state_dict
 
@@ -266,6 +270,7 @@ def _adapt_query_params_for_load_coverage(
     model: torch.nn.Module,
     source_state_dict: dict[str, torch.Tensor],
     checkpoint_args: Any,
+    checkpoint_path: Path,
 ) -> None:
     """执行 `_adapt_query_params_for_load_coverage`。
     
@@ -281,8 +286,24 @@ def _adapt_query_params_for_load_coverage(
     model_state_dict = model.state_dict()
     target_num_queries = _coerce_positive_int(getattr(model, "num_queries", None))
     target_group_detr = _coerce_positive_int(getattr(model, "group_detr", None))
-    ckpt_num_queries = _coerce_positive_int(_ckpt_args_get(checkpoint_args, "num_queries"))
-    ckpt_group_detr = _coerce_positive_int(_ckpt_args_get(checkpoint_args, "group_detr"))
+    ckpt_num_queries, ckpt_group_detr = _resolve_checkpoint_query_layout(
+        checkpoint_args=checkpoint_args,
+        checkpoint_path=checkpoint_path,
+    )
+    has_query_parameters = any(
+        any(name.endswith(suffix) for suffix in _QUERY_PARAM_SUFFIXES)
+        for name in source_state_dict
+    )
+    if (
+        has_query_parameters
+        and target_group_detr is not None
+        and target_group_detr > 1
+        and (ckpt_num_queries is None or ckpt_group_detr is None)
+    ):
+        raise ValueError(
+            "RF-DETR grouped-query warm-start 缺少来源 query 布局元数据："
+            f"checkpoint={checkpoint_path}"
+        )
 
     for name, tensor in list(source_state_dict.items()):
         if not any(name.endswith(suffix) for suffix in _QUERY_PARAM_SUFFIXES):
@@ -294,16 +315,20 @@ def _adapt_query_params_for_load_coverage(
             continue
         if tensor.shape[0] < target_tensor.shape[0]:
             continue
-        if ckpt_num_queries is not None and ckpt_group_detr is not None and target_num_queries is not None and target_group_detr is not None:
-            source_state_dict[name] = _slice_query_param_per_group(
-                tensor,
-                ckpt_num_queries=ckpt_num_queries,
-                ckpt_group_detr=ckpt_group_detr,
-                target_num_queries=target_num_queries,
-                target_group_detr=target_group_detr,
-            )
-        else:
-            source_state_dict[name] = tensor[: target_tensor.shape[0]]
+        if (
+            ckpt_num_queries is None
+            or ckpt_group_detr is None
+            or target_num_queries is None
+            or target_group_detr is None
+        ):
+            continue
+        source_state_dict[name] = _slice_query_param_per_group(
+            tensor,
+            ckpt_num_queries=ckpt_num_queries,
+            ckpt_group_detr=ckpt_group_detr,
+            target_num_queries=target_num_queries,
+            target_group_detr=target_group_detr,
+        )
 
 
 def _coerce_positive_int(value: Any) -> int | None:
@@ -550,24 +575,82 @@ def _slice_query_param_per_group(
 
     expected_total = ckpt_num_queries * ckpt_group_detr
     if tensor.shape[0] != expected_total:
-        logger.warning(
-            "_slice_query_param_per_group: checkpoint args claim %d × %d = %d rows "
-            "but tensor has %d rows; falling back to flat slice. Per-group structure "
-            "may be scrambled if group_detr > 1.",
-            ckpt_num_queries,
-            ckpt_group_detr,
-            expected_total,
-            tensor.shape[0],
+        raise ValueError(
+            "RF-DETR checkpoint query 布局元数据与 Tensor 行数不一致："
+            f"num_queries={ckpt_num_queries}, group_detr={ckpt_group_detr}, "
+            f"expected_rows={expected_total}, actual_rows={tensor.shape[0]}"
         )
-        return tensor[: target_num_queries * target_group_detr]
 
     if target_num_queries == ckpt_num_queries and target_group_detr == ckpt_group_detr:
         return tensor
 
     keep_groups = min(target_group_detr, ckpt_group_detr)
     keep_per_group = min(target_num_queries, ckpt_num_queries)
+    if keep_groups != target_group_detr or keep_per_group != target_num_queries:
+        raise ValueError(
+            "RF-DETR warm-start 不能从较小的 query 布局扩展到较大布局："
+            f"source={ckpt_num_queries}x{ckpt_group_detr}, "
+            f"target={target_num_queries}x{target_group_detr}"
+        )
     pieces = [tensor[g * ckpt_num_queries : g * ckpt_num_queries + keep_per_group] for g in range(keep_groups)]
     return torch.cat(pieces, dim=0)
+
+
+def _resolve_checkpoint_query_layout(
+    *,
+    checkpoint_args: Any,
+    checkpoint_path: Path,
+) -> tuple[int | None, int | None]:
+    """读取 checkpoint 自带或 catalog manifest 固化的 query 分组布局。"""
+
+    raw_num_queries = _ckpt_args_get(checkpoint_args, "num_queries")
+    raw_group_detr = _ckpt_args_get(checkpoint_args, "group_detr")
+    has_checkpoint_layout = raw_num_queries is not None or raw_group_detr is not None
+    if has_checkpoint_layout:
+        num_queries = _coerce_positive_int(raw_num_queries)
+        group_detr = _coerce_positive_int(raw_group_detr)
+        if num_queries is None or group_detr is None:
+            raise ValueError(
+                "RF-DETR checkpoint 的 args.num_queries 和 args.group_detr "
+                "必须同时存在且为正整数："
+                f"checkpoint={checkpoint_path}"
+            )
+        return num_queries, group_detr
+
+    manifest_path = checkpoint_path.parent.parent / "manifest.json"
+    if not manifest_path.is_file():
+        return None, None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"RF-DETR 预训练资产 manifest 无法读取：{manifest_path}"
+        ) from error
+    if not isinstance(manifest, Mapping):
+        raise ValueError(f"RF-DETR 预训练资产 manifest 不是 JSON 对象：{manifest_path}")
+    configured_checkpoint_path = manifest.get("checkpoint_path")
+    if not isinstance(configured_checkpoint_path, str):
+        return None, None
+    resolved_manifest_checkpoint = (
+        manifest_path.parent / configured_checkpoint_path
+    ).resolve()
+    if resolved_manifest_checkpoint != checkpoint_path:
+        return None, None
+    model_config = manifest.get("checkpoint_model_config")
+    if model_config is None:
+        return None, None
+    if not isinstance(model_config, Mapping):
+        raise ValueError(
+            f"RF-DETR checkpoint_model_config 不是 JSON 对象：{manifest_path}"
+        )
+    num_queries = _coerce_positive_int(model_config.get("num_queries"))
+    group_detr = _coerce_positive_int(model_config.get("group_detr"))
+    if num_queries is None or group_detr is None:
+        raise ValueError(
+            "RF-DETR checkpoint_model_config 必须包含正整数 "
+            f"num_queries/group_detr：{manifest_path}"
+        )
+    return num_queries, group_detr
 
 
 def _filter_intentional_keys(keys: list[str]) -> list[str]:
@@ -766,64 +849,50 @@ def load_pretrain_weights(
                 mc.num_classes = num_classes
         nn_model.reinitialize_detection_head(checkpoint_num_classes)
 
-    ckpt_args = checkpoint.get("args")
-    ckpt_num_queries_raw = _ckpt_args_get(ckpt_args, "num_queries") if ckpt_args is not None else None
-    ckpt_group_detr_raw = _ckpt_args_get(ckpt_args, "group_detr") if ckpt_args is not None else None
-    try:
-        ckpt_num_queries = int(ckpt_num_queries_raw) if ckpt_num_queries_raw is not None else None
-        ckpt_group_detr = int(ckpt_group_detr_raw) if ckpt_group_detr_raw is not None else None
-    except (TypeError, ValueError):
-        logger.warning(
-            "load_pretrain_weights: checkpoint args.num_queries / args.group_detr not coercible "
-            "to int; falling back to legacy flat slice."
+    ckpt_num_queries, ckpt_group_detr = _resolve_checkpoint_query_layout(
+        checkpoint_args=checkpoint.get("args"),
+        checkpoint_path=checkpoint_path,
+    )
+    if mc.group_detr > 1 and (
+        ckpt_num_queries is None or ckpt_group_detr is None
+    ):
+        raise ValueError(
+            "RF-DETR grouped-query warm-start 缺少来源 query 布局元数据："
+            f"checkpoint={checkpoint_path}"
         )
-        ckpt_num_queries = None
-        ckpt_group_detr = None
-    if (ckpt_num_queries is None) != (ckpt_group_detr is None):
-        _first_query_key = next(
-            (k for k in checkpoint["model"] if any(k.endswith(s) for s in _QUERY_PARAM_SUFFIXES)),
-            None,
-        )
-        if _first_query_key is not None:
-            _n = checkpoint["model"][_first_query_key].shape[0]
-            _absent: str | None = None
-            if ckpt_num_queries is not None and ckpt_num_queries > 0 and _n % ckpt_num_queries == 0:
-                ckpt_group_detr = _n // ckpt_num_queries
-                _absent, _inferred, _known, _known_val = "group_detr", ckpt_group_detr, "num_queries", ckpt_num_queries
-            elif ckpt_group_detr is not None and ckpt_group_detr > 0 and _n % ckpt_group_detr == 0:
-                ckpt_num_queries = _n // ckpt_group_detr
-                _absent, _inferred, _known, _known_val = "num_queries", ckpt_num_queries, "group_detr", ckpt_group_detr
-            if _absent is not None:
-                logger.warning(
-                    "load_pretrain_weights: args.%s absent; inferred ckpt_%s=%d from tensor rows %d ÷ ckpt_%s=%d.",
-                    _absent,
-                    _absent,
-                    _inferred,
-                    _n,
-                    _known,
-                    _known_val,
-                )
-    if mc.group_detr > 1 and (ckpt_num_queries is None or ckpt_group_detr is None):
-        logger.warning(
-            "load_pretrain_weights: checkpoint lacks args.num_queries / "
-            "args.group_detr; falling back to flat slice. With "
-            "group_detr=%d this may scramble per-group query structure if "
-            "the checkpoint was trained with group_detr > 1.",
-            mc.group_detr,
-        )
+    target_query_rows = mc.num_queries * mc.group_detr
     for name in list(checkpoint["model"].keys()):
         if any(name.endswith(x) for x in _QUERY_PARAM_SUFFIXES):
             tensor = checkpoint["model"][name]
-            if ckpt_num_queries is not None and ckpt_group_detr is not None:
-                checkpoint["model"][name] = _slice_query_param_per_group(
-                    tensor,
-                    ckpt_num_queries=ckpt_num_queries,
-                    ckpt_group_detr=ckpt_group_detr,
-                    target_num_queries=mc.num_queries,
-                    target_group_detr=mc.group_detr,
+            if (
+                tensor.shape[0] == target_query_rows
+                and (
+                    (
+                        ckpt_num_queries == mc.num_queries
+                        and ckpt_group_detr == mc.group_detr
+                    )
+                    or (
+                        mc.group_detr == 1
+                        and ckpt_num_queries is None
+                        and ckpt_group_detr is None
+                    )
                 )
-            else:
-                checkpoint["model"][name] = tensor[: mc.num_queries * mc.group_detr]
+            ):
+                continue
+            if ckpt_num_queries is None or ckpt_group_detr is None:
+                raise ValueError(
+                    "RF-DETR warm-start 需要改变 query Tensor 布局，但 checkpoint "
+                    "及其 catalog manifest 均未声明 num_queries/group_detr："
+                    f"parameter={name}, source_rows={tensor.shape[0]}, "
+                    f"target_rows={target_query_rows}, checkpoint={checkpoint_path}"
+                )
+            checkpoint["model"][name] = _slice_query_param_per_group(
+                tensor,
+                ckpt_num_queries=ckpt_num_queries,
+                ckpt_group_detr=ckpt_group_detr,
+                target_num_queries=mc.num_queries,
+                target_group_detr=mc.group_detr,
+            )
 
     interpolate_position_embeddings(checkpoint["model"], mc.positional_encoding_size)
     incompatible = nn_model.load_state_dict(checkpoint["model"], strict=False)

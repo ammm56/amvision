@@ -8,12 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.api.app import create_app
-from backend.service.application.local_buffers.broker_settings import (
-    LocalBufferBrokerPoolSettings,
-    LocalBufferBrokerSettings,
-)
 from backend.service.application.auth.default_local_auth_seeder import (
     DEFAULT_LOCAL_AUTH_TOKEN,
     DEFAULT_LOCAL_AUTH_USERNAME,
@@ -22,18 +17,26 @@ from backend.service.application.auth.local_auth_service import (
     LocalAuthService,
     LocalAuthUserCreateRequest,
 )
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerSettings,
+)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 from backend.service.settings import (
     BackendServiceInferenceDaemonConfig,
     BackendServiceSettings,
     BackendServiceZeroMqTriggerConfig,
 )
-
 
 _VALID_TEST_IMAGE_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVQIHWNk+M8ABIwM/xmAAAAREgIB9FemLQAAAABJRU5ErkJggg=="
 _DEFAULT_TEST_AUTH_TOKEN = DEFAULT_LOCAL_AUTH_TOKEN
@@ -153,6 +156,27 @@ def create_api_test_context(
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
     )
+
+
+def dispatch_queue_outbox(
+    *,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+) -> int:
+    """显式模拟 backend-service dispatcher 投递已提交的 Outbox 消息。
+
+    参数：
+    - session_factory：测试数据库会话工厂。
+    - queue_backend：接收 Outbox 消息的测试队列后端。
+
+    返回：
+    - int：本轮成功投递的消息数量。
+    """
+
+    return QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()
 
 
 def build_test_headers(*, scopes: str) -> dict[str, str]:

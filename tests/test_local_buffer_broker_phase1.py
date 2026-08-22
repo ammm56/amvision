@@ -1267,8 +1267,11 @@ def test_backend_service_runtime_starts_broker_and_binds_workflow_context(
     try:
         status = runtime.local_buffer_broker_supervisor.get_status()
         broker_event_channel = runtime.workflow_runtime_worker_manager._resolve_local_buffer_broker_event_channel()
+        outbox_thread = runtime.queue_outbox_dispatcher._thread  # noqa: SLF001
 
         assert status["state"] == "running"
+        assert outbox_thread is not None
+        assert outbox_thread.is_alive()
         assert (
             runtime.workflow_service_node_runtime_context.local_buffer_reader
             is runtime.local_buffer_broker_supervisor
@@ -1280,6 +1283,7 @@ def test_backend_service_runtime_starts_broker_and_binds_workflow_context(
         )
     finally:
         bootstrap.stop_runtime(runtime)
+    assert runtime.queue_outbox_dispatcher._thread is None  # noqa: SLF001
 
 
 def test_deployment_supervisor_passes_broker_event_channel_to_worker(

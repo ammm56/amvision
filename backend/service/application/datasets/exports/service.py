@@ -21,10 +21,10 @@ from backend.service.application.datasets.exports.formats.files import (
 from backend.service.application.datasets.exports.formats.payloads import (
     DatasetExportPayloadBuilderMixin,
 )
+from backend.service.application.ports.object_store import ObjectStore
 from backend.service.domain.datasets.dataset_version import DatasetVersion
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 class SqlAlchemyDatasetExporter(
@@ -36,13 +36,13 @@ class SqlAlchemyDatasetExporter(
     def __init__(
         self,
         session_factory: SessionFactory,
-        dataset_storage: LocalDatasetStorage | None = None,
+        dataset_storage: ObjectStore | None = None,
     ) -> None:
         """初始化基于 SQLAlchemy 的数据集导出器。
 
         参数：
         - session_factory：用于创建请求级数据库会话的工厂。
-        - dataset_storage：可选的本地数据集文件存储服务；提供时会把导出结果正式写盘。
+        - dataset_storage：可选的 ObjectStore；提供时会持久化导出结果。
         """
 
         self.session_factory = session_factory

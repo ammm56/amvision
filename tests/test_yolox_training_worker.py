@@ -2,27 +2,45 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+
 import cv2
 import numpy as np
 import pytest
 import torch
 
-from backend.contracts.datasets.exports.coco_detection_export import COCO_DETECTION_DATASET_FORMAT
-from backend.contracts.datasets.exports.voc_detection_export import VOC_DETECTION_DATASET_FORMAT
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
-from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
+import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
+import backend.service.application.models.yolox_core.training.execution as yolox_training_execution_module
+from backend.contracts.datasets.exports.coco_detection_export import (
+    COCO_DETECTION_DATASET_FORMAT,
+)
+from backend.contracts.datasets.exports.voc_detection_export import (
+    VOC_DETECTION_DATASET_FORMAT,
+)
+from backend.service.application.auth.default_local_auth_seeder import (
+    DEFAULT_LOCAL_AUTH_USERNAME,
+)
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.events import InMemoryServiceEventBus
-import backend.service.application.models.yolox_core.training.execution as yolox_training_execution_module
+from backend.service.application.models.registry.model_service import (
+    PretrainedRegistrationRequest,
+    SqlAlchemyModelService,
+)
+from backend.service.application.models.training.training_telemetry import (
+    TrainingTelemetryBroker,
+)
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionRequest,
     YoloXDetectionTrainingExecutionResult,
     YoloXTrainingEpochProgress,
     run_yolox_detection_training,
+)
+from backend.service.application.models.training.yolox_detection_task_service import (
+    SqlAlchemyYoloXTrainingTaskService,
+    YoloXTrainingTaskRequest,
 )
 from backend.service.application.models.yolox_core.cfg import (
     YOLOX_SUPPORTED_MODEL_SCALES,
@@ -34,32 +52,37 @@ from backend.service.application.models.yolox_core.data.datasets import (
 from backend.service.application.models.yolox_core.dependencies import (
     require_yolox_core_dependencies,
 )
-from backend.service.application.models.yolox_core.models import build_yolox_detection_model
+from backend.service.application.models.yolox_core.models import (
+    build_yolox_detection_model,
+)
 from backend.service.application.models.yolox_core.training import (
     LoadedYoloXResumeState,
-    build_yolox_checkpoint_state as _build_checkpoint_state,
     load_yolox_resume_checkpoint,
     release_yolox_training_runtime_resources,
+)
+from backend.service.application.models.yolox_core.training import (
+    build_yolox_checkpoint_state as _build_checkpoint_state,
 )
 from backend.service.application.models.yolox_core.weights import (
     extract_yolox_checkpoint_state_dict,
 )
-import backend.service.application.models.training.yolox_detection_task_service as yolox_training_service_module
-from backend.service.application.models.registry.model_service import (
-    PretrainedRegistrationRequest,
-    SqlAlchemyModelService,
-)
-from backend.service.application.models.training.yolox_detection_task_service import SqlAlchemyYoloXTrainingTaskService, YoloXTrainingTaskRequest
-from backend.service.application.models.training.training_telemetry import (
-    TrainingTelemetryBroker,
-)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-from backend.service.infrastructure.object_store.local_dataset_storage import DatasetStorageSettings, LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.infrastructure.persistence.base import Base
-from backend.workers.training.yolox_training_queue_worker import YoloXTrainingQueueWorker
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
+from backend.workers.training.yolox_training_queue_worker import (
+    YoloXTrainingQueueWorker,
+)
 
 
 def test_release_yolox_training_runtime_resources_clears_cuda_cache(monkeypatch) -> None:
@@ -207,6 +230,7 @@ def test_yolox_training_worker_advances_task_from_queued_to_succeeded(tmp_path: 
         )
         assert queued_task.task.state == "queued"
 
+        _dispatch_queue_outbox(session_factory, queue_backend)
         assert worker.run_once() is True
 
         completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -334,6 +358,7 @@ def test_yolox_training_worker_accepts_voc_dataset_export(tmp_path: Path) -> Non
             created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
+        _dispatch_queue_outbox(session_factory, queue_backend)
         assert worker.run_once() is True
 
         completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -399,6 +424,7 @@ def test_yolox_training_worker_rejects_test_as_validation_when_val_is_missing(
             created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
+        _dispatch_queue_outbox(session_factory, queue_backend)
         assert worker.run_once() is True
 
         completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -475,6 +501,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
             ),
             created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
+        _dispatch_queue_outbox(session_factory, queue_backend)
         assert worker.run_once() is True
         first_completed_task = SqlAlchemyTaskService(session_factory).get_task(
             first_submission.task_id,
@@ -508,6 +535,7 @@ def test_yolox_training_worker_can_warm_start_from_existing_model_version(tmp_pa
             created_by=DEFAULT_LOCAL_AUTH_USERNAME,
         )
 
+        _dispatch_queue_outbox(session_factory, queue_backend)
         assert worker.run_once() is True
 
         second_completed_task = SqlAlchemyTaskService(session_factory).get_task(
@@ -839,6 +867,21 @@ def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
 
     assert captured["expected_validation_split_name"] == "val"
     session_factory.engine.dispose()
+
+
+def _dispatch_queue_outbox(
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+) -> None:
+    """显式模拟 backend-service dispatcher 投递本次业务提交。"""
+
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
+    )
 
 
 def _create_worker_runtime(

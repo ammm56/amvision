@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
-from backend.queue import LocalFileQueueBackend
-from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.application.models.training.training_telemetry_mmap import (
     TrainingTelemetryMmapPublisher,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.settings import BackendWorkerSettings, get_backend_worker_settings
 
 

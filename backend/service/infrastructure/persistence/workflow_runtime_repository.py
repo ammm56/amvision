@@ -641,6 +641,42 @@ class SqlAlchemyWorkflowRuntimeRepository:
             ) from error
         return None if record is None else self._revision_to_domain(record)
 
+    def get_visible_workflow_runtime_revision(
+        self,
+        workflow_runtime_id: str,
+        workflow_runtime_revision_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowRuntimeRevision | None:
+        """按稳定 Runtime、revision id 和 Project 可见范围读取 revision。"""
+
+        statement = (
+            select(WorkflowRuntimeRevisionRecord)
+            .join(
+                WorkflowAppRuntimeRecord,
+                WorkflowAppRuntimeRecord.workflow_runtime_id
+                == WorkflowRuntimeRevisionRecord.workflow_runtime_id,
+            )
+            .where(
+                WorkflowRuntimeRevisionRecord.workflow_runtime_id
+                == workflow_runtime_id,
+                WorkflowRuntimeRevisionRecord.workflow_runtime_revision_id
+                == workflow_runtime_revision_id,
+            )
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                WorkflowAppRuntimeRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见 Project 读取 WorkflowRuntimeRevision 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._revision_to_domain(record)
+
     def update_workflow_runtime_revision_state(
         self,
         workflow_runtime_revision_id: str,
@@ -818,6 +854,30 @@ class SqlAlchemyWorkflowRuntimeRepository:
             return None
         return self._preview_to_domain(record)
 
+    def get_visible_preview_run(
+        self,
+        preview_run_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowPreviewRun | None:
+        """按 id 和 Project 可见范围读取 WorkflowPreviewRun。"""
+
+        statement = select(WorkflowPreviewRunRecord).where(
+            WorkflowPreviewRunRecord.preview_run_id == preview_run_id
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                WorkflowPreviewRunRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见 Project 读取 WorkflowPreviewRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._preview_to_domain(record)
+
     def list_preview_runs(self, project_id: str) -> tuple[WorkflowPreviewRun, ...]:
         """按 Project id 列出 WorkflowPreviewRun。
 
@@ -956,6 +1016,30 @@ class SqlAlchemyWorkflowRuntimeRepository:
         if record is None:
             return None
         return self._runtime_to_domain(record)
+
+    def get_visible_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowAppRuntime | None:
+        """按 id 和 Project 可见范围读取 WorkflowAppRuntime。"""
+
+        statement = select(WorkflowAppRuntimeRecord).where(
+            WorkflowAppRuntimeRecord.workflow_runtime_id == workflow_runtime_id
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                WorkflowAppRuntimeRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见 Project 读取 WorkflowAppRuntime 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._runtime_to_domain(record)
 
     def list_workflow_app_runtimes(
         self,
@@ -1333,6 +1417,30 @@ class SqlAlchemyWorkflowRuntimeRepository:
         if record is None:
             return None
         return self._run_to_domain(record)
+
+    def get_visible_workflow_run(
+        self,
+        workflow_run_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowRun | None:
+        """按 id 和 Project 可见范围读取 WorkflowRun。"""
+
+        statement = select(WorkflowRunRecord).where(
+            WorkflowRunRecord.workflow_run_id == workflow_run_id
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                WorkflowRunRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见 Project 读取 WorkflowRun 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._run_to_domain(record)
 
     def list_workflow_runs(self, project_id: str) -> tuple[WorkflowRun, ...]:
         """按 Project id 列出 WorkflowRun。"""

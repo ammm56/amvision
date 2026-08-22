@@ -12,7 +12,14 @@ from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
-_TERMINAL_STATES = {"succeeded", "failed", "cancelled", "canceled", "completed"}
+_TERMINAL_STATES = {
+    "succeeded",
+    "failed",
+    "timed_out",
+    "cancelled",
+    "canceled",
+    "completed",
+}
 
 
 def delete_conversion_task_outputs(

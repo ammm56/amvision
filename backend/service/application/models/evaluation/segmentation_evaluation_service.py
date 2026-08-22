@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import zipfile
 
-from backend.queue import QueueBackend
 from backend.service.application.datasets.formats import (
     require_supported_dataset_export_format,
 )
@@ -43,6 +42,10 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.tasks.task_records import TaskRecord
@@ -133,11 +136,9 @@ class SqlAlchemySegmentationEvaluationService:
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
-        queue_backend: QueueBackend | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.queue_backend = queue_backend
         self.task_service = SqlAlchemyTaskService(session_factory)
 
     def submit_evaluation_task(
@@ -151,7 +152,6 @@ class SqlAlchemySegmentationEvaluationService:
             raise InvalidRequestError("project_id 不能为空")
         if not request.model_version_id.strip():
             raise InvalidRequestError("model_version_id 不能为空")
-        queue_backend = self._require_queue_backend()
         runtime_target = self._resolve_runtime_target(request)
         dataset_export = self._resolve_dataset_export(
             request,
@@ -182,35 +182,21 @@ class SqlAlchemySegmentationEvaluationService:
                     "dataset_version_id": dataset_export.dataset_version_id,
                     "model_version_id": request.model_version_id,
                 },
-            )
-        )
-        queue_task = queue_backend.enqueue(
-            queue_name=SEGMENTATION_EVALUATION_QUEUE_NAME,
-            payload={"task_id": created_task.task_id},
-            metadata={
-                "project_id": request.project_id,
-                "model_version_id": request.model_version_id,
-            },
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message="segmentation evaluation queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=SEGMENTATION_EVALUATION_QUEUE_NAME,
+                    metadata={
+                        "project_id": request.project_id,
+                        "model_version_id": request.model_version_id,
                     },
-                },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return SegmentationEvaluationTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_version_id=dataset_export.dataset_version_id,
             model_version_id=request.model_version_id,
@@ -357,11 +343,6 @@ class SqlAlchemySegmentationEvaluationService:
         if self.dataset_storage is None:
             raise ServiceConfigurationError("处理评估任务时缺少 dataset storage")
         return self.dataset_storage
-
-    def _require_queue_backend(self) -> QueueBackend:
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("提交评估任务时缺少 queue backend")
-        return self.queue_backend
 
     def _resolve_dataset_export(
         self,

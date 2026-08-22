@@ -12,9 +12,11 @@ from backend.service.application.tasks.task_service import (
 )
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.workers.training.device_leases import (
-    TrainingDeviceLease,
-    acquire_training_device_lease,
+from backend.service.application.runtime.device_leases import (
+    DeviceLease,
+    DeviceLeaseMode,
+    DeviceLeaseProvider,
+    DeviceLeaseProviderConfig,
 )
 
 
@@ -23,7 +25,9 @@ def assigned_training_device(
     *,
     session_factory: SessionFactory,
     task_id: str,
-) -> Iterator[TrainingDeviceLease]:
+    device_lease_provider: DeviceLeaseProvider | None = None,
+    device_lease_config: DeviceLeaseProviderConfig | None = None,
+) -> Iterator[DeviceLease]:
     """为训练任务分配设备，并把本次实际设备写回 task_spec。
 
     说明：
@@ -35,7 +39,19 @@ def assigned_training_device(
     task_service = SqlAlchemyTaskService(session_factory=session_factory)
     task_record = task_service.get_task(task_id).task
     requested_device = read_requested_training_device(task_record)
-    with acquire_training_device_lease(requested_device) as lease:
+    config = device_lease_config
+    if config is None:
+        from backend.workers.settings import get_backend_worker_settings
+
+        config = get_backend_worker_settings().device_leases
+    provider = device_lease_provider or DeviceLeaseProvider.from_config(config)
+    with provider.acquire_cuda(
+        requested_device,
+        mode=DeviceLeaseMode.EXCLUSIVE,
+        purpose="training",
+        owner_id=task_id,
+        timeout_seconds=config.exclusive_acquire_timeout_seconds,
+    ) as lease:
         with activate_training_cuda_device(lease):
             write_resolved_training_device(
                 task_service=task_service,
@@ -69,7 +85,7 @@ def write_resolved_training_device(
     task_service: SqlAlchemyTaskService,
     task_record: TaskRecord,
     requested_device: str | None,
-    lease: TrainingDeviceLease,
+    lease: DeviceLease,
 ) -> None:
     """把实际训练设备写入任务规格与 metadata。"""
 
@@ -88,9 +104,7 @@ def write_resolved_training_device(
 
     metadata = dict(task_record.metadata or {})
     metadata["training_device_assignment"] = {
-        "requested_device": requested_device or "auto",
-        "resolved_device": lease.info.resolved_device,
-        "cuda_index": lease.info.cuda_index,
+        **lease.info.to_dict(),
         "waited_seconds": round(lease.info.waited_seconds, 6),
     }
     task_service.update_task_spec_and_metadata(
@@ -114,7 +128,7 @@ def write_resolved_training_device(
 
 @contextmanager
 def activate_training_cuda_device(
-    lease: TrainingDeviceLease,
+    lease: DeviceLease,
     *,
     torch_module: Any | None = None,
 ) -> Iterator[None]:

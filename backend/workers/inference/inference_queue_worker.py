@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.models.inference.classification_inference_task_service import (
     CLASSIFICATION_INFERENCE_QUEUE_NAME,
     SqlAlchemyClassificationInferenceTaskService,
 )
-from backend.service.application.models.inference.inference_gateway import (
-    QueueBackedAsyncInferenceClient,
-)
 from backend.service.application.models.inference.detection_inference_task_service import (
     DETECTION_INFERENCE_QUEUE_NAME,
     SqlAlchemyDetectionInferenceTaskService,
+)
+from backend.service.application.models.inference.inference_gateway import (
+    QueueBackedAsyncInferenceClient,
 )
 from backend.service.application.models.inference.obb_inference_task_service import (
     OBB_INFERENCE_QUEUE_NAME,
@@ -29,6 +28,7 @@ from backend.service.application.models.inference.segmentation_inference_task_se
     SEGMENTATION_INFERENCE_QUEUE_NAME,
     SqlAlchemySegmentationInferenceTaskService,
 )
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -41,7 +41,6 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
 )
-
 
 _InferenceServiceFactory = Callable[..., object]
 

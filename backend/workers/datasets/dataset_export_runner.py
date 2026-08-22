@@ -7,8 +7,8 @@ from typing import Protocol
 
 from backend.service.application.datasets.exports import DatasetExportArtifact
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
+from backend.service.application.ports.object_store import ObjectStore
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
 
 @dataclass(frozen=True)
@@ -58,18 +58,18 @@ class DatasetExportRunner(Protocol):
 
 
 class SqlAlchemyDatasetExportRunner:
-    """基于 SQLAlchemy 与本地 ObjectStore 的 DatasetExport worker。"""
+    """基于 SQLAlchemy 与 ObjectStore port 的 DatasetExport worker。"""
 
     def __init__(
         self,
         session_factory: SessionFactory,
-        dataset_storage: LocalDatasetStorage,
+        dataset_storage: ObjectStore,
     ) -> None:
         """初始化 DatasetExport worker。
 
         参数：
         - session_factory：数据库会话工厂。
-        - dataset_storage：本地数据集文件存储服务。
+        - dataset_storage：持久对象存储端口。
         """
 
         self.session_factory = session_factory

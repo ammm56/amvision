@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.detection_evaluation_tasks.outputs import (
     DetectionEvaluationOutputFileSummaryResponse,
@@ -44,7 +43,6 @@ def create_detection_evaluation_task_response(
     body: DetectionEvaluationTaskCreateRequestBody,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> DetectionEvaluationTaskSubmissionResponse:
     """创建 detection 评估任务并返回提交响应。"""
@@ -57,7 +55,6 @@ def create_detection_evaluation_task_response(
     service = SqlAlchemyDetectionEvaluationTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     submission = service.submit_evaluation_task(
         DetectionEvaluationTaskRequest(

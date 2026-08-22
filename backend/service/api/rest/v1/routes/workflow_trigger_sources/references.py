@@ -16,13 +16,17 @@ def try_build_runtime_reference_summary(
     *,
     request: Request,
     workflow_runtime_id: str,
+    project_id: str,
 ) -> dict[str, object] | None:
-    """按需读取 runtime 一跳摘要，不存在时返回 None。"""
+    """在 TriggerSource 所属 Project 内按需读取 runtime 一跳摘要。"""
 
     unit_of_work = SqlAlchemyUnitOfWork(require_session_factory(request).create_session())
     try:
-        workflow_runtime = unit_of_work.workflow_runtime.get_workflow_app_runtime(
-            workflow_runtime_id
+        workflow_runtime = (
+            unit_of_work.workflow_runtime.get_visible_workflow_app_runtime(
+                workflow_runtime_id,
+                visible_project_ids=(project_id,),
+            )
         )
     finally:
         unit_of_work.close()
@@ -80,4 +84,3 @@ def read_resource_updated_by(metadata: dict[str, object]) -> str | None:
         return None
     normalized_updated_by = updated_by.strip()
     return normalized_updated_by or None
-

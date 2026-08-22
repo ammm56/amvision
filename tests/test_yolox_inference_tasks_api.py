@@ -8,7 +8,6 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import backend.service.application.models.inference.detection_inference_task_service as detection_inference_task_service_module
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -17,15 +16,19 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.service.infrastructure.object_store.object_key_layout import (
     build_public_project_file_id,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.inference.detection_inference_queue_worker import (
     DetectionInferenceQueueWorker,
 )
-from tests.api_test_support import build_test_headers, build_valid_test_png_bytes
+from tests.api_test_support import (
+    build_test_headers,
+    build_valid_test_png_bytes,
+    dispatch_queue_outbox,
+)
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
     seed_yolox_model_version,
 )
-
 
 _VALID_TEST_IMAGE_BASE64 = base64.b64encode(build_valid_test_png_bytes()).decode(
     "ascii"
@@ -162,7 +165,11 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
             assert pending_result_response.status_code == 200
             assert pending_result_response.json()["file_status"] == "pending"
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             detail_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}",
@@ -315,7 +322,11 @@ def test_create_yolox_inference_task_accepts_public_project_file_id(
             assert task_detail.task.task_spec["input_file_id"] == input_file_id
             assert task_detail.task.task_spec["input_uri"] == input_object_key
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -390,7 +401,11 @@ def test_async_inference_task_accepts_base64_input(
             assert submission["input_source_kind"] == "image_base64"
             assert submission["input_uri"].startswith("runtime/inputs/inference/")
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -515,7 +530,11 @@ def test_async_inference_task_memory_transport_uses_temporary_storage_reference(
             assert normalized_input["input_transport_mode"] == "memory"
             assert normalized_input["input_uri"].startswith("memory://")
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -605,7 +624,11 @@ def test_async_inference_task_memory_transport_accepts_multipart_reference(
             assert submission["input_source_kind"] == "multipart"
             assert submission["input_uri"].startswith("memory://")
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -1135,7 +1158,11 @@ def test_async_inference_task_accepts_multipart_and_uses_async_runtime_pool(
             assert submission["input_source_kind"] == "multipart"
             task_id = submission["task_id"]
 
-            assert worker.run_once() is True
+            assert _dispatch_and_run_once(
+                session_factory=session_factory,
+                queue_backend=queue_backend,
+                worker=worker,
+            ) is True
 
             result_response = client.get(
                 f"/api/v1/models/detection/inference-tasks/{task_id}/result",
@@ -1209,6 +1236,24 @@ def _create_test_client(
         context.dataset_storage,
         context.queue_backend,
     )
+
+
+def _dispatch_and_run_once(
+    *,
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+    worker: DetectionInferenceQueueWorker,
+) -> bool:
+    """先投递事务 Outbox，再执行一轮 inference worker。"""
+
+    assert (
+        dispatch_queue_outbox(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        )
+        == 1
+    )
+    return worker.run_once()
 
 
 def _build_valid_test_image_bytes() -> bytes:

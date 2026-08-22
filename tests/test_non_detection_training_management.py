@@ -198,11 +198,16 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
         def append_task_event(self, event):
             events.append(event)
 
+        def get_next_task_attempt_no(self, task_id: str) -> int:
+            assert task_id == task.task_id
+            return 3
+
     class _FakeQueueBackend:
         def enqueue(self, *, queue_name: str, payload: dict[str, object]):
             assert queue_name == catalog_module.YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME
             assert payload == {
                 "task_id": task.task_id,
+                "attempt_no": 3,
                 "task_kind": task.task_kind,
                 "model_type": "yolo26",
             }

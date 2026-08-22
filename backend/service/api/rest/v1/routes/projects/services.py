@@ -8,7 +8,6 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.application.errors import (
     PermissionDeniedError,
@@ -19,12 +18,13 @@ from backend.service.application.project_bootstrap import (
     LocalProjectBootstrapService,
     ProjectManifest,
 )
-from backend.service.application.project_summary import ProjectSummaryService
 from backend.service.application.project_deletion import ProjectDeletionService
+from backend.service.application.project_summary import ProjectSummaryService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import (
     BackendServiceProjectCatalogItemConfig,
     BackendServiceSettings,

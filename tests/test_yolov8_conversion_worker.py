@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.conversions.yolov8_conversion_task_service import (
     SqlAlchemyYoloV8ConversionTaskService,
     YoloV8ConversionTaskRequest,
@@ -16,6 +15,7 @@ from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8TrainingOutputRegistration,
 )
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_ONNX_FILE,
@@ -23,18 +23,24 @@ from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_OPENVINO_IR_FILE,
     YOLOV8_TENSORRT_ENGINE_FILE,
 )
-from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.service.domain.models.model_artifact_provenance import (
     MODEL_ARTIFACT_PROVENANCE_KEY,
 )
-from backend.workers.conversion.yolov8_conversion_queue_worker import YoloV8ConversionQueueWorker
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
+from backend.workers.conversion.yolov8_conversion_queue_worker import (
+    YoloV8ConversionQueueWorker,
+)
 from backend.workers.conversion.yolov8_conversion_runner import (
     LocalYoloV8ConversionRunner,
     YoloV8ConversionOutput,
     YoloV8ConversionRunRequest,
     YoloV8ConversionRunResult,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 from tests.yolox_test_support import create_yolox_test_runtime
 
 
@@ -97,7 +103,6 @@ def test_yolov8_conversion_queue_worker_executes_supported_targets(
     service = SqlAlchemyYoloV8ConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
 
     submission = service.submit_conversion_task(
@@ -108,11 +113,21 @@ def test_yolov8_conversion_queue_worker_executes_supported_targets(
             extra_options=extra_options,
         )
     )
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
+    )
 
     worker = YoloV8ConversionQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
+        queue_backend=TaskAttemptClaimingQueueBackend(
+            queue_backend=queue_backend,
+            session_factory=session_factory,
+        ),
         conversion_runner=_FakeYoloV8ConversionRunner(dataset_storage=dataset_storage),
     )
 
@@ -128,6 +143,12 @@ def test_yolov8_conversion_queue_worker_executes_supported_targets(
 
     assert submission.status == "queued"
     assert task_detail.task.state == "succeeded"
+    attempts = SqlAlchemyTaskService(session_factory).list_task_attempts(
+        submission.task_id
+    )
+    assert len(attempts) == 1
+    assert attempts[0].state == "succeeded"
+    assert attempts[0].metadata["queue_message_id"]
     assert result.status == "succeeded"
     assert result.requested_target_formats == target_formats
     assert result.produced_formats == expected_produced_formats

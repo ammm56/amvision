@@ -91,6 +91,30 @@ class SqlAlchemyWorkflowTriggerSourceRepository:
             return None
         return self._trigger_source_to_domain(record)
 
+    def get_visible_trigger_source(
+        self,
+        trigger_source_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowTriggerSource | None:
+        """按 id 和 Project 可见范围读取 WorkflowTriggerSource。"""
+
+        statement = select(WorkflowTriggerSourceRecord).where(
+            WorkflowTriggerSourceRecord.trigger_source_id == trigger_source_id
+        )
+        if visible_project_ids:
+            statement = statement.where(
+                WorkflowTriggerSourceRecord.project_id.in_(visible_project_ids)
+            )
+        try:
+            record = self.session.execute(statement).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "按可见 Project 读取 WorkflowTriggerSource 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return None if record is None else self._trigger_source_to_domain(record)
+
     def list_trigger_sources(
         self, project_id: str
     ) -> tuple[WorkflowTriggerSource, ...]:

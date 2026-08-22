@@ -364,14 +364,15 @@ class CocoExportMixin:
         split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
         export_result: DatasetExportResult,
     ) -> None:
-        """把 COCO 系列导出结果写入本地文件存储。"""
+        """把 COCO 系列导出结果写入 ObjectStore。"""
 
         if self.dataset_storage is None or export_result.export_path is None:
             return
 
-        export_layout = self.dataset_storage.prepare_export_layout(
-            export_result.export_path
-        )
+        annotations_prefix = f"{export_result.export_path}/annotations"
+        images_prefix = f"{export_result.export_path}/images"
+        self.dataset_storage.prepare_prefix(annotations_prefix)
+        self.dataset_storage.prepare_prefix(images_prefix)
         annotation_filename = (
             "person_keypoints"
             if export_result.format_id == COCO_KEYPOINTS_DATASET_FORMAT
@@ -381,7 +382,7 @@ class CocoExportMixin:
             if not isinstance(payload, CocoDetectionAnnotationPayload):
                 raise ValueError("COCO 导出结果缺少有效的 annotation payload")
             self.dataset_storage.write_json(
-                f"{export_layout.annotations_dir}/{annotation_filename}_{split_name}.json",
+                f"{annotations_prefix}/{annotation_filename}_{split_name}.json",
                 self._serialize_coco_annotation_payload(payload),
             )
         for split_name, samples in split_samples:
@@ -391,9 +392,9 @@ class CocoExportMixin:
                     dataset_version=dataset_version,
                     sample=sample,
                 )
-                self.dataset_storage.copy_relative_file(
+                self.dataset_storage.copy_object(
                     source_relative_path,
-                    f"{export_layout.images_dir}/{split_name}/"
+                    f"{images_prefix}/{split_name}/"
                     f"{exported_file_names[sample.sample_id]}",
                 )
 

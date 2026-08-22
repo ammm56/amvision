@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.models.inference.detection_async_inference_gateway import (
     DetectionAsyncInferenceExecutor,
@@ -12,6 +11,7 @@ from backend.service.application.models.inference.detection_inference_task_servi
     DETECTION_INFERENCE_QUEUE_NAME,
     SqlAlchemyDetectionInferenceTaskService,
 )
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,

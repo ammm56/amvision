@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from backend.queue import QueueMessage
 from backend.service.application.error_serialization import serialize_error
+from backend.service.application.ports.queue import QueueMessage
 
 
 def build_conversion_queue_failure_metadata(

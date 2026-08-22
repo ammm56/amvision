@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import mimetypes
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -10,8 +12,6 @@ from threading import Event, Lock, Thread
 from time import monotonic, sleep
 from typing import Any
 from uuid import uuid4
-import logging
-import mimetypes
 
 from backend.contracts.buffers import BufferLease, BufferRef
 from backend.nodes.runtime_support import (
@@ -21,7 +21,6 @@ from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_STORAGE,
     require_image_payload,
 )
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -33,6 +32,7 @@ from backend.service.application.models.inference.inference_gateway import (
     _deserialize_process_config,
     _serialize_process_config,
 )
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.application.runtime.deployment.deployment_events import (
     read_deployment_process_events,
 )
@@ -59,7 +59,6 @@ from backend.service.application.runtime.tasks.task_prediction_runtime import (
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 INFERENCE_CONTROL_QUEUE_PREFIX = "inference-control"
 INFERENCE_CONTROL_RESPONSE_QUEUE_PREFIX = "inference-control-response"

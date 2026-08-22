@@ -250,7 +250,7 @@ class YoloExportMixin:
                     dataset_version=dataset_version,
                     sample=sample,
                 )
-                self.dataset_storage.copy_relative_file(
+                self.dataset_storage.copy_object(
                     source,
                     f"{image_dir}/{exported_file_names[sample.sample_id]}",
                 )

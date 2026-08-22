@@ -2,29 +2,31 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend
-from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
-    CLASSIFICATION_EVALUATION_QUEUE_NAME,
-    SqlAlchemyYoloV8ClassificationEvaluationService,
-)
-from backend.service.application.models.evaluation.segmentation_evaluation_service import (
-    SEGMENTATION_EVALUATION_QUEUE_NAME,
-    SqlAlchemySegmentationEvaluationService,
-)
 from backend.service.application.models.evaluation.detection_evaluation_task_service import (
     DETECTION_EVALUATION_QUEUE_NAME,
     SqlAlchemyDetectionEvaluationTaskService,
-)
-from backend.service.application.models.evaluation.pose_evaluation_task_service import (
-    POSE_EVALUATION_QUEUE_NAME,
-    SqlAlchemyPoseEvaluationTaskService,
 )
 from backend.service.application.models.evaluation.obb_evaluation_task_service import (
     OBB_EVALUATION_QUEUE_NAME,
     SqlAlchemyObbEvaluationTaskService,
 )
+from backend.service.application.models.evaluation.pose_evaluation_task_service import (
+    POSE_EVALUATION_QUEUE_NAME,
+    SqlAlchemyPoseEvaluationTaskService,
+)
+from backend.service.application.models.evaluation.segmentation_evaluation_service import (
+    SEGMENTATION_EVALUATION_QUEUE_NAME,
+    SqlAlchemySegmentationEvaluationService,
+)
+from backend.service.application.models.evaluation.yolov8_classification_evaluation_service import (
+    CLASSIFICATION_EVALUATION_QUEUE_NAME,
+    SqlAlchemyYoloV8ClassificationEvaluationService,
+)
+from backend.service.application.ports.queue import QueueBackend
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 
 
@@ -56,7 +58,6 @@ class ClassificationEvaluationQueueWorker:
             service = SqlAlchemyYoloV8ClassificationEvaluationService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
             )
             result = service.process_evaluation_task(task_id)
             self.queue_backend.complete(queue_task, metadata={
@@ -103,7 +104,6 @@ class SegmentationEvaluationQueueWorker:
             service = SqlAlchemySegmentationEvaluationService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
             )
             result = service.process_evaluation_task(task_id)
             self.queue_backend.complete(queue_task, metadata={
@@ -150,7 +150,6 @@ class DetectionEvaluationQueueWorker:
             service = SqlAlchemyDetectionEvaluationTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
             )
             result = service.process_evaluation_task(task_id)
             self.queue_backend.complete(
@@ -201,7 +200,6 @@ class PoseEvaluationQueueWorker:
             service = SqlAlchemyPoseEvaluationTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
             )
             result = service.process_evaluation_task(task_id)
             self.queue_backend.complete(
@@ -252,7 +250,6 @@ class ObbEvaluationQueueWorker:
             service = SqlAlchemyObbEvaluationTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
-                queue_backend=self.queue_backend,
             )
             result = service.process_evaluation_task(task_id)
             self.queue_backend.complete(

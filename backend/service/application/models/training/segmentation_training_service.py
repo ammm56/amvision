@@ -5,12 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from backend.queue import QueueBackend
-from backend.service.application.errors import (
-    InvalidRequestError,
-    ServiceConfigurationError,
-)
+from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
 )
@@ -50,8 +47,6 @@ from backend.service.application.models.training.segmentation_training_events im
     build_segmentation_training_cancelled_event,
     build_segmentation_training_failed_event,
     build_segmentation_training_paused_event,
-    build_segmentation_training_queue_failed_event,
-    build_segmentation_training_queued_event,
     build_segmentation_training_started_event,
     build_segmentation_training_succeeded_event,
 )
@@ -86,6 +81,10 @@ from backend.service.application.models.training.yolov8_segmentation_training im
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.detection_model_file_types import (
@@ -143,11 +142,9 @@ class SqlAlchemySegmentationTrainingService:
         self,
         *,
         session_factory: SessionFactory,
-        queue_backend: QueueBackend | None,
         dataset_storage: LocalDatasetStorage,
     ) -> None:
         self.session_factory = session_factory
-        self.queue_backend = queue_backend
         self.dataset_storage = dataset_storage
         self.task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
 
@@ -159,7 +156,6 @@ class SqlAlchemySegmentationTrainingService:
     ) -> dict[str, object]:
         """创建 segmentation 训练任务并入队。"""
 
-        queue_backend = self._require_queue_backend()
         model_type = self._normalize_model_type(request.model_type)
         self._validate_model_scale(
             model_type=model_type,
@@ -182,8 +178,15 @@ class SqlAlchemySegmentationTrainingService:
             model_type=model_type,
             task_spec=task_spec,
         )
+        task_id = f"task-{uuid4().hex[:12]}"
+        queue_payload = self._build_queue_payload(
+            task_id=task_id,
+            task_kind=self.training_task_kind,
+            task_spec=task_spec,
+        )
         created_task = self.task_service.create_task(
             CreateTaskRequest(
+                task_id=task_id,
                 task_kind=self.training_task_kind,
                 project_id=request.project_id,
                 created_by=created_by,
@@ -191,50 +194,19 @@ class SqlAlchemySegmentationTrainingService:
                 task_spec=task_spec,
                 worker_pool=self.training_task_kind,
                 metadata=metadata,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.training_queue_name,
+                    payload=queue_payload,
+                ),
             )
         )
-        queue_payload = self._build_queue_payload(
-            task_id=created_task.task_id,
-            task_kind=self.training_task_kind,
-            task_spec=task_spec,
-        )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=self.training_queue_name,
-                payload=queue_payload,
-            )
-        except Exception as exc:
-            self.task_service.append_task_event(
-                build_segmentation_training_queue_failed_event(
-                    task_id=created_task.task_id,
-                    error_message=str(exc),
-                    error=exc,
-                    finished_at=self._now_iso(),
-                    dataset_export_id=dataset_export.dataset_export_id,
-                    dataset_export_manifest_key=dataset_export.manifest_object_key,
-                )
-            )
-            raise
-        self.task_service.append_task_event(
-            build_segmentation_training_queued_event(
-                task_id=created_task.task_id,
-                queue_name=self.training_queue_name,
-                queue_task_id=queue_task.task_id,
-            )
-        )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return {
             "task_id": created_task.task_id,
             "status": "queued",
-            "queue_name": self.training_queue_name,
-            "queue_task_id": queue_task.task_id,
+            "queue_name": queue_reference.queue_name,
+            "queue_task_id": queue_reference.queue_task_id,
         }
-
-    def _require_queue_backend(self) -> QueueBackend:
-        """返回提交任务所需队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("segmentation 训练提交缺少队列后端")
-        return self.queue_backend
 
     def process_training_task(
         self,

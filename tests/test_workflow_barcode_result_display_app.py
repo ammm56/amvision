@@ -121,7 +121,6 @@ def _build_barcode_example_runtime_service(tmp_path: Path) -> tuple[WorkflowRunt
     runtime_context = WorkflowServiceNodeRuntimeContext(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     service = WorkflowRuntimeService(
         settings=settings,

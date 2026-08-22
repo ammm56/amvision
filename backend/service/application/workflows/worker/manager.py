@@ -707,12 +707,42 @@ class WorkflowRuntimeWorkerManager:
         """通过已运行的 worker 发起一次同步调用。"""
 
         invoke_started_at = monotonic()
+        deadline = invoke_started_at + float(timeout_seconds)
         lock_acquired = False
         lock_wait_started_at = monotonic()
         lifecycle_lock = self._resolve_runtime_lifecycle_lock(
             workflow_app_runtime.workflow_runtime_id
         )
-        with lifecycle_lock:
+        lifecycle_lock_acquired = False
+        try:
+            while not lifecycle_lock_acquired:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise OperationCancelledError(
+                        "workflow run 已取消",
+                        details={
+                            "workflow_runtime_id": (
+                                workflow_app_runtime.workflow_runtime_id
+                            ),
+                            "workflow_run_id": workflow_run_id,
+                        },
+                    )
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    raise OperationTimeoutError(
+                        "等待 workflow runtime 生命周期操作完成超时",
+                        details={
+                            "workflow_runtime_id": (
+                                workflow_app_runtime.workflow_runtime_id
+                            ),
+                            "workflow_run_id": workflow_run_id,
+                            "timeout_seconds": timeout_seconds,
+                            "timeout_phase": "runtime_lifecycle_lock",
+                        },
+                    )
+                lifecycle_lock_acquired = lifecycle_lock.acquire(
+                    timeout=max(0.001, min(0.1, remaining_seconds))
+                )
+
             with self._lock:
                 handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
             if handle is None or not handle.process.is_alive():
@@ -755,7 +785,22 @@ class WorkflowRuntimeWorkerManager:
                             )
                         },
                     )
-                lock_acquired = handle.request_lock.acquire(timeout=0.1)
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    raise OperationTimeoutError(
+                        "等待 workflow runtime worker 可用执行槽位超时",
+                        details={
+                            "workflow_runtime_id": (
+                                workflow_app_runtime.workflow_runtime_id
+                            ),
+                            "workflow_run_id": workflow_run_id,
+                            "timeout_seconds": timeout_seconds,
+                            "timeout_phase": "request_lock",
+                        },
+                    )
+                lock_acquired = handle.request_lock.acquire(
+                    timeout=max(0.001, min(0.1, remaining_seconds))
+                )
             with self._lock:
                 current_handle = self._handles.get(
                     workflow_app_runtime.workflow_runtime_id
@@ -778,6 +823,17 @@ class WorkflowRuntimeWorkerManager:
                 expected_generation=expected_generation,
                 expected_snapshot_fingerprint=expected_snapshot_fingerprint,
             )
+        except Exception:
+            if lock_acquired:
+                try:
+                    handle.request_lock.release()
+                except RuntimeError:
+                    pass
+                lock_acquired = False
+            raise
+        finally:
+            if lifecycle_lock_acquired:
+                lifecycle_lock.release()
         request_lock_wait_ms = _elapsed_ms(lock_wait_started_at)
         worker_process_id = handle.process.pid
 
@@ -842,7 +898,6 @@ class WorkflowRuntimeWorkerManager:
             if on_dispatched is not None:
                 on_dispatched()
 
-            deadline = monotonic() + float(timeout_seconds)
             reply_wait_started_at = monotonic()
             while True:
                 if cancel_event is not None and cancel_event.is_set():

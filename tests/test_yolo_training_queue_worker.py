@@ -7,12 +7,16 @@ from pathlib import Path
 import pytest
 
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.ports.queue import QueueMessage
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.workers.training.training_lease_heartbeat import (
+    TRAINING_LEASE_TIMEOUT_SECONDS,
+)
 from backend.workers.training.yolo_training_queue_worker import (
     ClassificationTrainingQueueWorker,
     ObbTrainingQueueWorker,
@@ -21,10 +25,6 @@ from backend.workers.training.yolo_training_queue_worker import (
     _build_training_run_metadata,
     _claim_next_training_queue,
     _read_model_type,
-)
-from backend.queue import QueueMessage
-from backend.workers.training.training_lease_heartbeat import (
-    TRAINING_LEASE_TIMEOUT_SECONDS,
 )
 
 

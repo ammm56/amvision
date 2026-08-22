@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.queue import LocalFileQueueBackend
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -19,6 +19,7 @@ from backend.service.infrastructure.filesystem.windows_paths import to_filesyste
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.workers.datasets.dataset_import_queue_worker import (
     DatasetImportQueueWorker,
 )
@@ -2055,6 +2056,10 @@ def test_background_task_manager_processes_multiple_dataset_import_tasks(
         assert first_response.status_code == 202
         assert second_response.status_code == 202
 
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
         task_manager = BackgroundTaskManager(
             consumers=(
                 DatasetImportQueueWorker(
@@ -2121,6 +2126,10 @@ def test_import_dataset_zip_is_processed_by_independent_background_task_manager(
             assert response.status_code == 202
             dataset_import_id = response.json()["dataset_import_id"]
 
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
         task_manager = BackgroundTaskManager(
             consumers=(
                 DatasetImportQueueWorker(
@@ -2239,6 +2248,10 @@ def _run_import_worker_once(
     - 当成功消费到一条任务时返回 True；否则返回 False。
     """
 
+    QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()
     worker = DatasetImportQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,

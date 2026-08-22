@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.rest.v1.routes.task_training.catalog import (
     TASK_KIND_TO_QUEUE_NAME,
     build_service_for_task,
-    resolve_resume_checkpoint_object_key,
     resolve_model_type_from_metadata,
+    resolve_resume_checkpoint_object_key,
 )
 from backend.service.api.rest.v1.routes.task_training.responses import (
     build_detail_response,
@@ -28,6 +27,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 
 
 def request_training_control(
@@ -52,7 +52,6 @@ def request_training_control(
         task,
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     if action == "save":
         if task.state != "running":
@@ -127,6 +126,7 @@ def resume_training_task(
     original_progress = dict(task.progress)
     original_result = dict(task.result)
     original_attempt_no = int(task.current_attempt_no)
+    next_attempt_no = task_service.get_next_task_attempt_no(task.task_id)
     task_service.append_task_event(
         AppendTaskEventRequest(
             task_id=task.task_id,
@@ -134,7 +134,7 @@ def resume_training_task(
             message="training resume requested",
             payload={
                 "state": "queued",
-                "attempt_no": original_attempt_no + 1,
+                "attempt_no": next_attempt_no,
                 "finished_at": None,
                 "error_message": None,
                 "progress": {"stage": "queued"},
@@ -150,6 +150,7 @@ def resume_training_task(
             queue_name=queue_name,
             payload={
                 "task_id": task.task_id,
+                "attempt_no": next_attempt_no,
                 "task_kind": task.task_kind,
                 "model_type": resolve_model_type_from_metadata(task),
             },

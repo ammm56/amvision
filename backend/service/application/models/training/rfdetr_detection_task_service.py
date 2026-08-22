@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from backend.queue import QueueBackend
 from backend.service.application.backends import TrainingBackendRunResult
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -13,18 +12,20 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
-from backend.service.application.task_failure_payloads import build_task_failure_payload
 from backend.service.application.models.catalog.rfdetr import (
     RfdetrTrainingOutputRegistration,
     SqlAlchemyRfdetrModelService,
 )
-from backend.service.application.models.training.detection_training_rules import (
-    DetectionTrainingOutputFiles,
-    build_detection_training_model_version_metadata,
-    build_detection_runtime_summary_payload,
+from backend.service.application.models.rfdetr_core.factory import (
+    resolve_rfdetr_full_core_default_input_size,
 )
 from backend.service.application.models.training.checkpoint_policy import (
     build_training_periodic_checkpoint_retention,
+)
+from backend.service.application.models.training.detection_training_rules import (
+    DetectionTrainingOutputFiles,
+    build_detection_runtime_summary_payload,
+    build_detection_training_model_version_metadata,
 )
 from backend.service.application.models.training.rfdetr_detection import (
     RFDETR_IMPL_MODE,
@@ -37,6 +38,16 @@ from backend.service.application.models.training.rfdetr_detection import (
     RfdetrTrainingSavePoint,
     RfdetrTrainingTerminatedError,
     run_rfdetr_training,
+)
+from backend.service.application.models.training.rfdetr_training_warm_start import (
+    build_rfdetr_warm_start_source_summary,
+    resolve_rfdetr_warm_start_reference,
+)
+from backend.service.application.models.training.training_engine import (
+    build_execution_training_config_runtime,
+)
+from backend.service.application.models.training.training_telemetry import (
+    publish_training_batch_telemetry,
 )
 from backend.service.application.models.training.yolo_detection_task_control import (
     build_requested_yolo_detection_training_control,
@@ -54,31 +65,24 @@ from backend.service.application.models.training.yolo_detection_task_events impo
     build_yolo_detection_training_paused_event,
     build_yolo_detection_training_terminated_result_event,
 )
-from backend.service.application.models.training.rfdetr_training_warm_start import (
-    build_rfdetr_warm_start_source_summary,
-    resolve_rfdetr_warm_start_reference,
-)
-from backend.service.application.models.training.training_telemetry import (
-    publish_training_batch_telemetry,
-)
-from backend.service.application.models.training.training_engine import (
-    build_execution_training_config_runtime,
+from backend.service.application.ports.queue import QueueBackend
+from backend.service.application.task_failure_payloads import build_task_failure_payload
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
-from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.model_input_spec import (
     deserialize_spatial_size_hw,
     serialize_spatial_size_hw,
 )
-from backend.service.application.models.rfdetr_core.factory import (
-    resolve_rfdetr_full_core_default_input_size,
-)
+from backend.service.domain.models.model_task_types import DETECTION_TASK_TYPE
 from backend.service.domain.models.rfdetr_model_spec import (
     RFDETR_DEFAULT_DATASET_FORMAT,
     RFDETR_DETECTION_SCALES,
@@ -86,7 +90,6 @@ from backend.service.domain.models.rfdetr_model_spec import (
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
-
 
 RFDETR_TRAINING_TASK_KIND = "rfdetr-training"
 RFDETR_TRAINING_QUEUE_NAME = "rfdetr-trainings"
@@ -180,7 +183,6 @@ class SqlAlchemyRfdetrTrainingTaskService:
         """创建并入队一条 RF-DETR detection 训练任务。"""
 
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         dataset_export = self._resolve_dataset_export(request)
         task_spec = self._build_task_spec(
             request=request, dataset_export=dataset_export
@@ -206,62 +208,29 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 task_spec=task_spec,
                 worker_pool=self.training_task_kind,
                 metadata=metadata,
-            )
-        )
-        queue_payload = {
-            "task_id": created_task.task_id,
-            "task_kind": self.training_task_kind,
-            **dict(task_spec),
-        }
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=self.training_queue_name,
-                payload=queue_payload,
-                metadata={
-                    "project_id": request.project_id,
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                    "dataset_version_id": dataset_export.dataset_version_id,
-                    "format_id": dataset_export.format_id,
-                    "model_type": self.model_type,
-                },
-            )
-        except Exception as exc:
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=created_task.task_id,
-                    event_type="status",
-                    message="rfdetr training queue submission failed",
-                    payload=build_task_failure_payload(
-                        exc,
-                        progress={"stage": "failed"},
-                        result={
-                            "dataset_export_id": dataset_export.dataset_export_id,
-                            "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                        },
-                    ),
-                )
-            )
-            raise
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message="rfdetr training queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": self.training_queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.training_queue_name,
+                    payload={
+                        "task_kind": self.training_task_kind,
+                        **dict(task_spec),
                     },
-                },
+                    metadata={
+                        "project_id": request.project_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": dataset_export.manifest_object_key,
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
+                        "model_type": self.model_type,
+                    },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return RfdetrTrainingTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=self.training_queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -411,10 +380,12 @@ class SqlAlchemyRfdetrTrainingTaskService:
             resumed_by=resumed_by,
             resumed_at=resumed_at,
         )
+        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
         queue_task = queue_backend.enqueue(
             queue_name=self.training_queue_name,
             payload={
                 "task_id": task_id,
+                "attempt_no": next_attempt_no,
                 "task_kind": self.training_task_kind,
                 **payload,
             },

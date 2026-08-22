@@ -75,7 +75,6 @@ class SqlAlchemyRfdetrTrainerRunner:
                 service = SqlAlchemySegmentationTrainingService(
                     session_factory=self.session_factory,
                     dataset_storage=self.dataset_storage,
-                    queue_backend=None,
                 )
                 result = service.process_training_task(task_record, model_type="rfdetr")
                 return self._build_segmentation_run_result(

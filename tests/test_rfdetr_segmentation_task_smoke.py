@@ -13,10 +13,13 @@ import pytest
 from backend.contracts.datasets.dataset_formats import (
     COCO_INSTANCE_SEGMENTATION_DATASET_FORMAT,
 )
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.rfdetr_conversion_task_service import (
     RfdetrConversionTaskRequest,
     SqlAlchemyRfdetrConversionTaskService,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SegmentationDeploymentInstanceCreateRequest,
+    SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.models.rfdetr_core.config import (
     PretrainWeightsCompatibilityWarning,
@@ -24,26 +27,23 @@ from backend.service.application.models.rfdetr_core.config import (
 from backend.service.application.models.rfdetr_core.export._onnx import (
     resolve_rfdetr_onnx_output_names,
 )
-from backend.service.application.deployments.segmentation_deployment_service import (
-    SegmentationDeploymentInstanceCreateRequest,
-    SqlAlchemySegmentationDeploymentService,
-)
 from backend.service.application.models.training.segmentation_training_service import (
-    SqlAlchemySegmentationTrainingService,
     SegmentationTrainingRequest,
-)
-from backend.service.application.runtime.tasks.segmentation_model_runtime import (
-    DefaultSegmentationModelRuntime,
+    SqlAlchemySegmentationTrainingService,
 )
 from backend.service.application.runtime.contracts.segmentation.prediction import (
     SegmentationPredictionRequest,
 )
-from backend.service.application.runtime.targets.runtime_target import (
-    RuntimeTargetSnapshot,
-)
 from backend.service.application.runtime.support.tensorrt_runtime import (
     resolve_trtexec_path,
 )
+from backend.service.application.runtime.targets.runtime_target import (
+    RuntimeTargetSnapshot,
+)
+from backend.service.application.runtime.tasks.segmentation_model_runtime import (
+    DefaultSegmentationModelRuntime,
+)
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -53,6 +53,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 
 
 def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
@@ -76,7 +80,6 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
 
     training_service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
@@ -98,6 +101,7 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
             },
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     claimed_training_queue_task = queue_backend.claim_next(
         queue_name=training_submission["queue_name"],
         worker_id="rfdetr-segmentation-training-smoke-worker",
@@ -134,7 +138,6 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
     conversion_service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     conversion_submission = conversion_service.submit_conversion_task(
         RfdetrConversionTaskRequest(
@@ -144,6 +147,7 @@ def test_rfdetr_segmentation_training_conversion_and_deployment_task_smoke(
             task_type="segmentation",
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     claimed_conversion_queue_task = queue_backend.claim_next(
         queue_name=conversion_submission.queue_name,
         worker_id="rfdetr-segmentation-conversion-smoke-worker",
@@ -395,7 +399,6 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
 
     training_service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     training_submission = training_service.submit_training_task(
@@ -417,6 +420,7 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
             },
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     claimed_training_queue_task = queue_backend.claim_next(
         queue_name=training_submission["queue_name"],
         worker_id=f"rfdetr-seg-real-training-{target_format}",
@@ -436,7 +440,6 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
     conversion_service = SqlAlchemyRfdetrConversionTaskService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     conversion_submission = conversion_service.submit_conversion_task(
         RfdetrConversionTaskRequest(
@@ -447,6 +450,7 @@ def _run_rfdetr_segmentation_real_toolchain_smoke(
             extra_options=dict(conversion_extra_options),
         )
     )
+    assert _dispatch_queue_outbox(session_factory, queue_backend) == 1
     claimed_conversion_queue_task = queue_backend.claim_next(
         queue_name=conversion_submission.queue_name,
         worker_id=f"rfdetr-seg-real-conversion-{target_format}",
@@ -671,3 +675,15 @@ def _build_test_image_bytes() -> bytes:
     success, encoded = cv2.imencode(".jpg", image)
     assert success is True
     return bytes(encoded.tobytes())
+
+
+def _dispatch_queue_outbox(
+    session_factory: SessionFactory,
+    queue_backend: LocalFileQueueBackend,
+) -> int:
+    """显式模拟 backend-service dispatcher 投递本次业务提交。"""
+
+    return QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=queue_backend,
+    ).dispatch_once()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.backends import (
     TrainingBackend,
     TrainingBackendRunRequest,
@@ -18,45 +17,46 @@ from backend.service.application.errors import (
 from backend.service.application.model_type_support import (
     require_supported_platform_model_type,
 )
-from backend.service.application.tasks.task_service import (
-    AppendTaskEventRequest,
-    SqlAlchemyTaskService,
-)
-from backend.service.application.models.training.yolov8_classification_training_service import (
-    YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.segmentation_training_service import (
+    SEGMENTATION_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo11_classification_training_service import (
     YOLO11_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.training.yolo26_classification_training_service import (
-    YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
-)
-from backend.service.application.models.training.segmentation_training_service import (
-    SEGMENTATION_TRAINING_QUEUE_NAME,
-)
-from backend.service.application.models.training.yolo11_segmentation_training_service import (
-    YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME,
-)
-from backend.service.application.models.training.yolo26_segmentation_training_service import (
-    YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
-)
-from backend.service.application.models.training.yolov8_pose_training_service import (
-    YOLOV8_POSE_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.yolo11_obb_training_service import (
+    YOLO11_OBB_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolo11_pose_training_service import (
     YOLO11_POSE_TRAINING_QUEUE_NAME,
 )
+from backend.service.application.models.training.yolo11_segmentation_training_service import (
+    YOLO11_SEGMENTATION_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo26_classification_training_service import (
+    YOLO26_CLASSIFICATION_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo26_obb_training_service import (
+    YOLO26_OBB_TRAINING_QUEUE_NAME,
+)
 from backend.service.application.models.training.yolo26_pose_training_service import (
     YOLO26_POSE_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolo26_segmentation_training_service import (
+    YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME,
+)
+from backend.service.application.models.training.yolov8_classification_training_service import (
+    YOLOV8_CLASSIFICATION_TRAINING_QUEUE_NAME,
 )
 from backend.service.application.models.training.yolov8_obb_training_service import (
     YOLOV8_OBB_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.training.yolo11_obb_training_service import (
-    YOLO11_OBB_TRAINING_QUEUE_NAME,
+from backend.service.application.models.training.yolov8_pose_training_service import (
+    YOLOV8_POSE_TRAINING_QUEUE_NAME,
 )
-from backend.service.application.models.training.yolo26_obb_training_service import (
-    YOLO26_OBB_TRAINING_QUEUE_NAME,
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
+from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
+    SqlAlchemyTaskService,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -66,6 +66,8 @@ from backend.workers.queue_failure_metadata import build_queue_failure_metadata
 from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 from backend.workers.training.training_queue_claim import (
     build_training_run_metadata as _build_training_run_metadata,
+)
+from backend.workers.training.training_queue_claim import (
     claim_next_training_queue as _claim_next_training_queue,
 )
 from backend.workers.training.yolo_training_runner import SqlAlchemyYoloTrainingRunner

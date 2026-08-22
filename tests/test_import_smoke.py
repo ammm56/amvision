@@ -6,7 +6,6 @@ import importlib
 
 import pytest
 
-
 # 需要验证可导入性的 backend 模块列表。
 BACKEND_MODULES: tuple[str, ...] = (
     "backend.bootstrap.core",
@@ -164,7 +163,8 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.nodes.video_runtime_support_payloads",
     "backend.nodes.video_runtime_support_tools",
     "backend.nodes.text_encoder_runtime_support",
-    "backend.queue.local_file_queue",
+    "backend.service.application.ports.queue",
+    "backend.service.infrastructure.queue.local_file",
     "backend.service.api.app",
     "backend.service.api.deps.auth",
     "backend.service.api.deps.db",

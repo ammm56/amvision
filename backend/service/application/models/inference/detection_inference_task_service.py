@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import perf_counter
 
-from backend.queue import QueueBackend
 from backend.service.application.deployments.detection_deployment_service import (
     SqlAlchemyDetectionDeploymentService,
 )
@@ -61,6 +60,10 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.domain.tasks.detection_task_specs import DetectionInferenceTaskSpec
@@ -169,7 +172,6 @@ class SqlAlchemyDetectionInferenceTaskService:
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage | None = None,
-        queue_backend: QueueBackend | None = None,
         deployment_process_supervisor: DeploymentProcessSupervisor | None = None,
         async_inference_executor: DetectionAsyncInferenceExecutor | None = None,
         async_inference_gateway_dispatcher_registry: DetectionAsyncInferenceGatewayDispatcherRegistry
@@ -179,7 +181,6 @@ class SqlAlchemyDetectionInferenceTaskService:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.queue_backend = queue_backend
         self.deployment_process_supervisor = deployment_process_supervisor
         self.async_inference_executor = async_inference_executor
         self.async_inference_gateway_dispatcher_registry = (
@@ -206,7 +207,6 @@ class SqlAlchemyDetectionInferenceTaskService:
             requested_model_type=request.model_type,
         )
         self._validate_request(request)
-        queue_backend = self._require_queue_backend()
         deployment_service = self._build_deployment_service()
         process_config = deployment_service.resolve_process_config(
             request.deployment_instance_id
@@ -267,37 +267,23 @@ class SqlAlchemyDetectionInferenceTaskService:
                     "model_version_id": process_config.runtime_target.model_version_id,
                     "model_build_id": process_config.runtime_target.model_build_id,
                 },
-            )
-        )
-        queue_task = queue_backend.enqueue(
-            queue_name=DETECTION_INFERENCE_QUEUE_NAME,
-            payload={"task_id": created_task.task_id},
-            metadata={
-                "project_id": request.project_id,
-                "deployment_instance_id": request.deployment_instance_id,
-                "model_version_id": process_config.runtime_target.model_version_id,
-                "model_build_id": process_config.runtime_target.model_build_id,
-            },
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=created_task.task_id,
-                event_type="status",
-                message="detection inference queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=DETECTION_INFERENCE_QUEUE_NAME,
+                    metadata={
+                        "project_id": request.project_id,
+                        "deployment_instance_id": request.deployment_instance_id,
+                        "model_version_id": process_config.runtime_target.model_version_id,
+                        "model_build_id": process_config.runtime_target.model_build_id,
                     },
-                },
+                ),
             )
         )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return DetectionInferenceTaskSubmission(
             task_id=created_task.task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=queue_reference.queue_name,
+            queue_task_id=queue_reference.queue_task_id,
             deployment_instance_id=request.deployment_instance_id,
             input_uri=normalized_input.input_uri,
         )
@@ -559,13 +545,6 @@ class SqlAlchemyDetectionInferenceTaskService:
         if self.dataset_storage is None:
             raise ServiceConfigurationError("处理推理任务时缺少 dataset storage")
         return self.dataset_storage
-
-    def _require_queue_backend(self) -> QueueBackend:
-        """返回提交推理任务必需的队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("提交推理任务时缺少 queue backend")
-        return self.queue_backend
 
     def _require_deployment_process_supervisor(self) -> DeploymentProcessSupervisor:
         """返回处理推理任务必需的 deployment 进程监督器。"""

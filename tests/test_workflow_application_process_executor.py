@@ -107,7 +107,6 @@ def test_workflow_application_runtime_executor_runs_application_directly(
         runtime_context=WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
         ),
     )
 
@@ -251,7 +250,6 @@ def test_workflow_application_runtime_executor_cleans_up_runtime_temp_artifacts(
         runtime_context=WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
         ),
     )
 
@@ -709,8 +707,8 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                     },
                     "execution_metadata": {
                         "marker": "workflow-run-websocket",
-                        "trace_level": "node-summary",
-                        "retain_trace_enabled": True,
+                        "trace_level": "none",
+                        "retain_trace_enabled": False,
                     },
                 },
             )
@@ -744,9 +742,8 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
                     f"/api/v1/workflows/runs/{workflow_run_id}/cancel",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 )
-                while {item["event_type"] for item in streamed_payloads} < {
-                    "run.cancel_requested",
-                    "run.cancelled",
+                while "run.cancelled" not in {
+                    item["event_type"] for item in streamed_payloads
                 }:
                     streamed_payloads.append(
                         _receive_websocket_json_with_timeout(websocket)
@@ -777,7 +774,8 @@ def test_workflow_run_events_websocket_streams_live_events(tmp_path: Path) -> No
     assert cancel_response.status_code == 200
     assert connected_payload["event_type"] == "workflows.runs.connected"
     assert connected_payload["resource_id"] == workflow_run_id
-    assert streamed_event_types >= {"run.cancel_requested", "run.cancelled"}
+    assert "run.cancelled" in streamed_event_types
+    assert "run.cancel_requested" not in streamed_event_types
     assert all(item["stream"] == "workflows.runs.events" for item in streamed_payloads)
     assert all(item["resource_id"] == workflow_run_id for item in streamed_payloads)
     assert all("sequence" in item["payload"] for item in streamed_payloads)
@@ -868,10 +866,10 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 )
-                while {item["event_type"] for item in streamed_payloads} < {
-                    "runtime.started",
-                    "runtime.stopped",
-                }:
+                expected_event_types = {"runtime.started", "runtime.stopped"}
+                while not expected_event_types.issubset(
+                    {item["event_type"] for item in streamed_payloads}
+                ):
                     streamed_payloads.append(
                         _receive_websocket_json_with_timeout(websocket)
                     )
@@ -992,7 +990,14 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
                     f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
                     headers=build_test_headers(scopes="workflows:read,workflows:write"),
                 )
-                for _ in range(3):
+                expected_event_types = {
+                    "runtime.started",
+                    "runtime.heartbeat",
+                    "runtime.stopped",
+                }
+                while not expected_event_types.issubset(
+                    {item["event_type"] for item in streamed_payloads}
+                ):
                     streamed_payloads.append(
                         _receive_websocket_json_with_timeout(websocket)
                     )

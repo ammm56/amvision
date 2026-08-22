@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal, require_scopes
 from backend.service.api.deps.db import get_session_factory
 from backend.service.api.deps.detection_deployment_process_supervisor import (
@@ -14,7 +13,6 @@ from backend.service.api.deps.detection_deployment_process_supervisor import (
     get_detection_async_inference_gateway_dispatcher_registry,
     get_detection_sync_deployment_process_supervisor,
 )
-from backend.service.api.deps.queue import get_queue_backend
 from backend.service.api.deps.storage import get_dataset_storage
 from backend.service.api.rest.v1.routes.detection_inference_tasks.outputs import (
     build_detection_inference_task_result_response,
@@ -55,7 +53,6 @@ async def create_detection_inference_task(
     request: Request,
     principal: Annotated[AuthenticatedPrincipal, Depends(require_scopes("models:read", "tasks:write"))],
     session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    queue_backend: Annotated[LocalFileQueueBackend, Depends(get_queue_backend)],
     dataset_storage: Annotated[LocalDatasetStorage, Depends(get_dataset_storage)],
     deployment_process_supervisor: Annotated[
         DeploymentProcessSupervisor,
@@ -72,7 +69,6 @@ async def create_detection_inference_task(
         request=request,
         principal=principal,
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
         deployment_process_supervisor=deployment_process_supervisor,
         gateway_dispatcher_registry=gateway_dispatcher_registry,

@@ -10,6 +10,9 @@ import sys
 from backend.service.application.models.model_artifact_metadata import (
     attach_openvino_model_artifact_provenance,
 )
+from backend.service.application.models.model_artifact_runtime_smoke import (
+    validate_openvino_ir_against_onnx,
+)
 from backend.service.domain.models.model_artifact_provenance import (
     build_model_artifact_provenance,
 )
@@ -65,10 +68,16 @@ def build_openvino_ir(
         str(resolved_output_path),
         compress_to_fp16=(normalized_precision == "fp16"),
     )
+    runtime_smoke = validate_openvino_ir_against_onnx(
+        source_path=resolved_source_path,
+        openvino_model_path=resolved_output_path,
+        build_precision=normalized_precision,
+    )
     return {
         "input_name": input_name,
         "input_shape": input_shape,
         "input_dtype": input_dtype,
+        "runtime_smoke": runtime_smoke,
     }
 
 

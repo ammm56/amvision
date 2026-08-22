@@ -7,11 +7,25 @@ from typing import Literal
 
 
 # TaskRecord 允许的正式状态集合。
-TaskRecordState = Literal["queued", "running", "paused", "succeeded", "failed", "cancelled"]
+TaskRecordState = Literal[
+    "queued",
+    "running",
+    "paused",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "cancelled",
+]
 
 
 # TaskAttempt 允许的执行尝试状态集合。
-TaskAttemptState = Literal["running", "succeeded", "failed", "cancelled"]
+TaskAttemptState = Literal[
+    "running",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "cancelled",
+]
 
 
 # TaskEvent 当前支持的事件类型集合。

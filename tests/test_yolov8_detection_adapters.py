@@ -12,7 +12,6 @@ import pytest
 import torch
 
 from backend.contracts.datasets.dataset_formats import YOLO_DETECTION_DATASET_FORMAT
-from backend.queue.local_file_queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.conversions.yolov8_conversion_planner import (
     DefaultYoloV8ConversionPlanner,
     YoloV8ConversionPlanningRequest,
@@ -22,6 +21,10 @@ from backend.service.application.models.registry.yolov8_model_service import (
     SqlAlchemyYoloV8ModelService,
     YoloV8BuildRegistration,
     YoloV8TrainingOutputRegistration,
+)
+from backend.service.application.models.training.yolov8_training_service import (
+    SqlAlchemyYoloV8TrainingTaskService,
+    YoloV8TrainingTaskRequest,
 )
 from backend.service.application.models.yolov8_core.data import (
     YoloV8DetectionAugmentationOptions,
@@ -45,14 +48,11 @@ from backend.service.application.models.yolov8_core.training.pytorch_dataloader 
     YoloV8DetectionDataLoaderPlan,
     build_yolov8_detection_training_dataloader,
 )
-from backend.service.application.models.training.yolov8_training_service import (
-    SqlAlchemyYoloV8TrainingTaskService,
-    YoloV8TrainingTaskRequest,
-)
 from backend.service.application.runtime.targets.yolov8 import (
     RuntimeTargetResolveRequest,
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
+from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.application.tasks.task_service import SqlAlchemyTaskService
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.detection_model_file_types import (
@@ -65,6 +65,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 from backend.workers.training.yolov8_training_queue_worker import (
     YoloV8TrainingQueueWorker,
 )
@@ -257,6 +261,13 @@ def test_yolov8_training_task_service_submits_task_and_worker_completes_training
     )
 
     assert submission.status == "queued"
+    assert (
+        QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+        ).dispatch_once()
+        == 1
+    )
     assert (
         queue_backend.get_task(
             queue_name=submission.queue_name,

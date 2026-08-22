@@ -10,8 +10,11 @@ from time import time
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 
 
 def test_local_file_queue_recovers_expired_leased_task(tmp_path: Path) -> None:
@@ -44,13 +47,17 @@ def test_local_file_queue_recovers_expired_leased_task(tmp_path: Path) -> None:
     assert reclaimed_task.metadata["last_lease_worker_id"] == "worker-a"
 
 
-def test_local_file_queue_claims_task_once_across_backend_instances(tmp_path: Path) -> None:
+def test_local_file_queue_claims_task_once_across_backend_instances(
+    tmp_path: Path,
+) -> None:
     """验证同一队列目录的多个 backend 实例不会重复领取同一任务。"""
 
     settings = LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
     first_backend = LocalFileQueueBackend(settings)
     second_backend = LocalFileQueueBackend(settings)
-    queued_task = first_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+    queued_task = first_backend.enqueue(
+        queue_name="jobs", payload={"task_id": "task-1"}
+    )
 
     first_claim = first_backend.claim_next(queue_name="jobs", worker_id="worker-a")
     second_claim = second_backend.claim_next(queue_name="jobs", worker_id="worker-b")
@@ -60,12 +67,135 @@ def test_local_file_queue_claims_task_once_across_backend_instances(tmp_path: Pa
     assert second_claim is None
 
 
-def test_local_file_queue_recovers_leased_task_without_lease_timestamp(tmp_path: Path) -> None:
+def test_local_file_queue_deterministic_message_id_is_idempotent_across_states(
+    tmp_path: Path,
+) -> None:
+    """Outbox 重投同一消息时必须复用四态目录中已有的确定性消息。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    queued_task = queue_backend.enqueue(
+        queue_name="jobs",
+        message_id="outbox-message-1",
+        payload={"task_id": "task-1", "options": {"batch": 4}},
+        metadata={"dispatch_attempt": 1},
+    )
+    leased_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
+    assert leased_task is not None
+    completed_task = queue_backend.complete(leased_task)
+
+    repeated_task = queue_backend.enqueue(
+        queue_name="jobs",
+        message_id="outbox-message-1",
+        payload={"options": {"batch": 4}, "task_id": "task-1"},
+        metadata={"dispatch_attempt": 2},
+    )
+
+    assert queued_task.task_id == "outbox-message-1"
+    assert repeated_task == completed_task
+    assert repeated_task.status == "completed"
+
+
+def test_local_file_queue_rejects_message_id_payload_collision(tmp_path: Path) -> None:
+    """同一确定性消息 id 不能被另一份任务 payload 静默覆盖。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    queue_backend.enqueue(
+        queue_name="jobs",
+        message_id="outbox-message-1",
+        payload={"task_id": "task-1"},
+    )
+
+    with pytest.raises(PersistenceOperationError) as exc_info:
+        queue_backend.enqueue(
+            queue_name="jobs",
+            message_id="outbox-message-1",
+            payload={"task_id": "task-2"},
+        )
+
+    assert exc_info.value.details["task_id"] == "outbox-message-1"
+    stored_task = queue_backend.get_task(
+        queue_name="jobs",
+        task_id="outbox-message-1",
+    )
+    assert stored_task is not None
+    assert stored_task.payload == {"task_id": "task-1"}
+
+
+def test_local_file_queue_rejects_non_finite_json_number(tmp_path: Path) -> None:
+    """队列持久化契约拒绝 JSON 标准不支持的 NaN。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    with pytest.raises(PersistenceOperationError, match="合法 JSON"):
+        queue_backend.enqueue(
+            queue_name="jobs",
+            message_id="outbox-message-1",
+            payload={"metric": float("nan")},
+        )
+
+
+@pytest.mark.parametrize(
+    "message_id",
+    ("", "..", "../escape", "nested\\escape", "NUL", "x" * 129),
+)
+def test_local_file_queue_rejects_invalid_deterministic_message_id(
+    tmp_path: Path,
+    message_id: str,
+) -> None:
+    """确定性消息 id 不能携带空值或路径层级。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+
+    with pytest.raises(PersistenceOperationError, match="不合法"):
+        queue_backend.enqueue(
+            queue_name="jobs",
+            message_id=message_id,
+            payload={"task_id": "task-1"},
+        )
+
+
+@pytest.mark.parametrize(
+    "queue_name",
+    ("", "..", "../escape", "nested\\escape", "CON", "jobs:name", "x" * 129),
+)
+def test_local_file_queue_rejects_invalid_queue_name(
+    tmp_path: Path,
+    queue_name: str,
+) -> None:
+    """所有公开操作统一拒绝空名称、目录层级与 Windows 设备名。"""
+
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+
+    with pytest.raises(PersistenceOperationError, match="queue_name 不合法"):
+        queue_backend.enqueue(
+            queue_name=queue_name,
+            payload={"task_id": "task-1"},
+        )
+
+
+def test_local_file_queue_recovers_leased_task_without_lease_timestamp(
+    tmp_path: Path,
+) -> None:
     """验证异常中断留下的无 lease 时间文件可以恢复。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    queued_task = queue_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
-    pending_path = tmp_path / "queue" / "jobs" / "pending" / f"{queued_task.task_id}.json"
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    queued_task = queue_backend.enqueue(
+        queue_name="jobs", payload={"task_id": "task-1"}
+    )
+    pending_path = (
+        tmp_path / "queue" / "jobs" / "pending" / f"{queued_task.task_id}.json"
+    )
     leased_path = tmp_path / "queue" / "jobs" / "leased" / f"{queued_task.task_id}.json"
     leased_path.parent.mkdir(parents=True, exist_ok=True)
     pending_path.replace(leased_path)
@@ -129,7 +259,9 @@ def test_local_file_queue_does_not_recover_inflight_claim_from_another_process(
     assert second_claim is None
 
 
-def test_local_file_queue_rejects_stale_lease_completion_after_recovery(tmp_path: Path) -> None:
+def test_local_file_queue_rejects_stale_lease_completion_after_recovery(
+    tmp_path: Path,
+) -> None:
     """验证旧 worker 不能完成已经被恢复并重新领取的任务。"""
 
     queue_backend = LocalFileQueueBackend(
@@ -138,7 +270,9 @@ def test_local_file_queue_rejects_stale_lease_completion_after_recovery(tmp_path
             lease_timeout_seconds=0.1,
         )
     )
-    queued_task = queue_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+    queued_task = queue_backend.enqueue(
+        queue_name="jobs", payload={"task_id": "task-1"}
+    )
     stale_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
     assert stale_task is not None
     leased_path = tmp_path / "queue" / "jobs" / "leased" / f"{queued_task.task_id}.json"
@@ -159,15 +293,21 @@ def test_local_file_queue_rejects_stale_lease_completion_after_recovery(tmp_path
 def test_local_file_queue_cleans_response_queue_directories(tmp_path: Path) -> None:
     """验证一次性响应队列目录超过保留期后会被整体清理。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
     response_queue_name = "detection-ai-rsp-test"
     response_task = queue_backend.enqueue(
         queue_name=response_queue_name,
         payload={"request_id": "request-1", "ok": True},
     )
-    leased_response = queue_backend.claim_next(queue_name=response_queue_name, worker_id="worker-a")
+    leased_response = queue_backend.claim_next(
+        queue_name=response_queue_name, worker_id="worker-a"
+    )
     assert leased_response is not None
-    queue_backend.complete(leased_response, metadata={"request_id": response_task.payload["request_id"]})
+    queue_backend.complete(
+        leased_response, metadata={"request_id": response_task.payload["request_id"]}
+    )
     response_queue_dir = tmp_path / "queue" / response_queue_name
     _age_path_tree(response_queue_dir, seconds=30.0)
 
@@ -183,8 +323,12 @@ def test_local_file_queue_cleans_response_queue_directories(tmp_path: Path) -> N
 def test_local_file_queue_deletes_queue_directory(tmp_path: Path) -> None:
     """验证指定队列目录可以被显式删除。"""
 
-    queue_backend = LocalFileQueueBackend(LocalFileQueueSettings(root_dir=str(tmp_path / "queue")))
-    queue_backend.enqueue(queue_name="detection-ai-rsp-test", payload={"request_id": "request-1"})
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    queue_backend.enqueue(
+        queue_name="detection-ai-rsp-test", payload={"request_id": "request-1"}
+    )
 
     deleted = queue_backend.delete_queue(queue_name="detection-ai-rsp-test")
 
@@ -204,7 +348,9 @@ def test_local_file_queue_retries_windows_sharing_violation_on_complete(
             file_operation_retry_timeout_seconds=1.0,
         )
     )
-    queued_task = queue_backend.enqueue(queue_name="jobs", payload={"task_id": "task-1"})
+    queued_task = queue_backend.enqueue(
+        queue_name="jobs", payload={"task_id": "task-1"}
+    )
     leased_task = queue_backend.claim_next(queue_name="jobs", worker_id="worker-a")
     assert leased_task is not None
 
@@ -247,7 +393,9 @@ def _rewrite_queue_task_time(task_path: Path, *, leased_at: str) -> None:
 
     payload = json.loads(task_path.read_text(encoding="utf-8"))
     payload["leased_at"] = leased_at
-    task_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    task_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _age_path_tree(path: Path, *, seconds: float) -> None:

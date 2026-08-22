@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { WorkflowPreviewRunActionInput } from './useWorkflowEditorActions'
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   validateWorkflowTemplate: vi.fn(),
   validateWorkflowApplication: vi.fn(),
   createWorkflowPreviewRun: vi.fn(),
+  getWorkflowPreviewRun: vi.fn(),
   saveWorkflowApp: vi.fn(),
 }))
 
@@ -24,6 +26,7 @@ vi.mock('../services/workflow-application.service', () => ({
 
 vi.mock('../services/workflow-runtime.service', () => ({
   createWorkflowPreviewRun: mocks.createWorkflowPreviewRun,
+  getWorkflowPreviewRun: mocks.getWorkflowPreviewRun,
 }))
 
 vi.mock('../services/workflow-app.service', () => ({
@@ -32,6 +35,7 @@ vi.mock('../services/workflow-app.service', () => ({
 
 describe('useWorkflowEditorActions Preview guard', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     mocks.validateWorkflowApplication.mockResolvedValue({})
     mocks.createWorkflowPreviewRun.mockResolvedValue({

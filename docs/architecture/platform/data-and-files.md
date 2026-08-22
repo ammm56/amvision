@@ -16,6 +16,10 @@
 
 本地部署默认使用 `LocalDatasetStorage`，根目录由 Settings 统一配置。业务代码只保存 object key，不拼接 ObjectStore 根目录。
 
+应用层稳定端口位于 `backend/service/application/ports/object_store.py`。当前先完成 Dataset export 的任务提交、worker 执行和 artifact 写入链路收口；该链路只使用相对 key、对象写入、对象复制和 prefix 准备能力。`LocalDatasetStorage` 在 infrastructure 层按结构实现该端口。
+
+Dataset import 的 zip staging、解压与格式解析仍需要受控本机路径，export package delivery 仍需要返回本机绝对 `save_location`。这两部分暂不塞入通用 ObjectStore 端口，避免把本地路径能力误当成可迁移对象能力。Inference 图片的 LocalBuffer 数据面不属于本次边界。
+
 合法 key 示例：
 
 ```text
@@ -94,6 +98,7 @@ Web UI 的示例输入会按公开 binding 生成相应结构。`storage` 不能
 
 ## 实现入口
 
+- ObjectStore application port：`backend/service/application/ports/object_store.py`
 - Local ObjectStore：`backend/service/infrastructure/object_store/local_dataset_storage.py`
 - 原子文件：`backend/service/infrastructure/filesystem/atomic_files.py`
 - 保存位置：`backend/nodes/save_locations.py`

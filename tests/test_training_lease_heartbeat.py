@@ -8,8 +8,12 @@ from time import monotonic, sleep
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings, QueueMessage
 from backend.service.application.errors import PersistenceOperationError
+from backend.service.application.ports.queue import QueueMessage
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
+)
 from backend.workers.training.training_lease_heartbeat import TrainingLeaseHeartbeat
 
 

@@ -2,26 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
 from typing import Callable, Protocol
 from uuid import uuid4
-import logging
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationTimeoutError,
     ServiceError,
 )
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
-)
-from backend.service.domain.deployments.deployment_runtime_configuration import (
-    deserialize_deployment_runtime_configuration,
-    serialize_deployment_runtime_configuration,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     deserialize_runtime_target_snapshot,
@@ -29,16 +25,19 @@ from backend.service.application.runtime.targets.runtime_target import (
 )
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionRequest,
+    build_prediction_request_from_payload,
     deserialize_prediction_execution_result,
+    replace_prediction_request_inputs,
     serialize_prediction_execution_result,
     serialize_prediction_request,
-    build_prediction_request_from_payload,
-    replace_prediction_request_inputs,
+)
+from backend.service.domain.deployments.deployment_runtime_configuration import (
+    deserialize_deployment_runtime_configuration,
+    serialize_deployment_runtime_configuration,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 ASYNC_INFERENCE_GATEWAY_QUEUE_PREFIX = "inference-gateway"
 ASYNC_INFERENCE_GATEWAY_RESPONSE_QUEUE_PREFIX = "inference-gateway-response"

@@ -28,10 +28,14 @@ def test_yoloe_node_pack_manifest_and_catalog_are_valid() -> None:
 
 
 def test_yoloe_and_sam3_pretrained_manifest_skeletons_are_present() -> None:
-    """验证 YOLOE 与 SAM3 资产说明已经挂到架构入口。"""
+    """验证 YOLOE 与 SAM3 资产说明已经挂到文档入口。"""
 
     docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     architecture_readme = (REPO_ROOT / "docs" / "architecture" / "README.md").read_text(encoding="utf-8")
+    asset_document = (
+        REPO_ROOT / "docs" / "architecture" / "workflows" / "yoloe-sam3-assets.md"
+    )
 
-    assert "yoloe-sam3-node-assets.md" in docs_readme
-    assert "yoloe-sam3-node-assets.md" in architecture_readme
+    assert "(architecture/workflows/yoloe-sam3-assets.md)" in docs_readme
+    assert "(workflows/yoloe-sam3-assets.md)" in architecture_readme
+    assert asset_document.is_file()

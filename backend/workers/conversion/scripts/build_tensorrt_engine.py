@@ -103,6 +103,14 @@ def build_tensorrt_engine(
     if serialized_engine is None:
         raise RuntimeError("TensorRT build_serialized_network returned None")
 
+    runtime = trt.Runtime(logger)
+    runtime_engine = runtime.deserialize_cuda_engine(serialized_engine)
+    if runtime_engine is None:
+        raise RuntimeError("TensorRT runtime 无法反序列化新构建的 engine")
+    execution_context = runtime_engine.create_execution_context()
+    if execution_context is None:
+        raise RuntimeError("TensorRT runtime 无法创建 execution context")
+
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_output_path.write_bytes(bytes(serialized_engine))
     return {
@@ -122,6 +130,12 @@ def build_tensorrt_engine(
         ),
         "workspace_bytes": 1 << 30,
         "engine_file_bytes": resolved_output_path.stat().st_size,
+        "runtime_smoke": {
+            "passed": True,
+            "engine_deserialized": True,
+            "execution_context_created": True,
+            "runtime": "tensorrt",
+        },
     }
 
 

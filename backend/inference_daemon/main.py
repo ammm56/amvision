@@ -8,7 +8,6 @@ import sys
 from threading import Event
 
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
-from backend.queue import LocalFileQueueBackend
 from backend.service.application.runtime.deployment.inference_control import (
     QueueBackedInferenceControlClient,
 )
@@ -19,6 +18,7 @@ from backend.service.application.runtime.deployment.inference_local_mmap import 
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import get_backend_service_settings
 
 

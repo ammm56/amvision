@@ -46,7 +46,7 @@ Profile 源文件位于 `runtimes/manifests/worker-profiles/*.json`，格式固�
 
 Profile 独立声明 consumer、并发数和轮询间隔。`config/backend-worker.json` 只保存共享数据库、ObjectStore、队列、workspace、telemetry 和 gateway 配置。
 
-默认 `training` Profile 的 `max_concurrent_tasks` 为 `1`。该值只限制同时执行的独立训练任务数，不改变单个任务的 batch size、DataLoader worker 或训练数值语义。当前没有跨任务 GPU 设备租约，单 GPU 环境必须串行训练，避免多个任务争用显存和算力；多 GPU 并发需要先提供明确的设备租约与任务绑定，再按可用设备数提高该值。
+默认 `training` Profile 的 `max_concurrent_tasks` 为 `1`。该值只限制同时执行的独立训练任务数，不改变单个任务的 batch size、DataLoader worker 或训练数值语义。Training 已在任务执行边界获取跨进程 GPU/MIG `exclusive` lease；多 GPU 环境需要并发时，可以在完成目标机容量验证后提高该值。显式指向同一 GPU 的任务会按统一 busy/timeout 策略拒绝，CPU 训练不获取 GPU 锁。完整边界见 [GPU 设备资源协调](../architecture/models/device-resource-coordination.md)。
 
 ## Topology 契约
 

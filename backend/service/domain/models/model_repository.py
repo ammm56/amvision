@@ -183,3 +183,11 @@ class ModelRepository(Protocol):
         """
 
         ...
+
+    def list_model_builds_by_conversion_task_id(
+        self,
+        conversion_task_id: str,
+    ) -> tuple[ModelBuild, ...]:
+        """按 conversion task id 列出已原子登记的 ModelBuild。"""
+
+        ...

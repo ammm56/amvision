@@ -10,14 +10,18 @@
 
 ```text
 backend-service
-  -> QueueBackend
-      -> Worker Profile
-          -> Runner
-              -> Task state/event/result
+  -> 同一 UnitOfWork：业务记录 + TaskRecord/Event + QueueOutboxMessage
+      -> Outbox Dispatcher
+          -> QueueBackend
+              -> TaskAttempt CAS claim
+                  -> Worker Profile -> Runner
+                      -> Task/Attempt state, event and result
 ```
 
-- **backend-service**：校验请求、创建业务资源与 TaskRecord、入队、查询和取消。
+- **backend-service**：校验请求，在同一事务内创建业务资源、TaskRecord、初始事件和 Outbox，不直接跨越数据库事务写文件队列。
+- **Outbox Dispatcher**：短事务领取待发送记录，在事务外写 QueueBackend，再用 CAS 标记已发送或安排重试。
 - **QueueBackend**：本地持久化任务队列和 claim/ack/recovery。
+- **TaskAttempt CAS claim**：以 `task_id + attempt_no` 原子取得执行权，lease recovery 只接管同一 attempt，旧执行者不能写入终态。
 - **Worker Profile**：按职责消费一种任务池，由 full Supervisor 注入 topology identity。
 - **Runner**：执行数据集、模型训练、验证、转换或批量推理实现。
 
@@ -29,7 +33,11 @@ backend-service
 
 ### TaskAttempt
 
-一次实际执行尝试，记录 worker/host/process identity、attempt number、heartbeat、exit code、结果和错误。进程崩溃或租约失效后形成新的 attempt，不覆盖旧尝试。
+一次实际执行尝试，记录 worker/host/process identity、attempt number、heartbeat、exit code、结果和错误。相同 Queue attempt 的 lease recovery 通过 CAS 接管同一 TaskAttempt；只有队列进入新的 attempt number 才创建新的记录。终态写入同时校验 worker 和 heartbeat owner，已经失去租约的旧执行者不能覆盖恢复后的结果。
+
+### QueueOutboxMessage
+
+任务提交事务内保存的待入队记录，包含确定性的 message id、Queue 路由、payload 和 fingerprint。Dispatcher 可以安全重复投递，Worker 侧再由 `task_id + attempt_no` claim 防止重复副作用。同步 inference reply、deployment 控制和其他请求/响应型消息不进入 Outbox。
 
 ### TaskEvent
 
@@ -41,7 +49,7 @@ backend-service
 
 ## 状态
 
-TaskRecord 使用 `queued`、`running`、`succeeded`、`failed`、`cancelled`。Attempt 使用 `running` 与对应终态。所有执行路径必须收敛到终态，不能让异常任务永久停留在 running。
+TaskRecord 使用 `queued`、`running`、`succeeded`、`failed`、`timed_out`、`cancelled`。Attempt 使用 `running` 与对应终态。所有执行路径必须收敛到终态，不能让异常任务永久停留在 running。
 
 取消是显式状态迁移：API 请求取消，QueueBackend/Worker 按当前 attempt identity 收敛。取消不等于删除业务记录或输出文件。
 
@@ -68,6 +76,8 @@ Worker 不能直接用 `python -m backend.workers.main` 启动。源码开发使
 
 各 Profile 并发由发布配置控制。QueueBackend 不在业务层隐藏无限重试；失败、取消和恢复均产生可观测的 attempt/event。
 
+Training 和 CUDA Conversion 在任务执行边界获取跨进程独占 GPU/MIG lease；CUDA Deployment 在实例进程生命周期持有共享 reservation。资源键使用稳定 GPU UUID/MIG UUID，进程异常退出由 OS 文件句柄自动释放。该协调不进入单次 inference 热路径。详细规则见 [设备资源协调](../models/device-resource-coordination.md)。
+
 ## API 与页面
 
 公开入口：
@@ -93,7 +103,10 @@ Worker 不能直接用 `python -m backend.workers.main` 启动。源码开发使
 ## 实现入口
 
 - 任务应用服务：`backend/service/application/tasks/`
-- QueueBackend：`backend/queue/`
+- QueueBackend 稳定端口：`backend/service/application/ports/queue.py`
+- 本地文件队列 adapter：`backend/service/infrastructure/queue/local_file.py`
+- Transactional Outbox 与 Dispatcher：`backend/service/application/tasks/queue_outbox.py`
+- Worker TaskAttempt claim：`backend/workers/task_execution_claim.py`
 - Worker：`backend/workers/`
 - Task 持久化：`backend/service/infrastructure/persistence/task_repository.py`
 - API：`backend/service/api/rest/v1/routes/tasks/`

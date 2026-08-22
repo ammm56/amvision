@@ -7,10 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings, QueueMessage
 from backend.service.application.backends import TrainingBackendRunRequest
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.models.training import segmentation_training_service
+from backend.service.application.models.training import (
+    rfdetr_detection_task_service,
+    segmentation_training_service,
+)
 from backend.service.application.models.training.rfdetr_segmentation import (
     RfdetrSegmentationTrainingExecutionResult,
 )
@@ -18,6 +20,7 @@ from backend.service.application.models.training.segmentation_training_service i
     SegmentationTrainingRequest,
     SqlAlchemySegmentationTrainingService,
 )
+from backend.service.application.ports.queue import QueueMessage
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
@@ -30,11 +33,10 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.service.infrastructure.persistence.base import Base
-from backend.service.application.models.training import rfdetr_detection_task_service
+from backend.workers.training.rfdetr_trainer_runner import SqlAlchemyRfdetrTrainerRunner
 from backend.workers.training.rfdetr_training_queue_worker import (
     RfdetrTrainingQueueWorker,
 )
-from backend.workers.training.rfdetr_trainer_runner import SqlAlchemyRfdetrTrainerRunner
 
 
 def test_rfdetr_training_queue_worker_reads_explicit_task_type() -> None:
@@ -201,9 +203,6 @@ def test_rfdetr_trainer_runner_routes_segmentation_task_type(
     dataset_storage = LocalDatasetStorage(
         DatasetStorageSettings(root_dir=str(tmp_path / "dataset-files-seg"))
     )
-    queue_backend = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-seg"))
-    )
     manifest_key = "exports/rfdetr-segmentation/manifest.json"
     dataset_storage.write_json(
         manifest_key,
@@ -237,7 +236,6 @@ def test_rfdetr_trainer_runner_routes_segmentation_task_type(
     training_service = SqlAlchemySegmentationTrainingService(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
     )
     submission = training_service.submit_training_task(
         SegmentationTrainingRequest(

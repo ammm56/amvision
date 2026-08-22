@@ -92,6 +92,53 @@ class TaskRepository(Protocol):
 
         ...
 
+    def get_task_attempt_by_number(
+        self,
+        task_id: str,
+        attempt_no: int,
+    ) -> TaskAttempt | None:
+        """按 Task id 和 attempt_no 读取唯一执行尝试。"""
+
+        ...
+
+    def try_create_task_attempt(self, task_attempt: TaskAttempt) -> bool:
+        """原子创建执行尝试；同一 Task/attempt_no 已存在时返回 False。"""
+
+        ...
+
+    def try_reclaim_running_task_attempt(
+        self,
+        task_attempt: TaskAttempt,
+        *,
+        expected_worker_id: str | None,
+        expected_heartbeat_at: str | None,
+    ) -> bool:
+        """按旧 owner/heartbeat CAS 接管 lease 恢复后的 running attempt。"""
+
+        ...
+
+    def try_heartbeat_running_task_attempt(
+        self,
+        *,
+        attempt_id: str,
+        worker_id: str,
+        heartbeat_at: str,
+    ) -> bool:
+        """仅由当前 owner 刷新 running attempt heartbeat。"""
+
+        ...
+
+    def try_finish_running_task_attempt(
+        self,
+        task_attempt: TaskAttempt,
+        *,
+        expected_worker_id: str | None = None,
+        expected_heartbeat_at: str | None = None,
+    ) -> bool:
+        """仅当指定执行尝试仍为 running 时原子写入终态。"""
+
+        ...
+
     def list_task_attempts(self, task_id: str) -> tuple[TaskAttempt, ...]:
         """按 TaskRecord id 列出执行尝试。
 

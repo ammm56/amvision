@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend
+from backend.service.application.models.registry.yolo26_model_service import (
+    SqlAlchemyYolo26ModelService,
+    Yolo26TrainingOutputRegistration,
+)
 from backend.service.application.models.training.yolo26_detection_training import (
     YOLO26_IMPLEMENTATION_MODE,
     Yolo26DetectionTrainingExecutionRequest,
     run_yolo26_detection_training,
 )
-from backend.service.application.models.registry.yolo26_model_service import (
-    SqlAlchemyYolo26ModelService,
-    Yolo26TrainingOutputRegistration,
-)
 from backend.service.application.models.training.yolo_detection_training_service import (
     SqlAlchemyYoloDetectionTrainingTaskService,
+)
+from backend.service.application.models.training.yolo_detection_training_service import (
     YoloDetectionTrainingTaskRequest as Yolo26TrainingTaskRequest,
+)
+from backend.service.application.models.training.yolo_detection_training_service import (
     YoloDetectionTrainingTaskResult as Yolo26TrainingTaskResult,
 )
+from backend.service.application.ports.queue import QueueBackend
 from backend.service.domain.files.detection_model_file_types import (
     YOLO26_DETECTION_FILE_TYPES,
 )
@@ -29,7 +33,6 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-
 
 YOLO26_TRAINING_TASK_KIND = "yolo26-training"
 YOLO26_TRAINING_QUEUE_NAME = "yolo26-trainings"

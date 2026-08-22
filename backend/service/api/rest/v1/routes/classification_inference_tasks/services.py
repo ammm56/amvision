@@ -6,7 +6,6 @@ from time import perf_counter
 
 from fastapi import Request
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.deps.auth import AuthenticatedPrincipal
 from backend.service.api.rest.v1.routes.classification_inference_tasks.responses import (
     ClassificationInferenceTaskSubmissionResponse,
@@ -69,7 +68,6 @@ async def submit_classification_inference_task_from_request(
     request: Request,
     principal: AuthenticatedPrincipal,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
     deployment_process_supervisor: DeploymentProcessSupervisor,
     gateway_dispatcher_registry: ClassificationAsyncInferenceGatewayDispatcherRegistry,
@@ -123,7 +121,6 @@ async def submit_classification_inference_task_from_request(
     )
     submission = SqlAlchemyClassificationInferenceTaskService(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
         deployment_process_supervisor=deployment_process_supervisor,
         async_inference_gateway_dispatcher_registry=gateway_dispatcher_registry,

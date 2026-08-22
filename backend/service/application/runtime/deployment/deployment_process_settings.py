@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from backend.service.application.runtime.device_leases import (
+    DeviceLeaseProviderConfig,
+)
+
 
 class DeploymentProcessSupervisorConfig(BaseModel):
     """描述 deployment 进程监督器配置。
@@ -23,6 +27,7 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     - keep_warm_yield_timeout_seconds：真实请求等待 keep-warm 当前一轮 dummy infer 让出的最长秒数。
     - tensorrt_pinned_output_buffer_enabled：TensorRT 输出 host buffer 是否默认启用 pinned memory。
     - tensorrt_pinned_output_buffer_max_bytes：允许使用 pinned output host buffer 的最大字节数；超过后自动回退 pageable memory。
+    - device_leases：PyTorch/TensorRT CUDA deployment 常驻 shared reservation 配置。
     """
 
     auto_restart: bool = True
@@ -39,3 +44,6 @@ class DeploymentProcessSupervisorConfig(BaseModel):
     keep_warm_yield_timeout_seconds: float = Field(default=1.0, gt=0.0)
     tensorrt_pinned_output_buffer_enabled: bool = True
     tensorrt_pinned_output_buffer_max_bytes: int = Field(default=8 * 1024 * 1024, ge=0)
+    device_leases: DeviceLeaseProviderConfig = Field(
+        default_factory=DeviceLeaseProviderConfig
+    )

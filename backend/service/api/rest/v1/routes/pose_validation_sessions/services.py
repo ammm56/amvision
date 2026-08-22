@@ -75,10 +75,9 @@ def get_pose_validation_session_response(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    session_view = service.get_session(session_id)
-    require_validation_project_access(
-        principal_project_ids=principal.project_ids,
-        project_id=session_view.project_id,
+    session_view = service.get_visible_session(
+        session_id,
+        visible_project_ids=principal.project_ids,
     )
     return build_pose_validation_session_response(session_view)
 
@@ -97,10 +96,9 @@ def predict_pose_validation_session_response(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
     )
-    session_view = service.get_session(session_id)
-    require_validation_project_access(
-        principal_project_ids=principal.project_ids,
-        project_id=session_view.project_id,
+    service.get_visible_session(
+        session_id,
+        visible_project_ids=principal.project_ids,
     )
     prediction_view = service.predict(
         session_id,
@@ -114,4 +112,3 @@ def predict_pose_validation_session_response(
         ),
     )
     return build_pose_validation_prediction_response(prediction_view)
-

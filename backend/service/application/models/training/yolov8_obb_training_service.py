@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
@@ -71,6 +71,10 @@ from backend.service.application.models.training.yolov8_obb_training import (
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.detection_model_file_types import (
@@ -129,11 +133,9 @@ class SqlAlchemyYoloV8ObbTrainingService:
         self,
         *,
         session_factory: SessionFactory,
-        queue_backend: QueueBackend,
         dataset_storage: LocalDatasetStorage,
     ) -> None:
         self.session_factory = session_factory
-        self.queue_backend = queue_backend
         self.dataset_storage = dataset_storage
         self.task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
 
@@ -163,29 +165,33 @@ class SqlAlchemyYoloV8ObbTrainingService:
             model_type=model_type,
             task_spec=task_spec,
         )
+        task_id = f"task-{uuid4().hex[:12]}"
+        queue_payload = self._build_queue_payload(
+            task_id=task_id,
+            task_kind=self.training_task_kind,
+            task_spec=task_spec,
+        )
         created_task = self.task_service.create_task(
             CreateTaskRequest(
+                task_id=task_id,
                 task_kind=self.training_task_kind,
                 project_id=request.project_id,
                 created_by=created_by,
                 display_name=request.display_name or request.output_model_name,
                 task_spec=task_spec,
                 metadata=metadata,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.training_queue_name,
+                    payload=queue_payload,
+                ),
             )
         )
-        queue_task = self.queue_backend.enqueue(
-            queue_name=self.training_queue_name,
-            payload=self._build_queue_payload(
-                task_id=created_task.task_id,
-                task_kind=self.training_task_kind,
-                task_spec=task_spec,
-            ),
-        )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return {
             "task_id": created_task.task_id,
             "status": created_task.state,
-            "queue_name": self.training_queue_name,
-            "queue_task_id": queue_task.task_id,
+            "queue_name": queue_reference.queue_name,
+            "queue_task_id": queue_reference.queue_task_id,
             "model_type": model_type,
             "dataset_export_id": dataset_export.dataset_export_id,
             "dataset_export_manifest_key": dataset_export.manifest_object_key,

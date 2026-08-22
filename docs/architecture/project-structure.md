@@ -42,7 +42,6 @@ backend/
 ├─ inference_daemon/  独立 Deployment 控制进程
 ├─ maintenance/       迁移、发行组装和离线检查
 ├─ nodes/             核心节点及执行支持
-├─ queue/             QueueBackend 与本地持久队列
 ├─ service/           FastAPI 控制面和业务分层
 └─ workers/           六类后台任务 Profile 与 Runner
 ```
@@ -52,9 +51,9 @@ backend/
 ```text
 backend/service/
 ├─ api/              FastAPI app、REST、WebSocket、deps、middleware
-├─ application/      用例、状态机、事务和进程控制
+├─ application/      用例、稳定 ports、状态机、事务和进程控制
 ├─ domain/           领域记录、Repository/UoW 协议和不变量
-└─ infrastructure/   SQLAlchemy、ObjectStore、文件、集成和 adapter
+└─ infrastructure/   SQLAlchemy、ObjectStore、Queue、文件、集成和 adapter
 ```
 
 - API 只处理协议、鉴权和 contract 映射；
@@ -67,10 +66,11 @@ backend/service/
 | 目录 | 职责 |
 |---|---|
 | `datasets/` | 导入、导出、版本和格式处理 |
+| `ports/` | QueueBackend、ObjectStore 等稳定应用边界 |
 | `models/` | 模型 core、训练、验证、导出、registry 和 catalog |
 | `runtime/` | Deployment session、predictor、target 和序列化 |
 | `workflows/` | Preview、App Version、Runtime、Worker 和 Trigger |
-| `tasks/` | Task 状态、事件、取消和查询 |
+| `tasks/` | Task 状态、事件、Outbox、取消和查询 |
 | `local_buffers/` | LocalBufferBroker client/supervisor/process |
 | `deployments/` | Deployment 应用服务 |
 | `auth/` | 本地用户、token、scope 和 session |

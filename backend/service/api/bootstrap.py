@@ -11,104 +11,66 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.node_pack_loader import NodePackLoader
 from backend.nodes.runtime_support import ExecutionImageRegistry
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.seeders import BackendServiceSeeder, BackendServiceSeederRunner
 from backend.service.application.auth.default_local_auth_seeder import (
     DefaultLocalAuthSeeder,
 )
-from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.deployments import (
     PublishedInferenceGateway,
     TaskTypeDeploymentPublishedInferenceGateway,
 )
-from backend.service.application.deployments.detection_deployment_service import (
-    SqlAlchemyDetectionDeploymentService,
-)
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
 )
-from backend.service.application.deployments.segmentation_deployment_service import (
-    SqlAlchemySegmentationDeploymentService,
+from backend.service.application.deployments.deployment_instance_service import (
+    SqlAlchemyDeploymentInstanceService,
 )
-from backend.service.application.deployments.pose_deployment_service import (
-    SqlAlchemyPoseDeploymentService,
+from backend.service.application.deployments.detection_deployment_service import (
+    SqlAlchemyDetectionDeploymentService,
 )
 from backend.service.application.deployments.obb_deployment_service import (
     SqlAlchemyObbDeploymentService,
 )
+from backend.service.application.deployments.pose_deployment_service import (
+    SqlAlchemyPoseDeploymentService,
+)
+from backend.service.application.deployments.segmentation_deployment_service import (
+    SqlAlchemySegmentationDeploymentService,
+)
+from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
-from backend.service.application.project_deletion import ProjectDeletionService
-from backend.service.application.models.inference.detection_async_inference_gateway import (
-    DetectionAsyncInferenceGatewayDispatcherRegistry,
-    normalize_detection_async_inference_owner_id,
-)
-from backend.service.application.models.inference.classification_async_inference_gateway import (
-    ClassificationAsyncInferenceGatewayDispatcherRegistry,
-)
-from backend.service.application.models.inference.segmentation_async_inference_gateway import (
-    SegmentationAsyncInferenceGatewayDispatcherRegistry,
-)
-from backend.service.application.models.inference.pose_async_inference_gateway import (
-    PoseAsyncInferenceGatewayDispatcherRegistry,
-)
-from backend.service.application.models.inference.obb_async_inference_gateway import (
-    ObbAsyncInferenceGatewayDispatcherRegistry,
-)
 from backend.service.application.models.catalog.pretrained_catalog import (
     YoloXPretrainedModelCatalogSeeder,
 )
 from backend.service.application.models.catalog.yolo_model_pretrained_catalog import (
     YoloModelPretrainedCatalogSeeder,
 )
-from backend.service.application.models.training.training_telemetry import (
-    TrainingTelemetryBroker,
+from backend.service.application.models.inference.classification_async_inference_gateway import (
+    ClassificationAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.inference.detection_async_inference_gateway import (
+    DetectionAsyncInferenceGatewayDispatcherRegistry,
+    normalize_detection_async_inference_owner_id,
+)
+from backend.service.application.models.inference.obb_async_inference_gateway import (
+    ObbAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.inference.pose_async_inference_gateway import (
+    PoseAsyncInferenceGatewayDispatcherRegistry,
+)
+from backend.service.application.models.inference.segmentation_async_inference_gateway import (
+    SegmentationAsyncInferenceGatewayDispatcherRegistry,
 )
 from backend.service.application.models.training.training_runtime_metrics_snapshot import (
     TrainingRuntimeMetricsSnapshotWriter,
 )
+from backend.service.application.models.training.training_telemetry import (
+    TrainingTelemetryBroker,
+)
 from backend.service.application.models.training.training_telemetry_mmap import (
     TrainingTelemetryMmapReceiver,
 )
-from backend.service.application.workflows.graph_executor import (
-    WorkflowNodeRuntimeRegistry,
-)
-from backend.service.application.workflows.preview_run_manager import (
-    WorkflowPreviewRunManager,
-)
-from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
-from backend.service.application.workflows.app_version_migration import (
-    WorkflowAppVersionMigrationService,
-)
-from backend.service.application.workflows.app_version_service import (
-    WorkflowAppVersionService,
-)
-from backend.service.application.workflows.application_lifecycle import (
-    WorkflowApplicationLifecycleService,
-)
-from backend.service.application.workflows.application_bundle_journal import (
-    WorkflowApplicationBundleJournalService,
-)
-from backend.service.application.workflows.worker.manager import (
-    WorkflowRuntimeWorkerManager,
-)
-from backend.service.application.workflows.trigger_sources.trigger_source_service import (
-    WorkflowTriggerSourceService,
-)
-from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
-    TriggerSourceSupervisor,
-)
-from backend.service.application.workflows.trigger_sources.workflow_submitter import (
-    WorkflowSubmitter,
-)
-from backend.service.application.workflows.service_runtime.context import (
-    WorkflowServiceNodeRuntimeContext,
-)
-from backend.service.application.workflows.runtime_registry_loader import (
-    WorkflowNodeRuntimeRegistryLoader,
-)
-from backend.service.application.workflows.model_sessions import (
-    WorkflowModelSessionManager,
-)
+from backend.service.application.project_deletion import ProjectDeletionService
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -130,22 +92,64 @@ from backend.service.application.runtime.deployment.inference_local_mmap import 
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
-from backend.service.application.deployments.deployment_instance_service import (
-    SqlAlchemyDeploymentInstanceService,
+from backend.service.application.tasks.queue_outbox import (
+    QueueOutboxDispatcher,
+    QueueOutboxDispatcherSettings,
+)
+from backend.service.application.workflows.app_version_migration import (
+    WorkflowAppVersionMigrationService,
+)
+from backend.service.application.workflows.app_version_service import (
+    WorkflowAppVersionService,
+)
+from backend.service.application.workflows.application_bundle_journal import (
+    WorkflowApplicationBundleJournalService,
+)
+from backend.service.application.workflows.application_lifecycle import (
+    WorkflowApplicationLifecycleService,
+)
+from backend.service.application.workflows.graph_executor import (
+    WorkflowNodeRuntimeRegistry,
+)
+from backend.service.application.workflows.model_sessions import (
+    WorkflowModelSessionManager,
+)
+from backend.service.application.workflows.preview_run_manager import (
+    WorkflowPreviewRunManager,
+)
+from backend.service.application.workflows.runtime_registry_loader import (
+    WorkflowNodeRuntimeRegistryLoader,
+)
+from backend.service.application.workflows.runtime_service import WorkflowRuntimeService
+from backend.service.application.workflows.service_runtime.context import (
+    WorkflowServiceNodeRuntimeContext,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_service import (
+    WorkflowTriggerSourceService,
+)
+from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
+    TriggerSourceSupervisor,
+)
+from backend.service.application.workflows.trigger_sources.workflow_submitter import (
+    WorkflowSubmitter,
+)
+from backend.service.application.workflows.worker.manager import (
+    WorkflowRuntimeWorkerManager,
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.integrations.modbus import (
-    PlcRegisterTriggerAdapter,
-)
 from backend.service.infrastructure.integrations.directory import (
     DirectoryPollTriggerAdapter,
     DirectoryWatchTriggerAdapter,
+)
+from backend.service.infrastructure.integrations.modbus import (
+    PlcRegisterTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import (
     BackendServiceSettings,
     get_backend_service_settings,
@@ -184,6 +188,7 @@ class BackendServiceRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
+    queue_outbox_dispatcher: QueueOutboxDispatcher
     service_event_bus: InMemoryServiceEventBus
     training_telemetry_broker: TrainingTelemetryBroker
     training_telemetry_receiver: TrainingTelemetryMmapReceiver | None
@@ -475,6 +480,21 @@ class BackendServiceBootstrap(
         queue_backend = self._provided_queue_backend or LocalFileQueueBackend(
             settings.to_queue_settings()
         )
+        queue_outbox_dispatcher = QueueOutboxDispatcher(
+            session_factory=session_factory,
+            queue_backend=queue_backend,
+            settings=QueueOutboxDispatcherSettings(
+                enabled=settings.queue_outbox.enabled,
+                batch_size=settings.queue_outbox.batch_size,
+                poll_interval_seconds=settings.queue_outbox.poll_interval_seconds,
+                lease_seconds=settings.queue_outbox.lease_seconds,
+                retry_base_seconds=settings.queue_outbox.retry_base_seconds,
+                retry_max_seconds=settings.queue_outbox.retry_max_seconds,
+                shutdown_timeout_seconds=(
+                    settings.queue_outbox.shutdown_timeout_seconds
+                ),
+            ),
+        )
         node_pack_loader = LocalNodePackLoader(settings.custom_nodes.root_dir)
         node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
         workflow_node_runtime_registry_loader = WorkflowNodeRuntimeRegistryLoader(
@@ -692,7 +712,6 @@ class BackendServiceBootstrap(
         workflow_service_node_runtime_context = WorkflowServiceNodeRuntimeContext(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
-            queue_backend=queue_backend,
             detection_sync_deployment_process_supervisor=detection_sync_deployment_process_supervisor,
             detection_async_deployment_process_supervisor=detection_async_deployment_process_supervisor,
             classification_sync_deployment_process_supervisor=classification_sync_deployment_supervisor,
@@ -758,6 +777,7 @@ class BackendServiceBootstrap(
             session_factory=session_factory,
             dataset_storage=dataset_storage,
             queue_backend=queue_backend,
+            queue_outbox_dispatcher=queue_outbox_dispatcher,
             service_event_bus=service_event_bus,
             training_telemetry_broker=training_telemetry_broker,
             training_telemetry_receiver=training_telemetry_receiver,
@@ -911,6 +931,7 @@ class BackendServiceBootstrap(
         """
 
         runtime.local_buffer_broker_supervisor.start()
+        runtime.queue_outbox_dispatcher.start()
         for component in runtime.iter_all_deployment_supervisors():
             component.start()
         runtime.deployment_runtime_reconciler.start()
@@ -931,6 +952,7 @@ class BackendServiceBootstrap(
         - runtime：当前应用实例使用的运行时资源。
         """
 
+        runtime.queue_outbox_dispatcher.stop()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.stop()
         runtime.training_telemetry_broker.close()

@@ -54,6 +54,15 @@
     "response_queue_retention_seconds": 3600.0,
     "file_operation_retry_timeout_seconds": 2.0
   },
+  "queue_outbox": {
+    "enabled": true,
+    "batch_size": 32,
+    "poll_interval_seconds": 0.2,
+    "lease_seconds": 30.0,
+    "retry_base_seconds": 0.5,
+    "retry_max_seconds": 30.0,
+    "shutdown_timeout_seconds": 5.0
+  },
   "training_telemetry": {
     "enabled": true,
     "root_dir": "./data/runtime/training-telemetry",
@@ -129,7 +138,15 @@
     "keep_warm_interval_seconds": 0.1,
     "keep_warm_yield_timeout_seconds": 1.0,
     "tensorrt_pinned_output_buffer_enabled": true,
-    "tensorrt_pinned_output_buffer_max_bytes": 8388608
+    "tensorrt_pinned_output_buffer_max_bytes": 8388608,
+    "device_leases": {
+      "root_dir": "./data/runtime/device-leases",
+      "exclusive_acquire_timeout_seconds": 0.0,
+      "shared_acquire_timeout_seconds": 0.0,
+      "poll_interval_seconds": 0.05,
+      "cuda_device_uuid_overrides": {},
+      "conversion_cuda_device": "cuda:0"
+    }
   },
   "deployment_runtime_reconciler": {
     "enabled": true,

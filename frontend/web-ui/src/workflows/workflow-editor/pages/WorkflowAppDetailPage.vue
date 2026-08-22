@@ -568,7 +568,7 @@ GET /api/v1/workflows/runs/{workflow_run_id}?response_mode=run</pre>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -606,6 +606,7 @@ import {
   type WorkflowTriggerSource,
 } from '@/modules/integrations/services/trigger-source.service'
 import WorkflowRuntimeBodyViewer from '../components/WorkflowRuntimeBodyViewer.vue'
+import { useWorkflowResourceStream } from '../composables/useWorkflowResourceStream'
 import {
   getWorkflowApp,
   resolveLatestPublishedVersion,
@@ -830,8 +831,8 @@ function runtimeTone(state: string): 'neutral' | 'success' | 'warning' | 'danger
 
 function runTone(state: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   if (state === 'succeeded') return 'success'
-  if (state === 'failed' || state === 'timeout') return 'danger'
-  if (state === 'running' || state === 'queued') return 'warning'
+  if (state === 'failed' || state === 'timed_out') return 'danger'
+  if (state === 'running' || state === 'queued' || state === 'dispatching') return 'warning'
   if (state === 'cancelled') return 'neutral'
   return 'info'
 }
@@ -1618,6 +1619,9 @@ async function submitRun(mode: RunSubmitMode): Promise<void> {
       ? await createWorkflowRun(runtime.workflow_runtime_id, { inputBindings, executionMetadata: { source: 'web-ui-app-detail' } })
       : await invokeWorkflowAppRuntime(runtime.workflow_runtime_id, { inputBindings, executionMetadata: { source: 'web-ui-app-detail' } })
     lastRun.value = run
+    if (!isTerminalWorkflowRun(run)) {
+      workflowRunStream.start(run.workflow_run_id)
+    }
     statusMessage.value = t('workflowEditor.appDetail.messages.runCreated', { runId: run.workflow_run_id })
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('workflowEditor.appDetail.messages.invokeFailed')
@@ -1640,6 +1644,34 @@ async function refreshLastRun(): Promise<void> {
     fetchingLastRun.value = false
   }
 }
+
+function isTerminalWorkflowRun(run: WorkflowRun): boolean {
+  return ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(run.state)
+}
+
+const workflowRunStream = useWorkflowResourceStream<WorkflowRun>({
+  kind: 'run',
+  getSnapshot: getWorkflowRun,
+  onSnapshot: (run) => {
+    lastRun.value = run
+  },
+  isTerminal: isTerminalWorkflowRun,
+})
+
+const workflowAppRuntimeStream = useWorkflowResourceStream<WorkflowAppRuntime>({
+  kind: 'app-runtime',
+  getSnapshot: getWorkflowAppRuntimeHealth,
+  onSnapshot: replaceRuntime,
+  isTerminal: () => false,
+})
+
+watch(selectedRuntimeId, (workflowRuntimeId) => {
+  if (workflowRuntimeId) {
+    workflowAppRuntimeStream.start(workflowRuntimeId)
+    return
+  }
+  workflowAppRuntimeStream.stop()
+})
 
 onMounted(loadPage)
 </script>

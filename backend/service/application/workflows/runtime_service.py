@@ -137,9 +137,11 @@ from backend.service.application.workflows.runtime.metadata import (
     strip_output_diagnostic_timings as _strip_output_diagnostic_timings,
 )
 from backend.service.application.workflows.runtime.persistence import (
+    WORKFLOW_RUN_TERMINAL_EVENT_TYPES,
     append_workflow_run_event,
     apply_workflow_run_result,
     read_workflow_run_events,
+    release_workflow_run_event_sequence,
     with_input_buffer_ref_cleanups,
 )
 from backend.service.application.workflows.workflow_service import (
@@ -234,6 +236,7 @@ class WorkflowRuntimeService:
 
     _event_lock = Lock()
     _workflow_run_event_locks: dict[str, Lock] = {}
+    _workflow_run_event_sequences: dict[str, int] = {}
     _workflow_app_runtime_event_locks: dict[str, Lock] = {}
     _raw_workflow_run_result_lock = Lock()
     _raw_workflow_run_results: dict[str, _RawWorkflowRunResult] = {}
@@ -866,6 +869,26 @@ class WorkflowRuntimeService:
             )
         return preview_run
 
+    def get_visible_preview_run(
+        self,
+        preview_run_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowPreviewRun:
+        """按公开调用方的 Project 可见范围读取 preview run。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            preview_run = unit_of_work.workflow_runtime.get_visible_preview_run(
+                preview_run_id,
+                visible_project_ids=visible_project_ids,
+            )
+        if preview_run is None:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowPreviewRun 不存在",
+                details={"preview_run_id": preview_run_id},
+            )
+        return preview_run
+
     def get_preview_run_events(
         self,
         preview_run_id: str,
@@ -1211,6 +1234,28 @@ class WorkflowRuntimeService:
             )
         return workflow_app_runtime
 
+    def get_visible_workflow_app_runtime(
+        self,
+        workflow_runtime_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowAppRuntime:
+        """按公开调用方的 Project 可见范围读取 WorkflowAppRuntime。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_app_runtime = (
+                unit_of_work.workflow_runtime.get_visible_workflow_app_runtime(
+                    workflow_runtime_id,
+                    visible_project_ids=visible_project_ids,
+                )
+            )
+        if workflow_app_runtime is None:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowAppRuntime 不存在",
+                details={"workflow_runtime_id": workflow_runtime_id},
+            )
+        return workflow_app_runtime
+
     def get_workflow_app_runtime_events(
         self,
         workflow_runtime_id: str,
@@ -1261,6 +1306,33 @@ class WorkflowRuntimeService:
                 workflow_runtime_revision_id
             )
         if revision is None or revision.workflow_runtime_id != workflow_runtime_id:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowRuntimeRevision 不存在",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                },
+            )
+        return revision
+
+    def get_visible_workflow_runtime_revision(
+        self,
+        workflow_runtime_id: str,
+        workflow_runtime_revision_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowRuntimeRevision:
+        """按稳定 Runtime、revision id 和 Project 可见范围读取 revision。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            revision = (
+                unit_of_work.workflow_runtime.get_visible_workflow_runtime_revision(
+                    workflow_runtime_id,
+                    workflow_runtime_revision_id,
+                    visible_project_ids=visible_project_ids,
+                )
+            )
+        if revision is None:
             raise ResourceNotFoundError(
                 "请求的 WorkflowRuntimeRevision 不存在",
                 details={
@@ -2365,14 +2437,13 @@ class WorkflowRuntimeService:
                         expected_desired_state="running",
                     )
                 unit_of_work.commit()
-            if record_mode == WORKFLOW_RUN_RECORD_MODE_FULL:
-                self._append_workflow_run_event(
-                    workflow_run,
-                    event_type=self._event_type_for_workflow_run_state(
-                        workflow_run.state
-                    ),
-                    message=self._message_for_workflow_run_state(workflow_run.state),
-                )
+            self._append_workflow_run_event(
+                workflow_run,
+                event_type=self._event_type_for_workflow_run_state(
+                    workflow_run.state
+                ),
+                message=self._message_for_workflow_run_state(workflow_run.state),
+            )
         elif workflow_app_runtime.observed_state == "failed":
             with self._open_unit_of_work() as unit_of_work:
                 runtime_state_updated = unit_of_work.workflow_runtime.update_workflow_app_runtime_state_if_current(
@@ -2572,6 +2643,26 @@ class WorkflowRuntimeService:
         with self._open_unit_of_work() as unit_of_work:
             workflow_run = unit_of_work.workflow_runtime.get_workflow_run(
                 workflow_run_id
+            )
+        if workflow_run is None:
+            raise ResourceNotFoundError(
+                "请求的 WorkflowRun 不存在",
+                details={"workflow_run_id": workflow_run_id},
+            )
+        return workflow_run
+
+    def get_visible_workflow_run(
+        self,
+        workflow_run_id: str,
+        *,
+        visible_project_ids: tuple[str, ...],
+    ) -> WorkflowRun:
+        """按公开调用方的 Project 可见范围读取 WorkflowRun。"""
+
+        with self._open_unit_of_work() as unit_of_work:
+            workflow_run = unit_of_work.workflow_runtime.get_visible_workflow_run(
+                workflow_run_id,
+                visible_project_ids=visible_project_ids,
             )
         if workflow_run is None:
             raise ResourceNotFoundError(
@@ -3167,7 +3258,8 @@ class WorkflowRuntimeService:
         - payload：附加事件载荷。
 
         返回：
-        - WorkflowRunEvent：新生成的事件；no-trace 模式下只返回内存事件，不写磁盘。
+        - WorkflowRunEvent：新生成的事件；no-trace 模式仍持久化生命周期事件，
+          仅节点和诊断事件返回 sequence=0。
         """
 
         event_lock = self._resolve_workflow_run_event_lock(workflow_run.workflow_run_id)
@@ -3175,25 +3267,36 @@ class WorkflowRuntimeService:
             dataset_storage=self.dataset_storage,
             workflow_run=workflow_run,
             event_lock=event_lock,
+            event_sequences=self._workflow_run_event_sequences,
+            event_sequence_lock=self._event_lock,
             event_type=event_type,
             message=message,
             payload=payload,
         )
         if event.sequence <= 0:
             return event
-        self._publish_workflow_run_event(event)
-        if should_publish_project_summary_for_workflow_run_event(event.event_type):
-            publish_project_summary_event(
-                session_factory=self.session_factory,
-                dataset_storage=self.dataset_storage,
-                service_event_bus=self.service_event_bus,
-                node_catalog_registry=self.node_catalog_registry,
-                project_id=workflow_run.project_id,
-                topic=PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS,
-                source_stream="workflows.runs.events",
-                source_resource_kind="workflow_run",
-                source_resource_id=workflow_run.workflow_run_id,
-            )
+        try:
+            self._publish_workflow_run_event(event)
+            if should_publish_project_summary_for_workflow_run_event(event.event_type):
+                publish_project_summary_event(
+                    session_factory=self.session_factory,
+                    dataset_storage=self.dataset_storage,
+                    service_event_bus=self.service_event_bus,
+                    node_catalog_registry=self.node_catalog_registry,
+                    project_id=workflow_run.project_id,
+                    topic=PROJECT_SUMMARY_TOPIC_WORKFLOW_RUNS,
+                    source_stream="workflows.runs.events",
+                    source_resource_kind="workflow_run",
+                    source_resource_id=workflow_run.workflow_run_id,
+                )
+        finally:
+            if event.event_type in WORKFLOW_RUN_TERMINAL_EVENT_TYPES:
+                release_workflow_run_event_sequence(
+                    dataset_storage=self.dataset_storage,
+                    workflow_run_id=workflow_run.workflow_run_id,
+                    event_sequences=self._workflow_run_event_sequences,
+                    event_sequence_lock=self._event_lock,
+                )
         return event
 
     def _append_workflow_app_runtime_event(

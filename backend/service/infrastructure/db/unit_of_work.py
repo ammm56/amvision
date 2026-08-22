@@ -31,6 +31,9 @@ from backend.service.infrastructure.persistence.model_repository import (
 from backend.service.infrastructure.persistence.resource_profile_repository import (
     SqlAlchemyResourceProfileRepository,
 )
+from backend.service.infrastructure.persistence.queue_outbox_repository import (
+    SqlAlchemyQueueOutboxRepository,
+)
 from backend.service.infrastructure.persistence.task_repository import (
     SqlAlchemyTaskRepository,
 )
@@ -85,6 +88,7 @@ class SqlAlchemyUnitOfWork:
         self.model_files = SqlAlchemyModelFileRepository(session)
         self.tasks = SqlAlchemyTaskRepository(session)
         self.resource_profiles = SqlAlchemyResourceProfileRepository(session)
+        self.queue_outbox = SqlAlchemyQueueOutboxRepository(session)
         self.workflow_runtime = SqlAlchemyWorkflowRuntimeRepository(session)
         self.workflow_trigger_sources = SqlAlchemyWorkflowTriggerSourceRepository(
             session

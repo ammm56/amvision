@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.rest.v1.routes.classification_training_tasks.schemas import (
     ClassificationTrainingTaskCreateRequestBody,
     ClassificationTrainingTaskSubmissionResponse,
@@ -37,7 +36,6 @@ def submit_classification_training_task(
     body: ClassificationTrainingTaskCreateRequestBody,
     created_by: str,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> ClassificationTrainingTaskSubmissionResponse:
     """提交 classification 训练任务。"""
@@ -65,7 +63,6 @@ def submit_classification_training_task(
     )
     service = service_cls(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     result = service.submit_training_task(

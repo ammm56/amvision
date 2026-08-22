@@ -6,8 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from backend.queue import QueueBackend
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
@@ -34,8 +34,6 @@ from backend.service.application.models.training.yolo26_obb_task_events import (
     build_yolo26_obb_training_cancelled_event,
     build_yolo26_obb_training_failed_event,
     build_yolo26_obb_training_paused_event,
-    build_yolo26_obb_training_queue_failed_event,
-    build_yolo26_obb_training_queued_event,
     build_yolo26_obb_training_started_event,
     build_yolo26_obb_training_succeeded_event,
 )
@@ -75,6 +73,10 @@ from backend.service.application.models.training.yolo26_obb_training import (
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
+)
+from backend.service.application.tasks.queue_reference import (
+    resolve_created_task_queue_reference,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
 from backend.service.domain.files.detection_model_file_types import (
@@ -129,13 +131,11 @@ class SqlAlchemyYolo26ObbTrainingTaskService:
         self,
         *,
         session_factory: SessionFactory,
-        queue_backend: QueueBackend,
         dataset_storage: LocalDatasetStorage,
     ) -> None:
         """初始化 YOLO26 OBB 训练任务服务。"""
 
         self.session_factory = session_factory
-        self.queue_backend = queue_backend
         self.dataset_storage = dataset_storage
         self.task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
 
@@ -165,8 +165,15 @@ class SqlAlchemyYolo26ObbTrainingTaskService:
             model_type=model_type,
             task_spec=task_spec,
         )
+        task_id = f"task-{uuid4().hex[:12]}"
+        queue_payload = self._build_queue_payload(
+            task_id=task_id,
+            task_kind=self.training_task_kind,
+            task_spec=task_spec,
+        )
         created_task = self.task_service.create_task(
             CreateTaskRequest(
+                task_id=task_id,
                 task_kind=self.training_task_kind,
                 project_id=request.project_id,
                 created_by=created_by,
@@ -174,42 +181,18 @@ class SqlAlchemyYolo26ObbTrainingTaskService:
                 task_spec=task_spec,
                 worker_pool=self.training_task_kind,
                 metadata=metadata,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.training_queue_name,
+                    payload=queue_payload,
+                ),
             )
         )
-        queue_payload = self._build_queue_payload(
-            task_id=created_task.task_id,
-            task_kind=self.training_task_kind,
-            task_spec=task_spec,
-        )
-        try:
-            queue_task = self.queue_backend.enqueue(
-                queue_name=self.training_queue_name,
-                payload=queue_payload,
-            )
-        except Exception as exc:
-            self.task_service.append_task_event(
-                build_yolo26_obb_training_queue_failed_event(
-                    task_id=created_task.task_id,
-                    error_message=str(exc),
-                    error=exc,
-                    finished_at=self._now_iso(),
-                    dataset_export_id=dataset_export.dataset_export_id,
-                    dataset_export_manifest_key=dataset_export.manifest_object_key,
-                )
-            )
-            raise
-        self.task_service.append_task_event(
-            build_yolo26_obb_training_queued_event(
-                task_id=created_task.task_id,
-                queue_name=self.training_queue_name,
-                queue_task_id=queue_task.task_id,
-            )
-        )
+        queue_reference = resolve_created_task_queue_reference(created_task)
         return {
             "task_id": created_task.task_id,
             "status": "queued",
-            "queue_name": self.training_queue_name,
-            "queue_task_id": queue_task.task_id,
+            "queue_name": queue_reference.queue_name,
+            "queue_task_id": queue_reference.queue_task_id,
         }
 
     def process_training_task(

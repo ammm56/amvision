@@ -6,29 +6,40 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from backend.service.application.errors import ServiceConfigurationError
-from backend.service.application.model_type_support import normalize_optional_platform_model_type
-from backend.service.application.task_type_support import require_supported_platform_task_type
+from backend.service.application.model_type_support import (
+    normalize_optional_platform_model_type,
+)
 from backend.service.application.runtime.resource_scope import (
     ResourceCloseError,
     ResourceScope,
     create_process_resource_scope,
 )
-from backend.service.domain.models.platform_model_support import get_supported_platform_model_types
+from backend.service.application.task_type_support import (
+    require_supported_platform_task_type,
+)
+from backend.service.domain.models.platform_model_support import (
+    get_supported_platform_model_types,
+)
 
 if TYPE_CHECKING:
     from backend.nodes import ExecutionImageRegistry
-    from backend.queue import QueueBackend
     from backend.service.application.deployments import PublishedInferenceGateway
     from backend.service.application.local_buffers import LocalBufferReader
     from backend.service.application.models.inference.detection_async_inference_gateway import (
         DetectionAsyncInferenceGatewayDispatcherRegistry,
     )
-    from backend.service.application.runtime.deployment.deployment_process_supervisor import DeploymentProcessSupervisor
-    from backend.service.application.workflows.service_runtime.payloads import WorkflowEvaluationTaskPackage
-    from backend.service.infrastructure.db.session import SessionFactory
-    from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+    from backend.service.application.runtime.deployment.deployment_process_supervisor import (
+        DeploymentProcessSupervisor,
+    )
     from backend.service.application.workflows.model_sessions import (
         WorkflowModelSessionManager,
+    )
+    from backend.service.application.workflows.service_runtime.payloads import (
+        WorkflowEvaluationTaskPackage,
+    )
+    from backend.service.infrastructure.db.session import SessionFactory
+    from backend.service.infrastructure.object_store.local_dataset_storage import (
+        LocalDatasetStorage,
     )
 
 
@@ -39,7 +50,6 @@ class WorkflowServiceNodeRuntimeContext:
     字段：
     - session_factory：数据库会话工厂。
     - dataset_storage：本地文件存储服务。
-    - queue_backend：任务队列后端；提交类 service node 需要。
     - *_sync_deployment_process_supervisor：按 task_type 划分的同步 deployment 监督器。
     - *_async_deployment_process_supervisor：按 task_type 划分的异步 deployment 监督器。
     - async_inference_service_id：异步推理 gateway 稳定 service id。
@@ -51,7 +61,6 @@ class WorkflowServiceNodeRuntimeContext:
 
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
-    queue_backend: QueueBackend | None = None
     detection_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     detection_async_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
     classification_sync_deployment_process_supervisor: DeploymentProcessSupervisor | None = None
@@ -195,13 +204,6 @@ class WorkflowServiceNodeRuntimeContext:
         from backend.service.application.workflows.service_runtime import builders
 
         return builders.build_inference_task_service(self, task_type=task_type)
-
-    def require_queue_backend(self) -> QueueBackend:
-        """返回提交类节点必需的队列后端。"""
-
-        if self.queue_backend is None:
-            raise ServiceConfigurationError("当前 workflow 运行时缺少 QueueBackend 上下文")
-        return self.queue_backend
 
     def require_sync_deployment_process_supervisor(self, *, task_type: str) -> DeploymentProcessSupervisor:
         """返回指定 task_type 的同步 deployment supervisor。"""

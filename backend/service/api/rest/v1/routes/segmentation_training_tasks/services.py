@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from backend.queue import LocalFileQueueBackend
 from backend.service.api.rest.v1.routes.segmentation_training_tasks.schemas import (
     SegmentationTrainingTaskCreateRequestBody,
     SegmentationTrainingTaskSubmissionResponse,
@@ -37,7 +36,6 @@ def submit_segmentation_training_task(
     body: SegmentationTrainingTaskCreateRequestBody,
     created_by: str,
     session_factory: SessionFactory,
-    queue_backend: LocalFileQueueBackend,
     dataset_storage: LocalDatasetStorage,
 ) -> SegmentationTrainingTaskSubmissionResponse:
     """提交 segmentation 训练任务。"""
@@ -66,7 +64,6 @@ def submit_segmentation_training_task(
     )
     service = service_cls(
         session_factory=session_factory,
-        queue_backend=queue_backend,
         dataset_storage=dataset_storage,
     )
     result = service.submit_training_task(

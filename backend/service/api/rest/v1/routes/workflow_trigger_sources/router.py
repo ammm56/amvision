@@ -124,10 +124,10 @@ def get_workflow_trigger_source(
 ) -> WorkflowTriggerSourceContract:
     """读取一条 WorkflowTriggerSource。"""
 
-    trigger_source = build_trigger_source_service(request).get_trigger_source(
-        trigger_source_id
+    trigger_source = build_trigger_source_service(request).get_visible_trigger_source(
+        trigger_source_id,
+        visible_project_ids=principal.project_ids,
     )
-    ensure_project_visible(principal=principal, project_id=trigger_source.project_id)
     return build_trigger_source_contract(trigger_source, request=request)
 
 
@@ -144,11 +144,9 @@ def enable_workflow_trigger_source(
     """启用一条 WorkflowTriggerSource。"""
 
     trigger_source_service = build_trigger_source_service(request)
-    current_trigger_source = trigger_source_service.get_trigger_source(
-        trigger_source_id
-    )
-    ensure_project_visible(
-        principal=principal, project_id=current_trigger_source.project_id
+    trigger_source_service.get_visible_trigger_source(
+        trigger_source_id,
+        visible_project_ids=principal.project_ids,
     )
     trigger_source = trigger_source_service.enable_trigger_source(
         trigger_source_id,
@@ -170,11 +168,9 @@ def disable_workflow_trigger_source(
     """停用一条 WorkflowTriggerSource。"""
 
     trigger_source_service = build_trigger_source_service(request)
-    current_trigger_source = trigger_source_service.get_trigger_source(
-        trigger_source_id
-    )
-    ensure_project_visible(
-        principal=principal, project_id=current_trigger_source.project_id
+    trigger_source_service.get_visible_trigger_source(
+        trigger_source_id,
+        visible_project_ids=principal.project_ids,
     )
     trigger_source = trigger_source_service.disable_trigger_source(
         trigger_source_id,
@@ -196,11 +192,9 @@ def delete_workflow_trigger_source(
     """删除一条 WorkflowTriggerSource。"""
 
     trigger_source_service = build_trigger_source_service(request)
-    current_trigger_source = trigger_source_service.get_trigger_source(
-        trigger_source_id
-    )
-    ensure_project_visible(
-        principal=principal, project_id=current_trigger_source.project_id
+    trigger_source_service.get_visible_trigger_source(
+        trigger_source_id,
+        visible_project_ids=principal.project_ids,
     )
     trigger_source_service.delete_trigger_source(trigger_source_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -220,8 +214,10 @@ def get_workflow_trigger_source_health(
     """读取一条 WorkflowTriggerSource 的健康摘要。"""
 
     trigger_source_service = build_trigger_source_service(request)
-    trigger_source = trigger_source_service.get_trigger_source(trigger_source_id)
-    ensure_project_visible(principal=principal, project_id=trigger_source.project_id)
+    trigger_source_service.get_visible_trigger_source(
+        trigger_source_id,
+        visible_project_ids=principal.project_ids,
+    )
     return build_trigger_source_health_response(
         trigger_source_service.get_trigger_source_health(trigger_source_id)
     )

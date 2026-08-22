@@ -576,7 +576,6 @@ def _process_inference_task(
     service = spec.inference_task_service_cls(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=getattr(client.app.state, "queue_backend", None),
         deployment_process_supervisor=getattr(
             client.app.state,
             f"{spec.task_type}_async_deployment_process_supervisor",

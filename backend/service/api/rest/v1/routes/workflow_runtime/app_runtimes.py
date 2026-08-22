@@ -96,9 +96,9 @@ def list_workflow_runtime_revisions(
     """分页列出稳定 Runtime 的版本选择历史。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    runtime_service.get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     revisions = runtime_service.list_workflow_runtime_revisions(workflow_runtime_id)
     page_items = paginate_sequence(
@@ -125,13 +125,10 @@ def get_workflow_runtime_revision(
     """读取稳定 Runtime 的一条不可变版本选择记录。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
-    )
-    revision = runtime_service.get_workflow_runtime_revision(
+    revision = runtime_service.get_visible_workflow_runtime_revision(
         workflow_runtime_id,
         workflow_runtime_revision_id,
+        visible_project_ids=principal.project_ids,
     )
     return _build_workflow_runtime_revision_contract(revision)
 
@@ -151,9 +148,9 @@ def select_workflow_app_runtime_version(
     """在停机状态下为稳定 Runtime 选择已发布版本。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    runtime_service.get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     selected_runtime = runtime_service.select_workflow_app_runtime_version(
         workflow_runtime_id,
@@ -230,9 +227,9 @@ def get_workflow_app_runtime(
 
     workflow_app_runtime = _build_workflow_runtime_service(
         request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    ).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     return _build_workflow_app_runtime_contract(
         workflow_app_runtime,
@@ -260,9 +257,9 @@ def get_workflow_app_runtime_events(
     """读取一条 WorkflowAppRuntime 的事件列表。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    runtime_service.get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     events = runtime_service.get_workflow_app_runtime_events(
         workflow_runtime_id,
@@ -285,11 +282,9 @@ def start_workflow_app_runtime(
 ) -> WorkflowAppRuntimeContract:
     """启动一个 WorkflowAppRuntime 对应的 worker。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     updated_runtime = _build_workflow_runtime_service(
         request
@@ -316,11 +311,9 @@ def stop_workflow_app_runtime(
 ) -> WorkflowAppRuntimeContract:
     """停止一个 WorkflowAppRuntime 对应的 worker。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     updated_runtime = _build_workflow_runtime_service(
         request
@@ -348,9 +341,9 @@ def delete_workflow_app_runtime(
     """删除一条 WorkflowAppRuntime 及其 snapshot 目录。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_app_runtime = runtime_service.get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    runtime_service.get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     runtime_service.delete_workflow_app_runtime(
         workflow_runtime_id,
@@ -372,11 +365,9 @@ def restart_workflow_app_runtime(
 ) -> WorkflowAppRuntimeContract:
     """重启一个 WorkflowAppRuntime 对应的 worker。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     updated_runtime = _build_workflow_runtime_service(
         request
@@ -403,11 +394,9 @@ def get_workflow_app_runtime_health(
 ) -> WorkflowAppRuntimeContract:
     """查询一个 WorkflowAppRuntime 的当前健康状态。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     updated_runtime = _build_workflow_runtime_service(
         request
@@ -431,11 +420,9 @@ def list_workflow_app_runtime_instances(
 ) -> list[WorkflowAppRuntimeInstanceContract]:
     """列出一个 WorkflowAppRuntime 当前可观测的 instance。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(
-        request
-    ).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(
-        principal=principal, project_id=workflow_app_runtime.project_id
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
     )
     instances = _build_workflow_runtime_service(
         request

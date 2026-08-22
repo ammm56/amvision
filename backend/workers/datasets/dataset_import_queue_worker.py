@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from backend.queue import QueueBackend, QueueMessage
 from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.infrastructure.db.session import SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    LocalDatasetStorage,
+)
 from backend.workers.datasets.dataset_import_runner import (
     DatasetImportRunRequest,
     SqlAlchemyDatasetImportRunner,
 )
-
 
 DATASET_IMPORT_QUEUE_NAME = "dataset-imports"
 

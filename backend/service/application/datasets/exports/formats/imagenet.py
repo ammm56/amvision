@@ -155,14 +155,13 @@ class ImageNetExportMixin:
         split_samples: tuple[tuple[str, tuple[DatasetSample, ...]], ...],
         export_result: DatasetExportResult,
     ) -> None:
-        """把 ImageNet classification 导出结果写入本地文件存储。"""
+        """把 ImageNet classification 导出结果写入 ObjectStore。"""
 
         if self.dataset_storage is None or export_result.export_path is None:
             return
 
-        self.dataset_storage.resolve(f"{export_result.export_path}/annotations").mkdir(
-            parents=True,
-            exist_ok=True,
+        self.dataset_storage.prepare_prefix(
+            f"{export_result.export_path}/annotations"
         )
         category_map = {
             category.category_id: category.name
@@ -191,7 +190,7 @@ class ImageNetExportMixin:
                     dataset_version=dataset_version,
                     sample=sample,
                 )
-                self.dataset_storage.copy_relative_file(
+                self.dataset_storage.copy_object(
                     source_relative_path,
                     f"{export_result.export_path}/{split_name}/{class_name}/"
                     f"{exported_file_names[sample.sample_id]}",

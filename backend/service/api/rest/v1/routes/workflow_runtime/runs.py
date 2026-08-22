@@ -16,7 +16,6 @@ from backend.service.api.rest.v1.routes.workflow_runtime_support.responses impor
 from backend.service.api.rest.v1.routes.workflow_runtime_support.schemas import WorkflowRuntimeInvokeRequestBody
 from backend.service.api.rest.v1.routes.workflow_runtime_support.services import (
     build_workflow_runtime_service as _build_workflow_runtime_service,
-    ensure_project_visible as _ensure_project_visible,
     with_created_by as _with_created_by,
 )
 from backend.service.api.rest.v1.routes.workflow_runtime_support.uploads import (
@@ -116,8 +115,10 @@ def create_workflow_run(
 ) -> WorkflowRunContract:
     """为已启动的 runtime 创建一条异步 WorkflowRun。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
+    )
     workflow_run = _build_workflow_runtime_service(request).create_workflow_run(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
@@ -142,8 +143,12 @@ async def create_workflow_run_upload(
 ) -> WorkflowRunContract:
     """为已启动的 runtime 创建一条支持 multipart 上传的异步 WorkflowRun。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    workflow_app_runtime = _build_workflow_runtime_service(
+        request
+    ).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
+    )
     invoke_request = await _build_multipart_runtime_invoke_request(
         request=request,
         workflow_app_runtime=workflow_app_runtime,
@@ -173,8 +178,10 @@ def invoke_workflow_app_runtime(
 ) -> object:
     """通过已启动的 runtime 发起一次同步调用。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    _build_workflow_runtime_service(request).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
+    )
     invoke_result = _build_workflow_runtime_service(request).invoke_workflow_app_runtime_with_response(
         workflow_runtime_id,
         WorkflowRuntimeInvokeRequest(
@@ -202,8 +209,12 @@ async def invoke_workflow_app_runtime_upload(
 ) -> object:
     """通过 multipart 上传方式发起一次同步 workflow 调用。"""
 
-    workflow_app_runtime = _build_workflow_runtime_service(request).get_workflow_app_runtime(workflow_runtime_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_app_runtime.project_id)
+    workflow_app_runtime = _build_workflow_runtime_service(
+        request
+    ).get_visible_workflow_app_runtime(
+        workflow_runtime_id,
+        visible_project_ids=principal.project_ids,
+    )
     invoke_request = await _build_multipart_runtime_invoke_request(
         request=request,
         workflow_app_runtime=workflow_app_runtime,
@@ -233,8 +244,10 @@ def get_workflow_run(
     """读取一条 WorkflowRun 或其公开 App Result。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_run = runtime_service.get_workflow_run(workflow_run_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
+    workflow_run = runtime_service.get_visible_workflow_run(
+        workflow_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     normalized_mode = _normalize_response_mode(response_mode)
     raw_outputs = None
     if normalized_mode in {"app-result", "result"}:
@@ -260,8 +273,10 @@ def get_workflow_run_events(
     """读取一条 WorkflowRun 的事件列表。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    workflow_run = runtime_service.get_workflow_run(workflow_run_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
+    runtime_service.get_visible_workflow_run(
+        workflow_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     events = runtime_service.get_workflow_run_events(
         workflow_run_id,
         after_sequence=after_sequence,
@@ -281,8 +296,10 @@ def cancel_workflow_run(
 ) -> WorkflowRunContract:
     """取消一条异步 WorkflowRun。"""
 
-    workflow_run = _build_workflow_runtime_service(request).get_workflow_run(workflow_run_id)
-    _ensure_project_visible(principal=principal, project_id=workflow_run.project_id)
+    _build_workflow_runtime_service(request).get_visible_workflow_run(
+        workflow_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     updated_run = _build_workflow_runtime_service(request).cancel_workflow_run(
         workflow_run_id,
         cancelled_by=principal.principal_id,

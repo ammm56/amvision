@@ -169,6 +169,27 @@ def _load_yolo_model_catalog_entry(
         if isinstance(payload.get("metadata"), dict)
         else {}
     )
+    if model_type == "rfdetr":
+        checkpoint_model_config = payload.get("checkpoint_model_config")
+        if not isinstance(checkpoint_model_config, dict):
+            raise ServiceConfigurationError(
+                "RF-DETR 预训练 manifest 缺少 checkpoint_model_config",
+                details={"manifest_path": manifest_path.as_posix()},
+            )
+        num_queries = _require_positive_int(
+            checkpoint_model_config,
+            "num_queries",
+            manifest_path=manifest_path,
+        )
+        group_detr = _require_positive_int(
+            checkpoint_model_config,
+            "group_detr",
+            manifest_path=manifest_path,
+        )
+        metadata["checkpoint_model_config"] = {
+            "num_queries": num_queries,
+            "group_detr": group_detr,
+        }
     # manifest 本身已经位于本地对象存储中。启动扫描只读取并登记，不能把源文件
     # 再写回自身；并发进程同时启动时，自覆盖会产生先截断后写入的空文件窗口。
     checkpoint_key = str(checkpoint_path.relative_to(dataset_storage.root_dir)).replace(
@@ -211,6 +232,32 @@ def _require_str(payload: dict, key: str) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     raise ServiceConfigurationError(f"预训练模型 manifest 缺少必填字段: {key}")
+
+
+def _require_positive_int(
+    payload: dict[str, object],
+    key: str,
+    *,
+    manifest_path: Path,
+) -> int:
+    """读取 RF-DETR checkpoint 布局所需的正整数。"""
+
+    value = payload.get(key)
+    if isinstance(value, bool):
+        value = None
+    try:
+        normalized = int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        normalized = 0
+    if normalized > 0:
+        return normalized
+    raise ServiceConfigurationError(
+        f"RF-DETR checkpoint_model_config.{key} 必须为正整数",
+        details={
+            "manifest_path": manifest_path.as_posix(),
+            "field": f"checkpoint_model_config.{key}",
+        },
+    )
 
 
 def _validate_model_version_id_prefix(

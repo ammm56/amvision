@@ -237,8 +237,10 @@ def get_workflow_preview_run(
 ) -> WorkflowPreviewRunContract:
     """读取一条已保存的 WorkflowPreviewRun。"""
 
-    preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
-    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    preview_run = _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     return _build_preview_run_contract(preview_run)
 
 
@@ -252,8 +254,10 @@ def read_workflow_preview_run_artifact_content(
 ) -> FileResponse:
     """读取一个 Preview Run 生命周期内的 artifact 文件内容。"""
 
-    preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
-    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    preview_run = _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     normalized_object_key = object_key.strip()
     if not is_preview_run_artifact_object_key(
         preview_run_id=preview_run.preview_run_id,
@@ -291,8 +295,10 @@ def get_workflow_preview_run_events(
     """读取一条 preview run 的执行事件。"""
 
     runtime_service = _build_workflow_runtime_service(request)
-    preview_run = runtime_service.get_preview_run(preview_run_id)
-    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    runtime_service.get_visible_preview_run(
+        preview_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     events = runtime_service.get_preview_run_events(
         preview_run_id,
         after_sequence=after_sequence,
@@ -312,6 +318,8 @@ def delete_workflow_preview_run(
 ) -> Response:
     """删除一条 WorkflowPreviewRun 及其 snapshot 目录。"""
 
-    preview_run = _build_workflow_runtime_service(request).get_preview_run(preview_run_id)
-    _ensure_project_visible(principal=principal, project_id=preview_run.project_id)
+    _build_workflow_runtime_service(request).get_visible_preview_run(
+        preview_run_id,
+        visible_project_ids=principal.project_ids,
+    )
     _build_workflow_runtime_service(request).delete_preview_run(preview_run_id)

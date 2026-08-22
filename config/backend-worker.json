@@ -36,5 +36,19 @@
     "payload_capacity_bytes": 16384,
     "min_publish_interval_seconds": 0.1
   },
+  "conversion": {
+    "attempt_timeout_seconds": 7200.0,
+    "helper_timeout_seconds": 7200.0,
+    "termination_grace_seconds": 5.0,
+    "publication_orphan_grace_seconds": 3600.0
+  },
+  "device_leases": {
+    "root_dir": "./data/runtime/device-leases",
+    "exclusive_acquire_timeout_seconds": 0.0,
+    "shared_acquire_timeout_seconds": 0.0,
+    "poll_interval_seconds": 0.05,
+    "cuda_device_uuid_overrides": {},
+    "conversion_cuda_device": "cuda:0"
+  },
   "async_inference_gateway_request_timeout_seconds": 30.0
 }

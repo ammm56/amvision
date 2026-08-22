@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import multiprocessing
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -14,11 +14,23 @@ from time import monotonic_ns, perf_counter, sleep
 
 import pytest
 
-from backend.service.application.runtime.deployment import (
-    inference_local_mmap as inference_local_mmap_module,
-)
-from backend.queue import LocalFileQueueBackend, LocalFileQueueSettings
 from backend.contracts.buffers import BufferRef
+from backend.service.application.errors import (
+    InvalidRequestError,
+    OperationCancelledError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+)
+from backend.service.application.local_buffers import (
+    DirectMmapLocalBufferReader,
+    DirectMmapLocalBufferWriter,
+    LocalBufferBrokerPoolSettings,
+    LocalBufferBrokerProcessSupervisor,
+    LocalBufferBrokerSettings,
+)
+from backend.service.application.models.inference.inference_gateway import (
+    _serialize_process_config,
+)
 from backend.service.application.runtime.contracts.detection.prediction import (
     DetectionPredictionRequest,
 )
@@ -28,6 +40,9 @@ from backend.service.application.runtime.contracts.segmentation.prediction impor
     SegmentationPredictionRequest,
     SegmentationRuntimeSessionInfo,
     SegmentationRuntimeTensorSpec,
+)
+from backend.service.application.runtime.deployment import (
+    inference_local_mmap as inference_local_mmap_module,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -45,24 +60,12 @@ from backend.service.application.runtime.deployment.inference_local_mmap import 
     InferenceLocalMmapClient,
     InferenceLocalMmapServer,
 )
-from backend.service.application.errors import (
-    InvalidRequestError,
-    OperationCancelledError,
-    OperationTimeoutError,
-    ServiceConfigurationError,
-)
-from backend.service.application.local_buffers import (
-    DirectMmapLocalBufferReader,
-    DirectMmapLocalBufferWriter,
-    LocalBufferBrokerProcessSupervisor,
-    LocalBufferBrokerPoolSettings,
-    LocalBufferBrokerSettings,
-)
-from backend.service.application.models.inference.inference_gateway import (
-    _serialize_process_config,
-)
 from backend.service.domain.deployments.deployment_runtime_configuration import (
     DeploymentRuntimeConfiguration,
+)
+from backend.service.infrastructure.queue.local_file import (
+    LocalFileQueueBackend,
+    LocalFileQueueSettings,
 )
 from tests.runtime_pool_test_support import (
     build_test_execution_result,

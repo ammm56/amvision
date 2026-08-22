@@ -48,6 +48,20 @@ def build_background_task_manager(
                 async_inference_request_timeout_seconds=(
                     runtime.settings.async_inference_gateway_request_timeout_seconds
                 ),
+                conversion_workspace_dir=str(runtime.workspace_dir),
+                conversion_attempt_timeout_seconds=(
+                    runtime.settings.conversion.attempt_timeout_seconds
+                ),
+                conversion_helper_timeout_seconds=(
+                    runtime.settings.conversion.helper_timeout_seconds
+                ),
+                conversion_termination_grace_seconds=(
+                    runtime.settings.conversion.termination_grace_seconds
+                ),
+                conversion_publication_orphan_grace_seconds=(
+                    runtime.settings.conversion.publication_orphan_grace_seconds
+                ),
+                device_lease_config=runtime.settings.device_leases,
             ),
             enabled_consumer_kinds=profile.enabled_consumer_kinds,
         ),
