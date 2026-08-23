@@ -1,5 +1,7 @@
 # 统一任务系统
 
+> 当前状态：本页描述已经落地的 Task 系统。命令级 Task 状态机、取消 CAS、统一 Attempt finalizer 和 Training Resume Outbox 已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整实现；实施顺序和门禁见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。完成前不得把目标状态当作当前契约。
+
 ## 定位
 
 任务系统把数据集导入导出、训练、验证、转换和批量推理等重任务从 HTTP 请求进程隔离出去，并统一保存状态、尝试、事件、取消和结果。
@@ -41,7 +43,7 @@ backend-service
 
 ### TaskEvent
 
-追加式日志和进度事件。历史事件写入 `task_events`，实时事件通过 service event bus/WebSocket 分发。
+追加式状态审计、结果、日志和进度事件。历史事件写入 `task_events`，实时事件通过 service event bus/WebSocket 分发。
 
 ### ResourceProfile
 
@@ -49,7 +51,7 @@ backend-service
 
 ## 状态
 
-TaskRecord 使用 `queued`、`running`、`succeeded`、`failed`、`timed_out`、`cancelled`。Attempt 使用 `running` 与对应终态。所有执行路径必须收敛到终态，不能让异常任务永久停留在 running。
+TaskRecord 使用 `queued`、`running`、`paused`、`succeeded`、`failed`、`timed_out`、`cancelled`。Attempt 使用 `running` 与对应终态。`paused` 只用于具备 checkpoint 恢复语义的任务；所有其他执行路径必须收敛到终态，不能让异常任务永久停留在 running。
 
 取消是显式状态迁移：API 请求取消，QueueBackend/Worker 按当前 attempt identity 收敛。取消不等于删除业务记录或输出文件。
 

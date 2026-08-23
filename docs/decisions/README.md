@@ -1,6 +1,6 @@
 # 架构决策记录
 
-ADR 记录已经生效的关键取舍及未采用方案。当前行为由对应架构文档说明，ADR 只回答“为什么这样设计”。
+ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实现状态；当前行为始终由对应架构文档和代码说明，ADR 只回答“为什么这样设计”。
 
 ## 当前决策
 
@@ -9,6 +9,7 @@ ADR 记录已经生效的关键取舍及未采用方案。当前行为由对应�
 - [ADR-0003：Node Pack 扩展模型](ADR-0003-node-pack-extension-model.md)
 - [ADR-0004：模型 Deployment Runtime 参数](ADR-0004-model-deployment-runtime-options.md)
 - [ADR-0005：稳定 Workflow Runtime 与不可变 App Version](ADR-0005-workflow-app-versioned-runtime.md)
+- [ADR-0006：任务终态、转换发布与节点超时治理](ADR-0006-task-execution-and-runtime-reliability.md)
 
 ## 规则
 

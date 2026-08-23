@@ -2,6 +2,10 @@
 
 本目录保存可重复执行的开发、检查和迁移门禁。系统设计见 [架构](../architecture/README.md)，完整启动顺序见 [开发环境](../deployment/development-environment.md)。
 
+## 当前实施基线
+
+- [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：设计已冻结、可按阶段实现，覆盖 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout。它是该跨子系统改造的唯一详细步骤来源。
+
 ## 环境
 
 ```powershell
@@ -61,6 +65,7 @@ pytest 默认使用 `.tmp/pytest` 与 `.tmp/pytest-cache`。长链或并发测�
 ## 维护规则
 
 - 本目录不保存日期化测试结果、具体 task id、客户数据审计或一次性会话记录。
+- 经 ADR 接受且跨越多个专题的实施基线可以暂存于本目录，但必须明确当前状态、不可变边界、阶段门禁和完成后的删除条件。
 - 稳定的模型支持范围进入 [参考资料](../reference/README.md)。
 - 稳定的 Workflow 编辑器边界进入 [Workflow 编辑器架构](../architecture/workflows/editor.md)。
 - `projectsrc/` 对照结论可用于实现审计，但不能替代本项目契约。

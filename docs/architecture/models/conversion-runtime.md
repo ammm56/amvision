@@ -1,5 +1,7 @@
 # 模型转换执行与发布
 
+> 当前状态：本页描述已经落地的 Conversion 执行与发布基础。可跨重启恢复的总 deadline、统一进程监督层、publication commit fence 和 rename 后恢复规则已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整实现；详细步骤见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。下文“整个 attempt 硬 deadline”目前主要由受监督子进程保证，不能解读为父进程发布边界已经完成同等治理。
+
 模型转换由 conversion Worker Profile 执行。HTTP 请求在同一 Unit of Work 中创建 conversion 业务记录、正式 Task/Event 和 QueueOutboxMessage；Dispatcher 提交后再写队列。转换链固定为：
 
 ```text
@@ -16,7 +18,7 @@ Task/TaskAttempt
 
 ## 进程与超时
 
-- 整个 attempt 使用一个硬 deadline，不按单个转换步骤重新计时。
+- 受监督 attempt 子进程使用一个硬 deadline，不按单个转换步骤重新计时；父进程验证、发布和跨恢复剩余预算仍按上述实施基线收敛。
 - Windows 使用 Job Object，POSIX 使用独立 process group；timeout 会终止完整子孙进程树。
 - stdout、stderr 持续排空到 attempt 日志，只在内存保留有界 tail，不使用 `capture_output` 聚合全部日志。
 - `attempt_timeout_seconds`、`helper_timeout_seconds` 和 `termination_grace_seconds` 是 backend-worker 私有初始值，可通过本地配置或环境变量覆盖，不进入公开转换 API。

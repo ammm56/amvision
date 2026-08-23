@@ -1,5 +1,7 @@
 # 节点系统
 
+> 当前状态：本页描述可信节点的现有执行边界。Node Pack timeout 的目标语义已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整闭环；详细步骤见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。Preview 将保持进程内协作式取消，正式 Runtime 将以整个 worker 作为超时后的强制终止边界，不引入每节点进程或队列。
+
 ## 定位
 
 节点系统是 AMVision 的可组合能力边界。平台通过统一 NodeDefinition、Node Catalog、payload contract 和执行器，把 Core Node 与安装的 Custom Node 放入同一张 Workflow 图。场景化协议、硬件桥接、行业规则和大型扩展模型优先进入 Node Pack，不写入平台主链。

@@ -61,4 +61,5 @@
 - endpoint、字段和错误进入 [API](../api/README.md)，以 OpenAPI 为最终事实来源。
 - 模型支持组合和数据格式进入 [参考资料](../reference/README.md)。
 - 设计取舍原因进入 [ADR](../decisions/README.md)。
+- 经 ADR 接受但尚未落地的跨子系统步骤进入唯一的 [开发实施基线](../development/README.md)，架构专题在代码和门禁完成前仍只描述当前行为。
 - 代码、迁移和自动化测试是实现状态的最终证据。
