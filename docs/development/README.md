@@ -5,6 +5,7 @@
 ## 当前实施基线
 
 - [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
+- [本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)：架构决策已接受，binary protocol 尚待按实施基线冻结，代码尚未开始实现。该文档是全局 Trigger mailbox、External LocalBuffer Writer Lease、writer/reader guard、Runtime execution token、多结果 binding、output lease handoff、统一 ZeroMQ Trigger Result v1、BGR24 高性能默认路径和 encoded 正式入口的唯一实施基线。
 
 ## 环境
 

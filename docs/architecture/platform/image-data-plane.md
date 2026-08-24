@@ -6,18 +6,22 @@
 
 这里讨论的是本机高速图片数据面，不替代 HTTP API、workflow app 管理接口、SDK 配置包、模型 DeploymentInstance 管理页面或普通调试示例。
 
+## 实现状态
+
+LocalBuffer raw/encoded 输入、ZeroMQ 图片请求和 Workflow 单次解码复用是当前已交付能力。多 `result_bindings`、`Image Encode`、统一 ZeroMQ binary attachments、output lease handoff 和 `local-shared-memory` Trigger 是 ADR-0007 已接受但尚未实现的目标；本页对应段落均显式标注，不能作为当前 API capability 使用。
+
 ## 现场目标
 
 典型现场上位机从工业相机获得 2000 万像素左右的图片，常见分辨率约为 5000x4000。每秒几十帧调用时，图片传输和 workflow 节点处理的额外耗时必须控制在可接受范围内，除模型推理本身外，数据面和节点桥接目标应尽量控制在 50ms 到 100ms 以内。
 
-HTTP JSON、base64、PNG、JPEG 和 Bitmap 转换可以继续作为低频调试、远程调用和结果查看入口使用，但不应作为本机高频 TriggerSource 的默认链路。
+HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不是本机高频 TriggerSource 的默认链路。.NET SDK 的 raw BGR24 与 JPEG/PNG/BMP encoded bytes 都是正式支持的本机输入；BGR24 省去后端解码，encoded 表示通常减少传输字节，调用方按现场性能和集成成本选择。
 
 ## 数据面规则
 
 - SDK、adapter、LocalBufferBroker、workflow 节点和模型 runtime 以 raw image-ref 为本机高频默认路径。
 - `BufferRef` / `FrameRef` 只跨进程传递 mmap 元数据；同步高频节点链不把图片读回后重新编码或落盘。
 - workflow 图不得在模型推理前插入不必要的 Base64 编码、合并和解码节点。
-- TriggerSource 必须显式声明 `result_binding`；高频入口默认只返回小型结构化结果，不返回所有图输出。
+- 目标 TriggerSource 必须显式声明 `result_bindings`；迁移完成前当前实现仍使用单个 `result_binding`。高频入口默认只返回小型结构化结果，不返回所有图输出。
 - 只有预览、保存、HTTP 响应或外部系统协议明确要求时，才生成 PNG、JPEG、Bitmap 或 Base64。
 - 同步推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。持久异步任务只在必须跨重启的队列边界使用临时 ObjectStore 引用。
 
@@ -26,16 +30,18 @@ HTTP JSON、base64、PNG、JPEG 和 Bitmap 转换可以继续作为低频调试�
 | 模式 | 适用场景 | 规则 |
 | --- | --- | --- |
 | `image-base64.v1` | HTTP 调试、低频远程调用、小图片集成 | 可用但不是高频默认路径 |
-| encoded image bytes | JPEG/PNG/BMP 文件上传、模型直接 HTTP multipart | 需要解码，适合普通同步调用和调试 |
+| encoded image bytes | JPEG/PNG/BMP bytes、文件、Base64 还原结果 | 正式支持；首次矩阵消费时需要解码 |
 | storage `image-ref.v1` | 已落盘图片、长期文件引用 | 用于可复现和审计，不代表内存高速 |
 | buffer/frame `image-ref.v1` | 本机高速 TriggerSource、workflow runtime、deployment worker | 默认高性能路径 |
-| raw BGR24 BufferRef | 工业相机高频图片输入 | 默认高速图片格式 |
+| raw BGR24 BufferRef | SDK 已有或转换后的连续 BGR24 | 默认高速图片格式 |
 
 高性能链路中的图片应尽量保持为 buffer/frame `image-ref.v1`，只在明确需要预览、保存、HTTP 响应或外部系统要求时编码成 PNG、JPEG 或 base64。
 
-## BGR24 输入约定
+## BGR24 高性能默认约定
 
-ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
+图片来源与传输表示相互独立。SDK 调用方可以从相机、文件、网络或内存获得图片，并自行选择传输 BGR24 或 JPEG/PNG/BMP 等 encoded bytes。BGR24 是本机高性能默认表示，不是唯一允许格式。
+
+高性能 BGR24 输入使用以下元数据：
 
 ```json
 {
@@ -61,7 +67,7 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
 ## 推荐高速调用链
 
 ```text
-工业相机 / 上位机
+图片采集或上位机程序
   -> BGR24 byte[]
   -> .NET SDK AmvisionTriggerClient
   -> ZeroMQ multipart
@@ -75,7 +81,7 @@ ZeroMQ 高性能图片输入的默认像素格式为 BGR24：
   -> Detection 节点
   -> 跨平台 mmap inference mailbox（图片只传 BufferRef / FrameRef 元数据）
   -> deployment worker 直接只读 mmap / raw NumPy view
-  -> 结构化 result_binding；结果图片仍使用 LocalBuffer
+  -> 结构化结果 bindings；直接结果图片仍使用 LocalBuffer
 ```
 
 这条链路中，图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
@@ -138,7 +144,7 @@ request_image_base64 -> Base64 Decode /
 - 高频调用方法不做 Bitmap、JPEG、PNG 或 base64 转换
 - 如果现场相机 SDK 只能给出 RGB、Mono、Bayer 或带 stride 的 buffer，转换规则应在上位机侧显式完成，并在配置或方法名里表达清楚
 
-现有 `FromFile`、`FromBase64`、`FromBytes(..., "image/jpeg")` 继续保留给低频调试和普通集成使用，但文档、Console 默认调用和高性能示例应优先展示 BGR24。
+现有 `FromFile`、`FromBase64`、`FromBytes(..., "image/jpeg")` 是正式支持的 encoded 调用。文档、Console 的高性能默认示例优先展示 BGR24，但 SDK 开发者可以根据传输字节、后端解码开销、CPU 和内存带宽选择 encoded 路径。
 
 ## 后端实现要求
 
@@ -246,7 +252,51 @@ TriggerSource 高频 reply 默认返回小 JSON：
 - 所有 workflow outputs
 - 大型 node_records 或调试快照
 
-如果用户确实需要返回图片，应通过 workflow 图和 TriggerSource `result_binding` 明确选择，并在前端和文档中标明这不是高帧率默认方式。
+如果需要返回图片，应通过 workflow 图和 TriggerSource `result_bindings` 明确选择，并在前端和文档中标明这不是高帧率默认方式。不再使用“binding 不存在时返回全部 outputs”的 fallback。
+
+以下结果返回矩阵是已接受但尚未实现的目标。当前可运行 ZeroMQ reply 仍只有单帧 JSON，当前代码也仍使用单个 `result_binding`；在 ADR-0007 和实施基线门禁全部完成前，不能把 `result_bindings`、`Image Encode`、统一 ZeroMQ 图片 attachments 或本机共享内存图片返回写成已交付 capability。
+
+### 节点表示与 Trigger 传输分层
+
+Workflow 节点决定结果语义和图片表示，Trigger adapter 只负责搬运：
+
+| Workflow 公开输出 | 语义 |
+| --- | --- |
+| 图片直接连接 App Result | `image-ref.v1` 图片 attachment |
+| 一组图片直接连接 App Result | `image-refs.v1` 多图片 attachments |
+| 图片经过 `Image Base64 Encode` | `image-base64.v1` JSON |
+| 图片经过 `Image Encode` | JPEG/PNG/BMP/WebP 等编码 `image-ref.v1` attachment |
+
+直接 raw BGR24 输出保留 raw bytes、shape、dtype、layout 和 pixel format。adapter 不得为了方便传输而暗中编码 JPEG/PNG；需要编码时由图中的 `Image Encode` 明确完成。现有 `Image Body` 显式生成 `response-body.v1`，在 adapter capability 和容量允许时可以被 `result_bindings` 明确选择，但不会被 Trigger adapter 隐式插入或用作 transport 选择器。
+
+`result_bindings` 可以同时选择普通 JSON、单图和多图。绑定类型由已发布 Workflow App Version 的公开输出契约确定，不递归扫描 `value.v1`、`workflow-result.v1`、node records 或调试 payload 中的嵌套临时 image-ref。需要同步返回的短期图片必须作为独立公开图片 binding。已选择的 JSON binding 出现嵌套 memory/buffer/frame ref 时返回 `ephemeral_image_ref_in_json_result`，不能自动提升为 attachment。
+
+内部结果与公开 wire 结果分层：worker 生成协议中立的 `PreparedTriggerResult`，其中有序 logical attachments 通过 `payload_id` 引用按完整物理 representation identity 去重的 physical payloads；adapter 再映射为 `WorkflowTriggerResultV1`。checksum 只用于完整性校验，不能单独作为 lease 所有权或传输去重依据。公开 attachment locator 使用 `kind` discriminator：`local-buffer`、`zeromq-frame` 或 `object-store`。attachment 顺序固定为 `result_bindings` 顺序，再按 `image-refs.v1.items` 顺序；`source_image` 不自动加入。同一完整物理 identity 被多个 binding/item 选择时只 handoff、校验、发送和释放一次。
+
+### 各 Trigger 的结果数据面
+
+| Trigger | JSON | 直接图片 |
+| --- | --- | --- |
+| `local-shared-memory` sync | Workflow Trigger mailbox inline/page-chain | LocalBuffer BufferRef；结果对象持有 reader guard 到 Dispose 后 ACK |
+| ZeroMQ Trigger Result v1 | Frame 0 JSON manifest | Frame 1 到 N 唯一 physical payload；无图片时 N=0 |
+| PLC/IO/MQTT/目录/定时 `event-only` | 丢弃 | 丢弃，不 handoff |
+| `accepted-then-query` | 状态和 run id | 稳定 ObjectStore locator 查询；临时图片先持久化，或显式丢弃 |
+
+图中显式生成的 `image-base64.v1` 属于结构化 JSON：本机共享内存 Trigger 可以通过 inline/page-chain 返回，但受默认 32 MiB 单响应上限约束。它不是 inference mailbox 图片通道，也不是本机高性能默认路径；超限时明确拒绝，不自动切换 LocalBuffer、文件、队列或其他协议。
+
+ZeroMQ 只使用一个 `amvision.workflow-trigger-result.v1`。Frame 0 manifest 记录状态、结构化结果、统一 error，以及 logical attachment 到唯一 physical payload/frame 的映射；Frame 1 到 N 保存唯一图片 payload bytes。多个逻辑 attachment 可以共享同一 frame index。没有图片时 `attachments=[]` 且消息自然只有 Frame 0，不形成另一种协议。raw 输出传 raw bytes，显式编码输出传对应 JPEG/PNG 等 bytes，Base64 输出只留在 JSON 中。ZeroMQ 仍保留整图协议复制，性能低于本机共享内存 Trigger。
+
+ZeroMQ adapter 为每个唯一 physical payload 创建 tracked `zmq.Frame`。发送 Frame 0 前必须为整个响应预留 adapter 进程内有界 transport-lifetime registry 容量，并取得所有 reader guard/ObjectStore read snapshot；满载时返回 `zeromq_transport_capacity_exhausted`，不发送部分 multipart。发送失败时先停止监听并以 `linger=0` 关闭 socket，再等待已登记 tracker；仍未完成的 Frame、tracker、view/snapshot 和 guard 继续由 adapter registry 持有，lease 进入 ACTIVE → REVOKING → QUARANTINED/FREE 回收链。LocalBufferBroker 不管理 libzmq tracker，只按 adapter 条件释放、OS guard、deadline 和 receipt 管理 lease。发送还受 reply deadline、`SNDTIMEO`、最大 JSON、单物理 payload、逻辑 attachment 数、物理 frame 数和总响应容量约束。
+
+TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode。SDK 始终读取完整 multipart message，并拒绝 manifest 未声明的额外帧、缺少物理帧、越界索引、长度或 checksum 错误；多个 logical attachment 合法共享同一 frame index。成功与失败共用同一 result schema，不保留独立 ZeroMQ error envelope。
+
+不支持同步结果的 Trigger 通过固定 `result_mode=event-only` 丢弃输出，不在每次调用中临时猜测。同步 adapter 不支持已选择的图片 binding 时拒绝配置；不需要的 binding 直接不选择，不增加 discard 开关。顶层 `result_mode`、`reply_timeout_seconds` 和 `ack_policy` 是唯一事实源，`result_mapping` 只保存有序 `result_bindings`。响应计划在创建、enable、Runtime 切版和实际调用前按 route/contract/capability fingerprint 固定，使 worker 能在 cleanup 前完成所需 handoff。
+
+已经接受但尚未实现的 `local-shared-memory` Trigger 会正式支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 pool、expected owner、epoch、generation、deadline 和 guard identity。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，输入必须显式从 `workflow-trigger-write` transfer 到 `workflow-runtime`，每个失败点按当时 receipt 补偿回收。
+
+该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的 reader guard 由 SDK 结果对象保持到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；JSON-only 或 SDK-owned copy 可以提前 ACK。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
+
+同一 TriggerSource 的单在途 permit 覆盖完整交付：local-shared-memory 到 Dispose/ACK、取消或 deadline 后的安全回收，ZeroMQ 到所有已提交 physical frame tracker 完成，或未完成资源已由发送前预留的 adapter transport registry 持续承担责任。Runtime token 可以在图执行和 handoff 后释放。包含临时 attachment 的幂等结果不重放旧引用；重复请求返回 `idempotent_attachment_result_not_replayable` 和原 run id。只有 JSON-only 或已经 ObjectStore 持久化的稳定结果可重放/查询。
 
 ## 运行记录和诊断开关
 
@@ -285,7 +335,7 @@ TriggerSource 高频 reply 默认返回小 JSON：
 
 高性能链路应补齐以下观测：
 
-- SDK：相机取图后到发送前的 copy/convert 时间、send 等待时间、reply 等待时间。
+- SDK：获得输入图片后到发送前的 copy/convert 时间、send 等待时间、reply 等待时间。
 - Adapter：ZeroMQ 收包、LocalBufferBroker 写入、WorkflowRun submit 时间。
 - LocalBufferBroker：pool、slot、写入 bytes、等待、拒绝、覆盖、lease 生命周期。
 - Workflow 节点：raw view、copy、encode、decode、节点执行耗时。
@@ -302,9 +352,9 @@ TriggerSource 高频 reply 默认返回小 JSON：
 - Backend ZeroMQ adapter 能把 BGR24 第二帧写入 LocalBufferBroker，并把 `request_image_ref` 映射给 workflow app。
 - 模型推理节点和 OpenCV 节点能直接读取 BGR24 BufferRef，不执行 PNG/JPEG 解码。
 - 默认高性能 workflow 模板不包含 `request_image_ref -> base64 encode -> base64 decode` 的绕路。
-- TriggerSource 默认 `result_binding` 返回小 JSON，不默认返回 inline-base64 图片。
+- TriggerSource 默认 `result_bindings` 只选择小 JSON，不默认返回 inline-base64 或图片 attachment。
 - 1080p、4K、20MP 图片都有端到端 fixture 或 smoke 测试，至少覆盖 SDK envelope、adapter 写入、workflow 节点读取和模型节点推理。
-- 文档、Postman 示例和 Console 默认调用明确区分“高性能 BGR24 image-ref 路径”和“HTTP/base64 调试路径”。
+- 文档、Postman 示例和 Console 默认调用明确区分“高性能默认 BGR24 image-ref 路径”和“正式支持但需要首次解码的 encoded 路径”。
 
 ## 相关文档
 

@@ -44,6 +44,13 @@ using (var client = AMVisionClient.CreateFromConfig())
 
 ## 高速图片调用
 
+图片来源与传输表示相互独立。调用方可以从相机、文件、网络或内存获得图片，再显式选择：
+
+- `InvokeBgr24`、`InvokeBgr24FromBitmap`、`InvokeBgr24FromFile`：由调用方提供或由 SDK helper 转为连续 BGR24；后端直接解释 raw matrix，不执行图片 codec 解码；
+- `InvokeImageBytes`、`InvokeImageFromFile`、`InvokeImageBase64`：保留 JPEG、PNG、BMP 等 encoded bytes；后端首次矩阵消费时解码一次并在本次 Workflow 内复用。
+
+两组方法都是正式支持入口。BGR24 是本机高性能默认选择，不是强制格式；encoded 方法通常减少传输字节但增加后端解码和矩阵分配，SDK 开发者根据现场链路选择。
+
 ```text
 SDK BGR24/image bytes
   → ZeroMQ envelope + content
@@ -53,6 +60,42 @@ SDK BGR24/image bytes
 ```
 
 SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和后端非 2xx/错误 reply 必须保留原始状态与错误详情，调用方自行决定现场处置；SDK 不隐藏队列或无限重试。
+
+当前 ZeroMQ reply 只有一帧 JSON。图片结果的版本化 multipart reply 尚未实现，不能把当前 SDK 的“接收 multipart”能力误写成已经支持图片附件。
+
+## 尚未交付的本机共享内存 Trigger
+
+项目已经接受新增独立 `local-shared-memory` TriggerSource 的架构决策，但 binary protocol 和代码尚未完成，不能作为当前 SDK capability 使用。完成后的新入口会由 SDK 通过受控 External LocalBuffer Writer Lease 直接写入图片，并以全局 Workflow Trigger mailbox 传递参数和结果；它不会改变或替代现有 ZeroMQ API。
+
+新入口必须同时完成每 lease writer/reader guard、异常 writer 隔离、真实 Runtime execution token、公开输出图片 owner handoff、ACK/deadline 回收和 Python/.NET binary contract 门禁。设计边界见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，实施步骤见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。在对应门禁全部通过前，SDK 不得生成该 transport 的可用配置或自动回退到它。
+
+v1 固定为同步调用、每次一张输入图片、最多 512 KiB 结构化参数和 0 到 N 张输出图片。SDK 发布 REQUEST 后立即释放 writer guard；后端随后取得 guard、校验并 commit。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
+
+### 计划中的统一结果模型
+
+Workflow 节点决定返回表示：
+
+- 图片直接公开为 `image-ref.v1`：SDK 得到图片 attachment；
+- 图片经过 `Image Encode`：SDK 得到对应 JPEG/PNG/BMP/WebP attachment；
+- 图片经过 `Image Base64 Encode`：SDK 在 JSON 中得到 `image-base64.v1`，不再收到重复 binary attachment。
+
+本机共享内存结果只在 mailbox JSON 中携带 `local-buffer` locator，图片 bytes 继续留在 LocalBuffer。SDK 在 `Invoke` 返回前取得 reader guard，并由结果对象持有到 `Dispose`/`DisposeAsync`；结果释放先禁止新读取、等待 SDK 内活动 accessor 结束并使 owner-backed view 失效，再释放全部 guard，最后只发布一次 ACK。JSON-only 或已经显式复制为 SDK 自有 `byte[]` 的结果可以提前 ACK；零复制 LocalBuffer view 不能提前 ACK。调用方不得在 dispose 后继续使用先前取得的 Span/View，终结器只报告泄漏并作为最后防线。
+
+ZeroMQ 统一使用 `amvision.workflow-trigger-result.v1`：Frame 0 为 JSON manifest，后续第 1 到第 N 帧为唯一物理图片 payload bytes；无图片时 N=0。SDK 根据 manifest 校验 logical attachment 到 physical frame 的映射、frame count/index、length、checksum、media type、shape、dtype、layout 和 pixel format；多个逻辑 attachment 可以共享同一帧，raw BGR24 不被暗中编码。配置包不增加 reply protocol 或 JSON/multipart mode，SDK 始终读取完整 multipart message，不忽略未声明的额外帧。
+
+成功、业务失败和 adapter 错误由同一个 result schema 表达，`error` 为空或包含 code、message 和 details。实现时删除独立 ZeroMQ error model、只解析第一帧和双协议兼容逻辑。
+
+同一个高层结果可以同时包含结构化 JSON、单图和多图，但底层生命周期不同：ZeroMQ attachment 在 SDK 收包后由 SDK 自己持有；LocalBuffer attachment 依赖 response lease，必须在 reader guard 与 ACK 闭环后释放。
+
+统一 wire result 包含有序 logical `attachments` 和按完整物理 representation identity 去重的 physical `payloads`。attachment 只保存 binding/item 与 payload 引用；checksum 只用于完整性校验，不能单独作为去重或所有权依据。payload locator 使用 `kind` discriminator：`local-buffer` 包含现有 BufferRef 定位/代次字段和 reader guard locator，`zeromq-frame` 包含物理 frame index，`object-store` 必须包含稳定 object key、media type、content length、checksum algorithm/value 和 immutable version。权威 owner、pool、deadline 只保存在服务端私有 handoff receipt，不公开给 SDK 作为清理授权。SDK 对未知 locator、缺字段、越界 frame、长度或 checksum 不一致一律拒绝，不猜测 transport。
+
+attachment 顺序固定为 TriggerSource `result_bindings` 顺序，再按 `image-refs.v1.items` 顺序；`source_image` 不被隐式加入。普通 JSON 中出现嵌套 memory/buffer/frame 临时引用时服务端返回 `ephemeral_image_ref_in_json_result`，SDK 不尝试递归提取。
+
+带临时 attachment 的幂等调用不能在结果已 ACK/发送后重放旧引用。重复请求返回 `idempotent_attachment_result_not_replayable` 和原 `workflow_run_id`，且不得重新执行 Workflow；JSON-only 结果和已经 ObjectStore 持久化的结果按各自稳定重放/查询规则处理。
+
+ZeroMQ 后端按唯一物理 payload 跟踪 frame 生命周期，多个逻辑 attachment 可以共享同一 frame index。adapter 在发送 Frame 0 前为全部唯一 physical frame 预留进程内有界 transport-lifetime registry 容量，并取得 reader guard/ObjectStore read snapshot；满载时在任何 multipart frame 发出前返回 `zeromq_transport_capacity_exhausted`。发送失败时先关闭 socket；全部 tracker 完成后 adapter 销毁 Frame/view、关闭 snapshot、释放 guard，再调用 Broker 条件释放。未完成资源继续由 adapter registry 持有，lease 进入 REVOKING/QUARANTINED；Broker 不保存或等待 `MessageTracker`。SDK 侧校验唯一物理 frame 集合与逻辑映射，在完整 multipart 收包后管理自己的内存；发送超时不会触发自动 fallback 或业务重试。
+
+Workflow TriggerSource result mapping REST payload 与 `amvision.workflow-trigger-result.v1` 当前属于发布前开发契约，迁移时后端、前端、.NET SDK、fixture 和已有数据整体升级并删除旧字段及双读代码。该规则不扩大到其他 REST `/api/v1` 契约。
 
 ## 门禁
 
