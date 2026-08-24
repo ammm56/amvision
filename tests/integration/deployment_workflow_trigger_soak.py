@@ -8,6 +8,7 @@ deployment、workflow runtime 和 TriggerSource；工具不隐式创建、重置
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import os
@@ -70,6 +71,8 @@ class RuntimeSoakConfig:
     deployment_image_path: Path | None = None
     workflow_runtime_id: str | None = None
     workflow_request: dict[str, object] = field(default_factory=dict)
+    workflow_image_path: Path | None = None
+    workflow_image_binding_id: str = "request_image_base64"
     trigger_source_id: str | None = None
     trigger_endpoint: str | None = None
     trigger_envelope: dict[str, object] = field(default_factory=dict)
@@ -309,6 +312,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--workflow-runtime-id")
     parser.add_argument("--workflow-request-json", type=Path)
+    parser.add_argument(
+        "--workflow-image",
+        type=Path,
+        help="每次 HTTP Workflow 调用都编码为 image-base64.v1 的真实图片",
+    )
+    parser.add_argument(
+        "--workflow-image-binding-id",
+        default="request_image_base64",
+        help="接收 image-base64.v1 的公开输入 id",
+    )
 
     parser.add_argument("--trigger-source-id")
     parser.add_argument("--trigger-endpoint")
@@ -339,6 +352,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("配置 deployment soak 时必须提供 --deployment-image")
     if args.deployment_image is not None and not args.deployment_instance_id:
         parser.error("--deployment-image 必须和 --deployment-instance-id 一起使用")
+    if args.workflow_runtime_id and args.workflow_image is None:
+        parser.error("配置 workflow runtime soak 时必须提供 --workflow-image")
+    if args.workflow_image is not None and not args.workflow_runtime_id:
+        parser.error("--workflow-image 必须和 --workflow-runtime-id 一起使用")
+    if not str(args.workflow_image_binding_id).strip():
+        parser.error("workflow-image-binding-id 不能为空")
     if args.trigger_endpoint and not args.trigger_source_id:
         parser.error("--trigger-endpoint 必须和 --trigger-source-id 一起使用")
     if not any(
@@ -365,6 +384,9 @@ def build_config(args: argparse.Namespace) -> RuntimeSoakConfig:
         args.deployment_image, "deployment image"
     )
     trigger_binary_path = _resolve_existing_file(args.trigger_binary, "trigger binary")
+    workflow_image_path = _resolve_existing_file(
+        args.workflow_image, "workflow image"
+    )
     return RuntimeSoakConfig(
         base_url=str(args.base_url).rstrip("/"),
         token=str(args.token),
@@ -388,6 +410,8 @@ def build_config(args: argparse.Namespace) -> RuntimeSoakConfig:
         workflow_request=_load_json_object(
             args.workflow_request_json, label="workflow request"
         ),
+        workflow_image_path=workflow_image_path,
+        workflow_image_binding_id=str(args.workflow_image_binding_id).strip(),
         trigger_source_id=_optional_text(args.trigger_source_id),
         trigger_endpoint=_optional_text(args.trigger_endpoint),
         trigger_envelope=_load_json_object(
@@ -681,6 +705,11 @@ def _run_lane_worker(
             if config.deployment_image_path is not None
             else None
         )
+        workflow_image_bytes = (
+            config.workflow_image_path.read_bytes()
+            if config.workflow_image_path is not None
+            else None
+        )
 
         def operation(sequence: int) -> None:
             if lane.kind == "deployment-sync":
@@ -701,6 +730,7 @@ def _run_lane_worker(
                     api_client=api_client,
                     sequence=sequence,
                     worker_index=worker_index,
+                    image_bytes=_require_bytes(workflow_image_bytes, lane.name),
                 )
             else:  # pragma: no cover - build_lanes 保证 kind
                 raise RuntimeError(f"未知 soak lane: {lane.kind}")
@@ -845,8 +875,15 @@ def _execute_workflow_invoke(
     api_client: SoakApiClient,
     sequence: int,
     worker_index: int,
+    image_bytes: bytes,
 ) -> None:
     request = json.loads(json.dumps(config.workflow_request))
+    _inject_workflow_image_base64(
+        request=request,
+        binding_id=config.workflow_image_binding_id,
+        image_bytes=image_bytes,
+        media_type=_resolve_media_type(config.workflow_image_path),
+    )
     execution_metadata = request.get("execution_metadata")
     if not isinstance(execution_metadata, dict):
         execution_metadata = {}
@@ -996,6 +1033,15 @@ def _build_result(
                 else None
             ),
             "workflow_runtime_id": config.workflow_runtime_id,
+            "workflow_input_transport": (
+                "inline-base64" if config.workflow_runtime_id is not None else None
+            ),
+            "workflow_image_binding_id": config.workflow_image_binding_id,
+            "workflow_image_path": (
+                str(config.workflow_image_path)
+                if config.workflow_image_path is not None
+                else None
+            ),
             "trigger_source_id": config.trigger_source_id,
             "trigger_endpoint": config.trigger_endpoint,
             "trigger_binary_path": (
@@ -1044,6 +1090,31 @@ def _build_image_file(
         raise RuntimeError("deployment image 未配置")
     media_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     return path.name, image_bytes, media_type
+
+
+def _inject_workflow_image_base64(
+    *,
+    request: dict[str, object],
+    binding_id: str,
+    image_bytes: bytes,
+    media_type: str,
+) -> None:
+    """把相机图片编码为公开 image-base64.v1 输入并移除默认路径引用。"""
+
+    normalized_binding_id = binding_id.strip()
+    if not normalized_binding_id:
+        raise RuntimeError("workflow image binding id 不能为空")
+    payload = {
+        "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+        "media_type": media_type,
+    }
+    wrapped_bindings = request.get("input_bindings")
+    if isinstance(wrapped_bindings, dict):
+        wrapped_bindings.pop("request_image_ref", None)
+        wrapped_bindings[normalized_binding_id] = payload
+        return
+    request.pop("request_image_ref", None)
+    request[normalized_binding_id] = payload
 
 
 def _deployment_runtime_path(
@@ -1138,7 +1209,7 @@ def _resolve_existing_file(path: Path | None, label: str) -> Path | None:
 
 
 def _resolve_media_type(path: Path | None) -> str:
-    """按触发二进制文件扩展名推导常见图片 media type。"""
+    """按图片文件扩展名推导常见 media type。"""
 
     suffix = path.suffix.lower() if path is not None else ""
     if suffix == ".png":

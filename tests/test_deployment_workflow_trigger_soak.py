@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -89,9 +90,41 @@ def _build_config(tmp_path: Path) -> RuntimeSoakConfig:
         deployment_model_type="yolov8",
         deployment_image_path=tmp_path / "sample.png",
         workflow_runtime_id="runtime-1",
-        workflow_request={"input_bindings": {"value": {"value": 1}}},
+        workflow_request={
+            "input_bindings": {
+                "value": {"value": 1},
+                "request_image_ref": {
+                    "transport_kind": "storage",
+                    "object_key": "developer/image.bmp",
+                },
+            }
+        },
+        workflow_image_path=tmp_path / "sample.png",
         trigger_source_id="trigger-1",
     )
+
+
+def test_runtime_soak_cli_requires_real_workflow_image_and_defaults_to_base64(
+    tmp_path: Path,
+) -> None:
+    """验证 HTTP Workflow lane 不能退回本地路径输入。"""
+
+    with pytest.raises(SystemExit):
+        soak_module.parse_args(["--workflow-runtime-id", "runtime-1"])
+
+    image_path = tmp_path / "camera.bmp"
+    image_path.write_bytes(b"bmp")
+    args = soak_module.parse_args(
+        [
+            "--workflow-runtime-id",
+            "runtime-1",
+            "--workflow-image",
+            str(image_path),
+        ]
+    )
+
+    assert args.workflow_image == image_path
+    assert args.workflow_image_binding_id == "request_image_base64"
 
 
 def test_runtime_soak_preflight_resolves_all_running_lanes(tmp_path: Path) -> None:
@@ -137,6 +170,7 @@ def test_runtime_soak_async_and_workflow_operations_use_public_api(
         api_client=client,  # type: ignore[arg-type]
         sequence=7,
         worker_index=2,
+        image_bytes=b"camera-frame",
     )
 
     assert client.task_poll_count == 2
@@ -149,6 +183,13 @@ def test_runtime_soak_async_and_workflow_operations_use_public_api(
         "scenario": "deployment-workflow-trigger-soak",
         "soak_sequence": 7,
         "soak_worker_index": 2,
+    }
+    input_bindings = request["input_bindings"]
+    assert isinstance(input_bindings, dict)
+    assert "request_image_ref" not in input_bindings
+    assert input_bindings["request_image_base64"] == {
+        "image_base64": base64.b64encode(b"camera-frame").decode("ascii"),
+        "media_type": "image/png",
     }
 
 

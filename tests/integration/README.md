@@ -144,10 +144,13 @@ python -m tests.integration.deployment_workflow_trigger_soak `
   --deployment-image <sample-image.png> `
   --workflow-runtime-id <workflow-runtime-id> `
   --workflow-request-json <workflow-request.json> `
+  --workflow-image <camera-image.bmp> `
   --trigger-source-id <trigger-source-id> `
   --trigger-envelope-json <trigger-envelope.json> `
   --trigger-binary <sample-image.png>
 ```
+
+HTTP Workflow lane 默认要求 `--workflow-image`，每次请求都在计时范围内将图片编码为 `image-base64.v1`，写入 `request_image_base64` 后发送完整 JSON；可通过 `--workflow-image-binding-id` 指定其他公开输入 id。工具会移除默认的 `request_image_ref`，禁止用本地 storage/local-path 引用和跨 Run 解码缓存替代工业相机 HTTP 上传。ZeroMQ Trigger lane 保持二进制图片写入 LocalBuffer 的生产链路。
 
 该入口默认把 deployment 拆成 `deployment-sync` 和 `deployment-async` 两条 lane，并同时运行 `workflow-invoke` 与 `trigger-zeromq`。现场资源预算只允许一种 deployment runtime 运行时，可以把 `--deployment-runtime-modes` 设为 `sync` 或 `async`；预检不会替调用方启动或预热 runtime，并要求每个被测 Deployment 满足 `healthy_instance_count == warmed_instance_count == instance_count`。应先调用对应 `warmup` API，再开始计时，避免把模型冷加载时间误算成稳定业务延迟。每条 lane 分别统计请求数、错误率、并发峰值和 p50/p95/p99 延迟；控制面会周期采样 system、deployment、workflow runtime 和 TriggerSource health。默认任何请求错误或 health 采样错误都会使进程返回非 0。
 

@@ -499,6 +499,11 @@ Deployment、不可变 App Version 对应的 Workflow Runtime、ZeroMQ TriggerSo
 Deployment 无 busy 实例，LocalBuffer 无活动 slot，mmap overflow page 无占用，Runtime、Trigger
 和 Worker 健康视图无业务错误。
 
+真实输入门禁固定采用生产入口语义：HTTP Workflow invoke 每次都在计时范围内把工业相机图片
+编码为 `image-base64.v1` 并发送完整 JSON，不得用 ObjectStore 相对路径、磁盘绝对路径或跨 Run
+解码缓存代替上传；ZeroMQ TriggerSource 继续发送原始二进制，由 SDK 写入 LocalBuffer。两条入口
+必须使用同一原始图片并分开统计，确保比较包含各自公开协议实际承担的传输、解析和解码成本。
+
 发行目录不复制开发数据库或业务资产。发行验收独立验证同一源码生成物的 layout、依赖导入、
 Alembic、mmap probe、backend health、静态前端、Worker Topology、故障恢复和进程资源回收。
 源码真实业务 soak 与发行基础设施验收共同构成仓库门禁；客户现场的目标硬件长时 soak 属于
