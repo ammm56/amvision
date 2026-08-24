@@ -22,12 +22,28 @@ from backend.service.application.models.evaluation.yolov8_classification_evaluat
     CLASSIFICATION_EVALUATION_QUEUE_NAME,
     SqlAlchemyYoloV8ClassificationEvaluationService,
 )
-from backend.service.application.ports.queue import QueueBackend
+from backend.service.application.ports.queue import QueueBackend, QueueMessage
+from backend.service.application.tasks.task_service import TaskExecutionFence
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
+
+
+def _read_execution_fence(
+    queue_backend: QueueBackend,
+    queue_task: QueueMessage,
+) -> TaskExecutionFence | None:
+    """读取正式 Task 队列消息的稳定 Attempt fence。"""
+
+    if not isinstance(queue_backend, TaskAttemptClaimingQueueBackend):
+        return None
+    return queue_backend.get_execution_fence(
+        queue_task,
+        include_heartbeat=False,
+    )
 
 
 class ClassificationEvaluationQueueWorker:
@@ -59,7 +75,13 @@ class ClassificationEvaluationQueueWorker:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            result = service.process_evaluation_task(task_id)
+            result = service.process_evaluation_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
             self.queue_backend.complete(queue_task, metadata={
                 "task_id": task_id, "status": "succeeded",
                 "top1_accuracy": result.top1_accuracy,
@@ -105,7 +127,13 @@ class SegmentationEvaluationQueueWorker:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            result = service.process_evaluation_task(task_id)
+            result = service.process_evaluation_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
             self.queue_backend.complete(queue_task, metadata={
                 "task_id": task_id, "status": "succeeded",
                 "map50": result.map50, "map50_95": result.map50_95,
@@ -151,7 +179,13 @@ class DetectionEvaluationQueueWorker:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            result = service.process_evaluation_task(task_id)
+            result = service.process_evaluation_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
             self.queue_backend.complete(
                 queue_task,
                 metadata={
@@ -201,7 +235,13 @@ class PoseEvaluationQueueWorker:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            result = service.process_evaluation_task(task_id)
+            result = service.process_evaluation_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
             self.queue_backend.complete(
                 queue_task,
                 metadata={
@@ -251,7 +291,13 @@ class ObbEvaluationQueueWorker:
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            result = service.process_evaluation_task(task_id)
+            result = service.process_evaluation_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
             self.queue_backend.complete(
                 queue_task,
                 metadata={

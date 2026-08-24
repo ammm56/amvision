@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Protocol
 
 from backend.service.application.runtime.targets.runtime_target import RuntimeTargetSnapshot
@@ -124,6 +125,13 @@ class ConversionBackendRunRequest:
     model_type: str | None = None
     task_type: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+    attempt_deadline_at: str | None = None
+    attempt_timeout_seconds: float | None = None
+    cancel_requested: Callable[[], bool] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)

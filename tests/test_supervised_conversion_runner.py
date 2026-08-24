@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import json
 import pickle
 from types import SimpleNamespace
 
@@ -19,6 +20,9 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ServiceConfigurationError,
 )
+from backend.service.application.conversions.publication import (
+    serialize_conversion_run_result,
+)
 from backend.service.application.runtime.device_leases import (
     CudaDeviceResource,
     DeviceLeaseMode,
@@ -33,7 +37,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 from backend.workers.conversion.supervised_conversion_runner import (
     SupervisedConversionRunner,
 )
-from backend.workers.shared.process_tree_supervisor import ProcessTreeResult
+from backend.runtime.processes import ProcessTreeResult
 
 
 class _StaticCudaResolver:
@@ -53,18 +57,17 @@ class _StaticCudaResolver:
         return self.resource
 
 
-def test_supervised_conversion_runner_publishes_validated_staging_atomically(
+def test_supervised_conversion_runner_returns_validated_staging_without_publishing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证子进程只写 staging，成功门禁后才发布最终不可变 builds。"""
+    """验证子进程只写 staging，父服务取得数据库 reservation 前不发布。"""
 
     storage = LocalDatasetStorage(DatasetStorageSettings(root_dir=str(tmp_path / "files")))
     runner = SupervisedConversionRunner(
         runner_kind="yolox",
         dataset_storage=storage,
         workspace_dir=tmp_path / "worker",
-        timeout_seconds=30.0,
         helper_timeout_seconds=12.0,
     )
     request = _build_request()
@@ -111,8 +114,12 @@ def test_supervised_conversion_runner_publishes_validated_staging_atomically(
             },
         )
         result_path.parent.mkdir(parents=True, exist_ok=True)
-        with result_path.open("wb") as stream:
-            pickle.dump({"ok": True, "result": result}, stream)
+        result_path.write_text(
+            json.dumps(
+                {"ok": True, "result": serialize_conversion_run_result(result)}
+            ),
+            encoding="utf-8",
+        )
         captured.update(kwargs)
         captured["env"] = kwargs["env"]
         return ProcessTreeResult(
@@ -130,17 +137,14 @@ def test_supervised_conversion_runner_publishes_validated_staging_atomically(
 
     result = runner.run_conversion(request)
 
-    final_uri = "projects/project-1/conversions/task-1/artifacts/builds/model.onnx"
-    assert result.outputs[0].object_uri == final_uri
-    assert result.outputs[0].metadata["object_uri"] == final_uri
-    assert storage.resolve(final_uri).read_bytes() == b"valid-onnx"
-    assert result.metadata["conversion_attempt_id"].startswith("conversion-attempt-")
-    assert result.metadata["attempt_timeout_seconds"] == 30.0
-    publication_object_key = result.metadata["publication_record_object_key"]
-    assert isinstance(publication_object_key, str)
-    publication_record = storage.read_json(publication_object_key)
-    assert publication_record["state"] == "published_pending_registration"
-    assert publication_record["conversion_task_id"] == request.conversion_task_id
+    staged_uri = (
+        "task-runs/conversion/task-1/attempts/"
+        "conversion-attempt-test/staging/artifacts/builds/model.onnx"
+    )
+    assert result.outputs[0].object_uri == staged_uri
+    assert result.outputs[0].metadata["object_uri"] == staged_uri
+    assert result.metadata["attempt_timeout_seconds"] == 300.0
+    assert storage.resolve(staged_uri).read_bytes() == b"valid-onnx"
     process_env = captured["env"]
     assert isinstance(process_env, dict)
     assert process_env["AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS"] == "12.0"
@@ -157,7 +161,6 @@ def test_supervised_conversion_runner_never_publishes_timed_out_staging(
         runner_kind="yolox",
         dataset_storage=storage,
         workspace_dir=tmp_path / "worker",
-        timeout_seconds=0.1,
     )
 
     def fake_run(self: object, command: list[str], **kwargs: object) -> ProcessTreeResult:
@@ -175,7 +178,7 @@ def test_supervised_conversion_runner_never_publishes_timed_out_staging(
         runner.run_conversion(_build_request())
 
     assert not storage.resolve(
-        "projects/project-1/conversions/task-1/artifacts/builds"
+        "task-runs/conversion/task-1/artifacts/builds"
     ).exists()
 
 
@@ -203,7 +206,6 @@ def test_cuda_conversion_acquires_exclusive_gpu_before_attempt(
         runner_kind="yolox",
         dataset_storage=storage,
         workspace_dir=tmp_path / "worker",
-        timeout_seconds=30.0,
         device_lease_config=DeviceLeaseProviderConfig(
             root_dir=str(lock_root),
             exclusive_acquire_timeout_seconds=0.0,
@@ -248,9 +250,9 @@ def test_supervised_conversion_runner_preserves_child_timeout_state(
 ) -> None:
     """验证 helper timeout 穿过 attempt 进程边界后仍是正式 timeout。"""
 
-    result_path = tmp_path / "result.pkl"
-    with result_path.open("wb") as stream:
-        pickle.dump(
+    result_path = tmp_path / "result.json"
+    result_path.write_text(
+        json.dumps(
             {
                 "ok": False,
                 "error": {
@@ -259,9 +261,10 @@ def test_supervised_conversion_runner_preserves_child_timeout_state(
                     "details": {"timeout_seconds": 1.0},
                 },
                 "traceback": "traceback",
-            },
-            stream,
-        )
+            }
+        ),
+        encoding="utf-8",
+    )
 
     with pytest.raises(OperationTimeoutError, match="helper 超时"):
         SupervisedConversionRunner._read_attempt_payload(
@@ -269,6 +272,8 @@ def test_supervised_conversion_runner_preserves_child_timeout_state(
             process_returncode=1,
             stdout_tail="stdout",
             stderr_tail="stderr",
+            expected_task_id="task-1",
+            expected_output_prefix="attempt/staging",
         )
 
 
@@ -319,6 +324,8 @@ def test_supervised_conversion_runner_rejects_non_strict_numeric_drift() -> None
 def _build_request() -> ConversionBackendRunRequest:
     """构建不依赖真实模型加载的最小 conversion 请求。"""
 
+    from datetime import UTC, datetime, timedelta
+
     return ConversionBackendRunRequest(
         conversion_task_id="task-1",
         source_runtime_target=SimpleNamespace(model_version_id="model-version-1"),
@@ -332,7 +339,13 @@ def _build_request() -> ConversionBackendRunRequest:
                 produced_file_type="onnx-model",
             ),
         ),
-        output_object_prefix="projects/project-1/conversions/task-1",
+        output_object_prefix=(
+            "task-runs/conversion/task-1/attempts/"
+            "conversion-attempt-test/staging"
+        ),
         model_type="yolox",
         task_type="detection",
+        metadata={"conversion_file_attempt_id": "conversion-attempt-test"},
+        attempt_deadline_at=(datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+        attempt_timeout_seconds=300.0,
     )

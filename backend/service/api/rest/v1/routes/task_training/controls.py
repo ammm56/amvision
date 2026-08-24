@@ -19,9 +19,13 @@ from backend.service.api.rest.v1.routes.task_training.services import (
     require_non_detection_training_task,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.models.training.resume_checkpoint_validation import (
+    require_readable_resume_checkpoint,
+)
 from backend.service.application.tasks.task_service import (
-    AppendTaskEventRequest,
+    ResumeTaskRequest,
     SqlAlchemyTaskService,
+    TaskQueueSubmission,
 )
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -108,90 +112,40 @@ def resume_training_task(
             details={"task_id": task_id, "state": task.state},
         )
     checkpoint_path = dataset_storage.resolve(checkpoint_object_key)
-    if not checkpoint_path.is_file():
-        raise InvalidRequestError(
-            "当前训练任务的 latest checkpoint 不存在",
-            details={
-                "task_id": task_id,
-                "state": task.state,
-                "latest_checkpoint_object_key": checkpoint_object_key,
-            },
-        )
+    require_readable_resume_checkpoint(
+        checkpoint_path,
+        task_id=task_id,
+        checkpoint_object_key=checkpoint_object_key,
+    )
     queue_name = TASK_KIND_TO_QUEUE_NAME.get(task.task_kind)
     if queue_name is None:
         raise InvalidRequestError(
             "找不到对应的训练队列", details={"task_kind": task.task_kind}
         )
-    original_state = task.state
-    original_progress = dict(task.progress)
-    original_result = dict(task.result)
-    original_attempt_no = int(task.current_attempt_no)
-    next_attempt_no = task_service.get_next_task_attempt_no(task.task_id)
-    task_service.append_task_event(
-        AppendTaskEventRequest(
+    submission = task_service.resume_task_with_outbox(
+        ResumeTaskRequest(
             task_id=task.task_id,
-            event_type="status",
-            message="training resume requested",
-            payload={
-                "state": "queued",
-                "attempt_no": next_attempt_no,
-                "finished_at": None,
-                "error_message": None,
-                "progress": {"stage": "queued"},
-                "result": {
-                    "status": "queued",
-                    "latest_checkpoint_object_key": checkpoint_object_key,
-                },
-            },
-        )
-    )
-    try:
-        queue_task = queue_backend.enqueue(
-            queue_name=queue_name,
-            payload={
-                "task_id": task.task_id,
-                "attempt_no": next_attempt_no,
-                "task_kind": task.task_kind,
-                "model_type": resolve_model_type_from_metadata(task),
-            },
-        )
-    except Exception:
-        task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task.task_id,
-                event_type="status",
-                message="training resume enqueue failed",
+            expected_states=(task.state,),
+            expected_current_attempt_no=task.current_attempt_no,
+            queue_submission=TaskQueueSubmission(
+                queue_name=queue_name,
                 payload={
-                    "state": original_state,
-                    "attempt_no": original_attempt_no,
-                    "finished_at": task.finished_at,
-                    "error_message": task.error_message,
-                    "progress": {
-                        "stage": original_progress.get("stage", original_state)
-                    },
-                    "result": {
-                        "status": original_result.get("status", original_state)
-                    },
+                    "task_kind": task.task_kind,
+                    "model_type": resolve_model_type_from_metadata(task),
                 },
-            )
-        )
-        raise
-    task_service.append_task_event(
-        AppendTaskEventRequest(
-            task_id=task.task_id,
-            event_type="status",
-            message="training resume queued",
-            payload={
-                "result": {
-                    "queue_name": queue_name,
-                    "queue_task_id": queue_task.task_id,
-                }
+            ),
+            expected_checkpoint_object_key=checkpoint_object_key,
+            progress_patch={"stage": "queued"},
+            result_patch={
+                "status": "queued",
+                "latest_checkpoint_object_key": checkpoint_object_key,
             },
+            message="training resume queued",
         )
     )
     return TrainingTaskSubmissionResponse(
         task_id=task.task_id,
         status="queued",
-        queue_name=queue_name,
-        queue_task_id=queue_task.task_id,
+        queue_name=submission.queue_name,
+        queue_task_id=submission.queue_task_id,
     )

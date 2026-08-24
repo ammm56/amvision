@@ -162,7 +162,14 @@ def test_build_background_task_manager_respects_enabled_consumer_kinds(
             manager.consumers[0].queue_backend,
             TaskAttemptClaimingQueueBackend,
         )
-        assert manager.consumers[1].queue_backend is runtime.queue_backend
+        assert isinstance(
+            manager.consumers[1].queue_backend,
+            TaskAttemptClaimingQueueBackend,
+        )
+        assert (
+            manager.consumers[1].async_inference_executor.queue_backend
+            is runtime.queue_backend
+        )
     finally:
         runtime.session_factory.engine.dispose()
 
@@ -222,7 +229,6 @@ def test_get_backend_maintenance_settings_reads_json_files_and_environment_overr
     assert settings.app.app_name == "amvision config-maintenance"
     assert settings.app.app_version == "0.4.1-local"
     assert settings.workspace.root_dir == "./data/from-maintenance-env"
-    assert settings.release.bundled_python.source_dir is None
     assert settings.release.frontend.dist_dir == "./frontend/dist"
     assert (
         settings.release.frontend.runtime_config_template_file

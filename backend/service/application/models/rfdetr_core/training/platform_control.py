@@ -5,8 +5,12 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
+
+from backend.service.application.models.rfdetr_core.training.attempt_checkpoint_io import (
+    RfdetrAttemptCheckpointIO,
+)
 
 from backend.service.domain.models.model_task_types import (
     SEGMENTATION_TASK_TYPE,
@@ -43,7 +47,7 @@ class RfdetrPlatformEpochProgress:
 
 @dataclass(frozen=True)
 class RfdetrPlatformTrainingControlCommand:
-    """描述平台在 epoch 边界返回的训练控制命令。"""
+    """描述平台在 batch 或 epoch 安全点返回的训练控制命令。"""
 
     save_checkpoint: bool = False
     pause_training: bool = False
@@ -52,7 +56,7 @@ class RfdetrPlatformTrainingControlCommand:
 
 @dataclass(frozen=True)
 class RfdetrPlatformTrainingSavePoint:
-    """描述已从临时训练目录完整读取出的可持久化保存点。"""
+    """描述 Attempt 内最近完整 epoch 的可持久化内存保存点。"""
 
     latest_checkpoint_bytes: bytes
     best_checkpoint_bytes: bytes | None
@@ -87,9 +91,13 @@ class _RfdetrPlatformTrainingCallbackMixin:
         self,
         *,
         task_type: ModelTaskType,
-        output_dir: Path,
         max_epochs: int,
+        checkpoint_interval: int,
         batch_callback: Callable[[RfdetrPlatformBatchProgress], None] | None,
+        control_callback: Callable[
+            [], RfdetrPlatformTrainingControlCommand | None
+        ]
+        | None,
         epoch_callback: Callable[
             [RfdetrPlatformEpochProgress],
             RfdetrPlatformTrainingControlCommand | None,
@@ -101,11 +109,34 @@ class _RfdetrPlatformTrainingCallbackMixin:
         """初始化平台 callback；所有回调均在训练 worker 所在线程顺序执行。"""
 
         self.task_type = task_type
-        self.output_dir = output_dir
         self.max_epochs = max(1, int(max_epochs))
+        self.checkpoint_interval = max(1, int(checkpoint_interval))
         self.batch_callback = batch_callback
+        self.control_callback = control_callback
         self.epoch_callback = epoch_callback
         self.savepoint_callback = savepoint_callback
+        self._attempt_token = uuid4().hex
+        self._current_savepoint: RfdetrPlatformTrainingSavePoint | None = None
+        self._handled_control_identity: tuple[bool, bool, bool] | None = None
+
+    @property
+    def current_savepoint(self) -> RfdetrPlatformTrainingSavePoint:
+        """返回当前 Attempt 最近完整 epoch 的内存保存点。"""
+
+        if self._current_savepoint is None:
+            raise RuntimeError("RF-DETR 尚未建立 completed-epoch baseline")
+        return self._current_savepoint
+
+    def on_fit_start(self, trainer: Any, pl_module: Any) -> None:
+        """在 optimizer/scheduler 已挂接后建立 epoch 0 baseline bytes。"""
+
+        del pl_module
+        self._current_savepoint = self._capture_checkpoint(
+            trainer=trainer,
+            epoch=-1,
+            learning_rate=_resolve_learning_rate(trainer),
+            train_metrics={},
+        )
 
     def on_train_batch_end(
         self,
@@ -118,8 +149,6 @@ class _RfdetrPlatformTrainingCallbackMixin:
         """在每个真实 batch 完成后发送不持有 tensor 的标量进度。"""
 
         del pl_module, batch
-        if self.batch_callback is None:
-            return
         max_iterations = _resolve_positive_counter(
             getattr(trainer, "num_training_batches", None),
             fallback=max(1, int(batch_idx) + 1),
@@ -134,53 +163,110 @@ class _RfdetrPlatformTrainingCallbackMixin:
             self.max_epochs * max_iterations,
         )
         metrics = _extract_train_metrics(trainer=trainer, outputs=outputs)
-        self.batch_callback(
-            RfdetrPlatformBatchProgress(
-                epoch=max(0, int(getattr(trainer, "current_epoch", 0))),
-                max_epochs=self.max_epochs,
-                iteration=iteration,
-                max_iterations=max_iterations,
-                global_iteration=min(global_iteration, total_iterations),
-                total_iterations=total_iterations,
-                learning_rate=_resolve_learning_rate(trainer),
-                train_metrics=metrics,
+        if self.batch_callback is not None:
+            self.batch_callback(
+                RfdetrPlatformBatchProgress(
+                    epoch=max(0, int(getattr(trainer, "current_epoch", 0))),
+                    max_epochs=self.max_epochs,
+                    iteration=iteration,
+                    max_iterations=max_iterations,
+                    global_iteration=min(global_iteration, total_iterations),
+                    total_iterations=total_iterations,
+                    learning_rate=_resolve_learning_rate(trainer),
+                    train_metrics=metrics,
+                )
             )
-        )
+        self._handle_batch_control()
+
+    def on_validation_batch_end(
+        self,
+        trainer: Any,
+        pl_module: Any,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        """在每个 validation batch 完成后检查同一个 Attempt 控制探针。"""
+
+        del trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
+        self._handle_batch_control()
 
     def on_train_epoch_end(self, trainer: Any, pl_module: Any) -> None:
         """在真实 epoch 边界读取控制命令并安全保存、暂停或终止。"""
 
         del pl_module
-        if self.epoch_callback is None:
-            return
         epoch = max(0, int(getattr(trainer, "current_epoch", 0)))
         learning_rate = _resolve_learning_rate(trainer)
         train_metrics = _extract_train_metrics(trainer=trainer, outputs=None)
-        command = self.epoch_callback(
-            RfdetrPlatformEpochProgress(
-                epoch=epoch,
-                max_epochs=self.max_epochs,
-                learning_rate=learning_rate,
-                train_metrics=train_metrics,
+        command = (
+            self.epoch_callback(
+                RfdetrPlatformEpochProgress(
+                    epoch=epoch,
+                    max_epochs=self.max_epochs,
+                    learning_rate=learning_rate,
+                    train_metrics=train_metrics,
+                )
             )
+            if self.epoch_callback is not None
+            else None
         )
-        if command is None:
-            return
-        needs_checkpoint = bool(
-            command.save_checkpoint
-            or command.pause_training
-            or command.terminate_training
-        )
-        if not needs_checkpoint:
-            return
-        savepoint = self._save_checkpoint(
+        savepoint = self._capture_checkpoint(
             trainer=trainer,
             epoch=epoch,
             learning_rate=learning_rate,
             train_metrics=train_metrics,
         )
+        self._current_savepoint = savepoint
+        completed_epoch = epoch + 1
+        needs_persistence = bool(
+            completed_epoch % self.checkpoint_interval == 0
+            or completed_epoch == self.max_epochs
+            or (command is not None and command.save_checkpoint)
+            or (command is not None and command.pause_training)
+            or (command is not None and command.terminate_training)
+        )
+        if needs_persistence and self.savepoint_callback is not None:
+            self.savepoint_callback(savepoint)
+        if command is not None and command.terminate_training:
+            raise RfdetrPlatformTrainingControlSignal(
+                status="terminated",
+                savepoint=savepoint,
+            )
+        if command is not None and command.pause_training:
+            raise RfdetrPlatformTrainingControlSignal(
+                status="paused",
+                savepoint=savepoint,
+            )
+
+    def _handle_batch_control(self) -> None:
+        """在 batch 安全点停止新 batch，并使用上一完整 epoch 快照。"""
+
+        if self.control_callback is None:
+            return
+        command = self.control_callback()
+        if command is None:
+            self._handled_control_identity = None
+            return
+        if not (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ):
+            return
+        identity = (
+            command.save_checkpoint,
+            command.pause_training,
+            command.terminate_training,
+        )
+        if identity == self._handled_control_identity:
+            return
+        savepoint = self._current_savepoint
+        if savepoint is None:
+            raise RuntimeError("RF-DETR 尚未建立 completed-epoch baseline")
         if self.savepoint_callback is not None:
             self.savepoint_callback(savepoint)
+        self._handled_control_identity = identity
         if command.terminate_training:
             raise RfdetrPlatformTrainingControlSignal(
                 status="terminated",
@@ -192,7 +278,7 @@ class _RfdetrPlatformTrainingCallbackMixin:
                 savepoint=savepoint,
             )
 
-    def _save_checkpoint(
+    def _capture_checkpoint(
         self,
         *,
         trainer: Any,
@@ -200,16 +286,20 @@ class _RfdetrPlatformTrainingCallbackMixin:
         learning_rate: float,
         train_metrics: dict[str, float],
     ) -> RfdetrPlatformTrainingSavePoint:
-        """保存完整 Lightning 恢复状态并在临时目录销毁前读入内存。"""
+        """通过公共 CheckpointIO 把完整 Lightning 状态编码到内存。"""
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        latest_checkpoint_path = self.output_dir / "last.ckpt"
         save_checkpoint = getattr(trainer, "save_checkpoint", None)
         if not callable(save_checkpoint):
             raise RuntimeError("RF-DETR Lightning trainer 不支持保存 checkpoint")
-        save_checkpoint(str(latest_checkpoint_path))
-        if not latest_checkpoint_path.is_file():
-            raise RuntimeError("RF-DETR Lightning trainer 未生成 latest checkpoint")
+        checkpoint_io = getattr(getattr(trainer, "strategy", None), "checkpoint_io", None)
+        if not isinstance(checkpoint_io, RfdetrAttemptCheckpointIO):
+            raise RuntimeError("RF-DETR Trainer 未使用 Attempt checkpoint IO")
+        memory_path = checkpoint_io.build_memory_path(
+            attempt_token=self._attempt_token,
+            completed_epoch=epoch + 1,
+        )
+        save_checkpoint(memory_path)
+        checkpoint_bytes = checkpoint_io.pop_memory_checkpoint(memory_path)
 
         validation_metrics = _extract_validation_metrics(trainer)
         best_metric_name, best_metric_value = _resolve_best_metric(
@@ -217,7 +307,7 @@ class _RfdetrPlatformTrainingCallbackMixin:
             validation_metrics=validation_metrics,
         )
         return RfdetrPlatformTrainingSavePoint(
-            latest_checkpoint_bytes=latest_checkpoint_path.read_bytes(),
+            latest_checkpoint_bytes=checkpoint_bytes,
             # 中间保存点只需要完整 latest 恢复状态。此处不再同时读取大型 best
             # 权重，避免 save/pause 时在内存中并存两份 checkpoint。
             best_checkpoint_bytes=None,
@@ -233,9 +323,11 @@ class _RfdetrPlatformTrainingCallbackMixin:
 def build_rfdetr_platform_training_callback(
     *,
     task_type: ModelTaskType,
-    output_dir: Path,
     max_epochs: int,
+    checkpoint_interval: int,
     batch_callback: Callable[[RfdetrPlatformBatchProgress], None] | None,
+    control_callback: Callable[[], RfdetrPlatformTrainingControlCommand | None]
+    | None,
     epoch_callback: Callable[
         [RfdetrPlatformEpochProgress],
         RfdetrPlatformTrainingControlCommand | None,
@@ -255,9 +347,10 @@ def build_rfdetr_platform_training_callback(
 
     return RfdetrPlatformTrainingCallback(
         task_type=task_type,
-        output_dir=output_dir,
         max_epochs=max_epochs,
+        checkpoint_interval=checkpoint_interval,
         batch_callback=batch_callback,
+        control_callback=control_callback,
         epoch_callback=epoch_callback,
         savepoint_callback=savepoint_callback,
     )

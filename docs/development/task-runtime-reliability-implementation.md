@@ -2,7 +2,7 @@
 
 ## 状态与职责
 
-状态：**设计已冻结，可以按阶段开始实现；代码尚未完整落地**。
+状态：**设计已冻结，阶段 1 至阶段 7 已落地；源码开发环境真实业务链路与发行基础设施均已完成验收**。
 
 本页是 [ADR-0006](../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 的唯一详细实施基线，用于约束 Task、Training Resume、Conversion、前端 Task 状态和 Node Pack timeout 的后续改动。各架构专题在对应阶段通过门禁前仍描述当前代码行为，不能引用本页后就把目标状态视为已完成。
 
@@ -40,7 +40,7 @@
 | Training resume | 部分路径仍存在 DB/Queue 双写窗口 | 四条 resume 路径统一 Transactional Outbox |
 | Conversion deadline | 子进程 timeout 已有基础，但跨恢复 deadline 与父进程提交边界不完整 | 持久 UTC deadline、进程内 monotonic 剩余预算、单一发布栅栏 |
 | Conversion recovery | publication marker 已有基础，迟到取消和 rename 后恢复规则需收敛 | rename 前可中止，rename 后只允许完成登记 |
-| Process supervisor | 公共实现仍位于 Worker 组装层，Windows 绑定窗口和日志边界需统一 | `backend/runtime/processes/` 中立实现与 bootstrap |
+| Process supervisor | 已完成：旧 Worker 实现已删除，Windows 使用先入 Job 再放行的 bootstrap，日志文件与内存 tail 均有界 | `backend/runtime/processes/` 中立实现；阶段 4 继续接入持久总 deadline |
 | 前端 Task 状态 | 手工类型、徽标和 store 遗漏 `paused`、`timed_out` | 完整 OpenAPI enum + 手工同步 + 契约门禁 |
 | Node Pack timeout | manifest 字段与正式执行语义没有完整闭环 | Preview 协作式，正式 Runtime worker 级硬终止 |
 
@@ -271,6 +271,11 @@ Dispatcher 对未送达消息使用现有 Outbox `pending/attempt_count/last_err
 
 ### 阶段 3：最小抽取公共进程监督器
 
+状态：**已完成**。当前实现已删除旧 Worker 路径，所有既有调用方直接依赖
+`backend/runtime/processes/`；Windows 绑定失败不会启动真实 converter，日志文件达到
+保留上限或写入失败后仍持续排空 pipe。持久 Attempt deadline 的业务固化与恢复接入属于
+阶段 4，不在本阶段伪装为已完成。
+
 本阶段只移动 Conversion 治理需要的公共能力，不以“清除全部 application → workers 依赖”阻塞 P1 修复。
 
 目标目录：
@@ -478,6 +483,31 @@ Timeout policy 在 invocation 开始时从该 worker 当前已启用的 Runtime 
 
 ### 阶段 7：分层清理、全链门禁和发行重组
 
+状态：**源码分层清理、自动化门禁、开发环境真实业务资源持续负载和发行基础设施验收均已完成**。
+Application/Runtime 到 Worker 的反向依赖和旧 Conversion/Supervisor 实现已经删除；
+后端完整测试、静态检查、迁移方言、前端 typecheck/unit/build/E2E、发行组装及
+soak 工具自身门禁已通过。`full-windows-x64-nvidia` 已使用同目录 bundled Python 完成
+layout、依赖导入、Alembic、inference daemon mmap probe、backend health、静态前端、
+OpenAPI、六个 Worker Topology、单 Profile 故障恢复、资源采样和无残留优雅停止验收。
+停止链路由绑定 root process identity 的请求触发 Supervisor 统一清理，不会在关闭期间
+重新拉起 Worker，也不会把预期 Topology stopping 写成错误 traceback。
+
+业务数据面和控制面使用源码开发环境 `data/` 中已经登记的真实 OpenVINO 模型、双实例
+Deployment、不可变 App Version 对应的 Workflow Runtime、ZeroMQ TriggerSource 和真实 BMP
+图片完成分入口持续负载。Workflow 图包含 51 个节点和每次运行 24 次 Classification 调用；
+直接 Deployment、Workflow invoke 和 TriggerSource 三条业务入口均以零请求错误完成，结束后
+Deployment 无 busy 实例，LocalBuffer 无活动 slot，mmap overflow page 无占用，Runtime、Trigger
+和 Worker 健康视图无业务错误。
+
+发行目录不复制开发数据库或业务资产。发行验收独立验证同一源码生成物的 layout、依赖导入、
+Alembic、mmap probe、backend health、静态前端、Worker Topology、故障恢复和进程资源回收。
+源码真实业务 soak 与发行基础设施验收共同构成仓库门禁；客户现场的目标硬件长时 soak 属于
+部署验收，不是以空发行数据库资源数量判定的代码缺口。
+
+持续负载开始前必须显式预热 Deployment，并满足
+`healthy_instance_count == warmed_instance_count == instance_count`。`running` 只表示进程已启动，
+不能代表模型已经加载完成；冷启动延迟不得混入稳定业务延迟，也不通过隐藏排队或自动重试掩盖。
+
 1. 清理剩余 application → workers 反向依赖，应用层只依赖 port、domain 和中立 runtime infrastructure。
 2. 删除迁移完成后的旧状态写入、旧 supervisor、兼容 re-export 和死配置。
 3. 同步 Task、Conversion、Workflow Node、项目结构、开发/生产部署和运维恢复文档。
@@ -527,11 +557,11 @@ python -m backend.maintenance.main assemble-release --profile-id full-windows-x6
 
 | 阶段 | 状态 | 完成后应更新的正式文档 |
 | --- | --- | --- |
-| 0 基线冻结 | 待实现 | 本页 |
-| 1 Task/finalizer | 待实现 | `architecture/platform/task-system.md`、Task API |
-| 2 Resume Outbox | 待实现 | Task/Training 架构与 API |
-| 3 Process supervisor | 待实现 | `architecture/project-structure.md`、部署打包 |
-| 4 Conversion | 待实现 | `architecture/models/conversion-runtime.md`、运维恢复 |
-| 5 完整 Task 状态契约 | 待实现 | Task API、前端状态规范 |
-| 6 Node Pack timeout | 待实现 | `architecture/workflows/node-system.md`、Node Pack manifest |
-| 7 全链与发行 | 待实现 | 开发、部署、运维入口 |
+| 0 基线冻结 | 已完成 | 本页 |
+| 1 Task/finalizer | 已完成 | `architecture/platform/task-system.md`、Task API |
+| 2 Resume Outbox | 已完成 | Task/Training 架构与 API |
+| 3 Process supervisor | 已完成 | `architecture/project-structure.md`、部署打包 |
+| 4 Conversion | 已完成 | `architecture/models/conversion-runtime.md`、运维恢复 |
+| 5 完整 Task 状态契约 | 已完成 | Task API、前端状态规范 |
+| 6 Node Pack timeout | 已完成 | `architecture/workflows/node-system.md`、Node Pack manifest |
+| 7 全链与发行 | 已完成源码真实业务链路与发行基础设施验收 | 开发、部署、运维入口 |

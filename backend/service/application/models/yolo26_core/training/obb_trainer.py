@@ -10,7 +10,7 @@ from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
 from backend.service.application.models.training.checkpoint_policy import (
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 
 from backend.service.application.models.yolo_core_common.training import (
@@ -145,13 +145,68 @@ def run_yolo26_obb_training_loop(
     | None = None,
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None,
     savepoint_callback: Callable[[Yolo26ObbTrainingSavePoint], None] | None = None,
-    control_callback: Callable[[], None] | None = None,
+    control_callback: Callable[[], Yolo26ObbTrainingControlCommand | None]
+    | None = None,
     dataloader_plan: YoloTaskDataLoaderPlan | None = None,
 ) -> Yolo26ObbTrainingLoopResult:
     """执行 YOLO26 OBB 从 start epoch 到 max epoch 的完整训练循环。"""
 
-    checkpoint_bytes = b""
+    checkpoint_bytes = build_yolo26_obb_checkpoint_bytes(
+        epoch=start_epoch - 1,
+        global_iteration=global_iteration,
+        model=model,
+        ema_model=ema.model,
+        ema_updates=ema.updates,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        metrics_history=metrics_history,
+        validation_history=validation_history,
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        evaluation_interval=evaluation_interval,
+        min_lr_ratio=min_lr_ratio,
+        evaluation_confidence_threshold=evaluation_confidence_threshold,
+        torch_module=imports.torch,
+    )
     best_checkpoint_bytes = previous_best_checkpoint_bytes
+    last_completed_savepoint = Yolo26ObbTrainingSavePoint(
+        latest_checkpoint_bytes=checkpoint_bytes,
+        train_metrics=dict(metrics_history[-1]) if metrics_history else {},
+        validation_metrics=(
+            dict(validation_history[-1]) if validation_history else {}
+        ),
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        epoch=start_epoch,
+        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+            optimizer=optimizer,
+            initial_learning_rate=training_schedule.initial_lr,
+        ),
+    )
+
+    def observe_control() -> None:
+        """在 batch 安全点使用最近完整 epoch 快照执行控制。"""
+
+        if control_callback is None:
+            return
+        command = control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and savepoint_callback is not None:
+            savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise Yolo26ObbTrainingPausedError()
+        if command.terminate_training:
+            raise Yolo26ObbTrainingTerminatedError()
     resolved_dataloader_plan = dataloader_plan or resolve_yolo_task_dataloader_plan(
         extra_options={},
         device=device_name,
@@ -204,7 +259,7 @@ def run_yolo26_obb_training_loop(
             global_iteration=global_iteration,
             assign_topk2=assign_topk2,
             autocast_context=autocast_context,
-            control_callback=control_callback,
+            control_callback=observe_control,
             input_size=input_size,
             learning_rate=resolve_yolo_optimizer_base_learning_rate(
                 optimizer=optimizer,
@@ -228,7 +283,7 @@ def run_yolo26_obb_training_loop(
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
-            control_callback=control_callback,
+            control_callback=observe_control,
         )
         if validation_metrics:
             validation_history.append(
@@ -263,7 +318,7 @@ def run_yolo26_obb_training_loop(
             best_metric_name=best_metric_name,
         )
         command = epoch_callback(epoch_progress) if epoch_callback is not None else None
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch + 1,
             max_epochs=max_epochs,
             interval_epochs=checkpoint_interval,
@@ -272,8 +327,7 @@ def run_yolo26_obb_training_loop(
             pause_requested=bool(command and command.pause_training),
             terminate_requested=bool(command and command.terminate_training),
         )
-        if checkpoint_decision.should_serialize:
-            checkpoint_bytes = build_yolo26_obb_checkpoint_bytes(
+        checkpoint_bytes = build_yolo26_obb_checkpoint_bytes(
                 epoch=epoch,
                 global_iteration=global_iteration,
                 model=model,
@@ -293,26 +347,25 @@ def run_yolo26_obb_training_loop(
                 evaluation_interval=evaluation_interval,
                 min_lr_ratio=min_lr_ratio,
                 evaluation_confidence_threshold=evaluation_confidence_threshold,
-                torch_module=imports.torch,
-            )
-        if best_metric_improved and checkpoint_decision.should_serialize:
+            torch_module=imports.torch,
+        )
+        if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
-        if checkpoint_decision.should_serialize and savepoint_callback is not None:
-            savepoint_callback(
-                Yolo26ObbTrainingSavePoint(
-                    latest_checkpoint_bytes=checkpoint_bytes,
-                    train_metrics=epoch_metrics,
-                    validation_metrics=validation_metrics,
-                    best_metric_value=best_metric_value,
-                    best_metric_name=best_metric_name,
-                    epoch=epoch + 1,
-                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
-                        optimizer=optimizer,
-                        initial_learning_rate=training_schedule.initial_lr,
-                    ),
-                    is_best=best_metric_improved,
-                )
-            )
+        last_completed_savepoint = Yolo26ObbTrainingSavePoint(
+            latest_checkpoint_bytes=checkpoint_bytes,
+            train_metrics=epoch_metrics,
+            validation_metrics=validation_metrics,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            epoch=epoch + 1,
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
+            is_best=best_metric_improved,
+        )
+        if checkpoint_decision.should_persist and savepoint_callback is not None:
+            savepoint_callback(last_completed_savepoint)
         if command is not None and command.pause_training:
             raise Yolo26ObbTrainingPausedError()
         if command is not None and command.terminate_training:

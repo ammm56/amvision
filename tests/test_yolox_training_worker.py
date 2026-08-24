@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +36,9 @@ from backend.service.application.models.training.training_telemetry import (
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionRequest,
     YoloXDetectionTrainingExecutionResult,
+    YoloXTrainingControlCommand,
     YoloXTrainingEpochProgress,
+    YoloXTrainingPausedError,
     run_yolox_detection_training,
 )
 from backend.service.application.models.training.yolox_detection_task_service import (
@@ -752,6 +755,61 @@ def test_real_training_default_input_size_is_640_square() -> None:
     assert resolve_yolox_input_size(None) == (640, 640)
 
 
+def test_yolox_pause_after_first_batch_persists_epoch_zero_baseline(
+    tmp_path: Path,
+) -> None:
+    """暂停应丢弃未完成首轮，并只交付 epoch 0 不可变快照。"""
+
+    session_factory, dataset_storage, _queue_backend = _create_worker_runtime(tmp_path)
+    dataset_export = _seed_completed_dataset_export(
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        dataset_export_id="dataset-export-immediate-pause-1",
+        manifest_object_key=(
+            "projects/project-1/datasets/dataset-1/exports/"
+            "dataset-export-immediate-pause-1/manifest.json"
+        ),
+    )
+    manifest_payload = dataset_storage.read_json(dataset_export.manifest_object_key)
+    savepoints = []
+
+    try:
+        with pytest.raises(YoloXTrainingPausedError):
+            run_yolox_detection_training(
+                YoloXDetectionTrainingExecutionRequest(
+                    dataset_storage=dataset_storage,
+                    manifest_payload=manifest_payload,
+                    model_scale="nano",
+                    max_epochs=3,
+                    batch_size=1,
+                    precision="fp32",
+                    input_size=(64, 64),
+                    extra_options={
+                        "device": "cpu",
+                        "num_workers": 0,
+                        "seed": 0,
+                    },
+                    control_callback=lambda: YoloXTrainingControlCommand(
+                        save_checkpoint=True,
+                        pause_training=True,
+                    ),
+                    savepoint_callback=savepoints.append,
+                )
+            )
+
+        assert len(savepoints) == 1
+        assert savepoints[0].epoch == 0
+        payload = torch.load(
+            io.BytesIO(savepoints[0].latest_checkpoint_bytes),
+            map_location="cpu",
+            weights_only=False,
+        )
+        assert payload["epoch"] == 0
+        assert payload["epoch_history"] == []
+    finally:
+        session_factory.engine.dispose()
+
+
 def test_load_resume_checkpoint_rejects_mismatched_validation_configuration(
     tmp_path: Path,
 ) -> None:
@@ -837,7 +895,7 @@ def test_run_training_resume_path_passes_validation_split_name_to_resume_loader(
             validation_history=[],
             best_metric_name="val_map50_95",
             best_metric_value=0.4,
-            best_checkpoint_state=None,
+            best_checkpoint_bytes=None,
             warm_start_summary={"enabled": False},
         )
 

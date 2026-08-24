@@ -71,7 +71,10 @@ class Yolo26TrainingQueueWorker:
                     training_task_id=task_id,
                     model_type="yolo26",
                     task_type="detection",
-                    metadata=build_training_run_metadata(queue_task),
+                    metadata=build_training_run_metadata(
+                        queue_task,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except ServiceError as error:

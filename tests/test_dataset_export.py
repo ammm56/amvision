@@ -70,6 +70,7 @@ from backend.service.infrastructure.queue.local_file import (
 from backend.workers.datasets.dataset_export_queue_worker import (
     DatasetExportQueueWorker,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 
 
 def test_export_dataset_generates_minimal_coco_detection_payload(tmp_path: Path) -> None:
@@ -1185,7 +1186,10 @@ def _run_export_worker_once(
     worker = DatasetExportQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
+        queue_backend=TaskAttemptClaimingQueueBackend(
+            queue_backend=queue_backend,
+            session_factory=session_factory,
+        ),
     )
     return worker.run_once()
 

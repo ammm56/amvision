@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from contextlib import redirect_stdout
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -425,7 +425,7 @@ def run_yolo11_detection_training(
                 assign_beta=training_options["assign_beta"],
                 **kwargs,
             ),
-            evaluate_model=lambda: _evaluate_yolo11_detection_model(
+            evaluate_model=lambda control_callback: _evaluate_yolo11_detection_model(
                 imports=imports,
                 model=ema.model,
                 samples=validation_samples,
@@ -456,6 +456,7 @@ def run_yolo11_detection_training(
                 ],
                 nms_threshold=training_options["evaluation_nms_threshold"],
                 dataloader_plan=dataloader_plan,
+                control_callback=control_callback,
             ),
             grad_clip_norm=training_options["grad_clip_norm"],
             category_names=category_names,
@@ -498,6 +499,11 @@ def run_yolo11_detection_training(
             batch_callback=(
                 _build_yolo11_batch_progress_adapter(request.batch_callback)
                 if request.batch_callback is not None
+                else None
+            ),
+            control_callback=(
+                _build_yolo11_control_adapter(request.control_callback)
+                if request.control_callback is not None
                 else None
             ),
             epoch_callback=(
@@ -967,6 +973,7 @@ def _evaluate_yolo11_detection_model(
     confidence_threshold: float,
     nms_threshold: float,
     dataloader_plan: Yolo11DetectionDataLoaderPlan,
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """执行 YOLO11 detection validation loss 与 COCO bbox mAP。"""
 
@@ -991,6 +998,7 @@ def _evaluate_yolo11_detection_model(
         confidence_threshold=confidence_threshold,
         nms_threshold=nms_threshold,
         dataloader_plan=dataloader_plan,
+        control_callback=control_callback,
     )
     evaluation_summary: dict[str, object] = {
         "loss": round(float(validation_losses.get("loss", 0.0)), 6),
@@ -1029,6 +1037,7 @@ def _evaluate_yolo11_detection_model_once(
     confidence_threshold: float,
     nms_threshold: float,
     dataloader_plan: Yolo11DetectionDataLoaderPlan,
+    control_callback: Callable[[], None] | None = None,
 ) -> tuple[dict[str, float], dict[str, object]]:
     """按 Ultralytics validator 语义一次 forward 统计 YOLO11 loss 和 mAP。"""
 
@@ -1115,6 +1124,8 @@ def _evaluate_yolo11_detection_model_once(
                             max_detections=YOLO_DETECTION_COCO_MAX_DETECTIONS,
                         )
                     )
+                if control_callback is not None:
+                    control_callback()
     finally:
         close_yolo_dataloader(validation_dataloader)
         model.train(previous_training_mode)
@@ -1331,6 +1342,28 @@ def _build_yolo11_epoch_progress_adapter(callback):
         )
 
     return on_yolo11_epoch_progress
+
+
+def _build_yolo11_control_adapter(callback):
+    """把平台 batch 控制命令转成 YOLO11 core 控制决策。"""
+
+    def read_yolo11_control():
+        control_command = callback()
+        if control_command is None:
+            return None
+        return resolve_yolo11_detection_epoch_control(
+            save_checkpoint_requested=_read_control_flag(
+                control_command, "save_checkpoint"
+            ),
+            pause_training_requested=_read_control_flag(
+                control_command, "pause_training"
+            ),
+            terminate_training_requested=_read_control_flag(
+                control_command, "terminate_training"
+            ),
+        )
+
+    return read_yolo11_control
 
 
 def _build_yolo11_savepoint_adapter(callback):

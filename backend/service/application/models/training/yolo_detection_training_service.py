@@ -18,8 +18,15 @@ from backend.service.application.models.training.checkpoint_policy import (
 from backend.service.application.models.training.detection_training_rules import (
     DetectionTrainingOutputFiles,
 )
+from backend.service.application.models.training.resume_checkpoint_validation import (
+    require_readable_resume_checkpoint,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
+)
+from backend.service.application.models.training.training_control_probe import (
+    TrainingControlDecision,
+    TrainingControlProbe,
 )
 from backend.service.application.models.training.yolo_detection_task_control import (
     build_requested_yolo_detection_training_control,
@@ -42,9 +49,6 @@ from backend.service.application.models.training.yolo_detection_task_events impo
     build_yolo_detection_training_epoch_progress_event,
     build_yolo_detection_training_failed_event,
     build_yolo_detection_training_paused_event,
-    build_yolo_detection_training_queued_event,
-    build_yolo_detection_training_resume_requested_event,
-    build_yolo_detection_training_resume_reverted_event,
     build_yolo_detection_training_started_event,
     build_yolo_detection_training_terminated_result_event,
 )
@@ -97,8 +101,10 @@ from backend.service.application.tasks.queue_reference import (
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    ResumeTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -377,14 +383,16 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             requested_at=requested_at,
             save_reason="manual",
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_patch_event_command(
             build_yolo_detection_training_control_event(
                 task_id=task_id,
                 model_type=self.model_type,
                 action="save",
                 control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
                 control=updated_control,
-            )
+            ),
+            expected_states=("running",),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
         return self.task_service.get_task(task_id, include_events=False)
 
@@ -419,14 +427,16 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             requested_at=requested_at,
             save_reason="pause",
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_patch_event_command(
             build_yolo_detection_training_control_event(
                 task_id=task_id,
                 model_type=self.model_type,
                 action="pause",
                 control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
                 control=updated_control,
-            )
+            ),
+            expected_states=("running",),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
         return self.task_service.get_task(task_id, include_events=False)
 
@@ -461,21 +471,23 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 requested_by=requested_by,
                 requested_at=requested_at,
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_patch_event_command(
                 build_yolo_detection_training_control_event(
                     task_id=task_id,
                     model_type=self.model_type,
                     action="terminate",
                     control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
                     control=updated_control,
-                )
+                ),
+                expected_states=("running",),
+                expected_current_attempt_no=task_record.current_attempt_no,
             )
             return self.task_service.get_task(task_id, include_events=False)
 
         cancelled_control = clear_yolo_detection_training_control_requests(control)
         cancelled_progress = dict(task_record.progress)
         cancelled_progress["stage"] = "cancelled"
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             build_yolo_detection_training_cancelled_event(
                 task_id=task_id,
                 model_type=self.model_type,
@@ -496,7 +508,6 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
     ) -> YoloDetectionTrainingTaskSubmission:
         """把存在 latest checkpoint 的 paused/failed 训练任务重新入队。"""
 
-        queue_backend = self._require_queue_backend()
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
         if task_record.state not in {"paused", "failed"}:
@@ -504,9 +515,6 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 "当前训练任务不处于 paused/failed 状态，不能继续训练",
                 details={"task_id": task_id, "state": task_record.state},
             )
-        previous_state = task_record.state
-        previous_finished_at = task_record.finished_at
-        previous_error_message = task_record.error_message
         request = self._build_request_from_task_record(task_record)
         dataset_export = self._resolve_dataset_export(request)
         resume_checkpoint_object_key = (
@@ -521,14 +529,11 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 "当前训练任务缺少可恢复的 latest checkpoint",
                 details={"task_id": task_id},
             )
-        if not dataset_storage.resolve(resume_checkpoint_object_key).is_file():
-            raise InvalidRequestError(
-                "当前训练任务的 latest checkpoint 文件不存在，不能继续训练",
-                details={
-                    "task_id": task_id,
-                    "latest_checkpoint_object_key": resume_checkpoint_object_key,
-                },
-            )
+        require_readable_resume_checkpoint(
+            dataset_storage.resolve(resume_checkpoint_object_key),
+            task_id=task_id,
+            checkpoint_object_key=resume_checkpoint_object_key,
+        )
         resumed_at = self._now_iso()
         control = read_yolo_detection_training_control(
             metadata=task_record.metadata,
@@ -544,59 +549,35 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             **dict(task_record.result),
             "latest_checkpoint_object_key": resume_checkpoint_object_key,
         }
-        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
-        self.task_service.append_task_event(
-            build_yolo_detection_training_resume_requested_event(
+        queued_progress = dict(task_record.progress)
+        queued_progress.update({"stage": "queued", "batch_metrics": {}})
+        submission = self.task_service.resume_task_with_outbox(
+            ResumeTaskRequest(
                 task_id=task_id,
-                model_type=self.model_type,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=updated_control,
-                progress=dict(task_record.progress),
-                result=resume_result,
-            )
-        )
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=self._resolve_training_queue_name(),
-                payload={"task_id": task_id, "attempt_no": next_attempt_no},
-                metadata=build_yolo_detection_queue_metadata(
-                    project_id=request.project_id,
-                    dataset_export=dataset_export,
-                    model_name=self.spec.model_name,
+                expected_states=(task_record.state,),
+                expected_current_attempt_no=task_record.current_attempt_no,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self._resolve_training_queue_name(),
+                    metadata=build_yolo_detection_queue_metadata(
+                        project_id=request.project_id,
+                        dataset_export=dataset_export,
+                        model_name=self.spec.model_name,
+                    ),
                 ),
-            )
-        except Exception:
-            reverted_control = clear_yolo_detection_training_control_requests(control)
-            self.task_service.append_task_event(
-                build_yolo_detection_training_resume_reverted_event(
-                    task_id=task_id,
-                    model_type=self.model_type,
-                    control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                    control=reverted_control,
-                    progress=dict(task_record.progress),
-                    result=resume_result,
-                    previous_state=previous_state,
-                    previous_finished_at=previous_finished_at,
-                    previous_error_message=previous_error_message,
-                )
-            )
-            raise
-        self.task_service.append_task_event(
-            build_yolo_detection_training_queued_event(
-                task_id=task_id,
-                model_type=self.model_type,
-                queue_name=queue_task.queue_name,
-                queue_task_id=queue_task.task_id,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=updated_control,
-                result=resume_result,
+                expected_checkpoint_object_key=resume_checkpoint_object_key,
+                progress_patch=queued_progress,
+                result_patch=resume_result,
+                metadata_patch={
+                    YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY: updated_control
+                },
+                message=f"{self.model_type} training resume queued",
             )
         )
         return YoloDetectionTrainingTaskSubmission(
             task_id=task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=submission.queue_name,
+            queue_task_id=submission.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -720,7 +701,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 registered_by=registered_by,
             )
         )
-        return self.task_service.append_task_event(
+        return self.task_service.execute_task_patch_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -729,18 +710,33 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     "result": self._serialize_task_result(persisted_result),
                     "metadata": registration_metadata,
                 },
-            )
+            ),
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
 
-    def process_training_task(self, task_id: str) -> YoloDetectionTrainingTaskResult:
+    def process_training_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> YoloDetectionTrainingTaskResult:
         """执行一条已入队的 YOLO detection 训练任务。"""
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
         existing_result = self._build_existing_result(task_record)
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前训练任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -796,7 +792,11 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             if read_yolo_detection_training_control_flag(control, "resume_pending")
             else None
         )
-        attempt_no = max(1, int(task_record.current_attempt_no) + 1)
+        attempt_no = (
+            claimed_attempt.attempt_no
+            if claimed_attempt is not None
+            else max(1, int(task_record.current_attempt_no) + 1)
+        )
         resolved_evaluation_interval = self._resolve_requested_evaluation_interval(
             request
         )
@@ -809,7 +809,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             extra_options=dict(request.extra_options),
         )
 
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             build_yolo_detection_training_started_event(
                 task_id=task_id,
                 model_type=self.model_type,
@@ -821,8 +821,73 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 requested_evaluation_interval=resolved_evaluation_interval,
                 control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
                 control=clear_yolo_detection_training_control_requests(control),
-            )
+            ),
+            fence=execution_fence,
         )
+
+        def read_control_decision() -> TrainingControlDecision:
+            """读取当前 Attempt 的权威训练控制状态。"""
+
+            task_record = self._require_training_task(task_id)
+            latest_control = read_yolo_detection_training_control(
+                metadata=task_record.metadata,
+                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+            )
+            if read_yolo_detection_training_control_flag(
+                latest_control, "terminate_requested"
+            ):
+                return TrainingControlDecision(action="terminate")
+            if read_yolo_detection_training_control_flag(
+                latest_control, "pause_requested"
+            ):
+                return TrainingControlDecision(action="pause")
+            if read_yolo_detection_training_control_flag(
+                latest_control, "save_requested"
+            ):
+                return TrainingControlDecision(action="save")
+            return TrainingControlDecision()
+
+        control_probe = TrainingControlProbe(read_control=read_control_decision)
+
+        def resolve_control_command(
+            *,
+            force: bool = False,
+        ) -> YoloDetectionTrainingControlCommand | None:
+            """把节流探针结果转换为 detection 执行命令。"""
+
+            decision = control_probe.observe(force=force)
+            if decision.terminate_requested:
+                return YoloDetectionTrainingControlCommand(
+                    save_checkpoint=True,
+                    terminate_training=True,
+                )
+            if decision.pause_requested:
+                return YoloDetectionTrainingControlCommand(
+                    save_checkpoint=True,
+                    pause_training=True,
+                )
+            if decision.save_requested:
+                # savepoint callback 会原子清除一次性 save 请求；先失效本地缓存，
+                # 确保下一安全点重新读取已更新的权威状态。
+                control_probe.invalidate()
+                return YoloDetectionTrainingControlCommand(save_checkpoint=True)
+            return None
+
+        def on_epoch(
+            progress: YoloDetectionTrainingEpochProgress,
+        ) -> YoloDetectionTrainingControlCommand | None:
+            """回写完整 epoch 进度，并强制读取最新控制状态。"""
+
+            self._append_epoch_progress(
+                task_id=task_id,
+                request=request,
+                output_files=output_files,
+                attempt_no=attempt_no,
+                resolved_evaluation_interval=resolved_evaluation_interval,
+                progress=progress,
+                execution_fence=execution_fence,
+            )
+            return resolve_control_command(force=True)
 
         try:
             execution_result = self._resolve_training_runner()(
@@ -861,14 +926,8 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                         attempt_no=attempt_no,
                         progress=progress,
                     ),
-                    epoch_callback=lambda progress: self._handle_epoch_progress(
-                        task_id=task_id,
-                        request=request,
-                        output_files=output_files,
-                        attempt_no=attempt_no,
-                        resolved_evaluation_interval=resolved_evaluation_interval,
-                        progress=progress,
-                    ),
+                    control_callback=resolve_control_command,
+                    epoch_callback=on_epoch,
                     savepoint_callback=lambda savepoint: (
                         self._handle_training_savepoint(
                             task_id=task_id,
@@ -879,6 +938,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                             periodic_checkpoint_retention=(
                                 periodic_checkpoint_retention
                             ),
+                            execution_fence=execution_fence,
                         )
                     ),
                 )
@@ -922,13 +982,14 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                     summary=summary,
                 )
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_completed_event(
                     task_id=task_id,
                     model_type=self.model_type,
                     finished_at=self._now_iso(),
                     result=self._serialize_task_result(task_result),
-                )
+                ),
+                fence=execution_fence,
             )
             return task_result
         except YoloDetectionTrainingPausedError as paused_error:
@@ -939,7 +1000,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 output_files=output_files,
                 savepoint=paused_error.savepoint,
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_paused_event(
                     task_id=task_id,
                     model_type=self.model_type,
@@ -953,31 +1014,34 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                         )
                     ),
                     result=self._serialize_task_result(paused_result),
-                )
+                ),
+                fence=execution_fence,
             )
             return paused_result
         except YoloDetectionTrainingTerminatedError:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_terminated_result_event(
                     task_id=task_id,
                     model_type=self.model_type,
                     finished_at=self._now_iso(),
                     progress=dict(self._require_training_task(task_id).progress),
-                )
+                ),
+                fence=execution_fence,
             )
             raise OperationCancelledError(
                 "当前训练任务已经终止",
                 details={"task_id": task_id},
             )
         except Exception as error:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_failed_event(
                     task_id=task_id,
                     model_type=self.model_type,
                     finished_at=self._now_iso(),
                     error_message=str(error),
                     error=error,
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
@@ -1152,6 +1216,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         attempt_no: int,
         resolved_evaluation_interval: int,
         progress: YoloDetectionTrainingEpochProgress,
+        execution_fence: TaskExecutionFence | None,
     ) -> None:
         """回写单轮训练结束后的进度事件。"""
 
@@ -1169,57 +1234,30 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
             output_files=output_files,
             progress=progress,
         )
-        self.task_service.append_task_event(
-            build_yolo_detection_training_epoch_progress_event(
-                task_id=task_id,
-                model_type=self.model_type,
-                attempt_no=attempt_no,
-                progress=progress,
-                percent=percent,
-                output_files=output_files,
-                requested_precision=request.precision,
-                requested_gpu_count=request.gpu_count,
-                requested_evaluation_interval=resolved_evaluation_interval,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=control,
-            )
-        )
-
-    def _handle_epoch_progress(
-        self,
-        *,
-        task_id: str,
-        request: YoloDetectionTrainingTaskRequest,
-        output_files: DetectionTrainingOutputFiles,
-        attempt_no: int,
-        resolved_evaluation_interval: int,
-        progress: YoloDetectionTrainingEpochProgress,
-    ) -> YoloDetectionTrainingControlCommand | None:
-        """回写 epoch 进度，并按最新控制状态返回训练命令。"""
-
-        self._append_epoch_progress(
+        progress_event = build_yolo_detection_training_epoch_progress_event(
             task_id=task_id,
-            request=request,
-            output_files=output_files,
+            model_type=self.model_type,
             attempt_no=attempt_no,
-            resolved_evaluation_interval=resolved_evaluation_interval,
             progress=progress,
-        )
-        task_record = self._require_training_task(task_id)
-        control = read_yolo_detection_training_control(
-            metadata=task_record.metadata,
+            percent=percent,
+            output_files=output_files,
+            requested_precision=request.precision,
+            requested_gpu_count=request.gpu_count,
+            requested_evaluation_interval=resolved_evaluation_interval,
             control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+            control=control,
         )
-        if read_yolo_detection_training_control_flag(control, "terminate_requested"):
-            return YoloDetectionTrainingControlCommand(terminate_training=True)
-        if read_yolo_detection_training_control_flag(control, "pause_requested"):
-            return YoloDetectionTrainingControlCommand(
-                save_checkpoint=True,
-                pause_training=True,
+        if execution_fence is None:
+            self.task_service.execute_task_patch_event_command(
+                progress_event,
+                expected_states=(current_task.state,),
+                expected_current_attempt_no=current_task.current_attempt_no,
             )
-        if read_yolo_detection_training_control_flag(control, "save_requested"):
-            return YoloDetectionTrainingControlCommand(save_checkpoint=True)
-        return None
+        else:
+            self.task_service.record_task_progress_event(
+                progress_event,
+                fence=execution_fence,
+            )
 
     def _handle_training_savepoint(
         self,
@@ -1230,6 +1268,7 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
         output_files: DetectionTrainingOutputFiles,
         savepoint: YoloDetectionTrainingSavePoint,
         periodic_checkpoint_retention: TrainingPeriodicCheckpointRetention,
+        execution_fence: TaskExecutionFence | None,
     ) -> None:
         """在 savepoint 落盘后刷新 latest checkpoint 与控制状态。"""
 
@@ -1241,10 +1280,12 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 dataset_export.manifest_object_key
             ),
         )
-        periodic_checkpoint_retention.persist(
-            epoch=savepoint.epoch,
-            checkpoint_bytes=savepoint.latest_checkpoint_bytes,
-        )
+        # epoch 0 是新训练暂停/终止时的恢复基线，不属于周期 checkpoint。
+        if savepoint.epoch >= 1:
+            periodic_checkpoint_retention.persist(
+                epoch=savepoint.epoch,
+                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+            )
         task_record = self._require_training_task(task_id)
         control = read_yolo_detection_training_control(
             metadata=task_record.metadata,
@@ -1283,15 +1324,24 @@ class SqlAlchemyYoloDetectionTrainingTaskService:
                 "output_files": build_yolo_detection_output_files_summary(output_files),
             },
         )
-        self.task_service.append_task_event(
-            build_yolo_detection_training_checkpoint_saved_event(
-                task_id=task_id,
-                model_type=self.model_type,
-                control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
-                control=updated_control,
-                result=self._serialize_task_result(partial_result),
-            )
+        checkpoint_event = build_yolo_detection_training_checkpoint_saved_event(
+            task_id=task_id,
+            model_type=self.model_type,
+            control_metadata_key=YOLO_DETECTION_TRAINING_CONTROL_METADATA_KEY,
+            control=updated_control,
+            result=self._serialize_task_result(partial_result),
         )
+        if execution_fence is None:
+            self.task_service.execute_task_patch_event_command(
+                checkpoint_event,
+                expected_states=(task_record.state,),
+                expected_current_attempt_no=task_record.current_attempt_no,
+            )
+        else:
+            self.task_service.record_task_progress_event(
+                checkpoint_event,
+                fence=execution_fence,
+            )
 
     def _build_partial_training_result(
         self,

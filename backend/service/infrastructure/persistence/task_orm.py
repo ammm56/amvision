@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.service.infrastructure.persistence.base import Base
@@ -45,6 +53,19 @@ class TaskRecordEntity(Base):
             "task_kind",
             "idempotency_key",
         ),
+        Index(
+            "ix_tasks_publication_recovery",
+            "publication_state",
+            "publication_updated_at",
+        ),
+        CheckConstraint(
+            "(publication_state IS NULL AND publication_token IS NULL "
+            "AND publication_attempt_no IS NULL AND publication_updated_at IS NULL) "
+            "OR (publication_state IN ('reserved', 'published', 'registered', 'aborted') "
+            "AND publication_token IS NOT NULL AND publication_attempt_no > 0 "
+            "AND publication_updated_at IS NOT NULL)",
+            name="ck_tasks_publication_fields_complete",
+        ),
     )
 
     task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -71,6 +92,10 @@ class TaskRecordEntity(Base):
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    publication_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    publication_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    publication_attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    publication_updated_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     resource_profile: Mapped[ResourceProfileEntity | None] = relationship(back_populates="tasks")
     attempts: Mapped[list[TaskAttemptEntity]] = relationship(

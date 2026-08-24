@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -115,6 +116,7 @@ def evaluate_yolox_voc_map(
     category_names: tuple[str, ...],
     score_threshold: float,
     nms_threshold: float,
+    control_callback: Callable[[], None] | None = None,
 ) -> VocDetectionMetrics:
     """执行 YOLOX PyTorch 模型在 VOC detection split 上的原生 VOC 评估。"""
 
@@ -141,6 +143,7 @@ def evaluate_yolox_voc_map(
             category_ids=dataset.category_ids,
             score_threshold=score_threshold,
             nms_threshold=nms_threshold,
+            control_callback=control_callback,
         )
     finally:
         model.train(was_training)

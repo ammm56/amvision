@@ -32,8 +32,13 @@ class _FakeApiClient:
         self.get_calls.append(path)
         if path == "/system/health":
             return {"status": "ok"}
-        if path.endswith("/sync/status") or path.endswith("/async/status"):
-            return {"process_state": "running"}
+        if path.endswith("/sync/health") or path.endswith("/async/health"):
+            return {
+                "process_state": "running",
+                "instance_count": 2,
+                "healthy_instance_count": 2,
+                "warmed_instance_count": 2,
+            }
         if path == "/workflows/app-runtimes/runtime-1/health":
             return {"observed_state": "running"}
         if path == "/workflows/trigger-sources/trigger-1":
@@ -187,7 +192,7 @@ def test_runtime_soak_can_select_only_running_deployment_mode(tmp_path: Path) ->
     _resolved_config, preflight = run_preflight(config, client)  # type: ignore[arg-type]
 
     assert set(preflight["deployment"]) == {"sync"}  # type: ignore[arg-type]
-    assert "/models/detection/deployment-instances/deployment-1/async/status" not in (
+    assert "/models/detection/deployment-instances/deployment-1/async/health" not in (
         client.get_calls
     )
     assert [lane.name for lane in build_lanes(config)] == [
@@ -195,6 +200,31 @@ def test_runtime_soak_can_select_only_running_deployment_mode(tmp_path: Path) ->
         "workflow-invoke",
         "trigger-zeromq",
     ]
+
+
+def test_runtime_soak_preflight_rejects_cold_deployment(
+    tmp_path: Path,
+) -> None:
+    """验证持续负载不会把未预热实例的冷启动误算成业务延迟。"""
+
+    config = replace(_build_config(tmp_path), deployment_runtime_modes=("sync",))
+    client = _FakeApiClient()
+    original_get = client.get
+
+    def get_with_cold_deployment(path: str, **kwargs: object) -> dict[str, object]:
+        if path.endswith("/sync/health"):
+            return {
+                "process_state": "running",
+                "instance_count": 2,
+                "healthy_instance_count": 2,
+                "warmed_instance_count": 0,
+            }
+        return original_get(path, **kwargs)
+
+    client.get = get_with_cold_deployment  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="尚未完成全部实例预热"):
+        run_preflight(config, client)  # type: ignore[arg-type]
 
 
 def test_runtime_soak_runner_writes_successful_four_lane_report(

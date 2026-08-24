@@ -35,12 +35,13 @@ def test_preview_run_task_wait_node_blocks_until_task_reaches_terminal_state(tmp
             task_kind="demo-task",
             display_name="Demo Wait Task",
             created_by="tester",
+            state="running",
         )
     )
 
     def _finish_task() -> None:
         time.sleep(0.2)
-        task_service.append_task_event(
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_record.task_id,
                 event_type="result",
@@ -91,12 +92,13 @@ def test_preview_run_task_wait_node_can_include_events_when_requested(tmp_path: 
             task_kind="demo-task-wait-events",
             display_name="Wait Task With Events",
             created_by="tester",
+            state="running",
         )
     )
 
     def _finish_task() -> None:
         time.sleep(0.2)
-        task_service.append_task_event(
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_record.task_id,
                 event_type="result",
@@ -143,12 +145,13 @@ def test_preview_run_task_wait_node_accepts_dynamic_request_payload(tmp_path: Pa
             task_kind="demo-task-dynamic-wait",
             display_name="Dynamic Wait Task",
             created_by="tester",
+            state="running",
         )
     )
 
     def _finish_task() -> None:
         time.sleep(0.2)
-        task_service.append_task_event(
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_record.task_id,
                 event_type="result",

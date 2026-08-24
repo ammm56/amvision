@@ -17,6 +17,10 @@ from backend.service.application.models.training.checkpoint_policy import (
 from backend.service.application.models.training.training_engine import (
     build_execution_training_config_runtime,
 )
+from backend.service.application.models.training.training_control_probe import (
+    TrainingControlDecision,
+    TrainingControlProbe,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_yolo_task_batch_telemetry,
 )
@@ -71,6 +75,7 @@ from backend.service.application.models.training.yolov8_obb_training import (
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.application.tasks.queue_reference import (
@@ -204,8 +209,17 @@ class SqlAlchemyYoloV8ObbTrainingService:
         task_record: TaskRecord,
         *,
         model_type: str,
+        execution_fence: TaskExecutionFence | None = None,
     ) -> dict[str, object]:
         """执行 OBB 训练工作负载。"""
+
+        def execute_state_event(request):
+            """在当前 queue Attempt fence 内执行状态命令。"""
+
+            return self.task_service.execute_task_state_event_command(
+                request,
+                fence=execution_fence,
+            )
 
         payload = self._read_task_payload(task_record)
         resolved_model_type = self._normalize_model_type(
@@ -265,13 +279,50 @@ class SqlAlchemyYoloV8ObbTrainingService:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
-        self.task_service.append_task_event(
+        execute_state_event(
             build_yolov8_obb_training_started_event(
                 task_id=task_record.task_id,
                 started_at=self._now_iso(),
                 model_type=resolved_model_type,
             )
         )
+
+        def read_control_decision() -> TrainingControlDecision:
+            """读取权威控制状态并收敛命令优先级。"""
+
+            control_state = self._read_control_state(task_record.task_id)
+            if control_state.terminate_requested:
+                return TrainingControlDecision(action="terminate")
+            if control_state.pause_requested:
+                return TrainingControlDecision(action="pause")
+            if control_state.save_requested:
+                return TrainingControlDecision(action="save")
+            return TrainingControlDecision()
+
+        control_probe = TrainingControlProbe(read_control=read_control_decision)
+
+        def resolve_control_command(
+            *,
+            force: bool = False,
+        ) -> YoloV8ObbTrainingControlCommand | None:
+            """把节流探针结果转换为 OBB 执行命令。"""
+
+            decision = control_probe.observe(force=force)
+            if decision.terminate_requested:
+                return YoloV8ObbTrainingControlCommand(
+                    save_checkpoint=True,
+                    terminate_training=True,
+                )
+            if decision.pause_requested:
+                return YoloV8ObbTrainingControlCommand(
+                    save_checkpoint=True,
+                    pause_training=True,
+                )
+            if decision.save_requested:
+                self._clear_manual_save_request(task_record.task_id)
+                control_probe.invalidate()
+                return YoloV8ObbTrainingControlCommand(save_checkpoint=True)
+            return None
 
         def on_epoch(
             progress: YoloV8ObbTrainingEpochProgress,
@@ -291,22 +342,9 @@ class SqlAlchemyYoloV8ObbTrainingService:
                     resolved_model_type
                 ),
                 validation_metrics_object_key=validation_metrics_object_key,
+                execution_fence=execution_fence,
             )
-            control_state = self._read_control_state(task_record.task_id)
-            if control_state.terminate_requested:
-                return YoloV8ObbTrainingControlCommand(
-                    save_checkpoint=True,
-                    terminate_training=True,
-                )
-            if control_state.pause_requested:
-                return YoloV8ObbTrainingControlCommand(
-                    save_checkpoint=True,
-                    pause_training=True,
-                )
-            if control_state.save_requested:
-                self._clear_manual_save_request(task_record.task_id)
-                return YoloV8ObbTrainingControlCommand(save_checkpoint=True)
-            return None
+            return resolve_control_command(force=True)
 
         def on_savepoint(savepoint: YoloV8ObbTrainingSavePoint) -> None:
             self.dataset_storage.write_bytes(
@@ -318,17 +356,17 @@ class SqlAlchemyYoloV8ObbTrainingService:
                     checkpoint_object_key,
                     savepoint.latest_checkpoint_bytes,
                 )
-            periodic_checkpoint_retention.persist(
-                epoch=savepoint.epoch,
-                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
-            )
+            # epoch 0 仅用于暂停/终止时恢复新训练，不属于周期 checkpoint。
+            if savepoint.epoch >= 1:
+                periodic_checkpoint_retention.persist(
+                    epoch=savepoint.epoch,
+                    checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+                )
 
-        def poll_control() -> None:
-            """batch 边界立即终止；暂停留到 epoch 边界保存 checkpoint。"""
+        def poll_control() -> YoloV8ObbTrainingControlCommand | None:
+            """在 train/validation batch 安全点复用 Attempt 级探针。"""
 
-            control_state = self._read_control_state(task_record.task_id)
-            if control_state.terminate_requested:
-                raise YoloV8ObbTrainingTerminatedError()
+            return resolve_control_command()
 
         request = YoloV8ObbTrainingExecutionRequest(
             dataset_storage=self.dataset_storage,
@@ -388,7 +426,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 summary_object_key=summary_object_key,
                 finished_stage="cancelled",
             )
-            self.task_service.append_task_event(
+            execute_state_event(
                 build_yolov8_obb_training_cancelled_event(
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
@@ -411,7 +449,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 summary_object_key=summary_object_key,
                 finished_stage="paused",
             )
-            self.task_service.append_task_event(
+            execute_state_event(
                 build_yolov8_obb_training_paused_event(
                     task_id=task_record.task_id,
                     result=paused_result,
@@ -436,7 +474,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
                 latest_checkpoint_path=latest_checkpoint_path,
                 latest_checkpoint_object_key=latest_checkpoint_object_key,
             )
-            self.task_service.append_task_event(
+            execute_state_event(
                 build_yolov8_obb_training_failed_event(
                     task_id=task_record.task_id,
                     finished_at=self._now_iso(),
@@ -527,7 +565,7 @@ class SqlAlchemyYoloV8ObbTrainingService:
             "model_version_id": model_version_id,
             "summary": summary,
         }
-        self.task_service.append_task_event(
+        execute_state_event(
             build_yolov8_obb_training_succeeded_event(
                 task_id=task_record.task_id,
                 finished_at=self._now_iso(),
@@ -847,7 +885,12 @@ class SqlAlchemyYoloV8ObbTrainingService:
         )
         if updated_metadata is None:
             return
-        self.task_service.update_task_metadata(task_id, updated_metadata)
+        self.task_service.update_task_metadata(
+            task_id,
+            updated_metadata,
+            expected_states=(task.state,),
+            expected_current_attempt_no=task.current_attempt_no,
+        )
 
     def _set_control_flag(
         self, task_record: TaskRecord, flag: str, value: bool
@@ -861,7 +904,12 @@ class SqlAlchemyYoloV8ObbTrainingService:
             flag=flag,
             value=value,
         )
-        self.task_service.update_task_metadata(task_record.task_id, updated_metadata)
+        self.task_service.update_task_metadata(
+            task_record.task_id,
+            updated_metadata,
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
+        )
 
     def _write_labels_text(
         self, *, labels_object_key: str, labels: tuple[str, ...]

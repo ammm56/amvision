@@ -9,6 +9,7 @@ from typing import Any
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
 )
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
@@ -27,6 +28,7 @@ def assigned_training_device(
     task_id: str,
     device_lease_provider: DeviceLeaseProvider | None = None,
     device_lease_config: DeviceLeaseProviderConfig | None = None,
+    execution_fence: TaskExecutionFence | None = None,
 ) -> Iterator[DeviceLease]:
     """为训练任务分配设备，并把本次实际设备写回 task_spec。
 
@@ -58,6 +60,7 @@ def assigned_training_device(
                 task_record=task_record,
                 requested_device=requested_device,
                 lease=lease,
+                execution_fence=execution_fence,
             )
             yield lease
 
@@ -86,6 +89,7 @@ def write_resolved_training_device(
     task_record: TaskRecord,
     requested_device: str | None,
     lease: DeviceLease,
+    execution_fence: TaskExecutionFence | None = None,
 ) -> None:
     """把实际训练设备写入任务规格与 metadata。"""
 
@@ -111,19 +115,25 @@ def write_resolved_training_device(
         task_record.task_id,
         task_spec=task_spec,
         metadata=metadata,
+        expected_states=(task_record.state,),
+        expected_current_attempt_no=task_record.current_attempt_no,
+        fence=execution_fence,
     )
-    task_service.append_task_event(
-        AppendTaskEventRequest(
+    assignment_event = AppendTaskEventRequest(
             task_id=task_record.task_id,
             event_type="log",
             message=f"training device assigned: {lease.info.resolved_device}",
             payload={
-                "metadata": {
-                    "training_device_assignment": metadata["training_device_assignment"]
-                }
+                "training_device_assignment": metadata["training_device_assignment"]
             },
         )
-    )
+    if execution_fence is not None:
+        task_service.append_task_attempt_event(
+            assignment_event,
+            fence=execution_fence,
+        )
+    else:
+        task_service.append_task_event(assignment_event)
 
 
 @contextmanager

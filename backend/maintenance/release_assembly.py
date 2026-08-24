@@ -61,7 +61,6 @@ class ReleaseAssemblyRequest:
     - profile_id：要组装的 release profile id。
     - output_root：release 输出根目录。
     - overwrite：目标目录已存在时是否允许覆盖。
-    - bundled_python_source_dir：兼容字段；自动复制大体量 Python 已禁用。
     - frontend_dist_dir：可选的前端构建产物目录。
     - frontend_runtime_config_source_file：优先复制为 runtime-config.json 的配置文件。
     - frontend_runtime_config_template_file：找不到 source_file 时使用的模板文件。
@@ -70,7 +69,6 @@ class ReleaseAssemblyRequest:
     profile_id: str
     output_root: Path
     overwrite: bool = False
-    bundled_python_source_dir: Path | None = None
     frontend_dist_dir: Path | None = None
     frontend_runtime_config_source_file: Path | None = None
     frontend_runtime_config_template_file: Path | None = None
@@ -164,21 +162,6 @@ def _ignore_custom_nodes_copy(directory: str, names: list[str]) -> set[str]:
     """
 
     ignored_names = {"__pycache__"}
-    return {
-        name
-        for name in names
-        if name in ignored_names or name.endswith(".pyc") or name.endswith(".pyo")
-    }
-
-
-def _ignore_bundled_python_copy(directory: str, names: list[str]) -> set[str]:
-    """返回复制 bundled Python 时需要忽略的目录和文件名。"""
-
-    ignored_names = {
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-    }
     return {
         name
         for name in names
@@ -698,6 +681,22 @@ def _prepare_bundled_python_dir(release_dir: Path) -> Path:
     return release_python_dir
 
 
+def _has_bundled_python_executable(python_dir: Path) -> bool:
+    """判断目录中是否存在可用于启动发行包的 Python 可执行文件。
+
+    Windows 发行包使用 ``python/python.exe``，Linux 发行包使用
+    ``python/bin/python`` 或 ``python/bin/python3``。仅存在目录或其他标记文件
+    仍属于待填充占位状态，不能在 release manifest 中声明已包含 Python。
+    """
+
+    executable_candidates = (
+        python_dir / "python.exe",
+        python_dir / "bin" / "python",
+        python_dir / "bin" / "python3",
+    )
+    return any(candidate.is_file() for candidate in executable_candidates)
+
+
 def _materialize_bundled_python_dir(
     release_dir: Path,
     preserved_python_temp_dir: Path | None,
@@ -716,7 +715,9 @@ def _materialize_bundled_python_dir(
         restored_python_dir = _restore_preserved_python_dir(
             release_dir, preserved_python_temp_dir
         )
-        return restored_python_dir, "preserved-existing"
+        if _has_bundled_python_executable(restored_python_dir):
+            return restored_python_dir, "preserved-existing"
+        return restored_python_dir, "placeholder-empty"
     release_python_dir = _prepare_bundled_python_dir(release_dir)
     return release_python_dir, "placeholder-empty"
 
@@ -787,12 +788,6 @@ def _resolve_release_target(
 
 def assemble_release(request: ReleaseAssemblyRequest) -> ReleaseAssemblyResult:
     """按指定 release profile 组装发行目录。"""
-
-    if request.bundled_python_source_dir is not None:
-        raise ValueError(
-            "assemble-release 不复制 bundled Python；请保留现有 release/python，"
-            "或在首次组装后手工移动/复制完整 Python 目录"
-        )
     requested_profile_id = request.profile_id.strip()
     if not requested_profile_id:
         raise ValueError("release profile id 不能为空")

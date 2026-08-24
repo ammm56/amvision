@@ -1,4 +1,4 @@
-"""RF-DETR 转换 worker 接口与 ONNX/OpenVINO/TensorRT 实现。"""
+"""RF-DETR 转换 runner 与 ONNX/OpenVINO/TensorRT 实现。"""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from backend.service.application.models.catalog.rfdetr import (
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.workers.conversion.model_conversion_common import (
+from backend.service.application.conversions.runtime.model_conversion_common import (
     attach_conversion_output_provenance,
     build_conversion_options_metadata,
     build_conversion_output_runtime_fields,

@@ -34,6 +34,7 @@ def read_or_build_checkpoint_artifacts(
     model_config: Any,
     train_config: TrainConfig,
     trainer: Any,
+    latest_checkpoint_bytes: bytes,
 ) -> RfdetrCheckpointArtifacts:
     """分别读取 best 权重和 latest Lightning 恢复状态。"""
 
@@ -63,22 +64,13 @@ def read_or_build_checkpoint_artifacts(
             best_checkpoint_path,
         )
 
-    latest_checkpoint_path = output_dir / "last.ckpt"
-    if not latest_checkpoint_path.is_file():
-        save_checkpoint = getattr(trainer, "save_checkpoint", None)
-        if callable(save_checkpoint):
-            raise InvalidRequestError(
-                "RF-DETR 训练结束时缺少 last.ckpt；禁止在 EMA/best 权重可能已替换后补存恢复文件",
-                details={"checkpoint_path": str(latest_checkpoint_path)},
-            )
-    if not latest_checkpoint_path.is_file():
-        # 极简测试 trainer 可能不提供 Lightning save_checkpoint；此时明确回退，
-        # 但真实训练器必须生成 last.ckpt。
-        latest_checkpoint_path = best_checkpoint_path
+    immutable_latest_bytes = bytes(latest_checkpoint_bytes)
+    if not immutable_latest_bytes:
+        raise InvalidRequestError("RF-DETR 训练结束时缺少 completed-epoch checkpoint")
 
     return RfdetrCheckpointArtifacts(
         best_checkpoint_bytes=best_checkpoint_path.read_bytes(),
-        latest_checkpoint_bytes=latest_checkpoint_path.read_bytes(),
+        latest_checkpoint_bytes=immutable_latest_bytes,
     )
 
 
@@ -162,25 +154,6 @@ def prepare_resume_checkpoint(
             "RF-DETR resume 不再接受 legacy EMA checkpoint；请使用当前平台生成的完整 checkpoint"
         )
     return str(checkpoint_path)
-
-
-def read_or_build_checkpoint_bytes(
-    *,
-    output_dir: Path,
-    module: Any,
-    model_config: Any,
-    train_config: TrainConfig,
-    trainer: Any,
-) -> bytes:
-    """读取训练输出 checkpoint；缺少文件时按当前 module 状态补一个标准 checkpoint。"""
-
-    return read_or_build_checkpoint_artifacts(
-        output_dir=output_dir,
-        module=module,
-        model_config=model_config,
-        train_config=train_config,
-        trainer=trainer,
-    ).best_checkpoint_bytes
 
 
 def build_metrics_payload(

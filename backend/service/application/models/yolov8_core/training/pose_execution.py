@@ -33,7 +33,7 @@ from backend.service.application.models.training.training_engine import (
 )
 from backend.service.application.models.training.checkpoint_policy import (
     read_training_checkpoint_interval,
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
@@ -181,7 +181,9 @@ class YoloV8PoseTrainingExecutionRequest:
     extra_options: dict[str, object] | None = None
     epoch_callback: Callable | None = None
     batch_callback: Callable[[YoloV8PoseTrainingBatchProgress], None] | None = None
-    control_callback: Callable[[], None] | None = None
+    control_callback: Callable[
+        [], YoloV8PoseTrainingControlCommand | None
+    ] | None = None
     savepoint_callback: Callable | None = None
 
 
@@ -355,7 +357,6 @@ def run_yolov8_pose_training(
         if resume_payload
         else "val_oks_ap50_95"
     )
-    ckpt_bytes = b""
     best_checkpoint_bytes = (
         request.previous_best_checkpoint_path.read_bytes()
         if request.previous_best_checkpoint_path is not None
@@ -381,6 +382,71 @@ def run_yolov8_pose_training(
         grad_clip_norm=grad_clip,
         initial_iteration=global_iteration,
     )
+
+    def build_completed_epoch_checkpoint(completed_epoch: int) -> bytes:
+        """序列化最近完整 epoch；仅保存在当前 Attempt 内存中。"""
+
+        buffer = io.BytesIO()
+        torch.save(
+            {
+                "epoch": completed_epoch,
+                "global_iteration": global_iteration,
+                "model_state_dict": model.state_dict(),
+                "ema_state_dict": ema.state_dict(),
+                "ema_updates": ema.updates,
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "scaler_state_dict": (
+                    scaler.state_dict() if scaler is not None else None
+                ),
+                "metrics_history": metrics_history,
+                "validation_history": validation_history,
+                "best_metric_value": best_metric_value,
+                "best_metric_name": best_metric_name,
+                "batch_size": bs,
+                "max_epochs": max_epochs,
+                "evaluation_interval": request.evaluation_interval,
+                "input_size": input_size,
+                "precision": precision,
+            },
+            buffer,
+        )
+        return buffer.getvalue()
+
+    ckpt_bytes = build_completed_epoch_checkpoint(start_epoch)
+    last_completed_savepoint = YoloV8PoseTrainingSavePoint(
+        latest_checkpoint_bytes=ckpt_bytes,
+        train_metrics=dict(metrics_history[-1]) if metrics_history else {},
+        validation_metrics=(
+            dict(validation_history[-1]) if validation_history else {}
+        ),
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        epoch=start_epoch,
+        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+            optimizer=optimizer,
+            initial_learning_rate=training_schedule.initial_lr,
+        ),
+    )
+
+    def observe_control() -> None:
+        """在 batch 安全点使用最近完整 epoch 快照执行控制。"""
+
+        if request.control_callback is None:
+            return
+        command = request.control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and request.savepoint_callback is not None:
+            request.savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise YoloV8PoseTrainingPausedError()
+        if command.terminate_training:
+            raise YoloV8PoseTrainingTerminatedError()
     dataloader_plan = resolve_yolo_task_dataloader_plan(
         extra_options=dict(request.extra_options or {}),
         device=device,
@@ -418,8 +484,7 @@ def run_yolov8_pose_training(
         )
         max_iterations = max(1, len(train_dataloader))
         for iteration, cpu_batch in enumerate(train_dataloader, start=1):
-            if request.control_callback is not None:
-                request.control_callback()
+            observe_control()
             if cpu_batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -547,7 +612,7 @@ def run_yolov8_pose_training(
                 kpt_shape=kpt_shape,
                 imports=_build_yolo_training_imports(cv2, np, torch),
                 batch_size=bs,
-                control_callback=request.control_callback,
+                control_callback=observe_control,
             )
             validation_history.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
@@ -580,7 +645,7 @@ def run_yolov8_pose_training(
             best_metric_name=best_metric_name,
         )
         cmd = request.epoch_callback(ep_progress) if request.epoch_callback else None
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch + 1,
             max_epochs=max_epochs,
             interval_epochs=read_training_checkpoint_interval(extra),
@@ -589,52 +654,25 @@ def run_yolov8_pose_training(
             pause_requested=bool(cmd and cmd.pause_training),
             terminate_requested=bool(cmd and cmd.terminate_training),
         )
-        if checkpoint_decision.should_serialize:
-            buf = io.BytesIO()
-            torch.save(
-                {
-                    "epoch": epoch + 1,
-                    "global_iteration": global_iteration,
-                    "model_state_dict": model.state_dict(),
-                    "ema_state_dict": ema.state_dict(),
-                    "ema_updates": ema.updates,
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(),
-                    "scaler_state_dict": scaler.state_dict()
-                    if scaler is not None
-                    else None,
-                    "metrics_history": metrics_history,
-                    "validation_history": validation_history,
-                    "best_metric_value": best_metric_value,
-                    "best_metric_name": best_metric_name,
-                    "batch_size": bs,
-                    "max_epochs": max_epochs,
-                    "evaluation_interval": request.evaluation_interval,
-                    "input_size": input_size,
-                    "precision": precision,
-                },
-                buf,
-            )
-            ckpt_bytes = buf.getvalue()
-        if best_metric_improved and checkpoint_decision.should_serialize:
+        ckpt_bytes = build_completed_epoch_checkpoint(epoch + 1)
+        if best_metric_improved:
             best_checkpoint_bytes = ckpt_bytes
 
-        if checkpoint_decision.should_serialize and request.savepoint_callback:
-            request.savepoint_callback(
-                YoloV8PoseTrainingSavePoint(
-                    latest_checkpoint_bytes=ckpt_bytes,
-                    train_metrics=avg_metrics,
-                    validation_metrics=val_metrics,
-                    best_metric_value=best_metric_value,
-                    best_metric_name=best_metric_name,
-                    epoch=epoch + 1,
-                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
-                        optimizer=optimizer,
-                        initial_learning_rate=training_schedule.initial_lr,
-                    ),
-                    is_best=best_metric_improved,
-                )
-            )
+        last_completed_savepoint = YoloV8PoseTrainingSavePoint(
+            latest_checkpoint_bytes=ckpt_bytes,
+            train_metrics=avg_metrics,
+            validation_metrics=val_metrics,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            epoch=epoch + 1,
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
+            is_best=best_metric_improved,
+        )
+        if checkpoint_decision.should_persist and request.savepoint_callback:
+            request.savepoint_callback(last_completed_savepoint)
 
         if cmd and cmd.pause_training:
             raise YoloV8PoseTrainingPausedError()
@@ -679,7 +717,7 @@ def run_yolov8_pose_training(
             kpt_shape=kpt_shape,
             imports=_build_yolo_training_imports(cv2, np, torch),
             batch_size=bs,
-            control_callback=request.control_callback,
+            control_callback=observe_control,
         )
         test_metrics_payload = build_detection_test_metrics_report(
             available=True,

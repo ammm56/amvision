@@ -39,7 +39,7 @@ from backend.service.infrastructure.queue.local_file import LocalFileQueueBacken
 from backend.workers.conversion.rfdetr_conversion_queue_worker import (
     RfdetrConversionQueueWorker,
 )
-from backend.workers.conversion.rfdetr_conversion_runner import (
+from backend.service.application.conversions.runtime.rfdetr_conversion_runner import (
     LocalRfdetrConversionRunner,
 )
 from tests.yolox_test_support import create_yolox_test_runtime

@@ -34,6 +34,7 @@ class ExecutionControl:
     node_id: str
     cancellation_event: object | None = None
     deadline_monotonic: float | None = None
+    deadline_scope: str = "node"
 
     def remaining_seconds(self) -> float | None:
         """返回 deadline 剩余秒数；无 deadline 时返回 None。"""
@@ -53,7 +54,11 @@ class ExecutionControl:
         remaining = self.remaining_seconds()
         if remaining is not None and remaining <= 0:
             raise OperationTimeoutError(
-                "Workflow 节点执行超过 deadline",
+                (
+                    "Workflow 执行超过 deadline"
+                    if self.deadline_scope == "workflow"
+                    else "Workflow 节点执行超过 deadline"
+                ),
                 details={"node_id": self.node_id},
             )
 
@@ -118,7 +123,7 @@ def build_node_execution_control(
     """组合 Workflow 和节点操作 timeout。"""
 
     now = monotonic()
-    deadlines: list[float] = []
+    deadlines: list[tuple[float, str]] = []
     workflow_deadline = request.execution_metadata.get(
         WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY
     )
@@ -126,13 +131,19 @@ def build_node_execution_control(
         isinstance(workflow_deadline, int | float)
         and not isinstance(workflow_deadline, bool)
     ):
-        deadlines.append(float(workflow_deadline))
+        deadlines.append((float(workflow_deadline), "workflow"))
+    if request.node_deadline_monotonic is not None:
+        deadlines.append((float(request.node_deadline_monotonic), "node"))
     if operation_timeout_seconds is not None:
-        deadlines.append(now + max(0.0, float(operation_timeout_seconds)))
+        deadlines.append(
+            (now + max(0.0, float(operation_timeout_seconds)), "node")
+        )
+    effective_deadline = min(deadlines, key=lambda item: item[0]) if deadlines else None
     return ExecutionControl(
         node_id=request.node_id,
         cancellation_event=request.node_cancellation_event,
-        deadline_monotonic=min(deadlines) if deadlines else None,
+        deadline_monotonic=effective_deadline[0] if effective_deadline else None,
+        deadline_scope=effective_deadline[1] if effective_deadline else "node",
     )
 
 

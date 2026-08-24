@@ -9,7 +9,11 @@ from backend.service.application.conversions.yolo26_conversion_task_service impo
     YOLO26_CONVERSION_QUEUE_NAME,
     SqlAlchemyYolo26ConversionTaskService,
 )
-from backend.service.application.errors import InvalidRequestError, ServiceError
+from backend.service.application.errors import (
+    ConversionPublicationRecoveryRequiredError,
+    InvalidRequestError,
+    ServiceError,
+)
 from backend.service.application.ports.queue import QueueBackend, QueueMessage
 from backend.service.application.runtime.device_leases import DeviceLeaseProviderConfig
 from backend.service.infrastructure.db.session import SessionFactory
@@ -36,9 +40,8 @@ class Yolo26ConversionQueueWorker:
         conversion_runner: ConversionBackend | None = None,
         worker_id: str = "yolo26-conversion-worker",
         conversion_workspace_dir: str | Path = "./data/worker",
-        conversion_attempt_timeout_seconds: float = 7200.0,
         conversion_helper_timeout_seconds: float = 7200.0,
-        conversion_termination_grace_seconds: float = 5.0,
+        conversion_termination_grace_seconds: float = 15.0,
         device_lease_config: DeviceLeaseProviderConfig | None = None,
     ) -> None:
         """初始化 YOLO26 转换队列 worker。"""
@@ -49,7 +52,6 @@ class Yolo26ConversionQueueWorker:
         self.conversion_runner = conversion_runner
         self.worker_id = worker_id
         self.conversion_workspace_dir = Path(conversion_workspace_dir)
-        self.conversion_attempt_timeout_seconds = conversion_attempt_timeout_seconds
         self.conversion_helper_timeout_seconds = conversion_helper_timeout_seconds
         self.conversion_termination_grace_seconds = conversion_termination_grace_seconds
         self.device_lease_config = device_lease_config or DeviceLeaseProviderConfig()
@@ -74,7 +76,6 @@ class Yolo26ConversionQueueWorker:
                     runner_kind="yolo26",
                     dataset_storage=self.dataset_storage,
                     workspace_dir=self.conversion_workspace_dir,
-                    timeout_seconds=self.conversion_attempt_timeout_seconds,
                     helper_timeout_seconds=self.conversion_helper_timeout_seconds,
                     termination_grace_seconds=(
                         self.conversion_termination_grace_seconds
@@ -82,7 +83,19 @@ class Yolo26ConversionQueueWorker:
                     device_lease_config=self.device_lease_config,
                 ),
             )
-            run_result = service.process_conversion_task(task_id)
+            fence_resolver = getattr(self.queue_backend, "get_execution_fence", None)
+            execution_fence = (
+                fence_resolver(queue_task) if callable(fence_resolver) else None
+            )
+            run_result = service.process_conversion_task(
+                task_id,
+                execution_fence=execution_fence,
+            )
+        except ConversionPublicationRecoveryRequiredError:
+            defer_recovery = getattr(self.queue_backend, "defer_recovery", None)
+            if callable(defer_recovery):
+                defer_recovery(queue_task)
+            return True
         except ServiceError as error:
             self.queue_backend.fail(
                 queue_task,

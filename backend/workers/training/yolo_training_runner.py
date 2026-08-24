@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
-from backend.service.application.tasks.task_service import AppendTaskEventRequest
+from backend.service.application.tasks.task_service import (
+    AppendTaskEventRequest,
+    read_task_execution_fence,
+)
 from backend.service.application.backends import (
     TrainingBackendRunRequest,
     TrainingBackendRunResult,
@@ -168,11 +171,13 @@ class SqlAlchemyYoloTrainingRunner:
         - TrainingBackendRunResult：训练执行结果。
         """
         task_id = request.training_task_id
+        execution_fence = read_task_execution_fence(request.metadata)
         with (
             model_task_resource_cleanup(),
             assigned_training_device(
                 session_factory=self.session_factory,
                 task_id=task_id,
+                execution_fence=execution_fence,
             ),
         ):
             task_service = SqlAlchemyTaskService(session_factory=self.session_factory)
@@ -181,6 +186,7 @@ class SqlAlchemyYoloTrainingRunner:
                 task=task,
                 task_service=task_service,
                 request=request,
+                execution_fence=execution_fence,
             )
 
             task_type = str(request.task_type or "").strip().lower()
@@ -221,6 +227,7 @@ class SqlAlchemyYoloTrainingRunner:
             result = service.process_training_task(
                 task,
                 model_type=normalized_model_type,
+                execution_fence=execution_fence,
             )
 
             # 构建统一结果
@@ -256,6 +263,7 @@ class SqlAlchemyYoloTrainingRunner:
         task: TaskRecord,
         task_service: SqlAlchemyTaskService,
         request: TrainingBackendRunRequest,
+        execution_fence,
     ) -> TaskRecord:
         """队列 lease 回收后，从已落盘的 latest checkpoint 恢复任务快照。"""
 
@@ -286,14 +294,14 @@ class SqlAlchemyYoloTrainingRunner:
             result_patch["checkpoint_object_key"] = best_checkpoint_object_key
 
         recovery_count = request.metadata.get("queue_lease_recovery_count")
-        task_service.append_task_event(
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task.task_id,
                 event_type="status",
                 message="training queue lease recovered",
                 payload={
                     "state": "running",
-                    "attempt_no": task.current_attempt_no + 1,
+                    "attempt_no": task.current_attempt_no,
                     "finished_at": None,
                     "error_message": None,
                     "progress": {"stage": "running"},
@@ -312,6 +320,7 @@ class SqlAlchemyYoloTrainingRunner:
                         }
                     },
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         return task_service.get_task(task.task_id).task

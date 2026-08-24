@@ -29,6 +29,7 @@ from backend.service.application.models.inference.segmentation_inference_task_se
     SqlAlchemySegmentationInferenceTaskService,
 )
 from backend.service.application.ports.queue import QueueBackend, QueueMessage
+from backend.service.application.tasks.task_service import TaskExecutionFence
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
@@ -41,8 +42,23 @@ from backend.workers.settings import (
     BACKEND_WORKER_CONSUMER_POSE_INFERENCE,
     BACKEND_WORKER_CONSUMER_SEGMENTATION_INFERENCE,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 
 _InferenceServiceFactory = Callable[..., object]
+
+
+def _read_execution_fence(
+    queue_backend: QueueBackend,
+    queue_task: QueueMessage,
+) -> TaskExecutionFence | None:
+    """读取正式 Task 队列消息的稳定 Attempt fence。"""
+
+    if not isinstance(queue_backend, TaskAttemptClaimingQueueBackend):
+        return None
+    return queue_backend.get_execution_fence(
+        queue_task,
+        include_heartbeat=False,
+    )
 
 _INFERENCE_CONSUMER_CONFIGS: dict[str, tuple[str, _InferenceServiceFactory]] = {
     BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE: (
@@ -78,6 +94,7 @@ class InferenceQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
+        async_inference_queue_backend: QueueBackend | None = None,
         async_inference_request_timeout_seconds: float = 30.0,
         worker_id: str = "inference-worker",
     ) -> None:
@@ -95,7 +112,7 @@ class InferenceQueueWorker:
         self.dataset_storage = dataset_storage
         self.queue_backend = queue_backend
         self.async_inference_executor = QueueBackedAsyncInferenceClient(
-            queue_backend=queue_backend,
+            queue_backend=async_inference_queue_backend or queue_backend,
             request_timeout_seconds=async_inference_request_timeout_seconds,
             client_id=worker_id,
             dataset_storage=dataset_storage,
@@ -119,7 +136,13 @@ class InferenceQueueWorker:
                 dataset_storage=self.dataset_storage,
                 async_inference_executor=self.async_inference_executor,
             )
-            run_result = service.process_inference_task(task_id)
+            run_result = service.process_inference_task(
+                task_id,
+                execution_fence=_read_execution_fence(
+                    self.queue_backend,
+                    queue_task,
+                ),
+            )
         except ServiceError as error:
             self.queue_backend.fail(
                 queue_task,

@@ -60,7 +60,7 @@ class YoloDetectionTrainingSavePoint:
 
 
 class YoloDetectionTrainingPausedError(Exception):
-    """表示 detection 训练在 epoch 边界保存后进入 paused 状态。"""
+    """表示 detection 训练在 batch 安全点保存最近完整 epoch 后暂停。"""
 
     def __init__(self, savepoint: YoloDetectionTrainingSavePoint) -> None:
         """初始化 paused 异常并携带可恢复 savepoint。"""

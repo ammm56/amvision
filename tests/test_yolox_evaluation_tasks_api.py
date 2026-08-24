@@ -30,6 +30,7 @@ from backend.service.infrastructure.queue.local_file import LocalFileQueueBacken
 from backend.workers.evaluation.model_evaluation_queue_worker import (
     DetectionEvaluationQueueWorker,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 from tests.api_test_support import build_test_headers, build_test_jpeg_bytes
 from tests.yolox_test_support import (
     create_yolox_api_test_context,
@@ -59,7 +60,10 @@ def test_create_yolox_evaluation_task_and_read_report_after_worker(
     worker = DetectionEvaluationQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
+        queue_backend=TaskAttemptClaimingQueueBackend(
+            queue_backend=queue_backend,
+            session_factory=session_factory,
+        ),
         worker_id="test-detection-evaluation-worker",
     )
 

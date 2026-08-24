@@ -39,16 +39,6 @@ class BackendMaintenanceWorkspaceConfig(BaseModel):
     root_dir: str = "./data/maintenance"
 
 
-class BackendMaintenanceReleaseBundledPythonConfig(BaseModel):
-    """描述 release 组装阶段 bundled Python 的可选来源配置。
-
-    字段：
-    - source_dir：仅在需要显式重建 bundled Python 时使用的来源目录。
-    """
-
-    source_dir: str | None = None
-
-
 class BackendMaintenanceReleaseFrontendConfig(BaseModel):
     """描述 release 组装阶段前端静态资源的来源配置。
 
@@ -67,13 +57,9 @@ class BackendMaintenanceReleaseConfig(BaseModel):
     """描述 release 组装阶段的统一来源配置。
 
     字段：
-    - bundled_python：bundled Python 的可选重建来源配置。
     - frontend：前端静态资源来源配置。
     """
 
-    bundled_python: BackendMaintenanceReleaseBundledPythonConfig = Field(
-        default_factory=BackendMaintenanceReleaseBundledPythonConfig
-    )
     frontend: BackendMaintenanceReleaseFrontendConfig = Field(
         default_factory=BackendMaintenanceReleaseFrontendConfig
     )

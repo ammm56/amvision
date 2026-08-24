@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from threading import Event
+from time import sleep
+
 import pytest
 
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
+    NODE_IMPLEMENTATION_CUSTOM,
     NODE_RUNTIME_PYTHON_CALLABLE,
     NODE_RUNTIME_WORKER_TASK,
     NodeDefinition,
@@ -16,12 +20,148 @@ from backend.contracts.workflows.workflow_graph import (
     WorkflowGraphOutput,
     WorkflowGraphTemplate,
 )
-from backend.service.application.errors import ServiceConfigurationError
+from backend.service.application.errors import (
+    OperationTimeoutError,
+    ServiceConfigurationError,
+)
+from backend.service.application.workflows.execution.node_pack_timeout import (
+    NodePackExecutionTimeoutPolicy,
+)
 from backend.service.application.workflows.graph_executor import (
     WorkflowGraphExecutor,
     WorkflowNodeExecutionRequest,
     WorkflowNodeRuntimeRegistry,
 )
+
+
+def test_node_pack_handler_receives_deadline_and_emits_lifecycle() -> None:
+    """Node Pack 直接调用保持数据面不变，仅发送 started/ended 控制消息。"""
+
+    definition, template = _build_custom_passthrough_graph()
+    registry = WorkflowNodeRuntimeRegistry()
+    cancellation_event = Event()
+    requests: list[WorkflowNodeExecutionRequest] = []
+    lifecycle: list[dict[str, object]] = []
+
+    def handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        requests.append(request)
+        return {"result": request.input_values["value"]}
+
+    registry.register_python_callable(definition, handler)
+    result = WorkflowGraphExecutor(
+        registry=registry,
+        node_pack_timeout_policies={
+            ("test-pack", "1.0.0"): NodePackExecutionTimeoutPolicy(
+                default_seconds=10.0,
+                kill_grace_seconds=2.0,
+            )
+        },
+        node_cancellation_event=cancellation_event,
+        node_lifecycle_callback=lifecycle.append,
+    ).execute(
+        template=template,
+        input_values={"source": {"value": "ok"}},
+        execution_metadata={"workflow_run_id": "run-1"},
+    )
+
+    assert result.outputs["output"] == {"value": "ok"}
+    assert len(requests) == 1
+    assert requests[0].node_cancellation_event is cancellation_event
+    assert requests[0].node_deadline_monotonic is not None
+    assert requests[0].node_invocation_id is not None
+    assert len(requests[0].node_invocation_id or "") == 32
+    assert [item["message_type"] for item in lifecycle] == [
+        "node-started",
+        "node-ended",
+    ]
+    assert lifecycle[0]["node_invocation_id"] == lifecycle[1]["node_invocation_id"]
+    assert lifecycle[1]["outcome"] == "succeeded"
+
+
+def test_preview_node_pack_timeout_is_reported_after_uncooperative_handler_returns() -> None:
+    """可信 Preview handler 不被强杀，但返回后必须报告已超过 Node Pack deadline。"""
+
+    definition, template = _build_custom_passthrough_graph()
+    registry = WorkflowNodeRuntimeRegistry()
+
+    def slow_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
+        sleep(0.02)
+        return {"result": request.input_values["value"]}
+
+    registry.register_python_callable(definition, slow_handler)
+    with pytest.raises(OperationTimeoutError):
+        WorkflowGraphExecutor(
+            registry=registry,
+            node_pack_timeout_policies={
+                ("test-pack", "1.0.0"): NodePackExecutionTimeoutPolicy(
+                    default_seconds=0.001,
+                    kill_grace_seconds=0.0,
+                )
+            },
+        ).execute(
+            template=template,
+            input_values={"source": {"value": "late"}},
+        )
+
+
+def _build_custom_passthrough_graph() -> tuple[NodeDefinition, WorkflowGraphTemplate]:
+    """构造单 Node Pack 节点图。"""
+
+    definition = NodeDefinition(
+        node_type_id="custom.test.passthrough",
+        display_name="Custom Passthrough",
+        category="test",
+        description="Node Pack timeout 测试节点。",
+        implementation_kind=NODE_IMPLEMENTATION_CUSTOM,
+        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
+        node_pack_id="test-pack",
+        node_pack_version="1.0.0",
+        input_ports=(
+            NodePortDefinition(
+                name="value",
+                display_name="Value",
+                payload_type_id="value.v1",
+            ),
+        ),
+        output_ports=(
+            NodePortDefinition(
+                name="result",
+                display_name="Result",
+                payload_type_id="value.v1",
+            ),
+        ),
+        parameter_schema={"type": "object", "properties": {}},
+    )
+    template = WorkflowGraphTemplate(
+        template_id="custom-timeout-template",
+        template_version="1.0.0",
+        display_name="Custom Timeout",
+        nodes=(
+            WorkflowGraphNode(
+                node_id="custom-node",
+                node_type_id=definition.node_type_id,
+            ),
+        ),
+        template_inputs=(
+            WorkflowGraphInput(
+                input_id="source",
+                display_name="Source",
+                payload_type_id="value.v1",
+                target_node_id="custom-node",
+                target_port="value",
+            ),
+        ),
+        template_outputs=(
+            WorkflowGraphOutput(
+                output_id="output",
+                display_name="Output",
+                payload_type_id="value.v1",
+                source_node_id="custom-node",
+                source_port="result",
+            ),
+        ),
+    )
+    return definition, template
 
 
 def test_workflow_graph_executor_runs_python_callable_and_worker_task_nodes() -> None:

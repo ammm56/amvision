@@ -471,7 +471,6 @@ def build_yolo_detection_training_epoch_progress_event(
         event_type="progress",
         message=f"{model_type} training epoch {progress.epoch}/{progress.max_epochs} completed",
         payload={
-            "state": "running",
             "attempt_no": attempt_no,
             "progress": progress_payload,
             "metadata": {

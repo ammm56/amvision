@@ -96,6 +96,7 @@ def collect_yolox_coco_detections(
     category_ids: tuple[int, ...],
     score_threshold: float,
     nms_threshold: float,
+    control_callback: Callable[[], None] | None = None,
 ) -> tuple[dict[str, object], ...]:
     """把 YOLOX 模型输出转换为 COCO detection 结果列表。"""
 
@@ -125,6 +126,8 @@ def collect_yolox_coco_detections(
                     category_ids=category_ids,
                 )
             )
+            if control_callback is not None:
+                control_callback()
 
     return tuple(detections)
 
@@ -147,6 +150,7 @@ def evaluate_yolox_coco_map(
     annotation_file: Path,
     score_threshold: float,
     nms_threshold: float,
+    control_callback: Callable[[], None] | None = None,
 ) -> CocoDetectionMetrics:
     """执行 YOLOX PyTorch 模型在 COCO detection split 上的 mAP 评估。"""
 
@@ -176,6 +180,7 @@ def evaluate_yolox_coco_map(
             category_ids=category_ids,
             score_threshold=score_threshold,
             nms_threshold=nms_threshold,
+            control_callback=control_callback,
         )
     finally:
         model.train(was_training)

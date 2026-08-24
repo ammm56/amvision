@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,6 +28,9 @@ from backend.service.application.models.rfdetr_core.training.platform_control im
     RfdetrPlatformTrainingControlCommand,
     RfdetrPlatformTrainingControlSignal,
     build_rfdetr_platform_training_callback,
+)
+from backend.service.application.models.rfdetr_core.training.attempt_checkpoint_io import (
+    RfdetrAttemptCheckpointIO,
 )
 from backend.service.application.models.training import (
     rfdetr_detection_task_service as rfdetr_task_service_module,
@@ -255,9 +259,10 @@ def test_rfdetr_lightning_callback_emits_batch_and_pauses_with_checkpoint(
 
     callback = build_rfdetr_platform_training_callback(
         task_type=SEGMENTATION_TASK_TYPE,
-        output_dir=tmp_path,
         max_epochs=3,
+        checkpoint_interval=2,
         batch_callback=batch_progress.append,
+        control_callback=None,
         epoch_callback=on_epoch,
         savepoint_callback=savepoints.append,
     )
@@ -272,12 +277,17 @@ def test_rfdetr_lightning_callback_emits_batch_and_pauses_with_checkpoint(
             "ignored_nan": torch.tensor(float("nan")),
         }
         optimizers = [SimpleNamespace(param_groups=[{"lr": 2e-4}])]
+        checkpoint_io = RfdetrAttemptCheckpointIO()
+        strategy = SimpleNamespace(checkpoint_io=checkpoint_io)
 
-        @staticmethod
-        def save_checkpoint(path: str) -> None:
-            Path(path).write_bytes(b"lightning-resume-state")
+        def save_checkpoint(self, path: str) -> None:
+            self.checkpoint_io.save_checkpoint(
+                {"state_dict": {"model.weight": torch.tensor([1.0])}},
+                path,
+            )
 
     trainer = _Trainer()
+    callback.on_fit_start(trainer, pl_module=object())
     callback.on_train_batch_end(
         trainer,
         pl_module=object(),
@@ -295,7 +305,15 @@ def test_rfdetr_lightning_callback_emits_batch_and_pauses_with_checkpoint(
     assert epoch_progress[0].epoch == 0
     assert epoch_progress[0].learning_rate == pytest.approx(2e-4)
     assert raised.value.status == "paused"
-    assert raised.value.savepoint.latest_checkpoint_bytes == b"lightning-resume-state"
+    checkpoint = torch.load(
+        BytesIO(raised.value.savepoint.latest_checkpoint_bytes),
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert torch.equal(
+        checkpoint["state_dict"]["model.weight"],
+        torch.tensor([1.0]),
+    )
     assert savepoints == [raised.value.savepoint]
     assert savepoints[0].best_metric_value == pytest.approx(0.75)
 

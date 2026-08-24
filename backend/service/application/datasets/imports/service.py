@@ -61,6 +61,7 @@ from backend.service.application.project_mutation import ProjectMutationAdmissio
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
 )
 from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.dataset_import import (
@@ -229,7 +230,12 @@ class SqlAlchemyDatasetImportService(
 
         return initial_import
 
-    def process_dataset_import(self, dataset_import_id: str) -> DatasetImportResult:
+    def process_dataset_import(
+        self,
+        dataset_import_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> DatasetImportResult:
         """处理一条已登记的 DatasetImport。
 
         参数：
@@ -266,6 +272,7 @@ class SqlAlchemyDatasetImportService(
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "progress": {"stage": "extracting", "percent": 5},
             },
+            execution_fence=execution_fence,
         )
 
         request = self._load_staged_request(current_import, import_layout)
@@ -282,6 +289,7 @@ class SqlAlchemyDatasetImportService(
                 event_type="progress",
                 message="dataset import extracted",
                 payload={"progress": {"stage": "extracted", "percent": 25}},
+                execution_fence=execution_fence,
             )
 
             parsed_content = self._parse_dataset_content(
@@ -317,6 +325,7 @@ class SqlAlchemyDatasetImportService(
                         "category_count": len(parsed_content.categories),
                     }
                 },
+                execution_fence=execution_fence,
             )
 
             version_layout = self.dataset_storage.prepare_version_layout(
@@ -412,6 +421,7 @@ class SqlAlchemyDatasetImportService(
                         ),
                     },
                 },
+                execution_fence=execution_fence,
             )
 
             return DatasetImportResult(
@@ -427,6 +437,7 @@ class SqlAlchemyDatasetImportService(
                 import_layout=import_layout,
                 error=error,
                 version_layout=version_layout,
+                execution_fence=execution_fence,
             )
             raise
         except Exception as error:
@@ -876,6 +887,7 @@ class SqlAlchemyDatasetImportService(
         import_layout: DatasetImportLayout,
         error: ServiceError,
         version_layout: DatasetVersionLayout | None,
+        execution_fence: TaskExecutionFence | None,
     ) -> None:
         """记录导入失败结果并清理未完成版本目录。
 
@@ -928,6 +940,7 @@ class SqlAlchemyDatasetImportService(
                 },
                 "progress": {"stage": "failed"},
             },
+            execution_fence=execution_fence,
         )
 
     def _save_dataset_import(self, dataset_import: DatasetImport) -> None:
@@ -1064,6 +1077,7 @@ class SqlAlchemyDatasetImportService(
         event_type: str,
         message: str,
         payload: dict[str, object],
+        execution_fence: TaskExecutionFence | None = None,
     ) -> None:
         """为 DatasetImport 关联的任务追加一条事件。"""
 
@@ -1071,13 +1085,29 @@ class SqlAlchemyDatasetImportService(
         if not isinstance(task_id, str) or not task_id.strip():
             return
 
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task_id,
-                event_type=event_type,
-                message=message,
-                payload=payload,
+        event = AppendTaskEventRequest(
+            task_id=task_id,
+            event_type=event_type,
+            message=message,
+            payload=payload,
+        )
+        if "state" in payload:
+            self.task_service.execute_task_state_event_command(
+                event,
+                fence=execution_fence,
             )
+            return
+        if execution_fence is not None:
+            self.task_service.record_task_progress_event(
+                event,
+                fence=execution_fence,
+            )
+            return
+        task_record = self.task_service.get_task(task_id).task
+        self.task_service.execute_task_patch_event_command(
+            event,
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
 
     @contextmanager

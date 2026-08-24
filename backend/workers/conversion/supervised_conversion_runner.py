@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 import os
 from pathlib import Path, PurePosixPath
 import pickle
 import shutil
 import sys
 from typing import Any
-from uuid import uuid4
 
 from backend.service.application.backends import (
     ConversionBackendRunRequest,
@@ -25,20 +25,22 @@ from backend.service.application.runtime.device_leases import (
     DeviceLeaseProviderConfig,
 )
 from backend.service.application.conversions.publication import (
-    serialize_conversion_run_result,
-    write_conversion_publication_state,
+    deserialize_conversion_run_result,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.workers.conversion.model_conversion_common import (
+from backend.service.application.conversions.runtime.model_conversion_common import (
     resolve_conversion_project_root,
 )
-from backend.workers.shared.process_tree_supervisor import ProcessTreeSupervisor
+from backend.runtime.processes import ProcessTreeSupervisor
+from backend.runtime.processes import AttemptDeadline
 
 
 class SupervisedConversionRunner:
     """在独立受监督进程树中执行完整 conversion runner。"""
+
+    RESULT_DESCRIPTOR_MAX_BYTES = 1024 * 1024
 
     def __init__(
         self,
@@ -46,9 +48,8 @@ class SupervisedConversionRunner:
         runner_kind: str,
         dataset_storage: LocalDatasetStorage,
         workspace_dir: Path,
-        timeout_seconds: float,
         helper_timeout_seconds: float = 7200.0,
-        termination_grace_seconds: float = 5.0,
+        termination_grace_seconds: float = 15.0,
         device_lease_config: DeviceLeaseProviderConfig | None = None,
         device_lease_provider: DeviceLeaseProvider | None = None,
     ) -> None:
@@ -57,7 +58,6 @@ class SupervisedConversionRunner:
         self.runner_kind = runner_kind
         self.dataset_storage = dataset_storage
         self.workspace_dir = workspace_dir.resolve()
-        self.timeout_seconds = float(timeout_seconds)
         self.helper_timeout_seconds = float(helper_timeout_seconds)
         self.termination_grace_seconds = float(termination_grace_seconds)
         self.device_lease_config = device_lease_config or DeviceLeaseProviderConfig()
@@ -71,22 +71,42 @@ class SupervisedConversionRunner:
     ) -> ConversionBackendRunResult:
         """通过 staging 执行、校验并原子发布一次转换。"""
 
+        attempt_deadline = self._require_attempt_deadline(request)
         requested_cuda_device = self._resolve_requested_cuda_device(request)
         if requested_cuda_device is None:
             return self._run_conversion_attempt(request, device_lease_metadata=None)
+        remaining_seconds = attempt_deadline.remaining_seconds()
+        if remaining_seconds <= 0:
+            raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
         with self.device_lease_provider.acquire_cuda(
             requested_cuda_device,
             mode=DeviceLeaseMode.EXCLUSIVE,
             purpose="conversion",
             owner_id=request.conversion_task_id,
-            timeout_seconds=(
-                self.device_lease_config.exclusive_acquire_timeout_seconds
+            timeout_seconds=min(
+                self.device_lease_config.exclusive_acquire_timeout_seconds,
+                remaining_seconds,
             ),
         ) as device_lease:
             return self._run_conversion_attempt(
                 self._pin_request_to_leased_visible_device(request),
                 device_lease_metadata=device_lease.info.to_dict(),
             )
+
+    @staticmethod
+    def _require_attempt_deadline(
+        request: ConversionBackendRunRequest,
+    ) -> AttemptDeadline:
+        """从请求中恢复同一 Attempt 的持久总 deadline。"""
+
+        if request.attempt_deadline_at is None:
+            raise ServiceConfigurationError(
+                "conversion run request 缺少持久 Attempt deadline"
+            )
+        deadline = AttemptDeadline.from_deadline_at(request.attempt_deadline_at)
+        if deadline.expired():
+            raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+        return deadline
 
     def _resolve_requested_cuda_device(
         self,
@@ -130,28 +150,38 @@ class SupervisedConversionRunner:
     ) -> ConversionBackendRunResult:
         """在需要时已持有独占 GPU lease 的前提下执行 attempt。"""
 
-        attempt_id = f"conversion-attempt-{uuid4().hex}"
-        attempt_object_prefix = (
-            f"{request.output_object_prefix}/attempts/{attempt_id}"
+        attempt_id = request.metadata.get("conversion_file_attempt_id")
+        if not isinstance(attempt_id, str) or not attempt_id.strip():
+            raise ServiceConfigurationError(
+                "conversion run request 缺少 conversion_file_attempt_id"
+            )
+        staging_prefix = request.output_object_prefix
+        if not staging_prefix.endswith(f"/attempts/{attempt_id}/staging"):
+            raise ServiceConfigurationError("conversion run request staging identity 无效")
+        attempt_object_prefix = staging_prefix.removesuffix("/staging")
+        attempt_deadline = self._require_attempt_deadline(request)
+        staged_request = replace(
+            request,
+            cancel_requested=None,
         )
-        staging_prefix = f"{attempt_object_prefix}/staging"
-        staged_request = replace(request, output_object_prefix=staging_prefix)
         control_dir = self.workspace_dir / "conversion-attempts" / attempt_id
         control_dir.mkdir(parents=True, exist_ok=False)
         request_path = control_dir / "request.pkl"
-        result_path = control_dir / "result.pkl"
+        result_path = control_dir / "result.json"
         with request_path.open("wb") as stream:
             pickle.dump(staged_request, stream, protocol=pickle.HIGHEST_PROTOCOL)
 
         stdout_object_key = f"{attempt_object_prefix}/logs/stdout.log"
         stderr_object_key = f"{attempt_object_prefix}/logs/stderr.log"
-        publication_object_key = f"{attempt_object_prefix}/publication.json"
         stdout_log_path = self.dataset_storage.resolve(stdout_object_key)
         stderr_log_path = self.dataset_storage.resolve(stderr_object_key)
         project_root = resolve_conversion_project_root()
         process_env = dict(os.environ)
         process_env["AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS"] = str(
-            self.helper_timeout_seconds
+            min(self.helper_timeout_seconds, attempt_deadline.remaining_seconds())
+        )
+        process_env["AMVISION_WORKER_CONVERSION__ATTEMPT_DEADLINE_AT"] = (
+            attempt_deadline.deadline_at_iso
         )
         if device_lease_metadata is not None:
             resource_key = device_lease_metadata.get("resource_key")
@@ -168,7 +198,7 @@ class SupervisedConversionRunner:
         )
         try:
             process_result = ProcessTreeSupervisor(
-                timeout_seconds=self.timeout_seconds,
+                deadline=attempt_deadline,
                 termination_grace_seconds=self.termination_grace_seconds,
             ).run(
                 [
@@ -188,75 +218,32 @@ class SupervisedConversionRunner:
                 env=process_env,
                 stdout_log_path=stdout_log_path,
                 stderr_log_path=stderr_log_path,
+                cancel_requested=request.cancel_requested,
             )
             payload = self._read_attempt_payload(
                 result_path=result_path,
                 process_returncode=process_result.returncode,
                 stdout_tail=process_result.stdout,
                 stderr_tail=process_result.stderr,
+                expected_task_id=request.conversion_task_id,
+                expected_output_prefix=staging_prefix,
             )
-            run_result = payload.get("result")
-            if not isinstance(run_result, ConversionBackendRunResult):
-                raise ServiceConfigurationError(
-                    "conversion attempt 返回结果类型无效",
-                    details={"attempt_id": attempt_id},
-                )
+            run_result = payload["result"]
             self._validate_staged_outputs(
                 request=staged_request,
                 run_result=run_result,
             )
-            final_builds_object_key = (
-                f"{request.output_object_prefix}/artifacts/builds"
-            )
-            expected_published_result = self._build_published_result(
-                request=request,
-                staging_prefix=staging_prefix,
-                run_result=run_result,
-            )
-            expected_published_result = replace(
-                expected_published_result,
+            return replace(
+                run_result,
                 metadata={
-                    **expected_published_result.metadata,
-                    "conversion_attempt_id": attempt_id,
+                    **run_result.metadata,
                     "stdout_log_object_key": stdout_object_key,
                     "stderr_log_object_key": stderr_object_key,
-                    "attempt_timeout_seconds": self.timeout_seconds,
-                    "publication_record_object_key": publication_object_key,
+                    "attempt_timeout_seconds": request.attempt_timeout_seconds,
+                    "attempt_deadline_at": request.attempt_deadline_at,
                     "device_lease": device_lease_metadata,
                 },
             )
-            write_conversion_publication_state(
-                dataset_storage=self.dataset_storage,
-                publication_object_key=publication_object_key,
-                state="publishing",
-                payload={
-                    "conversion_task_id": request.conversion_task_id,
-                    "conversion_attempt_id": attempt_id,
-                    "final_builds_object_key": final_builds_object_key,
-                    "target_formats": [
-                        output.target_format for output in run_result.outputs
-                    ],
-                    "run_result": serialize_conversion_run_result(
-                        expected_published_result
-                    ),
-                },
-            )
-            published_result = self._publish_staged_outputs(
-                request=request,
-                staging_prefix=staging_prefix,
-                run_result=run_result,
-            )
-            write_conversion_publication_state(
-                dataset_storage=self.dataset_storage,
-                publication_object_key=publication_object_key,
-                state="published_pending_registration",
-                payload={
-                    "published_object_uris": [
-                        output.object_uri for output in published_result.outputs
-                    ],
-                },
-            )
-            return expected_published_result
         finally:
             shutil.rmtree(control_dir, ignore_errors=True)
 
@@ -267,6 +254,8 @@ class SupervisedConversionRunner:
         process_returncode: int,
         stdout_tail: str,
         stderr_tail: str,
+        expected_task_id: str,
+        expected_output_prefix: str,
     ) -> dict[str, Any]:
         """读取子进程结构化结果并保留日志诊断。"""
 
@@ -279,8 +268,18 @@ class SupervisedConversionRunner:
                     "stderr_tail": stderr_tail,
                 },
             )
-        with result_path.open("rb") as stream:
-            payload = pickle.load(stream)  # noqa: S301 - 仅消费本地 attempt 子进程结果
+        descriptor_size = result_path.stat().st_size
+        if descriptor_size > SupervisedConversionRunner.RESULT_DESCRIPTOR_MAX_BYTES:
+            raise ServiceConfigurationError(
+                "conversion attempt result descriptor 超过 1 MiB 上限",
+                details={"descriptor_size": descriptor_size},
+            )
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ServiceConfigurationError(
+                "conversion attempt result descriptor 不是合法 JSON"
+            ) from error
         if not isinstance(payload, dict):
             raise ServiceConfigurationError("conversion attempt 结果文件格式无效")
         if payload.get("ok") is not True:
@@ -311,7 +310,14 @@ class SupervisedConversionRunner:
                 "conversion attempt 结果与进程退出状态不一致",
                 details={"process_returncode": process_returncode},
             )
-        return payload
+        return {
+            **payload,
+            "result": deserialize_conversion_run_result(
+                payload.get("result"),
+                expected_task_id=expected_task_id,
+                expected_output_prefix=expected_output_prefix,
+            ),
+        }
 
     def _validate_staged_outputs(
         self,
@@ -390,127 +396,5 @@ class SupervisedConversionRunner:
                     "runtime_smoke": runtime_smoke,
                 },
             )
-
-    def _publish_staged_outputs(
-        self,
-        *,
-        request: ConversionBackendRunRequest,
-        staging_prefix: str,
-        run_result: ConversionBackendRunResult,
-    ) -> ConversionBackendRunResult:
-        """把完整 staging builds 目录一次原子 rename 为最终不可变目录。"""
-
-        staged_builds_key = f"{staging_prefix}/artifacts/builds"
-        final_builds_key = f"{request.output_object_prefix}/artifacts/builds"
-        staged_builds_path = self.dataset_storage.resolve(staged_builds_key)
-        final_builds_path = self.dataset_storage.resolve(final_builds_key)
-        if not staged_builds_path.is_dir():
-            raise ServiceConfigurationError(
-                "conversion staging builds 目录不存在",
-                details={"staged_builds_key": staged_builds_key},
-            )
-        if final_builds_path.exists():
-            raise ServiceConfigurationError(
-                "conversion 最终 builds 已存在，拒绝覆盖不可变产物",
-                details={"final_builds_key": final_builds_key},
-            )
-        final_builds_path.parent.mkdir(parents=True, exist_ok=True)
-        os.rename(staged_builds_path, final_builds_path)
-        return self._build_published_result(
-            request=request,
-            staging_prefix=staging_prefix,
-            run_result=run_result,
-        )
-
-    @staticmethod
-    def _build_published_result(
-        *,
-        request: ConversionBackendRunRequest,
-        staging_prefix: str,
-        run_result: ConversionBackendRunResult,
-    ) -> ConversionBackendRunResult:
-        """在 rename 前确定 publication 中最终且不可变的路径描述。"""
-
-        remapped_outputs = tuple(
-            replace(
-                output,
-                object_uri=_remap_prefix(
-                    output.object_uri,
-                    source_prefix=staging_prefix,
-                    target_prefix=request.output_object_prefix,
-                ),
-                metadata=_remap_metadata_paths(
-                    output.metadata,
-                    source_prefix=staging_prefix,
-                    target_prefix=request.output_object_prefix,
-                ),
-            )
-            for output in run_result.outputs
-        )
-        return replace(
-            run_result,
-            outputs=remapped_outputs,
-            metadata=_remap_metadata_paths(
-                run_result.metadata,
-                source_prefix=staging_prefix,
-                target_prefix=request.output_object_prefix,
-            ),
-        )
-
-
-def _remap_prefix(value: str, *, source_prefix: str, target_prefix: str) -> str:
-    """把 staging object key 前缀替换为最终发布前缀。"""
-
-    if value == source_prefix:
-        return target_prefix
-    marker = f"{source_prefix}/"
-    if value.startswith(marker):
-        return f"{target_prefix}/{value[len(marker):]}"
-    return value
-
-
-def _remap_metadata_paths(
-    value: Any,
-    *,
-    source_prefix: str,
-    target_prefix: str,
-) -> Any:
-    """递归替换 metadata 中的 staging object key。"""
-
-    if isinstance(value, str):
-        return _remap_prefix(
-            value,
-            source_prefix=source_prefix,
-            target_prefix=target_prefix,
-        )
-    if isinstance(value, dict):
-        return {
-            key: _remap_metadata_paths(
-                item,
-                source_prefix=source_prefix,
-                target_prefix=target_prefix,
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [
-            _remap_metadata_paths(
-                item,
-                source_prefix=source_prefix,
-                target_prefix=target_prefix,
-            )
-            for item in value
-        ]
-    if isinstance(value, tuple):
-        return tuple(
-            _remap_metadata_paths(
-                item,
-                source_prefix=source_prefix,
-                target_prefix=target_prefix,
-            )
-            for item in value
-        )
-    return value
-
 
 __all__ = ["SupervisedConversionRunner"]

@@ -126,7 +126,7 @@ def test_yolo_task_epoch_progress_event_updates_task_progress_and_result_keys() 
 
     assert event.event_type == "progress"
     assert event.message == "YOLO26 OBB epoch 1/2"
-    assert event.payload["state"] == "running"
+    assert "state" not in event.payload
     assert event.payload["progress"]["percent"] == 50.0
     assert event.payload["progress"]["train_metrics"] == {"loss": 0.5}
     assert event.payload["result"]["metrics_object_key"] == (

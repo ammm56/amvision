@@ -13,6 +13,7 @@ from backend.service.application.models.yolo_core_common.training import (
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
 )
 from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -44,6 +45,7 @@ def append_yolo_task_epoch_progress(
     dataset_storage: LocalDatasetStorage,
     implementation_mode: str,
     validation_metrics_object_key: str | None = None,
+    execution_fence: TaskExecutionFence | None = None,
 ) -> None:
     """写出 YOLO task 训练 epoch 指标并追加任务进度事件。"""
 
@@ -76,21 +78,31 @@ def append_yolo_task_epoch_progress(
                 previous_payload=previous_validation_payload,
             ),
         )
-    task_service.append_task_event(
-        build_yolo_task_epoch_progress_event(
-            task_id=task_id,
-            model_label=model_label,
-            task_type=task_type,
-            model_type=model_type,
-            attempt_no=attempt_no,
-            output_prefix=output_prefix,
-            train_metrics_object_key=train_metrics_object_key,
-            validation_metrics_object_key=(
-                validation_metrics_object_key if validation_metrics else None
-            ),
-            progress=progress,
-        )
+    progress_event = build_yolo_task_epoch_progress_event(
+        task_id=task_id,
+        model_label=model_label,
+        task_type=task_type,
+        model_type=model_type,
+        attempt_no=attempt_no,
+        output_prefix=output_prefix,
+        train_metrics_object_key=train_metrics_object_key,
+        validation_metrics_object_key=(
+            validation_metrics_object_key if validation_metrics else None
+        ),
+        progress=progress,
     )
+    if execution_fence is None:
+        task_record = task_service.get_task(task_id).task
+        task_service.execute_task_patch_event_command(
+            progress_event,
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
+        )
+    else:
+        task_service.record_task_progress_event(
+            progress_event,
+            fence=execution_fence,
+        )
 
 
 def build_yolo_task_train_metrics_payload(
@@ -208,15 +220,12 @@ def build_yolo_task_epoch_progress_event(
         "metrics_object_key": train_metrics_object_key,
     }
     if validation_metrics_object_key is not None:
-        result_payload["validation_metrics_object_key"] = (
-            validation_metrics_object_key
-        )
+        result_payload["validation_metrics_object_key"] = validation_metrics_object_key
     return AppendTaskEventRequest(
         task_id=task_id,
         event_type="progress",
         message=f"{model_label} epoch {current_epoch}/{progress.max_epochs}",
         payload={
-            "state": "running",
             "attempt_no": attempt_no,
             "progress": progress_payload,
             "result": result_payload,

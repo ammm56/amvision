@@ -81,7 +81,7 @@ NVIDIA 环境替换为对应目录。布局校验失败必须修正发行资产�
 启动器按顺序：
 
 1. Alembic `upgrade head`，SQLite schema 变化前创建一致性备份；
-2. inference daemon 启动并通过 ready/probe；
+2. inference daemon 启动并通过 mmap 热路径 ready/probe；
 3. backend-service 启动并通过 health；
 4. 六个 Worker Profile 启动并通过 heartbeat；
 5. 写入 `logs/full-stack/runtime-state.json`。
@@ -114,7 +114,7 @@ Invoke-RestMethod http://127.0.0.1:5600/api/v1/system/health
 .\stop-amvision-full.bat
 ```
 
-stop 会按 Worker、backend-service、inference daemon、根监督进程的逆序停止，并同时核对 PID、创建时间、解释器、工作目录和命令行。只有全部退出才删除 runtime state；返回非零时必须先查看状态文件和当日日志。
+stop 会先写入绑定当前根进程完整身份的优雅停止请求，由 full Supervisor 关闭自动恢复并统一回收 Worker、backend-service 和 inference daemon。等待超时后才会先强制停止根进程树，再清理身份仍匹配的残留组件。只有全部退出才删除 runtime state 和停止请求；返回非零时必须先查看状态文件和当日日志。
 
 不要手工删除 `runtime-state.json`、只按 PID 杀进程或直接运行低层 Worker 来绕过失败。
 

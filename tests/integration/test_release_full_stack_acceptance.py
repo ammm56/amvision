@@ -244,6 +244,7 @@ def test_release_full_stack_start_health_openapi_and_stop() -> None:
         assert stop_result.returncode == 0, stop_result.stdout
         assert not state_file.exists()
         _assert_process_refs_stopped(component_resource_refs)
+        _assert_component_logs_clean(state_file.parent)
 
 
 def _resolve_release_root() -> Path:
@@ -339,6 +340,25 @@ def _assert_component_logs_exist(release_root: Path, components: list[object]) -
         assert log_file_path.name.endswith(".log")
         date_token = log_file_path.stem.rsplit("-", 1)[-1]
         assert len(date_token) == 8 and date_token.isdigit()
+
+
+def _assert_component_logs_clean(logs_dir: Path) -> None:
+    """确认正常启停没有把控制流写成生产错误日志。"""
+
+    error_markers = (
+        "Traceback (most recent call last):",
+        "ERROR:",
+        "CRITICAL:",
+    )
+    issues: list[str] = []
+    for log_file in sorted(logs_dir.glob("*.log")):
+        if log_file.name == "soak-workload.log":
+            continue
+        content = log_file.read_text(encoding="utf-8", errors="replace")
+        matched_markers = [marker for marker in error_markers if marker in content]
+        if matched_markers:
+            issues.append(f"{log_file.name}: {matched_markers}")
+    assert not issues, f"release/full 组件日志包含异常记录: {issues}"
 
 
 def _resolve_profile_recovery_verification_enabled() -> bool:

@@ -11,6 +11,7 @@ from backend.service.application.errors import InvalidRequestError
 from backend.service.application.tasks.task_service import (
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
 )
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -54,13 +55,31 @@ def test_recovered_running_task_exposes_checkpoint_and_increments_attempt(
     session_factory, dataset_storage, task_service, runner = _build_runner_context(
         tmp_path
     )
-    task = task_service.create_task(
+    task_service.create_task(
         CreateTaskRequest(
             task_id="task-recovered",
             project_id="project-1",
             task_kind="yolov8-pose-training",
-            state="running",
         )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-recovered",
+        attempt_no=1,
+        worker_id="worker-recovered",
+        queue_name="trainings",
+        queue_message_id="queue-task-1",
+        queue_attempt_count=2,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+        lease_recovery_count=1,
+    )
+    assert claim.attempt is not None
+    task = claim.task
+    execution_fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="worker-recovered",
+        heartbeat_at="2026-08-24T00:00:00+00:00",
+        queue_message_id="queue-task-1",
+        queue_attempt_count=2,
     )
     checkpoint_key = (
         "task-runs/task-recovered/output-files/latest-checkpoint.pt"
@@ -80,6 +99,7 @@ def test_recovered_running_task_exposes_checkpoint_and_increments_attempt(
                     "queue_lease_recovered": True,
                 },
             ),
+            execution_fence=execution_fence,
         )
 
         assert recovered_task.state == "running"
@@ -100,13 +120,31 @@ def test_recovered_running_task_requires_latest_checkpoint(tmp_path: Path) -> No
     """验证已有训练进度却没有 checkpoint 时不会从头覆盖旧输出。"""
 
     session_factory, _, task_service, runner = _build_runner_context(tmp_path)
-    task = task_service.create_task(
+    task_service.create_task(
         CreateTaskRequest(
             task_id="task-without-checkpoint",
             project_id="project-1",
             task_kind="yolov8-pose-training",
-            state="running",
         )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-without-checkpoint",
+        attempt_no=1,
+        worker_id="worker-recovered",
+        queue_name="trainings",
+        queue_message_id="queue-task-2",
+        queue_attempt_count=2,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+        lease_recovery_count=1,
+    )
+    assert claim.attempt is not None
+    task = claim.task
+    execution_fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="worker-recovered",
+        heartbeat_at="2026-08-24T00:00:00+00:00",
+        queue_message_id="queue-task-2",
+        queue_attempt_count=2,
     )
 
     try:
@@ -118,6 +156,7 @@ def test_recovered_running_task_requires_latest_checkpoint(tmp_path: Path) -> No
                     training_task_id=task.task_id,
                     metadata={"queue_lease_recovered": True},
                 ),
+                execution_fence=execution_fence,
             )
     finally:
         session_factory.engine.dispose()

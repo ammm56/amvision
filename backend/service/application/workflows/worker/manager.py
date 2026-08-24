@@ -11,6 +11,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Iterator
 from uuid import uuid4
 import logging
+import math
 import multiprocessing
 
 from backend.service.application.errors import (
@@ -79,6 +80,7 @@ class _WorkflowRuntimeProcessHandle:
     process: Any
     request_queue: Any
     response_queue: Any
+    run_cancellation_event: Any = None
     workflow_runtime_revision_id: str | None = None
     runtime_generation: int = 0
     expected_snapshot_fingerprint: str | None = None
@@ -97,6 +99,13 @@ class _WorkflowRuntimeProcessHandle:
     pending_responses: dict[str, _WorkflowRuntimePendingResponse] = field(
         default_factory=dict, repr=False
     )
+    active_run_request_ids: dict[str, str] = field(default_factory=dict, repr=False)
+    active_node_invocations: dict[str, "_NodePackInvocation"] = field(
+        default_factory=dict, repr=False
+    )
+    node_timeout_states: dict[str, "_NodePackRunTimeout"] = field(
+        default_factory=dict, repr=False
+    )
     started_event: Event = field(default_factory=Event, repr=False)
     request_lock: Lock = field(default_factory=Lock, repr=False)
     state_lock: Lock = field(default_factory=Lock, repr=False)
@@ -107,6 +116,34 @@ class _WorkflowRuntimeProcessHandle:
     cleanup_completed: bool = False
     heartbeat_timeout_reported: bool = False
     background_failure_reported: bool = False
+
+
+@dataclass(frozen=True)
+class _NodePackInvocation:
+    """父进程正在监督的一次 Node Pack handler 调用。"""
+
+    workflow_run_id: str
+    node_invocation_id: str
+    node_id: str
+    node_pack_id: str
+    deadline_monotonic: float
+    kill_grace_seconds: float
+    runtime_generation: int
+
+
+@dataclass(frozen=True)
+class _NodePackRunTimeout:
+    """一次 Run 已固化且不可撤销的首个 Node Pack timeout。"""
+
+    workflow_run_id: str
+    request_id: str
+    node_invocation_id: str
+    node_id: str
+    node_pack_id: str
+    deadline_monotonic: float
+    observed_monotonic: float
+    force_kill_deadline_monotonic: float
+    runtime_generation: int
 
 
 @dataclass
@@ -168,6 +205,7 @@ class WorkflowRuntimeWorkerManager:
         self._lock = Lock()
         self._stopping = Event()
         self._monitor_stop_event = Event()
+        self._monitor_wake_event = Event()
         self._monitor_thread: Thread | None = None
         self._recovery_threads: dict[str, Thread] = {}
         self._recovery_failures: dict[str, int] = {}
@@ -189,6 +227,7 @@ class WorkflowRuntimeWorkerManager:
         if self._monitor_thread is None or not self._monitor_thread.is_alive():
             self._recover_desired_runtimes_before_monitor()
             self._monitor_stop_event.clear()
+            self._monitor_wake_event.clear()
             self._monitor_thread = Thread(
                 target=self._run_monitor_loop,
                 name="workflow-runtime-worker-monitor",
@@ -233,6 +272,7 @@ class WorkflowRuntimeWorkerManager:
             runtime_ids = tuple(self._handles.keys())
         self._stopping.set()
         self._monitor_stop_event.set()
+        self._monitor_wake_event.set()
         monitor_thread = self._monitor_thread
         if monitor_thread is not None:
             monitor_thread.join(timeout=1.0)
@@ -362,6 +402,7 @@ class WorkflowRuntimeWorkerManager:
 
             request_queue = self._context.Queue()
             response_queue = self._context.Queue()
+            run_cancellation_event = self._context.Event()
             local_buffer_broker_event_channel = (
                 self._resolve_local_buffer_broker_event_channel()
             )
@@ -390,6 +431,7 @@ class WorkflowRuntimeWorkerManager:
                     "published_inference_gateway_event_channel": gateway_channel,
                     "request_queue": request_queue,
                     "response_queue": response_queue,
+                    "run_cancellation_event": run_cancellation_event,
                 },
                 name=f"workflow-runtime-{workflow_app_runtime.workflow_runtime_id}",
                 daemon=False,
@@ -400,6 +442,7 @@ class WorkflowRuntimeWorkerManager:
                 process=process,
                 request_queue=request_queue,
                 response_queue=response_queue,
+                run_cancellation_event=run_cancellation_event,
                 workflow_runtime_revision_id=resolved_revision_id,
                 runtime_generation=resolved_generation,
                 expected_snapshot_fingerprint=resolved_fingerprint,
@@ -867,6 +910,9 @@ class WorkflowRuntimeWorkerManager:
                             "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id
                         },
                     )
+                if handle.run_cancellation_event is not None:
+                    handle.run_cancellation_event.clear()
+                handle.active_run_request_ids[workflow_run_id] = message_id
                 handle.pending_responses[message_id] = pending
                 queue_put_started_at = monotonic()
                 handle.request_queue.put(
@@ -967,6 +1013,20 @@ class WorkflowRuntimeWorkerManager:
                 handle.pending_responses.pop(
                     message_id if "message_id" in locals() else "", None
                 )
+                if "message_id" in locals():
+                    if (
+                        handle.active_run_request_ids.get(workflow_run_id)
+                        == message_id
+                    ):
+                        handle.active_run_request_ids.pop(workflow_run_id, None)
+                    handle.node_timeout_states.pop(workflow_run_id, None)
+                    handle.active_node_invocations = {
+                        invocation_id: invocation
+                        for invocation_id, invocation in (
+                            handle.active_node_invocations.items()
+                        )
+                        if invocation.workflow_run_id != workflow_run_id
+                    }
             if "message_id" in locals():
                 self.cleanup_workflow_run_local_buffer_owner(workflow_run_id)
             if not locals().get("worker_response_received", False):
@@ -1443,6 +1503,9 @@ class WorkflowRuntimeWorkerManager:
                     pending.error_message = "workflow runtime worker 已退出"
                     pending.event.set()
                 handle.pending_responses.clear()
+                handle.active_run_request_ids.clear()
+                handle.active_node_invocations.clear()
+                handle.node_timeout_states.clear()
             handle.request_queue.close()
             handle.request_queue.join_thread()
             handle.response_queue.close()
@@ -1486,6 +1549,13 @@ class WorkflowRuntimeWorkerManager:
                     if pending is not None:
                         pending.error_message = error.message
                         pending.event.set()
+                continue
+
+            if message_type in {"node-started", "node-ended"}:
+                self._handle_node_lifecycle_message(
+                    handle=handle,
+                    message=message,
+                )
                 continue
 
             runtime_state = try_deserialize_runtime_state_message(message)
@@ -1543,10 +1613,147 @@ class WorkflowRuntimeWorkerManager:
 
             if request_id:
                 with handle.state_lock:
+                    workflow_run_id = str(message.get("workflow_run_id") or "")
+                    timeout_state = handle.node_timeout_states.pop(
+                        workflow_run_id, None
+                    )
+                    if (
+                        workflow_run_id
+                        and handle.active_run_request_ids.get(workflow_run_id)
+                        == request_id
+                    ):
+                        handle.active_run_request_ids.pop(workflow_run_id, None)
+                    handle.active_node_invocations = {
+                        invocation_id: invocation
+                        for invocation_id, invocation in (
+                            handle.active_node_invocations.items()
+                        )
+                        if invocation.workflow_run_id != workflow_run_id
+                    }
                     pending = handle.pending_responses.pop(request_id, None)
                 if pending is not None:
-                    pending.response = message
+                    pending.response = (
+                        self._build_node_timeout_response(
+                            handle=handle,
+                            timeout_state=timeout_state,
+                        )
+                        if timeout_state is not None
+                        else message
+                    )
                     pending.event.set()
+
+    def _handle_node_lifecycle_message(
+        self,
+        *,
+        handle: _WorkflowRuntimeProcessHandle,
+        message: dict[str, object],
+    ) -> None:
+        """更新一个 worker generation 的 Node Pack invocation map。"""
+
+        message_type = str(message.get("message_type") or "")
+        workflow_run_id = str(message.get("workflow_run_id") or "").strip()
+        invocation_id = str(message.get("node_invocation_id") or "").strip()
+        if (
+            not workflow_run_id
+            or len(invocation_id) != 32
+            or any(character not in "0123456789abcdef" for character in invocation_id)
+        ):
+            return
+        if message_type == "node-ended":
+            with handle.state_lock:
+                existing = handle.active_node_invocations.get(invocation_id)
+                if (
+                    existing is not None
+                    and existing.workflow_run_id == workflow_run_id
+                    and existing.runtime_generation == handle.runtime_generation
+                ):
+                    handle.active_node_invocations.pop(invocation_id, None)
+            self._monitor_wake_event.set()
+            return
+
+        deadline_value = message.get("deadline_monotonic")
+        grace_value = message.get("kill_grace_seconds")
+        if (
+            not isinstance(deadline_value, int | float)
+            or isinstance(deadline_value, bool)
+            or not math.isfinite(float(deadline_value))
+            or not isinstance(grace_value, int | float)
+            or isinstance(grace_value, bool)
+            or not math.isfinite(float(grace_value))
+            or float(grace_value) < 0
+        ):
+            return
+        node_id = str(message.get("node_id") or "").strip()
+        node_pack_id = str(message.get("node_pack_id") or "").strip()
+        if not node_id or not node_pack_id:
+            return
+        with handle.state_lock:
+            if workflow_run_id not in handle.active_run_request_ids:
+                return
+            handle.active_node_invocations[invocation_id] = _NodePackInvocation(
+                workflow_run_id=workflow_run_id,
+                node_invocation_id=invocation_id,
+                node_id=node_id,
+                node_pack_id=node_pack_id,
+                deadline_monotonic=float(deadline_value),
+                kill_grace_seconds=float(grace_value),
+                runtime_generation=handle.runtime_generation,
+            )
+        self._monitor_wake_event.set()
+
+    def _build_node_timeout_response(
+        self,
+        *,
+        handle: _WorkflowRuntimeProcessHandle,
+        timeout_state: _NodePackRunTimeout,
+    ) -> dict[str, object]:
+        """构造不会被普通失败折叠的权威 Workflow timed_out 结果。"""
+
+        latest_state = handle.latest_runtime_state
+        return {
+            "message_type": "worker-error",
+            "request_id": timeout_state.request_id,
+            "workflow_runtime_id": handle.workflow_runtime_id,
+            "workflow_run_id": timeout_state.workflow_run_id,
+            "workflow_runtime_revision_id": handle.workflow_runtime_revision_id,
+            "runtime_generation": handle.runtime_generation,
+            "snapshot_fingerprint": handle.expected_snapshot_fingerprint,
+            "worker_instance_id": handle.worker_instance_id,
+            "state": "timed_out",
+            "outputs": {},
+            "template_outputs": {},
+            "node_records": [],
+            "timings": {},
+            "error_message": "Workflow Node Pack 节点执行超时",
+            "error_details": {
+                "error_code": "operation_timeout",
+                "timeout_phase": "node_pack",
+                "node_id": timeout_state.node_id,
+                "node_pack_id": timeout_state.node_pack_id,
+                "node_invocation_id": timeout_state.node_invocation_id,
+                "deadline_monotonic": timeout_state.deadline_monotonic,
+                "kill_grace_seconds": max(
+                    0.0,
+                    timeout_state.force_kill_deadline_monotonic
+                    - timeout_state.deadline_monotonic,
+                ),
+            },
+            "worker_state": {
+                "observed_state": "running",
+                "instance_id": handle.worker_instance_id,
+                "process_id": handle.process.pid,
+                "current_run_id": None,
+                "started_at": latest_state.started_at if latest_state else None,
+                "heartbeat_at": now_isoformat(),
+                "loaded_snapshot_fingerprint": (
+                    handle.expected_snapshot_fingerprint
+                ),
+                "last_error": None,
+                "health_summary": (
+                    dict(latest_state.health_summary) if latest_state else {}
+                ),
+            },
+        }
 
     def _run_monitor_loop(self) -> None:
         """巡检 worker 心跳和异常退出，并把异常状态写入正式事件流。"""
@@ -1560,13 +1767,66 @@ class WorkflowRuntimeWorkerManager:
                 event_type: str | None = None
                 message: str | None = None
                 remove_handle = False
+                node_timeout_to_force = self._monitor_node_pack_timeouts(
+                    handle=handle,
+                    now=now,
+                )
                 with handle.state_lock:
                     process_alive = handle.process.is_alive()
                     latest_runtime_state = handle.latest_runtime_state
                     latest_runtime_state_monotonic = (
                         handle.latest_runtime_state_monotonic
                     )
-                    if not process_alive:
+                    if node_timeout_to_force is not None and (
+                        handle.node_timeout_states.get(
+                            node_timeout_to_force.workflow_run_id
+                        )
+                        != node_timeout_to_force
+                        or handle.active_run_request_ids.get(
+                            node_timeout_to_force.workflow_run_id
+                        )
+                        != node_timeout_to_force.request_id
+                    ):
+                        node_timeout_to_force = None
+                    if node_timeout_to_force is not None:
+                        timeout_request_id = node_timeout_to_force.request_id
+                        pending = handle.pending_responses.pop(
+                            timeout_request_id, None
+                        )
+                        if pending is not None:
+                            pending.response = self._build_node_timeout_response(
+                                handle=handle,
+                                timeout_state=node_timeout_to_force,
+                            )
+                            pending.event.set()
+                        handle.active_run_request_ids.pop(
+                            node_timeout_to_force.workflow_run_id, None
+                        )
+                        handle.node_timeout_states.pop(
+                            node_timeout_to_force.workflow_run_id, None
+                        )
+                        handle.active_node_invocations = {
+                            invocation_id: invocation
+                            for invocation_id, invocation in (
+                                handle.active_node_invocations.items()
+                            )
+                            if invocation.workflow_run_id
+                            != node_timeout_to_force.workflow_run_id
+                        }
+                        handle.expected_shutdown = True
+                        runtime_state_to_persist = build_synthetic_runtime_state(
+                            previous_state=latest_runtime_state,
+                            observed_state="failed",
+                            last_error=(
+                                "Workflow Node Pack 节点执行超时，grace 到期后终止 worker"
+                            ),
+                        )
+                        handle.latest_runtime_state = runtime_state_to_persist
+                        handle.latest_runtime_state_monotonic = now
+                        event_type = "runtime.node_timed_out"
+                        message = "workflow runtime Node Pack timeout 后已终止 worker"
+                        remove_handle = True
+                    elif not process_alive:
                         if handle.expected_shutdown:
                             # stop/restart 调用方持有生命周期锁并负责移除、回收句柄；
                             # monitor 不能并发关闭相同 Queue/Process 资源。
@@ -1629,7 +1889,111 @@ class WorkflowRuntimeWorkerManager:
                 self._schedule_desired_runtime_recoveries()
             except Exception:  # noqa: BLE001 - 数据库暂时不可用不能终止监控线程
                 LOGGER.exception("扫描 WorkflowAppRuntime 自动恢复状态失败")
-            self._monitor_stop_event.wait(0.5)
+            wait_seconds = self._resolve_monitor_wait_seconds(handles, now=monotonic())
+            self._monitor_wake_event.wait(wait_seconds)
+            self._monitor_wake_event.clear()
+
+    def _monitor_node_pack_timeouts(
+        self,
+        *,
+        handle: _WorkflowRuntimeProcessHandle,
+        now: float,
+    ) -> _NodePackRunTimeout | None:
+        """固化已到期 invocation，并返回 grace 已耗尽的最早 Run。"""
+
+        with handle.state_lock:
+            expired_invocations = sorted(
+                (
+                    invocation
+                    for invocation in handle.active_node_invocations.values()
+                    if invocation.runtime_generation == handle.runtime_generation
+                    and invocation.deadline_monotonic <= now
+                ),
+                key=lambda item: (
+                    item.deadline_monotonic,
+                    item.node_invocation_id,
+                ),
+            )
+            for invocation in expired_invocations:
+                request_id = handle.active_run_request_ids.get(
+                    invocation.workflow_run_id
+                )
+                if request_id is None:
+                    continue
+                force_deadline = (
+                    invocation.deadline_monotonic
+                    + invocation.kill_grace_seconds
+                )
+                existing_timeout = handle.node_timeout_states.get(
+                    invocation.workflow_run_id
+                )
+                if existing_timeout is None:
+                    handle.node_timeout_states[invocation.workflow_run_id] = (
+                        _NodePackRunTimeout(
+                            workflow_run_id=invocation.workflow_run_id,
+                            request_id=request_id,
+                            node_invocation_id=invocation.node_invocation_id,
+                            node_id=invocation.node_id,
+                            node_pack_id=invocation.node_pack_id,
+                            deadline_monotonic=invocation.deadline_monotonic,
+                            observed_monotonic=now,
+                            force_kill_deadline_monotonic=force_deadline,
+                            runtime_generation=handle.runtime_generation,
+                        )
+                    )
+                elif force_deadline < existing_timeout.force_kill_deadline_monotonic:
+                    handle.node_timeout_states[invocation.workflow_run_id] = replace(
+                        existing_timeout,
+                        force_kill_deadline_monotonic=force_deadline,
+                    )
+                if handle.run_cancellation_event is not None:
+                    handle.run_cancellation_event.set()
+
+            force_candidates = tuple(
+                timeout_state
+                for timeout_state in handle.node_timeout_states.values()
+                if timeout_state.runtime_generation == handle.runtime_generation
+                and timeout_state.force_kill_deadline_monotonic <= now
+            )
+            if not force_candidates:
+                return None
+            return min(
+                force_candidates,
+                key=lambda item: (
+                    item.force_kill_deadline_monotonic,
+                    item.node_invocation_id,
+                ),
+            )
+
+    @staticmethod
+    def _resolve_monitor_wait_seconds(
+        handles: tuple[tuple[str, _WorkflowRuntimeProcessHandle], ...],
+        *,
+        now: float,
+    ) -> float:
+        """按最早 invocation/force-kill deadline 计算有界 monitor 等待。"""
+
+        next_deadline: float | None = None
+        for _, handle in handles:
+            with handle.state_lock:
+                deadlines = [
+                    invocation.deadline_monotonic
+                    for invocation in handle.active_node_invocations.values()
+                ]
+                deadlines.extend(
+                    timeout_state.force_kill_deadline_monotonic
+                    for timeout_state in handle.node_timeout_states.values()
+                )
+            if deadlines:
+                candidate = min(deadlines)
+                next_deadline = (
+                    candidate
+                    if next_deadline is None
+                    else min(next_deadline, candidate)
+                )
+        if next_deadline is None:
+            return 0.5
+        return max(0.001, min(0.5, next_deadline - now))
 
     def _schedule_desired_runtime_recoveries(self) -> None:
         """扫描 desired=running 记录并并行调度缺失 worker 的恢复。"""

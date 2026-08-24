@@ -90,6 +90,9 @@ class RfdetrPlatformTrainingRequest:
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[RfdetrPlatformBatchProgress], None] | None = None
+    control_callback: (
+        Callable[[], RfdetrPlatformTrainingControlCommand | None] | None
+    ) = None
     epoch_callback: (
         Callable[
             [RfdetrPlatformEpochProgress],
@@ -241,7 +244,7 @@ def run_rfdetr_platform_training(
             data_module = RFDETRDataModule(model_config, train_config)
             control_callback = _build_rfdetr_platform_control_callback(
                 request=request,
-                output_dir=output_dir,
+                checkpoint_interval=int(train_config.checkpoint_interval),
             )
             trainer = build_trainer(
                 train_config,
@@ -273,6 +276,9 @@ def run_rfdetr_platform_training(
                 model_config=model_config,
                 train_config=train_config,
                 trainer=trainer,
+                latest_checkpoint_bytes=(
+                    control_callback.current_savepoint.latest_checkpoint_bytes
+                ),
             )
             metrics_payload = build_metrics_payload(
                 output_dir=output_dir,
@@ -321,25 +327,19 @@ def run_rfdetr_platform_training(
 def _build_rfdetr_platform_control_callback(
     *,
     request: RfdetrPlatformTrainingRequest,
-    output_dir: Path,
-) -> Any | None:
-    """按需构建 Lightning 平台控制 callback，避免无回调任务增加额外 hook。"""
-
-    if (
-        request.batch_callback is None
-        and request.epoch_callback is None
-        and request.savepoint_callback is None
-    ):
-        return None
+    checkpoint_interval: int,
+) -> Any:
+    """构建唯一 Lightning 平台 callback，始终维护 completed-epoch bytes。"""
     from backend.service.application.models.rfdetr_core.training.platform_control import (
         build_rfdetr_platform_training_callback,
     )
 
     return build_rfdetr_platform_training_callback(
         task_type=request.task_type,
-        output_dir=output_dir,
         max_epochs=request.max_epochs,
+        checkpoint_interval=checkpoint_interval,
         batch_callback=request.batch_callback,
+        control_callback=request.control_callback,
         epoch_callback=request.epoch_callback,
         savepoint_callback=request.savepoint_callback,
     )

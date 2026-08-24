@@ -11,6 +11,7 @@ from backend.workers.datasets.dataset_export_runner import (
     DatasetExportRunRequest,
     SqlAlchemyDatasetExportRunner,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 
 
 class DatasetExportQueueWorker:
@@ -59,7 +60,20 @@ class DatasetExportQueueWorker:
                 dataset_storage=self.dataset_storage,
             )
             run_result = runner.run_export(
-                DatasetExportRunRequest(dataset_export_id=dataset_export_id)
+                DatasetExportRunRequest(
+                    dataset_export_id=dataset_export_id,
+                    execution_fence=(
+                        self.queue_backend.get_execution_fence(
+                            queue_task,
+                            include_heartbeat=False,
+                        )
+                        if isinstance(
+                            self.queue_backend,
+                            TaskAttemptClaimingQueueBackend,
+                        )
+                        else None
+                    ),
+                )
             )
         except ServiceError as error:
             self.queue_backend.fail(

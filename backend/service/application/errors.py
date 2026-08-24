@@ -128,6 +128,25 @@ class WorkflowRecoveryRequiredError(ServiceError):
         )
 
 
+class ConversionPublicationRecoveryRequiredError(ServiceError):
+    """表示 Conversion 已进入不可失败化的 publication 恢复边界。"""
+
+    def __init__(
+        self,
+        message: str = "Conversion publication 需要由当前或后续 lease 恢复",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化 publication 恢复错误。"""
+
+        super().__init__(
+            message,
+            code="conversion_publication_recovery_required",
+            status_code=503,
+            details=details,
+        )
+
+
 class InvalidRequestError(ServiceError):
     """表示当前请求内容不合法。"""
 

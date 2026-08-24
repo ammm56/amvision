@@ -8,6 +8,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 from backend.workers.datasets.dataset_import_runner import (
     DatasetImportRunRequest,
     SqlAlchemyDatasetImportRunner,
@@ -62,7 +63,20 @@ class DatasetImportQueueWorker:
                 dataset_storage=self.dataset_storage,
             )
             run_result = runner.run_import(
-                DatasetImportRunRequest(dataset_import_id=dataset_import_id)
+                DatasetImportRunRequest(
+                    dataset_import_id=dataset_import_id,
+                    execution_fence=(
+                        self.queue_backend.get_execution_fence(
+                            queue_task,
+                            include_heartbeat=False,
+                        )
+                        if isinstance(
+                            self.queue_backend,
+                            TaskAttemptClaimingQueueBackend,
+                        )
+                        else None
+                    ),
+                )
             )
         except ServiceError as error:
             self.queue_backend.fail(

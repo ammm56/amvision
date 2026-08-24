@@ -12,12 +12,14 @@ from backend.service.application.conversions.yolo_conversion_task_service_base i
     YoloConversionTaskResult,
     YoloConversionTaskSubmission,
 )
-from backend.workers.conversion.yolo_model_conversion_runner import (
+from backend.service.application.conversions.task_kinds import (
+    YOLO_MODEL_CONVERSION_TASK_KIND,
+)
+from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
     YoloModelConversionRunRequest,
 )
 
 
-YOLO_MODEL_CONVERSION_TASK_KIND = "yolo-model-conversion"
 YOLO_MODEL_CONVERSION_QUEUE_NAME = "yolo-model-conversions"
 _YOLO_MODEL_EXECUTABLE_TARGET_FORMATS = frozenset(
     {"onnx", "onnx-optimized", "openvino-ir", "tensorrt-engine"}

@@ -108,6 +108,7 @@ CPU profile 不应包含 `tools/tensorrt/` 和 `tools/cudnn/`，`app/requirement
 | `logs/full-stack/backend-worker-<profile>-YYYYMMDD.log` | 指定 Worker Profile 当日日志 |
 | `logs/full-stack/database-migration-YYYYMMDD.log` | Alembic 迁移当日日志 |
 | `logs/full-stack/runtime-state.json` | full Supervisor 状态、完整进程身份、当前日志路径和日志模式 |
+| `logs/full-stack/runtime-state.shutdown-request.json` | stop 临时写入、且只匹配当前 root process identity 的优雅停止请求；完成后自动删除 |
 
 如果使用 `--logs-subdir` 或 `--state-file`，这些默认路径会被覆盖。现场多套实例并存时，建议显式改 `logs-subdir`，避免日志和状态文件互相覆盖。
 

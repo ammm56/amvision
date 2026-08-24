@@ -2518,6 +2518,130 @@ def test_workflow_app_runtime_api_marks_run_timed_out_when_worker_exceeds_timeou
     assert stop_response.json()["observed_state"] == "stopped"
 
 
+def test_workflow_app_runtime_node_pack_timeout_kills_generation_and_recovers(
+    tmp_path: Path,
+) -> None:
+    """验证 Node Pack deadline 会终止整代 worker、返回 timed_out 并自动恢复。"""
+
+    session_factory, dataset_storage, queue_backend = create_test_runtime(
+        tmp_path,
+        database_name="workflow-node-pack-timeout-api.db",
+    )
+    custom_nodes_root_dir = _create_process_test_node_pack_fixture(
+        tmp_path,
+        node_timeout_seconds=1,
+        node_kill_grace_seconds=0,
+    )
+    node_pack_loader = LocalNodePackLoader(custom_nodes_root_dir)
+    node_pack_loader.refresh()
+    node_catalog_registry = NodeCatalogRegistry(node_pack_loader=node_pack_loader)
+    workflow_service = LocalWorkflowJsonService(
+        dataset_storage=dataset_storage,
+        node_catalog_registry=node_catalog_registry,
+    )
+    workflow_service.save_template(
+        project_id="project-1",
+        template=_build_process_slow_template(),
+    )
+    workflow_service.save_application(
+        project_id="project-1",
+        application=_build_process_slow_application(),
+    )
+    application = create_app(
+        settings=BackendServiceSettings(
+            database=BackendServiceDatabaseConfig(url=session_factory.settings.url),
+            dataset_storage=BackendServiceDatasetStorageConfig(
+                root_dir=str(dataset_storage.root_dir)
+            ),
+            queue=BackendServiceQueueConfig(root_dir=str(queue_backend.root_dir)),
+            custom_nodes=BackendServiceCustomNodesConfig(
+                root_dir=str(custom_nodes_root_dir)
+            ),
+        ),
+        session_factory=session_factory,
+        dataset_storage=dataset_storage,
+        queue_backend=queue_backend,
+    )
+    client = TestClient(application)
+
+    try:
+        with client:
+            create_runtime_response = client.post(
+                "/api/v1/workflows/app-runtimes",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "project_id": "project-1",
+                    "application_id": "process-slow-app",
+                    "display_name": "Node Pack Timeout Runtime",
+                    "request_timeout_seconds": 10,
+                },
+            )
+            workflow_runtime_id = create_runtime_response.json()[
+                "workflow_runtime_id"
+            ]
+            start_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/start",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+            original_process_id = start_response.json()["worker_process_id"]
+            invoke_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/invoke",
+                params={"response_mode": "run"},
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                json={
+                    "input_bindings": {
+                        "request_text": {"value": "node pack timeout"}
+                    },
+                    "execution_metadata": {"marker": "node-pack-timeout"},
+                    "timeout_seconds": 10,
+                },
+            )
+            event_response = _wait_for_workflow_app_runtime_event_types(
+                client,
+                workflow_runtime_id=workflow_runtime_id,
+                expected_event_types={"runtime.node_timed_out", "runtime.recovered"},
+                timeout_seconds=15.0,
+            )
+            recovered_process_id = _wait_for_recovered_runtime_process(
+                application,
+                workflow_runtime_id=workflow_runtime_id,
+                previous_process_id=original_process_id,
+                timeout_seconds=10.0,
+            )
+            workflow_run_id = invoke_response.json()["workflow_run_id"]
+            get_run_response = client.get(
+                f"/api/v1/workflows/runs/{workflow_run_id}",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+                params={"response_mode": "run"},
+            )
+            stop_response = client.post(
+                f"/api/v1/workflows/app-runtimes/{workflow_runtime_id}/stop",
+                headers=build_test_headers(scopes="workflows:read,workflows:write"),
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert create_runtime_response.status_code == 201
+    assert start_response.status_code == 200
+    assert invoke_response.status_code == 200, invoke_response.text
+    assert get_run_response.status_code == 200
+    assert stop_response.status_code == 200
+    run_payload = invoke_response.json()
+    error_details = run_payload["metadata"]["error_details"]
+    assert run_payload["state"] == "timed_out"
+    assert run_payload["error_message"] == "Workflow Node Pack 节点执行超时"
+    assert error_details["error_code"] == "operation_timeout"
+    assert error_details["timeout_phase"] == "node_pack"
+    assert error_details["node_id"] == "sleep"
+    assert error_details["node_pack_id"] == "test.process-nodes"
+    assert len(error_details["node_invocation_id"]) == 32
+    assert get_run_response.json()["state"] == "timed_out"
+    assert recovered_process_id != original_process_id
+    event_types = [item["event_type"] for item in event_response.json()]
+    assert event_types.count("runtime.node_timed_out") == 1
+    assert "runtime.recovered" in event_types
+
+
 def test_workflow_app_runtime_api_persists_failed_invoke_details(
     tmp_path: Path,
 ) -> None:
@@ -3782,7 +3906,12 @@ def _build_process_slow_application():
     )
 
 
-def _create_process_test_node_pack_fixture(tmp_path: Path) -> Path:
+def _create_process_test_node_pack_fixture(
+    tmp_path: Path,
+    *,
+    node_timeout_seconds: int = 30,
+    node_kill_grace_seconds: int = 2,
+) -> Path:
     """创建进程隔离测试使用的最小 custom node pack。"""
 
     node_pack_dir = tmp_path / "custom_nodes" / "process_test_nodes"
@@ -3908,7 +4037,11 @@ def register(context):
             "backend": "custom_nodes.process_test_nodes.backend.entry:register"
         },
         "compatibility": {"api": ">=0.1 <1.0", "runtime": ">=3.12"},
-        "timeout": {"defaultSeconds": 30, "maxSeconds": 30, "killGraceSeconds": 2},
+        "timeout": {
+            "defaultSeconds": node_timeout_seconds,
+            "maxSeconds": max(30, node_timeout_seconds),
+            "killGraceSeconds": node_kill_grace_seconds,
+        },
         "enabledByDefault": True,
         "customNodeCatalogPath": "workflow/catalog.json",
     }
@@ -4386,6 +4519,7 @@ def _run_test_runtime_worker_without_heartbeat(
     runtime_payload,
     request_queue,
     response_queue,
+    run_cancellation_event=None,
     local_buffer_broker_event_channel=None,
     published_inference_gateway_event_channel=None,
 ) -> None:
@@ -4393,6 +4527,7 @@ def _run_test_runtime_worker_without_heartbeat(
 
     del local_buffer_broker_event_channel
     del published_inference_gateway_event_channel
+    del run_cancellation_event
     workflow_runtime_id = str(runtime_payload.get("workflow_runtime_id") or "")
     if not workflow_runtime_id:
         raise AssertionError("测试 runtime worker 缺少 workflow_runtime_id")

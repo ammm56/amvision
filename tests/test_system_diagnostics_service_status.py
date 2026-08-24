@@ -1,10 +1,35 @@
 """系统诊断服务状态测试。"""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from backend.service.api.rest.v1.routes.system import diagnostics
+
+
+def test_bundled_python_detection_accepts_release_python_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证发行目录同级 Python 被识别为 bundled Python。"""
+
+    monkeypatch.chdir(tmp_path)
+    executable = tmp_path / "python" / "python.exe"
+
+    assert diagnostics._is_bundled_python(str(executable)) is True
+
+
+def test_bundled_python_detection_rejects_external_conda_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证外部 conda 解释器不会被误判为发行包运行时。"""
+
+    monkeypatch.chdir(tmp_path)
+    executable = tmp_path.parent / "conda" / "envs" / "amvision" / "python.exe"
+
+    assert diagnostics._is_bundled_python(str(executable)) is False
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 # 模型转换执行与发布
 
-> 当前状态：本页描述已经落地的 Conversion 执行与发布基础。可跨重启恢复的总 deadline、统一进程监督层、publication commit fence 和 rename 后恢复规则已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整实现；详细步骤见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。下文“整个 attempt 硬 deadline”目前主要由受监督子进程保证，不能解读为父进程发布边界已经完成同等治理。
+> 当前状态：统一进程监督、可跨重启恢复的 Attempt 总 deadline、数据库 publication reservation、同文件系统原子 rename 和 rename 后 recovery 均已落地。剩余真实模型、方言迁移和发行级门禁见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。
 
 模型转换由 conversion Worker Profile 执行。HTTP 请求在同一 Unit of Work 中创建 conversion 业务记录、正式 Task/Event 和 QueueOutboxMessage；Dispatcher 提交后再写队列。转换链固定为：
 
@@ -19,9 +19,10 @@ Task/TaskAttempt
 ## 进程与超时
 
 - 受监督 attempt 子进程使用一个硬 deadline，不按单个转换步骤重新计时；父进程验证、发布和跨恢复剩余预算仍按上述实施基线收敛。
-- Windows 使用 Job Object，POSIX 使用独立 process group；timeout 会终止完整子孙进程树。
-- stdout、stderr 持续排空到 attempt 日志，只在内存保留有界 tail，不使用 `capture_output` 聚合全部日志。
-- `attempt_timeout_seconds`、`helper_timeout_seconds` 和 `termination_grace_seconds` 是 backend-worker 私有初始值，可通过本地配置或环境变量覆盖，不进入公开转换 API。
+- Windows 先启动等待放行的 bootstrap，把 bootstrap 加入启用 kill-on-close 的 Job Object 后才允许真实 converter 启动；绑定失败时 converter 不会运行。POSIX 使用独立 process group。
+- timeout 或协作取消先请求进程树退出，grace 到期后终止整个 Job/process group，并有界等待强制清理完成。
+- stdout、stderr 持续排空；单个保留文件默认最多 16 MiB，内存 tail 默认各 64 KiB。文件到达上限或写入失败后仍继续 drain，避免 pipe 反压死锁，不使用 `capture_output` 聚合全部日志。
+- 总 Attempt deadline 在首次 claim 时由不可变 Task spec 固化：基础预算 7200 秒，包含 TensorRT 时为 10800 秒；lease recovery 不重新计时。`helper_timeout_seconds` 只作为 helper 上限，实际时限始终取该上限与 Attempt 剩余预算的较小值。`termination_grace_seconds` 默认 15 秒。
 
 ## Staging 与发布门禁
 

@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from backend.service.application.error_serialization import serialize_error
+from backend.service.application.errors import (
+    OperationCancelledError,
+    OperationTimeoutError,
+)
 from backend.service.application.ports.queue import QueueMessage
 
 
@@ -36,6 +40,12 @@ def build_conversion_queue_failure_metadata(
         metadata["status_code"] = error_payload["status_code"]
     if "details" in error_payload:
         metadata["error_details"] = error_payload["details"]
+    if isinstance(error, OperationTimeoutError):
+        metadata["status"] = "timed_out"
+    elif isinstance(error, OperationCancelledError):
+        metadata["status"] = "cancelled"
+    else:
+        metadata["status"] = "failed"
     return metadata
 
 

@@ -81,7 +81,10 @@ class RfdetrTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type="rfdetr",
                     task_type=self._read_task_type(queue_task),
-                    metadata=build_training_run_metadata(queue_task),
+                    metadata=build_training_run_metadata(
+                        queue_task,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except OperationCancelledError as error:

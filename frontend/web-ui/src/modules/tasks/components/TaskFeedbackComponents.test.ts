@@ -33,6 +33,19 @@ describe('task feedback components', () => {
     expect(progress.get('.task-progress__track span').attributes('style')).toContain('width: 100%')
   })
 
+  it.each([
+    ['paused', '已暂停', 'warning'],
+    ['timed_out', '已超时', 'danger'],
+  ])('preserves the %s task state', (state, label, tone) => {
+    const wrapper = mount(TaskStateBadge, {
+      props: { state },
+      global: { plugins: [i18n] },
+    })
+
+    expect(wrapper.find(`.status-badge--${tone}`).exists()).toBe(true)
+    expect(wrapper.text()).toContain(label)
+  })
+
   it('uses the shared semantic message treatment for contextual errors', () => {
     const wrapper = mount(InlineMessage, {
       props: { tone: 'danger', title: '任务失败', message: '输出文件不可用' },

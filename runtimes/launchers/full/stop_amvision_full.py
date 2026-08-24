@@ -25,6 +25,7 @@ from common import (  # noqa: E402
 
 _ROOT_PROCESS_MIN_EXIT_WAIT_SECONDS = 15.0
 FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
+FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID = "amvision.full-supervisor-shutdown.v1"
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -89,6 +90,36 @@ def _load_stack_state(state_file_path: Path) -> dict[str, object] | None:
     if not state_file_path.is_file():
         return None
     return json.loads(state_file_path.read_text(encoding="utf-8"))
+
+
+def _resolve_shutdown_request_file(state_file_path: Path) -> Path:
+    """返回与运行状态文件绑定的优雅停止请求文件路径。"""
+
+    return state_file_path.with_name(
+        f"{state_file_path.stem}.shutdown-request.json"
+    )
+
+
+def _write_shutdown_request(
+    shutdown_request_file_path: Path,
+    *,
+    root_process_identity: dict[str, object],
+) -> None:
+    """原子写入只对当前 full Supervisor 生效的优雅停止请求。"""
+
+    payload = {
+        "format_id": FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID,
+        "root_process": root_process_identity,
+    }
+    shutdown_request_file_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = shutdown_request_file_path.with_name(
+        f"{shutdown_request_file_path.name}.{os.getpid()}.tmp"
+    )
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temp_path.replace(shutdown_request_file_path)
 
 
 def _wait_process_exit(identity: dict[str, object], timeout_seconds: float) -> bool:
@@ -210,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         return 2
+    shutdown_request_file_path = _resolve_shutdown_request_file(state_file_path)
 
     stop_targets: list[tuple[str, dict[str, object], str]] = []
     seen_pids: set[int] = set()
@@ -244,36 +276,36 @@ def main(argv: list[str] | None = None) -> int:
     if not stop_targets and root_identity is None:
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
+        with contextlib.suppress(FileNotFoundError):
+            shutdown_request_file_path.unlink()
         print(f"运行状态文件中没有可停止的进程，已清理：{state_file_path}", flush=True)
         return 0
 
     failed_targets: list[tuple[str, int]] = []
-    for component_name, identity, stop_mode in stop_targets:
-        pid = identity["pid"]
-        assert isinstance(pid, int)
-        if not process_identity_matches(identity):
-            print(f"{component_name} 已经退出，pid={pid}", flush=True)
-            continue
-        print(f"正在停止 {component_name}，pid={pid}", flush=True)
-        stopped = _stop_recorded_process(
-            identity,
-            stop_mode=stop_mode,
-            graceful_timeout_seconds=args.graceful_timeout_seconds,
-        )
-        if stopped:
-            print(f"已停止 {component_name}，pid={pid}", flush=True)
-            continue
-        print(f"停止 {component_name} 超时，pid={pid}", flush=True)
-        failed_targets.append((component_name, pid))
-
     if root_identity is not None:
         root_pid = root_identity["pid"]
         assert isinstance(root_pid, int)
         if not process_identity_matches(root_identity):
             print(f"full-stack-root 已经退出，pid={root_pid}", flush=True)
-        elif stop_targets:
-            print(f"等待 full-stack-root 自行退出，pid={root_pid}", flush=True)
-            if _wait_root_process_exit(
+        else:
+            shutdown_request_written = False
+            try:
+                _write_shutdown_request(
+                    shutdown_request_file_path,
+                    root_process_identity=root_identity,
+                )
+            except OSError as error:
+                print(
+                    f"写入 full-stack-root 优雅停止请求失败，转入强制停止：{error}",
+                    flush=True,
+                )
+            else:
+                shutdown_request_written = True
+                print(
+                    f"已请求 full-stack-root 优雅停止，pid={root_pid}",
+                    flush=True,
+                )
+            if shutdown_request_written and _wait_root_process_exit(
                 root_identity,
                 graceful_timeout_seconds=args.graceful_timeout_seconds,
             ):
@@ -293,18 +325,25 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
                     failed_targets.append(("full-stack-root", root_pid))
-        else:
-            print(f"正在停止 full-stack-root，pid={root_pid}", flush=True)
-            stopped = _stop_recorded_process(
-                root_identity,
-                stop_mode="process",
-                graceful_timeout_seconds=args.graceful_timeout_seconds,
-            )
-            if stopped:
-                print(f"已停止 full-stack-root，pid={root_pid}", flush=True)
-            else:
-                print(f"停止 full-stack-root 超时，pid={root_pid}", flush=True)
-                failed_targets.append(("full-stack-root", root_pid))
+
+    # 根监督器已经退出或进入强制停止后，才清理残留组件，避免 Worker 被重新拉起。
+    for component_name, identity, stop_mode in stop_targets:
+        pid = identity["pid"]
+        assert isinstance(pid, int)
+        if not process_identity_matches(identity):
+            print(f"{component_name} 已经退出，pid={pid}", flush=True)
+            continue
+        print(f"正在停止残留 {component_name}，pid={pid}", flush=True)
+        stopped = _stop_recorded_process(
+            identity,
+            stop_mode=stop_mode,
+            graceful_timeout_seconds=args.graceful_timeout_seconds,
+        )
+        if stopped:
+            print(f"已停止 {component_name}，pid={pid}", flush=True)
+            continue
+        print(f"停止 {component_name} 超时，pid={pid}", flush=True)
+        failed_targets.append((component_name, pid))
 
     still_alive_targets = [
         (component_name, pid)
@@ -334,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
 
     with contextlib.suppress(FileNotFoundError):
         state_file_path.unlink()
+    with contextlib.suppress(FileNotFoundError):
+        shutdown_request_file_path.unlink()
     print(f"已清理运行状态文件：{state_file_path}", flush=True)
     return 0
 

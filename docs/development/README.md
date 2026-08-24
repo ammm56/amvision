@@ -4,7 +4,7 @@
 
 ## 当前实施基线
 
-- [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：设计已冻结、可按阶段实现，覆盖 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout。它是该跨子系统改造的唯一详细步骤来源。
+- [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
 
 ## 环境
 

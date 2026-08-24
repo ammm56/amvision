@@ -118,6 +118,7 @@ class RfdetrTrainingExecutionRequest:
     warm_start_source_summary: dict[str, object] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[RfdetrTrainingBatchProgress], None] | None = None
+    control_callback: Callable[[], RfdetrTrainingControlCommand | None] | None = None
     epoch_callback: Callable[
         [RfdetrTrainingEpochProgress],
         RfdetrTrainingControlCommand | None,
@@ -167,6 +168,7 @@ def run_rfdetr_training(
                 warm_start_source_summary=request.warm_start_source_summary,
                 extra_options=request.extra_options,
                 batch_callback=_build_platform_batch_callback(request),
+                control_callback=_build_platform_control_callback(request),
                 epoch_callback=_build_platform_epoch_callback(request),
                 savepoint_callback=_build_platform_savepoint_callback(request),
             )
@@ -213,6 +215,27 @@ def _build_platform_batch_callback(
         )
 
     return on_batch
+
+
+def _build_platform_control_callback(
+    request: RfdetrTrainingExecutionRequest,
+) -> Callable[[], RfdetrPlatformTrainingControlCommand | None] | None:
+    """把 detection batch 安全点控制命令转换到 core。"""
+
+    if request.control_callback is None:
+        return None
+
+    def poll_control() -> RfdetrPlatformTrainingControlCommand | None:
+        command = request.control_callback()
+        if command is None:
+            return None
+        return RfdetrPlatformTrainingControlCommand(
+            save_checkpoint=command.save_checkpoint,
+            pause_training=command.pause_training,
+            terminate_training=command.terminate_training,
+        )
+
+    return poll_control
 
 
 def _build_platform_epoch_callback(

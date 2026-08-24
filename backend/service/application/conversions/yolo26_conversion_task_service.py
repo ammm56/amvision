@@ -15,6 +15,9 @@ from backend.service.application.conversions.yolo_model_conversion_task_service 
     YoloConversionTaskRequest as Yolo26ConversionTaskRequest,
     YoloConversionTaskResult as Yolo26ConversionTaskResult,
 )
+from backend.service.application.conversions.task_kinds import (
+    YOLO26_CONVERSION_TASK_KIND,
+)
 from backend.service.application.models.registry.yolo26_model_service import (
     SqlAlchemyYolo26ModelService,
     Yolo26BuildRegistration,
@@ -24,7 +27,6 @@ from backend.service.application.runtime.targets.yolo26 import (
 )
 
 
-YOLO26_CONVERSION_TASK_KIND = "yolo26-conversion"
 YOLO26_CONVERSION_QUEUE_NAME = "yolo26-conversions"
 
 

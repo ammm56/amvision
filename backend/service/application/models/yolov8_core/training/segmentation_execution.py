@@ -37,7 +37,7 @@ from backend.service.application.models.training.training_engine import (
 )
 from backend.service.application.models.training.checkpoint_policy import (
     read_training_checkpoint_interval,
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
@@ -241,7 +241,9 @@ class YoloV8SegmentationTrainingExecutionRequest:
     batch_callback: Callable[[YoloV8SegmentationTrainingBatchProgress], None] | None = (
         None
     )
-    control_callback: Callable[[], None] | None = None
+    control_callback: Callable[
+        [], YoloV8SegmentationTrainingControlCommand | None
+    ] | None = None
     savepoint_callback: Callable[[YoloV8SegmentationTrainingSavePoint], None] | None = (
         None
     )
@@ -414,7 +416,6 @@ def run_yolov8_segmentation_training(
     m_hist, v_hist = [], []
     # AP 合法下界为 0；使用 -1 保证首次 validation 即使为 0 也会保存 best。
     best_val, best_name = -1.0, "val_map50_95"
-    latest_checkpoint_bytes = b""
     best_checkpoint_bytes = (
         request.previous_best_checkpoint_path.read_bytes()
         if request.previous_best_checkpoint_path is not None
@@ -443,6 +444,67 @@ def run_yolov8_segmentation_training(
         grad_clip_norm=grad_clip,
         initial_iteration=g_iter,
     )
+    latest_checkpoint_bytes = _seg_build_checkpoint(
+        epoch=start_epoch - 1,
+        g_iter=g_iter,
+        model=model,
+        ema=ema,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        m_hist=m_hist,
+        v_hist=v_hist,
+        best_val=best_val,
+        best_name=best_name,
+        bs=bs,
+        me=me,
+        lr=lr,
+        wd=wd,
+        eval_interval=eval_interval,
+        min_lr=min_lr,
+        cl_w=cl_w,
+        box_w=box_w,
+        dfl_w=dfl_w,
+        mask_w=mask_w,
+        assign_topk=assign_topk,
+        assign_alpha=assign_alpha,
+        assign_beta=assign_beta,
+        grad_clip=grad_clip,
+        eval_conf=eval_conf,
+        eval_nms=eval_nms,
+        imports=imports,
+    )
+    last_completed_savepoint = YoloV8SegmentationTrainingSavePoint(
+        latest_checkpoint_bytes=latest_checkpoint_bytes,
+        train_metrics=dict(m_hist[-1]) if m_hist else {},
+        validation_metrics=dict(v_hist[-1]) if v_hist else {},
+        best_metric_value=best_val,
+        best_metric_name=best_name,
+        epoch=start_epoch,
+        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+            optimizer=optimizer,
+            initial_learning_rate=training_schedule.initial_lr,
+        ),
+    )
+
+    def observe_control() -> None:
+        """在 batch 安全点使用最近完整 epoch 快照执行控制。"""
+
+        if request.control_callback is None:
+            return
+        command = request.control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and request.savepoint_callback is not None:
+            request.savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise YoloV8SegmentationTrainingPausedError()
+        if command.terminate_training:
+            raise YoloV8SegmentationTrainingTerminatedError()
 
     nc = len(labels)
     strides = model.stride if hasattr(model, "stride") else (8, 16, 32)
@@ -482,8 +544,7 @@ def run_yolov8_segmentation_training(
         )
         max_iterations = max(1, len(train_dataloader))
         for iteration, cpu_batch in enumerate(train_dataloader, start=1):
-            if request.control_callback is not None:
-                request.control_callback()
+            observe_control()
             if cpu_batch is None:
                 continue
             batch = move_yolo_task_batch_to_device(
@@ -725,7 +786,7 @@ def run_yolov8_segmentation_training(
                 evaluation_nms_threshold=eval_nms,
                 imports=imports,
                 batch_size=bs,
-                control_callback=request.control_callback,
+                control_callback=observe_control,
             )
             v_hist.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
@@ -760,7 +821,7 @@ def run_yolov8_segmentation_training(
             else None
         )
         optimizer_step.step_scheduler_if_optimizer_updated(scheduler)
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch + 1,
             max_epochs=me,
             interval_epochs=read_training_checkpoint_interval(extra),
@@ -769,8 +830,7 @@ def run_yolov8_segmentation_training(
             pause_requested=bool(cmd and cmd.pause_training),
             terminate_requested=bool(cmd and cmd.terminate_training),
         )
-        if checkpoint_decision.should_serialize:
-            latest_checkpoint_bytes = _seg_build_checkpoint(
+        latest_checkpoint_bytes = _seg_build_checkpoint(
                 epoch=epoch,
                 g_iter=g_iter,
                 model=model,
@@ -798,29 +858,28 @@ def run_yolov8_segmentation_training(
                 grad_clip=grad_clip,
                 eval_conf=eval_conf,
                 eval_nms=eval_nms,
-                imports=imports,
-            )
-        if best_metric_improved and checkpoint_decision.should_serialize:
+            imports=imports,
+        )
+        if best_metric_improved:
             best_checkpoint_bytes = latest_checkpoint_bytes
+        last_completed_savepoint = YoloV8SegmentationTrainingSavePoint(
+            latest_checkpoint_bytes=latest_checkpoint_bytes,
+            train_metrics=epoch_metrics,
+            validation_metrics=val_metrics,
+            best_metric_value=best_val,
+            best_metric_name=best_name,
+            epoch=epoch + 1,
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
+            is_best=best_metric_improved,
+        )
         if (
-            checkpoint_decision.should_serialize
+            checkpoint_decision.should_persist
             and request.savepoint_callback is not None
         ):
-            request.savepoint_callback(
-                YoloV8SegmentationTrainingSavePoint(
-                    latest_checkpoint_bytes=latest_checkpoint_bytes,
-                    train_metrics=epoch_metrics,
-                    validation_metrics=val_metrics,
-                    best_metric_value=best_val,
-                    best_metric_name=best_name,
-                    epoch=epoch + 1,
-                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
-                        optimizer=optimizer,
-                        initial_learning_rate=training_schedule.initial_lr,
-                    ),
-                    is_best=best_metric_improved,
-                )
-            )
+            request.savepoint_callback(last_completed_savepoint)
         if cmd is not None and cmd.pause_training:
             raise YoloV8SegmentationTrainingPausedError()
         if cmd is not None and cmd.terminate_training:
@@ -865,7 +924,7 @@ def run_yolov8_segmentation_training(
             evaluation_nms_threshold=eval_nms,
             imports=imports,
             batch_size=bs,
-            control_callback=request.control_callback,
+            control_callback=observe_control,
             scaleup=True,
         )
         test_metrics_payload = build_detection_test_metrics_report(

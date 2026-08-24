@@ -17,6 +17,7 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 
 
 class DetectionInferenceQueueWorker:
@@ -28,6 +29,7 @@ class DetectionInferenceQueueWorker:
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
         queue_backend: QueueBackend,
+        async_inference_queue_backend: QueueBackend | None = None,
         async_inference_executor: DetectionAsyncInferenceExecutor | None = None,
         async_inference_request_timeout_seconds: float = 30.0,
         worker_id: str = "detection-inference-worker",
@@ -40,7 +42,7 @@ class DetectionInferenceQueueWorker:
         self.async_inference_executor = (
             async_inference_executor
             or QueueBackedDetectionAsyncInferenceClient(
-                queue_backend=queue_backend,
+                queue_backend=async_inference_queue_backend or queue_backend,
                 request_timeout_seconds=async_inference_request_timeout_seconds,
                 client_id=worker_id,
                 dataset_storage=dataset_storage,
@@ -65,7 +67,20 @@ class DetectionInferenceQueueWorker:
                 dataset_storage=self.dataset_storage,
                 async_inference_executor=self.async_inference_executor,
             )
-            run_result = service.process_inference_task(task_id)
+            run_result = service.process_inference_task(
+                task_id,
+                execution_fence=(
+                    self.queue_backend.get_execution_fence(
+                        queue_task,
+                        include_heartbeat=False,
+                    )
+                    if isinstance(
+                        self.queue_backend,
+                        TaskAttemptClaimingQueueBackend,
+                    )
+                    else None
+                ),
+            )
         except ServiceError as error:
             self.queue_backend.fail(
                 queue_task,

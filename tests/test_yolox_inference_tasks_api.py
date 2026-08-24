@@ -20,6 +20,7 @@ from backend.service.infrastructure.queue.local_file import LocalFileQueueBacken
 from backend.workers.inference.detection_inference_queue_worker import (
     DetectionInferenceQueueWorker,
 )
+from backend.workers.task_execution_claim import TaskAttemptClaimingQueueBackend
 from tests.api_test_support import (
     build_test_headers,
     build_valid_test_png_bytes,
@@ -53,7 +54,11 @@ def test_create_yolox_inference_task_and_read_result_after_worker(
     worker = DetectionInferenceQueueWorker(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
-        queue_backend=queue_backend,
+        queue_backend=TaskAttemptClaimingQueueBackend(
+            queue_backend=queue_backend,
+            session_factory=session_factory,
+        ),
+        async_inference_queue_backend=queue_backend,
         worker_id="test-detection-inference-worker",
     )
 

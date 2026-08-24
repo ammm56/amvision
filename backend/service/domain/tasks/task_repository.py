@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from backend.service.domain.tasks.task_records import TaskAttempt, TaskEvent, TaskRecord
@@ -31,6 +32,61 @@ class TaskRepository(Protocol):
         返回：
         - 读取到的 TaskRecord；不存在时返回 None。
         """
+
+        ...
+
+    def try_transition_task(
+        self,
+        task_id: str,
+        *,
+        expected_states: Sequence[str],
+        expected_current_attempt_no: int,
+        field_patch: Mapping[str, object],
+        require_publication_unreserved: bool = False,
+    ) -> bool:
+        """按状态与当前 Attempt 轮次原子更新命令拥有的 Task 字段。"""
+
+        ...
+
+    def try_begin_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_current_attempt_no: int,
+        publication_token: str,
+        publication_updated_at: str,
+    ) -> bool:
+        """仅为当前 running Attempt 原子取得 publication reservation。"""
+
+        ...
+
+    def try_transition_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_task_states: Sequence[str],
+        expected_current_attempt_no: int,
+        expected_publication_state: str,
+        publication_token: str,
+        target_publication_state: str,
+        publication_updated_at: str,
+    ) -> bool:
+        """按 Task/Attempt/token/state fence 推进 publication 状态。"""
+
+        ...
+
+    def try_complete_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_current_attempt_no: int,
+        publication_token: str,
+        publication_updated_at: str,
+        finished_at: str,
+        progress: Mapping[str, object],
+        result: Mapping[str, object],
+    ) -> bool:
+        """原子完成 Conversion publication 与 Task 成功终态。"""
 
         ...
 

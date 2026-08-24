@@ -36,7 +36,7 @@ def test_preview_run_logic_nodes_extract_compare_and_select_values(tmp_path: Pat
             metadata={"source": "logic-test"},
         )
     )
-    task_service.append_task_event(
+    task_service.execute_task_state_event_command(
         AppendTaskEventRequest(
             task_id=task_record.task_id,
             event_type="progress",
@@ -47,7 +47,7 @@ def test_preview_run_logic_nodes_extract_compare_and_select_values(tmp_path: Pat
             },
         )
     )
-    task_service.append_task_event(
+    task_service.execute_task_state_event_command(
         AppendTaskEventRequest(
             task_id=task_record.task_id,
             event_type="result",

@@ -7,11 +7,16 @@ from dataclasses import replace
 from multiprocessing import get_context
 from pathlib import Path
 
-from backend.service.application.errors import PersistenceOperationError
+import pytest
+
+from backend.service.application.errors import InvalidRequestError, PersistenceOperationError
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    RecordTaskProgressRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
+    TaskStateCommandRequest,
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -36,7 +41,7 @@ def test_task_attempt_claim_is_atomic_across_database_sessions(tmp_path: Path) -
     )
 
     def claim(worker_id: str) -> str:
-        return SqlAlchemyTaskService(session_factory).claim_task_attempt(
+        return SqlAlchemyTaskService(session_factory).claim_task_execution(
             task_id="task-race",
             attempt_no=1,
             worker_id=worker_id,
@@ -86,6 +91,503 @@ def test_task_attempt_claim_is_atomic_across_worker_processes(tmp_path: Path) ->
     attempts = task_service.list_task_attempts("task-process-race")
     assert len(attempts) == 1
     assert attempts[0].attempt_no == 1
+
+
+def test_running_progress_requires_exact_attempt_lease_fence(tmp_path: Path) -> None:
+    """进度写入只能使用当前 Attempt 的准确 queue lease 身份。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-progress-fence",
+            project_id="project-1",
+            task_kind="training",
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-progress-fence",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="trainings",
+        queue_message_id="message-progress",
+        queue_attempt_count=2,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+        lease_recovery_count=1,
+    )
+    assert claim.attempt is not None
+    fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="worker-a",
+        heartbeat_at="2026-08-24T00:00:00+00:00",
+        queue_message_id="message-progress",
+        queue_attempt_count=2,
+    )
+
+    detail = task_service.record_task_progress(
+        RecordTaskProgressRequest(
+            task_id="task-progress-fence",
+            fence=fence,
+            progress={"stage": "training", "percent": 12.5},
+        )
+    )
+    assert detail.task.state == "running"
+    assert detail.task.progress == {"stage": "training", "percent": 12.5}
+    assert detail.events[0].attempt_id == claim.attempt.attempt_id
+
+    stale_fence = replace(fence, queue_attempt_count=1)
+    with pytest.raises(InvalidRequestError, match="lease 所有权"):
+        task_service.record_task_progress(
+            RecordTaskProgressRequest(
+                task_id="task-progress-fence",
+                fence=stale_fence,
+                progress={"percent": 99.0},
+            )
+        )
+    assert task_service.get_task("task-progress-fence").task.progress["percent"] == 12.5
+
+
+def test_attempt_event_is_pure_append_and_rejects_state_payload(tmp_path: Path) -> None:
+    """Attempt 运行事件不能通过 payload 偷渡 Task 状态变更。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-attempt-event",
+            project_id="project-1",
+            task_kind="conversion",
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-attempt-event",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="conversions",
+        queue_message_id="message-event",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    assert claim.attempt is not None
+    fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="worker-a",
+        heartbeat_at="2026-08-24T00:00:00+00:00",
+        queue_message_id="message-event",
+        queue_attempt_count=1,
+    )
+    detail = task_service.append_task_attempt_event(
+        AppendTaskEventRequest(
+            task_id="task-attempt-event",
+            attempt_id=claim.attempt.attempt_id,
+            event_type="log",
+            message="conversion output prepared",
+            payload={"output_count": 2},
+        ),
+        fence=fence,
+    )
+    assert detail.task.state == "running"
+    assert detail.task.result == {}
+
+    with pytest.raises(InvalidRequestError, match="不能携带 state"):
+        task_service.append_task_attempt_event(
+            AppendTaskEventRequest(
+                task_id="task-attempt-event",
+                attempt_id=claim.attempt.attempt_id,
+                event_type="status",
+                payload={"state": "succeeded"},
+            ),
+            fence=fence,
+        )
+
+
+def test_fenced_terminal_state_command_finalizes_task_and_attempt_atomically(
+    tmp_path: Path,
+) -> None:
+    """带 fence 的业务终态命令必须由统一 finalizer 同时结束 Task/Attempt。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-fenced-finalizer",
+            project_id="project-1",
+            task_kind="inference",
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-fenced-finalizer",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="inferences",
+        queue_message_id="message-finalizer",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    assert claim.attempt is not None
+    stable_fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="worker-a",
+        heartbeat_at=None,
+        queue_message_id="message-finalizer",
+        queue_attempt_count=1,
+    )
+
+    initialized = task_service.execute_task_state_event_command(
+        AppendTaskEventRequest(
+            task_id="task-fenced-finalizer",
+            event_type="status",
+            message="inference started",
+            payload={
+                "state": "running",
+                "attempt_no": 2,
+                "progress": {"stage": "inferencing", "percent": 5.0},
+            },
+        ),
+        fence=stable_fence,
+    )
+    assert initialized.task.current_attempt_no == 1
+    assert initialized.events[0].event_type == "progress"
+    started_events = [
+        event
+        for event in task_service.get_task(
+            "task-fenced-finalizer",
+            include_events=True,
+        ).events
+        if event.event_type == "status" and event.payload.get("state") == "running"
+    ]
+    assert len(started_events) == 1
+
+    detail = task_service.execute_task_state_event_command(
+        AppendTaskEventRequest(
+            task_id="task-fenced-finalizer",
+            event_type="result",
+            message="inference completed",
+            payload={
+                "state": "succeeded",
+                "progress": {"stage": "completed", "percent": 100.0},
+                "result": {"result_object_key": "tasks/result.json"},
+            },
+        ),
+        fence=stable_fence,
+    )
+
+    assert detail.task.state == "succeeded"
+    assert detail.task.progress["percent"] == 100.0
+    assert detail.task.result["result_object_key"] == "tasks/result.json"
+    attempt = task_service.list_task_attempts("task-fenced-finalizer")[0]
+    assert attempt.state == "succeeded"
+    assert attempt.heartbeat_at == "2026-08-24T00:00:00+00:00"
+    assert len(detail.events) == 1
+    assert detail.events[0].attempt_id == attempt.attempt_id
+
+    repeated = task_service.finalize_task_execution_attempt(
+        attempt_id=attempt.attempt_id,
+        attempt_outcome="succeeded",
+        result={"queue_result": {"status": "succeeded"}},
+        error_message=None,
+        metadata=None,
+        expected_worker_id="worker-a",
+        expected_heartbeat_at="2026-08-24T00:00:00+00:00",
+        expected_queue_message_id="message-finalizer",
+        expected_queue_attempt_count=1,
+    )
+    assert repeated.task.result == {"result_object_key": "tasks/result.json"}
+    assert repeated.event is None
+
+
+def test_committed_task_event_survives_in_process_bus_failure(tmp_path: Path) -> None:
+    """进程内通知失败不能回滚或伪装已经提交的 TaskEvent。"""
+
+    class FailingEventBus:
+        def publish(self, _event) -> None:
+            raise RuntimeError("event bus unavailable")
+
+    session_factory = _create_session_factory(tmp_path)
+    session_factory.service_event_bus = FailingEventBus()
+    task_service = SqlAlchemyTaskService(session_factory)
+
+    task = task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-event-bus-failure",
+            project_id="project-1",
+            task_kind="training",
+        )
+    )
+
+    detail = task_service.get_task(task.task_id, include_events=True)
+    assert detail.task.state == "queued"
+    assert len(detail.events) == 1
+    assert detail.events[0].message == "task created"
+
+
+def test_late_metadata_patch_cannot_overwrite_cancelled_task(tmp_path: Path) -> None:
+    """旧 Worker 的 metadata patch 不能越过 cancel 终态 CAS。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-metadata-cancel-race",
+            project_id="project-1",
+            task_kind="training",
+            metadata={"training_control": {"pause_requested": False}},
+        )
+    )
+    task_service.claim_task_execution(
+        task_id="task-metadata-cancel-race",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="trainings",
+        queue_message_id="message-metadata",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    running_task = task_service.get_task("task-metadata-cancel-race").task
+    task_service.cancel_task("task-metadata-cancel-race")
+
+    with pytest.raises(InvalidRequestError, match="metadata 未写入"):
+        task_service.update_task_metadata(
+            running_task.task_id,
+            {"training_control": {"pause_requested": True}},
+            expected_states=("running",),
+            expected_current_attempt_no=running_task.current_attempt_no,
+        )
+    cancelled_task = task_service.get_task("task-metadata-cancel-race").task
+    assert cancelled_task.state == "cancelled"
+    assert cancelled_task.metadata["training_control"] == {
+        "pause_requested": False
+    }
+
+
+def test_explicit_state_command_uses_state_and_attempt_cas(tmp_path: Path) -> None:
+    """显式状态命令只在预期状态和 attempt_no 下生效。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-state-command",
+            project_id="project-1",
+            task_kind="dataset-export",
+        )
+    )
+    detail = task_service.execute_task_state_command(
+        TaskStateCommandRequest(
+            task_id="task-state-command",
+            target_state="running",
+            expected_states=("queued",),
+            expected_current_attempt_no=0,
+            progress_patch={"stage": "exporting", "percent": 10},
+            message="dataset export started",
+        )
+    )
+    assert detail.task.state == "running"
+    assert detail.task.progress["percent"] == 10
+
+    with pytest.raises(InvalidRequestError, match="状态命令未生效"):
+        task_service.execute_task_state_command(
+            TaskStateCommandRequest(
+                task_id="task-state-command",
+                target_state="failed",
+                expected_states=("running",),
+                expected_current_attempt_no=1,
+                error_message="stale attempt",
+            )
+        )
+    assert task_service.get_task("task-state-command").task.state == "running"
+
+
+def test_cancel_and_finalizer_race_has_one_authoritative_terminal_state(
+    tmp_path: Path,
+) -> None:
+    """cancel 与 Worker finalizer 并发时 Task/Attempt 必须收敛到同一终态。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-cancel-finalize-race",
+            project_id="project-1",
+            task_kind="evaluation",
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="task-cancel-finalize-race",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="evaluations",
+        queue_message_id="message-race",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    assert claim.attempt is not None
+
+    def finalize() -> str:
+        try:
+            task_service.finalize_task_execution_attempt(
+                attempt_id=claim.attempt.attempt_id,
+                attempt_outcome="succeeded",
+                result={"metric": 0.9},
+                error_message=None,
+                metadata=None,
+                expected_worker_id="worker-a",
+                expected_heartbeat_at="2026-08-24T00:00:00+00:00",
+                expected_queue_message_id="message-race",
+                expected_queue_attempt_count=1,
+            )
+            return "succeeded"
+        except InvalidRequestError:
+            return "rejected"
+
+    def cancel() -> str:
+        try:
+            task_service.cancel_task("task-cancel-finalize-race")
+            return "cancelled"
+        except InvalidRequestError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = tuple(executor.map(lambda action: action(), (finalize, cancel)))
+
+    task = task_service.get_task("task-cancel-finalize-race").task
+    attempt = task_service.list_task_attempts("task-cancel-finalize-race")[0]
+    assert outcomes.count("rejected") == 1
+    assert task.state in {"succeeded", "cancelled"}
+    assert attempt.state == task.state
+
+
+def test_conversion_publication_reservation_is_fenced_and_blocks_cancel(
+    tmp_path: Path,
+) -> None:
+    """验证 publication 只能由当前 Attempt 推进，取得后取消必须冲突。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="conversion-publication-fence",
+            project_id="project-1",
+            task_kind="yolox-conversion",
+            task_spec={"target_formats": ["onnx"]},
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="conversion-publication-fence",
+        attempt_no=1,
+        worker_id="conversion-worker",
+        queue_name="yolox-conversions",
+        queue_message_id="conversion-message",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    assert claim.attempt is not None
+    fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="conversion-worker",
+        heartbeat_at=claim.attempt.heartbeat_at,
+        queue_message_id="conversion-message",
+        queue_attempt_count=1,
+    )
+
+    reservation = task_service.begin_conversion_publication(
+        task_id="conversion-publication-fence",
+        fence=fence,
+        publication_token="publication-token-1",
+    )
+    assert reservation.publication_state == "reserved"
+    assert task_service.get_task("conversion-publication-fence").task.publication_state == (
+        "reserved"
+    )
+    with pytest.raises(InvalidRequestError, match="不能取消"):
+        task_service.cancel_task("conversion-publication-fence")
+    with pytest.raises(InvalidRequestError, match="CAS 失败"):
+        task_service.transition_conversion_publication(
+            task_id="conversion-publication-fence",
+            attempt_no=1,
+            publication_token="stale-token",
+            expected_state="reserved",
+            target_state="published",
+        )
+
+    published = task_service.transition_conversion_publication(
+        task_id="conversion-publication-fence",
+        attempt_no=1,
+        publication_token="publication-token-1",
+        expected_state="reserved",
+        target_state="published",
+    )
+    assert published.publication_state == "published"
+    registered = task_service.transition_conversion_publication(
+        task_id="conversion-publication-fence",
+        attempt_no=1,
+        publication_token="publication-token-1",
+        expected_state="published",
+        target_state="registered",
+    )
+    assert registered.publication_state == "registered"
+
+
+def test_conversion_reservation_and_cancel_race_has_one_winner(tmp_path: Path) -> None:
+    """验证 reservation 与取消竞争由同一 Task 行 CAS 决定唯一结果。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="conversion-publication-cancel-race",
+            project_id="project-1",
+            task_kind="rfdetr-conversion",
+            task_spec={"target_formats": ["onnx"]},
+        )
+    )
+    claim = task_service.claim_task_execution(
+        task_id="conversion-publication-cancel-race",
+        attempt_no=1,
+        worker_id="conversion-worker",
+        queue_name="rfdetr-conversions",
+        queue_message_id="conversion-race-message",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00+00:00",
+    )
+    assert claim.attempt is not None
+    fence = TaskExecutionFence(
+        attempt_id=claim.attempt.attempt_id,
+        worker_id="conversion-worker",
+        heartbeat_at=claim.attempt.heartbeat_at,
+        queue_message_id="conversion-race-message",
+        queue_attempt_count=1,
+    )
+
+    def reserve() -> str:
+        try:
+            task_service.begin_conversion_publication(
+                task_id="conversion-publication-cancel-race",
+                fence=fence,
+                publication_token="race-token",
+            )
+            return "reserved"
+        except InvalidRequestError:
+            return "rejected"
+
+    def cancel() -> str:
+        try:
+            task_service.cancel_task("conversion-publication-cancel-race")
+            return "cancelled"
+        except InvalidRequestError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = tuple(executor.map(lambda action: action(), (reserve, cancel)))
+
+    assert outcomes.count("rejected") == 1
+    task = task_service.get_task("conversion-publication-cancel-race").task
+    if "reserved" in outcomes:
+        assert task.state == "running"
+        assert task.publication_state == "reserved"
+    else:
+        assert task.state == "cancelled"
+        assert task.publication_state is None
 
 
 def test_queue_wrapper_suppresses_running_and_finished_duplicate_messages(
@@ -152,7 +654,9 @@ def test_queue_wrapper_suppresses_running_and_finished_duplicate_messages(
         task_id="message-3",
     )
     assert suppressed_finished is not None
-    assert suppressed_finished.metadata["task_execution_claim"] == "duplicate_finished"
+    assert suppressed_finished.metadata["task_execution_claim"] == (
+        "finalization_recovery"
+    )
     attempts = task_service.list_task_attempts("task-duplicate")
     assert len(attempts) == 1
     assert attempts[0].state == "succeeded"
@@ -186,7 +690,7 @@ def test_queue_wrapper_uses_explicit_next_attempt_for_retry(tmp_path: Path) -> N
     assert first is not None
     queue.fail(first, error_message="训练进程退出")
 
-    task_service.append_task_event(
+    task_service.execute_task_state_event_command(
         AppendTaskEventRequest(
             task_id="task-retry",
             event_type="status",
@@ -209,7 +713,7 @@ def test_queue_wrapper_uses_explicit_next_attempt_for_retry(tmp_path: Path) -> N
         (1, "failed"),
         (2, "succeeded"),
     ]
-    obsolete = task_service.claim_task_attempt(
+    obsolete = task_service.claim_task_execution(
         task_id="task-retry",
         attempt_no=1,
         worker_id="worker-stale",
@@ -220,6 +724,45 @@ def test_queue_wrapper_uses_explicit_next_attempt_for_retry(tmp_path: Path) -> N
         lease_recovery_count=1,
     )
     assert obsolete.outcome == "obsolete_attempt"
+
+
+def test_queue_failure_preserves_timeout_terminal_state(tmp_path: Path) -> None:
+    """Queue failed 记录不能把业务 timed_out 误写成 failed。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    task_service = SqlAlchemyTaskService(session_factory)
+    task_service.create_task(
+        CreateTaskRequest(
+            task_id="task-timeout-finalizer",
+            project_id="project-1",
+            task_kind="evaluation",
+        )
+    )
+    raw_queue = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-timeout"))
+    )
+    queue = TaskAttemptClaimingQueueBackend(
+        queue_backend=raw_queue,
+        session_factory=session_factory,
+    )
+    raw_queue.enqueue(
+        queue_name="evaluations",
+        message_id="message-timeout",
+        payload={"task_id": "task-timeout-finalizer", "attempt_no": 1},
+    )
+    claimed = queue.claim_next(queue_name="evaluations", worker_id="worker-a")
+    assert claimed is not None
+
+    queue.fail(
+        claimed,
+        error_message="deadline exceeded",
+        metadata={"status": "timed_out"},
+    )
+
+    task = task_service.get_task("task-timeout-finalizer").task
+    attempt = task_service.list_task_attempts(task.task_id)[0]
+    assert task.state == "timed_out"
+    assert attempt.state == "timed_out"
 
 
 def test_lease_refresh_keeps_task_attempt_binding(tmp_path: Path) -> None:
@@ -254,6 +797,48 @@ def test_lease_refresh_keeps_task_attempt_binding(tmp_path: Path) -> None:
     attempts = task_service.list_task_attempts("task-heartbeat")
     assert attempts[0].state == "succeeded"
     assert attempts[0].metadata["queue_attempt_count"] == 1
+
+
+def test_conversion_lease_recovery_never_resets_total_deadline(tmp_path: Path) -> None:
+    """同一 Conversion Attempt 被新 lease 接管时必须沿用首次 deadline。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    service = SqlAlchemyTaskService(session_factory)
+    service.create_task(
+        CreateTaskRequest(
+            task_id="conversion-deadline-recovery",
+            project_id="project-1",
+            task_kind="yolox-conversion",
+            task_spec={"target_formats": ["tensorrt-engine"]},
+        )
+    )
+    first = service.claim_task_execution(
+        task_id="conversion-deadline-recovery",
+        attempt_no=1,
+        worker_id="worker-a",
+        queue_name="yolox-conversions",
+        queue_message_id="conversion-message",
+        queue_attempt_count=1,
+        queue_leased_at="2026-08-24T00:00:00Z",
+    )
+    assert first.attempt is not None
+    original_deadline = first.attempt.metadata["deadline_at"]
+
+    recovered = service.claim_task_execution(
+        task_id="conversion-deadline-recovery",
+        attempt_no=1,
+        worker_id="worker-b",
+        queue_name="yolox-conversions",
+        queue_message_id="conversion-message",
+        queue_attempt_count=2,
+        queue_leased_at="2026-08-24T01:30:00Z",
+        lease_recovery_count=1,
+    )
+
+    assert recovered.outcome == "acquired"
+    assert recovered.attempt is not None
+    assert recovered.attempt.metadata["deadline_at"] == original_deadline
+    assert recovered.attempt.metadata["timeout_seconds"] == 10800.0
 
 
 def test_recovered_same_message_reclaims_attempt_and_fences_stale_owner(
@@ -321,7 +906,7 @@ def test_recovered_same_message_reclaims_attempt_and_fences_stale_owner(
 
     try:
         first_queue.complete(stale_message, metadata={"status": "succeeded"})
-    except (PersistenceOperationError, RuntimeError):
+    except (InvalidRequestError, PersistenceOperationError, RuntimeError):
         pass
     else:
         raise AssertionError("旧 lease 不应能够提交队列终态")
@@ -334,97 +919,16 @@ def test_recovered_same_message_reclaims_attempt_and_fences_stale_owner(
     assert task_service.list_task_attempts("task-recovered")[0].state == "succeeded"
 
 
-def test_recovered_message_enters_service_when_attempt_finished_before_task(
+def test_recovered_message_only_acks_atomic_finalization_after_queue_ack_loss(
     tmp_path: Path,
 ) -> None:
-    """Attempt 已终态但 Task 未最终发布时，恢复消息不能被普通判重吞掉。"""
+    """Task/Attempt 已原子终结但 queue ACK 丢失时只补 ACK，不重放业务。"""
 
     session_factory = _create_session_factory(tmp_path)
     task_service = SqlAlchemyTaskService(session_factory)
     task_service.create_task(
         CreateTaskRequest(
-            task_id="task-finalization-window",
-            project_id="project-1",
-            task_kind="conversion",
-        )
-    )
-    raw_queue = LocalFileQueueBackend(
-        LocalFileQueueSettings(root_dir=str(tmp_path / "queue-finalization"))
-    )
-    first_queue = TaskAttemptClaimingQueueBackend(
-        queue_backend=raw_queue,
-        session_factory=session_factory,
-    )
-    raw_queue.enqueue(
-        queue_name="conversions",
-        message_id="message-finalization",
-        payload={"task_id": "task-finalization-window", "attempt_no": 1},
-    )
-    stale_message = first_queue.claim_next(
-        queue_name="conversions",
-        worker_id="worker-a",
-    )
-    assert stale_message is not None
-    attempt = task_service.list_task_attempts("task-finalization-window")[0]
-    attempt = task_service.finish_task_attempt(
-        attempt_id=attempt.attempt_id,
-        state="succeeded",
-        result={"publication": "written"},
-        expected_worker_id="worker-a",
-    )
-    assert task_service.get_task("task-finalization-window").task.state == "queued"
-
-    leased_path = (
-        raw_queue.root_dir / "conversions" / "leased" / "message-finalization.json"
-    )
-    raw_queue._overwrite_task_file(  # noqa: SLF001 - 构造最终发布前 crash
-        leased_path,
-        replace(stale_message, leased_at="2000-01-01T00:00:00+00:00"),
-    )
-    assert raw_queue.recover_expired_leases(
-        queue_name="conversions",
-        lease_timeout_seconds=0.1,
-    ) == 1
-
-    recovered_queue = TaskAttemptClaimingQueueBackend(
-        queue_backend=raw_queue,
-        session_factory=session_factory,
-    )
-    recovered_message = recovered_queue.claim_next(
-        queue_name="conversions",
-        worker_id="worker-b",
-    )
-    assert recovered_message is not None
-    assert task_service.list_task_attempts("task-finalization-window") == (attempt,)
-
-    task_service.append_task_event(
-        AppendTaskEventRequest(
-            task_id="task-finalization-window",
-            event_type="result",
-            message="conversion finalization recovered",
-            payload={"state": "succeeded", "result": {"publication": "written"}},
-        )
-    )
-    recovered_queue.complete(
-        recovered_message,
-        metadata={"status": "succeeded"},
-    )
-    assert task_service.get_task("task-finalization-window").task.state == "succeeded"
-    assert task_service.list_task_attempts("task-finalization-window")[0].state == (
-        "succeeded"
-    )
-
-
-def test_recovered_message_finalizes_attempt_when_task_already_finished(
-    tmp_path: Path,
-) -> None:
-    """Task 已发布终态但 Attempt 未结束时，恢复消息只补终态而不重放 service。"""
-
-    session_factory = _create_session_factory(tmp_path)
-    task_service = SqlAlchemyTaskService(session_factory)
-    task_service.create_task(
-        CreateTaskRequest(
-            task_id="task-attempt-finalization",
+            task_id="task-finalization-recovery",
             project_id="project-1",
             task_kind="evaluation",
         )
@@ -439,23 +943,27 @@ def test_recovered_message_finalizes_attempt_when_task_already_finished(
     raw_queue.enqueue(
         queue_name="evaluations",
         message_id="message-attempt-finalization",
-        payload={"task_id": "task-attempt-finalization", "attempt_no": 1},
+        payload={"task_id": "task-finalization-recovery", "attempt_no": 1},
     )
     stale_message = first_queue.claim_next(
         queue_name="evaluations",
         worker_id="worker-a",
     )
     assert stale_message is not None
-    task_service.append_task_event(
-        AppendTaskEventRequest(
-            task_id="task-attempt-finalization",
-            event_type="result",
-            payload={"state": "succeeded", "result": {"metric": 0.99}},
-        )
+    attempt = task_service.list_task_attempts("task-finalization-recovery")[0]
+    task_service.finalize_task_execution_attempt(
+        attempt_id=attempt.attempt_id,
+        attempt_outcome="succeeded",
+        result={"metric": 0.99},
+        error_message=None,
+        metadata=None,
+        expected_worker_id="worker-a",
+        expected_heartbeat_at=str(attempt.heartbeat_at),
+        expected_queue_message_id="message-attempt-finalization",
+        expected_queue_attempt_count=1,
+        exit_code=0,
     )
-    assert task_service.list_task_attempts("task-attempt-finalization")[0].state == (
-        "running"
-    )
+    assert task_service.get_task("task-finalization-recovery").task.state == "succeeded"
 
     leased_path = (
         raw_queue.root_dir
@@ -484,17 +992,16 @@ def test_recovered_message_finalizes_attempt_when_task_already_finished(
         )
         is None
     )
-    attempt = task_service.list_task_attempts("task-attempt-finalization")[0]
+    attempt = task_service.list_task_attempts("task-finalization-recovery")[0]
     assert attempt.state == "succeeded"
-    assert attempt.result == {"task_result": {"metric": 0.99}}
-    assert attempt.metadata["finalized_from_terminal_task"] is True
+    assert attempt.result == {"metric": 0.99}
     completed = raw_queue.get_task(
         queue_name="evaluations",
         task_id="message-attempt-finalization",
     )
     assert completed is not None
     assert completed.status == "completed"
-    assert completed.metadata["task_execution_claim"] == "task_finished"
+    assert completed.metadata["task_execution_claim"] == "finalization_recovery"
 
 
 def _create_session_factory(tmp_path: Path) -> SessionFactory:
@@ -513,7 +1020,7 @@ def _claim_attempt_in_worker_process(arguments: tuple[str, str]) -> str:
     database_url, worker_id = arguments
     session_factory = SessionFactory(DatabaseSettings(url=database_url))
     try:
-        return SqlAlchemyTaskService(session_factory).claim_task_attempt(
+        return SqlAlchemyTaskService(session_factory).claim_task_execution(
             task_id="task-process-race",
             attempt_no=1,
             worker_id=worker_id,

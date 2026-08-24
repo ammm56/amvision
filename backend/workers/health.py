@@ -30,6 +30,10 @@ DEFAULT_BACKEND_WORKER_HEARTBEAT_INTERVAL_SECONDS = 2.0
 DEFAULT_BACKEND_WORKER_STALE_AFTER_SECONDS = 15.0
 
 
+class BackendWorkerTopologyStopping(RuntimeError):
+    """表示当前 Topology 正在正常停止，Worker 应无错误退出。"""
+
+
 @dataclass(frozen=True)
 class BackendWorkerHeartbeatInfo:
     """描述单个 Worker Profile 心跳写入所需的稳定信息。"""
@@ -62,6 +66,7 @@ class BackendWorkerHeartbeat:
         self._thread: Thread | None = None
         self._state_lock = Lock()
         self._thread_error: BaseException | None = None
+        self._topology_stopping: BackendWorkerTopologyStopping | None = None
 
     @property
     def heartbeat_path(self) -> Path:
@@ -82,6 +87,7 @@ class BackendWorkerHeartbeat:
         self._stop_event.clear()
         with self._state_lock:
             self._thread_error = None
+            self._topology_stopping = None
             self._status = "starting"
             self._failure_message = None
         self._write_snapshot()
@@ -112,7 +118,10 @@ class BackendWorkerHeartbeat:
 
         with self._state_lock:
             error = self._thread_error
+            topology_stopping = self._topology_stopping
             thread = self._thread
+        if topology_stopping is not None:
+            raise topology_stopping
         if error is not None:
             raise RuntimeError("backend-worker 心跳写入线程异常退出") from error
         if thread is None or not thread.is_alive():
@@ -151,6 +160,10 @@ class BackendWorkerHeartbeat:
             while not self._stop_event.wait(self.interval_seconds):
                 self._assert_active_topology()
                 self._write_snapshot()
+        except BackendWorkerTopologyStopping as stopping:
+            with self._state_lock:
+                self._topology_stopping = stopping
+            self._stop_event.set()
         except BaseException as error:  # noqa: BLE001 - 线程故障必须原样交给主循环
             with self._state_lock:
                 self._thread_error = error
@@ -186,6 +199,10 @@ class BackendWorkerHeartbeat:
             raise RuntimeError("backend-worker Topology Manifest 身份已变化")
         if topology.supervisor_instance_id != bundle.topology.supervisor_instance_id:
             raise RuntimeError("backend-worker Supervisor 身份已变化")
+        if topology.state in {"stopping", "stopped"}:
+            raise BackendWorkerTopologyStopping(
+                f"backend-worker Topology 正在停止: state={topology.state!r}"
+            )
         if topology.state not in {"starting", "running"}:
             raise RuntimeError(
                 f"backend-worker Topology 已停止接收任务: state={topology.state!r}"

@@ -71,6 +71,39 @@ def test_execution_control_uses_earliest_deadline() -> None:
     assert control.deadline_monotonic < workflow_deadline
 
 
+def test_execution_control_includes_node_pack_deadline() -> None:
+    """Node Pack deadline 必须作为 handler 可见的协作式 deadline。"""
+
+    node_deadline = monotonic() + 0.01
+    request = _build_request()
+    request = WorkflowNodeExecutionRequest(
+        node_id=request.node_id,
+        node_definition=request.node_definition,
+        node_deadline_monotonic=node_deadline,
+    )
+
+    control = build_node_execution_control(request)
+
+    assert control.deadline_monotonic == node_deadline
+
+
+def test_execution_control_preserves_workflow_timeout_error_when_it_is_earlier() -> None:
+    """Node Pack policy 较长时仍应保留 Workflow 总 deadline 的公开错误语义。"""
+
+    workflow_deadline = monotonic() - 0.01
+    request = WorkflowNodeExecutionRequest(
+        node_id="wait-node",
+        node_definition=SimpleNamespace(node_type_id="test.wait"),
+        execution_metadata={
+            WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY: workflow_deadline
+        },
+        node_deadline_monotonic=workflow_deadline,
+    )
+
+    with pytest.raises(OperationTimeoutError, match="Workflow 执行超过 deadline"):
+        build_node_execution_control(request).raise_if_cancelled_or_expired()
+
+
 def test_execution_control_wait_honors_deadline() -> None:
     """可中断等待不能越过节点 deadline。"""
 

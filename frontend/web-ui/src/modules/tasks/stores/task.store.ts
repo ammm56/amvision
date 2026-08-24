@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 import { cancelTask, getAllTaskEvents, getTask, listTasks } from '../services/task.service'
 import type { PaginationMeta } from '@/shared/api/pagination'
-import type { TaskEvent, TaskRecord, TaskState } from '@/shared/contracts'
+import type { TaskDisplayState, TaskEvent, TaskRecord } from '@/shared/contracts'
 import { translate } from '@/platform/i18n'
 
 export const DEFAULT_TASK_PAGE_SIZE = 50
@@ -23,8 +23,10 @@ function createPaginationState(): PaginationMeta {
   }
 }
 
-export function normalizeTaskState(task: TaskRecord): TaskState {
+export function normalizeTaskState(task: TaskRecord): TaskDisplayState {
   const rawState = String(task.state ?? task.status ?? '').toLowerCase()
+  if (rawState === 'paused' || rawState.includes('pause')) return 'paused'
+  if (rawState === 'timed_out' || rawState.includes('time_out') || rawState.includes('timeout')) return 'timed_out'
   if (rawState.includes('queue')) return 'queued'
   if (rawState.includes('run')) return 'running'
   if (rawState.includes('complete') || rawState.includes('success') || rawState.includes('succeed')) return 'succeeded'

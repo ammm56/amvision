@@ -954,7 +954,7 @@ def test_get_yolox_training_task_detail_exposes_output_prefix_while_running(
                 "epoch_history": [{"epoch": 5, "map50": 0.62, "map50_95": 0.41}],
             },
         )
-        SqlAlchemyTaskService(session_factory).append_task_event(
+        SqlAlchemyTaskService(session_factory).execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -1813,10 +1813,11 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
 
     try:
         created_task = task_service.create_task(
-            CreateTaskRequest(
-                project_id="project-1",
-                task_kind=RFDETR_TRAINING_TASK_KIND,
-                display_name="rfdetr register latest",
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind=RFDETR_TRAINING_TASK_KIND,
+                    display_name="rfdetr register latest",
+                    state="running",
                 task_spec={
                     "project_id": "project-1",
                     "recipe_id": "default",
@@ -1844,7 +1845,7 @@ def test_register_latest_checkpoint_model_version_supports_rfdetr_detection_task
                 },
             )
         )
-        task_service.append_task_event(
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=created_task.task_id,
                 event_type="result",

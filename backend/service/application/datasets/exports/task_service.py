@@ -32,6 +32,8 @@ from backend.service.application.project_mutation import ProjectMutationAdmissio
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
+    TaskStateCommandRequest,
 )
 from backend.service.application.tasks.queue_outbox import build_queue_outbox_message
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -153,7 +155,12 @@ class SqlAlchemyDatasetExportTaskService:
             status="queued",
         )
 
-    def process_export_task(self, dataset_export_id: str) -> DatasetExportTaskResult:
+    def process_export_task(
+        self,
+        dataset_export_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> DatasetExportTaskResult:
         """执行一条已入队的 DatasetExport 任务。"""
 
         dataset_export = self._require_dataset_export(dataset_export_id)
@@ -183,21 +190,32 @@ class SqlAlchemyDatasetExportTaskService:
             )
 
         export_request = self._build_export_request_from_dataset_export(dataset_export)
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        task_snapshot = self.task_service.get_task(task_id).task
+        if execution_fence is not None:
+            self.task_service.validate_task_execution_fence(
                 task_id=task_id,
-                event_type="status",
-                message="dataset export started",
-                payload={
-                    "state": "running",
-                    "started_at": self._now_iso(),
-                    "progress": {
-                        "stage": "exporting",
-                        "percent": 10,
-                    },
-                },
+                fence=execution_fence,
             )
-        )
+            self.task_service.record_task_progress_event(
+                AppendTaskEventRequest(
+                    task_id=task_id,
+                    event_type="progress",
+                    message="dataset export initialized",
+                    payload={"progress": {"stage": "exporting", "percent": 10}},
+                ),
+                fence=execution_fence,
+            )
+        else:
+            self.task_service.execute_task_state_command(
+                TaskStateCommandRequest(
+                task_id=task_id,
+                target_state="running",
+                expected_states=(task_snapshot.state,),
+                expected_current_attempt_no=task_snapshot.current_attempt_no,
+                progress_patch={"stage": "exporting", "percent": 10},
+                message="dataset export started",
+                )
+            )
         self._save_dataset_export(
             replace(
                 dataset_export,
@@ -216,21 +234,22 @@ class SqlAlchemyDatasetExportTaskService:
                     error_message=str(error),
                 )
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
+            task_snapshot = self.task_service.get_task(task_id).task
+            self.task_service.execute_task_state_command(
+                TaskStateCommandRequest(
                     task_id=task_id,
-                    event_type="result",
-                    message="dataset export failed",
-                    payload={
-                        "state": "failed",
-                        "finished_at": self._now_iso(),
-                        "error_message": str(error),
-                        "progress": {"stage": "failed"},
-                        "result": {
-                            "dataset_version_id": export_request.dataset_version_id,
-                            "format_id": export_request.format_id,
-                        },
+                    target_state="failed",
+                    expected_states=("running",),
+                    expected_current_attempt_no=task_snapshot.current_attempt_no,
+                    fence=execution_fence,
+                    progress_patch={"stage": "failed"},
+                    result_patch={
+                        "dataset_version_id": export_request.dataset_version_id,
+                        "format_id": export_request.format_id,
                     },
+                    error_message=str(error),
+                    message="dataset export failed",
+                    event_type="result",
                 )
             )
             raise
@@ -255,22 +274,23 @@ class SqlAlchemyDatasetExportTaskService:
                 },
             )
         )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        task_snapshot = self.task_service.get_task(task_id).task
+        self.task_service.execute_task_state_command(
+            TaskStateCommandRequest(
                 task_id=task_id,
-                event_type="result",
-                message="dataset export completed",
-                payload={
-                    "state": "succeeded",
-                    "finished_at": self._now_iso(),
-                    "progress": {
-                        "stage": "completed",
-                        "percent": 100,
-                        "sample_count": artifact.sample_count,
-                        "category_count": len(artifact.category_names),
-                    },
-                    "result": self._serialize_export_artifact(artifact),
+                target_state="succeeded",
+                expected_states=("running",),
+                expected_current_attempt_no=task_snapshot.current_attempt_no,
+                fence=execution_fence,
+                progress_patch={
+                    "stage": "completed",
+                    "percent": 100,
+                    "sample_count": artifact.sample_count,
+                    "category_count": len(artifact.category_names),
                 },
+                result_patch=self._serialize_export_artifact(artifact),
+                message="dataset export completed",
+                event_type="result",
             )
         )
         return DatasetExportTaskResult(

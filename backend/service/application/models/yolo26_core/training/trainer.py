@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.service.application.models.yolo26_core.training.checkpoint import (
+    Yolo26DetectionEpochCheckpointUpdate,
     build_yolo26_detection_epoch_checkpoint_update,
 )
 from backend.service.application.models.yolo26_core.training.control import (
@@ -35,7 +36,7 @@ from backend.service.application.models.yolo_core_common.training import (
     require_yolo_successful_optimizer_step,
 )
 from backend.service.application.models.training.checkpoint_policy import (
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 
 
@@ -106,7 +107,7 @@ def run_yolo26_detection_training_loop(
     build_batch: Callable[[list[Any], tuple[Any, ...], int], tuple[Any, tuple[Any, ...]]],
     unwrap_outputs: Callable[[Any], dict[str, Any]],
     compute_loss: Callable[..., dict[str, Any]],
-    evaluate_model: Callable[[], dict[str, object]],
+    evaluate_model: Callable[[Callable[[], None] | None], dict[str, object]],
     grad_clip_norm: float,
     category_names: tuple[str, ...],
     model_scale: str,
@@ -142,6 +143,8 @@ def run_yolo26_detection_training_loop(
     runtime_precision: str = "fp32",
     batch_callback: Callable[[Yolo26DetectionTrainingBatchProgress], None]
     | None = None,
+    control_callback: Callable[[], Yolo26DetectionEpochControlDecision | None]
+    | None = None,
     epoch_callback: Callable[
         [Yolo26DetectionTrainerEpochProgress],
         Yolo26DetectionEpochControlDecision | None,
@@ -159,6 +162,98 @@ def run_yolo26_detection_training_loop(
     current_best_metric_value = float(best_metric_value)
     successful_optimizer_steps = 0
     skipped_optimizer_steps = 0
+
+    def build_completed_epoch_checkpoint(
+        *,
+        completed_epoch: int,
+        improved_best: bool,
+    ) -> Yolo26DetectionEpochCheckpointUpdate:
+        """序列化最近完整 epoch 的不可变恢复快照。"""
+
+        return build_yolo26_detection_epoch_checkpoint_update(
+            torch_module=torch_module,
+            model=model,
+            ema_model=getattr(ema, "model", None),
+            ema_updates=getattr(ema, "updates", None),
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            model_type="yolo26",
+            model_scale=model_scale,
+            category_names=category_names,
+            input_size=input_size,
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            epoch=completed_epoch,
+            precision=precision,
+            validation_split_name=validation_split_name,
+            evaluation_interval=evaluation_interval,
+            evaluation_confidence_threshold=(
+                evaluation_confidence_threshold if has_validation else None
+            ),
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            class_loss_weight=class_loss_weight,
+            box_loss_weight=box_loss_weight,
+            dfl_loss_weight=dfl_loss_weight,
+            assign_topk=assign_topk,
+            assign_alpha=assign_alpha,
+            assign_beta=assign_beta,
+            min_lr_ratio=min_lr_ratio,
+            grad_clip_norm=grad_clip_norm,
+            metrics_history=metrics_history,
+            validation_history=validation_history,
+            evaluated_epochs=tuple(evaluated_epochs),
+            warm_start_summary=warm_start_summary,
+            implementation_mode=implementation_mode,
+            augmentation_options=augmentation_options,
+            best_metric_name=best_metric_name,
+            candidate_best_metric_value=current_best_metric_value,
+            previous_best_checkpoint_bytes=best_checkpoint_bytes,
+            improved_best=improved_best,
+        )
+
+    baseline_update = build_completed_epoch_checkpoint(
+        completed_epoch=resume_epoch,
+        improved_best=False,
+    )
+    latest_checkpoint_bytes = baseline_update.latest_checkpoint_bytes
+    best_checkpoint_bytes = baseline_update.best_checkpoint_bytes
+    current_best_metric_value = baseline_update.best_metric_value
+    last_completed_savepoint = build_yolo26_detection_training_savepoint_payload(
+        epoch=resume_epoch,
+        latest_checkpoint_bytes=latest_checkpoint_bytes,
+        best_checkpoint_bytes=best_checkpoint_bytes,
+        best_metric_name=best_metric_name,
+        best_metric_value=current_best_metric_value,
+        has_validation=has_validation,
+    )
+
+    def observe_control() -> None:
+        """在 train/validation batch 安全点处理控制命令。"""
+
+        if control_callback is None:
+            return
+        decision = control_callback()
+        if decision is None:
+            return
+        if (
+            decision.save_checkpoint
+            or decision.pause_training
+            or decision.terminate_training
+        ) and savepoint_callback is not None:
+            savepoint_callback(last_completed_savepoint)
+        if decision.pause_training:
+            raise Yolo26DetectionTrainingPausedError(last_completed_savepoint)
+        if decision.terminate_training:
+            raise Yolo26DetectionTrainingTerminatedError()
+
+    def on_batch(progress: Yolo26DetectionTrainingBatchProgress) -> None:
+        """发布 batch 进度后检查训练控制。"""
+
+        if batch_callback is not None:
+            batch_callback(progress)
+        observe_control()
 
     for epoch in range(int(resume_epoch) + 1, int(max_epochs) + 1):
         epoch_result = run_yolo26_detection_training_epoch(
@@ -187,7 +282,7 @@ def run_yolo26_detection_training_loop(
             ),
             device=device,
             runtime_precision=runtime_precision,
-            batch_callback=batch_callback,
+            batch_callback=on_batch,
         )
         global_iteration = epoch_result.global_iteration
         successful_optimizer_steps += epoch_result.successful_optimizer_steps
@@ -206,6 +301,7 @@ def run_yolo26_detection_training_loop(
                 validation_sample_count=len(validation_samples),
                 best_metric_name=best_metric_name,
                 evaluate_model=evaluate_model,
+                control_callback=observe_control,
                 validation_history=validation_history,
                 evaluated_epochs=evaluated_epochs,
             )
@@ -241,7 +337,7 @@ def run_yolo26_detection_training_loop(
             has_validation=has_validation,
             metrics_history=metrics_history,
         )
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch,
             max_epochs=max_epochs,
             interval_epochs=checkpoint_interval,
@@ -250,72 +346,25 @@ def run_yolo26_detection_training_loop(
             pause_requested=control_decision.pause_training,
             terminate_requested=control_decision.terminate_training,
         )
-        if checkpoint_decision.should_serialize:
-            checkpoint_update = build_yolo26_detection_epoch_checkpoint_update(
-                torch_module=torch_module,
-                model=model,
-                ema_model=getattr(ema, "model", None),
-                ema_updates=getattr(ema, "updates", None),
-                optimizer=optimizer,
-                scheduler=scheduler,
-                scaler=scaler,
-                model_type="yolo26",
-                model_scale=model_scale,
-                category_names=category_names,
-                input_size=input_size,
-                batch_size=batch_size,
-                max_epochs=max_epochs,
-                epoch=epoch,
-                precision=precision,
-                validation_split_name=validation_split_name,
-                evaluation_interval=evaluation_interval,
-                evaluation_confidence_threshold=(
-                    evaluation_confidence_threshold if has_validation else None
-                ),
-                learning_rate=learning_rate,
-                weight_decay=weight_decay,
-                class_loss_weight=class_loss_weight,
-                box_loss_weight=box_loss_weight,
-                dfl_loss_weight=dfl_loss_weight,
-                assign_topk=assign_topk,
-                assign_alpha=assign_alpha,
-                assign_beta=assign_beta,
-                min_lr_ratio=min_lr_ratio,
-                grad_clip_norm=grad_clip_norm,
-                metrics_history=metrics_history,
-                validation_history=validation_history,
-                evaluated_epochs=tuple(evaluated_epochs),
-                warm_start_summary=warm_start_summary,
-                implementation_mode=implementation_mode,
-                augmentation_options=augmentation_options,
-                best_metric_name=best_metric_name,
-                candidate_best_metric_value=current_best_metric_value,
-                previous_best_checkpoint_bytes=best_checkpoint_bytes,
-                improved_best=improved_best,
-            )
-            latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
-            best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
-            current_best_metric_value = checkpoint_update.best_metric_value
-        if checkpoint_decision.should_serialize and savepoint_callback is not None:
-            savepoint = build_yolo26_detection_training_savepoint_payload(
-                epoch=epoch,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
-                best_checkpoint_bytes=best_checkpoint_bytes,
-                best_metric_name=best_metric_name,
-                best_metric_value=current_best_metric_value,
-                has_validation=has_validation,
-            )
-            savepoint_callback(savepoint)
+        checkpoint_update = build_completed_epoch_checkpoint(
+            completed_epoch=epoch,
+            improved_best=improved_best,
+        )
+        latest_checkpoint_bytes = checkpoint_update.latest_checkpoint_bytes
+        best_checkpoint_bytes = checkpoint_update.best_checkpoint_bytes
+        current_best_metric_value = checkpoint_update.best_metric_value
+        last_completed_savepoint = build_yolo26_detection_training_savepoint_payload(
+            epoch=epoch,
+            latest_checkpoint_bytes=latest_checkpoint_bytes,
+            best_checkpoint_bytes=best_checkpoint_bytes,
+            best_metric_name=best_metric_name,
+            best_metric_value=current_best_metric_value,
+            has_validation=has_validation,
+        )
+        if checkpoint_decision.should_persist and savepoint_callback is not None:
+            savepoint_callback(last_completed_savepoint)
         if control_decision.pause_training:
-            savepoint = build_yolo26_detection_training_savepoint_payload(
-                epoch=epoch,
-                latest_checkpoint_bytes=latest_checkpoint_bytes,
-                best_checkpoint_bytes=best_checkpoint_bytes,
-                best_metric_name=best_metric_name,
-                best_metric_value=current_best_metric_value,
-                has_validation=has_validation,
-            )
-            raise Yolo26DetectionTrainingPausedError(savepoint)
+            raise Yolo26DetectionTrainingPausedError(last_completed_savepoint)
         if control_decision.terminate_training:
             raise Yolo26DetectionTrainingTerminatedError()
 
@@ -347,7 +396,8 @@ def _run_yolo26_epoch_validation(
     evaluation_interval: int,
     validation_sample_count: int,
     best_metric_name: str,
-    evaluate_model: Callable[[], dict[str, object]],
+    evaluate_model: Callable[[Callable[[], None] | None], dict[str, object]],
+    control_callback: Callable[[], None] | None,
     validation_history: list[dict[str, object]],
     evaluated_epochs: list[int],
 ) -> tuple[dict[str, object] | None, dict[str, float], float | None]:
@@ -363,7 +413,7 @@ def _run_yolo26_epoch_validation(
         return None, {}, None
     validation_snapshot = build_yolo_completed_epoch_history_item(
         completed_epoch=epoch,
-        metrics=evaluate_model(),
+        metrics=evaluate_model(control_callback),
     )
     validation_history.append(validation_snapshot)
     validation_metrics = {

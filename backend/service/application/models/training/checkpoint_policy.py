@@ -11,10 +11,10 @@ from backend.service.application.errors import InvalidRequestError
 
 
 @dataclass(frozen=True)
-class TrainingCheckpointDecision:
-    """描述一个 epoch 边界是否需要序列化并发布 checkpoint。"""
+class TrainingCheckpointPersistenceDecision:
+    """描述一个 completed epoch checkpoint 是否需要持久化。"""
 
-    should_serialize: bool
+    should_persist: bool
     reasons: tuple[str, ...]
 
     @property
@@ -124,7 +124,7 @@ class TrainingPeriodicCheckpointRetention:
         return f"{self.directory_object_key}/epoch-{int(epoch):06d}.pt"
 
 
-def resolve_training_checkpoint_decision(
+def resolve_training_checkpoint_persistence_decision(
     *,
     completed_epoch: int,
     max_epochs: int,
@@ -133,11 +133,11 @@ def resolve_training_checkpoint_decision(
     manual_save_requested: bool = False,
     pause_requested: bool = False,
     terminate_requested: bool = False,
-) -> TrainingCheckpointDecision:
-    """解析训练 epoch 边界的完整 checkpoint 生成条件。
+) -> TrainingCheckpointPersistenceDecision:
+    """解析训练 epoch 边界的 checkpoint 持久化条件。
 
-    ``completed_epoch`` 使用一基轮数。调用方每轮仍可更新轻量内存状态，但只有
-    返回 ``should_serialize=True`` 时才允许执行 ``torch.save`` 或写入对象存储。
+    ``completed_epoch`` 使用一基轮数。内存 completed-epoch snapshot 每轮都必须
+    生成；本决策只控制何时把现有不可变 bytes 写入持久存储。
     """
 
     resolved_epoch = int(completed_epoch)
@@ -165,8 +165,8 @@ def resolve_training_checkpoint_decision(
         reasons.append("pause")
     if terminate_requested:
         reasons.append("terminate")
-    return TrainingCheckpointDecision(
-        should_serialize=bool(reasons),
+    return TrainingCheckpointPersistenceDecision(
+        should_persist=bool(reasons),
         reasons=tuple(reasons),
     )
 
@@ -244,8 +244,8 @@ def _validate_checkpoint_keep_periodic(value: object) -> int:
 __all__ = [
     "TrainingPeriodicCheckpointRetention",
     "build_training_periodic_checkpoint_retention",
-    "TrainingCheckpointDecision",
+    "TrainingCheckpointPersistenceDecision",
     "read_training_checkpoint_interval",
     "read_training_checkpoint_keep_periodic",
-    "resolve_training_checkpoint_decision",
+    "resolve_training_checkpoint_persistence_decision",
 ]

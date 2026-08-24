@@ -116,7 +116,9 @@ class Yolo11ClassificationTrainingExecutionRequest:
     savepoint_callback: (
         Callable[[Yolo11ClassificationTrainingSavePoint], None] | None
     ) = None
-    control_callback: Callable[[], None] | None = None
+    control_callback: Callable[
+        [], Yolo11ClassificationTrainingControlCommand | None
+    ] | None = None
 
 
 @dataclass(frozen=True)

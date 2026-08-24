@@ -15,11 +15,14 @@ from backend.service.application.models.rfdetr_core.training.lightning_bootstrap
 disable_lightning_model_summary_import()
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, RichProgressBar, TQDMProgressBar
+from pytorch_lightning.callbacks import RichProgressBar, TQDMProgressBar
 from pytorch_lightning.callbacks.progress.rich_progress import RichProgressBarTheme
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
 
 from backend.service.application.models.rfdetr_core.config import ModelConfig, TrainConfig
+from backend.service.application.models.rfdetr_core.training.attempt_checkpoint_io import (
+    RfdetrAttemptCheckpointIO,
+)
 from backend.service.application.models.rfdetr_core.training.callbacks import (
     BestModelCallback,
     DropPathCallback,
@@ -110,32 +113,6 @@ def build_trainer(
         )
     )
 
-    if tc.checkpoint_interval != 1:
-        callbacks.append(
-            ModelCheckpoint(
-                dirpath=tc.output_dir,
-                filename="last",
-                every_n_epochs=1,
-                save_top_k=1,
-                enable_version_counter=False,
-                auto_insert_metric_name=False,
-                verbose=False,
-            )
-        )
-
-    callbacks.append(
-        ModelCheckpoint(
-            dirpath=tc.output_dir,
-            filename="checkpoint_{epoch}",
-            every_n_epochs=tc.checkpoint_interval,
-            save_top_k=-1,
-            save_last=tc.checkpoint_interval == 1,
-            enable_version_counter=False,
-            auto_insert_metric_name=False,
-            verbose=False,
-        )
-    )
-
     callbacks.append(
         BestModelCallback(
             output_dir=tc.output_dir,
@@ -192,7 +169,12 @@ def build_trainer(
         # 避免整个 epoch 的 batch 数少于检查间隔时丢失日志。
         "log_every_n_steps": 1,
         "deterministic": False,
+        # 完整 epoch resume checkpoint 由平台 callback 写入 Attempt 内存；
+        # 普通 best/deployment 路径仍委托 Lightning 标准 Torch IO。
+        "plugins": [RfdetrAttemptCheckpointIO()],
     }
+    if "plugins" in trainer_kwargs:
+        raise ValueError("RF-DETR Trainer plugins 由平台统一管理")
     trainer_config.update(trainer_kwargs)
     with warnings.catch_warnings():
         warnings.filterwarnings(

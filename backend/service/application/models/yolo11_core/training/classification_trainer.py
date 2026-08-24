@@ -10,7 +10,7 @@ from backend.service.application.models.training.metric_policy import (
     is_better_training_metric,
 )
 from backend.service.application.models.training.checkpoint_policy import (
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 
 from backend.service.application.models.yolo11_core.data import (
@@ -148,12 +148,68 @@ def run_yolo11_classification_training_loop(
     savepoint_callback: Callable[[Yolo11ClassificationTrainingSavePoint], None]
     | None = None,
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None,
-    control_callback: Callable[[], None] | None = None,
+    control_callback: Callable[
+        [], Yolo11ClassificationTrainingControlCommand | None
+    ]
+    | None = None,
 ) -> Yolo11ClassificationTrainingLoopResult:
     """执行 YOLO11 classification 从 start epoch 到 max epoch 的完整训练循环。"""
 
-    checkpoint_bytes = b""
+    checkpoint_bytes = build_yolo11_classification_checkpoint_bytes(
+        epoch=start_epoch - 1,
+        global_iteration=global_iteration,
+        model=model,
+        ema_model=ema.model,
+        ema_updates=ema.updates,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        metrics_history=metrics_history,
+        validation_history=validation_history,
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        evaluation_interval=evaluation_interval,
+        min_lr_ratio=min_lr_ratio,
+        torch_module=imports.torch,
+    )
     best_checkpoint_bytes = b""
+    last_completed_savepoint = Yolo11ClassificationTrainingSavePoint(
+        latest_checkpoint_bytes=checkpoint_bytes,
+        train_metrics=dict(metrics_history[-1]) if metrics_history else {},
+        validation_metrics=(
+            dict(validation_history[-1]) if validation_history else {}
+        ),
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        epoch=start_epoch,
+        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+            optimizer=optimizer,
+            initial_learning_rate=training_schedule.initial_lr,
+        ),
+    )
+
+    def observe_control() -> None:
+        """在 batch 安全点持久化上一完整 epoch，并停止启动下一 batch。"""
+
+        if control_callback is None:
+            return
+        command = control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and savepoint_callback is not None:
+            savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise Yolo11ClassificationTrainingPausedError()
+        if command.terminate_training:
+            raise Yolo11ClassificationTrainingTerminatedError()
     resolved_dataloader_plan = (
         dataloader_plan
         or resolve_yolo_classification_dataloader_plan(
@@ -194,8 +250,7 @@ def run_yolo11_classification_training_loop(
         )
         max_iterations = max(1, len(train_dataloader))
         for iteration, cpu_batch in enumerate(train_dataloader, start=1):
-            if control_callback is not None:
-                control_callback()
+            observe_control()
             if cpu_batch is None:
                 continue
             batch = move_yolo_classification_batch_to_device(
@@ -286,7 +341,7 @@ def run_yolo11_classification_training_loop(
                     plan=resolved_dataloader_plan,
                     seed=100_000 + epoch,
                 ),
-                control_callback=control_callback,
+                control_callback=observe_control,
             )
             validation_history.append(
                 build_yolo_epoch_history_item(epoch_index=epoch, metrics=val_metrics)
@@ -340,7 +395,7 @@ def run_yolo11_classification_training_loop(
             best_metric_value=best_metric_value,
         )
         cmd = epoch_callback(epoch_progress) if epoch_callback is not None else None
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch + 1,
             max_epochs=max_epochs,
             interval_epochs=checkpoint_interval,
@@ -349,8 +404,7 @@ def run_yolo11_classification_training_loop(
             pause_requested=bool(cmd and cmd.pause_training),
             terminate_requested=bool(cmd and cmd.terminate_training),
         )
-        if checkpoint_decision.should_serialize:
-            checkpoint_bytes = build_yolo11_classification_checkpoint_bytes(
+        checkpoint_bytes = build_yolo11_classification_checkpoint_bytes(
                 epoch=epoch,
                 global_iteration=global_iteration,
                 model=model,
@@ -369,25 +423,26 @@ def run_yolo11_classification_training_loop(
                 weight_decay=weight_decay,
                 evaluation_interval=evaluation_interval,
                 min_lr_ratio=min_lr_ratio,
-                torch_module=imports.torch,
-            )
-        if best_metric_improved and checkpoint_decision.should_serialize:
+            torch_module=imports.torch,
+        )
+        if best_metric_improved:
             best_checkpoint_bytes = checkpoint_bytes
-        if checkpoint_decision.should_serialize and savepoint_callback is not None:
+        last_completed_savepoint = Yolo11ClassificationTrainingSavePoint(
+            latest_checkpoint_bytes=checkpoint_bytes,
+            train_metrics=epoch_progress.train_metrics,
+            validation_metrics=epoch_progress.validation_metrics,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            epoch=epoch + 1,
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
+            is_best=best_metric_improved,
+        )
+        if checkpoint_decision.should_persist and savepoint_callback is not None:
             savepoint_callback(
-                Yolo11ClassificationTrainingSavePoint(
-                    latest_checkpoint_bytes=checkpoint_bytes,
-                    train_metrics=epoch_progress.train_metrics,
-                    validation_metrics=epoch_progress.validation_metrics,
-                    best_metric_value=best_metric_value,
-                    best_metric_name=best_metric_name,
-                    epoch=epoch + 1,
-                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
-                        optimizer=optimizer,
-                        initial_learning_rate=training_schedule.initial_lr,
-                    ),
-                    is_best=best_metric_improved,
-                )
+                last_completed_savepoint
             )
         if cmd is not None and cmd.pause_training:
             raise Yolo11ClassificationTrainingPausedError()

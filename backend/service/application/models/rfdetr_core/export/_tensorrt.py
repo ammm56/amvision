@@ -18,7 +18,7 @@ from backend.service.domain.models.tensorrt_engine_capabilities import (
 from backend.service.domain.models.model_artifact_provenance import (
     MODEL_ARTIFACT_ORIGIN_MARKER,
 )
-from backend.workers.shared.process_tree_supervisor import ProcessTreeSupervisor
+from backend.runtime.processes import AttemptDeadline, ProcessTreeSupervisor
 
 logger = get_logger()
 
@@ -53,6 +53,15 @@ def run_command(
         raise RuntimeError(
             "AMVISION_WORKER_CONVERSION__HELPER_TIMEOUT_SECONDS 必须是数字"
         ) from error
+    raw_deadline_at = os.environ.get(
+        "AMVISION_WORKER_CONVERSION__ATTEMPT_DEADLINE_AT"
+    )
+    if raw_deadline_at:
+        deadline = AttemptDeadline.from_deadline_at(raw_deadline_at)
+        remaining_seconds = deadline.remaining_seconds()
+        if remaining_seconds <= 0:
+            raise RuntimeError("conversion Attempt 总 deadline 已到期")
+        timeout_seconds = min(timeout_seconds, remaining_seconds)
     result = ProcessTreeSupervisor(timeout_seconds=timeout_seconds).run(
         command,
         env=process_env,

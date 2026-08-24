@@ -29,7 +29,7 @@ from backend.service.application.runtime.session_lifecycle import RuntimeSession
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
-from backend.workers.conversion.model_conversion_common import (
+from backend.service.application.conversions.runtime.model_conversion_common import (
     attach_conversion_output_provenance,
     build_conversion_options_metadata,
     build_conversion_output_runtime_fields,

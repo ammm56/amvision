@@ -5,25 +5,37 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
+import time
 from typing import Any, Callable
 from uuid import uuid4
 
 from backend.service.application.backends import ConversionBackend, DetectionConversionPlanStep
 from backend.service.application.conversions.conversion_result_snapshot import ConversionResultSnapshot
+from backend.service.application.conversions.deadline_policy import (
+    ConversionCancellationProbe,
+    validate_conversion_attempt_deadline_metadata,
+)
 from backend.service.application.conversions.publication import (
+    cleanup_aborted_conversion_staging,
     find_recoverable_conversion_publication,
     mark_conversion_publication_registered,
+    persist_prepared_conversion_publication,
+    prepare_conversion_publication_result,
+    publish_prepared_conversion,
 )
 from backend.service.application.conversions.yolo_model_conversion_planner import (
     YoloModelConversionPlan,
     YoloModelConversionTarget,
 )
 from backend.service.application.errors import (
+    ConversionPublicationRecoveryRequiredError,
     InvalidRequestError,
+    OperationCancelledError,
     OperationTimeoutError,
     ResourceNotFoundError,
     ServiceConfigurationError,
 )
+from backend.runtime.processes import AttemptDeadline
 from backend.service.application.error_serialization import serialize_error
 from backend.service.application.models.postprocess.detection_operation_rules import (
     DetectionConversionOutputFiles,
@@ -46,19 +58,22 @@ from backend.service.application.runtime.targets.runtime_target import (
 )
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
+    ConversionPublicationCommitPayload,
     CreateTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskExecutionFence,
     TaskQueryFilters,
     TaskQueueSubmission,
 )
 from backend.service.application.tasks.queue_reference import (
     resolve_created_task_queue_reference,
 )
-from backend.service.domain.tasks.task_records import TaskRecord, TaskRecordState
+from backend.service.domain.tasks.task_records import TaskAttempt, TaskRecord, TaskRecordState
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_model_conversion_runner import (
+from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
     YoloModelConversionOutput,
     YoloModelConversionRunRequest,
     YoloModelConversionRunResult,
@@ -277,7 +292,12 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             )
         return task_detail
 
-    def process_conversion_task(self, task_id: str) -> YoloConversionTaskResult:
+    def process_conversion_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> YoloConversionTaskResult:
         """执行一条已入队的 YOLO 系列转换任务。"""
 
         dataset_storage = self._require_dataset_storage()
@@ -313,8 +333,17 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         )
         plan_object_key = output_files.plan_object_key
         report_object_key = output_files.report_object_key
-        attempt, recovering = self._resolve_conversion_attempt(task_record)
+        attempt, recovering = self._resolve_conversion_attempt(
+            task_record,
+            execution_fence=execution_fence,
+        )
         attempt_no = attempt.attempt_no
+        attempt_deadline = validate_conversion_attempt_deadline_metadata(
+            attempt.metadata
+        )
+        publication_fence = execution_fence or self._build_direct_execution_fence(
+            attempt
+        )
         if recovering:
             recovered_result = self._recover_published_conversion(
                 task_record=task_record,
@@ -324,6 +353,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 output_files=output_files,
                 attempt_id=attempt.attempt_id,
                 attempt_no=attempt_no,
+                execution_fence=execution_fence,
             )
             if recovered_result is not None:
                 return recovered_result
@@ -338,7 +368,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     "conversion Attempt 已结束但缺少可恢复 publication",
                     details={"task_id": task_id, "attempt_id": attempt.attempt_id},
                 )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 attempt_id=attempt.attempt_id,
@@ -350,37 +380,195 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     "attempt_no": attempt_no,
                     "progress": {"stage": "planning", "percent": 5.0},
                 },
-            )
+            ),
+            fence=execution_fence,
         )
 
+        publication_token: str | None = None
         try:
             dataset_storage.write_json(
                 plan_object_key,
                 self._resolve_serialize_plan()(plan),
             )
+            file_attempt_id = attempt.attempt_id
+            staging_prefix = (
+                f"{output_object_prefix}/attempts/{file_attempt_id}/staging"
+            )
             with model_task_resource_cleanup():
-                run_result = conversion_runner.run_conversion(
+                raw_run_result = conversion_runner.run_conversion(
                     YoloModelConversionRunRequest(
                         conversion_task_id=task_id,
                         source_runtime_target=source_runtime_target,
                         target_formats=plan.target_formats,
                         plan_steps=self._build_backend_plan_steps(plan),
-                        output_object_prefix=output_object_prefix,
+                        output_object_prefix=staging_prefix,
                         model_type=source_runtime_target.model_type,
                         task_type=source_runtime_target.task_type,
                         metadata={
                             "project_id": request.project_id,
                             "runtime_profile_id": request.runtime_profile_id,
+                            "conversion_file_attempt_id": file_attempt_id,
                             **dict(request.extra_options),
                         },
+                        attempt_deadline_at=str(attempt_deadline["deadline_at"]),
+                        attempt_timeout_seconds=float(
+                            attempt_deadline["timeout_seconds"]
+                        ),
+                        cancel_requested=ConversionCancellationProbe(
+                            task_service=self.task_service,
+                            task_id=task_id,
+                        ),
                     )
                 )
-            build_summaries = self._register_conversion_outputs(
-                project_id=request.project_id,
-                source_model_version_id=request.source_model_version_id,
-                runtime_profile_id=request.runtime_profile_id,
+            run_result = prepare_conversion_publication_result(
+                raw_run_result=raw_run_result,
                 conversion_task_id=task_id,
-                outputs=run_result.outputs,
+                conversion_attempt_id=file_attempt_id,
+                staging_prefix=staging_prefix,
+                final_output_prefix=output_object_prefix,
+            )
+            deadline = AttemptDeadline.from_deadline_at(
+                str(attempt_deadline["deadline_at"])
+            )
+            cancel_probe = ConversionCancellationProbe(
+                task_service=self.task_service,
+                task_id=task_id,
+            )
+
+            def _prepared_hash_progress_check() -> None:
+                if cancel_probe():
+                    raise OperationCancelledError("conversion 已被取消")
+                if deadline.expired():
+                    raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+
+            persist_prepared_conversion_publication(
+                dataset_storage=dataset_storage,
+                run_result=run_result,
+                progress_check=_prepared_hash_progress_check,
+            )
+            if cancel_probe():
+                raise OperationCancelledError("conversion 已被取消")
+            if deadline.expired():
+                raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+            publication_token = uuid4().hex
+            reservation = self.task_service.begin_conversion_publication(
+                task_id=task_id,
+                fence=publication_fence,
+                publication_token=publication_token,
+            )
+            last_reservation_hash_check = 0.0
+
+            def _hash_progress_check() -> None:
+                nonlocal last_reservation_hash_check
+                if deadline.expired():
+                    raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+                now = time.monotonic()
+                if now - last_reservation_hash_check < 1.0:
+                    return
+                self.task_service.require_conversion_publication_reservation(
+                    task_id=task_id,
+                    fence=publication_fence,
+                    publication_token=publication_token,
+                )
+                last_reservation_hash_check = now
+
+            def _pre_rename_check() -> None:
+                if deadline.expired():
+                    raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+                self.task_service.require_conversion_publication_reservation(
+                    task_id=task_id,
+                    fence=publication_fence,
+                    publication_token=publication_token,
+                )
+
+            publish_prepared_conversion(
+                dataset_storage=dataset_storage,
+                run_result=run_result,
+                publication_token=publication_token,
+                pre_rename_check=_pre_rename_check,
+                hash_progress_check=_hash_progress_check,
+            )
+            self.task_service.transition_conversion_publication(
+                task_id=task_id,
+                attempt_no=reservation.attempt_no,
+                publication_token=publication_token,
+                expected_state="reserved",
+                target_state="published",
+            )
+            def _stage_business_records(
+                unit_of_work: SqlAlchemyUnitOfWork,
+            ) -> ConversionPublicationCommitPayload:
+                build_summaries = self._register_conversion_outputs(
+                    project_id=request.project_id,
+                    source_model_version_id=request.source_model_version_id,
+                    runtime_profile_id=request.runtime_profile_id,
+                    conversion_task_id=task_id,
+                    outputs=run_result.outputs,
+                    unit_of_work=unit_of_work,
+                )
+                primary_model_build_id = _select_primary_yolo_model_build_id(
+                    builds=build_summaries,
+                    requested_target_formats=request.target_formats,
+                )
+                report_summary = self._build_report_summary(
+                    plan=plan,
+                    source_runtime_target=source_runtime_target,
+                    run_result=run_result,
+                    build_summaries=build_summaries,
+                    requested_target_formats=request.target_formats,
+                    output_files=output_files,
+                )
+                dataset_storage.write_json(report_object_key, report_summary)
+                result_payload = {
+                    "source_model_version_id": request.source_model_version_id,
+                    "output_object_prefix": output_object_prefix,
+                    "plan_object_key": plan_object_key,
+                    "report_object_key": report_object_key,
+                    "requested_target_formats": list(request.target_formats),
+                    "produced_formats": [
+                        item.build_format for item in build_summaries
+                    ],
+                    "model_build_id": primary_model_build_id,
+                    "builds": [
+                        serialize_yolo_conversion_build_summary(item)
+                        for item in build_summaries
+                    ],
+                    "report_summary": report_summary,
+                }
+                return ConversionPublicationCommitPayload(
+                    business_result=(
+                        build_summaries,
+                        report_summary,
+                        primary_model_build_id,
+                    ),
+                    task_result=result_payload,
+                    attempt_result={
+                        "produced_formats": result_payload["produced_formats"],
+                        "conversion_metadata": dict(run_result.metadata),
+                    },
+                    event_message=f"{self.model_type} conversion succeeded",
+                    event_payload={
+                        "progress": {"stage": "succeeded", "percent": 100.0},
+                        "result": result_payload,
+                    },
+                )
+
+            publication_model_service = self._resolve_model_service_cls()(
+                session_factory=self.session_factory
+            )
+            with publication_model_service.project_mutations.operation(
+                project_id=request.project_id,
+                mutation_kind="model-build",
+                resource_id=task_id,
+            ):
+                completion = self.task_service.complete_conversion_publication(
+                    task_id=task_id,
+                    fence=publication_fence,
+                    publication_token=publication_token,
+                    stage_business_records=_stage_business_records,
+                )
+            build_summaries, report_summary, primary_model_build_id = (
+                completion.business_result
             )
             mark_conversion_publication_registered(
                 dataset_storage=dataset_storage,
@@ -389,21 +577,71 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                     summary.model_build_id for summary in build_summaries
                 ),
             )
-            report_summary = self._build_report_summary(
-                plan=plan,
-                source_runtime_target=source_runtime_target,
-                run_result=run_result,
-                build_summaries=build_summaries,
-                requested_target_formats=request.target_formats,
-                output_files=output_files,
-            )
-            dataset_storage.write_json(report_object_key, report_summary)
         except Exception as error:
+            if isinstance(error, ConversionPublicationRecoveryRequiredError):
+                raise
+            if publication_token is not None:
+                publication_task = self.task_service.get_task(task_id).task
+                if (
+                    publication_task.publication_token == publication_token
+                    and publication_task.publication_attempt_no == attempt_no
+                ):
+                    final_builds_exists = dataset_storage.resolve(
+                        f"{output_object_prefix}/artifacts/builds"
+                    ).is_dir()
+                    if publication_task.publication_state == "reserved":
+                        if final_builds_exists:
+                            self.task_service.transition_conversion_publication(
+                                task_id=task_id,
+                                attempt_no=attempt_no,
+                                publication_token=publication_token,
+                                expected_state="reserved",
+                                target_state="published",
+                            )
+                            raise ConversionPublicationRecoveryRequiredError(
+                                "conversion 已完成文件提交，等待数据库登记恢复",
+                                details={"task_id": task_id},
+                            ) from error
+                        self.task_service.transition_conversion_publication(
+                            task_id=task_id,
+                            attempt_no=attempt_no,
+                            publication_token=publication_token,
+                            expected_state="reserved",
+                            target_state="aborted",
+                        )
+                        cleanup_aborted_conversion_staging(
+                            dataset_storage=dataset_storage,
+                            task_id=task_id,
+                            conversion_attempt_id=attempt.attempt_id,
+                            publication_token=publication_token,
+                        )
+                    elif publication_task.publication_state in {
+                        "published",
+                        "registered",
+                    }:
+                        raise ConversionPublicationRecoveryRequiredError(
+                            "conversion 已跨过文件提交点，等待登记恢复",
+                            details={
+                                "task_id": task_id,
+                                "publication_state": (
+                                    publication_task.publication_state
+                                ),
+                            },
+                        ) from error
+            latest_task = self.task_service.get_task(task_id).task
+            if latest_task.state == "cancelled":
+                raise OperationCancelledError("conversion 已被取消") from error
+            if latest_task.state == "timed_out":
+                raise OperationTimeoutError("conversion Attempt 已超时") from error
             error_payload = serialize_error(error)
-            terminal_state = (
-                "timed_out" if isinstance(error, OperationTimeoutError) else "failed"
+            terminal_state: TaskRecordState = (
+                "timed_out"
+                if isinstance(error, OperationTimeoutError)
+                else "cancelled"
+                if isinstance(error, OperationCancelledError)
+                else "failed"
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     attempt_id=attempt.attempt_id,
@@ -431,59 +669,21 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                             "error_details": error_payload.get("details", {}),
                         },
                     },
+                ),
+                fence=execution_fence,
+            )
+            if execution_fence is None:
+                self.task_service.finish_task_attempt(
+                    attempt_id=attempt.attempt_id,
+                    state=terminal_state,
+                    exit_code=124 if terminal_state == "timed_out" else 1,
+                    error_message=str(error),
+                    metadata={"error": error_payload},
+                    expected_worker_id=attempt.worker_id,
+                    expected_heartbeat_at=attempt.heartbeat_at,
                 )
-            )
-            self.task_service.finish_task_attempt(
-                attempt_id=attempt.attempt_id,
-                state=terminal_state,
-                exit_code=124 if terminal_state == "timed_out" else 1,
-                error_message=str(error),
-                metadata={"error": error_payload},
-                expected_worker_id=attempt.worker_id,
-                expected_heartbeat_at=attempt.heartbeat_at,
-            )
             raise
 
-        primary_model_build_id = _select_primary_yolo_model_build_id(
-            builds=build_summaries,
-            requested_target_formats=request.target_formats,
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task_id,
-                attempt_id=attempt.attempt_id,
-                event_type="result",
-                message=f"{self.model_type} conversion succeeded",
-                payload={
-                    "state": "succeeded",
-                    "finished_at": self._now_iso(),
-                    "attempt_no": attempt_no,
-                    "progress": {"stage": "succeeded", "percent": 100.0},
-                    "result": {
-                        "source_model_version_id": request.source_model_version_id,
-                        "output_object_prefix": output_object_prefix,
-                        "plan_object_key": plan_object_key,
-                        "report_object_key": report_object_key,
-                        "requested_target_formats": list(request.target_formats),
-                        "produced_formats": [item.build_format for item in build_summaries],
-                        "model_build_id": primary_model_build_id,
-                        "builds": [serialize_yolo_conversion_build_summary(item) for item in build_summaries],
-                        "report_summary": report_summary,
-                    },
-                },
-            )
-        )
-        self.task_service.finish_task_attempt(
-            attempt_id=attempt.attempt_id,
-            state="succeeded",
-            exit_code=0,
-            result={
-                "produced_formats": [item.build_format for item in build_summaries],
-                "conversion_metadata": dict(run_result.metadata),
-            },
-            expected_worker_id=attempt.worker_id,
-            expected_heartbeat_at=attempt.heartbeat_at,
-        )
         return self._resolve_result_cls()(
             task_id=task_id,
             status="succeeded",
@@ -689,6 +889,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         runtime_profile_id: str | None,
         conversion_task_id: str,
         outputs: tuple[YoloModelConversionOutput, ...],
+        unit_of_work: SqlAlchemyUnitOfWork | None = None,
     ) -> tuple[YoloConversionBuildSummary, ...]:
         """把 runner 产出的 build 文件登记为 ModelBuild。"""
 
@@ -724,7 +925,14 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             )
             prepared_outputs.append((output, build_file_id, output_metadata))
 
-        model_build_ids = model_service.register_builds(tuple(registrations))
+        model_build_ids = (
+            model_service.stage_builds(
+                unit_of_work=unit_of_work,
+                requests=tuple(registrations),
+            )
+            if unit_of_work is not None
+            else model_service.register_builds(tuple(registrations))
+        )
         build_summaries: list[YoloConversionBuildSummary] = []
         for model_build_id, prepared_output in zip(
             model_build_ids,
@@ -745,11 +953,31 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             )
         return tuple(build_summaries)
 
-    def _resolve_conversion_attempt(self, task_record: TaskRecord):
+    def _resolve_conversion_attempt(
+        self,
+        task_record: TaskRecord,
+        *,
+        execution_fence: TaskExecutionFence | None,
+    ):
         """复用 queue claim 的 Attempt，并识别 lease 恢复或最终发布恢复。"""
 
         attempts = self.task_service.list_task_attempts(task_record.task_id)
         latest_attempt = max(attempts, key=lambda item: item.attempt_no, default=None)
+        if execution_fence is not None:
+            claimed_attempt = self.task_service.validate_task_execution_fence(
+                task_id=task_record.task_id,
+                fence=execution_fence,
+            )
+            lease_recovery_count = claimed_attempt.metadata.get(
+                "lease_recovery_count",
+                0,
+            )
+            recovering = (
+                isinstance(lease_recovery_count, int)
+                and not isinstance(lease_recovery_count, bool)
+                and lease_recovery_count > 0
+            )
+            return claimed_attempt, recovering
         if latest_attempt is not None and latest_attempt.state == "running":
             if task_record.state == "running":
                 lease_recovery_count = latest_attempt.metadata.get(
@@ -768,8 +996,12 @@ class SqlAlchemyYoloConversionTaskServiceBase:
                 self.task_service.start_task_attempt(
                     task_id=task_record.task_id,
                     attempt_no=latest_attempt.attempt_no,
+                    worker_id="direct-conversion-worker",
                     process_id=os.getpid(),
-                    metadata={"operation_kind": "conversion"},
+                    metadata=self._build_direct_attempt_metadata(
+                        task_record.task_id,
+                        latest_attempt.attempt_no,
+                    ),
                 ),
                 task_record.state == "running",
             )
@@ -788,10 +1020,51 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             self.task_service.start_task_attempt(
                 task_id=task_record.task_id,
                 attempt_no=next_attempt_no,
+                worker_id="direct-conversion-worker",
                 process_id=os.getpid(),
-                metadata={"operation_kind": "conversion"},
+                metadata=self._build_direct_attempt_metadata(
+                    task_record.task_id,
+                    next_attempt_no,
+                ),
             ),
             False,
+        )
+
+    @staticmethod
+    def _build_direct_attempt_metadata(
+        task_id: str,
+        attempt_no: int,
+    ) -> dict[str, object]:
+        """为非 Queue 调用建立与正式 publication 相同的执行身份。"""
+
+        return {
+            "operation_kind": "conversion",
+            "queue_name": "direct-conversion",
+            "queue_message_id": f"direct:{task_id}:{attempt_no}",
+            "queue_attempt_count": 1,
+            "lease_recovery_count": 0,
+        }
+
+    @staticmethod
+    def _build_direct_execution_fence(attempt: TaskAttempt) -> TaskExecutionFence:
+        """从 direct Attempt 构造 publication 使用的完整 fence。"""
+
+        queue_message_id = attempt.metadata.get("queue_message_id")
+        queue_attempt_count = attempt.metadata.get("queue_attempt_count")
+        if (
+            attempt.worker_id is None
+            or attempt.heartbeat_at is None
+            or not isinstance(queue_message_id, str)
+            or isinstance(queue_attempt_count, bool)
+            or not isinstance(queue_attempt_count, int)
+        ):
+            raise ServiceConfigurationError("direct conversion Attempt fence 不完整")
+        return TaskExecutionFence(
+            attempt_id=attempt.attempt_id,
+            worker_id=attempt.worker_id,
+            heartbeat_at=attempt.heartbeat_at,
+            queue_message_id=queue_message_id,
+            queue_attempt_count=queue_attempt_count,
         )
 
     def _recover_published_conversion(
@@ -804,106 +1077,13 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         output_files: DetectionConversionOutputFiles,
         attempt_id: str,
         attempt_no: int,
+        execution_fence: TaskExecutionFence | None,
     ) -> YoloConversionTaskResult | None:
-        """从不可变 publication 和原子 ModelBuild 批次完成 Task 最终发布。"""
+        """按 DB reservation、唯一 Attempt marker 和最终目录恢复发布。"""
 
         dataset_storage = self._require_dataset_storage()
-        snapshot = find_recoverable_conversion_publication(
-            dataset_storage=dataset_storage,
-            task_id=task_record.task_id,
-            output_object_prefix=output_files.output_object_prefix,
-        )
-        if snapshot is None:
-            return None
-        produced_formats = tuple(output.target_format for output in snapshot.run_result.outputs)
-        if set(produced_formats) != set(plan.target_formats):
-            raise ServiceConfigurationError(
-                "conversion publication 输出格式与固化计划不一致",
-                details={
-                    "planned_target_formats": list(plan.target_formats),
-                    "published_target_formats": list(produced_formats),
-                },
-            )
-
-        model_service = self._resolve_model_service_cls()(
-            session_factory=self.session_factory
-        )
-        registered_builds = model_service.list_model_builds_by_conversion_task_id(
-            task_record.task_id
-        )
-        if registered_builds:
-            build_summaries = self._build_registered_conversion_summaries(
-                model_service=model_service,
-                conversion_task_id=task_record.task_id,
-                request=request,
-                outputs=snapshot.run_result.outputs,
-                registered_builds=registered_builds,
-            )
-        else:
-            if snapshot.state == "registered":
-                raise ServiceConfigurationError(
-                    "conversion publication 已登记但数据库缺少 ModelBuild",
-                    details={"task_id": task_record.task_id},
-                )
-            build_summaries = self._register_conversion_outputs(
-                project_id=request.project_id,
-                source_model_version_id=request.source_model_version_id,
-                runtime_profile_id=request.runtime_profile_id,
-                conversion_task_id=task_record.task_id,
-                outputs=snapshot.run_result.outputs,
-            )
-        model_build_ids = tuple(item.model_build_id for item in build_summaries)
-        if snapshot.model_build_ids and set(snapshot.model_build_ids) != set(model_build_ids):
-            raise ServiceConfigurationError(
-                "conversion publication 与数据库 ModelBuild 不一致",
-                details={"task_id": task_record.task_id},
-            )
-        mark_conversion_publication_registered(
-            dataset_storage=dataset_storage,
-            conversion_metadata=dict(snapshot.run_result.metadata),
-            model_build_ids=model_build_ids,
-        )
-        report_summary = self._build_report_summary(
-            plan=plan,
-            source_runtime_target=source_runtime_target,
-            run_result=snapshot.run_result,
-            build_summaries=build_summaries,
-            requested_target_formats=request.target_formats,
-            output_files=output_files,
-        )
-        dataset_storage.write_json(output_files.report_object_key, report_summary)
-        primary_model_build_id = _select_primary_yolo_model_build_id(
-            builds=build_summaries,
-            requested_target_formats=request.target_formats,
-        )
-        result_payload = {
-            "source_model_version_id": request.source_model_version_id,
-            "output_object_prefix": output_files.output_object_prefix,
-            "plan_object_key": output_files.plan_object_key,
-            "report_object_key": output_files.report_object_key,
-            "requested_target_formats": list(request.target_formats),
-            "produced_formats": [item.build_format for item in build_summaries],
-            "model_build_id": primary_model_build_id,
-            "builds": [serialize_yolo_conversion_build_summary(item) for item in build_summaries],
-            "report_summary": report_summary,
-        }
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task_record.task_id,
-                attempt_id=attempt_id,
-                event_type="result",
-                message=f"{self.model_type} conversion recovered and succeeded",
-                payload={
-                    "state": "succeeded",
-                    "finished_at": self._now_iso(),
-                    "attempt_no": attempt_no,
-                    "progress": {"stage": "succeeded", "percent": 100.0},
-                    "metadata": {"publication_recovered": True},
-                    "result": result_payload,
-                },
-            )
-        )
-        recovered_attempt = next(
+        current_task = self.task_service.get_task(task_record.task_id).task
+        current_attempt = next(
             (
                 item
                 for item in self.task_service.list_task_attempts(task_record.task_id)
@@ -911,20 +1091,249 @@ class SqlAlchemyYoloConversionTaskServiceBase:
             ),
             None,
         )
-        if recovered_attempt is not None:
-            self.task_service.finish_task_attempt(
-                attempt_id=attempt_id,
-                state="succeeded",
-                exit_code=0,
-                result={
-                    "produced_formats": [
-                        item.build_format for item in build_summaries
-                    ],
-                    "conversion_metadata": dict(snapshot.run_result.metadata),
-                },
-                expected_worker_id=recovered_attempt.worker_id,
-                expected_heartbeat_at=recovered_attempt.heartbeat_at,
+        if current_attempt is None:
+            raise ServiceConfigurationError("conversion recovery 缺少当前 Attempt")
+        publication_fence = execution_fence or self._build_direct_execution_fence(
+            current_attempt
+        )
+        final_builds_path = dataset_storage.resolve(
+            f"{output_files.output_object_prefix}/artifacts/builds"
+        )
+        try:
+            snapshot = find_recoverable_conversion_publication(
+                dataset_storage=dataset_storage,
+                task_id=current_task.task_id,
+                conversion_attempt_id=attempt_id,
+                output_object_prefix=output_files.output_object_prefix,
+                publication_state=current_task.publication_state,
+                publication_token=current_task.publication_token,
             )
+        except ServiceConfigurationError as error:
+            if (
+                current_task.publication_state == "reserved"
+                and not final_builds_path.exists()
+                and current_task.publication_token is not None
+            ):
+                self.task_service.transition_conversion_publication(
+                    task_id=current_task.task_id,
+                    attempt_no=attempt_no,
+                    publication_token=current_task.publication_token,
+                    expected_state="reserved",
+                    target_state="aborted",
+                )
+                cleanup_aborted_conversion_staging(
+                    dataset_storage=dataset_storage,
+                    task_id=current_task.task_id,
+                    conversion_attempt_id=attempt_id,
+                    publication_token=current_task.publication_token,
+                )
+                raise
+            raise ConversionPublicationRecoveryRequiredError(
+                "Conversion publication 事实矛盾，需要保留现场",
+                details={"task_id": current_task.task_id},
+            ) from error
+        if snapshot is None:
+            if (
+                current_task.publication_state == "reserved"
+                and not final_builds_path.exists()
+                and current_task.publication_token is not None
+            ):
+                self.task_service.transition_conversion_publication(
+                    task_id=current_task.task_id,
+                    attempt_no=attempt_no,
+                    publication_token=current_task.publication_token,
+                    expected_state="reserved",
+                    target_state="aborted",
+                )
+                cleanup_aborted_conversion_staging(
+                    dataset_storage=dataset_storage,
+                    task_id=current_task.task_id,
+                    conversion_attempt_id=attempt_id,
+                    publication_token=current_task.publication_token,
+                )
+                raise ServiceConfigurationError(
+                    "Conversion reservation 缺少 descriptor，已安全中止",
+                    details={"task_id": current_task.task_id},
+                )
+            if current_task.publication_state in {"reserved", "published"}:
+                raise ConversionPublicationRecoveryRequiredError(
+                    "Conversion DB reservation 缺少对应 Attempt descriptor",
+                    details={
+                        "task_id": current_task.task_id,
+                        "attempt_id": attempt_id,
+                        "publication_state": current_task.publication_state,
+                    },
+                )
+            return None
+        produced_formats = tuple(
+            output.target_format for output in snapshot.run_result.outputs
+        )
+        if set(produced_formats) != set(plan.target_formats):
+            raise ConversionPublicationRecoveryRequiredError(
+                "conversion publication 输出格式与固化计划不一致",
+                details={
+                    "planned_target_formats": list(plan.target_formats),
+                    "published_target_formats": list(produced_formats),
+                },
+            )
+
+        deadline = AttemptDeadline.from_deadline_at(
+            str(validate_conversion_attempt_deadline_metadata(current_attempt.metadata)["deadline_at"])
+        )
+        publication_token = current_task.publication_token
+        publication_state = current_task.publication_state
+        if publication_state is None:
+            if deadline.expired():
+                raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+            publication_token = uuid4().hex
+            self.task_service.begin_conversion_publication(
+                task_id=current_task.task_id,
+                fence=publication_fence,
+                publication_token=publication_token,
+            )
+            publication_state = "reserved"
+        assert publication_token is not None
+
+        if not snapshot.files_published:
+            if deadline.expired():
+                self.task_service.transition_conversion_publication(
+                    task_id=current_task.task_id,
+                    attempt_no=attempt_no,
+                    publication_token=publication_token,
+                    expected_state="reserved",
+                    target_state="aborted",
+                )
+                cleanup_aborted_conversion_staging(
+                    dataset_storage=dataset_storage,
+                    task_id=current_task.task_id,
+                    conversion_attempt_id=attempt_id,
+                    publication_token=publication_token,
+                )
+                raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+
+            last_recovery_hash_check = 0.0
+
+            def _hash_progress_check() -> None:
+                nonlocal last_recovery_hash_check
+                if deadline.expired():
+                    raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+                now = time.monotonic()
+                if now - last_recovery_hash_check < 1.0:
+                    return
+                self.task_service.require_conversion_publication_reservation(
+                    task_id=current_task.task_id,
+                    fence=publication_fence,
+                    publication_token=publication_token,
+                )
+                last_recovery_hash_check = now
+
+            def _pre_rename_check() -> None:
+                if deadline.expired():
+                    raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+                self.task_service.require_conversion_publication_reservation(
+                    task_id=current_task.task_id,
+                    fence=publication_fence,
+                    publication_token=publication_token,
+                )
+
+            publish_prepared_conversion(
+                dataset_storage=dataset_storage,
+                run_result=snapshot.run_result,
+                publication_token=publication_token,
+                pre_rename_check=_pre_rename_check,
+                hash_progress_check=_hash_progress_check,
+            )
+        if publication_state == "reserved":
+            self.task_service.transition_conversion_publication(
+                task_id=current_task.task_id,
+                attempt_no=attempt_no,
+                publication_token=publication_token,
+                expected_state="reserved",
+                target_state="published",
+            )
+
+        def _stage_business_records(
+            unit_of_work: SqlAlchemyUnitOfWork,
+        ) -> ConversionPublicationCommitPayload:
+            build_summaries = self._register_conversion_outputs(
+                project_id=request.project_id,
+                source_model_version_id=request.source_model_version_id,
+                runtime_profile_id=request.runtime_profile_id,
+                conversion_task_id=current_task.task_id,
+                outputs=snapshot.run_result.outputs,
+                unit_of_work=unit_of_work,
+            )
+            report_summary = self._build_report_summary(
+                plan=plan,
+                source_runtime_target=source_runtime_target,
+                run_result=snapshot.run_result,
+                build_summaries=build_summaries,
+                requested_target_formats=request.target_formats,
+                output_files=output_files,
+            )
+            dataset_storage.write_json(output_files.report_object_key, report_summary)
+            primary_model_build_id = _select_primary_yolo_model_build_id(
+                builds=build_summaries,
+                requested_target_formats=request.target_formats,
+            )
+            result_payload = {
+                "source_model_version_id": request.source_model_version_id,
+                "output_object_prefix": output_files.output_object_prefix,
+                "plan_object_key": output_files.plan_object_key,
+                "report_object_key": output_files.report_object_key,
+                "requested_target_formats": list(request.target_formats),
+                "produced_formats": [item.build_format for item in build_summaries],
+                "model_build_id": primary_model_build_id,
+                "builds": [
+                    serialize_yolo_conversion_build_summary(item)
+                    for item in build_summaries
+                ],
+                "report_summary": report_summary,
+            }
+            return ConversionPublicationCommitPayload(
+                business_result=(
+                    build_summaries,
+                    report_summary,
+                    primary_model_build_id,
+                ),
+                task_result=result_payload,
+                attempt_result={
+                    "produced_formats": result_payload["produced_formats"],
+                    "conversion_metadata": dict(snapshot.run_result.metadata),
+                    "publication_recovered": True,
+                },
+                event_message=f"{self.model_type} conversion recovered and succeeded",
+                event_payload={
+                    "progress": {"stage": "succeeded", "percent": 100.0},
+                    "result": result_payload,
+                    "metadata": {"publication_recovered": True},
+                },
+            )
+
+        model_service = self._resolve_model_service_cls()(
+            session_factory=self.session_factory
+        )
+        with model_service.project_mutations.operation(
+            project_id=request.project_id,
+            mutation_kind="model-build",
+            resource_id=current_task.task_id,
+        ):
+            completion = self.task_service.complete_conversion_publication(
+                task_id=current_task.task_id,
+                fence=publication_fence,
+                publication_token=publication_token,
+                stage_business_records=_stage_business_records,
+            )
+        build_summaries, report_summary, primary_model_build_id = (
+            completion.business_result
+        )
+        mark_conversion_publication_registered(
+            dataset_storage=dataset_storage,
+            conversion_metadata=dict(snapshot.run_result.metadata),
+            model_build_ids=tuple(
+                item.model_build_id for item in build_summaries
+            ),
+        )
         return self._resolve_result_cls()(
             task_id=task_record.task_id,
             status="succeeded",
@@ -998,7 +1407,7 @@ class SqlAlchemyYoloConversionTaskServiceBase:
         """把 Attempt 已终态但无 publication 的不一致显式投影到 Task。"""
 
         error_message = attempt.error_message or "conversion 最终发布未完成"
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_record.task_id,
                 attempt_id=attempt.attempt_id,

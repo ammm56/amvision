@@ -17,7 +17,10 @@ from backend.service.application.support.resource_cleanup import (
     model_task_resource_cleanup,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
+from backend.service.application.tasks.task_service import (
+    SqlAlchemyTaskService,
+    read_task_execution_fence,
+)
 from backend.service.domain.tasks.task_records import TaskRecord
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
@@ -57,9 +60,11 @@ class SqlAlchemyRfdetrTrainerRunner:
         返回：
         - TrainingBackendRunResult：训练执行结果。
         """
+        execution_fence = read_task_execution_fence(request.metadata)
         with model_task_resource_cleanup(), assigned_training_device(
             session_factory=self.session_factory,
             task_id=request.training_task_id,
+            execution_fence=execution_fence,
         ):
             task_record = SqlAlchemyTaskService(
                 session_factory=self.session_factory,
@@ -70,13 +75,20 @@ class SqlAlchemyRfdetrTrainerRunner:
                     session_factory=self.session_factory,
                     dataset_storage=self.dataset_storage,
                 )
-                return service.process_training_task(request.training_task_id)
+                return service.process_training_task(
+                    request.training_task_id,
+                    execution_fence=execution_fence,
+                )
             if task_type == "segmentation":
                 service = SqlAlchemySegmentationTrainingService(
                     session_factory=self.session_factory,
                     dataset_storage=self.dataset_storage,
                 )
-                result = service.process_training_task(task_record, model_type="rfdetr")
+                result = service.process_training_task(
+                    task_record,
+                    model_type="rfdetr",
+                    execution_fence=execution_fence,
+                )
                 return self._build_segmentation_run_result(
                     training_task_id=request.training_task_id,
                     result=result,

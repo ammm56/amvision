@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import pickle
 from pathlib import Path
 import traceback
 
 from backend.service.application.error_serialization import serialize_error
+from backend.service.application.conversions.publication import (
+    serialize_conversion_run_result,
+)
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
     LocalDatasetStorage,
@@ -18,7 +22,7 @@ def _build_runner(*, runner_kind: str, dataset_storage: LocalDatasetStorage) -> 
     """按稳定类型名创建实际 conversion runner。"""
 
     if runner_kind == "yolox":
-        from backend.workers.conversion.yolox_conversion_runner import (
+        from backend.service.application.conversions.runtime.yolox_conversion_runner import (
             LocalYoloXConversionRunner,
         )
 
@@ -42,7 +46,7 @@ def _build_runner(*, runner_kind: str, dataset_storage: LocalDatasetStorage) -> 
 
         return LocalYolo26ConversionRunner(dataset_storage=dataset_storage)
     if runner_kind == "rfdetr":
-        from backend.workers.conversion.rfdetr_conversion_runner import (
+        from backend.service.application.conversions.runtime.rfdetr_conversion_runner import (
             LocalRfdetrConversionRunner,
         )
 
@@ -70,7 +74,7 @@ def run_attempt(
             dataset_storage=dataset_storage,
         )
         result = runner.run_conversion(request)
-        payload = {"ok": True, "result": result}
+        payload = {"ok": True, "result": serialize_conversion_run_result(result)}
         exit_code = 0
     except BaseException as error:
         payload = {
@@ -81,8 +85,8 @@ def run_attempt(
         exit_code = 1
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = result_path.with_suffix(".tmp")
-    with temporary_path.open("wb") as stream:
-        pickle.dump(payload, stream, protocol=pickle.HIGHEST_PROTOCOL)
+    with temporary_path.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
         stream.flush()
     temporary_path.replace(result_path)
     return exit_code

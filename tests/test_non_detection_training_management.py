@@ -17,8 +17,6 @@ from backend.service.api.rest.v1.routes.task_training import (
 from backend.service.application.models.training.checkpoint_recovery import (
     expose_recoverable_latest_checkpoint,
 )
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
-from backend.service.domain.tasks.task_records import TaskEvent, TaskRecord
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -179,7 +177,7 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
         metadata={"model_type": "yolo26"},
         task_spec={"model_type": "yolo26"},
     )
-    events: list[object] = []
+    submissions: list[object] = []
 
     class _FakeTaskService:
         def __init__(self, session_factory: object) -> None:
@@ -195,23 +193,15 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
             assert visible_project_ids == ()
             return SimpleNamespace(task=task)
 
-        def append_task_event(self, event):
-            events.append(event)
-
-        def get_next_task_attempt_no(self, task_id: str) -> int:
-            assert task_id == task.task_id
-            return 3
+        def resume_task_with_outbox(self, request):
+            submissions.append(request)
+            return SimpleNamespace(
+                queue_name=request.queue_submission.queue_name,
+                queue_task_id="queue-task-resume",
+            )
 
     class _FakeQueueBackend:
-        def enqueue(self, *, queue_name: str, payload: dict[str, object]):
-            assert queue_name == catalog_module.YOLO26_SEGMENTATION_TRAINING_QUEUE_NAME
-            assert payload == {
-                "task_id": task.task_id,
-                "attempt_no": 3,
-                "task_kind": task.task_kind,
-                "model_type": "yolo26",
-            }
-            return SimpleNamespace(task_id="queue-task-resume")
+        pass
 
     monkeypatch.setattr(controls_module, "SqlAlchemyTaskService", _FakeTaskService)
 
@@ -225,48 +215,18 @@ def test_resume_failed_training_clears_terminal_state_and_enqueues(
 
     assert response.status == "queued"
     assert response.queue_task_id == "queue-task-resume"
-    requested = events[0].payload
-    assert requested["state"] == "queued"
-    assert requested["attempt_no"] == 3
-    assert requested["finished_at"] is None
-    assert requested["error_message"] is None
-    assert requested["progress"] == {"stage": "queued"}
-
-
-def test_task_event_can_explicitly_clear_terminal_fields() -> None:
-    """验证任务事件合并器接受 None，从失败终态恢复到 queued。"""
-
-    task = TaskRecord(
-        task_id="task-failed",
-        task_kind="yolo26-segmentation-training",
-        project_id="project-1",
-        state="failed",
-        current_attempt_no=2,
-        finished_at="2026-06-13T00:02:00Z",
-        error_message="worker failed",
-    )
-    event = TaskEvent(
-        event_id="event-resume",
-        task_id=task.task_id,
-        event_type="status",
-        created_at="2026-06-13T00:03:00Z",
-        payload={
-            "state": "queued",
-            "attempt_no": 3,
-            "finished_at": None,
-            "error_message": None,
-        },
-    )
-
-    updated = SqlAlchemyTaskService.__new__(SqlAlchemyTaskService)._apply_event(
-        task_record=task,
-        task_event=event,
-    )
-
-    assert updated.state == "queued"
-    assert updated.current_attempt_no == 3
-    assert updated.finished_at is None
-    assert updated.error_message is None
+    requested = submissions[0]
+    assert requested.expected_states == ("failed",)
+    assert requested.expected_current_attempt_no == 2
+    assert requested.progress_patch == {"stage": "queued"}
+    assert requested.result_patch == {
+        "status": "queued",
+        "latest_checkpoint_object_key": checkpoint_key,
+    }
+    assert requested.queue_submission.payload == {
+        "task_kind": task.task_kind,
+        "model_type": "yolo26",
+    }
 
 
 def test_build_summary_response_resolves_training_output_files_from_summary() -> None:

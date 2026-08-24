@@ -624,6 +624,24 @@ class SqlAlchemyModelService:
                 unit_of_work.commit()
                 return model_build_ids
 
+    def stage_builds(
+        self,
+        *,
+        unit_of_work: SqlAlchemyUnitOfWork,
+        requests: tuple[ModelBuildRegistration, ...],
+    ) -> tuple[str, ...]:
+        """在调用方持有的 Unit of Work 中暂存整批 ModelBuild/ModelFile。"""
+
+        if not requests:
+            return ()
+        project_ids = {request.project_id for request in requests}
+        if len(project_ids) != 1:
+            raise InvalidRequestError("同一批模型 build 必须属于同一个 Project")
+        return tuple(
+            self._stage_build(unit_of_work=unit_of_work, request=request)
+            for request in requests
+        )
+
     def _stage_build(
         self,
         *,

@@ -1,6 +1,6 @@
 # 统一任务系统
 
-> 当前状态：本页描述已经落地的 Task 系统。命令级 Task 状态机、取消 CAS、统一 Attempt finalizer 和 Training Resume Outbox 已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整实现；实施顺序和门禁见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。完成前不得把目标状态当作当前契约。
+> 当前状态：命令级 Task 状态机、取消 CAS、Attempt owner/heartbeat/Queue lease fencing、统一 finalizer、Training Resume Outbox 与完整前后端状态契约均已落地。剩余仓库级发行和真实模型门禁见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。
 
 ## 定位
 

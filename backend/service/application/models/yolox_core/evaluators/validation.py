@@ -14,6 +14,7 @@ def evaluate_yolox_validation_losses(
     loader: Any,
     device: str,
     precision: str,
+    control_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     """在不更新参数的前提下执行一次 YOLOX validation loss 统计。"""
 
@@ -40,6 +41,8 @@ def evaluate_yolox_validation_losses(
                 for metric_name, metric_value in scalar_outputs.items():
                     epoch_totals[metric_name] = epoch_totals.get(metric_name, 0.0) + metric_value
                 epoch_iterations += 1
+                if control_callback is not None:
+                    control_callback()
     finally:
         _restore_batch_norm_modules(batch_norm_states)
         model.train(was_training)

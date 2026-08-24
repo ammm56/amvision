@@ -18,6 +18,7 @@ from backend.service.application.task_failure_payloads import build_task_failure
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.application.tasks.queue_reference import (
@@ -136,15 +137,28 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
             input_uri=normalized_input.input_uri,
         )
 
-    def process_inference_task(self, task_id: str) -> TaskNativeInferenceTaskResult:
+    def process_inference_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> TaskNativeInferenceTaskResult:
         """执行一条已入队的 task-native 推理任务。"""
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_inference_task(task_id)
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
         existing_result = self._build_existing_result(task_record)
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前推理任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -165,7 +179,11 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
             task_record=task_record,
             dataset_storage=dataset_storage,
         )
-        attempt_no = max(1, task_record.current_attempt_no + 1)
+        attempt_no = (
+            claimed_attempt.attempt_no
+            if claimed_attempt is not None
+            else max(1, task_record.current_attempt_no + 1)
+        )
         output_object_prefix = self._build_output_object_prefix(task_id)
         result_object_key = f"{output_object_prefix}/artifacts/reports/raw-result.json"
         preview_image_object_key = (
@@ -173,15 +191,11 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
             if getattr(request, "save_result_image", False)
             else None
         )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        started_event = AppendTaskEventRequest(
                 task_id=task_id,
-                event_type="status",
+                event_type=("progress" if execution_fence is not None else "status"),
                 message=f"{self.task_label} inference started",
                 payload={
-                    "state": "running",
-                    "attempt_no": attempt_no,
-                    "started_at": _now_isoformat(),
                     "progress": {"stage": "inferencing", "percent": 5.0},
                     "result": {
                         "output_object_prefix": output_object_prefix,
@@ -191,9 +205,24 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                         "model_version_id": runtime_target.model_version_id,
                         "model_build_id": runtime_target.model_build_id,
                     },
+                    **(
+                        {}
+                        if execution_fence is not None
+                        else {
+                            "state": "running",
+                            "attempt_no": attempt_no,
+                            "started_at": _now_isoformat(),
+                        }
+                    ),
                 },
             )
-        )
+        if execution_fence is not None:
+            self.task_service.record_task_progress_event(
+                started_event,
+                fence=execution_fence,
+            )
+        else:
+            self.task_service.execute_task_state_event_command(started_event)
 
         try:
             prediction_request = self._build_prediction_request(
@@ -236,7 +265,7 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
             )
             dataset_storage.write_json(result_object_key, raw_payload)
         except Exception as error:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -255,7 +284,8 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                             "preview_image_object_key": preview_image_object_key,
                         },
                     ),
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
@@ -286,7 +316,7 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                 preview_image_object_key=preview_image_object_key,
             ),
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -302,7 +332,8 @@ class TaskNativeInferenceTaskServiceBase(SqlAlchemyDetectionInferenceTaskService
                     },
                     "result": self._serialize_task_result(task_result),
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         return task_result
 

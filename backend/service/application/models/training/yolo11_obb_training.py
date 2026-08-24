@@ -112,7 +112,9 @@ class Yolo11ObbTrainingExecutionRequest:
         | None
     ) = None
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
-    control_callback: Callable[[], None] | None = None
+    control_callback: (
+        Callable[[], Yolo11ObbTrainingControlCommand | None] | None
+    ) = None
     savepoint_callback: Callable[[Yolo11ObbTrainingSavePoint], None] | None = None
 
 

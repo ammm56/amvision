@@ -82,6 +82,7 @@ def run_workflow_runtime_worker_process(
     runtime_payload: dict[str, object],
     request_queue: Queue[Any],
     response_queue: Queue[Any],
+    run_cancellation_event: Any,
     local_buffer_broker_event_channel: LocalBufferBrokerEventChannel | None = None,
     published_inference_gateway_event_channel: PublishedInferenceGatewayEventChannel
     | None = None,
@@ -216,11 +217,33 @@ def run_workflow_runtime_worker_process(
             dataset_storage=dataset_storage,
             application_snapshot_object_key=application_snapshot_object_key,
         )
+
+        def emit_node_lifecycle(message: dict[str, object]) -> None:
+            """通过现有响应队列上报 Node Pack timeout 控制消息。"""
+
+            try:
+                response_queue.put(
+                    {
+                        **message,
+                        "workflow_runtime_id": workflow_runtime_id,
+                        "workflow_runtime_revision_id": workflow_runtime_revision_id,
+                        "runtime_generation": runtime_generation,
+                        "snapshot_fingerprint": snapshot_fingerprint,
+                        "worker_instance_id": runtime_instance_id,
+                    }
+                )
+            except Exception:
+                # 生命周期消息只服务父进程 timeout 控制；响应通道失效时仍由
+                # Workflow 总 deadline 和 worker 健康检查兜底，不能改变数据面。
+                return
+
         snapshot_execution_service = SnapshotExecutionService(
             dataset_storage=dataset_storage,
             node_catalog_registry=node_catalog_registry,
             runtime_registry=runtime_registry_loader.get_runtime_registry(),
             runtime_context=runtime_context,
+            node_cancellation_event=run_cancellation_event,
+            node_lifecycle_sink=emit_node_lifecycle,
             decoded_image_cache_max_entries=(
                 settings.workflow_runtime.decoded_image_cache_max_entries
             ),

@@ -48,7 +48,7 @@
 - 当目标发行目录已经存在且传入 `--force`，当前会先把已有的 `python/` 目录临时移到旁路目录，完成目录重建后再移回
 - 如果 release 组装中途失败，当前也会恢复原来的 `python/` 目录，避免 bundled Python 在失败时丢失
 - 不自动复制或重建 Python 环境；bundled Python 由发布人员放入目标发行目录
-- 如果当前发布目录原本没有 `python/`，会创建空目录供发布人员后续手工移动、重命名或复制已经准备好的环境
+- 如果当前发布目录没有可执行的 Python，会创建或保留占位目录并在 manifest 中标记 `placeholder-empty`；仅存在目录或标记文件不会被误报为已包含
 - full 启动器只接受显式 `--python-executable` 或发布目录中的 `python/python.exe`，不会回退到系统 Python
 - 当 release profile 要求包含前端时，自动复制 `frontend/web-ui/dist/` 到发行目录里的 `frontend/`
 - 如果前端构建结果里没有 `runtime-config.json`，当前会优先使用 `runtime-config.local.json`，否则回退到 `runtime-config.template.json` 自动生成

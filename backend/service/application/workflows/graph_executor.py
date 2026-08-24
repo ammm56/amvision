@@ -5,7 +5,8 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Lock
 from time import monotonic, perf_counter
-from typing import Callable
+from typing import Callable, Mapping
+from uuid import uuid4
 
 from backend.contracts.workflows.workflow_graph import (
     NodeDefinition,
@@ -18,6 +19,7 @@ from backend.contracts.workflows.workflow_graph import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
     OperationTimeoutError,
     ServiceConfigurationError,
     ServiceError,
@@ -71,6 +73,11 @@ from backend.service.application.workflows.execution.registry import (
 )
 from backend.service.application.workflows.execution.execution_control import (
     WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY,
+    build_node_execution_control,
+)
+from backend.service.application.workflows.execution.node_pack_timeout import (
+    NodePackExecutionTimeoutPolicy,
+    NodePackIdentity,
 )
 from backend.service.application.workflows.execution.topology import (
     build_required_node_ids,
@@ -92,10 +99,148 @@ from backend.service.application.workflows.runtime_payload_sanitizer import (
 class WorkflowGraphExecutor:
     """按 DAG 顺序执行最小 workflow 图。"""
 
-    def __init__(self, *, registry: WorkflowNodeRuntimeRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        registry: WorkflowNodeRuntimeRegistry,
+        node_pack_timeout_policies: Mapping[
+            NodePackIdentity, NodePackExecutionTimeoutPolicy
+        ]
+        | None = None,
+        node_cancellation_event: object | None = None,
+        node_lifecycle_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> None:
         """初始化图执行器。"""
 
         self.registry = registry
+        self.node_pack_timeout_policies = dict(node_pack_timeout_policies or {})
+        self.node_cancellation_event = node_cancellation_event
+        self.node_lifecycle_callback = node_lifecycle_callback
+
+    def _invoke_node_handler(
+        self,
+        *,
+        node_id: str,
+        node_definition: NodeDefinition,
+        parameters: dict[str, object],
+        input_values: dict[str, object],
+        execution_metadata: dict[str, object],
+        runtime_context: object | None,
+    ) -> dict[str, object]:
+        """直接调用节点 handler，并在 Node Pack 边界发送轻量生命周期消息。"""
+
+        invocation_id = uuid4().hex
+        policy = self._resolve_node_pack_timeout_policy(node_definition)
+        node_deadline = self._resolve_node_deadline(
+            execution_metadata=execution_metadata,
+            policy=policy,
+        )
+        request = WorkflowNodeExecutionRequest(
+            node_id=node_id,
+            node_definition=node_definition,
+            parameters=parameters,
+            input_values=input_values,
+            execution_metadata=execution_metadata,
+            runtime_context=runtime_context,
+            node_cancellation_event=self.node_cancellation_event,
+            node_deadline_monotonic=node_deadline,
+            node_invocation_id=invocation_id,
+        )
+        lifecycle_enabled = policy is not None and node_definition.node_pack_id is not None
+        if lifecycle_enabled:
+            self._emit_node_lifecycle(
+                {
+                    "message_type": "node-started",
+                    "workflow_run_id": str(
+                        execution_metadata.get("workflow_run_id") or ""
+                    ),
+                    "node_invocation_id": invocation_id,
+                    "node_id": node_id,
+                    "node_pack_id": node_definition.node_pack_id,
+                    "node_pack_version": node_definition.node_pack_version,
+                    "deadline_monotonic": node_deadline,
+                    "kill_grace_seconds": policy.kill_grace_seconds,
+                }
+            )
+        outcome = "succeeded"
+        try:
+            control = build_node_execution_control(request)
+            control.raise_if_cancelled_or_expired()
+            handler = self.registry.resolve_handler(node_definition=node_definition)
+            result = invoke_with_parallel_safety(
+                node_definition=node_definition,
+                request=request,
+                handler=handler,
+            )
+            control.raise_if_cancelled_or_expired()
+            return result
+        except OperationTimeoutError:
+            outcome = "timed_out"
+            raise
+        except OperationCancelledError:
+            outcome = "cancelled"
+            raise
+        except Exception:
+            outcome = "failed"
+            raise
+        finally:
+            if lifecycle_enabled:
+                self._emit_node_lifecycle(
+                    {
+                        "message_type": "node-ended",
+                        "workflow_run_id": str(
+                            execution_metadata.get("workflow_run_id") or ""
+                        ),
+                        "node_invocation_id": invocation_id,
+                        "node_id": node_id,
+                        "outcome": outcome,
+                    }
+                )
+
+    def _resolve_node_pack_timeout_policy(
+        self, node_definition: NodeDefinition
+    ) -> NodePackExecutionTimeoutPolicy | None:
+        """按 Node Pack 精确版本解析当前 generation 的 timeout 策略。"""
+
+        if (
+            node_definition.node_pack_id is None
+            or node_definition.node_pack_version is None
+        ):
+            return None
+        return self.node_pack_timeout_policies.get(
+            (node_definition.node_pack_id, node_definition.node_pack_version)
+        )
+
+    @staticmethod
+    def _resolve_node_deadline(
+        *,
+        execution_metadata: dict[str, object],
+        policy: NodePackExecutionTimeoutPolicy | None,
+    ) -> float | None:
+        """组合 Workflow 总 deadline 与 Node Pack 默认 deadline。"""
+
+        workflow_deadline = execution_metadata.get(
+            WORKFLOW_EXECUTION_DEADLINE_MONOTONIC_KEY
+        )
+        deadlines: list[float] = []
+        if (
+            isinstance(workflow_deadline, int | float)
+            and not isinstance(workflow_deadline, bool)
+        ):
+            deadlines.append(float(workflow_deadline))
+        if policy is not None:
+            deadlines.append(monotonic() + policy.default_seconds)
+        return min(deadlines) if deadlines else None
+
+    def _emit_node_lifecycle(self, message: dict[str, object]) -> None:
+        """尽力发送 timeout 控制消息；控制通道异常不改变节点数据语义。"""
+
+        if self.node_lifecycle_callback is None:
+            return
+        try:
+            self.node_lifecycle_callback(message)
+        except Exception:
+            return
 
     def execute(
         self,
@@ -300,21 +445,14 @@ class WorkflowGraphExecutor:
                     )
                     raise
             else:
-                handler = self.registry.resolve_handler(node_definition=node_definition)
-                execution_request = WorkflowNodeExecutionRequest(
-                    node_id=node_id,
-                    node_definition=node_definition,
-                    parameters=dict(node.parameters),
-                    input_values=resolved_inputs,
-                    execution_metadata=execution_metadata_payload,
-                    runtime_context=runtime_context,
-                    node_invocation_id=f"{node_id}:{execution_index}",
-                )
                 try:
-                    raw_outputs = invoke_with_parallel_safety(
+                    raw_outputs = self._invoke_node_handler(
+                        node_id=node_id,
                         node_definition=node_definition,
-                        request=execution_request,
-                        handler=handler,
+                        parameters=dict(node.parameters),
+                        input_values=resolved_inputs,
+                        execution_metadata=execution_metadata_payload,
+                        runtime_context=runtime_context,
                     )
                 except ServiceError as exc:
                     duration_ms = _elapsed_ms(node_started_at)
@@ -745,7 +883,12 @@ class WorkflowGraphExecutor:
             else:
                 branch_metadata.pop("workflow_variables", None)
             try:
-                branch_result = WorkflowGraphExecutor(registry=self.registry).execute(
+                branch_result = WorkflowGraphExecutor(
+                    registry=self.registry,
+                    node_pack_timeout_policies=self.node_pack_timeout_policies,
+                    node_cancellation_event=self.node_cancellation_event,
+                    node_lifecycle_callback=self.node_lifecycle_callback,
+                ).execute(
                     template=branch_template,
                     input_values=branch_inputs,
                     execution_metadata=branch_metadata,
@@ -797,18 +940,14 @@ class WorkflowGraphExecutor:
             node for node in template.nodes if node.node_id == plan.end_node_id
         )
         end_node_definition = self.registry.get_node_definition(end_node.node_type_id)
-        end_handler = self.registry.resolve_handler(node_definition=end_node_definition)
         raw_outputs = dict(
-            end_handler(
-                WorkflowNodeExecutionRequest(
-                    node_id=end_node.node_id,
-                    node_definition=end_node_definition,
-                    parameters=dict(end_node.parameters),
-                    input_values=resolved_end_inputs,
-                    execution_metadata=execution_metadata,
-                    runtime_context=runtime_context,
-                    node_invocation_id=f"{end_node.node_id}:parallel-end",
-                )
+            self._invoke_node_handler(
+                node_id=end_node.node_id,
+                node_definition=end_node_definition,
+                parameters=dict(end_node.parameters),
+                input_values=resolved_end_inputs,
+                execution_metadata=execution_metadata,
+                runtime_context=runtime_context,
             )
         )
         return raw_outputs, resolved_end_inputs, tuple(branch_node_records)
@@ -1183,18 +1322,6 @@ class WorkflowGraphExecutor:
                 edge_bindings=edge_bindings,
                 node_output_values=visible_output_values,
             )
-            handler = self.registry.resolve_handler(
-                node_definition=body_node_definition
-            )
-            execution_request = WorkflowNodeExecutionRequest(
-                node_id=body_node_id,
-                node_definition=body_node_definition,
-                parameters=dict(body_node.parameters),
-                input_values=resolved_inputs,
-                execution_metadata=execution_metadata,
-                runtime_context=runtime_context,
-                node_invocation_id=iteration_node_id,
-            )
             execution_index = len(node_records) + 1
             emit_node_event(
                 event_callback=event_callback,
@@ -1212,10 +1339,13 @@ class WorkflowGraphExecutor:
             )
             node_started_at = perf_counter()
             try:
-                raw_outputs = invoke_with_parallel_safety(
+                raw_outputs = self._invoke_node_handler(
+                    node_id=body_node_id,
                     node_definition=body_node_definition,
-                    request=execution_request,
-                    handler=handler,
+                    parameters=dict(body_node.parameters),
+                    input_values=resolved_inputs,
+                    execution_metadata=execution_metadata,
+                    runtime_context=runtime_context,
                 )
             except ServiceError as exc:
                 duration_ms = _elapsed_ms(node_started_at)

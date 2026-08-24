@@ -35,6 +35,14 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
     release_dir = tmp_path / "full-windows-x64-nvidia"
     assert result.release_dir == release_dir.resolve()
     assert (release_dir / "app" / "backend").is_dir()
+    assert (
+        release_dir
+        / "app"
+        / "backend"
+        / "runtime"
+        / "processes"
+        / "process_tree_supervisor.py"
+    ).is_file()
     assert (release_dir / "config" / "backend-service.json").is_file()
     assert (release_dir / "launchers" / "common.py").is_file()
     assert (
@@ -87,6 +95,14 @@ def test_assemble_release_materializes_windows_x64_nvidia_layout(
         / "backend"
         / "runtime"
         / "images.py"
+    ).is_file()
+    assert (
+        release_dir
+        / "custom_nodes"
+        / "opencv_nodes"
+        / "shared"
+        / "workflow"
+        / "payload_contracts.json"
     ).is_file()
     assert (
         release_dir
@@ -359,29 +375,6 @@ def test_validate_layout_reports_target_specific_required_and_forbidden_paths(
     )
 
 
-def test_assemble_release_rejects_automatic_bundled_python_copy(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证组装命令不会自动复制大体量 bundled Python。"""
-
-    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
-    bundled_python_source_dir = tmp_path / "source-python"
-    bundled_python_source_dir.mkdir(parents=True, exist_ok=True)
-    (bundled_python_source_dir / "python.exe").write_text("python", encoding="utf-8")
-    (bundled_python_source_dir / "__pycache__").mkdir(parents=True, exist_ok=True)
-    (bundled_python_source_dir / "__pycache__" / "ignored.pyc").write_bytes(b"cache")
-
-    with pytest.raises(ValueError, match="不复制 bundled Python"):
-        assemble_release(
-            ReleaseAssemblyRequest(
-                profile_id="full-windows-x64-nvidia",
-                output_root=tmp_path,
-                bundled_python_source_dir=bundled_python_source_dir,
-            )
-        )
-
-
 def test_assemble_release_requires_force_to_overwrite_existing_directory(
     tmp_path: Path,
 ) -> None:
@@ -425,7 +418,7 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
     )
 
     assert result.bundled_python_dir == (release_dir / "python").resolve()
-    assert result.bundled_python_mode == "preserved-existing"
+    assert result.bundled_python_mode == "placeholder-empty"
     assert marker_file.read_text(encoding="utf-8") == "keep"
     assert not stale_file.exists()
     assert (release_dir / "app" / "backend").is_dir()
@@ -442,14 +435,33 @@ def test_assemble_release_preserves_existing_python_dir_when_overwriting(
         / "runtime"
         / "images.py"
     ).is_file()
-    assert (
-        release_dir
-        / "custom_nodes"
-        / "opencv_nodes"
-        / "shared"
-        / "workflow"
-        / "payload_contracts.json"
-    ).is_file()
+
+
+def test_assemble_release_marks_preserved_python_with_executable_as_included(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证只有可启动的既有 Python 运行时才会标记为已包含。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    release_dir = tmp_path / "full-windows-x64-nvidia"
+    existing_python_dir = release_dir / "python"
+    existing_python_dir.mkdir(parents=True, exist_ok=True)
+    (existing_python_dir / "python.exe").write_bytes(b"test-python")
+
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-nvidia",
+            output_root=tmp_path,
+            overwrite=True,
+        )
+    )
+
+    release_manifest = json.loads(
+        result.release_manifest_path.read_text(encoding="utf-8")
+    )
+    assert result.bundled_python_mode == "preserved-existing"
+    assert release_manifest["bundled_python"]["included"] is True
 
 
 def test_assemble_release_recovers_existing_python_dir_when_overwrite_fails(
@@ -520,12 +532,12 @@ def test_assemble_release_recovers_python_when_old_release_removal_fails(
     assert marker_file.read_text(encoding="utf-8") == "keep"
 
 
-def test_release_full_stop_waits_root_exit_before_force_stop(
+def test_release_full_stop_requests_root_cleanup_before_stopping_components(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """验证 stop 脚本会先等待 root 自行退出，再决定是否强制停止。"""
+    """验证 stop 脚本由 root 优雅回收全部组件，不制造 Worker 恢复窗口。"""
 
     _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
     assemble_release(
@@ -564,13 +576,14 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
         encoding="utf-8",
     )
 
+    live_pids = {11, 12, 99}
     recorded_stop_calls: list[tuple[int, str, float]] = []
     recorded_root_wait_calls: list[tuple[int, float]] = []
 
     monkeypatch.setattr(
         stop_module,
         "process_identity_matches",
-        lambda identity: identity.get("pid") in {11, 12, 99},
+        lambda identity: identity.get("pid") in live_pids,
     )
 
     def _fake_stop_recorded_process(
@@ -592,6 +605,7 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
         recorded_root_wait_calls.append(
             (int(identity["pid"]), graceful_timeout_seconds)
         )
+        live_pids.clear()
         return True
 
     monkeypatch.setattr(
@@ -612,16 +626,120 @@ def test_release_full_stop_waits_root_exit_before_force_stop(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert recorded_stop_calls == [
-        (12, "process-tree", 30.0),
-        (11, "process-tree", 30.0),
-    ]
+    assert recorded_stop_calls == []
     assert recorded_root_wait_calls == [(99, 30.0)]
-    assert "等待 full-stack-root 自行退出" in captured.out
+    assert "已请求 full-stack-root 优雅停止" in captured.out
     assert "full-stack-root 未在等待窗口内退出" not in captured.out
     assert "停止 full-stack-root 超时" not in captured.out
     assert "已停止 full-stack-root，pid=99" in captured.out
     assert not state_file_path.exists()
+    assert not stop_module._resolve_shutdown_request_file(state_file_path).exists()
+
+
+def test_release_full_stop_timeout_stops_root_before_residual_components(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证优雅停止超时后先关闭 root，避免清理 Worker 时被重新拉起。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-nvidia",
+            output_root=tmp_path,
+        )
+    )
+    stop_module = _load_module_from_file(
+        "release_full_stop_timeout", result.release_dir / "stop_amvision_full.py"
+    )
+    state_file_path = result.release_dir / "logs" / "timeout" / "runtime-state.json"
+    state_file_path.parent.mkdir(parents=True, exist_ok=True)
+    state_file_path.write_text(
+        json.dumps(
+            {
+                "format_id": "amvision.full-supervisor-state.v1",
+                "root_process": {"pid": 99},
+                "components": [
+                    {"name": "service", "process": {"pid": 11}},
+                    {"name": "worker", "process": {"pid": 12}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    live_pids = {11, 12, 99}
+    stop_calls: list[int] = []
+    monkeypatch.setattr(
+        stop_module,
+        "process_identity_matches",
+        lambda identity: identity.get("pid") in live_pids,
+    )
+    monkeypatch.setattr(stop_module, "_wait_root_process_exit", lambda *a, **k: False)
+
+    def _stop(
+        identity: dict[str, object],
+        *,
+        stop_mode: str,
+        graceful_timeout_seconds: float,
+    ) -> bool:
+        del stop_mode, graceful_timeout_seconds
+        pid = int(identity["pid"])
+        stop_calls.append(pid)
+        live_pids.discard(pid)
+        return True
+
+    monkeypatch.setattr(stop_module, "_stop_recorded_process", _stop)
+
+    assert (
+        stop_module.main(
+            ["--app-root", str(result.release_dir), "--logs-subdir", "timeout"]
+        )
+        == 0
+    )
+    assert stop_calls == [99, 12, 11]
+
+
+def test_release_full_shutdown_request_targets_exact_root_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证旧 Supervisor 的停止请求不会终止新启动实例。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    start_module = _load_module_from_file(
+        "release_full_shutdown_request", result.release_dir / "start_amvision_full.py"
+    )
+    request_path = tmp_path / "runtime-state.shutdown-request.json"
+    current_identity = {"pid": 99, "create_time": 123.0}
+    request_path.write_text(
+        json.dumps(
+            {
+                "format_id": "amvision.full-supervisor-shutdown.v1",
+                "root_process": current_identity,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        start_module._shutdown_requested(
+            request_path, root_process_identity=current_identity
+        )
+        is True
+    )
+    assert (
+        start_module._shutdown_requested(
+            request_path,
+            root_process_identity={"pid": 100, "create_time": 124.0},
+        )
+        is False
+    )
 
 
 def test_release_full_start_resolves_the_only_generated_manifest(
@@ -694,6 +812,34 @@ def test_release_full_forwards_explicit_python_to_service_and_worker_launchers(
         assert command[0] == python_executable
         assert command[command.index("--app-root") + 1] == str(result.release_dir)
         assert command[command.index("--python-executable") + 1] == python_executable
+
+
+def test_release_full_child_environment_removes_parent_conda_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证生产子进程不会继承发布机 conda 环境标记。"""
+
+    _patch_release_runtime_asset_sources(monkeypatch, tmp_path)
+    result = assemble_release(
+        ReleaseAssemblyRequest(
+            profile_id="full-windows-x64-cpu",
+            output_root=tmp_path,
+        )
+    )
+    start_module = _load_module_from_file(
+        "release_full_sanitized_environment",
+        result.release_dir / "start_amvision_full.py",
+    )
+    monkeypatch.setenv("CONDA_PREFIX", "D:/external/conda/envs/amvision")
+    monkeypatch.setenv("CONDA_DEFAULT_ENV", "amvision")
+    monkeypatch.setenv("_CE_CONDA", "conda")
+
+    environment = start_module._build_child_process_environment()
+
+    assert "CONDA_PREFIX" not in environment
+    assert "CONDA_DEFAULT_ENV" not in environment
+    assert "_CE_CONDA" not in environment
 
 
 def test_release_worker_launcher_imports_backend_from_release_app_root(

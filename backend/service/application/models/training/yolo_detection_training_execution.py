@@ -37,6 +37,9 @@ class YoloDetectionTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[[YoloDetectionTrainingBatchProgress], None] | None = None
+    control_callback: Callable[[], YoloDetectionTrainingControlCommand | None] | None = (
+        None
+    )
     epoch_callback: (
         Callable[
             [YoloDetectionTrainingEpochProgress],

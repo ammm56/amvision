@@ -42,6 +42,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.application.tasks.queue_reference import (
@@ -181,16 +182,29 @@ class SqlAlchemyObbEvaluationTaskService:
             model_version_id=request.model_version_id,
         )
 
-    def process_evaluation_task(self, task_id: str) -> ObbEvaluationTaskResult:
+    def process_evaluation_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> ObbEvaluationTaskResult:
         """执行一条已入队的 obb 评估任务。"""
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_evaluation_task(task_id)
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
 
         if task_record.state == "succeeded":
             existing = self._build_existing_result(task_record)
             if existing is not None:
                 return existing
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前评估任务正在执行", details={"task_id": task_id}
             )
@@ -206,7 +220,11 @@ class SqlAlchemyObbEvaluationTaskService:
             request,
             model_type=runtime_target.model_type,
         )
-        attempt_no = max(1, task_record.current_attempt_no + 1)
+        attempt_no = (
+            claimed_attempt.attempt_no
+            if claimed_attempt is not None
+            else max(1, task_record.current_attempt_no + 1)
+        )
         output_prefix = f"task-runs/evaluation/{task_id}"
         report_key = f"{output_prefix}/artifacts/reports/evaluation-report.json"
         predictions_key = f"{output_prefix}/artifacts/reports/predictions.json"
@@ -216,19 +234,30 @@ class SqlAlchemyObbEvaluationTaskService:
             else None
         )
 
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        started_event = AppendTaskEventRequest(
                 task_id=task_id,
-                event_type="status",
+                event_type=("progress" if execution_fence is not None else "status"),
                 message="obb evaluation started",
                 payload={
-                    "state": "running",
-                    "started_at": datetime.now(timezone.utc).isoformat(),
-                    "attempt_no": attempt_no,
                     "progress": {"stage": "evaluating", "percent": 5.0},
+                    **(
+                        {}
+                        if execution_fence is not None
+                        else {
+                            "state": "running",
+                            "started_at": datetime.now(timezone.utc).isoformat(),
+                            "attempt_no": attempt_no,
+                        }
+                    ),
                 },
             )
-        )
+        if execution_fence is not None:
+            self.task_service.record_task_progress_event(
+                started_event,
+                fence=execution_fence,
+            )
+        else:
+            self.task_service.execute_task_state_event_command(started_event)
 
         try:
             manifest = dataset_storage.read_json(
@@ -246,7 +275,7 @@ class SqlAlchemyObbEvaluationTaskService:
             if package_key:
                 self._write_result_package(package_key, report_key, predictions_key)
         except Exception as error:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -257,7 +286,8 @@ class SqlAlchemyObbEvaluationTaskService:
                         attempt_no=attempt_no,
                         progress={"stage": "failed", "percent": 100.0},
                     ),
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
@@ -275,7 +305,7 @@ class SqlAlchemyObbEvaluationTaskService:
             map50_95=eval_result.map50_95,
             sample_count=eval_result.sample_count,
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -299,7 +329,8 @@ class SqlAlchemyObbEvaluationTaskService:
                         "sample_count": eval_result.sample_count,
                     },
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         return task_result
 

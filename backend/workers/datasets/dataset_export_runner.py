@@ -8,6 +8,7 @@ from typing import Protocol
 from backend.service.application.datasets.exports import DatasetExportArtifact
 from backend.service.application.datasets.tasks import SqlAlchemyDatasetExportTaskService
 from backend.service.application.ports.object_store import ObjectStore
+from backend.service.application.tasks.task_service import TaskExecutionFence
 from backend.service.infrastructure.db.session import SessionFactory
 
 
@@ -21,6 +22,7 @@ class DatasetExportRunRequest:
     """
 
     dataset_export_id: str
+    execution_fence: TaskExecutionFence | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -89,7 +91,10 @@ class SqlAlchemyDatasetExportRunner:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
-        task_result = service.process_export_task(request.dataset_export_id)
+        task_result = service.process_export_task(
+            request.dataset_export_id,
+            execution_fence=request.execution_fence,
+        )
         return DatasetExportRunResult(
             task_id=task_result.task_id,
             status=task_result.status,

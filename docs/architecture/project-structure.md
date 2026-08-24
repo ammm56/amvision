@@ -42,9 +42,14 @@ backend/
 ├─ inference_daemon/  独立 Deployment 控制进程
 ├─ maintenance/       迁移、发行组装和离线检查
 ├─ nodes/             核心节点及执行支持
+├─ runtime/           service 与 worker 共用的中立进程运行时基础设施
 ├─ service/           FastAPI 控制面和业务分层
 └─ workers/           六类后台任务 Profile 与 Runner
 ```
+
+`backend/runtime/processes/` 提供 deadline、进程树监督、Windows Job Object
+bootstrap 和有界日志 drain。该目录不包含 Conversion 业务规则，也不依赖 Worker
+组装层；service application 与 Worker 可以共同依赖它。
 
 ### backend/service
 
@@ -66,6 +71,7 @@ backend/service/
 | 目录 | 职责 |
 |---|---|
 | `datasets/` | 导入、导出、版本和格式处理 |
+| `conversions/` | 转换任务、总 deadline、发布 reservation 与模型转换运行实现 |
 | `ports/` | QueueBackend、ObjectStore 等稳定应用边界 |
 | `models/` | 模型 core、训练、验证、导出、registry 和 catalog |
 | `runtime/` | Deployment session、predictor、target 和序列化 |

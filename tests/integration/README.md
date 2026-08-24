@@ -131,7 +131,7 @@ python -m pytest --basetemp .tmp/pytest_release_full_acceptance tests/integratio
 $env:AMVISION_RELEASE_FULL_SOAK_SECONDS="600"; python -m pytest --basetemp .tmp/pytest_release_full_soak tests/integration/test_release_full_stack_acceptance.py -q
 ```
 
-真实 deployment、workflow runtime 和 ZeroMQ TriggerSource 都已经启动后，可以单独执行负载。`workflow-request.json` 使用正式 invoke 请求体，`trigger-envelope.json` 使用 ZeroMQ envelope；涉及 deployment 的 workflow 应在两份 JSON 中写入对应 deployment binding。
+真实 deployment、workflow runtime 和 ZeroMQ TriggerSource 都已经启动后，可以单独执行负载。业务链路验收优先使用源码开发环境 `data/` 中已经登记的真实模型、Deployment、Workflow Runtime、TriggerSource 和图片；发行包另行通过 `test_release_full_stack_acceptance.py` 验证同一源码生成物的布局、依赖、启停和资源回收，不要求把开发数据库复制进发行目录。`workflow-request.json` 使用正式 invoke 请求体，`trigger-envelope.json` 使用 ZeroMQ envelope；涉及 deployment 的 workflow 应在两份 JSON 中写入对应 deployment binding。
 
 ```powershell
 python -m tests.integration.deployment_workflow_trigger_soak `
@@ -149,7 +149,7 @@ python -m tests.integration.deployment_workflow_trigger_soak `
   --trigger-binary <sample-image.png>
 ```
 
-该入口默认把 deployment 拆成 `deployment-sync` 和 `deployment-async` 两条 lane，并同时运行 `workflow-invoke` 与 `trigger-zeromq`。现场资源预算只允许一种 deployment runtime 运行时，可以把 `--deployment-runtime-modes` 设为 `sync` 或 `async`；预检不会替调用方启动未运行的 runtime。每条 lane 分别统计请求数、错误率、并发峰值和 p50/p95/p99 延迟；控制面会周期采样 system、deployment、workflow runtime 和 TriggerSource health。默认任何请求错误或 health 采样错误都会使进程返回非 0。
+该入口默认把 deployment 拆成 `deployment-sync` 和 `deployment-async` 两条 lane，并同时运行 `workflow-invoke` 与 `trigger-zeromq`。现场资源预算只允许一种 deployment runtime 运行时，可以把 `--deployment-runtime-modes` 设为 `sync` 或 `async`；预检不会替调用方启动或预热 runtime，并要求每个被测 Deployment 满足 `healthy_instance_count == warmed_instance_count == instance_count`。应先调用对应 `warmup` API，再开始计时，避免把模型冷加载时间误算成稳定业务延迟。每条 lane 分别统计请求数、错误率、并发峰值和 p50/p95/p99 延迟；控制面会周期采样 system、deployment、workflow runtime 和 TriggerSource health。默认任何请求错误或 health 采样错误都会使进程返回非 0。
 
 零错误稳定性门禁应按现场真实入口分别运行，或保证组合 lane 的理论并发不超过 deployment `instance_count`。故意让直接 deployment、workflow 和 trigger 同时争抢同一个 deployment 属于超容量行为验证；该场景返回非 0 是预期结果，验收重点是所有失败都为明确的“推理线程已满载”，且没有进程退出、mmap ownership、Buffer 泄漏或控制面健康错误。同步链路不自动排队，也不自动重试。
 

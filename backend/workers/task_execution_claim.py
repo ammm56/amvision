@@ -10,7 +10,10 @@ from backend.service.application.errors import (
     ResourceNotFoundError,
 )
 from backend.service.application.ports.queue import QueueBackend, QueueMessage
-from backend.service.application.tasks.task_service import SqlAlchemyTaskService
+from backend.service.application.tasks.task_service import (
+    SqlAlchemyTaskService,
+    TaskExecutionFence,
+)
 from backend.service.domain.tasks.task_records import TaskAttemptState
 from backend.service.infrastructure.db.session import SessionFactory
 
@@ -70,7 +73,7 @@ class TaskAttemptClaimingQueueBackend:
                         "已领取的持久任务队列消息缺少 leased_at",
                         details={"queue_message_id": queue_message.task_id},
                     )
-                claim = self.task_service.claim_task_attempt(
+                claim = self.task_service.claim_task_execution(
                     task_id=task_id,
                     attempt_no=attempt_no,
                     worker_id=worker_id,
@@ -81,6 +84,7 @@ class TaskAttemptClaimingQueueBackend:
                     lease_recovery_count=self._read_lease_recovery_count(
                         queue_message
                     ),
+                    queue_metadata=queue_message.metadata,
                 )
             except (InvalidRequestError, ResourceNotFoundError) as error:
                 self.queue_backend.fail(
@@ -88,7 +92,7 @@ class TaskAttemptClaimingQueueBackend:
                     error_message=error.message,
                     metadata={
                         "task_execution_claim": "rejected",
-                        "error_code": error.error_code,
+                        "error_code": error.code,
                     },
                 )
                 continue
@@ -146,6 +150,40 @@ class TaskAttemptClaimingQueueBackend:
                 raise RuntimeError("当前 queue lease 已不是 TaskAttempt owner")
         return refreshed
 
+    def get_execution_fence(
+        self,
+        queue_message: QueueMessage,
+        *,
+        include_heartbeat: bool = True,
+    ) -> TaskExecutionFence:
+        """返回当前进程持有的消息与 TaskAttempt 精确执行边界。"""
+
+        with self._attempt_ids_lock:
+            attempt_id = self._attempt_ids.get(self._message_key(queue_message))
+            if attempt_id is None and not include_heartbeat:
+                message_identity = self._message_key(queue_message)[:3]
+                attempt_id = next(
+                    (
+                        mapped_attempt_id
+                        for key, mapped_attempt_id in self._attempt_ids.items()
+                        if key[:3] == message_identity
+                    ),
+                    None,
+                )
+        if attempt_id is None:
+            raise RuntimeError("队列消息缺少当前进程持有的 TaskAttempt claim")
+        worker_id = queue_message.worker_id
+        heartbeat_at = queue_message.leased_at
+        if worker_id is None or heartbeat_at is None:
+            raise RuntimeError("队列消息缺少 TaskAttempt fence")
+        return TaskExecutionFence(
+            attempt_id=attempt_id,
+            worker_id=worker_id,
+            heartbeat_at=heartbeat_at if include_heartbeat else None,
+            queue_message_id=queue_message.task_id,
+            queue_attempt_count=queue_message.attempt_count,
+        )
+
     def complete(
         self,
         queue_message: QueueMessage,
@@ -175,12 +213,13 @@ class TaskAttemptClaimingQueueBackend:
         error_message: str,
         metadata: dict[str, object] | None = None,
     ) -> QueueMessage:
-        """先把 TaskAttempt 原子结束为 failed，再提交队列失败态。"""
+        """按失败元数据收敛 Attempt，再提交队列失败态。"""
 
         normalized_metadata = dict(metadata or {})
+        attempt_state = self._resolve_failed_attempt_state(normalized_metadata)
         self._finish_attempt(
             queue_message,
-            state="failed",
+            state=attempt_state,
             result={"queue_result": normalized_metadata},
             error_message=error_message,
         )
@@ -191,6 +230,11 @@ class TaskAttemptClaimingQueueBackend:
         )
         self._forget_attempt(queue_message)
         return failed
+
+    def defer_recovery(self, queue_message: QueueMessage) -> None:
+        """保留底层 lease 供过期接管，仅释放本进程 Attempt 映射。"""
+
+        self._forget_attempt(queue_message)
 
     def get_task(self, *, queue_name: str, task_id: str) -> QueueMessage | None:
         """读取底层队列消息。"""
@@ -246,16 +290,22 @@ class TaskAttemptClaimingQueueBackend:
                 "队列消息缺少当前进程持有的 TaskAttempt claim: "
                 f"queue={queue_message.queue_name}, message={queue_message.task_id}"
             )
-        finished_attempt = self.task_service.finish_task_attempt(
+        worker_id = queue_message.worker_id
+        heartbeat_at = queue_message.leased_at
+        if worker_id is None or heartbeat_at is None:
+            raise RuntimeError("队列消息缺少 TaskAttempt finalizer fence")
+        finalization = self.task_service.finalize_task_execution_attempt(
             attempt_id=attempt_id,
-            state=state,
+            attempt_outcome=state,
             result=result,
             error_message=error_message,
             metadata={"queue_attempt_count": queue_message.attempt_count},
-            expected_worker_id=queue_message.worker_id,
-            expected_heartbeat_at=queue_message.leased_at,
+            expected_worker_id=worker_id,
+            expected_heartbeat_at=heartbeat_at,
+            expected_queue_message_id=queue_message.task_id,
+            expected_queue_attempt_count=queue_message.attempt_count,
         )
-        if finished_attempt.state == "running":
+        if finalization.attempt.state == "running":
             raise RuntimeError(
                 "当前 queue lease 已失去 TaskAttempt 终态写入权: "
                 f"queue={queue_message.queue_name}, message={queue_message.task_id}"
@@ -299,6 +349,8 @@ class TaskAttemptClaimingQueueBackend:
         """把业务完成结果映射为 TaskAttempt 正式终态。"""
 
         status = metadata.get("status")
+        if status == "paused":
+            return "paused"
         if status == "cancelled":
             return "cancelled"
         if status == "timed_out":
@@ -306,6 +358,19 @@ class TaskAttemptClaimingQueueBackend:
         if status == "failed":
             return "failed"
         return "succeeded"
+
+    @staticmethod
+    def _resolve_failed_attempt_state(
+        metadata: dict[str, object],
+    ) -> TaskAttemptState:
+        """把业务错误类型映射为 TaskAttempt 失败类终态。"""
+
+        status = metadata.get("status")
+        if status == "timed_out":
+            return "timed_out"
+        if status == "cancelled":
+            return "cancelled"
+        return "failed"
 
     @staticmethod
     def _read_lease_recovery_count(queue_message: QueueMessage) -> int:

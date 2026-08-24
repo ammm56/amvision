@@ -36,19 +36,33 @@ def claim_next_training_queue(
     return None
 
 
-def build_training_run_metadata(queue_task: QueueMessage) -> dict[str, object]:
+def build_training_run_metadata(
+    queue_task: QueueMessage,
+    *,
+    queue_backend: QueueBackend | None = None,
+) -> dict[str, object]:
     """把 queue lease 恢复信息传给训练执行器。"""
 
     recovery_count = queue_task.metadata.get("lease_recovery_count")
     normalized_recovery_count = (
         recovery_count if isinstance(recovery_count, int) else 0
     )
-    return {
+    metadata: dict[str, object] = {
         "queue_task_id": queue_task.task_id,
         "queue_attempt_count": queue_task.attempt_count,
         "queue_lease_recovery_count": normalized_recovery_count,
         "queue_lease_recovered": normalized_recovery_count > 0,
     }
+    fence_resolver = getattr(queue_backend, "get_execution_fence", None)
+    if callable(fence_resolver):
+        fence = fence_resolver(queue_task, include_heartbeat=False)
+        metadata["task_execution_fence"] = {
+            "attempt_id": fence.attempt_id,
+            "worker_id": fence.worker_id,
+            "queue_message_id": fence.queue_message_id,
+            "queue_attempt_count": fence.queue_attempt_count,
+        }
+    return metadata
 
 
 __all__ = ["build_training_run_metadata", "claim_next_training_queue"]

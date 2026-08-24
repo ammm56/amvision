@@ -25,9 +25,11 @@ from backend.service.application.models.registry.yolov8_model_service import (
 from backend.service.application.runtime.targets.yolov8 import (
     SqlAlchemyYoloV8RuntimeTargetResolver,
 )
+from backend.service.application.conversions.task_kinds import (
+    YOLOV8_CONVERSION_TASK_KIND,
+)
 
 
-YOLOV8_CONVERSION_TASK_KIND = "yolov8-conversion"
 YOLOV8_CONVERSION_QUEUE_NAME = "yolov8-conversions"
 
 

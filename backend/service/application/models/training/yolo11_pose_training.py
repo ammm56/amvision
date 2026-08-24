@@ -123,7 +123,9 @@ class Yolo11PoseTrainingExecutionRequest:
         | None
     ) = None
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
-    control_callback: Callable[[], None] | None = None
+    control_callback: (
+        Callable[[], Yolo11PoseTrainingControlCommand | None] | None
+    ) = None
     savepoint_callback: Callable[[Yolo11PoseTrainingSavePoint], None] | None = None
 
 

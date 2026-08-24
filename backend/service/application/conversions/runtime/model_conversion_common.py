@@ -1,4 +1,4 @@
-"""YOLO 系列转换 worker 共享工具。"""
+"""模型转换执行器共享工具。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,9 @@ from backend.service.domain.models.model_artifact_provenance import (
     attach_model_artifact_provenance,
     build_model_artifact_provenance,
 )
-from backend.workers.shared.process_tree_supervisor import ProcessTreeSupervisor
+from backend.runtime.processes import ProcessTreeSupervisor
+from backend.runtime.processes import AttemptDeadline
+from backend.service.application.errors import OperationTimeoutError
 
 
 OPENVINO_IR_PRECISION_OPTION_KEY = "openvino_ir_precision"
@@ -268,6 +270,18 @@ def run_conversion_script(
                 "conversion helper timeout 配置无效",
                 details={"value": raw_timeout},
             ) from error
+    raw_deadline_at = process_env.get(
+        "AMVISION_WORKER_CONVERSION__ATTEMPT_DEADLINE_AT"
+    )
+    if raw_deadline_at:
+        attempt_deadline = AttemptDeadline.from_deadline_at(raw_deadline_at)
+        remaining_seconds = attempt_deadline.remaining_seconds()
+        if remaining_seconds <= 0:
+            raise OperationTimeoutError("conversion Attempt 总 deadline 已到期")
+        resolved_timeout_seconds = min(
+            float(resolved_timeout_seconds),
+            remaining_seconds,
+        )
     result = ProcessTreeSupervisor(
         timeout_seconds=resolved_timeout_seconds,
     ).run(

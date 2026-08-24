@@ -13,6 +13,7 @@ from backend.service.application.models.training.yolov8_training_service import 
 from backend.service.application.support.resource_cleanup import (
     model_task_resource_cleanup,
 )
+from backend.service.application.tasks.task_service import read_task_execution_fence
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 from backend.workers.training.device_assignment import assigned_training_device
@@ -40,15 +41,20 @@ class SqlAlchemyYoloV8TrainerRunner:
     def run_training(self, request: YoloV8TrainingRunRequest) -> YoloV8TrainingRunResult:
         """执行 YOLOv8 训练处理链路并返回结果。"""
 
+        execution_fence = read_task_execution_fence(request.metadata)
         with model_task_resource_cleanup(), assigned_training_device(
             session_factory=self.session_factory,
             task_id=request.training_task_id,
+            execution_fence=execution_fence,
         ):
             service = SqlAlchemyYoloV8TrainingTaskService(
                 session_factory=self.session_factory,
                 dataset_storage=self.dataset_storage,
             )
-            task_result = service.process_training_task(request.training_task_id)
+            task_result = service.process_training_task(
+                request.training_task_id,
+                execution_fence=execution_fence,
+            )
         return YoloV8TrainingRunResult(
             training_task_id=task_result.task_id,
             status=task_result.status,

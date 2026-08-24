@@ -8,6 +8,7 @@ from alembic import command
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic.script import ScriptDirectory
+import pytest
 from sqlalchemy import (
     Column,
     Index,
@@ -31,7 +32,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
 
 
-_DATABASE_HEAD = "c7a9e2d4f6b8"
+_DATABASE_HEAD = "d8e4f6a1b3c7"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -76,6 +77,7 @@ def test_migrate_database_adopts_unversioned_create_all_database(
         } <= runtime_columns
         _assert_workflow_run_worker_instance_column(inspector)
         _assert_task_attempt_claim_uniqueness(inspector)
+        _assert_conversion_publication_reservation(inspector)
         _assert_workflow_publish_deduplication(inspector)
         _assert_workflow_application_lifecycle(inspector)
     finally:
@@ -112,6 +114,7 @@ def test_migrate_database_initializes_empty_sqlite_database(tmp_path: Path) -> N
         _assert_workflow_run_worker_instance_column(inspector)
         _assert_training_task_supports_multiple_model_versions(inspector)
         _assert_task_attempt_claim_uniqueness(inspector)
+        _assert_conversion_publication_reservation(inspector)
         _assert_workflow_publish_deduplication(inspector)
         _assert_workflow_application_lifecycle(inspector)
     finally:
@@ -140,7 +143,8 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("f9b3d5e7c2a4").down_revision == "f8a2c4e6b1d3"
     assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"
     assert script.get_revision("b6e4f1a8c2d7").down_revision == "fa4c6e8b1d25"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "b6e4f1a8c2d7"
+    assert script.get_revision("c7a9e2d4f6b8").down_revision == "b6e4f1a8c2d7"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "c7a9e2d4f6b8"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")
@@ -340,6 +344,53 @@ def test_migrate_database_reconciles_already_applied_workflow_revision(
     finally:
         verification_factory.engine.dispose()
     command.check(config)
+
+
+def test_publication_migration_rejects_active_legacy_conversion(
+    tmp_path: Path,
+) -> None:
+    """验证旧协议 Conversion 未排空时 migration 在 DDL 前明确拒绝。"""
+
+    database_path = tmp_path / "active-legacy-conversion.db"
+    settings = BackendServiceSettings(
+        database={"url": f"sqlite:///{database_path.as_posix()}", "echo": False}
+    )
+    config = _build_alembic_config(settings)
+    command.upgrade(config, "c7a9e2d4f6b8")
+    session_factory = SessionFactory(settings.to_database_settings())
+    try:
+        tasks = Table("tasks", MetaData(), autoload_with=session_factory.engine)
+        with session_factory.engine.begin() as connection:
+            connection.execute(
+                tasks.insert().values(
+                    task_id="conversion-active-before-upgrade",
+                    task_kind="yolox-conversion",
+                    display_name="active conversion",
+                    project_id="project-1",
+                    created_at="2026-08-24T00:00:00+00:00",
+                    task_spec_json={},
+                    metadata_json={},
+                    state="running",
+                    current_attempt_no=1,
+                    progress_json={},
+                    result_json={},
+                )
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    with pytest.raises(RuntimeError, match="活动 Conversion"):
+        command.upgrade(config, "head")
+
+    verification_factory = SessionFactory(settings.to_database_settings())
+    try:
+        with verification_factory.engine.connect() as connection:
+            revision = connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar_one()
+        assert revision == "c7a9e2d4f6b8"
+    finally:
+        verification_factory.engine.dispose()
 
 
 def test_worker_epoch_migration_reconciles_training_task_uniqueness_drift(
@@ -807,6 +858,36 @@ def _assert_task_attempt_claim_uniqueness(inspector: Inspector) -> None:
         for item in inspector.get_unique_constraints("task_attempts")
     }
     assert ("task_id", "attempt_no") in unique_column_sets
+
+
+def _assert_conversion_publication_reservation(inspector: Inspector) -> None:
+    """断言 Conversion publication 内部字段、约束和恢复索引完整。"""
+
+    columns = {str(item["name"]): item for item in inspector.get_columns("tasks")}
+    for column_name in (
+        "publication_state",
+        "publication_token",
+        "publication_attempt_no",
+        "publication_updated_at",
+    ):
+        assert columns[column_name]["nullable"] is True
+    assert columns["publication_state"]["type"].length == 32
+    assert columns["publication_token"]["type"].length == 64
+    assert columns["publication_updated_at"]["type"].length == 64
+    indexes = {
+        str(item["name"]): tuple(item.get("column_names") or ())
+        for item in inspector.get_indexes("tasks")
+    }
+    assert indexes["ix_tasks_publication_recovery"] == (
+        "publication_state",
+        "publication_updated_at",
+    )
+    constraints = {
+        str(item["name"])
+        for item in inspector.get_check_constraints("tasks")
+        if item.get("name")
+    }
+    assert "ck_tasks_publication_fields_complete" in constraints
 
 
 def _assert_workflow_publish_deduplication(inspector: Inspector) -> None:

@@ -27,6 +27,7 @@ class WorkflowNodeExecutionRequest:
     execution_metadata: dict[str, object] = field(default_factory=dict)
     runtime_context: object | None = None
     node_cancellation_event: object | None = None
+    node_deadline_monotonic: float | None = None
     node_invocation_id: str | None = None
 
 

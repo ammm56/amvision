@@ -24,6 +24,9 @@ from backend.service.application.conversions.yolox_conversion_planner import (
     deserialize_yolox_conversion_plan,
     serialize_yolox_conversion_plan,
 )
+from backend.service.application.conversions.task_kinds import (
+    YOLOX_CONVERSION_TASK_KIND,
+)
 from backend.service.application.models.registry.model_service import (
     ModelBuildRegistration,
     SqlAlchemyModelService,
@@ -31,14 +34,13 @@ from backend.service.application.models.registry.model_service import (
 from backend.service.application.runtime.targets.runtime_target import (
     SqlAlchemyRuntimeTargetResolver,
 )
-from backend.workers.conversion.yolox_conversion_runner import (
+from backend.service.application.conversions.runtime.yolox_conversion_runner import (
     YoloXConversionOutput,
     YoloXConversionRunRequest,
     YoloXConversionRunResult,
 )
 
 
-YOLOX_CONVERSION_TASK_KIND = "yolox-conversion"
 YOLOX_CONVERSION_QUEUE_NAME = "yolox-conversions"
 
 

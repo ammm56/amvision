@@ -25,7 +25,7 @@ from backend.service.application.models.training.training_engine import (
 )
 from backend.service.application.models.training.checkpoint_policy import (
     read_training_checkpoint_interval,
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 from backend.service.application.models.training.detection_evaluation_report import (
     build_detection_test_metrics_report,
@@ -185,7 +185,9 @@ class Yolo26SegmentationTrainingExecutionRequest:
         | None
     ) = None
     batch_callback: Callable[[YoloTaskTrainingBatchProgress], None] | None = None
-    control_callback: Callable[[], None] | None = None
+    control_callback: Callable[
+        [], Yolo26SegmentationTrainingControlCommand | None
+    ] | None = None
     savepoint_callback: Callable[[Yolo26SegmentationTrainingSavePoint], None] | None = (
         None
     )
@@ -392,7 +394,6 @@ def run_yolo26_segmentation_training(
     validation_history: list[dict[str, float]] = []
     best_metric_value = -1.0
     best_metric_name = "val_map50_95"
-    latest_checkpoint_bytes = b""
     best_checkpoint_bytes = (
         request.previous_best_checkpoint_path.read_bytes()
         if request.previous_best_checkpoint_path is not None
@@ -430,6 +431,69 @@ def run_yolo26_segmentation_training(
         grad_clip_norm=grad_clip,
         initial_iteration=global_iteration,
     )
+    latest_checkpoint_bytes = build_yolo26_segmentation_checkpoint_bytes(
+        epoch=start_epoch - 1,
+        global_iteration=global_iteration,
+        model=model,
+        ema_model=ema.model,
+        ema_updates=ema.updates,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        scaler=scaler,
+        metrics_history=metrics_history,
+        validation_history=validation_history,
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        evaluation_interval=evaluation_interval,
+        min_lr_ratio=min_lr_ratio,
+        class_loss_weight=class_loss_weight,
+        box_loss_weight=box_loss_weight,
+        dfl_loss_weight=dfl_loss_weight,
+        mask_loss_weight=mask_loss_weight,
+        assign_topk=assign_topk,
+        assign_alpha=assign_alpha,
+        assign_beta=assign_beta,
+        grad_clip_norm=grad_clip,
+        evaluation_confidence_threshold=eval_conf,
+        torch_module=imports.torch,
+    )
+    last_completed_savepoint = Yolo26SegmentationTrainingSavePoint(
+        latest_checkpoint_bytes=latest_checkpoint_bytes,
+        train_metrics=dict(metrics_history[-1]) if metrics_history else {},
+        validation_metrics=(
+            dict(validation_history[-1]) if validation_history else {}
+        ),
+        best_metric_value=best_metric_value,
+        best_metric_name=best_metric_name,
+        epoch=start_epoch,
+        learning_rate=resolve_yolo_optimizer_base_learning_rate(
+            optimizer=optimizer,
+            initial_learning_rate=training_schedule.initial_lr,
+        ),
+    )
+
+    def observe_control() -> None:
+        """在 batch 安全点使用最近完整 epoch 快照执行控制。"""
+
+        if request.control_callback is None:
+            return
+        command = request.control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and request.savepoint_callback is not None:
+            request.savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise Yolo26SegmentationTrainingPausedError()
+        if command.terminate_training:
+            raise Yolo26SegmentationTrainingTerminatedError()
 
     stride_values = model.stride if hasattr(model, "stride") else (8, 16, 32)
     num_classes = len(labels)
@@ -482,7 +546,7 @@ def run_yolo26_segmentation_training(
             box_loss_weight=box_loss_weight,
             dfl_loss_weight=dfl_loss_weight,
             mask_loss_weight=mask_loss_weight,
-            control_callback=request.control_callback,
+            control_callback=observe_control,
             input_size=input_size,
             learning_rate=resolve_yolo_optimizer_base_learning_rate(
                 optimizer=optimizer,
@@ -506,7 +570,7 @@ def run_yolo26_segmentation_training(
             epoch=epoch,
             max_epochs=max_epochs,
             evaluation_interval=evaluation_interval,
-            control_callback=request.control_callback,
+            control_callback=observe_control,
         )
         if val_metrics:
             validation_history.append(
@@ -542,7 +606,7 @@ def run_yolo26_segmentation_training(
             else None
         )
         optimizer_step.step_scheduler_if_optimizer_updated(scheduler)
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=epoch + 1,
             max_epochs=max_epochs,
             interval_epochs=read_training_checkpoint_interval(extra),
@@ -551,8 +615,7 @@ def run_yolo26_segmentation_training(
             pause_requested=bool(command and command.pause_training),
             terminate_requested=bool(command and command.terminate_training),
         )
-        if checkpoint_decision.should_serialize:
-            latest_checkpoint_bytes = build_yolo26_segmentation_checkpoint_bytes(
+        latest_checkpoint_bytes = build_yolo26_segmentation_checkpoint_bytes(
                 epoch=epoch,
                 global_iteration=global_iteration,
                 model=model,
@@ -580,29 +643,28 @@ def run_yolo26_segmentation_training(
                 assign_beta=assign_beta,
                 grad_clip_norm=grad_clip,
                 evaluation_confidence_threshold=eval_conf,
-                torch_module=imports.torch,
-            )
-        if best_metric_improved and checkpoint_decision.should_serialize:
+            torch_module=imports.torch,
+        )
+        if best_metric_improved:
             best_checkpoint_bytes = latest_checkpoint_bytes
+        last_completed_savepoint = Yolo26SegmentationTrainingSavePoint(
+            latest_checkpoint_bytes=latest_checkpoint_bytes,
+            train_metrics=train_metrics,
+            validation_metrics=val_metrics,
+            best_metric_value=best_metric_value,
+            best_metric_name=best_metric_name,
+            epoch=epoch + 1,
+            learning_rate=resolve_yolo_optimizer_base_learning_rate(
+                optimizer=optimizer,
+                initial_learning_rate=training_schedule.initial_lr,
+            ),
+            is_best=best_metric_improved,
+        )
         if (
-            checkpoint_decision.should_serialize
+            checkpoint_decision.should_persist
             and request.savepoint_callback is not None
         ):
-            request.savepoint_callback(
-                Yolo26SegmentationTrainingSavePoint(
-                    latest_checkpoint_bytes=latest_checkpoint_bytes,
-                    train_metrics=train_metrics,
-                    validation_metrics=val_metrics,
-                    best_metric_value=best_metric_value,
-                    best_metric_name=best_metric_name,
-                    epoch=epoch + 1,
-                    learning_rate=resolve_yolo_optimizer_base_learning_rate(
-                        optimizer=optimizer,
-                        initial_learning_rate=training_schedule.initial_lr,
-                    ),
-                    is_best=best_metric_improved,
-                )
-            )
+            request.savepoint_callback(last_completed_savepoint)
         if command is not None and command.pause_training:
             raise Yolo26SegmentationTrainingPausedError()
         if command is not None and command.terminate_training:
@@ -646,7 +708,7 @@ def run_yolo26_segmentation_training(
             evaluation_confidence_threshold=eval_conf,
             imports=imports,
             batch_size=batch_size,
-            control_callback=request.control_callback,
+            control_callback=observe_control,
             scaleup=True,
         )
         test_metrics_payload = build_detection_test_metrics_report(

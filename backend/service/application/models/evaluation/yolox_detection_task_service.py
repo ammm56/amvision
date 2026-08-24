@@ -38,6 +38,7 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.application.tasks.queue_reference import (
@@ -141,15 +142,28 @@ class SqlAlchemyYoloXEvaluationTaskService(
             model_version_id=request.model_version_id,
         )
 
-    def process_evaluation_task(self, task_id: str) -> YoloXEvaluationTaskResult:
+    def process_evaluation_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> YoloXEvaluationTaskResult:
         """执行一条已入队的 YOLOX 数据集级评估任务。"""
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_evaluation_task(task_id)
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
         existing_result = self._build_existing_result(task_record)
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前评估任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -163,7 +177,11 @@ class SqlAlchemyYoloXEvaluationTaskService(
         request = self._build_request_from_task_record(task_record)
         dataset_export = self._resolve_dataset_export(request)
         runtime_target = self._resolve_runtime_target(request)
-        attempt_no = max(1, task_record.current_attempt_no + 1)
+        attempt_no = (
+            claimed_attempt.attempt_no
+            if claimed_attempt is not None
+            else max(1, task_record.current_attempt_no + 1)
+        )
         output_keys = self._build_evaluation_output_object_keys(
             task_id=task_id,
             save_result_package=request.save_result_package,
@@ -174,15 +192,11 @@ class SqlAlchemyYoloXEvaluationTaskService(
         result_package_object_key = output_keys.result_package_object_key
         started_at = self._now_iso()
 
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        started_event = AppendTaskEventRequest(
                 task_id=task_id,
-                event_type="status",
+                event_type=("progress" if execution_fence is not None else "status"),
                 message="yolox evaluation started",
                 payload={
-                    "state": "running",
-                    "started_at": started_at,
-                    "attempt_no": attempt_no,
                     "progress": {
                         "stage": "evaluating",
                         "percent": 5.0,
@@ -201,9 +215,24 @@ class SqlAlchemyYoloXEvaluationTaskService(
                         "result_package_object_key": result_package_object_key,
                         "model_version_id": request.model_version_id,
                     },
+                    **(
+                        {}
+                        if execution_fence is not None
+                        else {
+                            "state": "running",
+                            "started_at": started_at,
+                            "attempt_no": attempt_no,
+                        }
+                    ),
                 },
             )
-        )
+        if execution_fence is not None:
+            self.task_service.record_task_progress_event(
+                started_event,
+                fence=execution_fence,
+            )
+        else:
+            self.task_service.execute_task_state_event_command(started_event)
 
         try:
             evaluation_result = self._build_evaluator().evaluate(
@@ -230,7 +259,7 @@ class SqlAlchemyYoloXEvaluationTaskService(
                     detections_object_key=detections_object_key,
                 )
         except Exception as error:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -252,7 +281,8 @@ class SqlAlchemyYoloXEvaluationTaskService(
                             "result_package_object_key": result_package_object_key,
                         },
                     ),
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
@@ -279,7 +309,7 @@ class SqlAlchemyYoloXEvaluationTaskService(
                 result_package_object_key=result_package_object_key,
             ),
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -296,7 +326,8 @@ class SqlAlchemyYoloXEvaluationTaskService(
                     },
                     "result": self._serialize_task_result(task_result),
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         return task_result
 

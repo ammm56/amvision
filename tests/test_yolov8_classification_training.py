@@ -11,7 +11,9 @@ import pytest
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.application.models.training.yolov8_classification_training import (
+    YoloV8ClassificationTrainingControlCommand,
     YoloV8ClassificationTrainingExecutionRequest,
+    YoloV8ClassificationTrainingPausedError,
     run_yolov8_classification_training,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -127,6 +129,53 @@ def test_yolov8_classification_runner_rejects_other_model_type():
 
     with pytest.raises(InvalidRequestError, match="model_type=yolov8"):
         run_yolov8_classification_training(request)
+    shutil.rmtree(root)
+
+
+def test_classification_pause_before_first_batch_persists_epoch_zero_baseline():
+    """暂停不得等待首轮结束，且当前未完成 epoch 不得进入 checkpoint。"""
+
+    import io
+    import shutil
+
+    import torch
+
+    root = Path(".tmp/classification-training-immediate-pause").resolve()
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True, exist_ok=True)
+    storage, manifest = _build_classification_smoke_data(root)
+    savepoints = []
+    request = YoloV8ClassificationTrainingExecutionRequest(
+        dataset_storage=storage,
+        manifest_payload=manifest,
+        model_type="yolov8",
+        model_scale="nano",
+        batch_size=2,
+        max_epochs=3,
+        evaluation_interval=1,
+        input_size=(64, 64),
+        precision="fp32",
+        extra_options={"device": "cpu"},
+        control_callback=lambda: YoloV8ClassificationTrainingControlCommand(
+            save_checkpoint=True,
+            pause_training=True,
+        ),
+        savepoint_callback=savepoints.append,
+    )
+
+    with pytest.raises(YoloV8ClassificationTrainingPausedError):
+        run_yolov8_classification_training(request)
+
+    assert len(savepoints) == 1
+    assert savepoints[0].epoch == 0
+    payload = torch.load(
+        io.BytesIO(savepoints[0].latest_checkpoint_bytes),
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert payload["epoch"] == 0
+    assert payload["metrics_history"] == []
     shutil.rmtree(root)
 
 

@@ -37,6 +37,9 @@ from backend.service.application.workflows.graph_executor import (
 from backend.service.application.workflows.execution.execution_control import (
     prepare_execution_control_metadata,
 )
+from backend.service.application.workflows.execution.node_pack_timeout import (
+    build_node_pack_timeout_policy_index,
+)
 from backend.service.application.workflows.execution.topology import (
     build_node_execution_scope_template,
 )
@@ -115,6 +118,8 @@ class SnapshotExecutionService:
         runtime_registry: WorkflowNodeRuntimeRegistry,
         runtime_context: WorkflowServiceNodeRuntimeContext,
         event_sink: Callable[[dict[str, object]], None] | None = None,
+        node_cancellation_event: object | None = None,
+        node_lifecycle_sink: Callable[[dict[str, object]], None] | None = None,
         decoded_image_cache_max_entries: int = 8,
         decoded_image_cache_max_bytes: int = 256 * 1024 * 1024,
     ) -> None:
@@ -132,6 +137,11 @@ class SnapshotExecutionService:
         self.runtime_registry = runtime_registry
         self.runtime_context = runtime_context
         self.event_sink = event_sink
+        self.node_cancellation_event = node_cancellation_event
+        self.node_lifecycle_sink = node_lifecycle_sink
+        self.node_pack_timeout_policies = build_node_pack_timeout_policy_index(
+            node_catalog_registry.get_node_pack_manifests()
+        )
         self.decoded_image_cache_max_entries = int(decoded_image_cache_max_entries)
         self.decoded_image_cache_max_bytes = int(decoded_image_cache_max_bytes)
         if self.decoded_image_cache_max_entries <= 0:
@@ -253,7 +263,10 @@ class SnapshotExecutionService:
         execution_error: Exception | None = None
         try:
             graph_execution_result = WorkflowGraphExecutor(
-                registry=self.runtime_registry
+                registry=self.runtime_registry,
+                node_pack_timeout_policies=self.node_pack_timeout_policies,
+                node_cancellation_event=self.node_cancellation_event,
+                node_lifecycle_callback=self.node_lifecycle_sink,
             ).execute(
                 template=template,
                 input_values=template_input_values,

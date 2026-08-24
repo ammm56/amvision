@@ -734,7 +734,7 @@ BACKEND_MODULES: tuple[str, ...] = (
     "backend.workers.conversion.yolo26_conversion_runner",
     "backend.workers.conversion.yolov8_conversion_queue_worker",
     "backend.workers.conversion.yolov8_conversion_runner",
-    "backend.workers.conversion.yolox_conversion_runner",
+    "backend.service.application.conversions.runtime.yolox_conversion_runner",
     "backend.workers.conversion.yolox_conversion_queue_worker",
     "backend.workers.datasets.dataset_export_runner",
     "backend.workers.datasets.dataset_export_queue_worker",

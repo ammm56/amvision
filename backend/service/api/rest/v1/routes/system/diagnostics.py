@@ -725,18 +725,22 @@ def _sanitize_database_url(value: str) -> str:
 
 
 def _is_bundled_python(executable: str) -> bool:
-    """判断当前 Python 是否可能来自项目同目录运行时。
+    """判断当前 Python 是否来自应用同目录运行时。
 
     参数：
     - executable：当前 Python 可执行文件路径。
 
     返回：
-    - bool：路径位于仓库 runtimes 目录下时返回 True。
+    - bool：路径位于发行目录 ``python/`` 或源码 ``runtimes/python/`` 时返回 True。
     """
 
     executable_path = Path(executable).resolve(strict=False)
-    runtimes_root = (Path.cwd() / "runtimes").resolve(strict=False)
-    return runtimes_root in executable_path.parents
+    app_root = Path.cwd().resolve(strict=False)
+    bundled_roots = (
+        (app_root / "python").resolve(strict=False),
+        (app_root / "runtimes" / "python").resolve(strict=False),
+    )
+    return any(root in executable_path.parents for root in bundled_roots)
 
 
 def _read_first_env(*names: str) -> str | None:

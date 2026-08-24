@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+from typing import get_args
+from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 import pytest
 
-from backend.service.application.auth.default_local_auth_seeder import DEFAULT_LOCAL_AUTH_USERNAME
+from backend.service.application.auth.default_local_auth_seeder import (
+    DEFAULT_LOCAL_AUTH_USERNAME,
+)
 from backend.service.application.errors import (
     ResourceConflictError,
     ResourceNotFoundError,
@@ -22,8 +27,10 @@ from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
     SqlAlchemyTaskService,
+    TaskStateCommandRequest,
 )
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.domain.tasks.task_records import TaskRecordState
 from tests.api_test_support import build_test_headers, create_api_test_context
 
 
@@ -85,6 +92,46 @@ def test_create_task_and_list_with_public_filters(tmp_path: Path) -> None:
         assert list_response.status_code == 200
         assert len(list_response.json()) == 1
         assert list_response.json()[0]["task_id"] == task_id
+    finally:
+        session_factory.engine.dispose()
+
+
+def test_task_state_contract_matches_openapi_and_frontend(tmp_path: Path) -> None:
+    """领域、OpenAPI 与手工前端类型必须公开同一完整状态集合。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    try:
+        with client:
+            openapi = client.get("/openapi.json").json()
+        state_schema = openapi["components"]["schemas"]["TaskSummaryResponse"][
+            "properties"
+        ]["state"]
+        if "$ref" in state_schema:
+            state_schema = openapi["components"]["schemas"][
+                state_schema["$ref"].rsplit("/", maxsplit=1)[-1]
+            ]
+        domain_states = set(get_args(TaskRecordState))
+        assert set(state_schema["enum"]) == domain_states
+
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "frontend"
+            / "web-ui"
+            / "src"
+            / "shared"
+            / "contracts"
+            / "generated"
+            / "api.ts"
+        )
+        contract_source = contract_path.read_text(encoding="utf-8")
+        match = re.search(
+            r"export type TaskState =(?P<body>.*?)\n\nexport type",
+            contract_source,
+            flags=re.DOTALL,
+        )
+        assert match is not None
+        frontend_states = set(re.findall(r"'([^']+)'", match.group("body")))
+        assert frontend_states == domain_states
     finally:
         session_factory.engine.dispose()
 
@@ -210,7 +257,7 @@ def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
                     state="running",
                 )
             )
-            service.append_task_event(
+            service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -223,8 +270,12 @@ def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
                     },
                 )
             )
-            dataset_storage.write_text(f"task-runs/conversion/{task_id}/artifacts/report.json", "{}")
-            dataset_storage.write_text(f"task-runs/{task_id}/legacy-marker.txt", "legacy")
+            dataset_storage.write_text(
+                f"task-runs/conversion/{task_id}/artifacts/report.json", "{}"
+            )
+            dataset_storage.write_text(
+                f"task-runs/{task_id}/legacy-marker.txt", "legacy"
+            )
 
             delete_response = client.delete(
                 f"/api/v1/tasks/{task_id}",
@@ -243,7 +294,9 @@ def test_task_api_does_not_expose_generic_delete_route(tmp_path: Path) -> None:
         session_factory.engine.dispose()
 
 
-def test_list_tasks_returns_pagination_headers_and_offset_window(tmp_path: Path) -> None:
+def test_list_tasks_returns_pagination_headers_and_offset_window(
+    tmp_path: Path,
+) -> None:
     """验证 tasks 列表接口按统一分页响应头返回结果窗口。"""
 
     client, session_factory = _create_test_client(tmp_path)
@@ -301,13 +354,14 @@ def test_list_task_events_returns_offset_window(tmp_path: Path) -> None:
                 )
             )
             for index in range(5):
-                service.append_task_event(
+                _append_test_task_event(
+                    service,
                     AppendTaskEventRequest(
                         task_id=created_task.task_id,
                         event_type="progress",
                         message=f"epoch {index + 1}",
                         created_at=f"2026-01-01T00:00:0{index + 1}Z",
-                    )
+                    ),
                 )
 
             events_response = client.get(
@@ -351,19 +405,92 @@ def test_task_events_websocket_streams_appended_events(tmp_path: Path) -> None:
                 initial_event = websocket.receive_json()
                 assert initial_event["event_type"] == "status"
 
-                service.append_task_event(
+                _append_test_task_event(
+                    service,
                     AppendTaskEventRequest(
                         task_id=created_task.task_id,
                         event_type="progress",
                         message="dataset import validated",
                         payload={"progress": {"stage": "validated", "percent": 60}},
-                    )
+                    ),
                 )
 
                 streamed_event = websocket.receive_json()
 
         assert streamed_event["event_type"] == "progress"
         assert streamed_event["payload"]["data"]["progress"]["stage"] == "validated"
+    finally:
+        session_factory.engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("task_kind", "terminal_state"),
+    [
+        ("yolov8-training", "paused"),
+        ("evaluation", "timed_out"),
+    ],
+)
+def test_task_terminal_state_replays_after_websocket_reconnect(
+    tmp_path: Path,
+    task_kind: str,
+    terminal_state: str,
+) -> None:
+    """paused/timed_out 事件可重连补发，GET 返回同一权威状态。"""
+
+    client, session_factory = _create_test_client(tmp_path)
+    service = SqlAlchemyTaskService(session_factory)
+    try:
+        with client:
+            created = service.create_task(
+                CreateTaskRequest(
+                    project_id="project-1",
+                    task_kind=task_kind,
+                    created_by=DEFAULT_LOCAL_AUTH_USERNAME,
+                )
+            )
+            service.execute_task_state_command(
+                TaskStateCommandRequest(
+                    task_id=created.task_id,
+                    target_state="running",
+                    expected_states=("queued",),
+                    expected_current_attempt_no=0,
+                    message="task running",
+                )
+            )
+            running_event = service.get_task(
+                created.task_id,
+                include_events=True,
+            ).events[-1]
+            service.execute_task_state_command(
+                TaskStateCommandRequest(
+                    task_id=created.task_id,
+                    target_state=terminal_state,
+                    expected_states=("running",),
+                    expected_current_attempt_no=0,
+                    message=f"task {terminal_state}",
+                )
+            )
+
+            with client.websocket_connect(
+                (
+                    f"/ws/v1/tasks/events?task_id={created.task_id}"
+                    "&after_cursor="
+                    f"{quote(f'{running_event.created_at}|{running_event.event_id}', safe='')}"
+                ),
+                headers=_build_task_read_headers(),
+            ) as websocket:
+                assert websocket.receive_json()["event_type"] == "tasks.connected"
+                replayed = websocket.receive_json()
+
+            detail_response = client.get(
+                f"/api/v1/tasks/{created.task_id}",
+                headers=_build_task_read_headers(),
+            )
+
+        assert replayed["event_type"] == "status"
+        assert replayed["payload"]["data"]["state"] == terminal_state
+        assert detail_response.status_code == 200
+        assert detail_response.json()["state"] == terminal_state
     finally:
         session_factory.engine.dispose()
 
@@ -396,7 +523,8 @@ def test_task_events_websocket_polls_events_written_by_another_process(
                 assert websocket.receive_json()["event_type"] == "tasks.connected"
                 assert websocket.receive_json()["event_type"] == "status"
 
-                worker_service.append_task_event(
+                _append_test_task_event(
+                    worker_service,
                     AppendTaskEventRequest(
                         task_id=created_task.task_id,
                         event_type="progress",
@@ -408,7 +536,7 @@ def test_task_events_websocket_polls_events_written_by_another_process(
                                 "train_metrics": {"loss": 1.25},
                             }
                         },
-                    )
+                    ),
                 )
 
                 streamed_event = websocket.receive_json()
@@ -439,13 +567,14 @@ def test_task_events_websocket_drains_all_persisted_event_pages(tmp_path: Path) 
                 )
             )
             for epoch in range(1, 26):
-                service.append_task_event(
+                _append_test_task_event(
+                    service,
                     AppendTaskEventRequest(
                         task_id=created_task.task_id,
                         event_type="progress",
                         message=f"epoch {epoch}/25",
                         payload={"progress": {"epoch": epoch, "max_epochs": 25}},
-                    )
+                    ),
                 )
 
             with client.websocket_connect(
@@ -460,8 +589,7 @@ def test_task_events_websocket_drains_all_persisted_event_pages(tmp_path: Path) 
             event for event in replayed_events if event["event_type"] == "progress"
         ]
         replayed_epochs = [
-            event["payload"]["data"]["progress"]["epoch"]
-            for event in progress_events
+            event["payload"]["data"]["progress"]["epoch"] for event in progress_events
         ]
         assert len(replayed_epochs) == 25
         assert sorted(replayed_epochs) == list(range(1, 26))
@@ -477,6 +605,23 @@ def _create_test_client(tmp_path: Path) -> tuple[TestClient, SessionFactory]:
         database_name="tasks-api.db",
     )
     return context.client, context.session_factory
+
+
+def _append_test_task_event(
+    service: SqlAlchemyTaskService,
+    request: AppendTaskEventRequest,
+) -> None:
+    """按正式显式命令写入测试进度事件。"""
+
+    if "progress" not in request.payload:
+        service.append_task_event(request)
+        return
+    task = service.get_task(request.task_id).task
+    service.execute_task_patch_event_command(
+        request,
+        expected_states=(task.state,),
+        expected_current_attempt_no=task.current_attempt_no,
+    )
 
 
 def _build_task_write_headers() -> dict[str, str]:

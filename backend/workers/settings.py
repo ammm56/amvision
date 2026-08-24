@@ -168,11 +168,10 @@ class BackendWorkerTrainingTelemetryConfig(BaseModel):
 
 
 class BackendWorkerConversionConfig(BaseModel):
-    """描述 conversion attempt 的 worker 私有执行时限。"""
+    """描述 conversion helper 上限、停止和发布恢复参数。"""
 
-    attempt_timeout_seconds: float = Field(default=7200.0, gt=0)
     helper_timeout_seconds: float = Field(default=7200.0, gt=0)
-    termination_grace_seconds: float = Field(default=5.0, ge=0)
+    termination_grace_seconds: float = Field(default=15.0, ge=0)
     publication_orphan_grace_seconds: float = Field(default=3600.0, ge=0)
 
 

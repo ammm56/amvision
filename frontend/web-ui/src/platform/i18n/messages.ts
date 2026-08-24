@@ -200,8 +200,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       status: {
         queued: '已排队',
         running: '运行中',
+        paused: '已暂停',
         succeeded: '已完成',
         failed: '失败',
+        timed_out: '已超时',
         cancelled: '已取消',
         unknown: '未知',
       },
@@ -2257,8 +2259,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       status: {
         queued: 'Queued',
         running: 'Running',
+        paused: 'Paused',
         succeeded: 'Completed',
         failed: 'Failed',
+        timed_out: 'Timed out',
         cancelled: 'Cancelled',
         unknown: 'Unknown',
       },
@@ -4311,8 +4315,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       status: {
         queued: 'キュー済み',
         running: '実行中',
+        paused: '一時停止',
         succeeded: '完了',
         failed: '失敗',
+        timed_out: 'タイムアウト',
         cancelled: 'キャンセル済み',
         unknown: '不明',
       },
@@ -6228,8 +6234,10 @@ const baseMessages: Record<SupportedLocale, MessageSchema> = {
       status: {
         queued: '대기 중',
         running: '실행 중',
+        paused: '일시 중지됨',
         succeeded: '완료',
         failed: '실패',
+        timed_out: '시간 초과',
         cancelled: '취소됨',
         unknown: '알 수 없음',
       },

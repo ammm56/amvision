@@ -26,10 +26,12 @@ from backend.service.domain.files.yolov8_file_types import (
     YOLOV8_TENSORRT_ENGINE_FILE,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
-from backend.workers.conversion.yolo_model_conversion_runner import (
+from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
     LocalYoloModelConversionRunner,
 )
-from backend.workers.conversion.model_conversion_common import run_conversion_script
+from backend.service.application.conversions.runtime.model_conversion_common import (
+    run_conversion_script,
+)
 
 
 YoloV8ConversionRunRequest = ConversionBackendRunRequest

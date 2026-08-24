@@ -84,7 +84,9 @@ from backend.service.application.models.yolox_core.training.trainer import (
     YoloXTrainingBatchProgress,
     YoloXTrainingControlCommand,
     YoloXTrainingEpochProgress,
+    YoloXTrainingLoopPausedError,
     YoloXTrainingLoopRequest,
+    YoloXTrainingLoopTerminatedError,
     YoloXTrainingSavePoint,
     build_yolox_lr_scheduler,
     build_yolox_model_ema,
@@ -150,6 +152,9 @@ class YoloXDetectionTrainingExecutionRequest:
     input_size: tuple[int, int] | None = None
     extra_options: dict[str, object] | None = None
     batch_callback: Callable[["YoloXTrainingBatchProgress"], None] | None = None
+    control_callback: Callable[
+        [], "YoloXTrainingControlCommand | None"
+    ] | None = None
     epoch_callback: (
         Callable[
             ["YoloXTrainingEpochProgress"],
@@ -242,7 +247,7 @@ class _ResolvedTrainingRuntime:
 
 
 class YoloXTrainingPausedError(Exception):
-    """表示训练在 epoch 边界按请求完成保存后进入 paused 状态。"""
+    """表示训练在 batch 安全点持久化最近完整 epoch 后进入 paused。"""
 
     def __init__(self, savepoint: YoloXTrainingSavePoint) -> None:
         """初始化暂停异常。
@@ -714,7 +719,7 @@ def run_yolox_detection_training_execution(
     best_metric_value: float | None = (
         None if validation_loader is not None else float("inf")
     )
-    best_checkpoint_state: dict[str, object] | None = None
+    best_checkpoint_bytes: bytes | None = None
     start_epoch = 0
     if resume_state is not None:
         epoch_history = [dict(item) for item in resume_state.epoch_history]
@@ -723,14 +728,13 @@ def run_yolox_detection_training_execution(
         ]
         best_metric_name = resume_state.best_metric_name or best_metric_name
         best_metric_value = resume_state.best_metric_value
-        best_checkpoint_state = (
-            dict(resume_state.best_checkpoint_state)
-            if resume_state.best_checkpoint_state is not None
-            else None
-        )
+        best_checkpoint_bytes = resume_state.best_checkpoint_bytes
         start_epoch = max(0, resume_state.resume_epoch)
 
-    def _evaluate_current_validation_model(evaluation_model: Any) -> dict[str, float]:
+    def _evaluate_current_validation_model(
+        evaluation_model: Any,
+        control_callback: Callable[[], None] | None,
+    ) -> dict[str, float]:
         """执行当前 epoch 需要的 YOLOX validation loss 和 COCO mAP。"""
 
         if validation_loader is None:
@@ -742,6 +746,7 @@ def run_yolox_detection_training_execution(
             loader=validation_loader,
             device=runtime.device,
             precision=precision,
+            control_callback=control_callback,
         )
         if isinstance(validation_dataset, _CocoDetectionExportDataset):
             detection_metrics = evaluate_yolox_coco_map(
@@ -763,6 +768,7 @@ def run_yolox_detection_training_execution(
                 ),
                 score_threshold=evaluation_confidence_threshold,
                 nms_threshold=evaluation_nms_threshold,
+                control_callback=control_callback,
             )
         elif isinstance(validation_dataset, _VocDetectionExportDataset):
             detection_metrics = evaluate_yolox_voc_map(
@@ -779,6 +785,7 @@ def run_yolox_detection_training_execution(
                 category_names=train_category_names,
                 score_threshold=evaluation_confidence_threshold,
                 nms_threshold=evaluation_nms_threshold,
+                control_callback=control_callback,
             )
         else:
             raise TypeError(
@@ -811,6 +818,7 @@ def run_yolox_detection_training_execution(
                     else None
                 ),
                 batch_callback=request.batch_callback,
+                control_callback=request.control_callback,
                 epoch_callback=request.epoch_callback,
                 savepoint_callback=request.savepoint_callback,
                 device=runtime.device,
@@ -838,7 +846,7 @@ def run_yolox_detection_training_execution(
                 validation_epoch_history=validation_epoch_history,
                 best_metric_name=best_metric_name,
                 best_metric_value=best_metric_value,
-                best_checkpoint_state=best_checkpoint_state,
+                best_checkpoint_bytes=best_checkpoint_bytes,
                 no_aug_epochs=no_aug_epochs,
                 multiscale_range=multiscale_range,
                 random_seed=random_seed,
@@ -846,21 +854,15 @@ def run_yolox_detection_training_execution(
                 evaluation_nms_threshold=evaluation_nms_threshold,
             )
         )
+    except YoloXTrainingLoopPausedError as error:
+        _release_current_training_objects()
+        raise YoloXTrainingPausedError(error.savepoint) from error
+    except YoloXTrainingLoopTerminatedError as error:
+        _release_current_training_objects()
+        raise YoloXTrainingTerminatedError() from error
     except Exception:
         _release_current_training_objects()
         raise
-
-    if loop_result.status == "terminated":
-        _release_current_training_objects()
-        raise YoloXTrainingTerminatedError()
-
-    if loop_result.status == "paused":
-        savepoint = loop_result.savepoint
-        if savepoint is None:
-            _release_current_training_objects()
-            raise ServiceConfigurationError("YOLOX 训练暂停时没有生成 savepoint")
-        _release_current_training_objects()
-        raise YoloXTrainingPausedError(savepoint)
 
     if (
         loop_result.checkpoint_bytes is None

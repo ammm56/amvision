@@ -21,6 +21,7 @@ TaskRecordState = Literal[
 # TaskAttempt 允许的执行尝试状态集合。
 TaskAttemptState = Literal[
     "running",
+    "paused",
     "succeeded",
     "failed",
     "timed_out",
@@ -30,6 +31,10 @@ TaskAttemptState = Literal[
 
 # TaskEvent 当前支持的事件类型集合。
 TaskEventType = Literal["status", "progress", "log", "result"]
+
+
+# Conversion 文件发布 reservation 的内部状态；不进入公开 Task API。
+TaskPublicationState = Literal["reserved", "published", "registered", "aborted"]
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,7 @@ class TaskRecord:
     - progress：当前任务进度快照。
     - result：任务结果摘要。
     - error_message：错误消息。
+    - publication_*：Conversion 原子发布使用的内部 reservation；普通任务均为空。
     """
 
     task_id: str
@@ -75,6 +81,10 @@ class TaskRecord:
     progress: dict[str, object] = field(default_factory=dict)
     result: dict[str, object] = field(default_factory=dict)
     error_message: str | None = None
+    publication_state: TaskPublicationState | None = None
+    publication_token: str | None = None
+    publication_attempt_no: int | None = None
+    publication_updated_at: str | None = None
 
 
 @dataclass(frozen=True)

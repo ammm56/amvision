@@ -19,6 +19,10 @@ from backend.maintenance.release_assembly import (
     ReleaseAssemblyRequest,
     assemble_release,
 )
+from backend.maintenance.task_runtime_upgrade import (
+    VERIFY_TASK_RUNTIME_UPGRADE_COMMAND,
+    verify_task_runtime_upgrade,
+)
 from backend.maintenance.workflow_save_location_migration import (
     WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
     migrate_workflow_save_locations,
@@ -110,6 +114,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             WORKFLOW_RUNTIME_STORAGE_CLEANUP_COMMAND,
             DEVELOPMENT_MODEL_RESET_COMMAND,
             WORKFLOW_SAVE_LOCATION_MIGRATION_COMMAND,
+            VERIFY_TASK_RUNTIME_UPGRADE_COMMAND,
         ),
         help="要执行的 maintenance 命令",
     )
@@ -133,11 +138,6 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="assemble-release 时允许覆盖现有目录",
-    )
-    parser.add_argument(
-        "--bundled-python-source-dir",
-        default=None,
-        help="兼容参数；自动复制已禁用，Python 目录必须手工移动或复制",
     )
     parser.add_argument(
         "--now-iso",
@@ -195,7 +195,6 @@ def run_command(
     profile_id: str | None = None,
     release_root: str = "release",
     force: bool = False,
-    bundled_python_source_dir: str | None = None,
     now_iso: str | None = None,
     retention_hours: int = WORKFLOW_RUNTIME_STORAGE_DEFAULT_RETENTION_HOURS,
     pycache_roots: list[str] | None = None,
@@ -214,7 +213,6 @@ def run_command(
     - profile_id：assemble-release 使用的 profile id。
     - release_root：assemble-release 输出根目录。
     - force：assemble-release 时是否允许覆盖已存在目录。
-    - bundled_python_source_dir：已禁用的兼容参数；传入时明确失败，避免复制大体量 Python。
     - pycache_roots：rebuild-pycache 要处理的源码目录。
     - python_packages：rebuild-pycache 要处理的当前解释器依赖包名。
     - clean_only：rebuild-pycache 是否只删除缓存。
@@ -366,15 +364,6 @@ def run_command(
                 profile_id=resolved_profile_id,
                 output_root=Path(release_root),
                 overwrite=force,
-                bundled_python_source_dir=(
-                    Path(bundled_python_source_dir)
-                    if bundled_python_source_dir
-                    else (
-                        Path(runtime.settings.release.bundled_python.source_dir)
-                        if runtime.settings.release.bundled_python.source_dir
-                        else None
-                    )
-                ),
                 frontend_dist_dir=Path(runtime.settings.release.frontend.dist_dir),
                 frontend_runtime_config_source_file=(
                     Path(runtime.settings.release.frontend.runtime_config_source_file)
@@ -405,6 +394,10 @@ def run_command(
         }
     if command == DATABASE_MIGRATION_COMMAND:
         return migrate_database(backend_service_settings=backend_service_settings)
+    if command == VERIFY_TASK_RUNTIME_UPGRADE_COMMAND:
+        return verify_task_runtime_upgrade(
+            backend_service_settings=backend_service_settings
+        )
     if command == REBUILD_PYCACHE_COMMAND:
         return rebuild_pycache(
             build_pycache_request(
@@ -678,7 +671,6 @@ def main(argv: list[str] | None = None) -> int:
         profile_id=args.profile_id,
         release_root=args.release_root,
         force=args.force,
-        bundled_python_source_dir=args.bundled_python_source_dir,
         now_iso=args.now_iso,
         retention_hours=args.retention_hours,
         pycache_roots=args.pycache_root,

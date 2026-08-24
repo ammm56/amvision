@@ -43,11 +43,18 @@ from backend.service.application.models.training.rfdetr_training_warm_start impo
     build_rfdetr_warm_start_source_summary,
     resolve_rfdetr_warm_start_reference,
 )
+from backend.service.application.models.training.resume_checkpoint_validation import (
+    require_readable_resume_checkpoint,
+)
 from backend.service.application.models.training.training_engine import (
     build_execution_training_config_runtime,
 )
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
+)
+from backend.service.application.models.training.training_control_probe import (
+    TrainingControlDecision,
+    TrainingControlProbe,
 )
 from backend.service.application.models.training.yolo_detection_task_control import (
     build_requested_yolo_detection_training_control,
@@ -73,8 +80,10 @@ from backend.service.application.tasks.queue_reference import (
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    ResumeTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -301,7 +310,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         *,
         requested_by: str | None = None,
     ) -> TaskDetail:
-        """终止 queued/paused 任务，或请求 running 任务在 epoch 边界退出。"""
+        """终止 queued/paused 任务，或请求 running 任务在 batch 安全点退出。"""
 
         task_record = self._require_training_task(task_id)
         if task_record.state == "cancelled":
@@ -326,7 +335,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             self._append_control_event(task_id, "terminate", updated_control)
             return self.task_service.get_task(task_id, include_events=False)
 
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             build_yolo_detection_training_cancelled_event(
                 task_id=task_id,
                 model_type=self.model_type,
@@ -347,7 +356,6 @@ class SqlAlchemyRfdetrTrainingTaskService:
     ) -> RfdetrTrainingTaskSubmission:
         """使用已保存的 Lightning latest checkpoint 继续 paused/failed 任务。"""
 
-        queue_backend = self._require_queue_backend()
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
         if task_record.state not in {"paused", "failed"}:
@@ -360,7 +368,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             result=task_record.result,
             control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
         )
-        if resume_key is None or not dataset_storage.resolve(resume_key).is_file():
+        if resume_key is None:
             raise InvalidRequestError(
                 "当前 RF-DETR 训练任务缺少可恢复的 latest checkpoint",
                 details={
@@ -368,6 +376,11 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     "latest_checkpoint_object_key": resume_key,
                 },
             )
+        require_readable_resume_checkpoint(
+            dataset_storage.resolve(resume_key),
+            task_id=task_id,
+            checkpoint_object_key=resume_key,
+        )
         payload = self._read_task_payload(task_record)
         dataset_export = self._resolve_dataset_export_from_payload(
             project_id=task_record.project_id,
@@ -380,44 +393,40 @@ class SqlAlchemyRfdetrTrainingTaskService:
             resumed_by=resumed_by,
             resumed_at=resumed_at,
         )
-        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
-        queue_task = queue_backend.enqueue(
-            queue_name=self.training_queue_name,
-            payload={
-                "task_id": task_id,
-                "attempt_no": next_attempt_no,
-                "task_kind": self.training_task_kind,
-                **payload,
-            },
-            metadata={
-                "project_id": task_record.project_id,
-                "dataset_export_id": dataset_export.dataset_export_id,
-                "model_type": self.model_type,
-            },
-        )
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        submission = self.task_service.resume_task_with_outbox(
+            ResumeTaskRequest(
                 task_id=task_id,
-                event_type="status",
-                message="rfdetr training resume queued",
-                payload={
-                    "state": "queued",
-                    "finished_at": None,
-                    "error_message": None,
-                    "metadata": {
-                        RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
+                expected_states=(task_record.state,),
+                expected_current_attempt_no=task_record.current_attempt_no,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=self.training_queue_name,
+                    payload={
+                        "task_kind": self.training_task_kind,
+                        **payload,
                     },
-                    "result": dict(task_record.result),
+                    metadata={
+                        "project_id": task_record.project_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "model_type": self.model_type,
+                    },
+                ),
+                expected_checkpoint_object_key=resume_key,
+                progress_patch={
+                    **dict(task_record.progress),
+                    "stage": "queued",
                 },
+                result_patch=dict(task_record.result),
+                metadata_patch={
+                    RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
+                },
+                message="rfdetr training resume queued",
             )
         )
         return RfdetrTrainingTaskSubmission(
             task_id=task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=submission.queue_name,
+            queue_task_id=submission.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -440,16 +449,29 @@ class SqlAlchemyRfdetrTrainingTaskService:
             self.dataset_storage.delete_tree(output_prefix)
         self.task_service.delete_task(task_id)
 
-    def process_training_task(self, task_id: str) -> TrainingBackendRunResult:
+    def process_training_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> TrainingBackendRunResult:
         """执行已入队的 RF-DETR detection 训练任务。"""
 
         dataset_storage = self._require_dataset_storage()
         task_record = self.task_service.get_task(task_id).task
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
         if task_record.state == "succeeded":
             existing_result = self._build_existing_run_result(task_record)
             if existing_result is not None:
                 return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前 RF-DETR 训练任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -520,7 +542,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             else None
         )
         started_at = self._now_iso()
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -537,8 +559,65 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         )
                     },
                 },
-            )
+            ),
+            fence=execution_fence,
         )
+
+        def read_control_decision() -> TrainingControlDecision:
+            """读取权威 Task 控制状态并收敛为单一优先级命令。"""
+
+            control = self._read_training_control(self._require_training_task(task_id))
+            if read_yolo_detection_training_control_flag(
+                control,
+                "terminate_requested",
+            ):
+                return TrainingControlDecision(
+                    action="terminate",
+                    requested_at=self._read_optional_str(
+                        control.get("terminate_requested_at")
+                    ),
+                )
+            if read_yolo_detection_training_control_flag(
+                control,
+                "pause_requested",
+            ):
+                return TrainingControlDecision(
+                    action="pause",
+                    requested_at=self._read_optional_str(
+                        control.get("pause_requested_at")
+                    ),
+                )
+            if read_yolo_detection_training_control_flag(
+                control,
+                "save_requested",
+            ):
+                return TrainingControlDecision(
+                    action="save",
+                    requested_at=self._read_optional_str(
+                        control.get("save_requested_at")
+                    ),
+                )
+            return TrainingControlDecision()
+
+        control_probe = TrainingControlProbe(read_control=read_control_decision)
+
+        def on_control(*, force: bool = False) -> RfdetrTrainingControlCommand | None:
+            """在 train/validation batch 安全点复用 Attempt 级探针。"""
+
+            decision = control_probe.observe(force=force)
+            if decision.terminate_requested:
+                return RfdetrTrainingControlCommand(
+                    save_checkpoint=True,
+                    terminate_training=True,
+                )
+            if decision.pause_requested:
+                return RfdetrTrainingControlCommand(
+                    save_checkpoint=True,
+                    pause_training=True,
+                )
+            if decision.save_requested:
+                return RfdetrTrainingControlCommand(save_checkpoint=True)
+            return None
 
         def on_batch(progress: RfdetrTrainingBatchProgress) -> None:
             """发布真实 batch 遥测，进度值限制在训练阶段范围内。"""
@@ -583,51 +662,37 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 ),
                 2,
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_id,
-                    event_type="progress",
-                    message=(
-                        "rfdetr training epoch "
-                        f"{progress.epoch + 1}/{progress.max_epochs}"
-                    ),
-                    payload={
-                        "state": "running",
-                        "progress": {
-                            "stage": "training",
-                            "percent": percent,
-                            "epoch": progress.epoch + 1,
-                            "epoch_index": progress.epoch,
-                            "max_epochs": progress.max_epochs,
-                            "learning_rate": progress.learning_rate,
-                            "train_metrics": dict(progress.train_metrics),
-                        },
+            progress_event = AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="progress",
+                message=(
+                    f"rfdetr training epoch {progress.epoch + 1}/{progress.max_epochs}"
+                ),
+                payload={
+                    "progress": {
+                        "stage": "training",
+                        "percent": percent,
+                        "epoch": progress.epoch + 1,
+                        "epoch_index": progress.epoch,
+                        "max_epochs": progress.max_epochs,
+                        "learning_rate": progress.learning_rate,
+                        "train_metrics": dict(progress.train_metrics),
                     },
-                )
+                },
             )
-            control = self._read_training_control(self._require_training_task(task_id))
-            if read_yolo_detection_training_control_flag(
-                control,
-                "terminate_requested",
-            ):
-                return RfdetrTrainingControlCommand(
-                    save_checkpoint=True,
-                    terminate_training=True,
+            if execution_fence is None:
+                current_task = self._require_training_task(task_id)
+                self.task_service.execute_task_patch_event_command(
+                    progress_event,
+                    expected_states=("running",),
+                    expected_current_attempt_no=current_task.current_attempt_no,
                 )
-            if read_yolo_detection_training_control_flag(
-                control,
-                "pause_requested",
-            ):
-                return RfdetrTrainingControlCommand(
-                    save_checkpoint=True,
-                    pause_training=True,
+            else:
+                self.task_service.record_task_progress_event(
+                    progress_event,
+                    fence=execution_fence,
                 )
-            if read_yolo_detection_training_control_flag(
-                control,
-                "save_requested",
-            ):
-                return RfdetrTrainingControlCommand(save_checkpoint=True)
-            return None
+            return on_control(force=True)
 
         def on_savepoint(savepoint: RfdetrTrainingSavePoint) -> None:
             """在临时目录清理前持久化 RF-DETR 保存点及指标。"""
@@ -646,10 +711,12 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     output_files.checkpoint_object_key,
                     savepoint.best_checkpoint_bytes,
                 )
-            periodic_checkpoint_retention.persist(
-                epoch=savepoint.epoch + 1,
-                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
-            )
+            completed_epoch = savepoint.epoch + 1
+            if completed_epoch >= 1:
+                periodic_checkpoint_retention.persist(
+                    epoch=completed_epoch,
+                    checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+                )
             if output_files.metrics_object_key is not None:
                 dataset_storage.write_json(
                     output_files.metrics_object_key,
@@ -709,30 +776,38 @@ class SqlAlchemyRfdetrTrainingTaskService:
             partial_result["latest_checkpoint_model_version_id"] = (
                 latest_model_version_id
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_id,
-                    event_type="status",
-                    message="rfdetr training checkpoint saved",
-                    payload={
-                        "state": "running",
-                        "metadata": {
-                            RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
-                            RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
-                                "model_version_id": latest_model_version_id,
-                                "checkpoint_object_key": latest_key,
-                                "registered_by": control.get("last_save_by"),
-                                "registered_at": self._now_iso(),
-                            },
+            checkpoint_event = AppendTaskEventRequest(
+                task_id=task_id,
+                event_type="status",
+                message="rfdetr training checkpoint saved",
+                payload={
+                    "metadata": {
+                        RFDETR_TRAINING_CONTROL_METADATA_KEY: control,
+                        RFDETR_MANUAL_LATEST_REGISTRATION_METADATA_KEY: {
+                            "model_version_id": latest_model_version_id,
+                            "checkpoint_object_key": latest_key,
+                            "registered_by": control.get("last_save_by"),
+                            "registered_at": self._now_iso(),
                         },
-                        "progress": {
-                            "last_saved_epoch": savepoint.epoch + 1,
-                            "last_saved_at": self._now_iso(),
-                        },
-                        "result": partial_result,
                     },
-                )
+                    "progress": {
+                        "last_saved_epoch": savepoint.epoch + 1,
+                        "last_saved_at": self._now_iso(),
+                    },
+                    "result": partial_result,
+                },
             )
+            if execution_fence is None:
+                self.task_service.execute_task_patch_event_command(
+                    checkpoint_event,
+                    expected_states=("running",),
+                    expected_current_attempt_no=current_task.current_attempt_no,
+                )
+            else:
+                self.task_service.record_task_progress_event(
+                    checkpoint_event,
+                    fence=execution_fence,
+                )
 
         try:
             execution_result = run_rfdetr_training(
@@ -761,6 +836,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     ),
                     extra_options=extra_options,
                     batch_callback=on_batch,
+                    control_callback=on_control,
                     epoch_callback=on_epoch,
                     savepoint_callback=on_savepoint,
                 )
@@ -774,7 +850,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 status="paused",
                 savepoint=paused_error.savepoint,
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_paused_event(
                     task_id=task_id,
                     model_type=self.model_type,
@@ -785,7 +861,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         self._read_training_control(current_task)
                     ),
                     result=paused_result,
-                )
+                ),
+                fence=execution_fence,
             )
             return self._build_run_result_from_payload(
                 task_id=task_id,
@@ -793,13 +870,14 @@ class SqlAlchemyRfdetrTrainingTaskService:
             )
         except RfdetrTrainingTerminatedError:
             current_task = self._require_training_task(task_id)
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 build_yolo_detection_training_terminated_result_event(
                     task_id=task_id,
                     model_type=self.model_type,
                     finished_at=self._now_iso(),
                     progress=dict(current_task.progress),
-                )
+                ),
+                fence=execution_fence,
             )
             raise OperationCancelledError(
                 "当前 RF-DETR detection 训练任务已经终止",
@@ -817,7 +895,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
                 "model_type": self.model_type,
                 "task_type": self.task_type,
             }
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -828,7 +906,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         progress={"stage": "failed", "percent": 100},
                         result=failed_result,
                     ),
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
@@ -915,7 +994,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
             "model_version_id": model_version_id,
             "summary": summary,
         }
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -926,7 +1005,8 @@ class SqlAlchemyRfdetrTrainingTaskService:
                     "result": task_result,
                     "progress": {"stage": "succeeded", "percent": 100},
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         return self._build_run_result_from_payload(
             task_id=task_id,
@@ -1031,7 +1111,7 @@ class SqlAlchemyRfdetrTrainingTaskService:
         ):
             updated_result["model_version_id"] = model_version_id
 
-        return self.task_service.append_task_event(
+        return self.task_service.execute_task_patch_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -1047,7 +1127,9 @@ class SqlAlchemyRfdetrTrainingTaskService:
                         }
                     },
                 },
-            )
+            ),
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
 
     def _validate_request(self, request: RfdetrTrainingTaskRequest) -> None:
@@ -1546,14 +1628,17 @@ class SqlAlchemyRfdetrTrainingTaskService:
     ) -> None:
         """追加 RF-DETR detection 控制请求事件。"""
 
-        self.task_service.append_task_event(
+        task_record = self._require_training_task(task_id)
+        self.task_service.execute_task_patch_event_command(
             build_yolo_detection_training_control_event(
                 task_id=task_id,
                 model_type=self.model_type,
                 action=action,
                 control_metadata_key=RFDETR_TRAINING_CONTROL_METADATA_KEY,
                 control=control,
-            )
+            ),
+            expected_states=("running",),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
 
     def _build_interrupted_task_result(

@@ -15,7 +15,11 @@ from backend.workers.contracts import (
     WorkerProfileManifest,
     load_backend_worker_launch_bundle,
 )
-from backend.workers.health import BackendWorkerHeartbeat, BackendWorkerHeartbeatInfo
+from backend.workers.health import (
+    BackendWorkerHeartbeat,
+    BackendWorkerHeartbeatInfo,
+    BackendWorkerTopologyStopping,
+)
 from backend.workers.profile_lock import BackendWorkerProfileLock
 from backend.workers.task_manager import (
     BackgroundTaskManager,
@@ -49,9 +53,6 @@ def build_background_task_manager(
                     runtime.settings.async_inference_gateway_request_timeout_seconds
                 ),
                 conversion_workspace_dir=str(runtime.workspace_dir),
-                conversion_attempt_timeout_seconds=(
-                    runtime.settings.conversion.attempt_timeout_seconds
-                ),
                 conversion_helper_timeout_seconds=(
                     runtime.settings.conversion.helper_timeout_seconds
                 ),
@@ -138,6 +139,11 @@ def _run_worker_with_bundle(bundle: BackendWorkerLaunchBundle) -> None:
             flush=True,
         )
         task_manager.run_forever(health_check=heartbeat.assert_healthy)
+    except BackendWorkerTopologyStopping:
+        print(
+            "backend-worker 检测到 Topology 正常停止，正在退出。",
+            flush=True,
+        )
     except BaseException as error:
         try:
             heartbeat.mark_failed(error)

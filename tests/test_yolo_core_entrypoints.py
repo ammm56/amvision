@@ -528,7 +528,7 @@ from backend.workers.conversion.yolo11_conversion_runner import (
 from backend.workers.conversion.yolo26_conversion_runner import (
     LocalYolo26ConversionRunner,
 )
-from backend.workers.conversion.yolo_model_conversion_runner import (
+from backend.service.application.conversions.runtime.yolo_model_conversion_runner import (
     LocalYoloModelConversionRunner,
 )
 from backend.workers.conversion.yolov8_conversion_runner import (

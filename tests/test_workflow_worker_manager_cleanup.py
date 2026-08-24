@@ -46,6 +46,82 @@ class _FakeQueue:
             self.join_count += 1
 
 
+def test_node_pack_timeout_latches_first_reason_and_earliest_force_deadline() -> None:
+    """并行节点 timeout 只固化首因，但更早 grace 仍可提前整代回收。"""
+
+    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._monitor_wake_event = Event()  # noqa: SLF001
+    cancellation_event = Event()
+    handle = manager_module._WorkflowRuntimeProcessHandle(  # noqa: SLF001
+        workflow_runtime_id="runtime-1",
+        process=SimpleNamespace(pid=321, is_alive=lambda: True),
+        request_queue=_FakeQueue(),
+        response_queue=_FakeQueue(),
+        run_cancellation_event=cancellation_event,
+        runtime_generation=3,
+    )
+    handle.active_run_request_ids["run-1"] = "request-1"
+    now = manager_module.monotonic()
+    common_identity = {
+        "message_type": "node-started",
+        "workflow_run_id": "run-1",
+        "node_pack_id": "pack-1",
+    }
+    first_invocation_id = "1" * 32
+    second_invocation_id = "2" * 32
+
+    worker_manager._handle_node_lifecycle_message(  # noqa: SLF001
+        handle=handle,
+        message={
+            **common_identity,
+            "node_invocation_id": first_invocation_id,
+            "node_id": "node-first",
+            "deadline_monotonic": now - 0.2,
+            "kill_grace_seconds": 1.0,
+        },
+    )
+    assert (
+        worker_manager._monitor_node_pack_timeouts(  # noqa: SLF001
+            handle=handle,
+            now=now,
+        )
+        is None
+    )
+    assert cancellation_event.is_set()
+
+    worker_manager._handle_node_lifecycle_message(  # noqa: SLF001
+        handle=handle,
+        message={
+            **common_identity,
+            "node_invocation_id": second_invocation_id,
+            "node_id": "node-second",
+            "deadline_monotonic": now - 0.1,
+            "kill_grace_seconds": 0.0,
+        },
+    )
+    timeout_state = worker_manager._monitor_node_pack_timeouts(  # noqa: SLF001
+        handle=handle,
+        now=now,
+    )
+
+    assert timeout_state is not None
+    assert timeout_state.node_invocation_id == first_invocation_id
+    assert timeout_state.node_id == "node-first"
+    assert timeout_state.force_kill_deadline_monotonic == pytest.approx(now - 0.1)
+
+    worker_manager._handle_node_lifecycle_message(  # noqa: SLF001
+        handle=handle,
+        message={
+            "message_type": "node-ended",
+            "workflow_run_id": "run-1",
+            "node_invocation_id": first_invocation_id,
+            "node_id": "node-first",
+            "outcome": "cancelled",
+        },
+    )
+    assert handle.node_timeout_states["run-1"].node_id == "node-first"
+
+
 def test_sync_admission_reservation_tracks_multiple_runs_and_releases_idempotently() -> (
     None
 ):
@@ -245,6 +321,7 @@ def test_manager_start_waits_for_desired_runtime_recovery_before_monitor() -> No
     )
     worker_manager._stopping = Event()  # noqa: SLF001
     worker_manager._monitor_stop_event = Event()  # noqa: SLF001
+    worker_manager._monitor_wake_event = Event()  # noqa: SLF001
     worker_manager._monitor_thread = None  # noqa: SLF001
     worker_manager._lock = Lock()  # noqa: SLF001
     worker_manager._handles = {}  # noqa: SLF001

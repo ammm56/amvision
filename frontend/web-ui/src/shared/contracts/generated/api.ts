@@ -130,7 +130,16 @@ export interface ProjectFileMetadata {
   download_url: string
 }
 
-export type TaskState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'unknown'
+export type TaskState =
+  | 'queued'
+  | 'running'
+  | 'paused'
+  | 'succeeded'
+  | 'failed'
+  | 'timed_out'
+  | 'cancelled'
+
+export type TaskDisplayState = TaskState | 'unknown'
 
 export interface TaskEvent {
   task_id?: string
@@ -156,7 +165,7 @@ export interface TaskRecord {
   task_kind?: string | null
   kind?: string | null
   status?: string | null
-  state?: string | null
+  state?: TaskState | null
   progress_percent?: number | null
   percent?: number | null
   project_id?: string | null

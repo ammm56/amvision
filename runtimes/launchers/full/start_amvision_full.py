@@ -35,6 +35,7 @@ from common import (  # noqa: E402
 
 
 FULL_SUPERVISOR_STATE_FORMAT_ID = "amvision.full-supervisor-state.v1"
+FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID = "amvision.full-supervisor-shutdown.v1"
 
 
 class SupervisedComponent:
@@ -76,6 +77,12 @@ def _build_child_process_environment() -> dict[str, str]:
     """构造统一的 UTF-8 子进程环境，保证发布日志可稳定读取。"""
 
     runtime_env = os.environ.copy()
+    for variable_name in tuple(runtime_env):
+        if variable_name.startswith("CONDA_") or variable_name in {
+            "_CE_CONDA",
+            "_CE_M",
+        }:
+            runtime_env.pop(variable_name, None)
     runtime_env.setdefault("PYTHONUTF8", "1")
     runtime_env.setdefault("PYTHONIOENCODING", "utf-8")
     return runtime_env
@@ -184,6 +191,36 @@ def _resolve_stack_state_file(
     if explicit_state_file is not None and explicit_state_file.strip():
         return resolve_path(app_root, explicit_state_file.strip())
     return (app_root / "logs" / logs_subdir / "runtime-state.json").resolve()
+
+
+def _resolve_shutdown_request_file(state_file_path: Path) -> Path:
+    """返回与运行状态文件绑定的优雅停止请求文件路径。"""
+
+    return state_file_path.with_name(
+        f"{state_file_path.stem}.shutdown-request.json"
+    )
+
+
+def _shutdown_requested(
+    shutdown_request_file_path: Path,
+    *,
+    root_process_identity: dict[str, object],
+) -> bool:
+    """确认停止请求精确指向当前 full Supervisor 进程。"""
+
+    if not shutdown_request_file_path.is_file():
+        return False
+    try:
+        payload = json.loads(
+            shutdown_request_file_path.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(payload, dict)
+        and payload.get("format_id") == FULL_SUPERVISOR_SHUTDOWN_FORMAT_ID
+        and payload.get("root_process") == root_process_identity
+    )
 
 
 def _load_stack_state(state_file_path: Path) -> dict[str, object] | None:
@@ -833,7 +870,7 @@ def _wait_for_inference_daemon_ready(
                 time.sleep(0.2)
                 continue
             if probe_result.returncode == 0:
-                print("inference-daemon 控制队列探测成功。", flush=True)
+                print("inference-daemon mmap 热路径探测成功。", flush=True)
                 return
             last_probe_error = f"probe returncode={probe_result.returncode}"
         if return_code is not None:
@@ -885,6 +922,7 @@ def _write_stack_state(
     app_root: Path,
     *,
     state_file_path: Path,
+    root_process_identity: dict[str, object],
     release_manifest_file: str,
     python_executable: str,
     logs_dir: Path,
@@ -895,6 +933,7 @@ def _write_stack_state(
     参数：
     - app_root：当前应用根目录。
     - state_file_path：运行状态文件路径。
+    - root_process_identity：当前 full Supervisor 的固定进程身份。
     - release_manifest_file：release manifest 路径。
     - python_executable：当前使用的 Python 解释器路径。
     - logs_dir：当前日志目录。
@@ -904,7 +943,7 @@ def _write_stack_state(
     payload = {
         "format_id": FULL_SUPERVISOR_STATE_FORMAT_ID,
         "app_root": str(app_root),
-        "root_process": read_process_identity(os.getpid()),
+        "root_process": root_process_identity,
         "release_manifest_file": release_manifest_file,
         "python_executable": python_executable,
         "logs_dir": _format_runtime_path(app_root, logs_dir),
@@ -1068,6 +1107,9 @@ def main(argv: list[str] | None = None) -> int:
         explicit_state_file=args.state_file,
     )
     _ensure_stack_not_running(state_file_path)
+    shutdown_request_file_path = _resolve_shutdown_request_file(state_file_path)
+    with contextlib.suppress(FileNotFoundError):
+        shutdown_request_file_path.unlink()
 
     release_manifest_path = _resolve_release_manifest_path(
         app_root, args.release_manifest_file
@@ -1106,6 +1148,7 @@ def main(argv: list[str] | None = None) -> int:
         raise
     logs_dir = app_root / "logs" / args.logs_subdir
     components: list[SupervisedComponent] = []
+    root_process_identity = read_process_identity(os.getpid())
     signal.signal(signal.SIGTERM, _request_stack_shutdown)
     if os.name == "nt" and hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, _request_stack_shutdown)
@@ -1116,6 +1159,7 @@ def main(argv: list[str] | None = None) -> int:
         _write_stack_state(
             app_root,
             state_file_path=state_file_path,
+            root_process_identity=root_process_identity,
             release_manifest_file=_format_runtime_path(app_root, release_manifest_path),
             python_executable=python_executable,
             logs_dir=logs_dir,
@@ -1254,6 +1298,12 @@ def main(argv: list[str] | None = None) -> int:
         print("full 发布目录全部组件已启动。按 Ctrl+C 停止全部子进程。", flush=True)
 
         while True:
+            if _shutdown_requested(
+                shutdown_request_file_path,
+                root_process_identity=root_process_identity,
+            ):
+                print("收到 stop-amvision-full 优雅停止请求。", flush=True)
+                raise KeyboardInterrupt
             now = time.monotonic()
             for component in components:
                 process = component.process
@@ -1375,6 +1425,8 @@ def main(argv: list[str] | None = None) -> int:
         topology_lock.release()
         with contextlib.suppress(FileNotFoundError):
             state_file_path.unlink()
+        with contextlib.suppress(FileNotFoundError):
+            shutdown_request_file_path.unlink()
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from backend.service.application.task_failure_payloads import build_task_failure
 from backend.workers.conversion.conversion_queue_failures import (
     build_conversion_queue_failure_metadata,
 )
-from backend.workers.conversion.model_conversion_common import (
+from backend.service.application.conversions.runtime.model_conversion_common import (
     build_conversion_options_metadata,
     build_output_base_name,
     optimize_onnx_model,
@@ -29,7 +29,7 @@ from backend.workers.conversion.model_conversion_common import (
     run_conversion_script,
 )
 from backend.workers.queue_failure_metadata import build_queue_failure_metadata
-from backend.workers.shared.process_tree_supervisor import ProcessTreeResult
+from backend.runtime.processes import ProcessTreeResult
 
 
 def test_model_conversion_common_resolves_phase_and_options() -> None:
@@ -147,7 +147,7 @@ def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pyt
 
     monkeypatch.setenv("PYTHONPATH", "existing-path")
     monkeypatch.setattr(
-        "backend.workers.conversion.model_conversion_common.ProcessTreeSupervisor.run",
+        "backend.service.application.conversions.runtime.model_conversion_common.ProcessTreeSupervisor.run",
         fake_run,
     )
 
@@ -161,7 +161,9 @@ def test_model_conversion_common_runs_scripts_from_project_root(monkeypatch: pyt
     assert captured["tee_output"] is True
     command = captured["command"]
     assert isinstance(command, list)
-    assert command[1].endswith("backend\\workers\\conversion\\scripts\\build_openvino_ir.py")
+    assert command[1].endswith(
+        "backend\\service\\application\\conversions\\runtime\\scripts\\build_openvino_ir.py"
+    )
     env = captured["env"]
     assert isinstance(env, dict)
     python_path_parts = env["PYTHONPATH"].split(os.pathsep)

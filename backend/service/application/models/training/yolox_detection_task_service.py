@@ -22,8 +22,15 @@ from backend.service.application.models.training.detection_training_rules import
     build_detection_training_summary_base,
     build_detection_validation_summary_payload,
 )
+from backend.service.application.models.training.resume_checkpoint_validation import (
+    require_readable_resume_checkpoint,
+)
 from backend.service.application.models.training.training_telemetry import (
     publish_training_batch_telemetry,
+)
+from backend.service.application.models.training.training_control_probe import (
+    TrainingControlDecision,
+    TrainingControlProbe,
 )
 from backend.service.application.models.training.yolox_detection import (
     YoloXDetectionTrainingExecutionRequest,
@@ -72,8 +79,10 @@ from backend.service.application.tasks.queue_reference import (
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     CreateTaskRequest,
+    ResumeTaskRequest,
     SqlAlchemyTaskService,
     TaskDetail,
+    TaskExecutionFence,
     TaskQueueSubmission,
 )
 from backend.service.domain.datasets.dataset_export import DatasetExport
@@ -213,7 +222,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             requested_at=requested_at,
             save_reason="manual",
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_patch_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -223,7 +232,9 @@ class SqlAlchemyYoloXTrainingTaskService(
                         YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
                     },
                 },
-            )
+            ),
+            expected_states=("running",),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
         return self.task_service.get_task(task_id, include_events=False)
 
@@ -265,7 +276,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             requested_at=requested_at,
             save_reason="pause",
         )
-        self.task_service.append_task_event(
+        self.task_service.execute_task_patch_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -275,7 +286,9 @@ class SqlAlchemyYoloXTrainingTaskService(
                         YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
                     },
                 },
-            )
+            ),
+            expected_states=("running",),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
         return self.task_service.get_task(task_id, include_events=False)
 
@@ -314,7 +327,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                 requested_by=requested_by,
                 requested_at=requested_at,
             )
-            self.task_service.append_task_event(
+            self.task_service.execute_task_patch_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="status",
@@ -324,7 +337,9 @@ class SqlAlchemyYoloXTrainingTaskService(
                             YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
                         },
                     },
-                )
+                ),
+                expected_states=("running",),
+                expected_current_attempt_no=task_record.current_attempt_no,
             )
             return self.task_service.get_task(task_id, include_events=False)
 
@@ -336,7 +351,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         }
         if requested_by:
             cancelled_metadata["terminated_by"] = requested_by
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -407,7 +422,6 @@ class SqlAlchemyYoloXTrainingTaskService(
     ) -> YoloXTrainingTaskSubmission:
         """把存在 latest checkpoint 的 paused/failed YOLOX 任务重新入队。"""
 
-        queue_backend = self._require_queue_backend()
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
         if task_record.state not in {"paused", "failed"}:
@@ -415,10 +429,6 @@ class SqlAlchemyYoloXTrainingTaskService(
                 "当前训练任务不处于 paused/failed 状态，不能继续训练",
                 details={"task_id": task_id, "state": task_record.state},
             )
-
-        previous_state = task_record.state
-        previous_finished_at = task_record.finished_at
-        previous_error_message = task_record.error_message
 
         request = self._build_request_from_task_record(task_record)
         dataset_export = self._resolve_dataset_export(request)
@@ -430,14 +440,11 @@ class SqlAlchemyYoloXTrainingTaskService(
                 "当前训练任务缺少可恢复的 latest checkpoint",
                 details={"task_id": task_id},
             )
-        if not dataset_storage.resolve(resume_checkpoint_object_key).is_file():
-            raise InvalidRequestError(
-                "当前训练任务的 latest checkpoint 文件不存在，不能继续训练",
-                details={
-                    "task_id": task_id,
-                    "latest_checkpoint_object_key": resume_checkpoint_object_key,
-                },
-            )
+        require_readable_resume_checkpoint(
+            dataset_storage.resolve(resume_checkpoint_object_key),
+            task_id=task_id,
+            checkpoint_object_key=resume_checkpoint_object_key,
+        )
 
         resumed_at = self._now_iso()
         control = read_yolox_training_control(task_record.metadata)
@@ -451,95 +458,43 @@ class SqlAlchemyYoloXTrainingTaskService(
         updated_control["resume_count"] = (
             read_yolox_training_control_counter(control, "resume_count") + 1
         )
-        next_attempt_no = self.task_service.get_next_task_attempt_no(task_id)
-
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
+        submission = self.task_service.resume_task_with_outbox(
+            ResumeTaskRequest(
                 task_id=task_id,
-                event_type="status",
-                message="yolox training resume requested",
-                payload={
-                    "state": "queued",
-                    "finished_at": None,
-                    "error_message": None,
-                    "metadata": {
-                        YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                expected_states=(task_record.state,),
+                expected_current_attempt_no=task_record.current_attempt_no,
+                queue_submission=TaskQueueSubmission(
+                    queue_name=YOLOX_TRAINING_QUEUE_NAME,
+                    metadata={
+                        "project_id": request.project_id,
+                        "dataset_export_id": dataset_export.dataset_export_id,
+                        "dataset_export_manifest_key": (
+                            dataset_export.manifest_object_key
+                        ),
+                        "dataset_version_id": dataset_export.dataset_version_id,
+                        "format_id": dataset_export.format_id,
                     },
-                    "progress": {
-                        **dict(task_record.progress),
-                        "stage": "queued",
-                    },
-                    "result": {
-                        **dict(task_record.result),
-                        "latest_checkpoint_object_key": resume_checkpoint_object_key,
-                    },
+                ),
+                expected_checkpoint_object_key=resume_checkpoint_object_key,
+                progress_patch={
+                    **dict(task_record.progress),
+                    "stage": "queued",
                 },
-            )
-        )
-
-        try:
-            queue_task = queue_backend.enqueue(
-                queue_name=YOLOX_TRAINING_QUEUE_NAME,
-                payload={"task_id": task_id, "attempt_no": next_attempt_no},
-                metadata={
-                    "project_id": request.project_id,
-                    "dataset_export_id": dataset_export.dataset_export_id,
-                    "dataset_export_manifest_key": dataset_export.manifest_object_key,
-                    "dataset_version_id": dataset_export.dataset_version_id,
-                    "format_id": dataset_export.format_id,
+                result_patch={
+                    **dict(task_record.result),
+                    "latest_checkpoint_object_key": resume_checkpoint_object_key,
                 },
-            )
-        except Exception:
-            reverted_control = clear_yolox_training_control_requests(control)
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_id,
-                    event_type="status",
-                    message="yolox training resume reverted",
-                    payload={
-                        "state": previous_state,
-                        "finished_at": previous_finished_at,
-                        "error_message": previous_error_message,
-                        "metadata": {
-                            YOLOX_TRAINING_CONTROL_METADATA_KEY: reverted_control,
-                        },
-                        "progress": {
-                            **dict(task_record.progress),
-                            "stage": previous_state,
-                        },
-                        "result": {
-                            **dict(task_record.result),
-                            "latest_checkpoint_object_key": resume_checkpoint_object_key,
-                        },
-                    },
-                )
-            )
-            raise
-
-        self.task_service.append_task_event(
-            AppendTaskEventRequest(
-                task_id=task_id,
-                event_type="status",
-                message="yolox training queued",
-                payload={
-                    "state": "queued",
-                    "metadata": {
-                        "queue_name": queue_task.queue_name,
-                        "queue_task_id": queue_task.task_id,
-                        YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
-                    },
-                    "result": {
-                        **dict(task_record.result),
-                        "latest_checkpoint_object_key": resume_checkpoint_object_key,
-                    },
+                metadata_patch={
+                    YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
                 },
+                message="yolox training resume queued",
             )
         )
         return YoloXTrainingTaskSubmission(
             task_id=task_id,
             status="queued",
-            queue_name=queue_task.queue_name,
-            queue_task_id=queue_task.task_id,
+            queue_name=submission.queue_name,
+            queue_task_id=submission.queue_task_id,
             dataset_export_id=dataset_export.dataset_export_id,
             dataset_export_manifest_key=dataset_export.manifest_object_key or "",
             dataset_version_id=dataset_export.dataset_version_id,
@@ -623,7 +578,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                 registration_kind="latest-checkpoint",
             )
         )
-        return self.task_service.append_task_event(
+        return self.task_service.execute_task_patch_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -632,10 +587,17 @@ class SqlAlchemyYoloXTrainingTaskService(
                     "result": self._serialize_task_result(persisted_result),
                     "metadata": registration_metadata,
                 },
-            )
+            ),
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
         )
 
-    def process_training_task(self, task_id: str) -> YoloXTrainingTaskResult:
+    def process_training_task(
+        self,
+        task_id: str,
+        *,
+        execution_fence: TaskExecutionFence | None = None,
+    ) -> YoloXTrainingTaskResult:
         """执行一条已入队的 YOLOX 训练任务。
 
         参数：
@@ -647,10 +609,18 @@ class SqlAlchemyYoloXTrainingTaskService(
 
         dataset_storage = self._require_dataset_storage()
         task_record = self._require_training_task(task_id)
+        claimed_attempt = (
+            self.task_service.validate_task_execution_fence(
+                task_id=task_id,
+                fence=execution_fence,
+            )
+            if execution_fence is not None
+            else None
+        )
         existing_result = self._build_existing_result(task_record)
         if task_record.state == "succeeded" and existing_result is not None:
             return existing_result
-        if task_record.state == "running":
+        if task_record.state == "running" and claimed_attempt is None:
             raise InvalidRequestError(
                 "当前训练任务正在执行，不能重复执行",
                 details={"task_id": task_id},
@@ -676,7 +646,11 @@ class SqlAlchemyYoloXTrainingTaskService(
         manifest_payload = self._read_manifest_payload(
             dataset_export.manifest_object_key or ""
         )
-        attempt_no = max(1, task_record.current_attempt_no + 1)
+        attempt_no = (
+            claimed_attempt.attempt_no
+            if claimed_attempt is not None
+            else max(1, task_record.current_attempt_no + 1)
+        )
         output_object_prefix = self._build_output_object_prefix(task_id)
         output_keys = self._build_training_output_object_keys(output_object_prefix)
         checkpoint_object_key = output_keys.checkpoint_object_key
@@ -706,7 +680,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             )
         )
 
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="status",
@@ -743,7 +717,8 @@ class SqlAlchemyYoloXTrainingTaskService(
                         "summary_object_key": summary_object_key,
                     },
                 },
-            )
+            ),
+            fence=execution_fence,
         )
 
         try:
@@ -754,6 +729,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                 manifest_payload=manifest_payload,
                 attempt_no=attempt_no,
                 output_object_prefix=output_object_prefix,
+                execution_fence=execution_fence,
             )
             if training_result.status == "paused":
                 paused_task = self._require_training_task(task_id)
@@ -762,7 +738,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                 )
                 paused_progress = dict(paused_task.progress)
                 paused_progress["stage"] = "paused"
-                self.task_service.append_task_event(
+                self.task_service.execute_task_state_event_command(
                     AppendTaskEventRequest(
                         task_id=task_id,
                         event_type="status",
@@ -776,7 +752,8 @@ class SqlAlchemyYoloXTrainingTaskService(
                             },
                             "result": self._serialize_task_result(training_result),
                         },
-                    )
+                    ),
+                    fence=execution_fence,
                 )
                 return training_result
             model_version_id = self._register_training_output_model_version(
@@ -826,7 +803,7 @@ class SqlAlchemyYoloXTrainingTaskService(
             }
             if terminated_by is not None:
                 metadata_payload["terminated_by"] = terminated_by
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="status",
@@ -839,11 +816,12 @@ class SqlAlchemyYoloXTrainingTaskService(
                         "metadata": metadata_payload,
                         "result": self._serialize_task_result(cancelled_result),
                     },
-                )
+                ),
+                fence=execution_fence,
             )
             return cancelled_result
         except Exception as error:
-            self.task_service.append_task_event(
+            self.task_service.execute_task_state_event_command(
                 AppendTaskEventRequest(
                     task_id=task_id,
                     event_type="result",
@@ -869,11 +847,12 @@ class SqlAlchemyYoloXTrainingTaskService(
                             "latest_checkpoint_model_version_id": None,
                         },
                     ),
-                )
+                ),
+                fence=execution_fence,
             )
             raise
 
-        self.task_service.append_task_event(
+        self.task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -894,7 +873,8 @@ class SqlAlchemyYoloXTrainingTaskService(
                     },
                     "result": self._serialize_task_result(training_result),
                 },
-            )
+            ),
+            fence=execution_fence,
         )
         self._write_training_summary_payload(
             dataset_storage=dataset_storage,
@@ -1145,6 +1125,7 @@ class SqlAlchemyYoloXTrainingTaskService(
         manifest_payload: dict[str, object],
         attempt_no: int,
         output_object_prefix: str,
+        execution_fence: TaskExecutionFence | None,
     ) -> YoloXTrainingTaskResult:
         """执行 YOLOX detection core 训练流程。"""
 
@@ -1182,6 +1163,40 @@ class SqlAlchemyYoloXTrainingTaskService(
             output_prefix=output_object_prefix,
             extra_options=dict(request.extra_options),
         )
+
+        def read_control_decision() -> TrainingControlDecision:
+            """读取当前 Attempt 的权威训练控制状态。"""
+
+            current_task = self._require_training_task(task_record.task_id)
+            control = read_yolox_training_control(current_task.metadata)
+            if read_yolox_training_control_flag(control, "terminate_requested"):
+                return TrainingControlDecision(action="terminate")
+            if read_yolox_training_control_flag(control, "pause_requested"):
+                return TrainingControlDecision(action="pause")
+            if read_yolox_training_control_flag(control, "save_requested"):
+                return TrainingControlDecision(action="save")
+            return TrainingControlDecision()
+
+        control_probe = TrainingControlProbe(read_control=read_control_decision)
+
+        def resolve_control_command(
+            *,
+            force: bool = False,
+        ) -> YoloXTrainingControlCommand | None:
+            """把节流探针结果转换为 YOLOX 执行命令。"""
+
+            decision = control_probe.observe(force=force)
+            if decision.terminate_requested:
+                return YoloXTrainingControlCommand(terminate_training=True)
+            if decision.pause_requested:
+                return YoloXTrainingControlCommand(
+                    save_checkpoint=True,
+                    pause_training=True,
+                )
+            if decision.save_requested:
+                control_probe.invalidate()
+                return YoloXTrainingControlCommand(save_checkpoint=True)
+            return None
 
         def on_batch_completed(progress: YoloXTrainingBatchProgress) -> None:
             progress_percent = self._build_progress_percent(
@@ -1242,50 +1257,47 @@ class SqlAlchemyYoloXTrainingTaskService(
                     validation_metrics_object_key,
                     progress.validation_snapshot,
                 )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_record.task_id,
-                    event_type="progress",
-                    message=(
-                        f"yolox training epoch {progress.epoch}/{progress.max_epochs} completed"
-                    ),
-                    payload={
-                        "state": "running",
-                        "attempt_no": attempt_no,
-                        "progress": progress_payload,
-                        "metadata": {
-                            "output_object_prefix": output_object_prefix,
-                            "validation_metrics_object_key": validation_metrics_object_key,
-                            "test_metrics_object_key": test_metrics_object_key,
-                            "requested_precision": request.precision,
-                            "requested_gpu_count": request.gpu_count,
-                            "requested_evaluation_interval": resolved_evaluation_interval,
-                            YOLOX_TRAINING_CONTROL_METADATA_KEY: control,
-                        },
-                        "result": {
-                            "output_object_prefix": output_object_prefix,
-                            "checkpoint_object_key": checkpoint_object_key,
-                            "latest_checkpoint_object_key": latest_checkpoint_object_key,
-                            "labels_object_key": labels_object_key,
-                            "metrics_object_key": metrics_object_key,
-                            "validation_metrics_object_key": validation_metrics_object_key,
-                            "summary_object_key": summary_object_key,
-                        },
+            progress_event = AppendTaskEventRequest(
+                task_id=task_record.task_id,
+                event_type="progress",
+                message=(
+                    f"yolox training epoch {progress.epoch}/{progress.max_epochs} completed"
+                ),
+                payload={
+                    "attempt_no": attempt_no,
+                    "progress": progress_payload,
+                    "metadata": {
+                        "output_object_prefix": output_object_prefix,
+                        "validation_metrics_object_key": validation_metrics_object_key,
+                        "test_metrics_object_key": test_metrics_object_key,
+                        "requested_precision": request.precision,
+                        "requested_gpu_count": request.gpu_count,
+                        "requested_evaluation_interval": resolved_evaluation_interval,
+                        YOLOX_TRAINING_CONTROL_METADATA_KEY: control,
                     },
+                    "result": {
+                        "output_object_prefix": output_object_prefix,
+                        "checkpoint_object_key": checkpoint_object_key,
+                        "latest_checkpoint_object_key": latest_checkpoint_object_key,
+                        "labels_object_key": labels_object_key,
+                        "metrics_object_key": metrics_object_key,
+                        "validation_metrics_object_key": validation_metrics_object_key,
+                        "summary_object_key": summary_object_key,
+                    },
+                },
+            )
+            if execution_fence is None:
+                self.task_service.execute_task_patch_event_command(
+                    progress_event,
+                    expected_states=("running",),
+                    expected_current_attempt_no=current_task.current_attempt_no,
                 )
-            )
-            return YoloXTrainingControlCommand(
-                save_checkpoint=(
-                    read_yolox_training_control_flag(control, "save_requested")
-                    or read_yolox_training_control_flag(control, "pause_requested")
-                ),
-                pause_training=read_yolox_training_control_flag(
-                    control, "pause_requested"
-                ),
-                terminate_training=read_yolox_training_control_flag(
-                    control, "terminate_requested"
-                ),
-            )
+            else:
+                self.task_service.record_task_progress_event(
+                    progress_event,
+                    fence=execution_fence,
+                )
+            return resolve_control_command(force=True) or YoloXTrainingControlCommand()
 
         def on_savepoint_created(savepoint: YoloXTrainingSavePoint) -> None:
             current_task = self._require_training_task(task_record.task_id)
@@ -1297,10 +1309,12 @@ class SqlAlchemyYoloXTrainingTaskService(
                 savepoint=savepoint,
                 category_names=category_names,
             )
-            periodic_checkpoint_retention.persist(
-                epoch=savepoint.epoch,
-                checkpoint_bytes=savepoint.latest_checkpoint_bytes,
-            )
+            # epoch 0 是新训练暂停/终止时的恢复基线，不属于周期 checkpoint。
+            if savepoint.epoch >= 1:
+                periodic_checkpoint_retention.persist(
+                    epoch=savepoint.epoch,
+                    checkpoint_bytes=savepoint.latest_checkpoint_bytes,
+                )
             updated_control = mark_yolox_training_control_saved(
                 control=control,
                 saved_at=saved_at,
@@ -1320,24 +1334,32 @@ class SqlAlchemyYoloXTrainingTaskService(
                 for key in ("save_requested", "pause_requested")
             )
             if not manual_checkpoint_requested:
-                self.task_service.append_task_event(
-                    AppendTaskEventRequest(
-                        task_id=task_record.task_id,
-                        event_type="progress",
-                        message="yolox training best checkpoint persisted",
-                        payload={
-                            "state": "running",
-                            "attempt_no": attempt_no,
-                            "progress": {
-                                "best_checkpoint_saved_epoch": savepoint.epoch,
-                                "best_checkpoint_saved_at": saved_at,
-                            },
-                            "metadata": {
-                                YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
-                            },
+                checkpoint_event = AppendTaskEventRequest(
+                    task_id=task_record.task_id,
+                    event_type="progress",
+                    message="yolox training best checkpoint persisted",
+                    payload={
+                        "attempt_no": attempt_no,
+                        "progress": {
+                            "best_checkpoint_saved_epoch": savepoint.epoch,
+                            "best_checkpoint_saved_at": saved_at,
                         },
-                    )
+                        "metadata": {
+                            YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                        },
+                    },
                 )
+                if execution_fence is None:
+                    self.task_service.execute_task_patch_event_command(
+                        checkpoint_event,
+                        expected_states=("running",),
+                        expected_current_attempt_no=current_task.current_attempt_no,
+                    )
+                else:
+                    self.task_service.record_task_progress_event(
+                        checkpoint_event,
+                        fence=execution_fence,
+                    )
                 return
             auto_registration_source = self._build_existing_result(current_task)
             if auto_registration_source is None:
@@ -1398,26 +1420,34 @@ class SqlAlchemyYoloXTrainingTaskService(
                     registration_kind="latest-checkpoint",
                 )
             )
-            self.task_service.append_task_event(
-                AppendTaskEventRequest(
-                    task_id=task_record.task_id,
-                    event_type="status",
-                    message="yolox training checkpoint saved",
-                    payload={
-                        "state": "running",
-                        "attempt_no": attempt_no,
-                        "progress": {
-                            "last_saved_epoch": savepoint.epoch,
-                            "last_saved_at": saved_at,
-                        },
-                        "metadata": {
-                            YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
-                            **registration_metadata,
-                        },
-                        "result": self._serialize_task_result(persisted_result),
+            checkpoint_event = AppendTaskEventRequest(
+                task_id=task_record.task_id,
+                event_type="status",
+                message="yolox training checkpoint saved",
+                payload={
+                    "attempt_no": attempt_no,
+                    "progress": {
+                        "last_saved_epoch": savepoint.epoch,
+                        "last_saved_at": saved_at,
                     },
-                )
+                    "metadata": {
+                        YOLOX_TRAINING_CONTROL_METADATA_KEY: updated_control,
+                        **registration_metadata,
+                    },
+                    "result": self._serialize_task_result(persisted_result),
+                },
             )
+            if execution_fence is None:
+                self.task_service.execute_task_patch_event_command(
+                    checkpoint_event,
+                    expected_states=("running",),
+                    expected_current_attempt_no=current_task.current_attempt_no,
+                )
+            else:
+                self.task_service.record_task_progress_event(
+                    checkpoint_event,
+                    fence=execution_fence,
+                )
 
         resume_checkpoint_object_key = (
             self._resolve_resume_checkpoint_object_key(task_record)
@@ -1457,6 +1487,7 @@ class SqlAlchemyYoloXTrainingTaskService(
                     input_size=request.input_size,
                     extra_options=dict(request.extra_options),
                     batch_callback=on_batch_completed,
+                    control_callback=resolve_control_command,
                     epoch_callback=on_epoch_completed,
                     savepoint_callback=on_savepoint_created,
                 )

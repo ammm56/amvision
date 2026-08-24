@@ -30,7 +30,7 @@ from backend.service.infrastructure.queue.local_file import LocalFileQueueBacken
 from backend.workers.conversion.yolox_conversion_queue_worker import (
     YoloXConversionQueueWorker,
 )
-from backend.workers.conversion.yolox_conversion_runner import (
+from backend.service.application.conversions.runtime.yolox_conversion_runner import (
     YoloXConversionOutput,
     YoloXConversionRunRequest,
     YoloXConversionRunResult,

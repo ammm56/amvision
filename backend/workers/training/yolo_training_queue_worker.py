@@ -123,7 +123,10 @@ class ClassificationTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="classification"),
                     task_type="classification",
-                    metadata=_build_training_run_metadata(qt),
+                    metadata=_build_training_run_metadata(
+                        qt,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except OperationCancelledError as error:
@@ -147,6 +150,8 @@ class ClassificationTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -162,6 +167,8 @@ class ClassificationTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -236,7 +243,10 @@ class SegmentationTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="segmentation"),
                     task_type="segmentation",
-                    metadata=_build_training_run_metadata(qt),
+                    metadata=_build_training_run_metadata(
+                        qt,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except OperationCancelledError as error:
@@ -260,6 +270,8 @@ class SegmentationTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -275,6 +287,8 @@ class SegmentationTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -349,7 +363,10 @@ class PoseTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="pose"),
                     task_type="pose",
-                    metadata=_build_training_run_metadata(qt),
+                    metadata=_build_training_run_metadata(
+                        qt,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except OperationCancelledError as error:
@@ -373,6 +390,8 @@ class PoseTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -388,6 +407,8 @@ class PoseTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -462,7 +483,10 @@ class ObbTrainingQueueWorker:
                     training_task_id=task_id,
                     model_type=_read_model_type(qt.payload, task_type="obb"),
                     task_type="obb",
-                    metadata=_build_training_run_metadata(qt),
+                    metadata=_build_training_run_metadata(
+                        qt,
+                        queue_backend=self.queue_backend,
+                    ),
                 )
             )
         except OperationCancelledError as error:
@@ -486,6 +510,8 @@ class ObbTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -501,6 +527,8 @@ class ObbTrainingQueueWorker:
                 session_factory=self.session_factory,
                 payload=qt.payload,
                 error=error,
+                queue_backend=self.queue_backend,
+                queue_message=qt,
             )
             self.queue_backend.fail(
                 qt,
@@ -559,6 +587,8 @@ def _mark_training_task_failed(
     session_factory: SessionFactory,
     payload: dict | str,
     error: BaseException,
+    queue_backend: QueueBackend,
+    queue_message: QueueMessage,
 ) -> None:
     """在 worker 早期异常时把平台 TaskRecord 同步为 failed。
 
@@ -575,7 +605,11 @@ def _mark_training_task_failed(
         task_record = task_service.get_task(task_id).task
         if task_record.state in {"succeeded", "failed", "cancelled"}:
             return
-        task_service.append_task_event(
+        fence_resolver = getattr(queue_backend, "get_execution_fence", None)
+        execution_fence = (
+            fence_resolver(queue_message) if callable(fence_resolver) else None
+        )
+        task_service.execute_task_state_event_command(
             AppendTaskEventRequest(
                 task_id=task_id,
                 event_type="result",
@@ -587,7 +621,8 @@ def _mark_training_task_failed(
                     "error_details": error_payload.get("details", {}),
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                 },
-            )
+            ),
+            fence=execution_fence,
         )
     except Exception:
         return

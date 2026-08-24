@@ -9,6 +9,7 @@ from backend.service.application.datasets.imports import (
     DatasetImportResult,
     SqlAlchemyDatasetImportService,
 )
+from backend.service.application.tasks.task_service import TaskExecutionFence
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import LocalDatasetStorage
 
@@ -24,6 +25,7 @@ class DatasetImportRunRequest:
 
     dataset_import_id: str
     metadata: dict[str, object] = field(default_factory=dict)
+    execution_fence: TaskExecutionFence | None = None
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,10 @@ class SqlAlchemyDatasetImportRunner:
             session_factory=self.session_factory,
             dataset_storage=self.dataset_storage,
         )
-        import_result = service.process_dataset_import(request.dataset_import_id)
+        import_result = service.process_dataset_import(
+            request.dataset_import_id,
+            execution_fence=request.execution_fence,
+        )
         return self._build_run_result(import_result=import_result, request=request)
 
     def _build_run_result(

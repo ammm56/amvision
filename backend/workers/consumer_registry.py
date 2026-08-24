@@ -69,9 +69,8 @@ class BackgroundTaskConsumerResources:
     worker_id_prefix: str
     async_inference_request_timeout_seconds: float = 30.0
     conversion_workspace_dir: str = "./data/worker"
-    conversion_attempt_timeout_seconds: float = 7200.0
     conversion_helper_timeout_seconds: float = 7200.0
-    conversion_termination_grace_seconds: float = 5.0
+    conversion_termination_grace_seconds: float = 15.0
     conversion_publication_orphan_grace_seconds: float = 3600.0
     device_lease_config: DeviceLeaseProviderConfig = field(
         default_factory=DeviceLeaseProviderConfig
@@ -146,9 +145,6 @@ def _conversion_factory(
             queue_backend=queue_backend,
             worker_id=f"{resources.worker_id_prefix}-{suffix}",
             conversion_workspace_dir=resources.conversion_workspace_dir,
-            conversion_attempt_timeout_seconds=(
-                resources.conversion_attempt_timeout_seconds
-            ),
             conversion_helper_timeout_seconds=(
                 resources.conversion_helper_timeout_seconds
             ),
@@ -169,11 +165,16 @@ def _inference_factory(suffix: str) -> _ConsumerFactory:
             "backend.workers.inference.inference_queue_worker",
             "InferenceQueueWorker",
         )
+        task_queue_backend = TaskAttemptClaimingQueueBackend(
+            queue_backend=resources.queue_backend,
+            session_factory=resources.session_factory,
+        )
         return inference_worker_cls(
             consumer_kind=BACKEND_WORKER_CONSUMER_DETECTION_INFERENCE,
             session_factory=resources.session_factory,
             dataset_storage=resources.dataset_storage,
-            queue_backend=resources.queue_backend,
+            queue_backend=task_queue_backend,
+            async_inference_queue_backend=resources.queue_backend,
             async_inference_request_timeout_seconds=resources.async_inference_request_timeout_seconds,
             worker_id=f"{resources.worker_id_prefix}-{suffix}",
         )
@@ -187,11 +188,16 @@ def _dynamic_inference_factory(resources: BackgroundTaskConsumerResources, consu
         "backend.workers.inference.inference_queue_worker",
         "InferenceQueueWorker",
     )
+    task_queue_backend = TaskAttemptClaimingQueueBackend(
+        queue_backend=resources.queue_backend,
+        session_factory=resources.session_factory,
+    )
     return inference_worker_cls(
         consumer_kind=consumer_kind,
         session_factory=resources.session_factory,
         dataset_storage=resources.dataset_storage,
-        queue_backend=resources.queue_backend,
+        queue_backend=task_queue_backend,
+        async_inference_queue_backend=resources.queue_backend,
         async_inference_request_timeout_seconds=resources.async_inference_request_timeout_seconds,
         worker_id=f"{resources.worker_id_prefix}-{consumer_kind}",
     )

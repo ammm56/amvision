@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Event, Lock, Thread
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from backend.service.application.errors import PersistenceOperationError
 from backend.service.application.ports.queue import (
@@ -20,6 +20,17 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 
 LOGGER = logging.getLogger(__name__)
+
+
+def build_task_resume_queue_message_id(*, task_id: str, attempt_no: int) -> str:
+    """为同一 Task 恢复轮次生成固定长度、确定性的 outbox message id。"""
+
+    if not task_id.strip():
+        raise ValueError("task_id 不能为空")
+    if attempt_no <= 0:
+        raise ValueError("attempt_no 必须大于 0")
+    identity = f"task:{task_id}:attempt:{attempt_no}"
+    return f"queue-resume-{uuid5(NAMESPACE_URL, identity).hex}"
 
 
 @dataclass(frozen=True)

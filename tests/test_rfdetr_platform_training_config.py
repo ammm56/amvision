@@ -334,11 +334,11 @@ def test_rfdetr_platform_uses_requested_checkpoint_interval(tmp_path: Path) -> N
     assert train_config.checkpoint_interval == 7
 
 
-def test_rfdetr_checkpoint_interval_one_writes_last_before_train_end(
+def test_rfdetr_checkpoint_interval_one_uses_attempt_memory_checkpoint_io(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """每轮 checkpoint 模式必须由 ModelCheckpoint 直接维护 last.ckpt。"""
+    """每轮完成态由 Attempt 内存 IO 捕获，不再维护每 epoch last.ckpt。"""
 
     captured: dict[str, object] = {}
 
@@ -366,8 +366,9 @@ def test_rfdetr_checkpoint_interval_one_writes_last_before_train_end(
         for callback in captured["callbacks"]
         if getattr(callback, "filename", None) == "checkpoint_{epoch}"
     ]
-    assert len(periodic_callbacks) == 1
-    assert periodic_callbacks[0].save_last is True
+    assert periodic_callbacks == []
+    assert len(captured["plugins"]) == 1
+    assert captured["plugins"][0].__class__.__name__ == "RfdetrAttemptCheckpointIO"
 
 
 def test_rfdetr_platform_exposes_scale_jitter_as_an_independent_option(
@@ -523,24 +524,26 @@ def test_prepare_rfdetr_resume_checkpoint_rejects_legacy_model_payload(
     )
 
 
-def test_rfdetr_real_trainer_cannot_rebuild_missing_last_checkpoint(
+def test_rfdetr_artifacts_use_completed_epoch_memory_checkpoint(
     tmp_path: Path,
 ) -> None:
-    """真实 Trainer 缺少 last.ckpt 时必须失败，不能从训练终态补造 resume。"""
+    """latest 必须直接使用 callback 捕获的最近完整 epoch bytes。"""
 
     best_checkpoint_path = tmp_path / "checkpoint_best_total.pth"
     best_checkpoint_path.write_bytes(b"best")
     trainer = SimpleNamespace(current_epoch=1, save_checkpoint=Mock())
 
-    with pytest.raises(InvalidRequestError, match="缺少 last.ckpt"):
-        read_or_build_checkpoint_artifacts(
-            output_dir=tmp_path,
-            module=SimpleNamespace(),
-            model_config=SimpleNamespace(),
-            train_config=SimpleNamespace(),
-            trainer=trainer,
-        )
+    artifacts = read_or_build_checkpoint_artifacts(
+        output_dir=tmp_path,
+        module=SimpleNamespace(),
+        model_config=SimpleNamespace(),
+        train_config=SimpleNamespace(),
+        trainer=trainer,
+        latest_checkpoint_bytes=b"completed-epoch-checkpoint",
+    )
 
+    assert artifacts.best_checkpoint_bytes == b"best"
+    assert artifacts.latest_checkpoint_bytes == b"completed-epoch-checkpoint"
     trainer.save_checkpoint.assert_not_called()
 
 
@@ -625,6 +628,11 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
             )
 
     trainer = _Trainer()
+    control_callback = SimpleNamespace(
+        current_savepoint=SimpleNamespace(
+            latest_checkpoint_bytes=b"completed-epoch-checkpoint"
+        )
+    )
     prepare_pretrain = Mock(return_value=None)
     release_resources = Mock()
     model_config = SimpleNamespace(resolution=384, amp=False)
@@ -664,6 +672,11 @@ def test_rfdetr_platform_routes_resume_to_lightning_and_releases_resources(
             lambda model_config, train_config: module,
             lambda *args, **kwargs: trainer,
         ),
+    )
+    monkeypatch.setattr(
+        platform_runner_module,
+        "_build_rfdetr_platform_control_callback",
+        lambda **kwargs: control_callback,
     )
     monkeypatch.setattr(
         platform_runner_module,

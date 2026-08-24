@@ -8,17 +8,10 @@ import sys
 from threading import Event
 
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
-from backend.service.application.runtime.deployment.inference_control import (
-    QueueBackedInferenceControlClient,
-)
 from backend.service.application.runtime.deployment.inference_local_mmap import (
     InferenceLocalMmapClient,
     build_inference_local_mmap_path,
 )
-from backend.service.infrastructure.object_store.local_dataset_storage import (
-    LocalDatasetStorage,
-)
-from backend.service.infrastructure.queue.local_file import LocalFileQueueBackend
 from backend.service.settings import get_backend_service_settings
 
 
@@ -34,7 +27,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--probe",
         action="store_true",
-        help="探测持久化控制队列和 mmap 推理热路径，不启动新 daemon",
+        help="探测 mmap 推理热路径，不启动新 daemon",
     )
     return parser
 
@@ -45,37 +38,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
     settings = get_backend_service_settings()
     if args.probe:
-        client = QueueBackedInferenceControlClient(
-            queue_backend=LocalFileQueueBackend(settings.to_queue_settings()),
-            dataset_storage=LocalDatasetStorage(settings.to_dataset_storage_settings()),
-            runtime_mode="sync",
-            service_id=settings.inference_daemon.service_id,
-            request_timeout_seconds=min(
-                5.0,
-                settings.deployment_process_supervisor.request_timeout_seconds,
-            ),
-            startup_timeout_seconds=min(
-                5.0,
-                settings.deployment_process_supervisor.startup_timeout_seconds,
-            ),
-            control_read_timeout_seconds=(
-                settings.inference_daemon.control_read_timeout_seconds
-            ),
-            availability_probe_timeout_seconds=(
-                settings.inference_daemon.availability_probe_timeout_seconds
-            ),
-        )
-        # CLI probe 需要包含冷启动导入后的短暂磁盘争用余量；API 常态读取仍使用
-        # inference_daemon.control_read_timeout_seconds 的快速失败窗口。
-        try:
-            response = client.ping(timeout_seconds=5.0)
-        except Exception as error:  # noqa: BLE001 - CLI probe 必须稳定返回非零退出码
-            print(f"inference-daemon control probe failed: {error}", file=sys.stderr)
-            return 1
-        if response.get("ready") is not True:
-            return 1
         if not settings.inference_daemon.mmap_mailbox.enabled:
-            return 0
+            print(
+                "inference-daemon mmap probe failed: mmap v1 热路径未启用",
+                file=sys.stderr,
+            )
+            return 1
         mmap_client = InferenceLocalMmapClient(
             path=build_inference_local_mmap_path(
                 root_dir=settings.local_buffer_broker.root_dir,

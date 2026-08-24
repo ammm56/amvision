@@ -1,6 +1,6 @@
 # 节点系统
 
-> 当前状态：本页描述可信节点的现有执行边界。Node Pack timeout 的目标语义已由 [ADR-0006](../../decisions/ADR-0006-task-execution-and-runtime-reliability.md) 接受，但尚未完整闭环；详细步骤见 [任务执行与运行时可靠性实施基线](../../development/task-runtime-reliability-implementation.md)。Preview 将保持进程内协作式取消，正式 Runtime 将以整个 worker 作为超时后的强制终止边界，不引入每节点进程或队列。
+> 当前状态：本页描述已经落地的可信节点执行边界。Preview 使用进程内协作式取消；正式 Runtime 使用 generation 级共享取消信号，并以整个 Runtime worker 作为 Node Pack 超时后的强制终止和自动恢复边界。实现不创建每节点进程、控制队列或隐藏重试。
 
 ## 定位
 
@@ -76,6 +76,30 @@ Node Pack 承担：
 
 Workflow Runtime worker、Deployment 常驻进程和后台 Worker 是服务生命周期与故障恢复边界，不是节点权限沙箱。未经信任的代码必须使用独立服务或操作系统级 container/sandbox，不用 manifest 字段伪装成安全隔离。
 
+## Node Pack timeout
+
+Node Pack manifest 的 `timeout` 固定包含 `defaultSeconds`、`maxSeconds` 和 `killGraceSeconds`。当前没有节点实例级 override；`maxSeconds` 只校验 `defaultSeconds` 不越界。HTTP、数据库、相机等节点参数中的 timeout 是业务 I/O timeout，不能覆盖执行器 timeout。
+
+有效执行 deadline 是 Workflow 剩余时间与 `defaultSeconds` 的较小值。Workflow 总 deadline 更早时保留 Workflow 总超时语义；Node Pack deadline 更早时返回 Node Pack 节点超时语义。
+
+Preview 保持最低开销：
+
+- execution context 向 handler 提供 monotonic deadline 和 cancellation Event；
+- handler 可在连接等待、循环或分批处理的安全点协作退出；
+- 不可协作的可信 Python handler 不能在同进程中安全强杀，返回后执行器仍会把本次 Preview 收敛为超时；
+- 不建立 Preview worker 队列、每节点线程或每节点子进程。
+
+正式 Runtime 的强制边界如下：
+
+1. 每个 worker generation 创建一个新的 `multiprocessing.Event`，分派 Run 前由 manager 清理。
+2. 只有能按 pack id 和精确版本解析 timeout policy 的 Node Pack handler 才通过现有 response queue 发送 `node-started` / `node-ended`；Core Node 不发送这组控制消息。
+3. 每次实际 handler 调用使用一个 32 位十六进制 `node_invocation_id`。ForEach 重复调用和 Parallel 并行调用分别登记，互不覆盖。
+4. manager 在一个 invocation map 中观察最早 deadline，不创建每节点 timer。第一次超时原因一经固化便不能被迟到的 `node-ended` 清除；其他并行超时只能缩短强制终止时刻。
+5. 到期时 manager 设置共享 Event，取消整个 Run。`killGraceSeconds` 到期仍无结果时终止该 generation，持久化 `timed_out` 和 `runtime.node_timed_out`，再按 Runtime 的 `desired_state` 自动拉起新 worker。
+6. 超时 Run 不自动重放，避免重复执行文件写入、PLC、HTTP 回调等有副作用节点。旧 generation 的生命周期消息和 Event 不能作用于新 generation。
+
+生命周期消息只属于控制面，不进入节点 payload。图片继续走 LocalBuffer，timeout 协议不会复制图片或改变节点公开输入输出。
+
 ## 外部调用
 
 HTTP、数据库、PLC、相机、ObjectStore 和模型资源由节点通过项目公开接口或对应 SDK 直接使用。节点负责：
@@ -121,6 +145,7 @@ Node Pack 安装和变更遵循 staging、校验、原子激活与恢复：
 - Catalog、Runtime Registry、前端端口和保存文档一致。
 - 节点执行不产生 per-node 进程启动延迟或大图 Base64 复制。
 - timeout、取消、异常和 Runtime 停止能释放文件、连接与 LocalBuffer 引用。
+- Node Pack 超时只产生一个权威 `timed_out` 结果，整代 worker 自动恢复且不重放原 Run。
 - pack 安装、禁用、升级、回滚和启动恢复保留明确版本与错误记录。
 - 缺失外部依赖不会让无关 pack 或 backend-service 启动失败。
 

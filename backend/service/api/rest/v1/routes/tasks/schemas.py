@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from backend.service.domain.tasks.task_records import TaskRecordState
+
 
 class TaskCreateRequestBody(BaseModel):
     """描述公开创建任务接口的请求体。"""
@@ -58,7 +60,7 @@ class TaskSummaryResponse(BaseModel):
     parent_task_id: str | None = Field(default=None, description="父任务 id")
     resource_profile_id: str | None = Field(default=None, description="资源画像 id")
     worker_pool: str | None = Field(default=None, description="worker pool 名称")
-    state: str = Field(description="当前状态")
+    state: TaskRecordState = Field(description="当前状态")
     current_attempt_no: int = Field(description="当前尝试序号")
     started_at: str | None = Field(default=None, description="开始时间")
     finished_at: str | None = Field(default=None, description="结束时间")

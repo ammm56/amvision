@@ -28,6 +28,7 @@ from backend.workers.contracts import (
 from backend.workers.health import (
     BackendWorkerHeartbeat,
     BackendWorkerHeartbeatInfo,
+    BackendWorkerTopologyStopping,
     read_backend_worker_health_summary,
 )
 
@@ -332,8 +333,8 @@ def test_worker_heartbeat_stops_worker_when_active_topology_is_stopped(
         while time.monotonic() < deadline:
             try:
                 heartbeat.assert_healthy()
-            except RuntimeError as error:
-                assert "心跳写入线程异常退出" in str(error)
+            except BackendWorkerTopologyStopping as error:
+                assert "Topology 正在停止" in str(error)
                 break
             time.sleep(0.05)
         else:

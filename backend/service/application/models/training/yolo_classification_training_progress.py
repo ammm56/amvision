@@ -10,6 +10,7 @@ from backend.service.application.models.training.metric_policy import (
 from backend.service.application.tasks.task_service import (
     AppendTaskEventRequest,
     SqlAlchemyTaskService,
+    TaskExecutionFence,
 )
 from backend.service.domain.models.model_task_types import CLASSIFICATION_TASK_TYPE
 from backend.service.domain.models.model_input_spec import serialize_spatial_size_hw
@@ -61,6 +62,7 @@ def append_yolo_classification_epoch_progress(
     progress: YoloClassificationEpochProgressLike,
     dataset_storage: LocalDatasetStorage,
     implementation_mode: str,
+    execution_fence: TaskExecutionFence | None = None,
 ) -> None:
     """写出分类训练 epoch 指标并追加任务进度事件。"""
 
@@ -73,18 +75,28 @@ def append_yolo_classification_epoch_progress(
     )
     dataset_storage.write_json(train_metrics_object_key, train_payload)
     dataset_storage.write_json(validation_metrics_object_key, validation_payload)
-    task_service.append_task_event(
-        build_yolo_classification_epoch_progress_event(
-            task_id=task_id,
-            model_label=model_label,
-            model_type=model_type,
-            attempt_no=attempt_no,
-            output_prefix=output_prefix,
-            train_metrics_object_key=train_metrics_object_key,
-            validation_metrics_object_key=validation_metrics_object_key,
-            progress=progress,
-        )
+    progress_event = build_yolo_classification_epoch_progress_event(
+        task_id=task_id,
+        model_label=model_label,
+        model_type=model_type,
+        attempt_no=attempt_no,
+        output_prefix=output_prefix,
+        train_metrics_object_key=train_metrics_object_key,
+        validation_metrics_object_key=validation_metrics_object_key,
+        progress=progress,
     )
+    if execution_fence is None:
+        task_record = task_service.get_task(task_id).task
+        task_service.execute_task_patch_event_command(
+            progress_event,
+            expected_states=(task_record.state,),
+            expected_current_attempt_no=task_record.current_attempt_no,
+        )
+    else:
+        task_service.record_task_progress_event(
+            progress_event,
+            fence=execution_fence,
+        )
 
 
 def build_yolo_classification_train_metrics_payload(
@@ -174,7 +186,6 @@ def build_yolo_classification_epoch_progress_event(
         event_type="progress",
         message=f"{model_label} epoch {current_epoch}/{progress.max_epochs}",
         payload={
-            "state": "running",
             "attempt_no": attempt_no,
             "progress": progress_payload,
             "result": {

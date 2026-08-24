@@ -59,10 +59,11 @@
 - 首次组装只创建空 `python/`，复制完成后应至少存在 `python/python.exe`。
 - 如果覆盖已有发布目录，组装阶段会先把旧的 `python/` 目录临时移动到旁路目录，完成发布目录重建后再移动回来。
 - 如果 release 组装失败，暂存的 `python/` 目录会恢复回发布目录，避免失败时丢失原有运行时。
-- `assemble-release` 不接受 Python 来源目录，也不会复制或重建 Python 环境；兼容参数 `--bundled-python-source-dir` 一旦传入会立即报错，避免误触发大体量复制。
+- `assemble-release` 不接受 Python 来源目录，也不会复制或重建 Python 环境。
 - 如需更换 bundled Python，应先停止发布目录中的全部进程，再由发布人员在同一磁盘上直接重命名/移动已经准备好的环境目录；必须跨磁盘时才手工复制。
-- 如果当前发布目录原本没有 `python/`，组装阶段会创建空的 `python/` 目录，并在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`。
+- 如果当前发布目录原本没有可执行的 Python，组装阶段会在 release manifest 中把 bundled Python 状态标记为 `placeholder-empty`；只有检测到 Windows `python/python.exe` 或 Linux `python/bin/python[3]` 才会标记为已包含。
 - full 启动器强制要求 `python/python.exe`；缺失时直接失败，不回退到系统 Python 或当前 conda 环境。
+- full Supervisor 启动常驻子进程前会删除父终端继承的 `CONDA_*`、`_CE_CONDA` 和 `_CE_M` 标记，避免同目录 Python 在诊断或子进程中被误认为外部 conda 环境；不会删除正常的 PATH、GPU 或本地运行时配置。
 
 ### 4. 启动 backend-service
 
@@ -136,6 +137,7 @@
 ## 安装后验收清单
 
 - bundled Python 路径正确且不依赖系统 Python
+- 系统诊断中的 `bundled_python` 为 true，`conda_env` 和 `conda_prefix` 为空
 - REST 健康检查正常
 - WebSocket 事件订阅正常
 - worker 能消费队列并回写状态

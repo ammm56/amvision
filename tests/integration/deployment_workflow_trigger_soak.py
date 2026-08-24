@@ -605,7 +605,7 @@ def run_preflight(
     config: RuntimeSoakConfig,
     api_client: SoakApiClient,
 ) -> tuple[RuntimeSoakConfig, dict[str, object]]:
-    """确认资源处于运行状态，并解析 TriggerSource endpoint。"""
+    """确认资源已具备稳定负载条件，并解析 TriggerSource endpoint。"""
 
     preflight: dict[str, object] = {
         "checked_at": _utc_now(),
@@ -615,9 +615,10 @@ def run_preflight(
         deployment_status: dict[str, object] = {}
         for runtime_mode in config.deployment_runtime_modes:
             payload = api_client.get(
-                _deployment_runtime_path(config, runtime_mode, "status")
+                _deployment_runtime_path(config, runtime_mode, "health")
             )
             _require_running_state(payload, f"deployment {runtime_mode}")
+            _require_deployment_soak_ready(payload, f"deployment {runtime_mode}")
             deployment_status[runtime_mode] = payload
         preflight["deployment"] = deployment_status
 
@@ -894,12 +895,17 @@ def _collect_health_sample(
         with _api_client(config) as api_client:
             sample["system_health"] = api_client.get("/system/health")
             if config.deployment_instance_id is not None:
-                sample["deployment"] = {
-                    runtime_mode: api_client.get(
-                        _deployment_runtime_path(config, runtime_mode, "status")
+                deployment_health: dict[str, object] = {}
+                for runtime_mode in config.deployment_runtime_modes:
+                    payload = api_client.get(
+                        _deployment_runtime_path(config, runtime_mode, "health")
                     )
-                    for runtime_mode in config.deployment_runtime_modes
-                }
+                    _require_running_state(payload, f"deployment {runtime_mode}")
+                    _require_deployment_soak_ready(
+                        payload, f"deployment {runtime_mode}"
+                    )
+                    deployment_health[runtime_mode] = payload
+                sample["deployment"] = deployment_health
             if config.workflow_runtime_id is not None:
                 sample["workflow_runtime"] = api_client.get(
                     f"/workflows/app-runtimes/{config.workflow_runtime_id}/health"
@@ -1057,6 +1063,40 @@ def _require_running_state(payload: dict[str, object], label: str) -> None:
     }
     if "running" not in states:
         raise RuntimeError(f"{label} 未运行: states={sorted(states)}")
+
+
+def _require_deployment_soak_ready(
+    payload: dict[str, object], label: str
+) -> None:
+    """要求 Deployment 全部实例健康且完成预热，避免把冷启动计入 soak。"""
+
+    instance_count = _read_non_negative_int(payload, "instance_count", label)
+    healthy_count = _read_non_negative_int(
+        payload, "healthy_instance_count", label
+    )
+    warmed_count = _read_non_negative_int(payload, "warmed_instance_count", label)
+    if (
+        instance_count <= 0
+        or healthy_count != instance_count
+        or warmed_count != instance_count
+    ):
+        raise RuntimeError(
+            f"{label} 尚未完成全部实例预热: "
+            f"instance_count={instance_count}, "
+            f"healthy_instance_count={healthy_count}, "
+            f"warmed_instance_count={warmed_count}"
+        )
+
+
+def _read_non_negative_int(
+    payload: dict[str, object], key: str, label: str
+) -> int:
+    """读取健康响应中的非负整数计数。"""
+
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RuntimeError(f"{label} 缺少合法的 {key}: {value!r}")
+    return value
 
 
 def _reject_failed_payload(payload: dict[str, object], label: str) -> None:

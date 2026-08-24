@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -57,6 +59,10 @@ class SqlAlchemyTaskRepository:
             existing_record.progress_json = dict(task_record.progress)
             existing_record.result_json = dict(task_record.result)
             existing_record.error_message = task_record.error_message
+            existing_record.publication_state = task_record.publication_state
+            existing_record.publication_token = task_record.publication_token
+            existing_record.publication_attempt_no = task_record.publication_attempt_no
+            existing_record.publication_updated_at = task_record.publication_updated_at
         except SQLAlchemyError as error:
             raise PersistenceOperationError(
                 "保存 TaskRecord 失败",
@@ -109,6 +115,179 @@ class SqlAlchemyTaskRepository:
         if record is None:
             return None
         return self._to_task_record_domain(record)
+
+    def try_transition_task(
+        self,
+        task_id: str,
+        *,
+        expected_states: Sequence[str],
+        expected_current_attempt_no: int,
+        field_patch: Mapping[str, object],
+        require_publication_unreserved: bool = False,
+    ) -> bool:
+        """使用 SQL WHERE fence 原子更新 Task 命令拥有的字段。"""
+
+        allowed_fields = {
+            "state",
+            "current_attempt_no",
+            "started_at",
+            "finished_at",
+            "progress_json",
+            "result_json",
+            "error_message",
+            "metadata_json",
+            "task_spec_json",
+        }
+        unknown_fields = set(field_patch) - allowed_fields
+        if unknown_fields:
+            raise ValueError(
+                "Task CAS 包含未授权字段: " + ", ".join(sorted(unknown_fields))
+            )
+        if not expected_states:
+            raise ValueError("Task CAS expected_states 不能为空")
+        conditions = [
+            TaskRecordEntity.task_id == task_id,
+            TaskRecordEntity.state.in_(tuple(expected_states)),
+            TaskRecordEntity.current_attempt_no == expected_current_attempt_no,
+        ]
+        if require_publication_unreserved:
+            conditions.append(TaskRecordEntity.publication_state.is_(None))
+        statement = (
+            update(TaskRecordEntity)
+            .where(*conditions)
+            .values(**dict(field_patch))
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "原子更新 TaskRecord 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
+
+    def try_begin_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_current_attempt_no: int,
+        publication_token: str,
+        publication_updated_at: str,
+    ) -> bool:
+        """仅在 running 且尚无 reservation 时原子取得发布权。"""
+
+        statement = (
+            update(TaskRecordEntity)
+            .where(
+                TaskRecordEntity.task_id == task_id,
+                TaskRecordEntity.state == "running",
+                TaskRecordEntity.current_attempt_no == expected_current_attempt_no,
+                TaskRecordEntity.publication_state.is_(None),
+            )
+            .values(
+                publication_state="reserved",
+                publication_token=publication_token,
+                publication_attempt_no=expected_current_attempt_no,
+                publication_updated_at=publication_updated_at,
+            )
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "取得 Conversion publication reservation 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
+
+    def try_transition_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_task_states: Sequence[str],
+        expected_current_attempt_no: int,
+        expected_publication_state: str,
+        publication_token: str,
+        target_publication_state: str,
+        publication_updated_at: str,
+    ) -> bool:
+        """同时核验 Task、Attempt、token 和 publication state 后推进状态。"""
+
+        if not expected_task_states:
+            raise ValueError("expected_task_states 不能为空")
+        allowed_states = {"reserved", "published", "registered", "aborted"}
+        if (
+            expected_publication_state not in allowed_states
+            or target_publication_state not in allowed_states
+        ):
+            raise ValueError("publication state 不合法")
+        statement = (
+            update(TaskRecordEntity)
+            .where(
+                TaskRecordEntity.task_id == task_id,
+                TaskRecordEntity.state.in_(tuple(expected_task_states)),
+                TaskRecordEntity.current_attempt_no == expected_current_attempt_no,
+                TaskRecordEntity.publication_attempt_no
+                == expected_current_attempt_no,
+                TaskRecordEntity.publication_state == expected_publication_state,
+                TaskRecordEntity.publication_token == publication_token,
+            )
+            .values(
+                publication_state=target_publication_state,
+                publication_updated_at=publication_updated_at,
+            )
+        )
+        try:
+            result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "推进 Conversion publication reservation 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(result.rowcount)
+
+    def try_complete_conversion_publication(
+        self,
+        task_id: str,
+        *,
+        expected_current_attempt_no: int,
+        publication_token: str,
+        publication_updated_at: str,
+        finished_at: str,
+        progress: Mapping[str, object],
+        result: Mapping[str, object],
+    ) -> bool:
+        """在一条 SQL 中登记 publication 并完成 Conversion Task。"""
+
+        statement = (
+            update(TaskRecordEntity)
+            .where(
+                TaskRecordEntity.task_id == task_id,
+                TaskRecordEntity.state == "running",
+                TaskRecordEntity.current_attempt_no == expected_current_attempt_no,
+                TaskRecordEntity.publication_attempt_no
+                == expected_current_attempt_no,
+                TaskRecordEntity.publication_state == "published",
+                TaskRecordEntity.publication_token == publication_token,
+            )
+            .values(
+                publication_state="registered",
+                publication_updated_at=publication_updated_at,
+                state="succeeded",
+                finished_at=finished_at,
+                progress_json=dict(progress),
+                result_json=dict(result),
+                error_message=None,
+            )
+        )
+        try:
+            update_result = self.session.execute(statement)
+        except SQLAlchemyError as error:
+            raise PersistenceOperationError(
+                "原子完成 Conversion publication 失败",
+                details={"error_type": error.__class__.__name__},
+            ) from error
+        return bool(update_result.rowcount)
 
     def list_tasks(self, project_id: str) -> tuple[TaskRecord, ...]:
         """按 Project id 列出任务记录。
@@ -505,6 +684,10 @@ class SqlAlchemyTaskRepository:
             progress_json=dict(task_record.progress),
             result_json=dict(task_record.result),
             error_message=task_record.error_message,
+            publication_state=task_record.publication_state,
+            publication_token=task_record.publication_token,
+            publication_attempt_no=task_record.publication_attempt_no,
+            publication_updated_at=task_record.publication_updated_at,
         )
 
     def _to_task_attempt_entity(self, task_attempt: TaskAttempt) -> TaskAttemptEntity:
@@ -562,6 +745,10 @@ class SqlAlchemyTaskRepository:
             progress=dict(record.progress_json or {}),
             result=dict(record.result_json or {}),
             error_message=record.error_message,
+            publication_state=record.publication_state,
+            publication_token=record.publication_token,
+            publication_attempt_no=record.publication_attempt_no,
+            publication_updated_at=record.publication_updated_at,
         )
 
     def _to_task_attempt_domain(self, record: TaskAttemptEntity) -> TaskAttempt:

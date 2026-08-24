@@ -2,9 +2,9 @@
 
 ## 状态
 
-已接受，实施契约已冻结，待分阶段实现。
+已接受并实现。阶段 1 至阶段 7 已完成；源码开发环境真实 Deployment、Workflow Runtime、TriggerSource 业务负载与发行基础设施已分别通过验收。目标机器的长时硬件 soak 继续作为部署验收执行。
 
-详细实施顺序、迁移边界和验收门禁见 [任务执行与运行时可靠性实施基线](../development/task-runtime-reliability-implementation.md)。在对应阶段通过门禁前，本 ADR 不表示相关能力已经落地。
+详细实施顺序、迁移边界、已完成阶段和剩余验收门禁见 [任务执行与运行时可靠性实施基线](../development/task-runtime-reliability-implementation.md)。
 
 ## 背景
 

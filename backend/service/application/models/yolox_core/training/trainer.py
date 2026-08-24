@@ -22,7 +22,7 @@ from backend.service.application.models.training.training_engine import (
     record_active_training_batch_stage_metrics,
 )
 from backend.service.application.models.training.checkpoint_policy import (
-    resolve_training_checkpoint_decision,
+    resolve_training_checkpoint_persistence_decision,
 )
 from backend.service.application.models.yolox_core.cfg import YOLOX_DEFAULT_INPUT_SIZE
 from backend.service.application.models.yolox_core.utils.torch_runtime import (
@@ -140,7 +140,7 @@ class LoadedYoloXResumeState:
     - validation_history：恢复前累计的验证指标轨迹。
     - best_metric_name：恢复前记录的最佳指标名称。
     - best_metric_value：恢复前记录的最佳指标值。
-    - best_checkpoint_state：恢复前缓存的 best checkpoint 状态；为空时表示尚未产生。
+    - best_checkpoint_bytes：恢复前缓存的不可变 best checkpoint；为空时表示尚未产生。
     - warm_start_summary：恢复后继续沿用的 warm start 摘要。
     """
 
@@ -149,7 +149,7 @@ class LoadedYoloXResumeState:
     validation_history: list[dict[str, object]]
     best_metric_name: str
     best_metric_value: float | None
-    best_checkpoint_state: dict[str, object] | None
+    best_checkpoint_bytes: bytes | None
     warm_start_summary: dict[str, object]
 
 
@@ -184,8 +184,11 @@ class YoloXTrainingLoopRequest:
     scheduler: Any
     grad_scaler: Any
     model_ema: Any | None
-    validation_evaluator: Callable[[Any], dict[str, float]] | None
+    validation_evaluator: Callable[
+        [Any, Callable[[], None] | None], dict[str, float]
+    ] | None
     batch_callback: Callable[[YoloXTrainingBatchProgress], None] | None
+    control_callback: Callable[[], YoloXTrainingControlCommand | None] | None
     epoch_callback: (
         Callable[
             [YoloXTrainingEpochProgress],
@@ -219,7 +222,7 @@ class YoloXTrainingLoopRequest:
     validation_epoch_history: list[dict[str, object]] | None = None
     best_metric_name: str | None = None
     best_metric_value: float | None = None
-    best_checkpoint_state: dict[str, object] | None = None
+    best_checkpoint_bytes: bytes | None = None
     no_aug_epochs: int = 0
     multiscale_range: int = 0
     random_seed: int = 0
@@ -232,8 +235,8 @@ class YoloXTrainingLoopResult:
     """描述 YOLOX core 训练循环的执行结果。
 
     字段：
-    - status：执行状态，取值为 completed、paused 或 terminated。
-    - savepoint：暂停前生成的 savepoint；非 paused 时为空。
+    - status：执行成功时固定为 completed；暂停和终止通过控制异常返回。
+    - savepoint：保留为空，恢复快照由控制异常携带。
     - checkpoint_bytes：best checkpoint 二进制；completed 时必填。
     - latest_checkpoint_bytes：latest checkpoint 二进制；completed 时必填。
     - metrics_payload：train-metrics.json 载荷；completed 时必填。
@@ -252,6 +255,18 @@ class YoloXTrainingLoopResult:
     best_metric_name: str = ""
     best_metric_value: float | None = None
     final_metrics: dict[str, object] | None = None
+
+
+class YoloXTrainingLoopPausedError(Exception):
+    """表示 YOLOX 在 batch/epoch 安全点完成暂停。"""
+
+    def __init__(self, savepoint: YoloXTrainingSavePoint) -> None:
+        super().__init__("YOLOX 训练已暂停")
+        self.savepoint = savepoint
+
+
+class YoloXTrainingLoopTerminatedError(Exception):
+    """表示 YOLOX 在 batch/epoch 安全点完成终止。"""
 
 
 # 训练结果与接口文档会公开这一实现模式标识，用于区分当前 YOLOX detection 训练链路。
@@ -646,10 +661,10 @@ def load_yolox_resume_checkpoint(
         else:
             best_metric_value = None
 
-    raw_best_checkpoint_state = checkpoint_payload.get("best_checkpoint_state")
-    best_checkpoint_state = (
-        {str(key): value for key, value in raw_best_checkpoint_state.items()}
-        if isinstance(raw_best_checkpoint_state, dict)
+    raw_best_checkpoint_bytes = checkpoint_payload.get("best_checkpoint_bytes")
+    best_checkpoint_bytes = (
+        bytes(raw_best_checkpoint_bytes)
+        if isinstance(raw_best_checkpoint_bytes, bytes | bytearray)
         else None
     )
     warm_start_summary = checkpoint_payload.get("warm_start_summary")
@@ -659,7 +674,7 @@ def load_yolox_resume_checkpoint(
         validation_history=validation_history,
         best_metric_name=best_metric_name,
         best_metric_value=best_metric_value,
-        best_checkpoint_state=best_checkpoint_state,
+        best_checkpoint_bytes=best_checkpoint_bytes,
         warm_start_summary=(
             dict(warm_start_summary)
             if isinstance(warm_start_summary, dict)
@@ -728,7 +743,7 @@ def build_yolox_checkpoint_state(
     best_metric_name: str | None = None,
     best_metric_value: float | None = None,
     warm_start_summary: dict[str, object] | None = None,
-    best_checkpoint_state: dict[str, object] | None = None,
+    best_checkpoint_bytes: bytes | None = None,
 ) -> dict[str, object]:
     """构建一个可直接序列化保存的 YOLOX checkpoint 状态。"""
 
@@ -766,8 +781,8 @@ def build_yolox_checkpoint_state(
         checkpoint_state["best_metric_value"] = best_metric_value
     if warm_start_summary is not None:
         checkpoint_state["warm_start_summary"] = dict(warm_start_summary)
-    if best_checkpoint_state is not None:
-        checkpoint_state["best_checkpoint_state"] = best_checkpoint_state
+    if best_checkpoint_bytes is not None:
+        checkpoint_state["best_checkpoint_bytes"] = best_checkpoint_bytes
     return checkpoint_state
 
 
@@ -786,9 +801,9 @@ def run_yolox_training_loop(
     best_metric_value = request.best_metric_value
     if best_metric_value is None and request.validation_loader is None:
         best_metric_value = float("inf")
-    best_checkpoint_state = (
-        dict(request.best_checkpoint_state)
-        if request.best_checkpoint_state is not None
+    best_checkpoint_bytes = (
+        bytes(request.best_checkpoint_bytes)
+        if request.best_checkpoint_bytes is not None
         else None
     )
     current_input_size = tuple(request.current_input_size)
@@ -797,6 +812,90 @@ def run_yolox_training_loop(
     global_iter = request.start_epoch * max_iterations
     if request.model_ema is not None:
         request.model_ema.updates = global_iter
+
+    def build_completed_epoch_savepoint(
+        *,
+        completed_epoch: int,
+        metric_value: float,
+    ) -> YoloXTrainingSavePoint:
+        """序列化最近完整 epoch 的不可变恢复快照。"""
+
+        checkpoint_model = (
+            request.model_ema.ema
+            if request.model_ema is not None
+            else request.base_model
+        )
+        latest_checkpoint_state = build_yolox_checkpoint_state(
+            model=checkpoint_model,
+            optimizer=request.optimizer,
+            epoch=completed_epoch,
+            metric_name=best_metric_name,
+            metric_value=metric_value,
+            category_names=request.train_category_names,
+            model_scale=request.model_scale,
+            input_size=request.input_size,
+            precision=request.precision,
+            gpu_count=request.gpu_count,
+            device_ids=request.device_ids,
+            checkpoint_kind="latest",
+            batch_size=request.batch_size,
+            validation_split_name=request.validation_split_name,
+            evaluation_interval=(
+                request.evaluation_interval
+                if request.validation_loader is not None
+                else None
+            ),
+            evaluation_confidence_threshold=(
+                request.evaluation_confidence_threshold
+                if request.validation_loader is not None
+                else None
+            ),
+            evaluation_nms_threshold=(
+                request.evaluation_nms_threshold
+                if request.validation_loader is not None
+                else None
+            ),
+            epoch_history=epoch_history,
+            validation_history=validation_epoch_history,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+            warm_start_summary=request.warm_start_summary,
+            best_checkpoint_bytes=best_checkpoint_bytes,
+        )
+        return YoloXTrainingSavePoint(
+            epoch=completed_epoch,
+            latest_checkpoint_bytes=serialize_yolox_checkpoint_bytes(
+                torch_module=request.torch_module,
+                checkpoint_state=latest_checkpoint_state,
+            ),
+            best_checkpoint_bytes=best_checkpoint_bytes,
+            best_metric_name=best_metric_name,
+            best_metric_value=best_metric_value,
+        )
+
+    last_completed_savepoint = build_completed_epoch_savepoint(
+        completed_epoch=request.start_epoch,
+        metric_value=float(best_metric_value or 0.0),
+    )
+
+    def observe_control() -> None:
+        """在 train/validation batch 安全点处理控制命令。"""
+
+        if request.control_callback is None:
+            return
+        command = request.control_callback()
+        if command is None:
+            return
+        if (
+            command.save_checkpoint
+            or command.pause_training
+            or command.terminate_training
+        ) and request.savepoint_callback is not None:
+            request.savepoint_callback(last_completed_savepoint)
+        if command.pause_training:
+            raise YoloXTrainingLoopPausedError(last_completed_savepoint)
+        if command.terminate_training:
+            raise YoloXTrainingLoopTerminatedError()
 
     set_yolox_training_loader_input_size(
         train_dataset=request.train_dataset,
@@ -902,6 +1001,7 @@ def run_yolox_training_loop(
                         ),
                     )
                 )
+            observe_control()
             if request.multiscale_range > 0 and global_iter % 10 == 0:
                 current_input_size = random_resize_yolox_input_size(
                     base_input_size=request.input_size,
@@ -940,7 +1040,10 @@ def run_yolox_training_loop(
                 evaluation_interval=request.evaluation_interval,
             )
             if validation_ran:
-                validation_metrics = request.validation_evaluator(evaluation_model)
+                validation_metrics = request.validation_evaluator(
+                    evaluation_model,
+                    observe_control,
+                )
             for metric_name, metric_value in validation_metrics.items():
                 epoch_metrics[f"val_{metric_name}"] = metric_value
         epoch_metrics["epoch"] = current_epoch
@@ -990,6 +1093,10 @@ def run_yolox_training_loop(
                     if request.validation_loader is not None
                     else None
                 ),
+            )
+            best_checkpoint_bytes = serialize_yolox_checkpoint_bytes(
+                torch_module=request.torch_module,
+                checkpoint_state=best_checkpoint_state,
             )
 
         if validation_ran:
@@ -1063,7 +1170,7 @@ def run_yolox_training_loop(
                 )
             )
 
-        checkpoint_decision = resolve_training_checkpoint_decision(
+        checkpoint_decision = resolve_training_checkpoint_persistence_decision(
             completed_epoch=current_epoch,
             max_epochs=request.max_epochs,
             interval_epochs=request.checkpoint_interval,
@@ -1076,73 +1183,22 @@ def run_yolox_training_loop(
                 control_command and control_command.terminate_training
             ),
         )
-        if checkpoint_decision.should_serialize:
-            latest_checkpoint_state = build_yolox_checkpoint_state(
-                model=checkpoint_model,
-                optimizer=request.optimizer,
-                epoch=current_epoch,
-                metric_name=best_metric_name,
-                metric_value=(
-                    float(current_metric_value)
-                    if current_metric_value is not None
-                    else float(best_metric_value or 0.0)
-                ),
-                category_names=request.train_category_names,
-                model_scale=request.model_scale,
-                input_size=request.input_size,
-                precision=request.precision,
-                gpu_count=request.gpu_count,
-                device_ids=request.device_ids,
-                checkpoint_kind="latest",
-                batch_size=request.batch_size,
-                validation_split_name=request.validation_split_name,
-                evaluation_interval=(
-                    request.evaluation_interval
-                    if request.validation_loader is not None
-                    else None
-                ),
-                evaluation_confidence_threshold=(
-                    request.evaluation_confidence_threshold
-                    if request.validation_loader is not None
-                    else None
-                ),
-                evaluation_nms_threshold=(
-                    request.evaluation_nms_threshold
-                    if request.validation_loader is not None
-                    else None
-                ),
-                epoch_history=epoch_history,
-                validation_history=validation_epoch_history,
-                best_metric_name=best_metric_name,
-                best_metric_value=best_metric_value,
-                warm_start_summary=request.warm_start_summary,
-                best_checkpoint_state=best_checkpoint_state,
-            )
-            savepoint = YoloXTrainingSavePoint(
-                epoch=current_epoch,
-                latest_checkpoint_bytes=serialize_yolox_checkpoint_bytes(
-                    torch_module=request.torch_module,
-                    checkpoint_state=latest_checkpoint_state,
-                ),
-                best_checkpoint_bytes=(
-                    serialize_yolox_checkpoint_bytes(
-                        torch_module=request.torch_module,
-                        checkpoint_state=best_checkpoint_state,
-                    )
-                    if best_checkpoint_state is not None
-                    else None
-                ),
-                best_metric_name=best_metric_name,
-                best_metric_value=best_metric_value,
-            )
-            if request.savepoint_callback is not None:
-                request.savepoint_callback(savepoint)
-            if control_command is not None and control_command.pause_training:
-                return YoloXTrainingLoopResult(status="paused", savepoint=savepoint)
-            if control_command is not None and control_command.terminate_training:
-                return YoloXTrainingLoopResult(status="terminated", savepoint=savepoint)
+        last_completed_savepoint = build_completed_epoch_savepoint(
+            completed_epoch=current_epoch,
+            metric_value=(
+                float(current_metric_value)
+                if current_metric_value is not None
+                else float(best_metric_value or 0.0)
+            ),
+        )
+        if checkpoint_decision.should_persist and request.savepoint_callback is not None:
+            request.savepoint_callback(last_completed_savepoint)
+        if control_command is not None and control_command.pause_training:
+            raise YoloXTrainingLoopPausedError(last_completed_savepoint)
+        if control_command is not None and control_command.terminate_training:
+            raise YoloXTrainingLoopTerminatedError()
 
-    if best_checkpoint_state is None or best_metric_value is None:
+    if best_checkpoint_bytes is None or best_metric_value is None:
         raise ServiceConfigurationError("YOLOX 训练没有生成有效 checkpoint")
 
     final_metrics = dict(epoch_history[-1]) if epoch_history else {}
@@ -1184,6 +1240,7 @@ def run_yolox_training_loop(
             if request.validation_loader is not None
             else None
         ),
+        best_checkpoint_bytes=best_checkpoint_bytes,
     )
 
     validation_metrics_payload = build_yolox_validation_metrics_payload(
@@ -1236,10 +1293,7 @@ def run_yolox_training_loop(
     )
     return YoloXTrainingLoopResult(
         status="completed",
-        checkpoint_bytes=serialize_yolox_checkpoint_bytes(
-            torch_module=request.torch_module,
-            checkpoint_state=best_checkpoint_state,
-        ),
+        checkpoint_bytes=best_checkpoint_bytes,
         latest_checkpoint_bytes=serialize_yolox_checkpoint_bytes(
             torch_module=request.torch_module,
             checkpoint_state=latest_checkpoint_state,
