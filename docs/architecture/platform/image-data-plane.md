@@ -8,7 +8,9 @@
 
 ## 实现状态
 
-LocalBuffer raw/encoded 输入、ZeroMQ 图片请求、Workflow 单次解码复用、多 `result_bindings`、固定 `TriggerResponsePlan`、输出规范化、ObjectStore 稳定快照、output lease handoff、`Image Encode`、统一 ZeroMQ binary attachments、完整 SDK 返回生命周期和 `local-shared-memory` Trigger 均已交付。源码开发环境已通过性能矩阵、10,000 次混合 soak、真实 Workflow/Deployment/Trigger 链路和故障恢复门禁。
+LocalBuffer raw/encoded 输入、ZeroMQ 图片请求、Workflow 单次解码复用、多 `result_bindings`、固定 `TriggerResponsePlan`、输出规范化、ObjectStore 稳定快照、output lease handoff、`Image Encode`、统一 ZeroMQ binary attachments、SDK 返回生命周期和 `local-shared-memory` Trigger 主体已经交付，并保留过往性能与 soak 证据。
+
+代码复审仍确认两组待实现项：Workflow Trigger mailbox 的共享 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消和 per-source health；LocalBuffer 当前仍是固定分辨率 pool/slot，尚未迁移到固定总容量 arena + buddy allocator。因此不能把历史门禁表述为“当前设计全部完成”。下一阶段唯一实施顺序见[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)，LocalBuffer 目标决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
 ## 现场目标
 
@@ -95,7 +97,7 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 | --- | --- | --- | --- |
 | deployment 控制队列 | start、stop、warmup、reset | 是 | 恢复、审计、低频变更控制 |
 | inference mmap v1 mailbox | infer、ping、status、health、process config、BufferRef/FrameRef、结构化结果 | 否 | 同机低延迟推理和只读状态 |
-| LocalBufferBroker pool | raw BGR24 / encoded 输入和结果图片 bytes | 短期 lease | 图片主体 |
+| LocalBufferBroker arena | raw BGR24 / encoded 输入和结果图片 bytes | 短期 lease | 图片主体 |
 | ObjectStore | 上传图片、保存结果、审计输入 | 是 | 低频和可追溯边界 |
 
 约束如下：
@@ -105,7 +107,7 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 - BufferRef/FrameRef 在同步调用返回前由 Workflow owner 保持 lease；deployment worker 复制完成或推理完成后，节点再释放临时 lease。
 - raw BGR24 使用只读 mmap `memoryview -> np.frombuffer`，不执行 PNG/JPEG encode/decode。
 - encoded JPEG/PNG/BMP 在 direct mmap reader 中同样保持为只读 `memoryview`，只在 `cv2.imdecode` 内部生成目标矩阵，不先复制一份 encoded bytes。
-- mmap reader 只能打开 `LocalBufferBrokerSettings.pools` 明确配置的文件，并校验 offset、size 和 slot 边界，不能读取任意本地路径。
+- mmap reader 只能打开 SDK/服务配置固定的 arena 文件，并校验 layout fingerprint、broker epoch、descriptor generation、offset、content length 和 allocation capacity，不能读取任意本地路径。
 - storage/inline 同步输入由 backend-service 写入主 LocalBuffer；持久异步任务由 daemon 领取 ObjectStore 引用后写入私有短期 LocalBuffer。要求同步结果图片时由 backend-service 预分配 writing lease，daemon 直接写入；mmap 和模型进程 Queue 都不携带图片 bytes 或 base64。
 - mmap 成功或收到 daemon 错误响应后立即释放临时 lease；传输状态不确定时保留 lease 到 TTL，由 Broker 回收，不能提前复用给下一请求。
 - mailbox descriptor 请求和响应包含 server epoch、generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 descriptor identity、next page、长度和 CRC32。
@@ -158,7 +160,8 @@ ZeroMQ TriggerSource adapter 接收第二帧图片 bytes 后写入 LocalBufferBr
 - `dtype`
 - `layout`
 - `pixel_format`
-- `pool_name`
+
+allocator 只按精确 `content_length` 选择动态 extent；adapter 不再选择或传递分辨率 pool/size class。
 
 如果没有第二帧，adapter 仍按纯事件触发执行 workflow app，满足 PLC、传感器和空参数触发场景。纯事件触发不应被 BGR24 规则限制。
 
@@ -293,7 +296,7 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 
 不支持同步结果的 Trigger 通过固定 `result_mode=event-only` 丢弃输出，不在每次调用中临时猜测。同步 adapter 不支持已选择的图片 binding 时拒绝配置；不需要的 binding 直接不选择，不增加 discard 开关。顶层 `result_mode`、`reply_timeout_seconds` 和 `ack_policy` 是唯一事实源，`result_mapping` 只保存有序 `result_bindings`。响应计划在创建、enable、Runtime 切版和实际调用前按 route/contract/capability fingerprint 固定，使 worker 能在 cleanup 前完成所需 handoff。
 
-已完成的 `local-shared-memory` Trigger 支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 pool、expected owner、epoch、generation、deadline 和 guard identity。SDK 完成精确长度写入后先释放写 view/guard，再发布 REQUEST。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，Broker 在同一 pool lock 内确认 guard 已释放，并原子完成 `WRITING -> ACTIVE` 与 `workflow-trigger-write -> workflow-runtime` owner transfer；trusted-local 输入不做第二次 full-image CRC。每个失败点按当时 receipt 补偿回收。
+现有 `local-shared-memory` Trigger 支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 allocator identity、expected owner、epoch、generation、deadline 和 guard identity。SDK 完成精确长度写入后先释放写 view/guard，再发布 REQUEST。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，Broker 在 publication/allocator 规则内确认 guard 和 receipt，并原子完成 `WRITING -> ACTIVE` 与 `workflow-trigger-write -> workflow-runtime` owner transfer；trusted-local 输入不做第二次 full-image CRC。每个失败点按当时 receipt 补偿回收。目标 arena/descriptor 字段和锁顺序见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
 该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的 reader guard 由 SDK 结果对象保持到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；JSON-only 或 SDK-owned copy 可以提前 ACK。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
 
@@ -338,7 +341,7 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 
 - SDK：获得输入图片后到发送前的 copy/convert 时间、send 等待时间、reply 等待时间。
 - Adapter：ZeroMQ 收包、LocalBufferBroker 写入、WorkflowRun submit 时间。
-- LocalBufferBroker：pool、slot、写入 bytes、等待、拒绝、覆盖、lease 生命周期。
+- LocalBufferBroker：arena/order/extent、写入 bytes、连续容量、拒绝、REVOKING/QUARANTINED 和 lease 生命周期。
 - Workflow 节点：raw view、copy、encode、decode、节点执行耗时。
 - 模型 runtime：decode/raw_view、preprocess、infer、postprocess、serialize。
 - Result：reply payload bytes、是否包含 inline-base64、图片编码耗时。

@@ -2,9 +2,9 @@
 
 ## 状态
 
-已接受并完成实现；阶段 0–9 的源码开发环境门禁全部通过，包含 binary protocol v1、mmap 中立原语、External LocalBuffer lease、统一 Runtime execution token、全局 mailbox、严格准入、首次 input owner handoff、固定 output plan、输出规范化、ObjectStore 稳定快照、output lease handoff、.NET SDK 共享内存调用、Workflow 图片编码节点、统一 ZeroMQ Result v1、transport-lifetime registry、原子结果契约迁移、故障恢复、opt-in 分阶段耗时诊断、性能矩阵和真实业务持续负载。
+已接受并交付主体实现。历史阶段 0–9 曾通过对应源码开发环境门禁，但后续代码复审确认仍需修复 Workflow Trigger mailbox 的共享 overflow page 并发、总 deadline、独立 ACK deadline、PROCESSING 取消和 per-source health；LocalBuffer 固定分辨率 pool/slot 也将由 ADR-0008 的固定 arena 方案替代。这些是实现完整性修正，不改变本 ADR 的 Trigger 产品边界。
 
-本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。详细 binary layout、状态机、组件改造顺序、性能数据和验证门禁见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。`local-shared-memory` 与 `zeromq-topic` 现为并列的正式 adapter；发布目录仍只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
+本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。已交付协议细节与历史性能数据见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；下一阶段修复与迁移顺序见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
 
 ## 背景
 

@@ -2,11 +2,13 @@
 
 ## 状态与职责
 
-状态：**已实现；阶段 0–9 的源码开发环境门禁均已完成**。
+状态：**已交付功能基线；历史阶段 0–9 曾通过对应门禁，但复审发现下一阶段必须修复的可靠性和容量模型问题。**
 
-本页是 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 的唯一详细实施基线，用于约束本机共享内存 Workflow Trigger、.NET SDK External LocalBuffer Writer Lease、全局 Trigger mailbox、统一 Runtime execution token、output lease handoff 和图片格式边界的后续实现。
+本页保留 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 已交付协议、.NET SDK External LocalBuffer Writer Lease、全局 Trigger mailbox、Runtime execution token、output lease handoff、结果生命周期和历史性能证据。它不再表示当前共享内存实现没有缺口，也不作为下一阶段完成状态来源。
 
-当前实施进度：
+下一阶段必须按[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)执行：先修复 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消和 per-source health，再按 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)把固定分辨率 pool/slot 原子迁移为固定总容量 arena + buddy allocator。与下一阶段文档冲突时，以新实施基线和最新 ADR 为准。
+
+以下表格是已交付基线的历史验证记录，不是下一阶段完成清单：
 
 | 阶段 | 状态 | 已通过门禁 |
 | --- | --- | --- |
@@ -583,6 +585,8 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 所有 cleanup 项必须保存私有 `LeaseOwnershipReceipt`，至少包含 expected lease id、buffer id、pool、broker epoch、generation、owner kind/id、deadline、guard identity 和精确范围。旧 owner cleanup 遇到 handoff 后的新 owner 时返回幂等 no-op，不能按公开 BufferRef 或 lease id 释放。
 
 ### writer/reader guard
+
+本节记录已交付固定 pool/slot 实现的 guard 语义。下一阶段只保留“写入/读取期间持有 OS guard、回收前重验 identity”的原则；物理 guard 布局和锁顺序必须迁移为 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 与[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)定义的 descriptor publication/writer/reader ranges，不能继续新增固定 pool 代码。
 
 - 每个 pool 使用固定 guard 文件和 slot 对应 byte range，文件仍位于该 pool 的 `data/buffers/` 根目录内。
 - SDK writer 从首字节写入前持有 guard，到 REQUEST 发布后释放。

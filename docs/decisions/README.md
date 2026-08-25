@@ -11,6 +11,7 @@ ADR 记录已经接受的关键取舍及未采用方案。ADR 可以处于待实
 - [ADR-0005：稳定 Workflow Runtime 与不可变 App Version](ADR-0005-workflow-app-versioned-runtime.md)
 - [ADR-0006：任务终态、转换发布与节点超时治理](ADR-0006-task-execution-and-runtime-reliability.md)
 - [ADR-0007：本机共享内存 Workflow Trigger](ADR-0007-local-shared-memory-workflow-trigger.md)
+- [ADR-0008：LocalBuffer 固定总容量与动态分配](ADR-0008-local-buffer-fixed-arena-allocation.md)
 
 ## 规则
 

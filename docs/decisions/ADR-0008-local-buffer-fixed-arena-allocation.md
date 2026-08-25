@@ -1,0 +1,143 @@
+# ADR-0008：LocalBuffer 固定总容量与动态分配
+
+## 状态
+
+已接受，尚未实现。实现必须遵循[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)，不能只替换分配器而遗漏 Trigger mailbox、deadline、取消、SDK 映射和故障回收。
+
+## 背景
+
+当前 LocalBufferBroker 按 `image-640x640`、`image-1080p`、`image-4k` 等名称创建固定大小、固定数量的 slot。该实现能提供简单的连续 mmap 区域，但存在以下结构性问题：
+
+- 未显式指定 `pool_name` 时进入默认大图 pool，小图也会占用完整大 slot；
+- 调用方必须理解服务端 pool 配置，图片尺寸与资源配置耦合；
+- pool 之间的空闲容量不能互相使用；
+- 单 lease 不能超过最大固定 slot，无法覆盖极端大幅面线扫图；
+- 增加更多分辨率 pool 只会继续放大配置、容量浪费和维护成本。
+
+LocalBuffer 承担图片 bytes 和短期生命周期，不承担图片格式识别、解码、业务排队或持久化。分配策略应只依据精确 `content_length`，不依据分辨率名称或 media type。
+
+## 决策
+
+### 1. 每个 Broker owner 使用一个固定容量 arena
+
+backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小的 arena。inference daemon 私有异步暂存区仍属于独立 Broker owner，可以使用相同文件格式和分配器，但有独立容量；不同 owner 不共享 allocator 状态。
+
+默认几何参数：
+
+| 参数 | 默认值 | 含义 |
+| --- | ---: | --- |
+| `arena_id` | `main` | 配置包与引用共同使用的稳定 arena 标识 |
+| `arena_size_bytes` | 2 GiB | 主图片 arena 总容量 |
+| `min_block_size_bytes` | 1 MiB | buddy allocator 最小块 |
+| `max_allocation_bytes` | 1 GiB | 单次连续分配上限 |
+| `huge_reserve_bytes` | 0 | 默认不为超大图硬保留容量 |
+| `reader_guard_slots` | 64 | 每个 descriptor 的并发只读 guard 数 |
+| `max_32bit_view_bytes` | 256 MiB | 32-bit .NET 进程允许建立的单 view 上限 |
+| `flush_on_write` | `false` | 临时图片写入不主动同步 flush |
+
+`min_block_size_bytes` 必须是 2 的幂；`arena_size_bytes / min_block_size_bytes` 与 `max_allocation_bytes / min_block_size_bytes` 必须是 2 的幂，且 max 不得超过 arena。当前 hard reserve 为保持单一简单语义，只允许 `0` 或 `max_allocation_bytes`；非零 reserve 固定在 arena 高地址端，剩余 general 区也必须形成完整 buddy root。配置不合法时启动失败，不能静默修正。
+
+### 2. size class 是 allocator order，不是固定 pool
+
+分配器按最小可容纳 `content_length` 的 2 次幂 block 分配，默认形成 1、2、4、8、16、32、64、128、256、512、1024 MiB 的 order。Small、Medium、Large、Huge 只用于状态页汇总，不是独立文件、独立容量池或调用参数。
+
+`content_length` 与 `allocation_capacity_bytes` 必须分开保存。前者限定有效数据和读取范围，后者用于回收、容量核算和内部碎片指标。
+
+典型 BGR24 分配如下：
+
+| 输入 | 约有效长度 | 分配容量 |
+| --- | ---: | ---: |
+| 640 × 640 | 1.17 MiB | 2 MiB |
+| 1024 × 1024 | 3 MiB | 4 MiB |
+| 1920 × 1080 | 5.93 MiB | 8 MiB |
+| 3840 × 2160 | 23.73 MiB | 32 MiB |
+| 5000 × 4000 | 57.22 MiB | 64 MiB |
+| 1 GiB 线扫图 | 1 GiB | 1 GiB |
+
+### 3. 图片 lease 必须保持单段连续内存
+
+普通图片、raw BGR24 和 encoded bytes 都使用一个连续 extent。LocalBuffer 不采用 inference/workflow mailbox 的 page chain，因为 OpenCV、NumPy、.NET `Span` 和模型预处理需要连续视图；把图片拆成页会在消费边界重新拼接并引入整图复制。
+
+1 GiB 分配在默认 `huge_reserve_bytes=0` 时属于“容量支持但不保证任意碎片状态下成功”。若现场必须保证随时可分配 1 GiB，必须显式配置 1 GiB hard reserve。hard reserve 是一个独立 buddy root，只接受 rounded capacity 等于该 reserve 大小的请求；普通 lease、较小请求和 frame channel 不能借用。因此 2 GiB arena 开启 1 GiB reserve 后，普通工作负载只剩 1 GiB。服务不得通过压缩、移动活动 block、临时文件或等待队列掩盖连续空间不足。
+
+### 4. 元数据持久化，free list 可重建
+
+arena 数据与 allocator 元数据分文件保存。descriptor 数量固定为 `arena_size_bytes / min_block_size_bytes`，默认 2048；descriptor 是分配状态、identity 和恢复的唯一持久化事实。buddy free list 只存在于 Broker 进程内，启动时从通过 guard/epoch 校验的 descriptor 状态重建，不持久化链表指针。
+
+descriptor 保存固定长度字段：state、arena id、descriptor index/generation、broker epoch、offset、order/capacity、content length、lease identity、128-bit opaque owner token、deadline、publication generation、校验与必要 flags。可变 owner 字符串、media metadata 和业务参数不能写入固定 descriptor 表。
+
+### 5. guard 与 identity 共同防止旧进程破坏新 lease
+
+每个 descriptor 固定拥有一个 publication guard、一个 writer guard 和 64 个 reader guard byte ranges。公开 `BufferRef.v1` 只负责定位和数据表示；权威 owner、deadline、guard 和回收权限只存在于服务端私有 `LeaseOwnershipReceipt`。
+
+外部 SDK 取得 allocation 后必须先取得 writer guard，再在 publication guard 内重新校验 broker epoch、descriptor generation、lease、owner、offset、capacity 和 deadline，成功后才创建 writable view。Broker 在 WRITING/ACTIVE 回收时先发布 `REVOKING`，且只有确认 writer/reader guard 全部释放后才能提高 generation、归还 block并执行 buddy merge。Broker 重启不能让旧 SDK 在新 generation 上继续写入。
+
+### 6. BufferRef 与 SDK 映射按 extent 工作
+
+开发期未冻结的 `BufferRef.v1`、Workflow Trigger allocation、Python reader/writer 和仓库内 .NET SDK 在同一提交链中原地升级。locator 至少包含：
+
+- `arena_id`；
+- `descriptor_index`；
+- `descriptor_generation`；
+- `broker_epoch`；
+- `offset`；
+- `content_length`；
+- `allocation_capacity_bytes`。
+
+服务端私有 receipt 另含权威 owner、deadline、guard identity 和 layout fingerprint。SDK 配置包固定允许的 buffers root、arena id/path、allocator metadata path、guard path、layout version 和 fingerprint；SDK 不接受请求载荷指定任意 mmap/metadata 路径。
+
+新 `BufferRef.v1` 与 Trigger allocation 不再传输可由请求选择的 `path`，SDK/worker只按 `arena_id` 从固定配置解析路径；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 分别由语义明确的 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id` 取代。`buffer_id` 如为日志展示保留，也不得参与权威回收。最终实现不保留旧字段双读。
+
+.NET SDK 缓存 arena 文件 handle，不按固定 slot 长期缓存 view。普通调用按当前 extent 建立精确 view并随 lease 释放；frame channel 可以按稳定 descriptor 集、generation、offset 和 capacity 复用 view。32-bit 宿主不是一律禁止，但单 view 超过 `max_32bit_view_bytes` 时必须在写入前明确拒绝；1 GiB 正式路径要求 64-bit 进程。
+
+### 7. frame channel 使用预留 extent
+
+frame channel 创建时必须给出 `frame_count` 和 `max_frame_content_length`。Broker 按每帧最小可容纳 order 预留固定 descriptor/extent，通道存续期间容量计入 `frame_reserved_capacity_bytes`。帧切换仍使用 generation/sequence/guard publication，不能退回按分辨率选择 pool。
+
+### 8. 满载立即失败
+
+分配器不排队、不重试、不压缩、不移动活动 lease，也不 fallback 到 ObjectStore、临时文件、ZeroMQ 或 Base64。失败必须区分：
+
+- 总可用容量不足；
+- 连续块不足；
+- hard reserve 不可用；
+- 单请求超过配置上限；
+- 32-bit view 超限；
+- layout/identity/guard 状态异常。
+
+descriptor 数量按最小 block 数配置，正常情况下不会先于 arena 容量耗尽。descriptor 提前耗尽属于 allocator 完整性错误，不能当作普通满载。
+
+### 9. 文件根目录保持统一但范围不扩大
+
+`local_buffer_broker.root_dir` 继续是 `./data/buffers`。正式文件布局为：
+
+```text
+data/buffers/
+├─ local-buffer/
+│  ├─ arena-main.mmap
+│  ├─ allocator-main.mmap
+│  ├─ arena-main.guard
+│  └─ arena-main.owner.lock
+├─ inference-control/
+├─ workflow-trigger/
+└─ inference-daemon-private/
+```
+
+训练遥测继续使用 `data/runtime/training-telemetry/`，不属于图片数据面迁移范围。
+
+## 未采用方案
+
+- 固定分辨率 pool/slot：容量隔离和浪费明显，调用方需要理解服务端配置。
+- 运行时自动扩展 mmap 文件：改变映射和布局，增加跨进程失效与恢复复杂性。
+- 图片 page chain：消费端需要拼接，不满足连续视图和零额外复制目标。
+- 活动 block compaction：需要移动仍被外部进程读取的图片，破坏引用稳定性。
+- 每次大图创建 dedicated 临时 mmap：制造文件和生命周期分支，不能形成统一容量事实。
+- 默认硬保留 1 GiB：会无条件损失一半常用容量；应由确需保证超大图的现场显式选择。
+
+## 影响
+
+- 删除 `LocalBufferBrokerPoolSettings`、`default_pool_name`、`pools`、调用方 `pool_name` 和按分辨率 preset；不保留双读或兼容分配路径。
+- `MmapBufferPool` 被 arena allocator 取代；普通 lease、External lease、frame channel、output handoff 和 direct reader 统一使用 descriptor/extent。
+- Python、.NET SDK、配置包、fixture、前端状态页和所有测试资产必须原子迁移。
+- 旧固定 pool 文件不能在线转换。升级时先停止所有 owner/SDK、确认 guard 释放，再运行明确的开发期维护命令重建 arena；新服务发现旧 layout 或 fingerprint 不一致时拒绝启动，不能自动 truncate。
+- 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责。
