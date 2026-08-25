@@ -45,8 +45,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                         "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
-                        "result_binding": "http_response",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["http_response"],
                     },
                 },
             )
@@ -64,8 +63,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                         "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
-                        "result_binding": "http_response",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["http_response"],
                     },
                 },
             )
@@ -134,8 +132,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
                         "request_image_base64": {"source": "payload.image"},
                     },
                     "result_mapping": {
-                        "result_binding": "http_response",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["http_response"],
                     },
                 },
             )
@@ -198,7 +195,7 @@ def test_workflow_trigger_source_api_manages_first_phase_resource(
     assert missing_runtime_list_response.headers["x-total-count"] == "0"
     assert missing_runtime_list_response.json() == []
     assert get_response.status_code == 200
-    assert get_response.json()["result_mapping"]["result_binding"] == "http_response"
+    assert get_response.json()["result_mapping"]["result_bindings"] == ["http_response"]
 
     assert health_response.status_code == 200
     health_payload = health_response.json()
@@ -276,8 +273,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                         "request_image_ref": {"source": "payload.buffer_ref"},
                     },
                     "result_mapping": {
-                        "result_binding": "zeromq_reply",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["zeromq_reply"],
                     },
                 },
             )
@@ -296,8 +292,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                         "request_image_ref": {"source": "payload.buffer_ref"},
                     },
                     "result_mapping": {
-                        "result_binding": "zeromq_reply",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["zeromq_reply"],
                     },
                 },
             )
@@ -332,8 +327,7 @@ def test_workflow_trigger_source_api_controls_zeromq_adapter(
                         "request_image_ref": {"source": "payload.buffer_ref"},
                     },
                     "result_mapping": {
-                        "result_binding": "zeromq_reply",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["zeromq_reply"],
                     },
                 },
             )
@@ -423,7 +417,7 @@ def test_workflow_trigger_source_api_defaults_to_sync_reply(
                             "required": False,
                         },
                     },
-                    "result_mapping": {"result_binding": "http_response"},
+                    "result_mapping": {"result_bindings": ["http_response"]},
                 },
             )
     finally:
@@ -477,7 +471,7 @@ def test_workflow_trigger_source_api_starts_enabled_zeromq_on_create(
                             "required": False,
                         },
                     },
-                    "result_mapping": {"result_binding": "http_response"},
+                    "result_mapping": {"result_bindings": ["http_response"]},
                 },
             )
     finally:
@@ -575,8 +569,7 @@ def test_workflow_trigger_source_api_controls_plc_register_adapter(
                         "request_signal": {"source": "payload.observed_value"},
                     },
                     "result_mapping": {
-                        "result_binding": "workflow_result",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["workflow_result"],
                     },
                 },
             )
@@ -664,8 +657,7 @@ def test_workflow_trigger_source_api_controls_directory_poll_adapter(
                         "request_batch": {"source": "payload.files_value"},
                     },
                     "result_mapping": {
-                        "result_binding": "workflow_result",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["workflow_result"],
                     },
                 },
             )
@@ -748,8 +740,7 @@ def test_workflow_trigger_source_api_controls_directory_watch_adapter(
                         "request_batch": {"source": "payload.files_value"},
                     },
                     "result_mapping": {
-                        "result_binding": "workflow_result",
-                        "result_mode": "accepted-then-query",
+                        "result_bindings": ["workflow_result"],
                     },
                 },
             )

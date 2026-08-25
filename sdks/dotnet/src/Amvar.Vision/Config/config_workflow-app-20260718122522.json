@@ -24,6 +24,7 @@
     {
       "name": "ZeroMQ 图片触发 摆盘分拣来料空盘检测应用 runtime",
       "trigger_source_id": "zeromq-workflow-runtime-700015182f104d28a2d46c8d1902c3a7",
+      "trigger_kind": "zeromq-topic",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5556",
         "default_input_binding": "request_image_ref",

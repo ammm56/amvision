@@ -8,9 +8,15 @@ import mmap
 import os
 from pathlib import Path
 from threading import Lock
+from time import monotonic_ns
+from typing import BinaryIO
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
+from backend.contracts.buffers.lease_ownership import (
+    ExternalBufferAllocation,
+    LeaseOwnershipReceipt,
+)
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceConfigurationError,
@@ -19,6 +25,12 @@ from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,
+)
+from backend.service.infrastructure.ipc.mmap_primitives import (
+    acquire_mmap_guard,
+    crc32_ieee,
+    try_lock_byte_range_file,
+    unlock_byte_range_file,
 )
 
 
@@ -43,6 +55,8 @@ class MmapBufferPoolConfig:
     file_name: str = "pool-001.dat"
     broker_epoch: str | None = None
     flush_on_write: bool = False
+    reader_guard_slots: int = 64
+    revocation_grace_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -58,6 +72,15 @@ class MmapBufferWriteResult:
     buffer_ref: BufferRef
 
 
+@dataclass(frozen=True)
+class ExternalBufferCommitTransferResult:
+    """描述 external buffer 校验、发布和首次 owner handoff 的原子结果。"""
+
+    lease: BufferLease
+    buffer_ref: BufferRef
+    receipt: LeaseOwnershipReceipt
+
+
 @dataclass
 class _SlotState:
     """描述单个固定槽位的运行时状态。
@@ -71,6 +94,9 @@ class _SlotState:
     generation: int = 0
     lease: BufferLease | None = None
     frame: "_FrameSlotState | None" = None
+    external_deadline_ns: int | None = None
+    revocation_guard_kind: str | None = None
+    revocation_deadline_ns: int | None = None
 
 
 @dataclass
@@ -144,6 +170,17 @@ class MmapBufferPool:
         self.broker_epoch = self.config.broker_epoch or f"epoch-{uuid4().hex}"
         self.file_path = self.config.root_dir / self.config.file_name
         self._slot_count = self.config.file_size_bytes // self.config.slot_size_bytes
+        self._slot_guard_paths = tuple(
+            (
+                self.file_path.with_name(
+                    f"{self.file_path.name}.slot-{slot_index}.writer.guard"
+                ),
+                self.file_path.with_name(
+                    f"{self.file_path.name}.slot-{slot_index}.reader.guard"
+                ),
+            )
+            for slot_index in range(self._slot_count)
+        )
         self._slots: list[_SlotState] = [_SlotState() for _ in range(self._slot_count)]
         self._ring_channels: dict[str, _RingChannelState] = {}
         self._lock = Lock()
@@ -153,6 +190,10 @@ class MmapBufferPool:
         self._pool_full_count = SafeCounterState()
         self._released_count = SafeCounterState()
         self._expired_count = SafeCounterState()
+        self._transfer_count = SafeCounterState()
+        self._stale_fence_count = SafeCounterState()
+        self._revoking_count = SafeCounterState()
+        self._quarantined_count = SafeCounterState()
         self._max_used_count = 0
         self._frame_channel_count = SafeCounterState()
         self._frame_channel_destroy_count = SafeCounterState()
@@ -190,6 +231,19 @@ class MmapBufferPool:
                 },
             ) from exc
         self._file = file_handle
+        try:
+            self._initialize_slot_guard_files()
+        except OSError as exc:
+            self.close()
+            raise ServiceConfigurationError(
+                "初始化 mmap buffer pool guard 文件失败",
+                details={
+                    "pool_name": self.pool_name,
+                    "root_dir": str(self.config.root_dir),
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc) or type(exc).__name__,
+                },
+            ) from exc
 
     @property
     def capacity_bytes(self) -> int:
@@ -250,6 +304,9 @@ class MmapBufferPool:
                     raise
             slot_state = self._slots[slot_index]
             slot_state.generation += 1
+            slot_state.external_deadline_ns = None
+            slot_state.revocation_guard_kind = None
+            slot_state.revocation_deadline_ns = None
             lease = BufferLease(
                 lease_id=f"lease-{uuid4().hex}",
                 buffer_id=self._build_buffer_id(slot_index),
@@ -273,6 +330,42 @@ class MmapBufferPool:
                 self._max_used_count, self._count_used_slots_locked()
             )
             return lease
+
+    def allocate_external(
+        self,
+        *,
+        size: int,
+        owner_kind: str,
+        owner_id: str,
+        deadline_ns: int,
+        ttl_seconds: float | None = None,
+        trace_id: str | None = None,
+    ) -> ExternalBufferAllocation:
+        """为外部 writer 分配精确长度 writing lease 与私有 receipt。"""
+
+        if deadline_ns <= monotonic_ns():
+            raise InvalidRequestError("external LocalBuffer deadline 必须位于未来")
+        lease = self.allocate(
+            size=size,
+            owner_kind=owner_kind,
+            owner_id=owner_id,
+            ttl_seconds=ttl_seconds,
+            trace_id=trace_id,
+        )
+        slot_index = lease.offset // self.config.slot_size_bytes
+        with self._lock:
+            current_lease = self._slots[slot_index].lease
+            if current_lease is None or current_lease.lease_id != lease.lease_id:
+                raise InvalidRequestError("external LocalBuffer lease 在登记 deadline 前失效")
+            self._slots[slot_index].external_deadline_ns = deadline_ns
+        return ExternalBufferAllocation(
+            lease=lease,
+            receipt=self._build_ownership_receipt(
+                lease=lease,
+                deadline_ns=deadline_ns,
+            ),
+            slot_capacity_bytes=self.config.slot_size_bytes,
+        )
 
     def write_lease(
         self,
@@ -398,6 +491,104 @@ class MmapBufferPool:
                 generation=active_lease.generation,
             )
             return MmapBufferWriteResult(lease=active_lease, buffer_ref=buffer_ref)
+
+    def commit_external_lease(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+        checksum_algorithm: int,
+        checksum: int,
+        media_type: str,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
+        readonly: bool = True,
+    ) -> MmapBufferWriteResult:
+        """在 writer guard 已释放后校验完整 bytes，并发布 external lease。"""
+
+        if checksum_algorithm != 1:
+            raise InvalidRequestError(
+                "external LocalBuffer checksum algorithm 不受支持",
+                details={"checksum_algorithm": checksum_algorithm},
+            )
+        normalized_media_type = _require_stripped_text(media_type, "media_type")
+        with self._lock:
+            slot_index, lease = self._validate_external_content_locked(
+                receipt=receipt,
+                checksum=checksum,
+            )
+            active_lease = lease.model_copy(update={"state": "active"})
+            self._slots[slot_index].lease = active_lease
+            return MmapBufferWriteResult(
+                lease=active_lease,
+                buffer_ref=self._build_buffer_ref(
+                    lease=active_lease,
+                    media_type=normalized_media_type,
+                    shape=shape,
+                    dtype=dtype,
+                    layout=layout,
+                    pixel_format=pixel_format,
+                    readonly=readonly,
+                ),
+            )
+
+    def publish_external_lease_and_transfer(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+        media_type: str,
+        new_owner_kind: str,
+        new_owner_id: str,
+        deadline_ns: int,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
+        readonly: bool = True,
+    ) -> ExternalBufferCommitTransferResult:
+        """在单个 pool lock 内确认 writer 已结束、发布 lease 并转移首个 owner。
+
+        trusted-local Trigger 的 REQUEST 是 publication barrier。Broker 依靠精确
+        allocation、writer guard、receipt identity 与 owner/generation fence 保证只
+        发布完整且不再写入的槽位，不在大图热路径重复扫描整帧 CRC32。
+        """
+        if deadline_ns <= monotonic_ns():
+            raise InvalidRequestError("LocalBuffer owner handoff deadline 必须位于未来")
+        normalized_media_type = _require_stripped_text(media_type, "media_type")
+        owner_kind = _require_stripped_text(new_owner_kind, "new_owner_kind")
+        owner_id = _require_stripped_text(new_owner_id, "new_owner_id")
+        with self._lock:
+            slot_index, lease = self._validate_external_writer_release_locked(
+                receipt=receipt
+            )
+            active_lease = lease.model_copy(
+                update={
+                    "state": "active",
+                    "owner_kind": owner_kind,
+                    "owner_id": owner_id,
+                }
+            )
+            self._slots[slot_index].lease = active_lease
+            self._slots[slot_index].external_deadline_ns = deadline_ns
+            transferred_receipt = self._build_ownership_receipt(
+                lease=active_lease,
+                deadline_ns=deadline_ns,
+            )
+            increment_safe_counter(self._transfer_count)
+            return ExternalBufferCommitTransferResult(
+                lease=active_lease,
+                buffer_ref=self._build_buffer_ref(
+                    lease=active_lease,
+                    media_type=normalized_media_type,
+                    shape=shape,
+                    dtype=dtype,
+                    layout=layout,
+                    pixel_format=pixel_format,
+                    readonly=readonly,
+                ),
+                receipt=transferred_receipt,
+            )
 
     def write_bytes(
         self,
@@ -530,7 +721,39 @@ class MmapBufferPool:
         _validate_size(size, self.config.slot_size_bytes)
         with self._lock:
             channel = self._require_frame_channel_locked(normalized_stream_id)
-            slot_index = channel.slot_indices[channel.next_slot_position]
+            selected_position: int | None = None
+            slot_index: int | None = None
+            for offset in range(len(channel.slot_indices)):
+                candidate_position = (
+                    channel.next_slot_position + offset
+                ) % len(channel.slot_indices)
+                candidate_index = channel.slot_indices[candidate_position]
+                candidate_state = self._slots[candidate_index].frame
+                if candidate_state is None or candidate_state.state == "writing":
+                    continue
+                _writer_path, reader_path = self._ensure_slot_guard_files(
+                    candidate_index
+                )
+                reader_probe = self._try_acquire_guard_locked(
+                    path=reader_path,
+                    offset=0,
+                    length=self.config.reader_guard_slots,
+                )
+                if reader_probe is None:
+                    continue
+                self._release_guard_handle(
+                    reader_probe,
+                    offset=0,
+                    length=self.config.reader_guard_slots,
+                )
+                selected_position = candidate_position
+                slot_index = candidate_index
+                break
+            if selected_position is None or slot_index is None:
+                raise InvalidRequestError(
+                    "ring buffer 所有槽位均处于 writing 或 reader 持有状态",
+                    details={"stream_id": normalized_stream_id},
+                )
             slot_state = self._slots[slot_index]
             frame_state = slot_state.frame
             if frame_state is None or frame_state.stream_id != normalized_stream_id:
@@ -549,7 +772,7 @@ class MmapBufferPool:
             slot_state.generation += 1
             sequence_id = channel.next_sequence_id
             channel.next_sequence_id += 1
-            channel.next_slot_position = (channel.next_slot_position + 1) % len(
+            channel.next_slot_position = (selected_position + 1) % len(
                 channel.slot_indices
             )
             frame_state.sequence_id = sequence_id
@@ -562,6 +785,7 @@ class MmapBufferPool:
             frame_state.layout = None
             frame_state.pixel_format = None
             frame_state.metadata = {}
+            _writer_path, reader_path = self._ensure_slot_guard_files(slot_index)
             return {
                 "pool_name": self.pool_name,
                 "stream_id": normalized_stream_id,
@@ -572,6 +796,8 @@ class MmapBufferPool:
                 "size": size,
                 "broker_epoch": self.broker_epoch,
                 "generation": frame_state.generation,
+                "reader_guard_path": str(reader_path),
+                "reader_guard_slots": self.config.reader_guard_slots,
             }
 
     def commit_frame(
@@ -690,19 +916,25 @@ class MmapBufferPool:
             raise InvalidRequestError("ring buffer 写入内容必须是非空 bytes")
         reservation = self.allocate_frame(stream_id=stream_id, size=len(content))
         try:
-            self._mmap.seek(int(reservation["offset"]))
-            self._mmap.write(content)
-            if self.config.flush_on_write:
-                self._mmap.flush()
-            return self.commit_frame(
-                reservation=reservation,
-                media_type=media_type,
-                shape=shape,
-                dtype=dtype,
-                layout=layout,
-                pixel_format=pixel_format,
-                metadata=metadata,
-            )
+            with acquire_mmap_guard(
+                guard_path=str(reservation["reader_guard_path"]),
+                deadline_ns=monotonic_ns() + 5_000_000_000,
+                poll_interval_seconds=0.001,
+                length=int(reservation["reader_guard_slots"]),
+            ):
+                self._mmap.seek(int(reservation["offset"]))
+                self._mmap.write(content)
+                if self.config.flush_on_write:
+                    self._mmap.flush()
+                return self.commit_frame(
+                    reservation=reservation,
+                    media_type=media_type,
+                    shape=shape,
+                    dtype=dtype,
+                    layout=layout,
+                    pixel_format=pixel_format,
+                    metadata=metadata,
+                )
         except Exception:
             try:
                 self.abort_frame(reservation=reservation)
@@ -764,6 +996,133 @@ class MmapBufferPool:
         with self._lock:
             self._require_active_frame_for_ref(frame_ref)
 
+    def transfer_ownership_batch(
+        self,
+        *,
+        receipts: tuple[LeaseOwnershipReceipt, ...],
+        new_owner_kind: str,
+        new_owner_id: str,
+        deadline_ns: int,
+    ) -> tuple[LeaseOwnershipReceipt, ...]:
+        """在单个 pool lock 内全量校验并 CAS 转移一组 lease owner。"""
+
+        if deadline_ns <= monotonic_ns():
+            raise InvalidRequestError("LocalBuffer owner handoff deadline 必须位于未来")
+        owner_kind = _require_stripped_text(new_owner_kind, "new_owner_kind")
+        owner_id = _require_stripped_text(new_owner_id, "new_owner_id")
+        if not receipts:
+            return ()
+        identities = {
+            (receipt.lease_id, receipt.generation) for receipt in receipts
+        }
+        if len(identities) != len(receipts):
+            raise InvalidRequestError("LocalBuffer batch handoff 包含重复 lease identity")
+        with self._lock:
+            validated = [
+                self._require_receipt_locked(
+                    receipt=receipt,
+                    expected_states={"active"},
+                )
+                for receipt in receipts
+            ]
+            transferred: list[LeaseOwnershipReceipt] = []
+            for slot_index, lease in validated:
+                updated_lease = lease.model_copy(
+                    update={"owner_kind": owner_kind, "owner_id": owner_id}
+                )
+                self._slots[slot_index].lease = updated_lease
+                self._slots[slot_index].external_deadline_ns = deadline_ns
+                transferred.append(
+                    self._build_ownership_receipt(
+                        lease=updated_lease,
+                        deadline_ns=deadline_ns,
+                    )
+                )
+                increment_safe_counter(self._transfer_count)
+            return tuple(transferred)
+
+    def validate_ownership_batch(
+        self,
+        *,
+        receipts: tuple[LeaseOwnershipReceipt, ...],
+        expected_states: set[str] | None = None,
+    ) -> None:
+        """只读校验整组 receipt，供 registry 跨 pool 两阶段 CAS 使用。"""
+
+        states = expected_states or {"active"}
+        with self._lock:
+            for receipt in receipts:
+                self._require_receipt_locked(
+                    receipt=receipt,
+                    expected_states=states,
+                )
+
+    def conditional_release(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+        now_ns: int | None = None,
+    ) -> str:
+        """按完整 identity fence 释放、撤销或隔离 lease。"""
+
+        current_ns = now_ns if now_ns is not None else monotonic_ns()
+        with self._lock:
+            try:
+                slot_index, _lease = self._require_receipt_locked(
+                    receipt=receipt,
+                    expected_states={
+                        "writing",
+                        "active",
+                        "revoking",
+                        "quarantined",
+                    },
+                )
+            except InvalidRequestError:
+                increment_safe_counter(self._stale_fence_count)
+                return "stale"
+            return self._release_or_revoke_slot_locked(
+                slot_index=slot_index,
+                current_ns=current_ns,
+                requested_deadline_ns=receipt.deadline_ns,
+            )
+
+    def sweep_reclaiming_leases(self, *, now_ns: int | None = None) -> dict[str, int]:
+        """非阻塞回收 deadline 到期或正在撤销的 external lease。"""
+
+        current_ns = now_ns if now_ns is not None else monotonic_ns()
+        released_count = 0
+        quarantined_count = 0
+        with self._lock:
+            for slot_index, slot_state in enumerate(self._slots):
+                lease = slot_state.lease
+                if lease is None:
+                    continue
+                external_deadline_ns = slot_state.external_deadline_ns
+                deadline_expired = (
+                    external_deadline_ns is not None
+                    and current_ns >= external_deadline_ns
+                )
+                if lease.state not in {"revoking", "quarantined"} and not deadline_expired:
+                    continue
+                previous_state = lease.state
+                status = self._release_or_revoke_slot_locked(
+                    slot_index=slot_index,
+                    current_ns=current_ns,
+                    requested_deadline_ns=(
+                        slot_state.revocation_deadline_ns
+                        or external_deadline_ns
+                        or current_ns
+                    ),
+                )
+                if status == "released":
+                    released_count += 1
+                elif previous_state != "quarantined" and status == "quarantined":
+                    quarantined_count += 1
+        return {
+            "released_count": released_count,
+            "quarantined_count": quarantined_count,
+        }
+
     def release(self, lease_id: str) -> None:
         """释放指定 lease 对应的槽位。
 
@@ -773,11 +1132,15 @@ class MmapBufferPool:
 
         normalized_lease_id = _require_stripped_text(lease_id, "lease_id")
         with self._lock:
-            for slot_state in self._slots:
+            for slot_index, slot_state in enumerate(self._slots):
                 lease = slot_state.lease
                 if lease is not None and lease.lease_id == normalized_lease_id:
-                    slot_state.lease = None
-                    increment_safe_counter(self._released_count)
+                    self._release_or_revoke_slot_locked(
+                        slot_index=slot_index,
+                        current_ns=monotonic_ns(),
+                        requested_deadline_ns=monotonic_ns()
+                        + int(self.config.revocation_grace_seconds * 1_000_000_000),
+                    )
                     return
         raise InvalidRequestError(
             "mmap buffer lease 不存在", details={"lease_id": normalized_lease_id}
@@ -810,7 +1173,7 @@ class MmapBufferPool:
             )
         released_count = 0
         with self._lock:
-            for slot_state in self._slots:
+            for slot_index, slot_state in enumerate(self._slots):
                 lease = slot_state.lease
                 if lease is None:
                     continue
@@ -829,10 +1192,13 @@ class MmapBufferPool:
                     and not lease.owner_id.startswith(normalized_owner_id_prefix)
                 ):
                     continue
-                slot_state.lease = None
-                released_count += 1
-            for _ in range(released_count):
-                increment_safe_counter(self._released_count)
+                status = self._release_or_revoke_slot_locked(
+                    slot_index=slot_index,
+                    current_ns=monotonic_ns(),
+                    requested_deadline_ns=monotonic_ns()
+                    + int(self.config.revocation_grace_seconds * 1_000_000_000),
+                )
+                released_count += int(status == "released")
         return released_count
 
     def expire_leases(self, *, now: datetime | None = None) -> int:
@@ -853,17 +1219,21 @@ class MmapBufferPool:
         """在持有 pool lock 时回收过期 lease。"""
 
         expired_count = 0
-        for slot_state in self._slots:
+        for slot_index, slot_state in enumerate(self._slots):
             lease = slot_state.lease
             if (
                 lease is not None
                 and lease.expires_at is not None
                 and lease.expires_at <= current_time
             ):
-                slot_state.lease = None
-                expired_count += 1
-        for _ in range(expired_count):
-            increment_safe_counter(self._expired_count)
+                status = self._release_or_revoke_slot_locked(
+                    slot_index=slot_index,
+                    current_ns=monotonic_ns(),
+                    requested_deadline_ns=monotonic_ns(),
+                )
+                expired_count += int(status == "released")
+                if status == "released":
+                    increment_safe_counter(self._expired_count)
         return expired_count
 
     def build_status(self) -> dict[str, object]:
@@ -891,6 +1261,8 @@ class MmapBufferPool:
             )
             active_count = self._count_leases_by_state_locked("active")
             writing_count = self._count_leases_by_state_locked("writing")
+            revoking_count = self._count_leases_by_state_locked("revoking")
+            quarantined_count = self._count_leases_by_state_locked("quarantined")
             frame_active_count = self._count_frames_by_state_locked("active")
             frame_writing_count = self._count_frames_by_state_locked("writing")
             used_count = self._count_used_slots_locked()
@@ -901,11 +1273,23 @@ class MmapBufferPool:
                 "file_path": str(self.file_path),
                 "active_count": active_count,
                 "writing_count": writing_count,
+                "revoking_count": revoking_count,
+                "quarantined_count": quarantined_count,
                 "frame_active_count": frame_active_count,
                 "frame_writing_count": frame_writing_count,
                 "frame_reserved_count": self._count_frame_slots_locked(),
                 "used_count": used_count,
                 "free_count": self.slot_count - used_count,
+                "transfer_count": snapshot_safe_counter(self._transfer_count)["value"],
+                "stale_fence_count": snapshot_safe_counter(
+                    self._stale_fence_count
+                )["value"],
+                "revoking_transition_count": snapshot_safe_counter(
+                    self._revoking_count
+                )["value"],
+                "quarantined_transition_count": snapshot_safe_counter(
+                    self._quarantined_count
+                )["value"],
                 "allocation_count": allocation_count_snapshot["value"],
                 "allocation_count_rollover_count": allocation_count_snapshot[
                     "rollover_count"
@@ -1170,6 +1554,270 @@ class MmapBufferPool:
             )
         return slot_index
 
+    def _build_buffer_ref(
+        self,
+        *,
+        lease: BufferLease,
+        media_type: str,
+        shape: tuple[int, ...],
+        dtype: str | None,
+        layout: str | None,
+        pixel_format: str | None,
+        readonly: bool,
+    ) -> BufferRef:
+        """从当前 active lease 构造公开定位引用，不泄露 owner receipt。"""
+
+        return BufferRef(
+            buffer_id=lease.buffer_id,
+            lease_id=lease.lease_id,
+            path=lease.file_path,
+            offset=lease.offset,
+            size=lease.size,
+            shape=shape,
+            dtype=_normalize_optional_text(dtype),
+            layout=_normalize_optional_text(layout),
+            pixel_format=_normalize_optional_text(pixel_format),
+            media_type=media_type,
+            readonly=readonly,
+            broker_epoch=lease.broker_epoch,
+            generation=lease.generation,
+        )
+
+    def _validate_external_content_locked(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+        checksum: int,
+    ) -> tuple[int, BufferLease]:
+        """在 pool lock 内验证 writer 已结束且精确长度 bytes 的 CRC32 正确。"""
+
+        slot_index, lease = self._validate_external_writer_release_locked(
+            receipt=receipt
+        )
+        content = memoryview(self._mmap)[lease.offset : lease.offset + lease.size]
+        try:
+            actual_checksum = crc32_ieee(content)
+        finally:
+            content.release()
+        if actual_checksum != checksum:
+            raise InvalidRequestError(
+                "external LocalBuffer checksum 校验失败",
+                details={
+                    "lease_id": lease.lease_id,
+                    "expected_checksum": checksum,
+                    "actual_checksum": actual_checksum,
+                },
+            )
+        return slot_index, lease
+
+    def _validate_external_writer_release_locked(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+    ) -> tuple[int, BufferLease]:
+        """验证 external receipt 有效且 writer guard 已释放。"""
+
+        slot_index, lease = self._require_receipt_locked(
+            receipt=receipt,
+            expected_states={"writing"},
+        )
+        writer_guard = self._try_acquire_guard_locked(
+            path=Path(receipt.writer_guard_path),
+            offset=0,
+            length=1,
+        )
+        if writer_guard is None:
+            raise InvalidRequestError(
+                "external LocalBuffer writer guard 仍由写入方持有",
+                details={"lease_id": lease.lease_id},
+            )
+        try:
+            return slot_index, lease
+        finally:
+            self._release_guard_handle(writer_guard, offset=0, length=1)
+
+    def _build_ownership_receipt(
+        self,
+        *,
+        lease: BufferLease,
+        deadline_ns: int,
+    ) -> LeaseOwnershipReceipt:
+        """按当前 lease 生成带完整 fence 的私有 receipt。"""
+
+        slot_index = lease.offset // self.config.slot_size_bytes
+        writer_guard_path, reader_guard_path = self._ensure_slot_guard_files(
+            slot_index
+        )
+        return LeaseOwnershipReceipt(
+            pool_name=self.pool_name,
+            lease_id=lease.lease_id,
+            buffer_id=lease.buffer_id,
+            broker_epoch=lease.broker_epoch,
+            generation=lease.generation,
+            owner_kind=lease.owner_kind,
+            owner_id=lease.owner_id,
+            deadline_ns=deadline_ns,
+            writer_guard_path=str(writer_guard_path),
+            reader_guard_path=str(reader_guard_path),
+            reader_guard_slots=self.config.reader_guard_slots,
+        )
+
+    def _ensure_slot_guard_files(self, slot_index: int) -> tuple[Path, Path]:
+        """返回 pool 启动时已经固定创建的 writer/reader guard 文件。"""
+
+        return self._slot_guard_paths[slot_index]
+
+    def _initialize_slot_guard_files(self) -> None:
+        """在 pool 启动阶段一次性创建并定长全部 slot guard。"""
+
+        for writer_path, reader_path in self._slot_guard_paths:
+            with writer_path.open("a+b", buffering=0) as writer_file:
+                if os.fstat(writer_file.fileno()).st_size < 1:
+                    writer_file.truncate(1)
+            with reader_path.open("a+b", buffering=0) as reader_file:
+                if os.fstat(reader_file.fileno()).st_size < self.config.reader_guard_slots:
+                    reader_file.truncate(self.config.reader_guard_slots)
+
+    def ensure_slot_guard_files(self, slot_index: int) -> tuple[Path, Path]:
+        """返回已校验槽位的 writer/reader guard 文件。
+
+        该方法仅供 LocalBufferBroker registry 在已验证 BufferRef 后构造内部
+        reader guard 定位信息；公开 BufferRef 不携带 owner 或 guard 字段。
+        """
+
+        if slot_index < 0 or slot_index >= self._slot_count:
+            raise InvalidRequestError(
+                "LocalBufferBroker guard 槽位越界",
+                details={"slot_index": slot_index},
+            )
+        return self._ensure_slot_guard_files(slot_index)
+
+    def _require_receipt_locked(
+        self,
+        *,
+        receipt: LeaseOwnershipReceipt,
+        expected_states: set[str],
+    ) -> tuple[int, BufferLease]:
+        """按 pool/epoch/generation/owner 完整校验私有 receipt。"""
+
+        if receipt.pool_name != self.pool_name or receipt.broker_epoch != self.broker_epoch:
+            raise InvalidRequestError("LocalBuffer ownership receipt 属于其他 pool 或 epoch")
+        if not receipt.buffer_id.startswith(f"{self.pool_name}:") or ":frame:" in receipt.buffer_id:
+            raise InvalidRequestError("LocalBuffer ownership receipt buffer_id 不合法")
+        try:
+            slot_index = int(receipt.buffer_id.rsplit(":", maxsplit=1)[1])
+        except (IndexError, ValueError) as error:
+            raise InvalidRequestError(
+                "LocalBuffer ownership receipt buffer_id 不合法"
+            ) from error
+        if not 0 <= slot_index < self.slot_count:
+            raise InvalidRequestError("LocalBuffer ownership receipt slot 越界")
+        lease = self._slots[slot_index].lease
+        if lease is None:
+            raise InvalidRequestError("LocalBuffer ownership receipt 已失效")
+        if (
+            lease.lease_id != receipt.lease_id
+            or lease.buffer_id != receipt.buffer_id
+            or lease.generation != receipt.generation
+            or lease.owner_kind != receipt.owner_kind
+            or lease.owner_id != receipt.owner_id
+            or lease.broker_epoch != receipt.broker_epoch
+        ):
+            raise InvalidRequestError("LocalBuffer ownership receipt identity 不匹配")
+        if lease.state not in expected_states:
+            raise InvalidRequestError(
+                "LocalBuffer ownership receipt 状态不允许当前操作",
+                details={"lease_id": lease.lease_id, "state": lease.state},
+            )
+        return slot_index, lease
+
+    def _try_acquire_guard_locked(
+        self,
+        *,
+        path: Path,
+        offset: int,
+        length: int,
+    ) -> BinaryIO | None:
+        """非阻塞探测一个 OS guard range；成功时返回仍持锁的 handle。"""
+
+        guard_file = path.open("r+b", buffering=0)
+        try:
+            try_lock_byte_range_file(guard_file, offset=offset, length=length)
+        except (BlockingIOError, OSError):
+            guard_file.close()
+            return None
+        return guard_file
+
+    def _release_guard_handle(
+        self,
+        guard_file: BinaryIO,
+        *,
+        offset: int,
+        length: int,
+    ) -> None:
+        """释放由 ``_try_acquire_guard_locked`` 返回的 guard handle。"""
+
+        unlock_byte_range_file(guard_file, offset=offset, length=length)
+        guard_file.close()
+
+    def _release_or_revoke_slot_locked(
+        self,
+        *,
+        slot_index: int,
+        current_ns: int,
+        requested_deadline_ns: int,
+    ) -> str:
+        """在不等待 guard 的前提下释放、进入 REVOKING 或 QUARANTINED。"""
+
+        slot_state = self._slots[slot_index]
+        lease = slot_state.lease
+        if lease is None:
+            return "stale"
+        if lease.state == "writing":
+            guard_kind = "writer"
+        elif lease.state == "active":
+            guard_kind = "reader"
+        else:
+            guard_kind = slot_state.revocation_guard_kind or "reader"
+        writer_path, reader_path = self._ensure_slot_guard_files(slot_index)
+        guard_path = writer_path if guard_kind == "writer" else reader_path
+        guard_length = 1 if guard_kind == "writer" else self.config.reader_guard_slots
+        guard_file = self._try_acquire_guard_locked(
+            path=guard_path,
+            offset=0,
+            length=guard_length,
+        )
+        if guard_file is not None:
+            self._release_guard_handle(
+                guard_file,
+                offset=0,
+                length=guard_length,
+            )
+            slot_state.lease = None
+            slot_state.external_deadline_ns = None
+            slot_state.revocation_guard_kind = None
+            slot_state.revocation_deadline_ns = None
+            increment_safe_counter(self._released_count)
+            return "released"
+        if lease.state not in {"revoking", "quarantined"}:
+            grace_deadline = current_ns + int(
+                self.config.revocation_grace_seconds * 1_000_000_000
+            )
+            slot_state.revocation_deadline_ns = max(
+                current_ns,
+                min(requested_deadline_ns, grace_deadline),
+            )
+            slot_state.revocation_guard_kind = guard_kind
+            slot_state.lease = lease.model_copy(update={"state": "revoking"})
+            increment_safe_counter(self._revoking_count)
+            return "revoking"
+        deadline_ns = slot_state.revocation_deadline_ns or current_ns
+        if lease.state == "revoking" and current_ns >= deadline_ns:
+            slot_state.lease = lease.model_copy(update={"state": "quarantined"})
+            increment_safe_counter(self._quarantined_count)
+            return "quarantined"
+        return lease.state
+
     def _require_active_lease_for_ref(self, buffer_ref: BufferRef) -> BufferLease:
         """按 BufferRef 找到 active lease 并校验一致性。"""
 
@@ -1282,6 +1930,12 @@ def _validate_config(config: MmapBufferPoolConfig) -> MmapBufferPoolConfig:
     if config.file_size_bytes % config.slot_size_bytes != 0:
         raise InvalidRequestError(
             "mmap buffer pool file_size_bytes 必须是 slot_size_bytes 的整数倍"
+        )
+    if config.reader_guard_slots <= 0:
+        raise InvalidRequestError("mmap buffer pool reader_guard_slots 必须大于 0")
+    if config.revocation_grace_seconds <= 0:
+        raise InvalidRequestError(
+            "mmap buffer pool revocation_grace_seconds 必须大于 0"
         )
     return config
 

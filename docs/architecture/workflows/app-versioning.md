@@ -144,7 +144,7 @@ WorkflowRun 保存：
 
 TriggerSource 只绑定稳定 `workflow_runtime_id`。Runtime 选版不修改 Trigger id、endpoint 或 SDK 配置。
 
-启动顺序保证 Runtime 恢复 ready 后才恢复 enabled Trigger。恢复时验证 revision、version、generation 和 contract fingerprint；`workflow_result`、accepted-then-query 和 event-only 使用各自明确的结果映射语义。
+启动顺序保证 Runtime 恢复 ready 后才恢复 enabled Trigger。恢复时验证 revision、version、generation 和 contract fingerprint；显式 `result_bindings`、accepted-then-query 和 event-only 使用各自明确的结果映射语义。
 
 Runtime 仍绑定 Trigger 时，删除返回 409 并列出阻断的 TriggerSource id。
 

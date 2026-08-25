@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from multiprocessing.connection import Connection
 from multiprocessing.queues import Queue
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Queue as ThreadQueue
 from threading import Event, Lock, RLock, Thread
 from time import monotonic, sleep
 from typing import Any
@@ -57,7 +58,7 @@ class _LocalBufferBrokerClientRoute:
     channel_id: str
     request_queue: Any
     response_queue: Any
-    forward_thread: Thread
+    forward_thread: Thread | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,30 @@ class _LocalBufferBrokerResponseRoute:
     response_queue: Any
 
 
+class _LocalBufferBrokerDirectRequestQueue:
+    """为同进程 client 提供与 Queue.put 一致的直达 Broker 入口。"""
+
+    def __init__(
+        self,
+        *,
+        router: "_LocalBufferBrokerEventRouter",
+        channel_id: str,
+        response_queue: Any,
+    ) -> None:
+        self._router = router
+        self._channel_id = channel_id
+        self._response_queue = response_queue
+
+    def put(self, message: object) -> None:
+        """登记响应路由后直接写入 Broker request connection。"""
+
+        self._router.submit_local_request(
+            channel_id=self._channel_id,
+            response_queue=self._response_queue,
+            message=message,
+        )
+
+
 class _LocalBufferBrokerEventRouter:
     """在父进程内为每个 broker client 隔离响应队列。"""
 
@@ -80,22 +105,23 @@ class _LocalBufferBrokerEventRouter:
         self,
         *,
         context: Any,
-        broker_request_queue: Any,
-        broker_response_queue: Any,
+        broker_request_connection: Connection,
+        broker_response_connection: Connection,
         request_timeout_seconds: float,
     ) -> None:
         """初始化 broker 事件 router。
 
         参数：
         - context：用于创建跨进程队列的 multiprocessing context。
-        - broker_request_queue：broker process 接收状态事件的队列。
-        - broker_response_queue：broker process 返回状态事件结果的队列。
+        - broker_request_connection：向 broker process 发送状态事件的单向连接。
+        - broker_response_connection：接收 broker process 状态事件结果的单向连接。
         - request_timeout_seconds：透传给 client 的请求超时时间。
         """
 
         self._context = context
-        self._broker_request_queue = broker_request_queue
-        self._broker_response_queue = broker_response_queue
+        self._broker_request_connection = broker_request_connection
+        self._broker_response_connection = broker_response_connection
+        self._broker_send_lock = Lock()
         self._request_timeout_seconds = request_timeout_seconds
         self._stop_event = Event()
         self._lock = Lock()
@@ -136,7 +162,8 @@ class _LocalBufferBrokerEventRouter:
                 },
             )
         for route in routes:
-            route.forward_thread.join(timeout=1.0)
+            if route.forward_thread is not None:
+                route.forward_thread.join(timeout=1.0)
         response_thread = self._response_thread
         if response_thread is not None:
             response_thread.join(timeout=1.0)
@@ -154,7 +181,8 @@ class _LocalBufferBrokerEventRouter:
             active_forward_thread_count = sum(
                 1
                 for route in self._client_routes.values()
-                if route.forward_thread.is_alive()
+                if route.forward_thread is not None
+                and route.forward_thread.is_alive()
             )
             closed_channel_snapshot = snapshot_safe_counter(self._closed_channel_count)
             forward_error_snapshot = snapshot_safe_counter(self._forward_error_count)
@@ -192,7 +220,7 @@ class _LocalBufferBrokerEventRouter:
             }
 
     def create_event_channel(self) -> LocalBufferBrokerEventChannel:
-        """创建一个响应隔离的客户端事件通道。"""
+        """创建可传入 worker 子进程的响应隔离事件通道。"""
 
         channel_id = f"broker-channel-{uuid4().hex}"
         request_queue = self._context.Queue()
@@ -218,6 +246,51 @@ class _LocalBufferBrokerEventRouter:
             channel_id=channel_id,
         )
 
+    def create_local_event_channel(self) -> LocalBufferBrokerEventChannel:
+        """创建 backend 同进程 client 直达 Broker request queue 的通道。"""
+
+        channel_id = f"broker-channel-{uuid4().hex}"
+        response_queue: ThreadQueue[object] = ThreadQueue()
+        request_queue = _LocalBufferBrokerDirectRequestQueue(
+            router=self,
+            channel_id=channel_id,
+            response_queue=response_queue,
+        )
+        with self._lock:
+            self._client_routes[channel_id] = _LocalBufferBrokerClientRoute(
+                channel_id=channel_id,
+                request_queue=request_queue,
+                response_queue=response_queue,
+                forward_thread=None,
+            )
+        return LocalBufferBrokerEventChannel(
+            request_queue=request_queue,
+            response_queue=response_queue,
+            request_timeout_seconds=self._request_timeout_seconds,
+            channel_id=channel_id,
+        )
+
+    def submit_local_request(
+        self,
+        *,
+        channel_id: str,
+        response_queue: Any,
+        message: object,
+    ) -> None:
+        """同步登记响应路由并把同进程 client 请求直接提交给 Broker。"""
+
+        if not isinstance(message, dict):
+            return
+        action = str(message.get("action") or "")
+        if action == "__close-client-channel__":
+            self._remove_client_route(channel_id)
+            return
+        self._submit_client_request(
+            channel_id=channel_id,
+            response_queue=response_queue,
+            message=message,
+        )
+
     def _forward_client_requests(
         self, channel_id: str, request_queue: Any, response_queue: Any
     ) -> None:
@@ -236,61 +309,81 @@ class _LocalBufferBrokerEventRouter:
                     if self._stop_event.is_set():
                         break
                     continue
-                if not isinstance(message, dict):
-                    continue
-                action = str(message.get("action") or "")
-                if action == "__close-client-channel__":
+                if isinstance(message, dict) and str(message.get("action") or "") == "__close-client-channel__":
                     break
-                request_id = str(message.get("request_id") or f"broker-{uuid4().hex}")
-                message["request_id"] = request_id
-                with self._lock:
-                    self._response_routes[request_id] = _LocalBufferBrokerResponseRoute(
-                        channel_id=channel_id,
-                        response_queue=response_queue,
-                    )
-                try:
-                    self._broker_request_queue.put(message)
-                except Exception as exc:
-                    with self._lock:
-                        self._response_routes.pop(request_id, None)
-                        increment_safe_counter(self._forward_error_count)
-                    self._record_router_error(
-                        action="forward-request", channel_id=channel_id, error=exc
-                    )
-                    _safe_put(
-                        response_queue,
-                        {
-                            "request_id": request_id,
-                            "ok": False,
-                            "error": {
-                                "code": "service_configuration_error",
-                                "message": "LocalBufferBroker router 转发请求失败",
-                                "details": {
-                                    "channel_id": channel_id,
-                                    "error_type": type(exc).__name__,
-                                    "error_message": str(exc) or type(exc).__name__,
-                                },
-                            },
-                        },
-                    )
+                self._submit_client_request(
+                    channel_id=channel_id,
+                    response_queue=response_queue,
+                    message=message,
+                )
         finally:
             self._remove_client_route(channel_id)
             _close_queue(request_queue)
             _close_queue(response_queue)
+
+    def _submit_client_request(
+        self,
+        *,
+        channel_id: str,
+        response_queue: Any,
+        message: object,
+    ) -> None:
+        """统一登记 request id 的响应路由并投递 Broker 进程。"""
+
+        if not isinstance(message, dict):
+            return
+        request_id = str(message.get("request_id") or f"broker-{uuid4().hex}")
+        message["request_id"] = request_id
+        with self._lock:
+            if channel_id not in self._client_routes:
+                raise ServiceConfigurationError(
+                    "LocalBufferBroker client channel 已关闭",
+                    details={"channel_id": channel_id},
+                )
+            self._response_routes[request_id] = _LocalBufferBrokerResponseRoute(
+                channel_id=channel_id,
+                response_queue=response_queue,
+            )
+        try:
+            # multiprocessing.Connection 不允许多个线程并发写入同一字节流。
+            # router 是唯一发送入口，锁只覆盖小型控制消息序列化与发送。
+            with self._broker_send_lock:
+                self._broker_request_connection.send(message)
+        except Exception as exc:
+            with self._lock:
+                self._response_routes.pop(request_id, None)
+                increment_safe_counter(self._forward_error_count)
+            self._record_router_error(
+                action="forward-request", channel_id=channel_id, error=exc
+            )
+            _safe_put(
+                response_queue,
+                {
+                    "request_id": request_id,
+                    "ok": False,
+                    "error": {
+                        "code": "service_configuration_error",
+                        "message": "LocalBufferBroker router 转发请求失败",
+                        "details": {
+                            "channel_id": channel_id,
+                            "error_type": type(exc).__name__,
+                            "error_message": str(exc) or type(exc).__name__,
+                        },
+                    },
+                },
+            )
 
     def _route_broker_responses(self) -> None:
         """把 broker 进程响应分发回对应客户端响应队列。"""
 
         while not self._stop_event.is_set():
             try:
-                message = self._broker_response_queue.get(timeout=0.1)
-            except Empty:
-                continue
-            except Exception as exc:
+                if not self._broker_response_connection.poll(0.1):
+                    continue
+                message = self._broker_response_connection.recv()
+            except (EOFError, OSError) as exc:
                 self._record_router_error(action="read-broker-response", error=exc)
-                if self._stop_event.is_set():
-                    break
-                continue
+                break
             if not isinstance(message, dict):
                 continue
             request_id = str(message.get("request_id") or "")
@@ -361,8 +454,8 @@ class LocalBufferBrokerProcessSupervisor:
         self._context = multiprocessing.get_context("spawn")
         self._process: Any | None = None
         self._startup_queue: Queue[Any] | None = None
-        self._request_queue: Queue[Any] | None = None
-        self._response_queue: Queue[Any] | None = None
+        self._request_connection: Connection | None = None
+        self._response_connection: Connection | None = None
         self._router: _LocalBufferBrokerEventRouter | None = None
         self._expire_stop_event = Event()
         self._expire_thread: Thread | None = None
@@ -392,24 +485,32 @@ class LocalBufferBrokerProcessSupervisor:
                 if self.is_running:
                     return
                 startup_queue = self._context.Queue()
-                request_queue = self._context.Queue()
-                response_queue = self._context.Queue()
+                request_receive_connection, request_send_connection = (
+                    self._context.Pipe(duplex=False)
+                )
+                response_receive_connection, response_send_connection = (
+                    self._context.Pipe(duplex=False)
+                )
                 process = self._context.Process(
                     target=run_local_buffer_broker_process,
                     kwargs={
                         "settings_payload": self.settings.model_dump(mode="python"),
                         "startup_queue": startup_queue,
-                        "request_queue": request_queue,
-                        "response_queue": response_queue,
+                        "request_connection": request_receive_connection,
+                        "response_connection": response_send_connection,
                     },
                     name="local-buffer-broker",
                     daemon=True,
                 )
                 process.start()
+                # 父进程仅保留 request send 与 response receive 两端，避免连接
+                # 因无关句柄仍然打开而无法可靠观察 EOF。
+                request_receive_connection.close()
+                response_send_connection.close()
                 self._process = process
                 self._startup_queue = startup_queue
-                self._request_queue = request_queue
-                self._response_queue = response_queue
+                self._request_connection = request_send_connection
+                self._response_connection = response_receive_connection
 
             message: object | None = None
             while message is None:
@@ -457,8 +558,8 @@ class LocalBufferBrokerProcessSupervisor:
             if isinstance(message, dict) and message.get("ok") is True:
                 router = _LocalBufferBrokerEventRouter(
                     context=self._context,
-                    broker_request_queue=request_queue,
-                    broker_response_queue=response_queue,
+                    broker_request_connection=request_send_connection,
+                    broker_response_connection=response_receive_connection,
                     request_timeout_seconds=self.settings.request_timeout_seconds,
                 )
                 router.start()
@@ -561,7 +662,7 @@ class LocalBufferBrokerProcessSupervisor:
             router.stop()
         with self._lock:
             self._cleanup_startup_queue_locked()
-            self._cleanup_event_queues_locked()
+            self._cleanup_event_connections_locked()
             self._process = None
             self._router = None
 
@@ -577,12 +678,15 @@ class LocalBufferBrokerProcessSupervisor:
         return router.create_event_channel()
 
     def create_client(self) -> LocalBufferBrokerClient | None:
-        """创建一个当前 broker 的 client。"""
+        """创建一个当前 broker 的同进程 client。"""
 
-        event_channel = self.get_event_channel()
-        if event_channel is None:
+        with self._lock:
+            if self._process is None or not self._process.is_alive():
+                return None
+            router = self._router
+        if router is None:
             return None
-        return LocalBufferBrokerClient(event_channel)
+        return LocalBufferBrokerClient(router.create_local_event_channel())
 
     def get_status(self) -> dict[str, object]:
         """读取 broker 状态摘要。"""
@@ -613,7 +717,7 @@ class LocalBufferBrokerProcessSupervisor:
                 "running": False,
                 "recent_error": self.get_recent_error(),
                 "router": self._build_router_observation(),
-                "queues": self._build_queue_observation(),
+                "ipc": self._build_ipc_observation(),
             }
         try:
             status = self.get_status()
@@ -626,7 +730,7 @@ class LocalBufferBrokerProcessSupervisor:
                 "expire_loop_running": self._is_expire_loop_running(),
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
                 "router": self._build_router_observation(),
-                "queues": self._build_queue_observation(),
+                "ipc": self._build_ipc_observation(),
             }
         except Exception as exc:
             self._record_recent_error(action="health", error=exc)
@@ -638,7 +742,7 @@ class LocalBufferBrokerProcessSupervisor:
                 "expire_loop_running": self._is_expire_loop_running(),
                 "expire_interval_seconds": self.settings.expire_interval_seconds,
                 "router": self._build_router_observation(),
-                "queues": self._build_queue_observation(),
+                "ipc": self._build_ipc_observation(),
             }
 
     def get_recent_error(self) -> dict[str, object] | None:
@@ -1085,20 +1189,24 @@ class LocalBufferBrokerProcessSupervisor:
             }
         return router.describe_state()
 
-    def _build_queue_observation(self) -> dict[str, object]:
-        """构造 broker 队列的观测摘要。"""
+    def _build_ipc_observation(self) -> dict[str, object]:
+        """构造 broker IPC 通道的观测摘要。"""
 
         with self._lock:
             startup_queue = self._startup_queue
-            request_queue = self._request_queue
-            response_queue = self._response_queue
+            request_connection = self._request_connection
+            response_connection = self._response_connection
         return {
             "startup_queue_configured": startup_queue is not None,
             "startup_queue_size": _safe_queue_size(startup_queue),
-            "request_queue_configured": request_queue is not None,
-            "request_queue_size": _safe_queue_size(request_queue),
-            "response_queue_configured": response_queue is not None,
-            "response_queue_size": _safe_queue_size(response_queue),
+            "request_connection_configured": request_connection is not None,
+            "request_connection_closed": (
+                request_connection.closed if request_connection is not None else None
+            ),
+            "response_connection_configured": response_connection is not None,
+            "response_connection_closed": (
+                response_connection.closed if response_connection is not None else None
+            ),
         }
 
     def _is_retryable_startup_error(self, error_payload: dict[str, object]) -> bool:
@@ -1143,18 +1251,17 @@ class LocalBufferBrokerProcessSupervisor:
         startup_queue.close()
         startup_queue.join_thread()
 
-    def _cleanup_event_queues_locked(self) -> None:
-        """关闭 broker 事件队列。"""
+    def _cleanup_event_connections_locked(self) -> None:
+        """关闭 broker 事件连接。"""
 
-        request_queue = self._request_queue
-        response_queue = self._response_queue
-        self._request_queue = None
-        self._response_queue = None
-        for queue in (request_queue, response_queue):
-            if queue is None:
+        request_connection = self._request_connection
+        response_connection = self._response_connection
+        self._request_connection = None
+        self._response_connection = None
+        for connection in (request_connection, response_connection):
+            if connection is None:
                 continue
-            queue.close()
-            queue.join_thread()
+            connection.close()
 
 
 def _safe_put(queue: Any, message: dict[str, object]) -> None:

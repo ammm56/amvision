@@ -16,12 +16,61 @@
     "workflow_run_id": { "type": ["string", "null"] },
     "response_payload": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "results": { "type": "object", "additionalProperties": true },
+        "attachments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/logicalAttachment" }
+        },
+        "payloads": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/zeroMqPhysicalPayload" }
+        }
+      }
     },
     "error_message": { "type": ["string", "null"] },
     "metadata": {
       "type": "object",
       "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "logicalAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachment_id", "binding_id", "item_index", "binding_payload_type_id", "payload_type_id", "payload_id"],
+      "properties": {
+        "attachment_id": { "type": "string", "minLength": 1 },
+        "binding_id": { "type": "string", "minLength": 1 },
+        "item_index": { "type": "integer", "minimum": 0 },
+        "binding_payload_type_id": { "enum": ["image-ref.v1", "image-refs.v1"] },
+        "payload_type_id": { "const": "image-ref.v1" },
+        "payload_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "zeroMqPhysicalPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload_id", "delivery_kind", "frame_index", "media_type", "content_length", "checksum_algorithm", "checksum", "shape"],
+      "properties": {
+        "payload_id": { "type": "string", "minLength": 1 },
+        "delivery_kind": { "const": "zeromq-frame" },
+        "frame_index": { "type": "integer", "minimum": 1 },
+        "media_type": { "type": "string", "minLength": 1 },
+        "content_length": { "type": "integer", "minimum": 1 },
+        "checksum_algorithm": { "enum": ["crc32", "sha256"] },
+        "checksum": { "type": "string", "minLength": 1 },
+        "width": { "type": ["integer", "null"], "minimum": 1 },
+        "height": { "type": ["integer", "null"], "minimum": 1 },
+        "shape": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "dtype": { "type": ["string", "null"] },
+        "layout": { "type": ["string", "null"] },
+        "pixel_format": { "type": ["string", "null"] }
+      }
     }
   }
 }

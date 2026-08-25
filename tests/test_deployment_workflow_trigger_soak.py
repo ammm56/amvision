@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import zlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,9 +17,139 @@ from tests.integration.deployment_workflow_trigger_soak import (
     _evaluate_result,
     _execute_deployment_async,
     _execute_workflow_invoke,
+    _parse_zeromq_result_frames,
     build_lanes,
     run_preflight,
 )
+
+
+def _result_manifest(
+    *,
+    attachments: list[dict[str, object]] | None = None,
+    payloads: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """构造统一 ZeroMQ Result v1 测试 manifest。"""
+
+    return {
+        "format_id": "amvision.workflow-trigger-result.v1",
+        "trigger_source_id": "trigger-1",
+        "event_id": "event-1",
+        "state": "succeeded",
+        "workflow_run_id": "run-1",
+        "response_payload": {
+            "results": {},
+            "attachments": attachments or [],
+            "payloads": payloads or [],
+        },
+        "metadata": {},
+    }
+
+
+def _encode_manifest(payload: dict[str, object]) -> bytes:
+    """编码测试 manifest。"""
+
+    return json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
+
+def test_zeromq_soak_parser_accepts_json_only_result() -> None:
+    """JSON-only 结果也必须使用统一 Result v1，且不能带未声明帧。"""
+
+    manifest = _result_manifest()
+
+    assert _parse_zeromq_result_frames([_encode_manifest(manifest)]) == manifest
+
+
+def test_zeromq_soak_parser_accepts_shared_physical_frame() -> None:
+    """多个逻辑 attachment 可以共享同一个去重后的物理图片帧。"""
+
+    content = b"encoded-image"
+    payload_id = "payload-1"
+    manifest = _result_manifest(
+        attachments=[
+            {
+                "attachment_id": "attachment-1",
+                "binding_id": "result_image",
+                "item_index": 0,
+                "payload_id": payload_id,
+            },
+            {
+                "attachment_id": "attachment-2",
+                "binding_id": "preview_image",
+                "item_index": 0,
+                "payload_id": payload_id,
+            },
+        ],
+        payloads=[
+            {
+                "payload_id": payload_id,
+                "delivery_kind": "zeromq-frame",
+                "frame_index": 1,
+                "media_type": "image/png",
+                "content_length": len(content),
+                "checksum_algorithm": "crc32",
+                "checksum": f"{zlib.crc32(content) & 0xFFFFFFFF:08x}",
+            }
+        ],
+    )
+
+    assert _parse_zeromq_result_frames(
+        [_encode_manifest(manifest), content]
+    ) == manifest
+
+
+def _manifest_with_single_image(content: bytes) -> dict[str, object]:
+    """构造声明一个图片帧的测试 manifest。"""
+
+    return _result_manifest(
+        attachments=[
+            {
+                "attachment_id": "attachment-1",
+                "binding_id": "result_image",
+                "item_index": 0,
+                "payload_id": "payload-1",
+            }
+        ],
+        payloads=[
+            {
+                "payload_id": "payload-1",
+                "delivery_kind": "zeromq-frame",
+                "frame_index": 1,
+                "media_type": "image/png",
+                "content_length": len(content),
+                "checksum_algorithm": "crc32",
+                "checksum": f"{zlib.crc32(content) & 0xFFFFFFFF:08x}",
+            }
+        ],
+    )
+
+
+def test_zeromq_soak_parser_rejects_undeclared_frame() -> None:
+    """长期 soak 不能忽略 manifest 未声明的额外二进制帧。"""
+
+    content = b"encoded-image"
+    manifest = _manifest_with_single_image(content)
+
+    with pytest.raises(RuntimeError, match="未声明"):
+        _parse_zeromq_result_frames(
+            [_encode_manifest(manifest), content, b"undeclared"]
+        )
+
+
+def test_zeromq_soak_parser_rejects_corrupt_frame_checksum() -> None:
+    """长期 soak 必须检出图片帧 checksum 损坏。"""
+
+    content = b"encoded-image"
+    manifest = _manifest_with_single_image(content)
+    response_payload = manifest["response_payload"]
+    assert isinstance(response_payload, dict)
+    payloads = response_payload["payloads"]
+    assert isinstance(payloads, list)
+    physical = payloads[0]
+    assert isinstance(physical, dict)
+    physical["checksum"] = "00000000"
+
+    with pytest.raises(RuntimeError, match="checksum"):
+        _parse_zeromq_result_frames([_encode_manifest(manifest), content])
 
 
 class _FakeApiClient:

@@ -1294,11 +1294,8 @@ def test_plc_register_trigger_source_api_examples_are_valid() -> None:
         for binding_payload in trigger_source_request["input_binding_mapping"].values()
     )
     assert (
-        trigger_source_request["result_mapping"]["result_binding"]
-        == "inspection_result"
-    )
-    assert (
-        trigger_source_request["result_mapping"]["result_mode"] == "accepted-then-query"
+        trigger_source_request["result_mapping"]["result_bindings"]
+        == ["inspection_result"]
     )
 
 
@@ -1445,10 +1442,8 @@ def test_directory_watch_trigger_source_api_examples_are_valid() -> None:
         ]["deployment_instance_id"]
         == "{{deploymentInstanceId}}"
     )
-    assert trigger_source_request["result_mapping"]["result_binding"] == "batch_record"
-    assert (
-        trigger_source_request["result_mapping"]["result_mode"] == "accepted-then-query"
-    )
+    assert trigger_source_request["result_mapping"]["result_bindings"] == ["batch_record"]
+    assert trigger_source_request["result_mode"] == "accepted-then-query"
     assert trigger_source_request["transport_config"]["force_polling"] is True
     assert trigger_source_request["transport_config"]["min_stable_age_seconds"] == 1.0
     assert trigger_source_request["idempotency_key_path"] == "payload.batch_id"
@@ -1597,10 +1592,8 @@ def test_directory_poll_trigger_source_api_examples_are_valid() -> None:
         ]["deployment_instance_id"]
         == "{{deploymentInstanceId}}"
     )
-    assert trigger_source_request["result_mapping"]["result_binding"] == "batch_record"
-    assert (
-        trigger_source_request["result_mapping"]["result_mode"] == "accepted-then-query"
-    )
+    assert trigger_source_request["result_mapping"]["result_bindings"] == ["batch_record"]
+    assert trigger_source_request["result_mode"] == "accepted-then-query"
     assert trigger_source_request["transport_config"]["scan_interval_seconds"] == 1.0
     assert trigger_source_request["transport_config"]["min_stable_age_seconds"] == 1.0
     assert "force_polling" not in trigger_source_request["transport_config"]

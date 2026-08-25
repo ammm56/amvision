@@ -488,6 +488,7 @@ def test_load_image_matrix_copy_raw_does_not_expose_cached_matrix(
 
 def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 raw broker 输入直接借用 mmap view，不复制整帧并重复计入缓存。"""
 
@@ -553,6 +554,13 @@ def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
     )
     request.execution_metadata["local_buffer_reader"] = BorrowedViewReader()
 
+    def reject_encoded_decode(*_args, **_kwargs):
+        """raw BGR24 不得进入任何 encoded 图片解码路径。"""
+
+        raise AssertionError("raw broker input must not call cv2.imdecode")
+
+    monkeypatch.setattr(cv2, "imdecode", reject_encoded_decode)
+
     _, first_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
     _, second_matrix = load_image_matrix(request, cv2_module=cv2, np_module=np)
     _, grayscale_matrix = load_image_matrix(
@@ -571,6 +579,104 @@ def test_load_image_matrix_borrows_raw_broker_view_without_private_byte_charge(
     assert grayscale_matrix.shape == (2, 3)
     raw_pixels[0] = 99
     assert int(first_matrix[0, 0, 0]) == 99
+
+
+def test_parallel_encoded_buffer_consumers_decode_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同一 encoded LocalBuffer 被并行分支消费时只执行一次 OpenCV 解码。"""
+
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    matrix = np.full((8, 12, 3), 47, dtype=np.uint8)
+    encoded_ok, encoded = cv2.imencode(".png", matrix)
+    assert encoded_ok
+    encoded_bytes = encoded.tobytes()
+    registry = ExecutionImageRegistry()
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+
+    class BorrowedEncodedReader:
+        """提供 encoded LocalBuffer 的只读 mmap view。"""
+
+        def read_buffer_ref_view(self, buffer_ref: object) -> memoryview:
+            del buffer_ref
+            return memoryview(encoded_bytes)
+
+        def read_buffer_ref(self, buffer_ref: object) -> bytes:
+            del buffer_ref
+            raise AssertionError("encoded broker input should use borrowed view")
+
+        def read_frame_ref(self, frame_ref: object) -> bytes:
+            del frame_ref
+            raise AssertionError("frame path is not expected")
+
+    payload = {
+        "transport_kind": "buffer",
+        "media_type": "image/png",
+        "buffer_ref": {
+            "format_id": "amvision.buffer-ref.v1",
+            "buffer_id": "buffer-encoded",
+            "lease_id": "lease-encoded",
+            "path": "buffers/image-test.dat",
+            "offset": 0,
+            "size": len(encoded_bytes),
+            "shape": [],
+            "dtype": None,
+            "layout": None,
+            "pixel_format": None,
+            "media_type": "image/png",
+            "readonly": True,
+            "broker_epoch": "epoch-encoded",
+            "generation": 1,
+        },
+    }
+    request = _build_request(
+        dataset_storage=dataset_storage,
+        image_registry=registry,
+        payload=payload,
+    )
+    request.execution_metadata["local_buffer_reader"] = BorrowedEncodedReader()
+    original_imdecode = cv2.imdecode
+    decoder_started = Event()
+    allow_decoder_finish = Event()
+    counter_lock = Lock()
+    decode_count = 0
+
+    def counted_imdecode(*args, **kwargs):
+        """阻塞唯一 decoder，使其他并行消费者进入同一 single-flight。"""
+
+        nonlocal decode_count
+        with counter_lock:
+            decode_count += 1
+        decoder_started.set()
+        assert allow_decoder_finish.wait(timeout=2.0)
+        return original_imdecode(*args, **kwargs)
+
+    monkeypatch.setattr(cv2, "imdecode", counted_imdecode)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(
+                load_image_matrix,
+                request,
+                cv2_module=cv2,
+                np_module=np,
+            )
+            for _ in range(4)
+        ]
+        if not decoder_started.wait(timeout=2.0):
+            for future in futures:
+                if future.done():
+                    future.result()
+            raise AssertionError("parallel consumers did not enter decoder")
+        allow_decoder_finish.set()
+        decoded = [future.result(timeout=2.0)[1] for future in futures]
+
+    assert decode_count == 1
+    assert all(np.array_equal(item, matrix) for item in decoded)
+    assert all(item is decoded[0] for item in decoded)
 
 
 def test_execution_image_registry_single_flight_decodes_once_for_parallel_readers() -> (

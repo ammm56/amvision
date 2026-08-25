@@ -2,15 +2,63 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from backend.contracts.workflows import TriggerResultContract
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    PreparedTriggerResult,
+)
 from backend.service.application.workflows.trigger_sources.trigger_event_normalizer import (
     RawTriggerEvent,
 )
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
 )
+
+
+@dataclass(frozen=True)
+class WorkflowTriggerDispatchResult:
+    """adapter 的进程内结果；private handoff receipt 不进入公开 JSON。"""
+
+    trigger_result: TriggerResultContract
+    prepared_trigger_result: PreparedTriggerResult | None = None
+
+    @property
+    def state(self) -> str:
+        """返回公开状态。"""
+
+        return self.trigger_result.state
+
+    @property
+    def workflow_run_id(self) -> str | None:
+        """返回 WorkflowRun id。"""
+
+        return self.trigger_result.workflow_run_id
+
+    @property
+    def metadata(self) -> dict[str, object]:
+        """返回公开诊断元数据。"""
+
+        return self.trigger_result.metadata
+
+    @property
+    def error_message(self) -> str | None:
+        """返回公开错误消息。"""
+
+        return self.trigger_result.error_message
+
+    @property
+    def response_payload(self) -> dict[str, object]:
+        """返回公开响应 payload。"""
+
+        return self.trigger_result.response_payload
+
+    @property
+    def event_id(self) -> str:
+        """返回事件 id。"""
+
+        return self.trigger_result.event_id
 
 
 class WorkflowTriggerEventHandler(Protocol):
@@ -21,8 +69,8 @@ class WorkflowTriggerEventHandler(Protocol):
         *,
         trigger_source: WorkflowTriggerSource,
         raw_event: RawTriggerEvent,
-    ) -> TriggerResultContract:
-        """处理一条协议 adapter 收到的原始事件。"""
+    ) -> WorkflowTriggerDispatchResult:
+        """处理一条协议事件，并返回公开结果和私有附件生命周期信息。"""
 
         ...
 

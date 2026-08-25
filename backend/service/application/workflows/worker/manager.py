@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from queue import Empty
 from threading import Event, Lock, RLock, Thread
-from time import monotonic
+from time import monotonic, perf_counter
 from typing import TYPE_CHECKING, Any, Iterator
 from uuid import uuid4
 import logging
 import math
 import multiprocessing
 
+from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.service.application.errors import (
     InvalidRequestError,
     OperationCancelledError,
@@ -21,6 +22,7 @@ from backend.service.application.errors import (
     ResourceConflictError,
     ServiceConfigurationError,
     ServiceError,
+    WorkflowRuntimeBusyError,
 )
 from backend.service.application.local_buffers import (
     LocalBufferBrokerClient,
@@ -108,6 +110,8 @@ class _WorkflowRuntimeProcessHandle:
     )
     started_event: Event = field(default_factory=Event, repr=False)
     request_lock: Lock = field(default_factory=Lock, repr=False)
+    active_execution_token_id: str | None = None
+    active_execution_run_id: str | None = None
     state_lock: Lock = field(default_factory=Lock, repr=False)
     cleanup_lock: Lock = field(default_factory=Lock, repr=False)
     latest_runtime_state: WorkflowRuntimeWorkerState | None = None
@@ -116,6 +120,23 @@ class _WorkflowRuntimeProcessHandle:
     cleanup_completed: bool = False
     heartbeat_timeout_reported: bool = False
     background_failure_reported: bool = False
+
+
+@dataclass(frozen=True)
+class WorkflowRuntimeExecutionToken:
+    """固定一次真实 Runtime 执行权及其 worker identity。"""
+
+    token_id: str
+    workflow_runtime_id: str
+    workflow_run_id: str
+    workflow_runtime_revision_id: str
+    runtime_generation: int
+    snapshot_fingerprint: str
+    worker_instance_id: str
+    acquisition_mode: str
+    acquired_at_monotonic: float
+    wait_ms: float
+    _handle: _WorkflowRuntimeProcessHandle = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -201,7 +222,8 @@ class WorkflowRuntimeWorkerManager:
         self._context = multiprocessing.get_context("spawn")
         self._handles: dict[str, _WorkflowRuntimeProcessHandle] = {}
         self._async_runs: dict[str, _WorkflowRuntimeAsyncRunHandle] = {}
-        self._sync_admissions: dict[str, set[str]] = {}
+        self._execution_tokens: dict[str, WorkflowRuntimeExecutionToken] = {}
+        self._execution_token_ids_by_runtime: dict[str, set[str]] = {}
         self._lock = Lock()
         self._stopping = Event()
         self._monitor_stop_event = Event()
@@ -746,138 +768,33 @@ class WorkflowRuntimeWorkerManager:
         expected_snapshot_fingerprint: str | None = None,
         cancel_event: Event | None = None,
         on_dispatched: Callable[[], None] | None = None,
+        execution_token: WorkflowRuntimeExecutionToken | None = None,
+        execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeWorkerRunResult:
-        """通过已运行的 worker 发起一次同步调用。"""
+        """通过统一 execution token 向已运行 worker 发起一次调用。"""
 
-        invoke_started_at = monotonic()
-        deadline = invoke_started_at + float(timeout_seconds)
-        lock_acquired = False
-        lock_wait_started_at = monotonic()
-        lifecycle_lock = self._resolve_runtime_lifecycle_lock(
-            workflow_app_runtime.workflow_runtime_id
-        )
-        lifecycle_lock_acquired = False
-        try:
-            while not lifecycle_lock_acquired:
-                if cancel_event is not None and cancel_event.is_set():
-                    raise OperationCancelledError(
-                        "workflow run 已取消",
-                        details={
-                            "workflow_runtime_id": (
-                                workflow_app_runtime.workflow_runtime_id
-                            ),
-                            "workflow_run_id": workflow_run_id,
-                        },
-                    )
-                remaining_seconds = deadline - monotonic()
-                if remaining_seconds <= 0:
-                    raise OperationTimeoutError(
-                        "等待 workflow runtime 生命周期操作完成超时",
-                        details={
-                            "workflow_runtime_id": (
-                                workflow_app_runtime.workflow_runtime_id
-                            ),
-                            "workflow_run_id": workflow_run_id,
-                            "timeout_seconds": timeout_seconds,
-                            "timeout_phase": "runtime_lifecycle_lock",
-                        },
-                    )
-                lifecycle_lock_acquired = lifecycle_lock.acquire(
-                    timeout=max(0.001, min(0.1, remaining_seconds))
-                )
-
-            with self._lock:
-                handle = self._handles.get(workflow_app_runtime.workflow_runtime_id)
-            if handle is None or not handle.process.is_alive():
-                raise ServiceConfigurationError(
-                    "workflow runtime worker 当前未运行",
-                    details={
-                        "workflow_runtime_id": (
-                            workflow_app_runtime.workflow_runtime_id
-                        )
-                    },
-                )
-            self._validate_handle_identity(
-                handle,
+        invoke_started_at = perf_counter()
+        deadline = monotonic() + float(timeout_seconds)
+        owns_execution_token = execution_token is None
+        if execution_token is None:
+            execution_token = self.acquire_execution_token(
                 workflow_app_runtime=workflow_app_runtime,
+                workflow_run_id=workflow_run_id,
+                timeout_seconds=timeout_seconds,
+                acquisition_mode=execution_acquisition_mode,
                 expected_revision_id=expected_revision_id,
                 expected_generation=expected_generation,
                 expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+                cancel_event=cancel_event,
             )
-            while not lock_acquired:
-                if cancel_event is not None and cancel_event.is_set():
-                    raise OperationCancelledError(
-                        "workflow run 已取消",
-                        details={
-                            "workflow_runtime_id": (
-                                workflow_app_runtime.workflow_runtime_id
-                            ),
-                            "workflow_run_id": workflow_run_id,
-                        },
-                    )
-                if not handle.process.is_alive():
-                    self._terminate_failed_handle(
-                        workflow_runtime_id=(workflow_app_runtime.workflow_runtime_id),
-                        handle=handle,
-                    )
-                    raise ServiceConfigurationError(
-                        "workflow runtime worker 当前未运行",
-                        details={
-                            "workflow_runtime_id": (
-                                workflow_app_runtime.workflow_runtime_id
-                            )
-                        },
-                    )
-                remaining_seconds = deadline - monotonic()
-                if remaining_seconds <= 0:
-                    raise OperationTimeoutError(
-                        "等待 workflow runtime worker 可用执行槽位超时",
-                        details={
-                            "workflow_runtime_id": (
-                                workflow_app_runtime.workflow_runtime_id
-                            ),
-                            "workflow_run_id": workflow_run_id,
-                            "timeout_seconds": timeout_seconds,
-                            "timeout_phase": "request_lock",
-                        },
-                    )
-                lock_acquired = handle.request_lock.acquire(
-                    timeout=max(0.001, min(0.1, remaining_seconds))
-                )
-            with self._lock:
-                current_handle = self._handles.get(
-                    workflow_app_runtime.workflow_runtime_id
-                )
-            if current_handle is not handle:
-                handle.request_lock.release()
-                lock_acquired = False
-                raise ResourceConflictError(
-                    "WorkflowAppRuntime worker 已在调用前切换版本",
-                    details={
-                        "workflow_runtime_id": (
-                            workflow_app_runtime.workflow_runtime_id
-                        )
-                    },
-                )
-            self._validate_handle_identity(
-                handle,
+        else:
+            self._require_execution_token(
+                execution_token,
                 workflow_app_runtime=workflow_app_runtime,
-                expected_revision_id=expected_revision_id,
-                expected_generation=expected_generation,
-                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+                workflow_run_id=workflow_run_id,
             )
-        except Exception:
-            if lock_acquired:
-                try:
-                    handle.request_lock.release()
-                except RuntimeError:
-                    pass
-                lock_acquired = False
-            raise
-        finally:
-            if lifecycle_lock_acquired:
-                lifecycle_lock.release()
-        request_lock_wait_ms = _elapsed_ms(lock_wait_started_at)
+        handle = execution_token._handle
+        request_lock_wait_ms = execution_token.wait_ms
         worker_process_id = handle.process.pid
 
         try:
@@ -914,7 +831,7 @@ class WorkflowRuntimeWorkerManager:
                     handle.run_cancellation_event.clear()
                 handle.active_run_request_ids[workflow_run_id] = message_id
                 handle.pending_responses[message_id] = pending
-                queue_put_started_at = monotonic()
+                queue_put_started_at = perf_counter()
                 handle.request_queue.put(
                     {
                         "message_type": "invoke-run",
@@ -944,7 +861,7 @@ class WorkflowRuntimeWorkerManager:
             if on_dispatched is not None:
                 on_dispatched()
 
-            reply_wait_started_at = monotonic()
+            reply_wait_started_at = perf_counter()
             while True:
                 if cancel_event is not None and cancel_event.is_set():
                     self._terminate_failed_handle(
@@ -1004,11 +921,6 @@ class WorkflowRuntimeWorkerManager:
                         },
                     )
         finally:
-            if lock_acquired:
-                try:
-                    handle.request_lock.release()
-                except RuntimeError:
-                    pass
             with handle.state_lock:
                 handle.pending_responses.pop(
                     message_id if "message_id" in locals() else "", None
@@ -1033,6 +945,8 @@ class WorkflowRuntimeWorkerManager:
                 # worker 未返回时无法确认其 finally 是否运行；覆盖入队失败、取消、
                 # 超时和进程硬退出，释放 TriggerSource 输入等父进程已知 lease。
                 self.cleanup_parent_local_buffer_leases(execution_metadata)
+            if owns_execution_token:
+                self.release_execution_token(execution_token)
 
         self._validate_worker_response_identity(message, handle)
         worker_result = deserialize_run_result(message)
@@ -1233,13 +1147,23 @@ class WorkflowRuntimeWorkerManager:
         released_count = 0
         for cleanup_item in cleanup_items:
             pool_name_value = cleanup_item.metadata.get("pool_name")
+            ownership_receipt_payload = cleanup_item.metadata.get(
+                "ownership_receipt"
+            )
             try:
-                client.release(
-                    cleanup_item.resource_id,
-                    pool_name=pool_name_value
-                    if isinstance(pool_name_value, str)
-                    else None,
-                )
+                if isinstance(ownership_receipt_payload, dict):
+                    client.conditional_release(
+                        receipt=LeaseOwnershipReceipt.model_validate(
+                            ownership_receipt_payload
+                        )
+                    )
+                else:
+                    client.release(
+                        cleanup_item.resource_id,
+                        pool_name=pool_name_value
+                        if isinstance(pool_name_value, str)
+                        else None,
+                    )
                 released_count += 1
             except InvalidRequestError:
                 # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
@@ -1248,6 +1172,60 @@ class WorkflowRuntimeWorkerManager:
                 LOGGER.warning(
                     "父进程释放 LocalBufferBroker lease 失败: lease_id=%s error=%s",
                     cleanup_item.resource_id,
+                    exc,
+                )
+                self._invalidate_cleanup_local_buffer_client(client)
+                break
+        return released_count
+
+    def cleanup_local_buffer_ownership_receipts(
+        self,
+        receipts: Iterable[LeaseOwnershipReceipt],
+    ) -> int:
+        """按最新 owner receipt 条件释放尚未交付给 adapter 的输出 lease。
+
+        Worker 在 cleanup 前可能已经把输出图片从 Run owner 转交给 response
+        owner。父进程后续持久化或事件发布失败时，旧 cleanup receipt 已失效，
+        必须使用 Worker 返回的新 receipt 回收；CAS identity 不匹配时不影响
+        已被其他合法生命周期接管的 lease。
+        """
+
+        unique_receipts = tuple(
+            {
+                (
+                    receipt.pool_name,
+                    receipt.lease_id,
+                    receipt.broker_epoch,
+                    receipt.generation,
+                    receipt.owner_kind,
+                    receipt.owner_id,
+                    receipt.deadline_ns,
+                ): receipt
+                for receipt in receipts
+            }.values()
+        )
+        if not unique_receipts:
+            return 0
+        try:
+            client = self._get_cleanup_local_buffer_client()
+        except Exception as exc:
+            LOGGER.warning("创建 LocalBufferBroker output cleanup client 失败: %s", exc)
+            return 0
+        if client is None:
+            return 0
+        released_count = 0
+        for receipt in unique_receipts:
+            try:
+                status = client.conditional_release(receipt=receipt)
+                if status != "stale":
+                    released_count += 1
+            except InvalidRequestError:
+                # deadline sweep、adapter 或其他合法 owner 可能已先完成释放。
+                continue
+            except Exception as exc:
+                LOGGER.warning(
+                    "父进程释放 Workflow 输出 lease 失败: lease_id=%s error=%s",
+                    receipt.lease_id,
                     exc,
                 )
                 self._invalidate_cleanup_local_buffer_client(client)
@@ -1564,18 +1542,14 @@ class WorkflowRuntimeWorkerManager:
                     handle, runtime_state
                 )
                 should_persist = False
-                event_type = "runtime.heartbeat"
-                event_message = "workflow app runtime heartbeat"
+                event_type = "runtime.heartbeat_recovered"
+                event_message = "workflow app runtime heartbeat 已恢复"
                 with handle.state_lock:
                     handle.latest_runtime_state = runtime_state
                     handle.latest_runtime_state_monotonic = monotonic()
                     handle.background_failure_reported = False
                     if handle.heartbeat_timeout_reported:
                         handle.heartbeat_timeout_reported = False
-                        should_persist = True
-                        event_type = "runtime.heartbeat_recovered"
-                        event_message = "workflow app runtime heartbeat 已恢复"
-                    elif message_type == "runtime-heartbeat":
                         should_persist = True
                     if request_id:
                         pending = handle.pending_responses.pop(request_id, None)
@@ -2351,41 +2325,270 @@ class WorkflowRuntimeWorkerManager:
         with self._resolve_runtime_lifecycle_lock(workflow_runtime_id):
             yield
 
-    def reserve_sync_admission(
+    def acquire_execution_token(
         self,
-        workflow_runtime_id: str,
+        *,
+        workflow_app_runtime: WorkflowAppRuntime,
         workflow_run_id: str,
-    ) -> None:
-        """登记一条轻量同步调用占用，仅用于关闭 Runtime 删除窗口。"""
+        timeout_seconds: float,
+        acquisition_mode: str,
+        expected_revision_id: str | None = None,
+        expected_generation: int | None = None,
+        expected_snapshot_fingerprint: str | None = None,
+        cancel_event: Event | None = None,
+    ) -> WorkflowRuntimeExecutionToken:
+        """按 wait/reject 模式取得唯一真实 Runtime 执行权。"""
 
-        with self._lock:
-            self._sync_admissions.setdefault(workflow_runtime_id, set()).add(
-                workflow_run_id
+        if acquisition_mode not in {"wait", "reject"}:
+            raise InvalidRequestError(
+                "Workflow Runtime execution acquisition_mode 不合法",
+                details={"acquisition_mode": acquisition_mode},
+            )
+        wait_started_at = perf_counter()
+        deadline = monotonic() + float(timeout_seconds)
+        workflow_runtime_id = workflow_app_runtime.workflow_runtime_id
+        lifecycle_lock = self._resolve_runtime_lifecycle_lock(workflow_runtime_id)
+        lifecycle_lock_acquired = False
+        request_lock_acquired = False
+        handle: _WorkflowRuntimeProcessHandle | None = None
+        try:
+            if acquisition_mode == "reject":
+                lifecycle_lock_acquired = lifecycle_lock.acquire(blocking=False)
+                if not lifecycle_lock_acquired:
+                    raise WorkflowRuntimeBusyError(
+                        details={
+                            "workflow_runtime_id": workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                            "busy_phase": "runtime_lifecycle",
+                        }
+                    )
+            else:
+                while not lifecycle_lock_acquired:
+                    self._raise_if_execution_cancelled(
+                        cancel_event,
+                        workflow_runtime_id=workflow_runtime_id,
+                        workflow_run_id=workflow_run_id,
+                    )
+                    remaining_seconds = deadline - monotonic()
+                    if remaining_seconds <= 0:
+                        raise OperationTimeoutError(
+                            "等待 workflow runtime 生命周期操作完成超时",
+                            details={
+                                "workflow_runtime_id": workflow_runtime_id,
+                                "workflow_run_id": workflow_run_id,
+                                "timeout_seconds": timeout_seconds,
+                                "timeout_phase": "runtime_lifecycle_lock",
+                            },
+                        )
+                    lifecycle_lock_acquired = lifecycle_lock.acquire(
+                        timeout=max(0.001, min(0.1, remaining_seconds))
+                    )
+
+            with self._lock:
+                handle = self._handles.get(workflow_runtime_id)
+            if handle is None or not handle.process.is_alive():
+                raise ServiceConfigurationError(
+                    "workflow runtime worker 当前未运行",
+                    details={"workflow_runtime_id": workflow_runtime_id},
+                )
+            self._validate_handle_identity(
+                handle,
+                workflow_app_runtime=workflow_app_runtime,
+                expected_revision_id=expected_revision_id,
+                expected_generation=expected_generation,
+                expected_snapshot_fingerprint=expected_snapshot_fingerprint,
             )
 
-    def release_sync_admission(
+            if acquisition_mode == "reject":
+                request_lock_acquired = handle.request_lock.acquire(blocking=False)
+                if not request_lock_acquired:
+                    raise WorkflowRuntimeBusyError(
+                        details={
+                            "workflow_runtime_id": workflow_runtime_id,
+                            "workflow_run_id": workflow_run_id,
+                            "busy_phase": "execution",
+                        }
+                    )
+            else:
+                while not request_lock_acquired:
+                    self._raise_if_execution_cancelled(
+                        cancel_event,
+                        workflow_runtime_id=workflow_runtime_id,
+                        workflow_run_id=workflow_run_id,
+                    )
+                    if not handle.process.is_alive():
+                        self._terminate_failed_handle(
+                            workflow_runtime_id=workflow_runtime_id,
+                            handle=handle,
+                        )
+                        raise ServiceConfigurationError(
+                            "workflow runtime worker 当前未运行",
+                            details={"workflow_runtime_id": workflow_runtime_id},
+                        )
+                    remaining_seconds = deadline - monotonic()
+                    if remaining_seconds <= 0:
+                        raise OperationTimeoutError(
+                            "等待 workflow runtime worker 可用执行槽位超时",
+                            details={
+                                "workflow_runtime_id": workflow_runtime_id,
+                                "workflow_run_id": workflow_run_id,
+                                "timeout_seconds": timeout_seconds,
+                                "timeout_phase": "request_lock",
+                            },
+                        )
+                    request_lock_acquired = handle.request_lock.acquire(
+                        timeout=max(0.001, min(0.1, remaining_seconds))
+                    )
+
+            with self._lock:
+                current_handle = self._handles.get(workflow_runtime_id)
+                if current_handle is not handle:
+                    raise ResourceConflictError(
+                        "WorkflowAppRuntime worker 已在调用前切换版本",
+                        details={"workflow_runtime_id": workflow_runtime_id},
+                    )
+                self._validate_handle_identity(
+                    handle,
+                    workflow_app_runtime=workflow_app_runtime,
+                    expected_revision_id=expected_revision_id,
+                    expected_generation=expected_generation,
+                    expected_snapshot_fingerprint=expected_snapshot_fingerprint,
+                )
+                token = WorkflowRuntimeExecutionToken(
+                    token_id=f"workflow-runtime-token-{uuid4().hex}",
+                    workflow_runtime_id=workflow_runtime_id,
+                    workflow_run_id=workflow_run_id,
+                    workflow_runtime_revision_id=(
+                        handle.workflow_runtime_revision_id or ""
+                    ),
+                    runtime_generation=handle.runtime_generation,
+                    snapshot_fingerprint=(
+                        handle.expected_snapshot_fingerprint or ""
+                    ),
+                    worker_instance_id=handle.worker_instance_id or "",
+                    acquisition_mode=acquisition_mode,
+                    acquired_at_monotonic=monotonic(),
+                    wait_ms=_elapsed_ms(wait_started_at),
+                    _handle=handle,
+                )
+                handle.active_execution_token_id = token.token_id
+                handle.active_execution_run_id = workflow_run_id
+                execution_tokens = getattr(self, "_execution_tokens", None)
+                if execution_tokens is None:
+                    execution_tokens = {}
+                    self._execution_tokens = execution_tokens
+                token_ids_by_runtime = getattr(
+                    self, "_execution_token_ids_by_runtime", None
+                )
+                if token_ids_by_runtime is None:
+                    token_ids_by_runtime = {}
+                    self._execution_token_ids_by_runtime = token_ids_by_runtime
+                execution_tokens[token.token_id] = token
+                token_ids_by_runtime.setdefault(workflow_runtime_id, set()).add(
+                    token.token_id
+                )
+            request_lock_acquired = False
+            return token
+        finally:
+            if request_lock_acquired and handle is not None:
+                handle.request_lock.release()
+            if lifecycle_lock_acquired:
+                lifecycle_lock.release()
+
+    def release_execution_token(
         self,
-        workflow_runtime_id: str,
-        workflow_run_id: str,
-    ) -> None:
-        """释放同步调用占用；重复释放保持幂等。"""
+        token: WorkflowRuntimeExecutionToken,
+    ) -> bool:
+        """按 token identity 幂等释放；旧 handle token 不能影响新代执行权。"""
 
+        handle = token._handle
         with self._lock:
-            workflow_run_ids = self._sync_admissions.get(workflow_runtime_id)
-            if workflow_run_ids is None:
-                return
-            workflow_run_ids.discard(workflow_run_id)
-            if not workflow_run_ids:
-                self._sync_admissions.pop(workflow_runtime_id, None)
+            execution_tokens = getattr(self, "_execution_tokens", {})
+            registered = execution_tokens.get(token.token_id)
+            if registered is not token:
+                return False
+            if handle.active_execution_token_id != token.token_id:
+                return False
+            execution_tokens.pop(token.token_id, None)
+            token_ids_by_runtime = getattr(
+                self, "_execution_token_ids_by_runtime", {}
+            )
+            runtime_token_ids = token_ids_by_runtime.get(token.workflow_runtime_id)
+            if runtime_token_ids is not None:
+                runtime_token_ids.discard(token.token_id)
+                if not runtime_token_ids:
+                    token_ids_by_runtime.pop(token.workflow_runtime_id, None)
+            handle.active_execution_token_id = None
+            handle.active_execution_run_id = None
+        handle.request_lock.release()
+        return True
 
-    def list_sync_admission_run_ids(
+    def list_execution_token_run_ids(
         self,
         workflow_runtime_id: str,
     ) -> tuple[str, ...]:
-        """读取当前同步调用占用，不参与执行调度或排队。"""
+        """返回当前真实 execution token 对应的 Run id。"""
 
         with self._lock:
-            return tuple(sorted(self._sync_admissions.get(workflow_runtime_id, ())))
+            execution_tokens = getattr(self, "_execution_tokens", {})
+            token_ids = getattr(self, "_execution_token_ids_by_runtime", {}).get(
+                workflow_runtime_id,
+                (),
+            )
+            return tuple(
+                sorted(
+                    execution_tokens[token_id].workflow_run_id
+                    for token_id in token_ids
+                    if token_id in execution_tokens
+                )
+            )
+
+    def _require_execution_token(
+        self,
+        token: WorkflowRuntimeExecutionToken,
+        *,
+        workflow_app_runtime: WorkflowAppRuntime,
+        workflow_run_id: str,
+    ) -> None:
+        """校验调用方提供的 token 仍是当前 handle 的唯一执行权。"""
+
+        with self._lock:
+            registered = getattr(self, "_execution_tokens", {}).get(token.token_id)
+            current_handle = self._handles.get(token.workflow_runtime_id)
+            if (
+                registered is not token
+                or current_handle is not token._handle
+                or token._handle.active_execution_token_id != token.token_id
+                or token.workflow_runtime_id
+                != workflow_app_runtime.workflow_runtime_id
+                or token.workflow_run_id != workflow_run_id
+            ):
+                raise ResourceConflictError(
+                    "Workflow Runtime execution token 已失效",
+                    details={
+                        "workflow_runtime_id": workflow_app_runtime.workflow_runtime_id,
+                        "workflow_run_id": workflow_run_id,
+                        "token_id": token.token_id,
+                    },
+                )
+
+    @staticmethod
+    def _raise_if_execution_cancelled(
+        cancel_event: Event | None,
+        *,
+        workflow_runtime_id: str,
+        workflow_run_id: str,
+    ) -> None:
+        """在等待 execution token 时统一处理取消。"""
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelledError(
+                "workflow run 已取消",
+                details={
+                    "workflow_runtime_id": workflow_runtime_id,
+                    "workflow_run_id": workflow_run_id,
+                },
+            )
 
     @staticmethod
     def _validate_handle_identity(
@@ -2535,4 +2738,4 @@ class WorkflowRuntimeWorkerManager:
 def _elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
-    return round((monotonic() - started_at) * 1000.0, 3)
+    return round((perf_counter() - started_at) * 1000.0, 3)

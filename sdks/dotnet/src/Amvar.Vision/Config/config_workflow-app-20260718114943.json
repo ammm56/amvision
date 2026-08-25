@@ -24,6 +24,7 @@
     {
       "name": "ZeroMQ 图片触发 摆盘分拣塑盒满盘检测应用 runtime",
       "trigger_source_id": "zeromq-workflow-runtime-898367fcae234683bb42326577c3a8f1",
+      "trigger_kind": "zeromq-topic",
       "zero_mq": {
         "bind_endpoint": "tcp://127.0.0.1:5555",
         "default_input_binding": "request_image_ref",

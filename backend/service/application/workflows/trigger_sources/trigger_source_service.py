@@ -8,6 +8,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from backend.contracts.workflows import ResultMappingContract
+
 from backend.service.application.errors import (
     InvalidRequestError,
     ResourceConflictError,
@@ -25,7 +29,11 @@ from backend.service.application.workflows.lifecycle_resource_keys import (
     build_workflow_lifecycle_resource_key,
 )
 from backend.service.application.workflows.trigger_sources.contract_mapping import (
-    find_unknown_result_binding,
+    find_unknown_result_bindings,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    TRIGGER_RESPONSE_PLAN_METADATA_KEY,
+    build_trigger_response_plan,
 )
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
@@ -54,6 +62,7 @@ _TRIGGER_KINDS = {
     "plc-register",
     "mqtt-topic",
     "zeromq-topic",
+    "local-shared-memory",
     "grpc-method",
     "io-change",
     "sensor-read",
@@ -86,7 +95,9 @@ class _ValidatedRuntimeContract:
     workflow_runtime_revision_id: str
     workflow_app_version_id: str
     revision_generation: int
+    expected_snapshot_fingerprint: str
     contract_fingerprint: str
+    output_payload_types: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -265,9 +276,17 @@ class WorkflowTriggerSourceService:
                 idempotency_key_path=request.idempotency_key_path,
                 health_summary=_build_adapter_pending_health_summary(),
                 metadata=_with_resource_updated_by(
-                    _with_validated_runtime_contract(
+                    _with_validated_trigger_configuration(
                         dict(request.metadata or {}),
                         validated_contract,
+                        trigger_source_id=request.trigger_source_id,
+                        trigger_kind=request.trigger_kind,
+                        workflow_runtime_id=request.workflow_runtime_id,
+                        submit_mode=request.submit_mode,
+                        result_mode=request.result_mode,
+                        ack_policy=request.ack_policy,
+                        reply_timeout_seconds=request.reply_timeout_seconds,
+                        result_mapping=dict(request.result_mapping or {}),
                     ),
                     created_by,
                 ),
@@ -451,9 +470,17 @@ class WorkflowTriggerSourceService:
                 health_summary=_build_adapter_pending_health_summary(),
                 updated_at=_now_isoformat(),
                 metadata=_with_resource_updated_by(
-                    _with_validated_runtime_contract(
+                    _with_validated_trigger_configuration(
                         dict(trigger_source.metadata),
                         validated_contract,
+                        trigger_source_id=trigger_source.trigger_source_id,
+                        trigger_kind=trigger_source.trigger_kind,
+                        workflow_runtime_id=trigger_source.workflow_runtime_id,
+                        submit_mode=trigger_source.submit_mode,
+                        result_mode=trigger_source.result_mode,
+                        ack_policy=trigger_source.ack_policy,
+                        reply_timeout_seconds=trigger_source.reply_timeout_seconds,
+                        result_mapping=dict(trigger_source.result_mapping),
                     ),
                     updated_by,
                 ),
@@ -675,9 +702,17 @@ class WorkflowTriggerSourceService:
                     )
                     current = replace(
                         current,
-                        metadata=_with_validated_runtime_contract(
+                        metadata=_with_validated_trigger_configuration(
                             dict(current.metadata),
                             validated_contract,
+                            trigger_source_id=current.trigger_source_id,
+                            trigger_kind=current.trigger_kind,
+                            workflow_runtime_id=current.workflow_runtime_id,
+                            submit_mode=current.submit_mode,
+                            result_mode=current.result_mode,
+                            ack_policy=current.ack_policy,
+                            reply_timeout_seconds=current.reply_timeout_seconds,
+                            result_mapping=dict(current.result_mapping),
                         ),
                         updated_at=_now_isoformat(),
                     )
@@ -759,6 +794,22 @@ class WorkflowTriggerSourceService:
             raise InvalidRequestError("input_binding_mapping 必须是对象")
         if not isinstance(request.result_mapping or {}, dict):
             raise InvalidRequestError("result_mapping 必须是对象")
+        try:
+            normalized_result_mapping = ResultMappingContract.model_validate(
+                request.result_mapping or {}
+            ).model_dump(mode="json")
+        except ValidationError as exc:
+            raise InvalidRequestError(
+                "result_mapping 格式无效",
+                details={"errors": exc.errors(include_url=False)},
+            ) from exc
+        if (
+            result_mode == "event-only"
+            and normalized_result_mapping["result_bindings"]
+        ):
+            raise InvalidRequestError(
+                "event-only TriggerSource 不能配置 result_bindings"
+            )
         if not isinstance(request.default_execution_metadata or {}, dict):
             raise InvalidRequestError("default_execution_metadata 必须是对象")
         if not isinstance(request.metadata or {}, dict):
@@ -774,7 +825,7 @@ class WorkflowTriggerSourceService:
             transport_config=transport_config,
             match_rule=dict(request.match_rule or {}),
             input_binding_mapping=dict(request.input_binding_mapping or {}),
-            result_mapping=dict(request.result_mapping or {}),
+            result_mapping=normalized_result_mapping,
             default_execution_metadata=dict(request.default_execution_metadata or {}),
             ack_policy=ack_policy,
             result_mode=result_mode,
@@ -1135,11 +1186,17 @@ class WorkflowTriggerSourceService:
                     "mapping_issues": mapping_issues,
                 },
             )
+        output_contracts = _index_contract_bindings(contract.get("outputs"))
         return _ValidatedRuntimeContract(
             workflow_runtime_revision_id=revision_id,
             workflow_app_version_id=version.workflow_app_version_id,
             revision_generation=generation,
+            expected_snapshot_fingerprint=revision.expected_snapshot_fingerprint,
             contract_fingerprint=version.contract_fingerprint,
+            output_payload_types=tuple(
+                (binding_id, str(item.get("payload_type_id") or "value.v1"))
+                for binding_id, item in output_contracts.items()
+            ),
         )
 
     def _validate_trigger_source_resource_binding(
@@ -1205,6 +1262,18 @@ def _find_trigger_contract_mapping_issues(
             continue
         if not isinstance(mapping_rule, dict):
             continue
+        source_value = mapping_rule.get("source")
+        if (
+            isinstance(source_value, str)
+            and source_value.strip()
+            and mapping_rule.get("value") is not None
+        ):
+            issues.append(
+                {
+                    "kind": "ambiguous_input_mapping",
+                    "binding_id": binding_id,
+                }
+            )
         if (
             bool(input_contract.get("required", True))
             and mapping_rule.get("required") is False
@@ -1230,13 +1299,13 @@ def _find_trigger_contract_mapping_issues(
                     "actual_payload_type_id": declared_payload_type,
                 }
             )
-    result_binding = find_unknown_result_binding(
+    unknown_result_bindings = find_unknown_result_bindings(
         output_binding_ids=output_contracts,
         result_mapping=result_mapping,
         result_mode=result_mode,
     )
-    if result_binding is not None:
-        issues.append({"kind": "unknown_output_binding", "binding_id": result_binding})
+    for binding_id in unknown_result_bindings:
+        issues.append({"kind": "unknown_output_binding", "binding_id": binding_id})
     return issues
 
 
@@ -1282,6 +1351,62 @@ def _with_validated_runtime_contract(
     return payload
 
 
+def _with_validated_trigger_configuration(
+    metadata: dict[str, object],
+    validated_contract: _ValidatedRuntimeContract | None,
+    *,
+    trigger_source_id: str,
+    trigger_kind: str,
+    workflow_runtime_id: str,
+    submit_mode: str,
+    result_mode: str,
+    ack_policy: str,
+    reply_timeout_seconds: int | None,
+    result_mapping: dict[str, object],
+) -> dict[str, object]:
+    """同时固定 Runtime contract token 和不可变 TriggerResponsePlan。"""
+
+    payload = _with_validated_runtime_contract(metadata, validated_contract)
+    if validated_contract is None:
+        payload.pop(TRIGGER_RESPONSE_PLAN_METADATA_KEY, None)
+        return payload
+    raw_bindings = result_mapping.get("result_bindings")
+    result_bindings = tuple(
+        item.strip()
+        for item in (
+            raw_bindings if isinstance(raw_bindings, list | tuple) else ()
+        )
+        if isinstance(item, str) and item.strip()
+    )
+    output_payload_types = dict(validated_contract.output_payload_types)
+    selected_output_payload_types = {
+        binding_id: output_payload_types[binding_id]
+        for binding_id in result_bindings
+    }
+    response_plan = build_trigger_response_plan(
+        trigger_source_id=trigger_source_id,
+        trigger_kind=trigger_kind,
+        workflow_runtime_id=workflow_runtime_id,
+        workflow_runtime_revision_id=(
+            validated_contract.workflow_runtime_revision_id
+        ),
+        workflow_app_version_id=validated_contract.workflow_app_version_id,
+        workflow_runtime_generation=validated_contract.revision_generation,
+        expected_snapshot_fingerprint=(
+            validated_contract.expected_snapshot_fingerprint
+        ),
+        contract_fingerprint=validated_contract.contract_fingerprint,
+        submit_mode=submit_mode,
+        result_mode=result_mode,
+        ack_policy=ack_policy,
+        reply_timeout_seconds=reply_timeout_seconds,
+        selected_output_payload_types=selected_output_payload_types,
+        previous_plan=payload.get(TRIGGER_RESPONSE_PLAN_METADATA_KEY),
+    )
+    payload[TRIGGER_RESPONSE_PLAN_METADATA_KEY] = response_plan.model_dump(mode="json")
+    return payload
+
+
 def _build_adapter_pending_health_summary() -> dict[str, object]:
     """构造 adapter 尚未接入时的健康摘要。"""
 
@@ -1313,24 +1438,38 @@ def _build_supervisor_health_summary(
     return {
         "adapter_configured": adapter_configured,
         "adapter_running": bool(adapter_health.get("running")),
-        "request_count": _as_int(supervisor_health.get("request_count")),
+        "request_count": max(
+            _as_int(supervisor_health.get("request_count")),
+            _as_int(adapter_health.get("request_count")),
+        ),
         "request_count_rollover_count": _as_int(
             supervisor_health.get("request_count_rollover_count")
         ),
-        "success_count": _as_int(supervisor_health.get("success_count")),
+        "success_count": max(
+            _as_int(supervisor_health.get("success_count")),
+            _as_int(adapter_health.get("success_count")),
+        ),
         "success_count_rollover_count": _as_int(
             supervisor_health.get("success_count_rollover_count")
         ),
-        "error_count": _as_int(supervisor_health.get("error_count")),
+        "error_count": max(
+            _as_int(supervisor_health.get("error_count")),
+            _as_int(adapter_health.get("error_count")),
+        ),
         "error_count_rollover_count": _as_int(
             supervisor_health.get("error_count_rollover_count")
         ),
-        "timeout_count": _as_int(supervisor_health.get("timeout_count")),
+        "timeout_count": max(
+            _as_int(supervisor_health.get("timeout_count")),
+            _as_int(adapter_health.get("timeout_count")),
+        ),
         "timeout_count_rollover_count": _as_int(
             supervisor_health.get("timeout_count_rollover_count")
         ),
         "recent_error": supervisor_health.get("last_error")
-        or adapter_health.get("last_error"),
+        or adapter_health.get("last_error")
+        or adapter_health.get("recent_request_error")
+        or adapter_health.get("recent_poller_error"),
         "supervisor": dict(supervisor_health),
     }
 

@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 from threading import Lock
-from time import monotonic
+from time import perf_counter
 from typing import BinaryIO
 
 from backend.contracts.workflows.resource_semantics import build_workflow_preview_run_events_object_key
@@ -81,7 +81,7 @@ class WorkflowPreviewRunManager:
     def initialize_event_stream(self, preview_run_id: str) -> float:
         """为新 Preview Run 创建唯一的空 events.jsonl。"""
 
-        started_at = monotonic()
+        started_at = perf_counter()
         event_lock = self._resolve_event_lock(preview_run_id)
         with event_lock:
             events_path = self._events_path(preview_run_id)
@@ -105,7 +105,7 @@ class WorkflowPreviewRunManager:
     ) -> tuple[WorkflowPreviewRunEvent, float]:
         """构造一条事件并直接追加一行 JSONL。"""
 
-        persist_started_at = monotonic()
+        persist_started_at = perf_counter()
         event_lock = self._resolve_event_lock(preview_run_id)
         with event_lock:
             sequence = self._next_event_sequence(preview_run_id)
@@ -257,7 +257,7 @@ class WorkflowPreviewRunManager:
     def flush_event_stream(self, preview_run_id: str) -> float:
         """把当前 Preview 已逐行写入的事件刷新到文件。"""
 
-        started_at = monotonic()
+        started_at = perf_counter()
         event_lock = self._resolve_event_lock(preview_run_id)
         with event_lock:
             self._flush_event_stream(preview_run_id)
@@ -464,4 +464,4 @@ def _now_isoformat() -> str:
 def _elapsed_milliseconds(started_at: float) -> float:
     """返回从 started_at 到当前的毫秒数。"""
 
-    return round(max(0.0, (monotonic() - started_at) * 1000.0), 3)
+    return round(max(0.0, (perf_counter() - started_at) * 1000.0), 3)

@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 from multiprocessing import parent_process
 import os
 from pathlib import Path
-from queue import Empty
 from typing import Any
 from uuid import uuid4
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
+from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceError,
@@ -83,10 +83,24 @@ class LocalBufferBrokerRegistry:
             return self._build_status()
         if action == "allocate-buffer":
             return self._handle_allocate_buffer(dict(payload))
+        if action == "allocate-external-buffer":
+            return self._handle_allocate_external_buffer(dict(payload))
         if action == "commit-buffer":
             return self._handle_commit_buffer(dict(payload))
+        if action == "commit-external-buffer":
+            return self._handle_commit_external_buffer(dict(payload))
+        if action == "publish-and-transfer-external-buffer":
+            return self._handle_publish_and_transfer_external_buffer(dict(payload))
+        if action == "transfer-lease-ownership":
+            return self._handle_transfer_lease_ownership(dict(payload))
+        if action == "conditional-release":
+            return self._handle_conditional_release(dict(payload))
+        if action == "sweep-reclaiming-leases":
+            return self._handle_sweep_reclaiming_leases(dict(payload))
         if action == "validate-buffer-ref":
             return self._handle_validate_buffer_ref(dict(payload))
+        if action == "prepare-buffer-reader":
+            return self._handle_prepare_buffer_reader(dict(payload))
         if action == "create-frame-channel":
             return self._handle_create_frame_channel(dict(payload))
         if action == "allocate-frame":
@@ -99,6 +113,8 @@ class LocalBufferBrokerRegistry:
             return self._handle_destroy_frame_channel(dict(payload))
         if action == "validate-frame-ref":
             return self._handle_validate_frame_ref(dict(payload))
+        if action == "prepare-frame-reader":
+            return self._handle_prepare_frame_reader(dict(payload))
         if action == "read-frame-ref":
             return self._handle_read_frame_ref(dict(payload))
         if action == "release":
@@ -119,6 +135,17 @@ class LocalBufferBrokerRegistry:
         for pool in self._pools.values():
             pool.close()
 
+    def sweep_reclaiming_leases(self) -> dict[str, int]:
+        """非阻塞推进全部 external lease 的 deadline 回收状态机。"""
+
+        summaries = [pool.sweep_reclaiming_leases() for pool in self._pools.values()]
+        return {
+            "released_count": sum(item["released_count"] for item in summaries),
+            "quarantined_count": sum(
+                item["quarantined_count"] for item in summaries
+            ),
+        }
+
     def _handle_allocate_buffer(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 allocate-buffer 控制动作。"""
 
@@ -133,6 +160,28 @@ class LocalBufferBrokerRegistry:
             trace_id=_read_optional_str(payload, "trace_id"),
         )
         return {"lease": lease.model_dump(mode="json")}
+
+    def _handle_allocate_external_buffer(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """处理外部 writer 精确长度 lease PREPARE。"""
+
+        pool = self._require_pool(
+            _read_optional_str(payload, "pool_name") or self.settings.default_pool_name
+        )
+        allocation = pool.allocate_external(
+            size=_require_positive_int(payload, "size"),
+            owner_kind=_require_str(payload, "owner_kind"),
+            owner_id=_require_str(payload, "owner_id"),
+            deadline_ns=_require_positive_int(payload, "deadline_ns"),
+            ttl_seconds=_read_optional_float(payload, "ttl_seconds"),
+            trace_id=_read_optional_str(payload, "trace_id"),
+        )
+        return {
+            "lease": allocation.lease.model_dump(mode="json"),
+            "receipt": allocation.receipt.model_dump(mode="json"),
+            "slot_capacity_bytes": allocation.slot_capacity_bytes,
+        }
 
     def _handle_commit_buffer(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 commit-buffer 控制动作。"""
@@ -155,6 +204,124 @@ class LocalBufferBrokerRegistry:
             "buffer_ref": result.buffer_ref.model_dump(mode="json"),
         }
 
+    def _handle_commit_external_buffer(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """校验 external writer guard 与 checksum 后发布 BufferRef。"""
+
+        receipt = _require_receipt(payload)
+        pool = self._require_pool(receipt.pool_name)
+        result = pool.commit_external_lease(
+            receipt=receipt,
+            checksum_algorithm=_require_positive_int(
+                payload, "checksum_algorithm"
+            ),
+            checksum=_require_nonnegative_int(payload, "checksum"),
+            media_type=_require_str(payload, "media_type"),
+            shape=_read_int_tuple(payload.get("shape")),
+            dtype=_read_optional_str(payload, "dtype"),
+            layout=_read_optional_str(payload, "layout"),
+            pixel_format=_read_optional_str(payload, "pixel_format"),
+        )
+        return {
+            "lease": result.lease.model_dump(mode="json"),
+            "buffer_ref": result.buffer_ref.model_dump(mode="json"),
+        }
+
+    def _handle_publish_and_transfer_external_buffer(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """确认 external writer 已结束并原子完成发布与首次 owner handoff。"""
+
+        receipt = _require_receipt(payload)
+        pool = self._require_pool(receipt.pool_name)
+        result = pool.publish_external_lease_and_transfer(
+            receipt=receipt,
+            media_type=_require_str(payload, "media_type"),
+            new_owner_kind=_require_str(payload, "new_owner_kind"),
+            new_owner_id=_require_str(payload, "new_owner_id"),
+            deadline_ns=_require_positive_int(payload, "deadline_ns"),
+            shape=_read_int_tuple(payload.get("shape")),
+            dtype=_read_optional_str(payload, "dtype"),
+            layout=_read_optional_str(payload, "layout"),
+            pixel_format=_read_optional_str(payload, "pixel_format"),
+        )
+        return {
+            "lease": result.lease.model_dump(mode="json"),
+            "buffer_ref": result.buffer_ref.model_dump(mode="json"),
+            "receipt": result.receipt.model_dump(mode="json"),
+        }
+
+    def _handle_transfer_lease_ownership(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """跨 pool 两阶段校验后原子语义地转移一组 lease owner。"""
+
+        receipts_payload = payload.get("receipts")
+        if not isinstance(receipts_payload, list):
+            raise InvalidRequestError("transfer-lease-ownership 缺少 receipts")
+        receipts = tuple(
+            LeaseOwnershipReceipt.model_validate(item) for item in receipts_payload
+        )
+        groups: dict[str, list[LeaseOwnershipReceipt]] = {}
+        for receipt in receipts:
+            groups.setdefault(receipt.pool_name, []).append(receipt)
+        for pool_name, group in groups.items():
+            self._require_pool(pool_name).validate_ownership_batch(
+                receipts=tuple(group)
+            )
+        transferred_by_identity: dict[
+            tuple[str, str, int], LeaseOwnershipReceipt
+        ] = {}
+        for pool_name, group in groups.items():
+            transferred = self._require_pool(pool_name).transfer_ownership_batch(
+                receipts=tuple(group),
+                new_owner_kind=_require_str(payload, "new_owner_kind"),
+                new_owner_id=_require_str(payload, "new_owner_id"),
+                deadline_ns=_require_positive_int(payload, "deadline_ns"),
+            )
+            for receipt in transferred:
+                transferred_by_identity[
+                    (receipt.pool_name, receipt.lease_id, receipt.generation)
+                ] = receipt
+        ordered = [
+            transferred_by_identity[
+                (receipt.pool_name, receipt.lease_id, receipt.generation)
+            ].model_dump(mode="json")
+            for receipt in receipts
+        ]
+        return {"receipts": ordered}
+
+    def _handle_conditional_release(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """按完整 receipt fence 释放或转入撤销状态。"""
+
+        receipt = _require_receipt(payload)
+        status = self._require_pool(receipt.pool_name).conditional_release(
+            receipt=receipt
+        )
+        return {"status": status}
+
+    def _handle_sweep_reclaiming_leases(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """触发所有或指定 pool 的非阻塞撤销清理。"""
+
+        pool_name = _read_optional_str(payload, "pool_name")
+        pools = (
+            (self._require_pool(pool_name),)
+            if pool_name is not None
+            else tuple(self._pools.values())
+        )
+        summaries = [pool.sweep_reclaiming_leases() for pool in pools]
+        return {
+            "released_count": sum(item["released_count"] for item in summaries),
+            "quarantined_count": sum(
+                item["quarantined_count"] for item in summaries
+            ),
+        }
+
     def _handle_validate_buffer_ref(
         self, payload: dict[str, object]
     ) -> dict[str, object]:
@@ -169,6 +336,26 @@ class LocalBufferBrokerRegistry:
         pool = self._select_pool_for_buffer_ref(buffer_ref)
         pool.validate_buffer_ref(buffer_ref)
         return {"valid": True}
+
+    def _handle_prepare_buffer_reader(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """返回 BufferRef 对应的稳定 reader guard 位置。"""
+
+        buffer_ref_payload = payload.get("buffer_ref")
+        if not isinstance(buffer_ref_payload, dict):
+            raise InvalidRequestError(
+                "LocalBufferBroker prepare-buffer-reader 缺少 buffer_ref"
+            )
+        buffer_ref = BufferRef.model_validate(buffer_ref_payload)
+        pool = self._select_pool_for_buffer_ref(buffer_ref)
+        pool.validate_buffer_ref(buffer_ref)
+        slot_index = buffer_ref.offset // pool.config.slot_size_bytes
+        _writer_path, reader_path = pool.ensure_slot_guard_files(slot_index)
+        return {
+            "reader_guard_path": str(reader_path),
+            "reader_guard_slots": pool.config.reader_guard_slots,
+        }
 
     def _handle_create_frame_channel(
         self, payload: dict[str, object]
@@ -262,6 +449,26 @@ class LocalBufferBrokerRegistry:
         pool = self._select_pool_for_buffer_id(frame_ref.buffer_id)
         pool.validate_frame_ref(frame_ref)
         return {"valid": True}
+
+    def _handle_prepare_frame_reader(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
+        """校验 FrameRef 并返回服务端内部 reader guard 定位。"""
+
+        frame_ref_payload = payload.get("frame_ref")
+        if not isinstance(frame_ref_payload, dict):
+            raise InvalidRequestError(
+                "LocalBufferBroker prepare-frame-reader 缺少 frame_ref"
+            )
+        frame_ref = FrameRef.model_validate(frame_ref_payload)
+        pool = self._select_pool_for_buffer_id(frame_ref.buffer_id)
+        pool.validate_frame_ref(frame_ref)
+        slot_index = frame_ref.offset // pool.config.slot_size_bytes
+        _writer_path, reader_path = pool.ensure_slot_guard_files(slot_index)
+        return {
+            "reader_guard_path": str(reader_path),
+            "reader_guard_slots": pool.config.reader_guard_slots,
+        }
 
     def _handle_read_frame_ref(self, payload: dict[str, object]) -> dict[str, object]:
         """处理 read-frame-ref 控制动作。"""
@@ -385,16 +592,16 @@ def run_local_buffer_broker_process(
     *,
     settings_payload: dict[str, object],
     startup_queue: Any,
-    request_queue: Any,
-    response_queue: Any,
+    request_connection: Any,
+    response_connection: Any,
 ) -> None:
     """LocalBufferBroker companion process 入口。
 
     参数：
     - settings_payload：LocalBufferBrokerSettings 的可序列化配置。
     - startup_queue：向 supervisor 回报启动状态的队列。
-    - request_queue：接收控制事件的队列。
-    - response_queue：返回控制事件处理结果的队列。
+    - request_connection：接收控制事件的单向连接。
+    - response_connection：返回控制事件处理结果的单向连接。
     """
 
     registry: LocalBufferBrokerRegistry | None = None
@@ -416,15 +623,19 @@ def run_local_buffer_broker_process(
         stop_requested = False
         while not stop_requested:
             try:
-                message = request_queue.get(timeout=0.5)
-            except Empty:
-                # Windows 不会保证强制结束父进程时同步结束 multiprocessing 子进程。
-                # broker 定期检查 supervisor，避免孤立进程长期占用默认 mmap pool。
-                if supervisor_process is not None and not supervisor_process.is_alive():
-                    break
-                continue
+                if not request_connection.poll(0.5):
+                    registry.sweep_reclaiming_leases()
+                    # Windows 不会保证强制结束父进程时同步结束 multiprocessing 子进程。
+                    # broker 定期检查 supervisor，避免孤立进程长期占用默认 mmap pool。
+                    if (
+                        supervisor_process is not None
+                        and not supervisor_process.is_alive()
+                    ):
+                        break
+                    continue
+                message = request_connection.recv()
             except (EOFError, OSError):
-                # 父进程退出后控制队列可能先于 parent sentinel 关闭。
+                # 父进程退出后单向控制连接会关闭。
                 break
             request_id = (
                 str(message.get("request_id") or "")
@@ -438,15 +649,17 @@ def run_local_buffer_broker_process(
                     else ""
                 )
                 payload = registry.handle(message)
-                response_queue.put(
+                response_connection.send(
                     {"request_id": request_id, "ok": True, "payload": payload}
                 )
                 if action == "shutdown":
                     stop_requested = True
             except ServiceError as exc:
-                response_queue.put({"request_id": request_id, **_serialize_error(exc)})
+                response_connection.send(
+                    {"request_id": request_id, **_serialize_error(exc)}
+                )
             except Exception as exc:  # pragma: no cover - broker 进程兜底错误封装
-                response_queue.put(
+                response_connection.send(
                     {
                         "request_id": request_id,
                         **_serialize_error(
@@ -483,8 +696,14 @@ def run_local_buffer_broker_process(
             if registry is not None:
                 registry.close()
         finally:
-            if instance_lock is not None:
-                instance_lock.release()
+            try:
+                if instance_lock is not None:
+                    instance_lock.release()
+            finally:
+                for connection in (request_connection, response_connection):
+                    close = getattr(connection, "close", None)
+                    if callable(close):
+                        close()
 
 
 def _publish_startup_message(startup_queue: Any, message: dict[str, object]) -> None:
@@ -577,6 +796,39 @@ def _require_positive_int(payload: dict[str, object], field_name: str) -> int:
             details={"field_name": field_name},
         )
     return normalized_value
+
+
+def _require_nonnegative_int(payload: dict[str, object], field_name: str) -> int:
+    """读取非负整数字段。"""
+
+    value = payload.get(field_name)
+    if isinstance(value, bool):
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是非负整数",
+            details={"field_name": field_name},
+        )
+    try:
+        normalized_value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是非负整数",
+            details={"field_name": field_name},
+        ) from exc
+    if normalized_value < 0:
+        raise InvalidRequestError(
+            "LocalBufferBroker payload 字段必须是非负整数",
+            details={"field_name": field_name},
+        )
+    return normalized_value
+
+
+def _require_receipt(payload: dict[str, object]) -> LeaseOwnershipReceipt:
+    """读取并校验私有 LocalBuffer ownership receipt。"""
+
+    receipt_payload = payload.get("receipt")
+    if not isinstance(receipt_payload, dict):
+        raise InvalidRequestError("LocalBufferBroker payload 缺少 receipt")
+    return LeaseOwnershipReceipt.model_validate(receipt_payload)
 
 
 def _read_int_tuple(value: object) -> tuple[int, ...]:

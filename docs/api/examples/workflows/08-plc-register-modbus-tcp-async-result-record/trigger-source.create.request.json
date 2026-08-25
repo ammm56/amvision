@@ -39,8 +39,7 @@
     }
   },
   "result_mapping": {
-    "result_binding": "inspection_result",
-    "result_mode": "accepted-then-query"
+    "result_bindings": ["inspection_result"]
   },
   "default_execution_metadata": {
     "scenario": "plc-register-modbus-tcp-async-result-record",

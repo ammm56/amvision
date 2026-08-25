@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
 from multiprocessing.queues import Queue
+from queue import Empty
 from threading import Event, Lock, Thread
-from time import monotonic
-from typing import TYPE_CHECKING, Any
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, Callable
 
 from backend.contracts.workflows.workflow_graph import (
     FlowApplication,
@@ -76,6 +78,10 @@ if TYPE_CHECKING:
     )
 
 
+_SUPERVISOR_POLL_SECONDS = 0.5
+_SUPERVISOR_FORCE_EXIT_GRACE_SECONDS = 5.0
+
+
 def run_workflow_runtime_worker_process(
     *,
     settings_payload: dict[str, object],
@@ -96,6 +102,7 @@ def run_workflow_runtime_worker_process(
     model_session_manager: WorkflowModelSessionManager | None = None
     storage_image_cache: ExecutionImageRegistry | None = None
     try:
+        supervisor_process = multiprocessing.parent_process()
         settings = BackendServiceSettings.model_validate(settings_payload)
         configure_workflow_process_threads(
             settings.workflow_runtime.operator_thread_count
@@ -271,6 +278,20 @@ def run_workflow_runtime_worker_process(
         current_run_id: str | None = None
         state_lock = Lock()
         heartbeat_stop_event = Event()
+        supervisor_lost_event = Event()
+
+        supervisor_watchdog_thread = Thread(
+            target=_run_supervisor_watchdog,
+            kwargs={
+                "supervisor_process": supervisor_process,
+                "stop_event": heartbeat_stop_event,
+                "supervisor_lost_event": supervisor_lost_event,
+                "run_cancellation_event": run_cancellation_event,
+            },
+            name=f"workflow-runtime-parent-watchdog-{workflow_runtime_id}",
+            daemon=True,
+        )
+        supervisor_watchdog_thread.start()
 
         def build_current_health_summary() -> dict[str, object]:
             """返回当前 runtime 的 broker 与模型 session 健康摘要。"""
@@ -330,8 +351,11 @@ def run_workflow_runtime_worker_process(
         )
         heartbeat_thread.start()
         response_queue.put(build_state_message(message_type="runtime-state"))
-        while True:
-            command = request_queue.get()
+        while not supervisor_lost_event.is_set():
+            try:
+                command = request_queue.get(timeout=_SUPERVISOR_POLL_SECONDS)
+            except Empty:
+                continue
             message_type = read_message_type(command)
             message_id = read_optional_str(command, "message_id")
             if message_type == "health-check":
@@ -420,7 +444,7 @@ def run_workflow_runtime_worker_process(
             with state_lock:
                 current_run_id = workflow_run_id
             try:
-                worker_execute_started_at = monotonic()
+                worker_execute_started_at = perf_counter()
                 execution_result = snapshot_execution_service.execute(
                     WorkflowSnapshotExecutionRequest(
                         project_id=snapshot_project_id,
@@ -455,7 +479,17 @@ def run_workflow_runtime_worker_process(
                                     ),
                                 )
                             ],
-                            "timings": {"worker_execute_ms": worker_execute_ms},
+                            "prepared_trigger_result": (
+                                execution_result.prepared_trigger_result.model_dump(
+                                    mode="json"
+                                )
+                                if execution_result.prepared_trigger_result is not None
+                                else None
+                            ),
+                            "timings": {
+                                "worker_execute_ms": worker_execute_ms,
+                                **execution_result.timings,
+                            },
                             "error_message": None,
                             "worker_state": {
                                 "observed_state": current_observed_state,
@@ -554,6 +588,8 @@ def run_workflow_runtime_worker_process(
             heartbeat_stop_event.set()
         if "heartbeat_thread" in locals():
             heartbeat_thread.join(timeout=1.0)
+        if "supervisor_watchdog_thread" in locals():
+            supervisor_watchdog_thread.join(timeout=1.0)
         try:
             if model_session_manager is not None:
                 model_session_manager.close_all()
@@ -616,10 +652,39 @@ def close_local_buffer_broker_channel(
     LocalBufferBrokerClient(channel).close()
 
 
+def _run_supervisor_watchdog(
+    *,
+    supervisor_process: Any,
+    stop_event: Event,
+    supervisor_lost_event: Event,
+    run_cancellation_event: Any,
+    force_exit: Callable[[int], object] = os._exit,
+    poll_seconds: float = _SUPERVISOR_POLL_SECONDS,
+    force_exit_grace_seconds: float = _SUPERVISOR_FORCE_EXIT_GRACE_SECONDS,
+) -> None:
+    """父服务异常消失时取消当前 Run，并阻止孤儿 worker 永久存活。
+
+    正常 shutdown 由 ``stop_event`` 结束 watchdog。父进程被强制终止时，先给
+    当前节点一个有界的协作取消窗口；若 worker 主线程仍未进入 finally，则强制
+    退出当前进程。OS 随后释放 mmap guard，Broker 按 identity/deadline 回收 lease。
+    """
+
+    if supervisor_process is None:
+        return
+    while not stop_event.wait(max(0.001, poll_seconds)):
+        if supervisor_process.is_alive():
+            continue
+        supervisor_lost_event.set()
+        run_cancellation_event.set()
+        if not stop_event.wait(max(0.0, force_exit_grace_seconds)):
+            force_exit(0)
+        return
+
+
 def _elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
-    return round((monotonic() - started_at) * 1000.0, 3)
+    return round((perf_counter() - started_at) * 1000.0, 3)
 
 
 def _should_return_full_node_records(execution_metadata: dict[str, object]) -> bool:

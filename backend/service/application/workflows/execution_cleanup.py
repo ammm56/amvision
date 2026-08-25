@@ -7,6 +7,7 @@ import pickle
 from threading import Lock, RLock
 from typing import TYPE_CHECKING, Any, Protocol
 
+from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.service.application.errors import ServiceConfigurationError, ServiceError
 
 if TYPE_CHECKING:
@@ -378,6 +379,7 @@ def register_local_buffer_lease_cleanup(
     *,
     lease_id: str,
     pool_name: str | None = None,
+    ownership_receipt: LeaseOwnershipReceipt | None = None,
 ) -> None:
     """登记执行结束后需要释放的 LocalBufferBroker lease。
 
@@ -390,6 +392,7 @@ def register_local_buffer_lease_cleanup(
     cleanup_item = build_local_buffer_lease_cleanup_item(
         lease_id=lease_id,
         pool_name=pool_name,
+        ownership_receipt=ownership_receipt,
     )
     if cleanup_item is None:
         return
@@ -405,6 +408,7 @@ def build_local_buffer_lease_cleanup_item(
     *,
     lease_id: str,
     pool_name: str | None = None,
+    ownership_receipt: LeaseOwnershipReceipt | None = None,
 ) -> dict[str, object] | None:
     """构造不含进程内锁、可随 worker 请求传递的 lease cleanup 描述。"""
 
@@ -414,6 +418,12 @@ def build_local_buffer_lease_cleanup_item(
     metadata: dict[str, object] = {}
     if isinstance(pool_name, str) and pool_name.strip():
         metadata["pool_name"] = pool_name.strip()
+    if ownership_receipt is not None:
+        if ownership_receipt.lease_id != normalized_lease_id:
+            raise ServiceConfigurationError(
+                "LocalBuffer cleanup receipt 与 lease_id 不匹配"
+            )
+        metadata["ownership_receipt"] = ownership_receipt.model_dump(mode="json")
     return {
         "resource_kind": WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
         "resource_id": normalized_lease_id,

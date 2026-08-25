@@ -93,8 +93,12 @@
             />
           </label>
           <label class="field">
-            <span>result_binding</span>
-            <SelectField :model-value="resultBinding" :options="resultBindingOptions" @update:model-value="setResultBinding" />
+            <span>result_bindings</span>
+            <MultiSelect
+              :model-value="resultBindings"
+              :options="resultBindingOptions"
+              @update:model-value="setResultBindings"
+            />
           </label>
         </div>
 
@@ -116,7 +120,7 @@
             </div>
             <div>
               <span>{{ t('triggerSources.fields.httpReceipt') }}</span>
-              <strong>{{ resultBinding }}</strong>
+              <strong>{{ resultBindingDeliverySummary || t('triggerSources.values.notFound') }}</strong>
             </div>
             <div>
               <span>submit / ack</span>
@@ -303,6 +307,7 @@ import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
 import ConfirmDialog from '@/shared/ui/components/ConfirmDialog.vue'
 import PaginationControls from '@/shared/ui/components/PaginationControls.vue'
+import MultiSelect from '@/shared/ui/components/MultiSelect.vue'
 import SelectField from '@/shared/ui/components/Select.vue'
 import StatusBadge from '@/shared/ui/data-display/StatusBadge.vue'
 import EmptyState from '@/shared/ui/feedback/EmptyState.vue'
@@ -464,7 +469,7 @@ const displayName = ref('')
 const endpoint = ref('tcp://127.0.0.1:5555')
 const localBufferPoolName = ref('')
 const submitMode = ref<'async' | 'sync'>('sync')
-const resultBinding = ref('core_output_http_response')
+const resultBindings = ref<string[]>([])
 const resultMode = ref('sync-reply')
 const ackPolicy = ref('ack-after-run-finished')
 const replyTimeoutSeconds = ref('30')
@@ -510,13 +515,18 @@ const protocolTemplateOptions = computed<SelectOption[]>(() => protocolTemplates
   value: template.templateId,
   description: template.templateId === 'zeromq-image-trigger' ? 'multipart bytes -> payload.request_image_ref' : 'JSON body -> payload.request_image_base64',
 })))
-const resultBindingOptions = computed<SelectOption[]>(() => [
+const resultBindingOptions = computed(() => [
   ...appOutputBindings.value.map((binding) => ({
     label: `${binding.binding_id} / ${getBindingPayloadTypeId(binding) || 'unknown'}`,
     value: binding.binding_id,
+    description: describeResultBindingDelivery(getBindingPayloadTypeId(binding)),
   })),
-  { label: 'workflow_result', value: 'workflow_result' },
 ])
+const resultBindingDeliverySummary = computed(() => resultBindings.value.map((bindingId) => {
+  const binding = appOutputBindings.value.find((item) => item.binding_id === bindingId)
+  const delivery = describeResultBindingDelivery(binding ? getBindingPayloadTypeId(binding) : '')
+  return `${bindingId} → ${delivery}`
+}).join(' · '))
 const totalTriggerSourceCount = computed(() => triggerSourcePagination.value.totalCount ?? triggerSources.value.length)
 const localBufferBrokerConfig = computed(() => {
   const value = backendServiceConfig.value.local_buffer_broker
@@ -571,8 +581,8 @@ function setEnableAfterCreate(value: SelectValue): void {
   enableAfterCreate.value = selectValueToString(value) === 'true' ? 'true' : 'false'
 }
 
-function setResultBinding(value: SelectValue): void {
-  resultBinding.value = selectValueToString(value)
+function setResultBindings(value: string[]): void {
+  resultBindings.value = [...value]
 }
 
 function setLocalBufferPoolName(value: SelectValue): void {
@@ -682,6 +692,16 @@ function findBindingFromMetadata(key: string): FlowApplicationBinding | null {
   return null
 }
 
+function describeResultBindingDelivery(payloadTypeId: string): string {
+  if (resultMode.value === 'event-only') return 'ignored'
+  const isImageAttachment = payloadTypeId === 'image-ref.v1' || payloadTypeId === 'image-refs.v1'
+  if (!isImageAttachment) return 'JSON'
+  if (resultMode.value === 'accepted-then-query') return 'ObjectStore'
+  if (selectedProtocolTemplate.value.triggerKind === 'zeromq-topic') return 'ZeroMQ binary attachment'
+  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory') return 'LocalBuffer'
+  return 'unsupported image attachment'
+}
+
 function isImageBase64Binding(binding: FlowApplicationBinding): boolean {
   const payloadTypeId = getBindingPayloadTypeId(binding)
   return binding.binding_id === 'request_image_base64' || payloadTypeId.includes('image-base64')
@@ -726,12 +746,13 @@ function findRequestInputBinding(): FlowApplicationBinding | null {
   return appInputBindings.value.find((binding) => binding.binding_id === 'deployment_request' || binding.binding_id.includes('deployment_request')) ?? null
 }
 
-function findDefaultResultBinding(): string {
+function findDefaultResultBindings(): string[] {
   const coreHttpResponse = appOutputBindings.value.find((binding) => binding.binding_id === 'core_output_http_response')
-  if (coreHttpResponse) return coreHttpResponse.binding_id
+  if (coreHttpResponse) return [coreHttpResponse.binding_id]
   const httpResponse = appOutputBindings.value.find((binding) => binding.binding_id === 'http_response')
-  if (httpResponse) return httpResponse.binding_id
-  return appOutputBindings.value[0]?.binding_id ?? 'workflow_result'
+  if (httpResponse) return [httpResponse.binding_id]
+  const firstOutput = appOutputBindings.value[0]
+  return firstOutput ? [firstOutput.binding_id] : []
 }
 
 function defaultSourcePath(binding: FlowApplicationBinding): string {
@@ -824,7 +845,7 @@ function applyProtocolTemplateDefaults(): void {
   displayName.value = `${protocolTemplateDisplayName(template)} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = buildDefaultEndpoint(template)
   syncLocalBufferPoolSelection()
-  resultBinding.value = findDefaultResultBinding()
+  resultBindings.value = findDefaultResultBindings()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
   workflowRunRecordMode.value = 'minimal'
@@ -1039,8 +1060,7 @@ async function submitTriggerSource(): Promise<void> {
       matchRule: buildMatchRule(),
       inputBindingMapping: buildInputBindingMapping(),
       resultMapping: {
-        result_binding: resultBinding.value,
-        result_mode: resultMode.value,
+        result_bindings: [...resultBindings.value],
       },
       defaultExecutionMetadata: buildDefaultExecutionMetadata(),
       ackPolicy: ackPolicy.value,

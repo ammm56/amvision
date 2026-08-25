@@ -2,9 +2,9 @@
 
 ## 状态
 
-已接受，尚未实现；binary protocol 尚待按实施基线冻结。
+已接受并完成实现；阶段 0–9 的源码开发环境门禁全部通过，包含 binary protocol v1、mmap 中立原语、External LocalBuffer lease、统一 Runtime execution token、全局 mailbox、严格准入、首次 input owner handoff、固定 output plan、输出规范化、ObjectStore 稳定快照、output lease handoff、.NET SDK 共享内存调用、Workflow 图片编码节点、统一 ZeroMQ Result v1、transport-lifetime registry、原子结果契约迁移、故障恢复、opt-in 分阶段耗时诊断、性能矩阵和真实业务持续负载。
 
-本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。详细 binary layout、状态机、组件改造顺序和验证门禁见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。在全部代码与门禁完成前，当前可运行能力仍以 ZeroMQ TriggerSource、LocalBufferBroker 和现有 .NET SDK 为准。
+本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。详细 binary layout、状态机、组件改造顺序、性能数据和验证门禁见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。`local-shared-memory` 与 `zeromq-topic` 现为并列的正式 adapter；发布目录仍只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
 
 ## 背景
 
@@ -36,16 +36,16 @@ mailbox 路径固定从现有 `local_buffer_broker.root_dir` 派生。正式环�
 
 每个正在执行的图片 Trigger 调用动态申请一个普通 writing lease。TriggerSource 启用但未调用时占用为零；调用完成、失败或超时后按身份释放 lease。协议不把 TriggerSource 固定绑定到物理 slot，也不创建 `external producer frame channel`。
 
-SDK 通过 PREPARE 获得 backend-service 分配的精确长度 lease，然后只通过 SDK 内部受限 view 写入本次 `path + offset + size`。backend-service 仍是 allocate、commit、validate、owner transfer 和 release 的权威协调者。该能力命名为 **External LocalBuffer Writer Lease**。v1 每次调用最多携带一张输入图片和一份不超过 512 KiB 的结构化参数；结果可以包含 0 到 N 张图片。多图片输入不复用或隐式扩展 v1，后续如确有需要再显式版本化。
+SDK 通过 PREPARE 获得 backend-service 分配的精确长度 lease，然后只通过 SDK 内部受限 view 写入本次 `path + offset + size`。backend-service 仍是 allocate、publish、validate、owner transfer 和 release 的权威协调者。该能力命名为 **External LocalBuffer Writer Lease**。v1 每次调用最多携带一张输入图片和一份不超过 512 KiB 的结构化参数；结果可以包含 0 到 N 张图片。多图片输入不复用或隐式扩展 v1，后续如确有需要再显式版本化。
 
 ### 3. External Writer 属于 trusted-local 协作边界
 
-SDK 映射 pool 文件后，操作系统不能把同一进程永久限制在某个逻辑 slot。`generation`、owner、epoch 和 checksum 只能检测身份或内容错误，不能阻止已经获得写句柄的异常进程继续修改共享字节。因此该能力不是恶意进程安全沙箱，其信任边界是可以读写 `data/buffers/` 的同一 OS 用户域进程。
+SDK 映射 pool 文件后，操作系统不能把同一进程永久限制在某个逻辑 slot。`generation`、owner、epoch、guard 和适用边界中的 checksum 只能检测身份、并发或传输内容错误，不能阻止已经获得写句柄的异常进程继续修改共享字节。因此该能力不是恶意进程安全沙箱，其信任边界是可以读写 `data/buffers/` 的同一 OS 用户域进程。
 
 每个 external writing lease 必须使用 OS byte-range writer guard：
 
-- SDK 从开始写入到在 descriptor guard 内完整发布 REQUEST 期间持有 writer guard，发布后立即释放；
-- Broker 只有取得同一 guard 后才能校验 checksum、commit 或回收；
+- SDK 从开始写入到写 view 销毁期间持有 writer guard；完成写入后先释放 guard，再发布 REQUEST；
+- Broker 只有取得同一 guard 后才能原子 publish/owner transfer 或回收；trusted-local 输入不做第二次 full-image CRC；
 - WRITING 过期先进入 REVOKING，不能立即复用；
 - 撤销宽限期后仍无法取得 guard 的槽位进入 QUARANTINED；
 - SDK 取消确认、进程退出或 guard 释放后，Broker 才能按完整 identity 回收；
@@ -233,13 +233,13 @@ ObjectStore 增加正式应用端口：`stat_object()` 返回 object key、conte
 - **把无图片 JSON reply 和有图片 multipart reply 定义成两个版本**：两者只是同一 multipart 消息的 `N=0` 与 `N>0`，拆分会增加配置、协商、SDK 分支和重复门禁；统一使用支持 0..N attachments 的 v1。
 - **递归扫描任意 JSON 查找 image-ref**：无法依据公开契约提前建立 handoff 计划，也容易把调试或内部引用错误暴露；只处理选中的独立公开图片 binding。
 - **不支持回复的 Trigger 在每次调用中临时忽略结果**：造成行为不可审计；通过 `result_mode`、capability 和固定 response plan 明确配置。
-- **未经实测直接冻结 full-image checksum 算法或默认开关**：完整性校验不能删除，但 20MP 图片全量扫描会进入延迟预算；阶段 0 必须完成 Python/.NET 算法一致性和性能基准后冻结唯一生产校验算法，正式协议不提供隐藏关闭回退。
+- **对 trusted-local 输入做 SDK/backend 双重 full-image CRC**：阶段 0 实测表明 20MP 输入的两次整帧扫描约增加 95 ms，且 writer guard、精确 allocation、REQUEST publication barrier、receipt/epoch/generation/owner/deadline 已经提供并发一致性与错代次防护。输入图片不携带 checksum；mailbox 结构化 payload、page-chain 和结果 attachment 仍保留各自 CRC/checksum，不提供恢复旧双扫描热路径的兼容开关。
 
 ## 影响
 
 - .NET SDK 将新增本机共享内存 client、受限 mmap writer/reader guard 和 output ACK；ZeroMQ client 统一解析 `amvision.workflow-trigger-result.v1` 的 Frame 0 与 0..N 个 binary attachments，不维护 JSON-only 与 multipart 两套协议。
 - backend-service 将新增全局 Workflow Trigger mailbox、每 TriggerSource 单在途 registry、统一 Runtime execution token、协议中立 attachment 和 output lease handoff。
 - LocalBufferBroker 继续使用普通 lease，不新增永久 channel；需要新增 external writer revoke/quarantine、identity-fenced release、owner transfer 和 monotonic deadline。
-- encoded 输入仍有一次必要的 OpenCV 解码和目标矩阵分配；raw BGR24 使用只读 mmap view。性能指标必须区分 SDK 转换、共享内存写入、checksum、首次解码和 Workflow 执行。
+- encoded 输入仍有一次必要的 OpenCV 解码和目标矩阵分配；raw BGR24 使用只读 mmap view。性能指标必须区分 SDK 转换、共享内存写入、输入 guard publication、结果 checksum、首次解码和 Workflow 执行。
 - LocalBuffer 基于文件支持的 mmap 且默认不主动 flush；这不会每次同步刷盘，但不能表述为操作系统永不异步回写脏页。物理上完全不使用磁盘属于未来独立 shared-memory backend，不混入本次实现。
-- 全部实现完成前，不得在 API、SDK 或架构现状文档中把 `local-shared-memory` 写成已交付 capability。
+- API、SDK、配置包和架构文档必须同步使用当前已实现的 v1 契约；后续破坏性变更继续显式版本化，不能恢复双读或隐式兼容分支。

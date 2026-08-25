@@ -13,6 +13,7 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ResourceConflictError,
     ServiceConfigurationError,
+    WorkflowRuntimeBusyError,
 )
 from backend.service.application.workflows.worker.messages import (
     WorkflowRuntimeAsyncRunCallbacks,
@@ -122,29 +123,130 @@ def test_node_pack_timeout_latches_first_reason_and_earliest_force_deadline() ->
     assert handle.node_timeout_states["run-1"].node_id == "node-first"
 
 
-def test_sync_admission_reservation_tracks_multiple_runs_and_releases_idempotently() -> (
-    None
-):
-    """同步占用只维护轻量 run id 集合，且释放不会形成排队状态。"""
+def test_execution_token_is_real_gate_and_release_is_idempotent() -> None:
+    """统一 token 直接持有真实 request lock，reject 满载且释放幂等。"""
 
-    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
-    worker_manager._lock = Lock()  # noqa: SLF001
-    worker_manager._sync_admissions = {}  # noqa: SLF001
+    runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-token",
+        generation=1,
+        fingerprint="fingerprint-token",
+    )
+    worker_manager = _build_token_worker_manager(runtime)
 
-    worker_manager.reserve_sync_admission("runtime-1", "run-2")
-    worker_manager.reserve_sync_admission("runtime-1", "run-1")
-    worker_manager.reserve_sync_admission("runtime-1", "run-1")
-    assert worker_manager.list_sync_admission_run_ids("runtime-1") == (
-        "run-1",
-        "run-2",
+    token = worker_manager.acquire_execution_token(
+        workflow_app_runtime=runtime,
+        workflow_run_id="run-1",
+        timeout_seconds=1.0,
+        acquisition_mode="reject",
+        expected_revision_id=runtime.active_revision_id,
+        expected_generation=runtime.revision_generation,
+        expected_snapshot_fingerprint=runtime.loaded_snapshot_fingerprint,
     )
 
-    worker_manager.release_sync_admission("runtime-1", "run-1")
-    worker_manager.release_sync_admission("runtime-1", "run-1")
-    assert worker_manager.list_sync_admission_run_ids("runtime-1") == ("run-2",)
-    worker_manager.release_sync_admission("runtime-1", "run-2")
-    assert worker_manager.list_sync_admission_run_ids("runtime-1") == ()
-    assert worker_manager._sync_admissions == {}  # noqa: SLF001
+    assert worker_manager.list_execution_token_run_ids(
+        runtime.workflow_runtime_id
+    ) == ("run-1",)
+    with pytest.raises(WorkflowRuntimeBusyError):
+        worker_manager.acquire_execution_token(
+            workflow_app_runtime=runtime,
+            workflow_run_id="run-2",
+            timeout_seconds=1.0,
+            acquisition_mode="reject",
+            expected_revision_id=runtime.active_revision_id,
+            expected_generation=runtime.revision_generation,
+            expected_snapshot_fingerprint=runtime.loaded_snapshot_fingerprint,
+        )
+
+    assert worker_manager.release_execution_token(token) is True
+    assert worker_manager.release_execution_token(token) is False
+    assert worker_manager.list_execution_token_run_ids(runtime.workflow_runtime_id) == ()
+
+
+def test_execution_token_waits_on_same_runtime_but_different_runtime_is_independent() -> (
+    None
+):
+    """wait 模式只等待同一 Runtime；不同 Runtime 可同时取得真实执行权。"""
+
+    first_runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-first",
+        generation=1,
+        fingerprint="fingerprint-first",
+    )
+    second_runtime = replace(
+        _build_test_workflow_runtime(
+            revision_id="workflow-runtime-revision-second",
+            generation=1,
+            fingerprint="fingerprint-second",
+        ),
+        workflow_runtime_id="workflow-runtime-second",
+    )
+    worker_manager = _build_token_worker_manager(first_runtime)
+    _add_token_runtime_handle(worker_manager, second_runtime)
+    first_token = _acquire_test_token(worker_manager, first_runtime, "run-first")
+    second_token = _acquire_test_token(worker_manager, second_runtime, "run-second")
+    wait_started = Event()
+    wait_completed = Event()
+    waited_tokens: list[manager_module.WorkflowRuntimeExecutionToken] = []
+
+    def acquire_waiting_token() -> None:
+        wait_started.set()
+        waited_tokens.append(
+            worker_manager.acquire_execution_token(
+                workflow_app_runtime=first_runtime,
+                workflow_run_id="run-waiting",
+                timeout_seconds=2.0,
+                acquisition_mode="wait",
+                expected_revision_id=first_runtime.active_revision_id,
+                expected_generation=first_runtime.revision_generation,
+                expected_snapshot_fingerprint=(
+                    first_runtime.loaded_snapshot_fingerprint
+                ),
+            )
+        )
+        wait_completed.set()
+
+    thread = Thread(target=acquire_waiting_token)
+    thread.start()
+    assert wait_started.wait(timeout=1.0)
+    assert wait_completed.wait(timeout=0.05) is False
+    assert worker_manager.release_execution_token(first_token) is True
+    assert wait_completed.wait(timeout=1.0)
+    thread.join(timeout=1.0)
+
+    assert thread.is_alive() is False
+    assert waited_tokens[0].workflow_run_id == "run-waiting"
+    assert worker_manager.release_execution_token(waited_tokens[0]) is True
+    assert worker_manager.release_execution_token(second_token) is True
+
+
+def test_previous_generation_token_cannot_release_new_handle_token() -> None:
+    """旧 worker token 的迟到释放只影响旧 handle，不会释放新代 request lock。"""
+
+    old_runtime = _build_test_workflow_runtime(
+        revision_id="workflow-runtime-revision-old",
+        generation=1,
+        fingerprint="fingerprint-old",
+    )
+    worker_manager = _build_token_worker_manager(old_runtime)
+    old_token = _acquire_test_token(worker_manager, old_runtime, "run-old")
+    new_runtime = replace(
+        old_runtime,
+        active_revision_id="workflow-runtime-revision-new",
+        desired_revision_id="workflow-runtime-revision-new",
+        revision_generation=2,
+        loaded_snapshot_fingerprint="fingerprint-new",
+        worker_instance_id="worker-2",
+    )
+    _add_token_runtime_handle(worker_manager, new_runtime)
+    new_token = _acquire_test_token(worker_manager, new_runtime, "run-new")
+
+    assert worker_manager.release_execution_token(old_token) is True
+    with pytest.raises(WorkflowRuntimeBusyError):
+        _acquire_test_token(worker_manager, new_runtime, "run-must-stay-busy")
+    assert worker_manager.list_execution_token_run_ids(
+        new_runtime.workflow_runtime_id
+    ) == ("run-new",)
+    assert worker_manager.release_execution_token(new_token) is True
 
 
 def test_sync_invoke_rejects_stale_worker_epoch_before_dispatch() -> None:
@@ -771,6 +873,63 @@ def _build_test_workflow_runtime(
         observed_state="running",
         worker_instance_id=f"worker-{generation}",
         loaded_snapshot_fingerprint=fingerprint,
+    )
+
+
+def _build_token_worker_manager(
+    workflow_app_runtime: WorkflowAppRuntime,
+) -> manager_module.WorkflowRuntimeWorkerManager:
+    """构造只用于 execution token 状态机的 manager。"""
+
+    worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
+    worker_manager._runtime_lifecycle_locks = (RLock(),)  # noqa: SLF001
+    worker_manager._lock = Lock()  # noqa: SLF001
+    worker_manager._execution_tokens = {}  # noqa: SLF001
+    worker_manager._execution_token_ids_by_runtime = {}  # noqa: SLF001
+    worker_manager._handles = {}  # noqa: SLF001
+    _add_token_runtime_handle(worker_manager, workflow_app_runtime)
+    return worker_manager
+
+
+def _add_token_runtime_handle(
+    worker_manager: manager_module.WorkflowRuntimeWorkerManager,
+    workflow_app_runtime: WorkflowAppRuntime,
+) -> None:
+    """为 token 测试安装一代可运行 handle。"""
+
+    worker_manager._handles[workflow_app_runtime.workflow_runtime_id] = (  # noqa: SLF001
+        manager_module._WorkflowRuntimeProcessHandle(  # noqa: SLF001
+            workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+            process=SimpleNamespace(pid=321, is_alive=lambda: True),
+            request_queue=_FakeQueue(),
+            response_queue=_FakeQueue(),
+            workflow_runtime_revision_id=workflow_app_runtime.active_revision_id,
+            runtime_generation=workflow_app_runtime.revision_generation,
+            expected_snapshot_fingerprint=(
+                workflow_app_runtime.loaded_snapshot_fingerprint
+            ),
+            worker_instance_id=workflow_app_runtime.worker_instance_id,
+        )
+    )
+
+
+def _acquire_test_token(
+    worker_manager: manager_module.WorkflowRuntimeWorkerManager,
+    workflow_app_runtime: WorkflowAppRuntime,
+    workflow_run_id: str,
+) -> manager_module.WorkflowRuntimeExecutionToken:
+    """以 reject 模式取得测试 Runtime token。"""
+
+    return worker_manager.acquire_execution_token(
+        workflow_app_runtime=workflow_app_runtime,
+        workflow_run_id=workflow_run_id,
+        timeout_seconds=1.0,
+        acquisition_mode="reject",
+        expected_revision_id=workflow_app_runtime.active_revision_id,
+        expected_generation=workflow_app_runtime.revision_generation,
+        expected_snapshot_fingerprint=(
+            workflow_app_runtime.loaded_snapshot_fingerprint
+        ),
     )
 
 

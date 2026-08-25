@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import math
 import os
 import platform
 import sys
 import time
+import zlib
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -232,25 +234,12 @@ class ZeroMqSoakClient:
             self.socket = None
 
     def send(self, frames: list[bytes]) -> dict[str, object]:
-        """发送 multipart 请求并解析 JSON reply。"""
+        """发送 multipart 请求并严格校验统一 Result v1 reply。"""
 
         try:
             self.socket.send_multipart(frames)
             reply_frames = self.socket.recv_multipart()
-            if len(reply_frames) != 1:
-                raise RuntimeError(
-                    f"ZeroMQ reply frame_count 不正确: {len(reply_frames)}"
-                )
-            payload = json.loads(reply_frames[0].decode("utf-8"))
-            if not isinstance(payload, dict):
-                raise RuntimeError("ZeroMQ reply 必须是 JSON object")
-            state = str(payload.get("state") or "").lower()
-            if state in {"failed", "timed_out", "timeout", "cancelled"}:
-                raise RuntimeError(
-                    "ZeroMQ trigger failed: "
-                    f"{payload.get('error_code') or payload.get('error_message') or state}"
-                )
-            return payload
+            return _parse_zeromq_result_frames(reply_frames)
         except Exception:
             self.close()
             self._open_socket()
@@ -263,6 +252,119 @@ class ZeroMqSoakClient:
         socket.sndtimeo = self.timeout_ms
         socket.connect(self.endpoint)
         self.socket = socket
+
+
+def _parse_zeromq_result_frames(reply_frames: list[bytes]) -> dict[str, object]:
+    """校验统一 Result v1 manifest、逻辑 attachment 和去重后的物理帧。"""
+
+    if not reply_frames:
+        raise RuntimeError("ZeroMQ reply 不能为空")
+    try:
+        payload = json.loads(reply_frames[0].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("ZeroMQ reply Frame 0 不是合法 UTF-8 JSON") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError("ZeroMQ reply Frame 0 必须是 JSON object")
+    if payload.get("format_id") != "amvision.workflow-trigger-result.v1":
+        raise RuntimeError("ZeroMQ reply format_id 不正确")
+
+    response_payload = payload.get("response_payload")
+    if not isinstance(response_payload, dict):
+        raise RuntimeError("ZeroMQ reply response_payload 必须是 JSON object")
+    raw_attachments = response_payload.get("attachments", [])
+    raw_payloads = response_payload.get("payloads", [])
+    if not isinstance(raw_attachments, list) or not isinstance(raw_payloads, list):
+        raise RuntimeError("ZeroMQ reply attachments/payloads 必须是 JSON array")
+
+    physical_by_id: dict[str, dict[str, object]] = {}
+    declared_indexes: set[int] = set()
+    for raw_physical in raw_payloads:
+        if not isinstance(raw_physical, dict):
+            raise RuntimeError("ZeroMQ reply physical payload 必须是 JSON object")
+        payload_id = str(raw_physical.get("payload_id") or "").strip()
+        if not payload_id or payload_id in physical_by_id:
+            raise RuntimeError("ZeroMQ reply payload_id 不能为空或重复")
+        if raw_physical.get("delivery_kind") != "zeromq-frame":
+            raise RuntimeError("ZeroMQ reply physical payload 必须使用 zeromq-frame")
+        frame_index = raw_physical.get("frame_index")
+        if (
+            isinstance(frame_index, bool)
+            or not isinstance(frame_index, int)
+            or frame_index <= 0
+            or frame_index >= len(reply_frames)
+            or frame_index in declared_indexes
+        ):
+            raise RuntimeError("ZeroMQ reply frame_index 越界或重复")
+        content = reply_frames[frame_index]
+        content_length = raw_physical.get("content_length")
+        if (
+            isinstance(content_length, bool)
+            or not isinstance(content_length, int)
+            or content_length <= 0
+            or content_length != len(content)
+        ):
+            raise RuntimeError("ZeroMQ reply frame content_length 不一致")
+        _verify_zeromq_frame_checksum(raw_physical, content)
+        declared_indexes.add(frame_index)
+        physical_by_id[payload_id] = raw_physical
+
+    expected_indexes = set(range(1, len(reply_frames)))
+    if declared_indexes != expected_indexes:
+        raise RuntimeError("ZeroMQ reply 存在缺失或未声明的二进制帧")
+    if not physical_by_id and raw_attachments:
+        raise RuntimeError("ZeroMQ reply attachment 没有对应 physical payload")
+    if physical_by_id and not raw_attachments:
+        raise RuntimeError("ZeroMQ reply physical payload 没有 logical attachment")
+
+    attachment_ids: set[str] = set()
+    referenced_payload_ids: set[str] = set()
+    for raw_attachment in raw_attachments:
+        if not isinstance(raw_attachment, dict):
+            raise RuntimeError("ZeroMQ reply attachment 必须是 JSON object")
+        attachment_id = str(raw_attachment.get("attachment_id") or "").strip()
+        binding_id = str(raw_attachment.get("binding_id") or "").strip()
+        payload_id = str(raw_attachment.get("payload_id") or "").strip()
+        item_index = raw_attachment.get("item_index")
+        if (
+            not attachment_id
+            or attachment_id in attachment_ids
+            or not binding_id
+            or isinstance(item_index, bool)
+            or not isinstance(item_index, int)
+            or item_index < 0
+            or payload_id not in physical_by_id
+        ):
+            raise RuntimeError("ZeroMQ reply logical attachment 不完整或引用无效")
+        attachment_ids.add(attachment_id)
+        referenced_payload_ids.add(payload_id)
+    if referenced_payload_ids != set(physical_by_id):
+        raise RuntimeError("ZeroMQ reply 存在未引用的 physical payload")
+
+    state = str(payload.get("state") or "").lower()
+    if state in {"failed", "timed_out", "timeout", "cancelled"}:
+        raise RuntimeError(
+            "ZeroMQ trigger failed: "
+            f"{payload.get('error_code') or payload.get('error_message') or state}"
+        )
+    return payload
+
+
+def _verify_zeromq_frame_checksum(
+    physical: dict[str, object],
+    content: bytes,
+) -> None:
+    """按 manifest 声明验证单个物理图片帧的 checksum。"""
+
+    algorithm = str(physical.get("checksum_algorithm") or "").lower()
+    expected = str(physical.get("checksum") or "").lower()
+    if algorithm == "crc32":
+        actual = f"{zlib.crc32(content) & 0xFFFFFFFF:08x}"
+    elif algorithm == "sha256":
+        actual = hashlib.sha256(content).hexdigest()
+    else:
+        raise RuntimeError("ZeroMQ reply 使用了不支持的 checksum_algorithm")
+    if not expected or actual != expected:
+        raise RuntimeError("ZeroMQ reply frame checksum 不一致")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

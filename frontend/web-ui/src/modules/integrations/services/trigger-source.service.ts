@@ -12,10 +12,7 @@ export interface InputBindingMappingItem {
 }
 
 export interface TriggerResultMapping {
-  result_binding: string
-  result_mode: string
-  reply_timeout_seconds?: number | null
-  metadata?: WorkflowJsonObject
+  result_bindings: string[]
 }
 
 export interface WorkflowTriggerSource {

@@ -62,7 +62,7 @@ class _RecordingTriggerSourceSupervisor:
         }
 
 
-def test_versioned_trigger_recovery_accepts_transitional_runtime_and_legacy_result_semantics(
+def test_versioned_trigger_recovery_uses_explicit_result_bindings(
     tmp_path: Path,
 ) -> None:
     """验证启动恢复兼容异步 Runtime 恢复窗口和历史结果映射语义。"""
@@ -167,7 +167,7 @@ def test_versioned_trigger_recovery_accepts_transitional_runtime_and_legacy_resu
         session_factory.engine.dispose()
 
 
-def test_runtime_version_selection_uses_dispatcher_result_binding_semantics(
+def test_runtime_version_selection_uses_result_bindings_semantics(
     tmp_path: Path,
 ) -> None:
     """验证选版允许 fallback/未使用 binding，并拒绝真正未知的同步输出。"""
@@ -244,10 +244,10 @@ def test_runtime_version_selection_uses_dispatcher_result_binding_semantics(
         assert allowed_response.json()["revision_generation"] == 2
         assert blocked_response.status_code == 409
         assert blocked_response.json()["error"]["details"]["mapping_issues"] == [
-            {
-                "trigger_source_id": "selection-unknown-output",
-                "missing_output_binding_id": "missing_contract_output",
-            }
+                {
+                    "trigger_source_id": "selection-unknown-output",
+                    "missing_output_binding_ids": ["missing_contract_output"],
+                }
         ]
     finally:
         session_factory.engine.dispose()
@@ -290,7 +290,7 @@ def _seed_transitional_runtime_and_legacy_triggers(
         unit_of_work.workflow_trigger_sources.save_trigger_source(
             WorkflowTriggerSource(
                 trigger_source_id="legacy-sentinel-trigger",
-                result_mapping={"result_binding": "workflow_result"},
+                result_mapping={"result_bindings": []},
                 result_mode="sync-reply",
                 **common_fields,
             )
@@ -298,7 +298,7 @@ def _seed_transitional_runtime_and_legacy_triggers(
         unit_of_work.workflow_trigger_sources.save_trigger_source(
             WorkflowTriggerSource(
                 trigger_source_id="unknown-output-trigger",
-                result_mapping={"result_binding": "missing_contract_output"},
+                result_mapping={"result_bindings": ["missing_contract_output"]},
                 result_mode="sync-reply",
                 **common_fields,
             )
@@ -306,7 +306,7 @@ def _seed_transitional_runtime_and_legacy_triggers(
         unit_of_work.workflow_trigger_sources.save_trigger_source(
             WorkflowTriggerSource(
                 trigger_source_id="accepted-query-trigger",
-                result_mapping={"result_binding": "missing_contract_output"},
+                result_mapping={"result_bindings": ["http_response"]},
                 result_mode="accepted-then-query",
                 **common_fields,
             )
@@ -361,28 +361,28 @@ def _seed_version_selection_triggers(
             WorkflowTriggerSource(
                 trigger_source_id="selection-workflow-result",
                 workflow_runtime_id=allowed_runtime_id,
-                result_mapping={"result_binding": "workflow_result"},
+                result_mapping={"result_bindings": []},
                 result_mode="sync-reply",
                 **common_fields,
             ),
             WorkflowTriggerSource(
                 trigger_source_id="selection-accepted-query",
                 workflow_runtime_id=allowed_runtime_id,
-                result_mapping={"result_binding": "missing_contract_output"},
+                result_mapping={"result_bindings": ["http_response"]},
                 result_mode="accepted-then-query",
                 **common_fields,
             ),
             WorkflowTriggerSource(
                 trigger_source_id="selection-event-only",
                 workflow_runtime_id=allowed_runtime_id,
-                result_mapping={"result_binding": "missing_contract_output"},
+                result_mapping={"result_bindings": []},
                 result_mode="event-only",
                 **common_fields,
             ),
             WorkflowTriggerSource(
                 trigger_source_id="selection-unknown-output",
                 workflow_runtime_id=blocked_runtime_id,
-                result_mapping={"result_binding": "missing_contract_output"},
+                result_mapping={"result_bindings": ["missing_contract_output"]},
                 result_mode="sync-reply",
                 **common_fields,
             ),

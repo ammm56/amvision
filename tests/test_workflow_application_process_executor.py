@@ -911,10 +911,10 @@ def test_workflow_app_runtime_events_websocket_streams_live_events(
     assert stop_response.json()["observed_state"] == "stopped"
 
 
-def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
+def test_workflow_app_runtime_events_exclude_healthy_heartbeat_samples(
     tmp_path: Path,
 ) -> None:
-    """验证 app runtime 事件流会推送 worker 主动 heartbeat。"""
+    """验证健康 heartbeat 只更新内存状态，不进入持久化生命周期事件流。"""
 
     session_factory, dataset_storage, queue_backend = create_test_runtime(
         tmp_path,
@@ -992,7 +992,6 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
                 )
                 expected_event_types = {
                     "runtime.started",
-                    "runtime.heartbeat",
                     "runtime.stopped",
                 }
                 while not expected_event_types.issubset(
@@ -1010,9 +1009,6 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
         session_factory.engine.dispose()
 
     streamed_event_types = {item["event_type"] for item in streamed_payloads}
-    heartbeat_event = next(
-        item for item in streamed_payloads if item["event_type"] == "runtime.heartbeat"
-    )
     assert create_runtime_response.status_code == 201
     assert create_runtime_response.json()["heartbeat_interval_seconds"] == 1
     assert create_runtime_response.json()["heartbeat_timeout_seconds"] == 4
@@ -1022,19 +1018,16 @@ def test_workflow_app_runtime_events_websocket_streams_live_heartbeat_events(
     assert stop_response.status_code == 200
     assert streamed_event_types >= {
         "runtime.started",
-        "runtime.heartbeat",
         "runtime.stopped",
     }
-    assert "data" not in heartbeat_event["payload"]
-    assert "observed_state" in heartbeat_event["payload"]
-    assert heartbeat_event["payload"]["heartbeat_interval_seconds"] == 1
-    assert heartbeat_event["payload"]["heartbeat_timeout_seconds"] == 4
     assert final_events_response.status_code == 200
     assert {item["event_type"] for item in final_events_response.json()} >= {
         "runtime.created",
         "runtime.started",
-        "runtime.heartbeat",
         "runtime.stopped",
+    }
+    assert "runtime.heartbeat" not in {
+        item["event_type"] for item in final_events_response.json()
     }
 
 

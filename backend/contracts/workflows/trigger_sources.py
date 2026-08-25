@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.contracts.workflows.runtime import (
     WorkflowApplicationReferenceSummaryContract,
@@ -69,8 +69,11 @@ class InputBindingMappingItemContract(BaseModel):
             _require_stripped_text(self.source, "source")
         if self.payload_type_id is not None:
             _require_stripped_text(self.payload_type_id, "payload_type_id")
-        if self.source is None and self.value is None:
+        value_is_present = "value" in self.model_fields_set
+        if self.source is None and not value_is_present:
             raise ValueError("input binding 映射必须提供 source 或 value")
+        if self.source is not None and value_is_present and self.value is not None:
+            raise ValueError("input binding 映射不能同时提供 source 和静态 value")
         return self
 
 
@@ -78,26 +81,38 @@ class ResultMappingContract(BaseModel):
     """描述 workflow 输出到协议回执的映射规则。
 
     字段：
-    - result_binding：优先读取的 FlowApplication 输出 binding。
-    - result_mode：结果回执模式。
-    - reply_timeout_seconds：同步回执等待超时秒数。
-    - metadata：附加回执元数据。
+    - result_bindings：按顺序选择的 FlowApplication 输出 binding。
+
+    ``result_mode``、``reply_timeout_seconds`` 和 ``ack_policy`` 只由
+    ``WorkflowTriggerSourceContract`` 顶层字段定义，避免嵌套配置与顶层配置
+    产生两个事实源。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    result_binding: str = "workflow_result"
-    result_mode: WorkflowTriggerResultMode = "sync-reply"
-    reply_timeout_seconds: int | None = None
-    metadata: dict[str, object] = Field(default_factory=dict)
+    result_bindings: tuple[str, ...] = ()
+
+    @field_validator("result_bindings", mode="before")
+    @classmethod
+    def normalize_result_bindings(cls, value: object) -> object:
+        """在冻结模型构造前去除 binding 两端空白。"""
+
+        if not isinstance(value, list | tuple):
+            return value
+        return tuple(
+            item.strip() if isinstance(item, str) else item for item in value
+        )
 
     @model_validator(mode="after")
     def validate_contract(self) -> ResultMappingContract:
         """校验 result mapping 规则。"""
 
-        _require_stripped_text(self.result_binding, "result_binding")
-        if self.reply_timeout_seconds is not None and self.reply_timeout_seconds <= 0:
-            raise ValueError("reply_timeout_seconds 必须大于 0")
+        normalized = tuple(
+            _require_stripped_text(binding_id, "result_bindings")
+            for binding_id in self.result_bindings
+        )
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("result_bindings 不能包含重复 binding")
         return self
 
 

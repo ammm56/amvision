@@ -60,22 +60,29 @@ class InputBindingMapper:
 
         if not isinstance(mapping_rule, dict):
             return mapping_rule
-        if "value" in mapping_rule:
-            return mapping_rule["value"]
         source_path = mapping_rule.get("source")
-        if not isinstance(source_path, str) or not source_path.strip():
-            if bool(mapping_rule.get("required", True)):
-                raise InvalidRequestError(
-                    "input binding 映射缺少 source",
-                    details={"binding_id": binding_id},
-                )
-            return MISSING_PATH_VALUE
-        mapped_value = read_dotted_path(event_context, source_path)
-        if mapped_value is MISSING_PATH_VALUE:
-            if bool(mapping_rule.get("required", True)):
-                raise InvalidRequestError(
-                    "input binding 映射来源不存在",
-                    details={"binding_id": binding_id, "source": source_path},
-                )
-            return MISSING_PATH_VALUE
-        return mapped_value
+        has_source = isinstance(source_path, str) and bool(source_path.strip())
+        has_static_value = "value" in mapping_rule
+        if has_source and has_static_value and mapping_rule["value"] is not None:
+            raise InvalidRequestError(
+                "input binding 映射不能同时配置 source 和静态 value",
+                details={"binding_id": binding_id},
+            )
+        if has_source:
+            mapped_value = read_dotted_path(event_context, source_path)
+            if mapped_value is MISSING_PATH_VALUE:
+                if bool(mapping_rule.get("required", True)):
+                    raise InvalidRequestError(
+                        "input binding 映射来源不存在",
+                        details={"binding_id": binding_id, "source": source_path},
+                    )
+                return MISSING_PATH_VALUE
+            return mapped_value
+        if has_static_value:
+            return mapping_rule["value"]
+        if bool(mapping_rule.get("required", True)):
+            raise InvalidRequestError(
+                "input binding 映射缺少 source",
+                details={"binding_id": binding_id},
+            )
+        return MISSING_PATH_VALUE

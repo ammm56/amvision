@@ -30,17 +30,8 @@ namespace Amvar.Vision
     /// </summary>
     public sealed class WorkflowTriggerResultMapping
     {
-        [JsonProperty("result_binding")]
-        public string ResultBinding { get; set; } = "workflow_result";
-
-        [JsonProperty("result_mode")]
-        public string ResultMode { get; set; } = "sync-reply";
-
-        [JsonProperty("reply_timeout_seconds")]
-        public int? ReplyTimeoutSeconds { get; set; }
-
-        [JsonProperty("metadata")]
-        public IDictionary<string, object?> Metadata { get; } = new Dictionary<string, object?>();
+        [JsonProperty("result_bindings")]
+        public IList<string> ResultBindings { get; } = new List<string>();
     }
 
     /// <summary>

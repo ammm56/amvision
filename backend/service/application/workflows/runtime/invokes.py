@@ -17,12 +17,16 @@ class WorkflowRuntimeSyncInvokeResult:
     - raw_outputs：本次同步调用返回的未脱敏 application outputs。
     - raw_template_outputs：本次同步调用返回的未脱敏 template outputs。
     - raw_node_records：本次同步调用返回的未脱敏 node_records。
+    - input_cleanup_completed：Runtime worker 已完成或已由 manager 兜底完成输入
+      LocalBuffer cleanup；上游 adapter 不得再发送重复 conditional release。
     """
 
     workflow_run: WorkflowRun
     raw_outputs: dict[str, object] = field(default_factory=dict)
     raw_template_outputs: dict[str, object] = field(default_factory=dict)
     raw_node_records: tuple[dict[str, object], ...] = ()
+    prepared_trigger_result: dict[str, object] | None = None
+    input_cleanup_completed: bool = False
 
 
 @dataclass(frozen=True)

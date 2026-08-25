@@ -14,6 +14,7 @@ from backend.service.application.runtime.support.safe_counter import (
     snapshot_safe_counter,
 )
 from backend.service.application.workflows.trigger_sources.protocol_adapter import (
+    WorkflowTriggerDispatchResult,
     WorkflowTriggerEventHandler,
     WorkflowTriggerProtocolAdapter,
 )
@@ -65,7 +66,7 @@ class _IdempotencyEntry:
     created_monotonic: float
     cache_key: tuple[str, str]
     completion_event: Event = field(default_factory=Event)
-    result: TriggerResultContract | None = None
+    result: WorkflowTriggerDispatchResult | None = None
 
 
 class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
@@ -181,7 +182,7 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         *,
         trigger_source: WorkflowTriggerSource,
         raw_event: RawTriggerEvent,
-    ) -> TriggerResultContract:
+    ) -> WorkflowTriggerDispatchResult:
         """处理协议 adapter 送入的原始事件。
 
         参数：
@@ -207,20 +208,22 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
                 trigger_event_id=trigger_event.event_id,
                 entry=idempotency_entry,
             )
-        trigger_result: TriggerResultContract | None = None
+        dispatch_result: WorkflowTriggerDispatchResult | None = None
         try:
             if self._should_debounce(trigger_source=trigger_source, state=state):
-                trigger_result = TriggerResultContract(
-                    trigger_source_id=trigger_source.trigger_source_id,
-                    event_id=trigger_event.event_id,
-                    state="accepted",
-                    metadata={
-                        "debounced": True,
-                        "debounce_window_ms": trigger_source.debounce_window_ms,
-                    },
+                dispatch_result = WorkflowTriggerDispatchResult(
+                    trigger_result=TriggerResultContract(
+                        trigger_source_id=trigger_source.trigger_source_id,
+                        event_id=trigger_event.event_id,
+                        state="accepted",
+                        metadata={
+                            "debounced": True,
+                            "debounce_window_ms": trigger_source.debounce_window_ms,
+                        },
+                    )
                 )
             else:
-                trigger_result = self.workflow_submitter.submit_event(
+                dispatch_result = self.workflow_submitter.submit_event(
                     WorkflowTriggerSubmitRequest(
                         trigger_source=trigger_source,
                         trigger_event=trigger_event,
@@ -236,12 +239,12 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
             if idempotency_entry is not None and is_idempotency_owner:
                 self._complete_idempotent_request(
                     entry=idempotency_entry,
-                    result=trigger_result,
+                    result=dispatch_result,
                 )
 
-        assert trigger_result is not None
-        self._record_result(state, trigger_result)
-        return trigger_result
+        assert dispatch_result is not None
+        self._record_result(state, dispatch_result.trigger_result)
+        return dispatch_result
 
     def _begin_idempotent_request(
         self,
@@ -268,7 +271,7 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         self,
         *,
         entry: _IdempotencyEntry,
-        result: TriggerResultContract | None,
+        result: WorkflowTriggerDispatchResult | None,
     ) -> None:
         """发布幂等 owner 的结果，唤醒并发重复请求。"""
 
@@ -289,25 +292,48 @@ class TriggerSourceSupervisor(WorkflowTriggerEventHandler):
         trigger_source: WorkflowTriggerSource,
         trigger_event_id: str,
         entry: _IdempotencyEntry,
-    ) -> TriggerResultContract:
+    ) -> WorkflowTriggerDispatchResult:
         """等待同一幂等键的首个请求完成并返回缓存结果。"""
 
         timeout_seconds = float(trigger_source.reply_timeout_seconds or 30)
         if not entry.completion_event.wait(timeout=timeout_seconds) or entry.result is None:
-            return TriggerResultContract(
-                trigger_source_id=trigger_source.trigger_source_id,
-                event_id=trigger_event_id,
-                state="timed_out",
-                error_message="等待相同 idempotency_key 的请求结果超时",
-                metadata={"idempotent_replay": True},
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=trigger_event_id,
+                    state="timed_out",
+                    error_message="等待相同 idempotency_key 的请求结果超时",
+                    metadata={"idempotent_replay": True},
+                )
             )
-        return entry.result.model_copy(
-            update={
-                "metadata": {
-                    **dict(entry.result.metadata),
-                    "idempotent_replay": True,
+        if (
+            entry.result.prepared_trigger_result is not None
+            and entry.result.prepared_trigger_result.attachments
+        ):
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=trigger_event_id,
+                    state="failed",
+                    workflow_run_id=entry.result.workflow_run_id,
+                    error_message="临时图片附件不能通过幂等缓存重放",
+                    metadata={
+                        "error_code": "ephemeral_attachment_replay_forbidden",
+                        "idempotent_replay": True,
+                    },
+                )
+            )
+        return WorkflowTriggerDispatchResult(
+            trigger_result=entry.result.trigger_result.model_copy(
+                update={
+                    "event_id": trigger_event_id,
+                    "metadata": {
+                        **dict(entry.result.metadata),
+                        "idempotent_replay": True,
+                    },
                 }
-            }
+            ),
+            prepared_trigger_result=entry.result.prepared_trigger_result,
         )
 
     def _should_debounce(

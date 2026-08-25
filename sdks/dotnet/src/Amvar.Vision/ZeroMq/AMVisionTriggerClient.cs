@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System.Threading;
+using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision
 {
@@ -18,11 +16,6 @@ namespace Amvar.Vision
         /// backend-service 返回的 TriggerResult format_id。
         /// </summary>
         public const string TriggerResultFormatId = "amvision.workflow-trigger-result.v1";
-
-        /// <summary>
-        /// ZeroMQ adapter 返回的错误 reply format_id。
-        /// </summary>
-        public const string ZeroMqErrorFormatId = "amvision.zeromq-trigger-error.v1";
 
         /// <summary>
         /// 保护底层 transport 调用和释放；ZeroMQ REQ/REP 调用必须一问一答串行执行。
@@ -186,59 +179,7 @@ namespace Amvar.Vision
         /// <returns>解析后的 TriggerResult。</returns>
         public static TriggerResult ParseReply(IReadOnlyList<byte[]> replyFrames)
         {
-            if (replyFrames.Count == 0)
-            {
-                throw new AMVisionTriggerException("invalid_reply", "ZeroMQ TriggerSource reply is empty.");
-            }
-
-            var json = Encoding.UTF8.GetString(replyFrames[0]);
-            JObject root;
-            try
-            {
-                root = JObject.Parse(json);
-            }
-            catch (JsonException exception)
-            {
-                throw new AMVisionTriggerException(
-                    "invalid_reply",
-                    "ZeroMQ TriggerSource reply is not valid JSON.",
-                    null,
-                    exception,
-                    json);
-            }
-
-            var formatId = root.Value<string>("format_id");
-
-            if (formatId == ZeroMqErrorFormatId || root["error_code"] != null)
-            {
-                var error = WorkflowJsonDefaults.Deserialize<ZeroMqTriggerError>(json);
-                throw new AMVisionTriggerException(
-                    error?.ErrorCode ?? "trigger_error",
-                    error?.ErrorMessage ?? "ZeroMQ TriggerSource returned an error.",
-                    error?.Details,
-                    rawReplyJson: json
-                );
-            }
-
-            var result = WorkflowJsonDefaults.Deserialize<TriggerResult>(json);
-            if (result is null)
-            {
-                throw new AMVisionTriggerException(
-                    "invalid_reply",
-                    "ZeroMQ TriggerSource reply cannot be parsed.",
-                    rawReplyJson: json);
-            }
-
-            if (result.FormatId != TriggerResultFormatId)
-            {
-                throw new AMVisionTriggerException(
-                    "invalid_reply",
-                    $"Unexpected TriggerResult format_id: {result.FormatId}.",
-                    rawReplyJson: json
-                );
-            }
-
-            return result;
+            return ZeroMqTriggerResultParser.Parse(replyFrames);
         }
 
         /// <summary>

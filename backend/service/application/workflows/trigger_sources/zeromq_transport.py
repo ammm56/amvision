@@ -18,6 +18,10 @@ class ZeroMqTriggerRuntimeConfig:
     - poll_timeout_ms：listener 检查停止信号的轮询间隔。
     - startup_timeout_seconds：等待 listener 完成 bind 的最长时间。
     - shutdown_timeout_seconds：等待 listener 完整退出的最长时间。
+    - transport_registry_max_entries：同时由 libzmq 借用的图片结果数量上限。
+    - transport_registry_max_bytes：同时由 libzmq 借用的图片结果总字节上限。
+    - transport_tracker_timeout_seconds：单次发送 tracker 的诊断超时。
+    - transport_reaper_poll_interval_seconds：发送生命周期回收器轮询间隔。
 
     说明：
     - 数值来自 backend-service 统一配置，不在协议实现中维护环境相关默认值。
@@ -32,3 +36,7 @@ class ZeroMqTriggerRuntimeConfig:
     poll_timeout_ms: int
     startup_timeout_seconds: float
     shutdown_timeout_seconds: float
+    transport_registry_max_entries: int
+    transport_registry_max_bytes: int
+    transport_tracker_timeout_seconds: float
+    transport_reaper_poll_interval_seconds: float

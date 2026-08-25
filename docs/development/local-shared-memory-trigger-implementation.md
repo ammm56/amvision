@@ -2,11 +2,26 @@
 
 ## 状态与职责
 
-状态：**架构决策已接受，binary protocol 尚待按本文冻结，代码尚未开始实现**。
+状态：**已实现；阶段 0–9 的源码开发环境门禁均已完成**。
 
 本页是 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 的唯一详细实施基线，用于约束本机共享内存 Workflow Trigger、.NET SDK External LocalBuffer Writer Lease、全局 Trigger mailbox、统一 Runtime execution token、output lease handoff 和图片格式边界的后续实现。
 
-当前可运行的 `zeromq-topic`、LocalBufferBroker、Workflow Runtime 和 .NET SDK 行为不因本页而改变。每一阶段只有在代码审计和对应门禁通过后才能标记完成；全部阶段完成后把稳定事实合并到架构、API、SDK 和运维专题，并删除本实施清单。
+当前实施进度：
+
+| 阶段 | 状态 | 已通过门禁 |
+| --- | --- | --- |
+| 0 | 完成 | schema/codegen/fixture 一致；真实 net472 编译；Python/.NET Windows byte-range guard 互斥；1080p/4K/20MP checksum 基准；正式路径 containment |
+| 1 | 完成 | inference mailbox 已复用中立 guard、owner lock、path fencing、CRC32、uint32 publication、连续优先/非连续 page-chain；相关控制与运行时测试 47 项全部通过 |
+| 2 | 完成 | External LocalBuffer 精确长度 PREPARE/publish；writer/reader byte-range guard；私有 receipt；单 pool 与跨 pool batch CAS；deadline 自动 sweep；REVOKING/QUARANTINED；旧 generation/owner fencing；LocalBuffer 与 mailbox 合并回归 63 项通过 |
+| 3 | 完成 | 唯一 Runtime execution token 封装真实 handle gate；wait/reject；REST/async/Trigger 统一接入；ZeroMQ reject；旧 generation fencing；删除窗口不再使用独立 sync admission；管理器、Runtime、Trigger 与真实 API 回归通过 |
+| 4 | 完成 | 单一全局固定 mailbox；PREPARE/WRITING/REQUEST/PROCESSING/RESPONSE/ACK 状态机；128 descriptors 与 128 MiB page pool；route generation；每 source 单在途；无隐藏队列 executor；真实 Runtime admission；输入 guard publication 与首次 owner handoff；payload checksum、deadline、重启 fencing 和各失败点补偿；阶段 0–4、inference mmap、Runtime、Trigger 与 API 组合回归 155 项通过 |
+| 5 | 完成 | `result_bindings` 原子迁移；固定 Trigger/Worker output plan；JSON/单图/多图规范化与物理 identity 去重；ObjectStore immutable snapshot；FrameRef reader guard；整批 output handoff；Worker 和父进程发布失败条件回收；Trigger、Runtime、LocalBuffer、ObjectStore 与文档示例组合回归通过 |
+| 6 | 完成 | .NET mailbox/External LocalBuffer client；BGR24、正负 stride、Mono8、Bitmap、File、Base64 输入；SDK 配置包；output reader guard 与 Dispose/ACK；`Image Encode`；raw 零解码、encoded mmap view 和并行 single-flight；跨 Python/.NET 逐字节门禁与阶段组合回归 92 项通过 |
+| 7 | 完成 | 协议中立结果 dispatcher；统一 ZeroMQ Result v1 及 0..N binary frames；物理 frame 去重；发送前 transport registry 预留；逐帧 tracker、REP socket 重建与安全回收；ObjectStore 稳定快照；`result_bindings` 数据迁移；.NET 严格解析；前端有序多选；后端组合回归 65 项、ZeroMQ 专项 37 项、前端 285 项和 .NET 零警告编译/契约探针通过 |
+| 8 | 完成 | PREPARE/WRITING/REQUEST/PROCESSING/RESPONSE/ACK、owner handoff、Runtime/worker、ZeroMQ send/tracker、Broker deadline/重启/CRC/identity 故障门禁；分阶段 backend/health timing；.NET opt-in timing；Python 组合回归 100 项和 .NET net472 Release 零警告构建通过 |
+| 9 | 完成 | 1080p/4K/20MP/57.1 MiB 真实 BMP 性能矩阵；10,000 次混合 soak；真实 HTTP Base64 Workflow、ZeroMQ Trigger、本机共享内存 Trigger 和 Deployment sync 连续负载；资源零泄漏；源码开发环境完整验证通过。现有发行包不在本次源码修改中手工覆盖，后续发布按 profile 重新 assemble |
+
+`zeromq-topic` 与 `local-shared-memory` 是两个并列的正式 TriggerSource adapter。稳定事实已经同步到架构、API 和 SDK 文档；本页继续保留 binary layout、状态机、故障门禁和性能证据，作为后续维护的实施记录。
 
 ## 目标
 
@@ -32,15 +47,15 @@
 | ZeroMQ Trigger | envelope 与图片 multipart 进入 adapter，adapter 再写 LocalBuffer | 保持现有公开行为 |
 | `InvokeBgr24` | 发送 `image/raw`、HWC、uint8、bgr24 和完整 shape | 新入口继续提供 BGR24 高性能方法 |
 | `InvokeImageBytes/File/Base64` | 发送 JPEG、PNG、BMP 等原始 encoded bytes，不统一转 BGR24 | 新入口继续正式支持 encoded bytes |
-| LocalBuffer | 普通 lease 支持 allocate、write/commit、validate、read 和 release | 增加 external guard、fenced release 和 owner handoff |
-| Broker commit | `commit_lease()` 沿用 allocation size，没有 `written_size` | v1 改成 PREPARE 精确长度并要求完全相等 |
-| Broker release | 可按 `lease_id` 无条件释放 | 新协议清理必须使用完整 identity fence |
+| LocalBuffer | 普通 lease 保持原接口；External lease 已支持精确 allocate/commit、writer/reader guard、receipt、CAS owner transfer、整批 output handoff 和状态化回收 | 阶段 6 SDK 复用该边界 |
+| Broker commit | 普通 `commit_lease()` 保持原行为；External commit 按 PREPARE 精确长度和 checksum 提交 | 保持两类边界，不给普通链路增加额外协议成本 |
+| Broker release | 普通公开释放接口保留；新 Trigger、Workflow cleanup 和异常回收已按完整 receipt identity 条件释放 | output 交付继续只使用 receipt，不退回 lease-id-only 回收 |
 | raw 图片读取 | `memoryview -> np.frombuffer().reshape()`，默认不复制、不执行 `cv2.imdecode` | 保持 |
 | encoded 图片读取 | 借用 encoded mmap view，在 `cv2.imdecode` 内生成目标 BGR matrix | 保持并纳入 single-flight |
 | Workflow 解码复用 | 单次执行按引用、generation、元数据和 decode flags 做有界只读缓存 | 保持 |
-| Workflow cleanup | worker finally 和父进程 owner sweep 会释放 Run lease | output handoff 后 cleanup 必须按 owner 条件 no-op |
-| Workflow Runtime | 真实容量门是 handle `request_lock`，`reserve_sync_admission` 只关闭删除窗口 | 收敛为唯一 execution token/gate |
-| 高速策略 | `_is_high_speed_trigger_source()` 只识别 ZeroMQ | 纳入 `local-shared-memory` |
+| Workflow cleanup | worker finally、父进程 owner sweep 和发布失败补偿均按 receipt 条件释放；owner 已转移时 no-op | 阶段 6–7 继续复用该边界 |
+| Workflow Runtime | 唯一 execution token 已封装真实 handle gate，并支持 wait/reject | 所有后续 adapter 继续复用，不另建容量事实 |
+| 高速策略 | `_is_high_speed_trigger_source()` 已同时识别 ZeroMQ 和 `local-shared-memory` | 保持 minimal 记录策略 |
 
 新实现不得删除或悄然修改当前 ZeroMQ 公开方法。`local-shared-memory` 是新的明确 trigger kind，不是旧入口兼容分支。
 
@@ -57,6 +72,8 @@
 - [普通 LocalBuffer lease 与 frame channel](../../backend/service/infrastructure/local_buffers/mmap_buffer_pool.py)
 - [Workflow Runtime manager](../../backend/service/application/workflows/worker/manager.py)
 - [现有 inference mailbox guard](../../backend/service/application/runtime/deployment/inference_local_mmap.py)
+- [全局 Workflow Trigger mailbox](../../backend/service/infrastructure/ipc/workflow_trigger_mailbox.py)
+- [mailbox、route、admission 与 handoff supervisor](../../backend/service/application/workflows/trigger_sources/local_shared_mailbox_supervisor.py)
 
 ## 不可偏离的设计边界
 
@@ -171,7 +188,7 @@ v1 默认容量：
 | 初始 poll interval | 1 ms |
 | 数字字节序 | little-endian |
 | 字段对齐 | 8 byte |
-| 内容校验 | 阶段 0 实测后冻结唯一生产算法；binary layout 预留 algorithm id 和 checksum |
+| 内容校验 | CRC32 IEEE（polynomial `0xedb88320`，algorithm id `1`） |
 
 请求参数超过 512 KiB 时返回 `trigger_request_too_large`，不建立 request page-chain、文件 fallback 或第二控制通道。结构化响应超过 inline 上限时使用同一 mailbox 内的固定 overflow page-chain；超过单响应或全局 page 上限时返回 `trigger_response_too_large` 或明确的全局容量错误。
 
@@ -179,12 +196,37 @@ v1 默认容量：
 
 ### binary contract 单一事实源
 
+阶段 0 已完成以下实现并作为后续代码的唯一输入：
+
+- schema：`backend/contracts/ipc/schemas/workflow_trigger_mailbox.v1.json`；
+- 生成器：`python -m backend.maintenance.workflow_trigger_binary_contract --write`；
+- 只读门禁：`python -m backend.maintenance.workflow_trigger_binary_contract --check`；
+- Python layout：`backend/contracts/ipc/workflow_trigger_mailbox_v1.py`；
+- .NET layout：`sdks/dotnet/src/Amvar.Vision/SharedMemory/WorkflowTriggerMailboxV1.g.cs`；
+- 跨语言 fixture：`tests/fixtures/workflow_trigger_mailbox.v1.fixture.json`。
+
+layout 固定为 128-byte file header、320-byte descriptor header 和 64-byte page header。生成文件带 schema SHA-256；Python/.NET 端不得手工复制 offset 或 enum。协议还未完成阶段 1–9 前不对 API capability 宣称可用。
+
 - 使用一份带固定 offset、width、alignment、enum 和 magic/version 的 schema 生成 Python 与 .NET 常量。
 - Python 与 .NET 不分别手写 descriptor offset。
 - request id 使用固定 16-byte UUID；owner token 和 epoch 使用非零 uint64。
 - 变长字符串和业务对象放入 UTF-8 JSON payload；header 只保存固定 identity、长度、校验算法/值和位置。
 - contract fixture 必须覆盖所有字段最大值、空值、字节序、最终校验算法和值以及 page-chain。
-- binary contract 不冻结前，文档状态不得写成“协议已冻结”，代码不得向 API capability 宣称可用。
+- binary contract 已冻结；后续不兼容修改必须显式修改 schema、重新生成两端代码和 fixture，并在 capability 对外发布前完成全部迁移门禁。
+
+### 阶段 0 checksum 测量与输入发布结论
+
+2026-08-24 使用开发数据中的真实图像内容，统一转换为连续 BGR24 后对 1080p、4K 和 20MP 数据完成 Python bytes、Python read-only mmap 与 net472 SDK 增量基准。每组预热后执行 5 次，chunk 为 1 MiB；完整报告由 `python -m backend.maintenance.workflow_trigger_checksum_benchmark` 写入 `.tmp/workflow-trigger-stage0/checksum-benchmark.json`。
+
+| BGR24 数据 | 大小 | CRC32 Python mmap | CRC32 .NET incremental | SHA-256 Python mmap | SHA-256 .NET incremental |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1080p | 6,220,800 bytes | 4.73 ms | 6.87 ms | 6.50 ms | 3.75 ms |
+| 4K | 24,883,200 bytes | 18.87 ms | 24.05 ms | 29.85 ms | 14.20 ms |
+| 20MP | 60,543,936 bytes | 50.86 ms | 60.31 ms | 72.65 ms | 34.41 ms |
+
+测量证明对同一张 20MP 输入在 SDK 写侧和 backend 发布侧各扫描一次会额外消耗约 95 ms，并抵消共享内存链路收益。`local-shared-memory` 输入因此不携带 full-image checksum：SDK 通过精确 allocation 写入，在释放 view 和 writer guard 后才发布 REQUEST；backend 重新取得 writer guard，并在同一 Broker 锁内校验 receipt、broker epoch、generation、owner、deadline 和精确长度，随后原子完成 `WRITING -> ACTIVE` 与首次 owner transfer。SDK 在 writer guard 释放前退出时不会发布 REQUEST，部分写入不会成为可消费 lease。
+
+CRC32 IEEE 继续用于 mailbox 结构化 request/response payload、page-chain 和需要跨 transport 交付的结果 attachment；这些校验不承担密码学认证。固定文本 fixture `amvision-workflow-trigger-mailbox-v1` 的值为 `0x72d66131`。输入图片的 publication 完整性与结构化 payload 的传输完整性是两个不同边界，不提供把旧的双重整图 CRC 恢复到热路径的兼容开关。
 
 ### descriptor 字段
 
@@ -211,7 +253,7 @@ v1 默认容量：
 - 读取端取得 guard 后校验 state、generation、owner、epoch、deadline、长度、checksum 和 page-chain。
 - 不依赖 Python/.NET 普通 mmap 字段赋值的原子性或内存可见性。
 - page body 与 header 全部完成后才能发布 RESPONSE；异常响应始终放入 inline 区，不依赖 overflow page。
-- SDK 发布 REQUEST 后立即释放 writer guard；Broker 只有成功取得该 guard 才能校验并 commit。本协议不允许 SDK 持有 writer guard 等待 Workflow 执行完成。
+- SDK 必须先销毁写 view并释放 writer guard，再发布 REQUEST；Broker 只有成功取得该 guard 才能原子 publish + owner transfer。本协议不允许 SDK 持有 writer guard 等待 Workflow 执行完成。
 
 通用 guard、owner lock、path fencing、checksum 和 page-chain helper 从 inference mailbox 提取到中立 IPC 基础设施。两个 mailbox 只共享实现和测试，不共享文件、epoch、descriptor 或 owner 空间。
 
@@ -266,8 +308,8 @@ WRITING 撤销等待 writer guard；ACTIVE 撤销等待所有 OS reader guard。
 | --- | --- | --- |
 | `FREE -> PREPARE` | SDK | claim 时校验 server epoch、generation 和 owner token |
 | `PREPARE -> WRITING` | backend-service | TriggerSource/route/长度校验通过，输入 lease 已分配 |
-| `WRITING -> REQUEST` | SDK | 图片和 payload 写入完成，长度、checksum algorithm/value 和 metadata 已发布；随后立即释放 writer guard |
-| `REQUEST -> PROCESSING` | backend-service | 已取得 writer guard并 commit；Runtime/执行器 permit 与 WorkflowRun identity 已建立；输入 owner 已从 writer receipt 条件 transfer 到 Runtime receipt；worker submit 已接受 |
+| `WRITING -> REQUEST` | SDK | 图片按精确 allocation 写入完成；先销毁写 view并释放 writer guard，再以 descriptor request payload 的 CRC 发布 REQUEST |
+| `REQUEST -> PROCESSING` | backend-service | 已重新取得 writer guard并确认 receipt/epoch/generation/owner/deadline；Runtime/执行器 permit 与 WorkflowRun identity 已建立；Broker 在同一锁内原子发布 lease并把输入 owner 从 writer receipt transfer 到 Runtime receipt；worker submit 已接受 |
 | `PROCESSING -> RESPONSE` | backend-service | 图执行、结果规范化和整批 handoff 成功，response body 已完整写入 |
 | `PREPARE/WRITING/REQUEST/PROCESSING -> RESPONSE(error)` | backend-service | error body 已完整写入，attachments/payloads 为空；已取得资源已按当前 receipt 清理，或 ZeroMQ 进程内资源已由预留 transport-lifetime registry 持续负责且 lease 已进入 Broker 回收链 |
 | 任意未完成状态 `-> CANCELLED` | backend-service | SDK 只提交取消意图；backend 校验 identity 后发布取消状态 |
@@ -300,7 +342,7 @@ TriggerSource 使用：
 ```json
 {
   "result_bindings": [
-    "workflow_result",
+    "inspection_result",
     "annotated_image",
     "cropped_images"
   ]
@@ -392,7 +434,7 @@ Frame 0 manifest 固定包含 `format_id`、Trigger/Event/Run identity、state�
   "state": "succeeded",
   "workflow_run_id": "workflow-run-1",
   "response_payload": {
-    "workflow_result": {
+    "inspection_result": {
       "code": 200,
       "message": "ok"
     }
@@ -466,21 +508,21 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 
 - SDK 取得 writer guard 后创建精确长度 mmap view。
 - BGR24 helper 直接写连续 HWC 像素；encoded 入口直接写编码 bytes。
-- SDK 在写入过程中增量计算阶段 0 冻结的 checksum，不在写完后再额外扫描一遍调用方源数据。
-- SDK 在 descriptor guard 内写入 checksum algorithm/value 和图片元数据，最后发布 REQUEST，然后释放 writer guard。
+- SDK 不对 trusted-local 输入做 full-image checksum；精确 allocation 决定本次可写长度。
+- SDK 完成写入后先销毁 mmap 写 view并释放 writer guard，再在 descriptor guard 内写入图片元数据和结构化 request payload，最后发布 REQUEST。REQUEST 之前的进程退出只留下不可消费的 WRITING lease，由 deadline 回收。
 - SDK 发现 CANCELLED、epoch 变化或本地 timeout 时停止写入并释放 guard，不自行把 lease 设为 FREE。
 
 ### 3. REQUEST
 
 - Broker 必须成功取得 writer guard，证明协作式 writer 已经停止。
-- backend-service 校验 descriptor identity、route generation、deadline、精确长度、checksum 和图片元数据。
-- Broker 使用 mmap view 计算同一 checksum，不产生整图 Python `bytes` 副本。
+- backend-service 校验 descriptor identity、route generation、deadline、精确长度和图片元数据；descriptor 自身的 request payload CRC 按 mailbox 协议校验。
+- Broker 重新取得 writer guard，确认没有协作式 writer 持续写入；输入发布不创建整图 mmap view，也不扫描 full-image checksum。
 - raw BGR24 额外校验长度等于 `height * width * 3`。
-- Broker commit external writing lease，生成正式 `BufferRef` 和只在服务端保存的 writer `LeaseOwnershipReceipt`。公开 BufferRef 不包含权威 owner、pool 或 deadline。
+- Broker 在单个 pool lock 内把 external writing lease 原子发布为 ACTIVE、转移到 Runtime owner，并生成正式 `BufferRef` 和新的 Runtime `LeaseOwnershipReceipt`。公开 BufferRef 不包含权威 owner、pool 或 deadline。
 - Runtime manager 非阻塞取得目标 handle 的真实 execution token；失败时按 writer receipt 条件释放输入 lease并发布 `workflow_runtime_busy`，TriggerSource permit 保持到该错误响应完成协议交付。
 - adapter 还必须非阻塞取得有界执行器 permit；执行器实现不能只限制 worker 数却使用无界 `ThreadPoolExecutor` 提交队列。permit 失败时释放 Runtime token、按 writer receipt 释放输入 lease，并发布 `trigger_executor_busy`。
 - backend-service 建立权威 WorkflowRun identity/记录；创建失败时释放两个 permit并按 writer receipt 回收。
-- 在提交 worker 前，Broker 以 CAS 校验完整 writer receipt，把输入 owner 从 `workflow-trigger-write` 转为 `workflow-runtime:{runtime_id}:{run_id}:{request_id}`，并返回新的 Runtime receipt。transfer 失败时不提交 worker，Run 进入失败终态并释放两个 permit；不得直接假设输入已经属于 Run owner。
+- 在提交 worker 前，Broker 以 CAS 校验完整 writer receipt，在同一临界区完成 `WRITING -> ACTIVE` 并把输入 owner 从 `workflow-trigger-write` 转为 `workflow-runtime:{runtime_id}:{run_id}:{request_id}`，返回新的 Runtime receipt。publish/transfer 失败时不提交 worker，Run 进入失败终态并释放两个 permit；不得发布短暂的 writer-owner ACTIVE 状态。
 - 成功后把 execution token、executor permit、BufferRef、Runtime receipt 和固定路由/response plan 提交给执行器；worker 提交失败时按 Runtime receipt 清理。每条完成、取消和异常路径都必须释放两个 permit。
 
 ### 4. PROCESSING
@@ -518,8 +560,9 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 
 ### 新增正式操作
 
-- `allocate_external_lease()`：分配精确长度 WRITING lease 和 guard identity。
-- `commit_external_lease()`：取得 writer guard、校验 identity/长度/checksum 并 commit。
+- `allocate_external_buffer()`：分配精确长度 WRITING lease 和 guard identity。
+- `publish_and_transfer_external_buffer()`：trusted-local Trigger 输入取得 writer guard、校验 identity/长度并在单个 pool lock 内原子 publish + first owner transfer；不扫描 full-image checksum。
+- `commit_external_buffer()`：内部把已物化的 output bytes 发布为 ACTIVE；输出交付需要 checksum 时保留该校验，不作为 Trigger 输入路径。
 - `cancel_external_lease()`：进入 REVOKING，不直接释放。
 - `transfer_lease_owner()`：接收 expected receipt，完成单 lease 条件 owner handoff并返回新 receipt。
 - `transfer_lease_batch()`：接收 expected receipts，完成多 lease 全量校验和原子 handoff并返回新 receipts。
@@ -718,7 +761,7 @@ SDK 可以提供显式 `CopyAttachmentsAndRelease` 或等价 helper：把选中 
 
 - 将状态保持为“架构已接受，binary protocol 待冻结”。
 - 建立 binary schema 单一事实源，生成 Python/.NET layout 与 contract fixture。
-- 固定 header、descriptor、page、状态、错误码、容量、guard、timeout 和 path builder；先对真实 1080p/4K/20MP 图片完成 Python/.NET checksum 算法、增量写入和 mmap 校验基准，再冻结唯一生产算法及 algorithm id。
+- 固定 header、descriptor、page、状态、错误码、容量、guard、timeout 和 path builder；对真实 1080p/4K/20MP 图片完成 Python/.NET checksum、增量写入和 mmap 校验基准，据此冻结“结构化 mailbox payload 使用 CRC32、trusted-local 输入图片使用 guard publication”的边界。
 - 固定 descriptor 状态迁移的唯一写入方、mailbox owner lock、reload/takeover fencing 和 source permit 生命周期。
 - 明确正式能力包含 output lease handoff，不再保留“只返回小 JSON”未决项；冻结零复制结果对象持有 reader guard 到 Dispose/ACK 的生命周期。
 - 冻结顶层 `result_mode/reply_timeout_seconds/ack_policy`、`result_mapping.result_bindings`、内部 `PreparedTriggerResult/PreparedLogicalAttachment/PreparedPhysicalPayload`、私有 `LeaseOwnershipReceipt`、公开 `WorkflowTriggerResultV1` locator union、`TriggerResponsePlan`、`WorkflowOutputDeliveryPlan`、ObjectStore snapshot/immutable write 端口和结构化 adapter capability 契约。
@@ -815,15 +858,26 @@ SDK 可以提供显式 `CopyAttachmentsAndRelease` 或等价 helper：把选中 
 
 ### 阶段 8：故障注入、恢复和观测收口
 
+阶段 8 已完成。backend 只在 `return_timing_metadata_enabled=true` 时把当前调用的执行阶段耗时放入 Result `metadata.timings`；生产默认关闭。mailbox supervisor 和 ZeroMQ transport health 只保留最近一次数值摘要，不保存图片、路径或业务参数。.NET SDK 仅在 `SharedMemoryTriggerRequest.EnableTimings=true` 时创建 `SharedMemoryTriggerTimings`，关闭时不在图片写入热路径增加额外计时调用。
+
+计时语义固定如下：
+
+- `workflow_image_decode_ms` 只累计 encoded 图片在当前 Workflow 首次 cache miss 时的 codec 解码；同一引用的 cache hit 不重复累计。
+- `workflow_raw_view_ms` 累计 raw BGR24 mmap/view 获取和 matrix 解释，不包含 codec 解码。
+- `response_image_encode_ms` 是图中显式 `core.io.image-encode` 节点的执行耗时之和；Trigger adapter 不隐式编码图片。
+- `workflow_persist_ms` 在实际 WorkflowRun/事件持久化完成后加入当前同步结果，不为保存 timing 再执行第二次数据库写入。
+- `tracker_cleanup_ms` 和 ZeroMQ `lease_reclaim_ms` 发生在 multipart 已交给 transport 后，记录在 adapter health 的 `transport_timings` 中，不伪装成已经返回给客户端的 reply 耗时。
+- .NET `InvokeReturnMs` 截止结果对象可返回；零复制 attachment 的 `AttachmentAccessMs` 和最终 `DisposeAckMs` 由同一个结果对象在读取、释放 reader guard 和 ACK 时补全。
+
 统一记录：
 
 - `sdk_convert_to_bgr24_ms`；
 - `sdk_base64_decode_ms`；
 - `sdk_write_local_buffer_ms`；
-- `sdk_checksum_ms`；
+- `sdk_checksum_ms`（仅结果 attachment 校验；输入图片 publication 不做 full-image CRC）；
 - `mailbox_prepare_ms`；
 - `mailbox_request_detect_ms`；
-- `broker_commit_ms`；
+- `broker_commit_owner_handoff_ms`；
 - `runtime_admission_ms`；
 - `workflow_image_decode_ms` 或 `workflow_raw_view_ms`；
 - `workflow_execute_ms`；
@@ -845,16 +899,18 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 
 ### 阶段 9：性能、soak、发行和文档收口
 
-- 按性能验收矩阵完成同机 ZeroMQ 基线与 local-shared-memory 候选对比，每个 cell 三轮、每轮预热后至少 1,000 次，以最差轮次判定。
-- 完成 10,000 次多 Trigger 混合稳定性 soak、真实 Workflow/Deployment/Trigger 链路、源码开发环境和重新 assemble 的发行环境验证。
-- 逐项核对 P50/P95/P99、tail spread、零错误/timeout、Python/.NET 分配、整图复制次数和所有生命周期指标。
+阶段 9 已完成，源码开发环境的正式证据如下：
 
-完成全部门禁后：
+- 1080p、4K、20MP BGR24 和 57.1 MiB 实际 BMP 均完成同机 ZeroMQ 与 local-shared-memory 对照；20MP 并发 8 的三轮 candidate P99 为 715.1/738.5/810.0 ms，均显著低于对应 ZeroMQ 2067.2/2528.0/2187.6 ms；真实 BMP 并发 2/4/8 的 candidate P99 为 215.9/386.3/689.4 ms，对应 ZeroMQ 为 534.4/759.0/1511.6 ms。
+- 10,000 次 1080p/4K、8 worker 混合调用全部成功，整体 P50/P95/P99 为 129.9/166.0/194.3 ms；结束后 descriptor、overflow page、LocalBuffer lease、REVOKING/QUARANTINED 和 Runtime token 全部回到基线。
+- 57.1 MiB 实际 BMP 经 HTTP Base64 调用完整 24 次分类 Workflow：60 秒 21/21 成功，P50/P95/P99 为 2906/3187/3950 ms。
+- 同一 Workflow 经 ZeroMQ encoded BMP：60 秒 48/48 成功，P50/P95/P99 为 1219/1317/1392 ms。
+- 同一 Workflow 经 local-shared-memory raw BGR24：55/55 成功，P50/P95/P99 为 1107.9/1169.2/1270.2 ms；数据面 P50/P95/P99 为 20.4/23.5/25.9 ms，SDK 写入 59.9 MiB LocalBuffer 平均 7.5 ms，后端 codec 解码为 0，.NET Gen0/1/2 GC 均为 0。
+- 真实 YOLO11 classification Deployment sync：60 秒 749/749 成功，P50/P95/P99 为 63/79/93 ms。
+- 512 KiB 边界、1/8/16/32 MiB page-chain、16 并发混合、碎片化、restart、mid-write crash、timeout/cancel、CRC/owner/generation 损坏和 4 进程共 2,000 次 mmap 压测组合 67 项通过。
+- 所有正式持续负载结束后，三个 LocalBuffer pool 的 `used/active/writing/revoking/quarantined` 均为 0，allocation failure 与 stale fence 均为 0；服务日志无 ERROR、WARNING 或 Traceback。
 
-- 把稳定实现合并到 `architecture/platform/image-data-plane.md`、`local-buffer-broker.md`；
-- 更新 TriggerSource API、SDK 文档、配置包和 OpenAPI capability；
-- 更新源码开发与发行打包收集规则；
-- 删除本实施清单，只保留 ADR 和正式专题事实。
+本轮验证针对源码开发环境。`release/<profile-id>/app/` 仍是 assemble 产物，禁止手工同步源码；生成下一版发行包时必须从当前源码按目标 profile 重新执行 `assemble-release`，并复用本页 contract、smoke 和 soak 门禁。
 
 ## 完整验收门禁
 
@@ -911,7 +967,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - raw BGR24直接结果保持 raw bytes；只有显式 `Image Encode` 生成 JPEG/PNG/BMP/WebP，adapter 不暗中转码。
 - `image-base64.v1` 只作为显式 JSON 返回，不同时生成重复 binary attachment。
 - 图内两个并行分支和多个推理节点只持有一个输入 lease，不生成多份输入图片副本。
-- 阶段 0 对真实 1080p、4K、20MP 图片比较候选 checksum 算法的 .NET/Python 一致性、增量写入和 mmap 校验耗时；协议冻结后正式链路使用唯一算法且不提供隐藏关闭配置。
+- 阶段 0 对真实 1080p、4K、20MP 图片比较 .NET/Python checksum 与 mmap 扫描成本；正式输入链路按实测结果使用 writer guard + identity fence publication，不重复扫描整帧；mailbox payload 与结果 attachment 继续按各自契约校验。
 
 ### 稳定性与目录
 
@@ -936,9 +992,9 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 ### 分阶段指标
 
 - SDK格式转换和Base64还原；
-- mmap写入和增量checksum；
+- mmap写入；结果 attachment 的 checksum 单独记录，不计入 trusted-local 输入 publication；
 - PREPARE/REQUEST发现；
-- Broker guard、checksum校验和commit；
+- Broker guard、receipt/epoch/generation/owner/deadline 校验和原子 publish + owner transfer；
 - Runtime admission；
 - Workflow raw view/encoded decode；
 - Workflow执行；
@@ -949,14 +1005,14 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 
 ### 通过标准
 
-- 20MP大图数据面 P50和P95相对当前同机ZeroMQ基线至少降低40%。
+- 20MP大图数据面 P50和P95相对当前同机ZeroMQ基线至少降低40%。数据面逐请求定义为 SDK 端到端调用耗时减去 adapter 对同一 Workflow Runtime 的同步 invoke 耗时：ZeroMQ 使用 `trigger_runtime_submit_ms`，local-shared-memory 使用 `workflow_runtime_invoke_ms`。该边界覆盖 SDK/协议收发、mailbox/Broker、输入准备和小结果返回，但排除两个 transport 共用的 Runtime manager、worker IPC 与图执行。端到端分位数另行完整报告，不能从 P50 减平均值估算。
 - 每个测试 cell 的 `candidate_p99 <= baseline_p99 + max(5 ms, baseline_p99 * 10%)`。
 - 每个测试 cell 的尾部宽度满足 `candidate(p99 - p95) <= baseline(p99 - p95) + max(5 ms, baseline_p95 * 10%)`；20MP BGR24 local-shared-memory 的 P99 不得高于同机 ZeroMQ 基线。
 - 三轮任一轮出现 timeout、协议错误、guard/slot/snapshot/registry entry 泄漏即失败，不能用其他轮次均值抵消。
 - 1080p链路不得因新协议增加超过10%的数据面P95。
 - raw BGR24 backend路径不得产生整图Python `bytes`副本或执行OpenCV decode。
 - 调用方可直写目标Span时，不得再建立整张中间BGR24数组。
-- 阶段 0 报告候选 checksum 算法的 SDK 增量计算和 backend mmap 校验成本；正式算法冻结后不能通过关闭校验达成验收。
+- 阶段 0 报告 SDK checksum 与 backend mmap 扫描成本，并据此证明 trusted-local 输入采用 guard publication；mailbox payload CRC、结果 attachment checksum、identity fence 或 writer guard 任一项不得为达成验收而关闭。
 - 最终Workflow总耗时单独报告，但不能用模型执行时间掩盖数据面回归。
 - LocalBuffer为文件支持mmap且`flush_on_write=false`时不主动同步flush；报告仍需观察OS异步写回，不能宣称物理磁盘永不参与。
 

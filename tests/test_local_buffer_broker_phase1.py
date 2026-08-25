@@ -6,7 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty
 from threading import Thread
-from time import monotonic, sleep
+from time import monotonic, monotonic_ns, sleep
+from zlib import crc32
 import json
 import multiprocessing
 import pickle
@@ -241,6 +242,49 @@ def test_workflow_parent_cleanup_releases_registered_buffer_lease(
         supervisor.stop()
 
 
+def test_workflow_parent_cleanup_releases_unpublished_output_receipt(
+    tmp_path: Path,
+) -> None:
+    """验证父进程可按 Worker 返回的新 owner receipt 回收未发布输出。"""
+
+    supervisor = LocalBufferBrokerProcessSupervisor(
+        settings=_build_broker_settings(tmp_path)
+    )
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        content = b"unpublished-output"
+        deadline_ns = monotonic_ns() + 5_000_000_000
+        allocation = client.allocate_external_buffer(
+            size=len(content),
+            owner_kind="workflow-trigger-response",
+            owner_id="trigger-1:request-1",
+            deadline_ns=deadline_ns,
+        )
+        with client.acquire_external_writer_guard(receipt=allocation.receipt):
+            client.write_lease_bytes(lease=allocation.lease, content=content)
+        client.commit_external_buffer(
+            receipt=allocation.receipt,
+            checksum=crc32(content) & 0xFFFFFFFF,
+            media_type="application/octet-stream",
+        )
+        manager = object.__new__(WorkflowRuntimeWorkerManager)
+        manager.local_buffer_broker_event_channel_provider = (
+            supervisor.get_event_channel
+        )
+
+        assert manager.cleanup_local_buffer_ownership_receipts(
+            (allocation.receipt, allocation.receipt)
+        ) == 1
+        assert supervisor.get_status()["pools"][0]["free_count"] == 2
+        assert manager.cleanup_local_buffer_ownership_receipts(
+            (allocation.receipt,)
+        ) == 0
+    finally:
+        supervisor.stop()
+
+
 def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
     """验证默认 buffer pool 面向 20MP 工业相机输入而不是 small pool。"""
 
@@ -380,10 +424,13 @@ def test_local_buffer_broker_process_closes_quietly_on_keyboard_interrupt(
         def put(self, message: object) -> None:
             self.messages.append(message)
 
-    class _InterruptQueue:
-        def get(self, *, timeout: float) -> object:
+    class _InterruptConnection:
+        def poll(self, timeout: float) -> bool:
             _ = timeout
             raise KeyboardInterrupt
+
+        def close(self) -> None:
+            return
 
     settings = LocalBufferBrokerSettings(
         root_dir=str(tmp_path / "interrupt-broker"),
@@ -401,8 +448,8 @@ def test_local_buffer_broker_process_closes_quietly_on_keyboard_interrupt(
     run_local_buffer_broker_process(
         settings_payload=settings.model_dump(mode="python"),
         startup_queue=startup_queue,
-        request_queue=_InterruptQueue(),
-        response_queue=_CollectQueue(),
+        request_connection=_InterruptConnection(),
+        response_connection=_CollectQueue(),
     )
 
     assert startup_queue.messages
@@ -427,10 +474,13 @@ def test_local_buffer_broker_process_stops_when_supervisor_exits(
         def put(self, message: object) -> None:
             self.messages.append(message)
 
-    class _IdleQueue:
-        def get(self, *, timeout: float) -> object:
+    class _IdleConnection:
+        def poll(self, timeout: float) -> bool:
             _ = timeout
-            raise Empty
+            return False
+
+        def close(self) -> None:
+            return
 
     class _ExitedSupervisor:
         def is_alive(self) -> bool:
@@ -456,8 +506,8 @@ def test_local_buffer_broker_process_stops_when_supervisor_exits(
     run_local_buffer_broker_process(
         settings_payload=settings.model_dump(mode="python"),
         startup_queue=startup_queue,
-        request_queue=_IdleQueue(),
-        response_queue=_CollectQueue(),
+        request_connection=_IdleConnection(),
+        response_connection=_CollectQueue(),
     )
 
     assert startup_queue.messages
@@ -496,9 +546,17 @@ def test_local_buffer_broker_supervisor_reports_early_child_exit(
         def Queue(self) -> _EmptyQueue:
             return _EmptyQueue()
 
+        def Pipe(self, *, duplex: bool) -> tuple["_FakeConnection", "_FakeConnection"]:
+            assert duplex is False
+            return _FakeConnection(), _FakeConnection()
+
         def Process(self, **kwargs: object) -> _ExitedProcess:
             assert kwargs["daemon"] is True
             return _ExitedProcess()
+
+    class _FakeConnection:
+        def close(self) -> None:
+            return
 
     supervisor = LocalBufferBrokerProcessSupervisor(
         settings=_build_broker_settings(tmp_path)
@@ -1113,6 +1171,9 @@ def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(
             "value": "ok",
             "has_reader": True,
         }
+        assert execution_result.timings["workflow_execute_ms"] >= 0
+        assert execution_result.timings["output_handoff_ms"] >= 0
+        assert execution_result.timings["response_image_encode_ms"] == 0
     finally:
         session_factory.engine.dispose()
 

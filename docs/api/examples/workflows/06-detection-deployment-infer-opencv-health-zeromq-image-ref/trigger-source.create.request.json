@@ -24,9 +24,7 @@
     }
   },
   "result_mapping": {
-    "result_binding": "http_response",
-    "result_mode": "sync-reply",
-    "reply_timeout_seconds": 30
+    "result_bindings": ["http_response"]
   },
   "default_execution_metadata": {
     "scenario": "deployment-infer-opencv-health-zeromq",

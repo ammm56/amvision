@@ -28,7 +28,7 @@ data/buffers/
 ├─ image-1080p/                  LocalBuffer 图片 pool
 ├─ image-640x640/                LocalBuffer 图片 pool
 ├─ inference-control/            inference mailbox、guard 和 server lock
-├─ workflow-trigger/             Workflow Trigger mailbox、guard 和 owner lock（规划能力）
+├─ workflow-trigger/             Workflow Trigger mailbox、guard 和 owner lock
 └─ inference-daemon-private/     inference daemon 私有短期 LocalBuffer pool
 ```
 
@@ -154,8 +154,8 @@ LocalBuffer 与推理执行面都采用有界资源：
 - 不以 Base64 作为性能回退主链路。
 - GPU IPC、RDMA 等能力不在当前实现范围，不能写入公开 capability。
 
-已经接受但尚未实现的 `local-shared-memory` Trigger 会在普通 lease 之上增加 external writer/reader guard、REVOKING/QUARANTINED、identity-fenced release 和 output owner handoff。它属于 trusted-local 协作式边界，不把 generation 或 checksum 描述成恶意进程隔离能力。正式设计见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，实施顺序见[本机共享内存 Trigger 实施基线](../../development/local-shared-memory-trigger-implementation.md)。
+已完成的 `local-shared-memory` Trigger 在普通 lease 之上使用 external writer/reader guard、REVOKING/QUARANTINED、identity-fenced release 和 output owner handoff。它属于 trusted-local 协作式边界，不把 generation 或 checksum 描述成恶意进程隔离能力。正式设计见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，实施和性能门禁见[本机共享内存 Trigger 实施基线](../../development/local-shared-memory-trigger-implementation.md)。
 
-v1 每次调用只分配一张输入图片 lease；SDK 在 descriptor guard 内发布 REQUEST 后立即释放 writer guard，Broker 随后取得 guard、校验和 commit。backend-service 只有取得 Workflow mailbox owner lock 的进程能重置 mmap 或更新 server epoch；reload/takeover 不得形成双 owner。
+v1 每次调用只分配一张输入图片 lease；SDK 完成精确长度写入后先销毁写 view并释放 writer guard，再在 descriptor guard 内发布 REQUEST。Broker 随后取得 guard，并在同一 pool lock 内校验 receipt/epoch/generation/owner/deadline、原子 publish 与转移到 Runtime owner，不对 trusted-local 输入重复扫描 full-image CRC。backend-service 只有取得 Workflow mailbox owner lock 的进程能重置 mmap 或更新 server epoch；reload/takeover 不得形成双 owner。
 
 相关文档：[高性能图片数据面](image-data-plane.md)、[Workflow Runtime](../workflows/runtime.md)、[模型部署运行时策略](../models/deployment-runtime.md)。

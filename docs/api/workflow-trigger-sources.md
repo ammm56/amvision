@@ -11,6 +11,7 @@ TriggerSource 绑定稳定 `workflow_runtime_id`。Runtime 通过 revision/gener
 | `trigger_kind` | 作用 |
 | --- | --- |
 | `zeromq-topic` | ZeroMQ multipart/JSON 事件与本机图片高速数据面 |
+| `local-shared-memory` | 同机 .NET SDK 通过 LocalBuffer + 全局 mailbox 进行低复制同步图片调用 |
 | `plc-register` | Modbus TCP 寄存器轮询、条件匹配和 Workflow 提交 |
 | `directory-poll` | 周期目录扫描、稳定期过滤、checkpoint 和批量提交 |
 | `directory-watch` | 本地目录事件监听、稳定期过滤、checkpoint 和受控 polling fallback |
@@ -33,7 +34,7 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
 
 ## 创建请求
 
-以下是当前可运行 schema。`result_mapping.result_binding` 属于待迁移旧字段；目标 schema 见后文，实施完成后本示例必须同步改为 `result_bindings`，且不保留双读。
+以下是当前可运行 schema。`result_mapping` 只保存有序 `result_bindings`；提交模式、结果模式、回复超时和确认策略只使用顶层字段。
 
 ```json
 {
@@ -54,7 +55,9 @@ DELETE /api/v1/workflows/trigger-sources/{trigger_source_id}
     }
   },
   "result_mapping": {
-    "result_binding": "workflow_result"
+    "result_bindings": [
+      "inspection_result"
+    ]
   },
   "default_execution_metadata": {
     "source": "line-1"
@@ -90,11 +93,11 @@ ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBrok
 
 大图热路径不得把图片转成 Base64 JSON。BGR24、mmap、owner/generation/deadline 与槽位回收规则见 [高性能图片数据面](../architecture/platform/image-data-plane.md)。
 
-当前 ZeroMQ reply 虽然通过 multipart API 发送，但实际只有一帧 `amvision.workflow-trigger-result.v1` JSON；当前 .NET SDK 也只解析第一帧。现阶段不能把 ZeroMQ 图片结果或本机共享内存图片 handoff 写成已交付能力。
+ZeroMQ reply 统一使用 `amvision.workflow-trigger-result.v1` multipart：Frame 0 是 JSON manifest，后续 0 到 N 帧是按完整物理 identity 去重后的 raw 或 encoded 图片 bytes。当前 .NET SDK 会读取完整 multipart、严格校验帧集合、长度和 checksum，并允许多个逻辑 attachment 共享同一物理帧。本机共享内存 Trigger 仍需通过故障注入、性能和发行门禁后才对外宣称正式可用。
 
-## 已接受但尚未实现的结果返回设计
+## 结果返回设计与实现边界
 
-后续结果映射从单个 `result_binding` 迁移为：
+当前结果映射 schema 为：
 
 ```json
 {
@@ -103,7 +106,7 @@ ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBrok
   "ack_policy": "ack-after-run-finished",
   "result_mapping": {
     "result_bindings": [
-      "workflow_result",
+      "inspection_result",
       "annotated_image",
       "cropped_images"
     ]
@@ -111,7 +114,7 @@ ZeroMQ adapter 接收 envelope 与图片 bytes，把图片写入 LocalBufferBrok
 }
 ```
 
-顶层 `result_mode`、`reply_timeout_seconds` 和 `ack_policy` 是唯一事实源，`result_mapping` 只保存有序 `result_bindings`。迁移完成后删除旧字段和“返回全部 outputs”fallback，不保留双读运行代码。`result_bindings` 可以同时选择 JSON、`image-ref.v1` 和 `image-refs.v1`；结果分类只读取已发布 Workflow App Version 的公开输出契约，不递归提升任意 JSON 中的临时图片引用。已选择 JSON 内出现嵌套 memory/buffer/frame ref 时返回 `ephemeral_image_ref_in_json_result`。
+顶层 `result_mode`、`reply_timeout_seconds` 和 `ack_policy` 是唯一事实源，`result_mapping` 只保存有序 `result_bindings`。当前后端、数据库迁移、前端、.NET SDK 和 checked-in 示例均使用复数契约，不存在旧字段双读或“返回全部 outputs”fallback。`result_bindings` 可以同时选择 JSON、`image-ref.v1` 和 `image-refs.v1`；结果分类只读取已发布 Workflow App Version 的公开输出契约，不递归提升任意 JSON 中的临时图片引用。已选择 JSON 内出现嵌套 memory/buffer/frame ref 时返回 `ephemeral_image_ref_in_json_result`。
 
 Trigger adapter 按能力映射结果：
 
@@ -145,6 +148,10 @@ Workflow TriggerSource result mapping REST payload 与 `amvision.workflow-trigge
 ## 诊断
 
 health 至少区分 desired/observed state、adapter 是否注册和运行、绑定 Runtime、验证 generation、endpoint、heartbeat 与最近错误。
+
+执行分阶段耗时默认关闭。TriggerSource 的 `default_execution_metadata.return_timing_metadata_enabled=true` 时，当前同步 Result 的 `metadata.timings` 可以包含 mailbox prepare/request detect、Broker 原子 publish + input owner handoff、Runtime admission、Workflow execute/persist、图片首次 decode 或 raw view、显式 Image Encode、output handoff、JSON serialize 和总耗时。`workflow_image_decode_ms` 只记录 encoded 图片首次 cache miss；`workflow_raw_view_ms` 不包含 codec 解码；`response_image_encode_ms` 只来自图中显式 `Image Encode` 节点。
+
+ZeroMQ 的 frame send、tracker cleanup 和后续 lease reclaim 发生在 transport 交付阶段，其中 reply 已发送后才能确定的 `tracker_cleanup_ms`、`lease_reclaim_ms` 只显示在 adapter health 的 `transport_timings` 中。local-shared-memory mailbox health 的 `latest_timings` 也只保留最近一次数字摘要。两者均不得包含图片、路径或业务参数。
 
 ## 本地目录示例
 

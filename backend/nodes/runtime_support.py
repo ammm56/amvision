@@ -11,6 +11,7 @@ import json
 import mimetypes
 from pathlib import Path, PurePosixPath
 from threading import RLock
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
@@ -58,6 +59,61 @@ PREVIEW_DISPLAY_MAX_LONG_EDGE = 1920
 PREVIEW_DISPLAY_MEDIA_TYPE = "image/jpeg"
 PREVIEW_DISPLAY_EXTENSION = ".jpg"
 PreviewLoadedImage = tuple[dict[str, object], Any, int, int]
+_WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY = "_workflow_image_access_timings"
+
+
+class _WorkflowImageAccessTimings:
+    """线程安全累计一次 Workflow Run 的图片解码和 raw view 耗时。"""
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        self._decode_ms = 0.0
+        self._raw_view_ms = 0.0
+
+    def add(self, *, field_name: str, elapsed_ms: float) -> None:
+        """累计一个受支持的图片访问阶段。"""
+
+        with self._lock:
+            if field_name == "workflow_image_decode_ms":
+                self._decode_ms += elapsed_ms
+            elif field_name == "workflow_raw_view_ms":
+                self._raw_view_ms += elapsed_ms
+
+    def snapshot(self) -> dict[str, float]:
+        """返回不含图片数据的数值快照。"""
+
+        with self._lock:
+            return {
+                "workflow_image_decode_ms": round(self._decode_ms, 3),
+                "workflow_raw_view_ms": round(self._raw_view_ms, 3),
+            }
+
+
+def prepare_workflow_image_access_timings(
+    execution_metadata: dict[str, object],
+) -> None:
+    """诊断开启时预建共享计时器，确保并行分支复用同一个实例。"""
+
+    if execution_metadata.get("return_timing_metadata_enabled") is not True:
+        return
+    execution_metadata.setdefault(
+        _WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY,
+        _WorkflowImageAccessTimings(),
+    )
+
+
+def read_workflow_image_access_timings(
+    execution_metadata: dict[str, object],
+) -> dict[str, float]:
+    """读取当前 Workflow Run 的图片访问耗时。"""
+
+    timings = execution_metadata.get(_WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY)
+    if not isinstance(timings, _WorkflowImageAccessTimings):
+        return {
+            "workflow_image_decode_ms": 0.0,
+            "workflow_raw_view_ms": 0.0,
+        }
+    return timings.snapshot()
 
 
 @dataclass(frozen=True)
@@ -1433,6 +1489,7 @@ def load_image_matrix_from_payload(
     """读取任意 image-ref payload 并转换为 OpenCV matrix。"""
 
     normalized_payload = require_image_payload(image_payload)
+    image_access_started_at = _start_workflow_image_access_timing(request)
     if normalized_payload.get("transport_kind") == IMAGE_TRANSPORT_MEMORY:
         image_handle = _normalize_optional_text(normalized_payload.get("image_handle"))
         if image_handle is not None and is_raw_bgr24_payload(normalized_payload):
@@ -1447,6 +1504,11 @@ def load_image_matrix_from_payload(
                 )
                 if imdecode_flags == getattr(cv2_module, "IMREAD_GRAYSCALE", 0):
                     matrix = cv2_module.cvtColor(matrix, cv2_module.COLOR_BGR2GRAY)
+                _record_workflow_image_access_timing(
+                    request,
+                    field_name="workflow_raw_view_ms",
+                    started_at=image_access_started_at,
+                )
                 return normalized_payload, matrix
     image_registry = require_execution_image_registry(request)
     decode_cache_key = _build_decoded_matrix_cache_key(
@@ -1455,18 +1517,22 @@ def load_image_matrix_from_payload(
         imdecode_flags=imdecode_flags,
     )
 
+    decoded_on_this_call = False
+
     def decode_matrix() -> Any:
         """只在当前输入首次使用时读取并解码图片。"""
 
-        borrowed_raw_view = _try_load_borrowed_raw_image_view(
+        nonlocal decoded_on_this_call
+        decoded_on_this_call = True
+        borrowed_image_view = _try_load_borrowed_image_view(
             request,
             image_payload=normalized_payload,
         )
-        if borrowed_raw_view is not None:
+        if borrowed_image_view is not None:
             matrix = decode_image_bytes_to_matrix(
                 cv2_module=cv2_module,
                 np_module=np_module,
-                image_bytes=borrowed_raw_view,
+                image_bytes=borrowed_image_view,
                 image_payload=normalized_payload,
                 imdecode_flags=imdecode_flags,
                 error_message="图片节点无法读取输入图片",
@@ -1476,7 +1542,7 @@ def load_image_matrix_from_payload(
                 matrix=matrix,
                 cache_size_bytes=_estimate_borrowed_matrix_private_nbytes(
                     matrix=matrix,
-                    borrowed_view=borrowed_raw_view,
+                    borrowed_view=borrowed_image_view,
                     np_module=np_module,
                 ),
             )
@@ -1494,32 +1560,54 @@ def load_image_matrix_from_payload(
             copy_raw=False,
         )
 
-    matrix = image_registry.get_or_decode_matrix(
-        cache_key=decode_cache_key,
-        decoder=decode_matrix,
-        share_across_runs=(
-            normalized_payload.get("transport_kind")
-            in {IMAGE_TRANSPORT_STORAGE, IMAGE_TRANSPORT_LOCAL_PATH}
-        ),
-    )
+    try:
+        matrix = image_registry.get_or_decode_matrix(
+            cache_key=decode_cache_key,
+            decoder=decode_matrix,
+            share_across_runs=(
+                normalized_payload.get("transport_kind")
+                in {IMAGE_TRANSPORT_STORAGE, IMAGE_TRANSPORT_LOCAL_PATH}
+            ),
+        )
+    finally:
+        if decoded_on_this_call:
+            _record_workflow_image_access_timing(
+                request,
+                field_name=(
+                    "workflow_raw_view_ms"
+                    if is_raw_bgr24_payload(normalized_payload)
+                    else "workflow_image_decode_ms"
+                ),
+                started_at=image_access_started_at,
+            )
     return normalized_payload, matrix.copy() if copy_raw else matrix
 
 
-def _try_load_borrowed_raw_image_view(
+def _start_workflow_image_access_timing(
+    request: WorkflowNodeExecutionRequest,
+) -> float | None:
+    """仅在诊断模式下读取 monotonic 起点。"""
+
+    timings = request.execution_metadata.get(_WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY)
+    return monotonic() if isinstance(timings, _WorkflowImageAccessTimings) else None
+
+
+def _record_workflow_image_access_timing(
     request: WorkflowNodeExecutionRequest,
     *,
-    image_payload: dict[str, object],
-) -> memoryview | None:
-    """在 reader 支持时直接借用 broker mmap raw 区域，避免复制整帧 bytes。"""
+    field_name: str,
+    started_at: float | None,
+) -> None:
+    """把一次 cache miss 图片访问耗时写入 Run 级共享计时器。"""
 
-    if (
-        str(image_payload.get("media_type") or "").strip().lower()
-        != IMAGE_MEDIA_TYPE_RAW
-    ):
-        return None
-    return _try_load_borrowed_image_view(
-        request,
-        image_payload=image_payload,
+    if started_at is None:
+        return
+    timings = request.execution_metadata.get(_WORKFLOW_IMAGE_ACCESS_TIMINGS_KEY)
+    if not isinstance(timings, _WorkflowImageAccessTimings):
+        return
+    timings.add(
+        field_name=field_name,
+        elapsed_ms=max(0.0, monotonic() - started_at) * 1_000,
     )
 
 

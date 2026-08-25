@@ -8,7 +8,7 @@
 
 ## 实现状态
 
-LocalBuffer raw/encoded 输入、ZeroMQ 图片请求和 Workflow 单次解码复用是当前已交付能力。多 `result_bindings`、`Image Encode`、统一 ZeroMQ binary attachments、output lease handoff 和 `local-shared-memory` Trigger 是 ADR-0007 已接受但尚未实现的目标；本页对应段落均显式标注，不能作为当前 API capability 使用。
+LocalBuffer raw/encoded 输入、ZeroMQ 图片请求、Workflow 单次解码复用、多 `result_bindings`、固定 `TriggerResponsePlan`、输出规范化、ObjectStore 稳定快照、output lease handoff、`Image Encode`、统一 ZeroMQ binary attachments、完整 SDK 返回生命周期和 `local-shared-memory` Trigger 均已交付。源码开发环境已通过性能矩阵、10,000 次混合 soak、真实 Workflow/Deployment/Trigger 链路和故障恢复门禁。
 
 ## 现场目标
 
@@ -21,7 +21,7 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 - SDK、adapter、LocalBufferBroker、workflow 节点和模型 runtime 以 raw image-ref 为本机高频默认路径。
 - `BufferRef` / `FrameRef` 只跨进程传递 mmap 元数据；同步高频节点链不把图片读回后重新编码或落盘。
 - workflow 图不得在模型推理前插入不必要的 Base64 编码、合并和解码节点。
-- 目标 TriggerSource 必须显式声明 `result_bindings`；迁移完成前当前实现仍使用单个 `result_binding`。高频入口默认只返回小型结构化结果，不返回所有图输出。
+- TriggerSource 必须显式声明有序 `result_bindings`。高频入口默认只返回小型结构化结果，不返回所有图输出。
 - 只有预览、保存、HTTP 响应或外部系统协议明确要求时，才生成 PNG、JPEG、Bitmap 或 Base64。
 - 同步推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。持久异步任务只在必须跨重启的队列边界使用临时 ObjectStore 引用。
 
@@ -69,12 +69,11 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 ```text
 图片采集或上位机程序
   -> BGR24 byte[]
-  -> .NET SDK AmvisionTriggerClient
-  -> ZeroMQ multipart
-       frame 1: JSON envelope
-       frame 2: raw BGR24 bytes
-  -> ZeroMQ TriggerSource adapter
-  -> LocalBufferBroker BufferRef / FrameRef
+  -> .NET SDK
+  -> local-shared-memory Trigger
+       图片: External LocalBuffer Writer Lease
+       参数/结果: 全局 Workflow Trigger mailbox
+  -> LocalBufferBroker BufferRef
   -> workflow app request_image_ref
   -> raw-aware image matrix loader
   -> OpenCV / Barcode / Preview / Export 节点
@@ -84,7 +83,9 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
   -> 结构化结果 bindings；直接结果图片仍使用 LocalBuffer
 ```
 
-这条链路中，图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
+这是同机高频默认链路。ZeroMQ Trigger 继续作为协议隔离明确、支持同机或跨进程通用接入的正式链路；它使用 multipart 传输图片，backend-service 接收后再写 LocalBuffer，因此大图时比直接共享内存多一次协议传输和整图写入。两种 adapter 不相互 fallback。
+
+图片进入 backend-service 后不应默认转 base64，不应默认编码 PNG/JPEG，不应默认写 ObjectStore，不应默认把图片内容放进 Trigger reply。
 
 ## 独立 inference daemon 传输规则
 
@@ -254,7 +255,7 @@ TriggerSource 高频 reply 默认返回小 JSON：
 
 如果需要返回图片，应通过 workflow 图和 TriggerSource `result_bindings` 明确选择，并在前端和文档中标明这不是高帧率默认方式。不再使用“binding 不存在时返回全部 outputs”的 fallback。
 
-以下结果返回矩阵是已接受但尚未实现的目标。当前可运行 ZeroMQ reply 仍只有单帧 JSON，当前代码也仍使用单个 `result_binding`；在 ADR-0007 和实施基线门禁全部完成前，不能把 `result_bindings`、`Image Encode`、统一 ZeroMQ 图片 attachments 或本机共享内存图片返回写成已交付 capability。
+以下结果返回矩阵已经落地。结果绑定复数契约、响应计划、输出规范化、ObjectStore 持久化、output lease handoff、`Image Encode`、统一 ZeroMQ 图片 attachments 和本机共享内存 SDK 图片返回均使用同一结果语义；差异只存在于各 Trigger adapter 的传输与生命周期边界。
 
 ### 节点表示与 Trigger 传输分层
 
@@ -292,7 +293,7 @@ TriggerSource 和 SDK 配置包不增加 reply protocol 或 JSON/multipart mode�
 
 不支持同步结果的 Trigger 通过固定 `result_mode=event-only` 丢弃输出，不在每次调用中临时猜测。同步 adapter 不支持已选择的图片 binding 时拒绝配置；不需要的 binding 直接不选择，不增加 discard 开关。顶层 `result_mode`、`reply_timeout_seconds` 和 `ack_policy` 是唯一事实源，`result_mapping` 只保存有序 `result_bindings`。响应计划在创建、enable、Runtime 切版和实际调用前按 route/contract/capability fingerprint 固定，使 worker 能在 cleanup 前完成所需 handoff。
 
-已经接受但尚未实现的 `local-shared-memory` Trigger 会正式支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 pool、expected owner、epoch、generation、deadline 和 guard identity。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，输入必须显式从 `workflow-trigger-write` transfer 到 `workflow-runtime`，每个失败点按当时 receipt 补偿回收。
+已完成的 `local-shared-memory` Trigger 支持把公开输出中的 LocalBuffer 图片引用返回给同机 SDK。公开 BufferRef 只负责定位；服务端私有 `LeaseOwnershipReceipt` 保存 pool、expected owner、epoch、generation、deadline 和 guard identity。SDK 完成精确长度写入后先释放写 view/guard，再发布 REQUEST。WorkflowRun 建立并取得真实 Runtime/执行器 permit 后、worker submit 前，Broker 在同一 pool lock 内确认 guard 已释放，并原子完成 `WRITING -> ACTIVE` 与 `workflow-trigger-write -> workflow-runtime` owner transfer；trusted-local 输入不做第二次 full-image CRC。每个失败点按当时 receipt 补偿回收。
 
 该能力不能在 Workflow Run 结束时直接释放图片 lease；worker 必须在自身 cleanup 前完成来源规范化。当前 Run receipt 对应的 BufferRef 可零复制 handoff，foreign/incomplete BufferRef、memory handle 和 FrameRef 按固定规则复制。storage/local-path 根据目标交付处理：本机 LocalBuffer 返回时物化 output lease；只有具备不可变 version、checksum、准确长度和 media type 的 ObjectStore 结果可以直接返回 locator；临时对象或绝对路径必须复制到受控 LocalBuffer、adapter 自有不可变 bytes 或新的不可变受管理对象。ZeroMQ 从 ObjectStore 发送时持有 `open_read_snapshot()` 到 tracker 完成。整批输出在 RESPONSE 前 transfer 到 `delivery_kind + response_id` owner。local-shared-memory 的 reader guard 由 SDK 结果对象保持到 `Dispose`/`DisposeAsync`，先使 view 失效并释放全部 guard，再发布 ACK；JSON-only 或 SDK-owned copy 可以提前 ACK。详细边界见 [ADR-0007](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 和[实施基线](../../development/local-shared-memory-trigger-implementation.md)。
 

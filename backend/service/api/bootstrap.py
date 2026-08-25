@@ -127,6 +127,9 @@ from backend.service.application.workflows.service_runtime.context import (
 from backend.service.application.workflows.trigger_sources.trigger_source_service import (
     WorkflowTriggerSourceService,
 )
+from backend.service.application.workflows.trigger_sources.local_shared_mailbox_supervisor import (
+    WorkflowTriggerMailboxSupervisor,
+)
 from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
     TriggerSourceSupervisor,
 )
@@ -144,6 +147,9 @@ from backend.service.infrastructure.integrations.directory import (
 )
 from backend.service.infrastructure.integrations.modbus import (
     PlcRegisterTriggerAdapter,
+)
+from backend.service.infrastructure.integrations.local_shared_memory import (
+    LocalSharedMemoryTriggerAdapter,
 )
 from backend.service.infrastructure.integrations.zeromq import ZeroMqTriggerAdapter
 from backend.service.infrastructure.object_store.local_dataset_storage import (
@@ -207,6 +213,7 @@ class BackendServiceRuntime:
     workflow_runtime_worker_manager: WorkflowRuntimeWorkerManager
     workflow_preview_run_manager: WorkflowPreviewRunManager
     trigger_source_supervisor: TriggerSourceSupervisor
+    workflow_trigger_mailbox_supervisor: WorkflowTriggerMailboxSupervisor | None
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
     classification_sync_deployment_supervisor: DeploymentProcessSupervisor | None = None
     classification_async_deployment_supervisor: DeploymentProcessSupervisor | None = (
@@ -753,20 +760,42 @@ class BackendServiceBootstrap(
             preview_run_manager=workflow_preview_run_manager,
             published_inference_gateway=published_inference_gateway,
         )
+        workflow_trigger_mailbox_supervisor = (
+            WorkflowTriggerMailboxSupervisor(
+                buffers_root=settings.local_buffer_broker.root_dir,
+                runtime_service=trigger_workflow_runtime_service,
+                local_buffer_client_provider=(
+                    local_buffer_broker_supervisor.create_client
+                ),
+                max_executor_workers=(
+                    settings.workflow_runtime.local_shared_trigger_executor_worker_count
+                ),
+                poll_interval_seconds=(
+                    settings.workflow_runtime.local_shared_trigger_mailbox_poll_interval_seconds
+                ),
+            )
+            if settings.local_buffer_broker.enabled
+            else None
+        )
+        trigger_adapters = {
+            "directory-poll": DirectoryPollTriggerAdapter(
+                dataset_storage_root_dir=str(dataset_storage.root_dir)
+            ),
+            "directory-watch": DirectoryWatchTriggerAdapter(
+                dataset_storage_root_dir=str(dataset_storage.root_dir)
+            ),
+            "plc-register": PlcRegisterTriggerAdapter(),
+            "zeromq-topic": ZeroMqTriggerAdapter(
+                local_buffer_writer=local_buffer_broker_supervisor,
+                runtime_config=settings.zeromq_trigger.to_runtime_config(),
+            ),
+        }
+        if workflow_trigger_mailbox_supervisor is not None:
+            trigger_adapters["local-shared-memory"] = LocalSharedMemoryTriggerAdapter(
+                mailbox_supervisor=workflow_trigger_mailbox_supervisor
+            )
         trigger_source_supervisor = TriggerSourceSupervisor(
-            adapters={
-                "directory-poll": DirectoryPollTriggerAdapter(
-                    dataset_storage_root_dir=str(dataset_storage.root_dir)
-                ),
-                "directory-watch": DirectoryWatchTriggerAdapter(
-                    dataset_storage_root_dir=str(dataset_storage.root_dir)
-                ),
-                "plc-register": PlcRegisterTriggerAdapter(),
-                "zeromq-topic": ZeroMqTriggerAdapter(
-                    local_buffer_writer=local_buffer_broker_supervisor,
-                    runtime_config=settings.zeromq_trigger.to_runtime_config(),
-                ),
-            },
+            adapters=trigger_adapters,
             workflow_submitter=WorkflowSubmitter(
                 runtime_service=trigger_workflow_runtime_service
             ),
@@ -794,6 +823,9 @@ class BackendServiceBootstrap(
             workflow_runtime_worker_manager=workflow_runtime_worker_manager,
             workflow_preview_run_manager=workflow_preview_run_manager,
             trigger_source_supervisor=trigger_source_supervisor,
+            workflow_trigger_mailbox_supervisor=(
+                workflow_trigger_mailbox_supervisor
+            ),
             deployment_runtime_reconciler=deployment_runtime_reconciler,
             classification_sync_deployment_supervisor=classification_sync_deployment_supervisor,
             classification_async_deployment_supervisor=classification_async_deployment_supervisor,
@@ -916,6 +948,9 @@ class BackendServiceBootstrap(
             runtime.workflow_preview_run_manager
         )
         application.state.trigger_source_supervisor = runtime.trigger_source_supervisor
+        application.state.workflow_trigger_mailbox_supervisor = (
+            runtime.workflow_trigger_mailbox_supervisor
+        )
         application.state.deployment_runtime_reconciler = (
             runtime.deployment_runtime_reconciler
         )
@@ -936,6 +971,8 @@ class BackendServiceBootstrap(
             component.start()
         runtime.deployment_runtime_reconciler.start()
         runtime.workflow_runtime_worker_manager.start()
+        if runtime.workflow_trigger_mailbox_supervisor is not None:
+            runtime.workflow_trigger_mailbox_supervisor.start()
         WorkflowTriggerSourceService(
             session_factory=runtime.session_factory,
             trigger_source_supervisor=runtime.trigger_source_supervisor,
@@ -957,6 +994,8 @@ class BackendServiceBootstrap(
             runtime.training_telemetry_receiver.stop()
         runtime.training_telemetry_broker.close()
         runtime.trigger_source_supervisor.stop_all()
+        if runtime.workflow_trigger_mailbox_supervisor is not None:
+            runtime.workflow_trigger_mailbox_supervisor.close()
         runtime.deployment_runtime_reconciler.stop()
         runtime.workflow_runtime_worker_manager.stop()
         runtime.workflow_preview_run_manager.close()

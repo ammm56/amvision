@@ -55,6 +55,10 @@ def _build_test_zeromq_trigger_config() -> BackendServiceZeroMqTriggerConfig:
         poll_timeout_ms=100,
         startup_timeout_seconds=2.0,
         shutdown_timeout_seconds=10.0,
+        transport_registry_max_entries=8,
+        transport_registry_max_bytes=1024 * 1024 * 1024,
+        transport_tracker_timeout_seconds=2.0,
+        transport_reaper_poll_interval_seconds=0.001,
     )
 
 

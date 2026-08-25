@@ -32,7 +32,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
 
 
-_DATABASE_HEAD = "d8e4f6a1b3c7"
+_DATABASE_HEAD = "e2a7c9d1f4b6"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -144,7 +144,8 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("fa4c6e8b1d25").down_revision == "f9b3d5e7c2a4"
     assert script.get_revision("b6e4f1a8c2d7").down_revision == "fa4c6e8b1d25"
     assert script.get_revision("c7a9e2d4f6b8").down_revision == "b6e4f1a8c2d7"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "c7a9e2d4f6b8"
+    assert script.get_revision("d8e4f6a1b3c7").down_revision == "c7a9e2d4f6b8"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "d8e4f6a1b3c7"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")

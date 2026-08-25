@@ -41,6 +41,8 @@ _RUNTIME_SUPPORT_EXPORTS = {
     "load_image_bytes_from_payload",
     "load_image_matrix",
     "load_image_matrix_from_payload",
+    "prepare_workflow_image_access_timings",
+    "read_workflow_image_access_timings",
     "register_image_bytes",
     "register_image_matrix",
     "require_dataset_storage",

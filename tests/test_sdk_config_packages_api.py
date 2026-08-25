@@ -12,6 +12,10 @@ from fastapi.testclient import TestClient
 
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers.broker_settings import LocalBufferBrokerSettings
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    TRIGGER_RESPONSE_PLAN_METADATA_KEY,
+    build_trigger_response_plan,
+)
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.domain.workflows.workflow_trigger_source_records import WorkflowTriggerSource
 from backend.service.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -140,6 +144,44 @@ def test_sdk_config_package_can_include_current_access_token(tmp_path: Path) -> 
     workflow_config = json.loads(archive.read(workflow_config_name))
     assert manifest["contains_access_token"] is True
     assert workflow_config["backend"]["access_token"] == token
+
+
+def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path) -> None:
+    """验证配置包为同机 SDK 固定 buffers root、route generation 和容量。"""
+
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(tmp_path)
+    _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
+    _seed_local_shared_memory_trigger_source(session_factory)
+
+    try:
+        with client:
+            response = client.post(
+                "/api/v1/projects/project-1/sdk-config-packages/download",
+                headers=_build_headers(),
+                json={},
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert response.status_code == 200
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    workflow_config = json.loads(
+        archive.read("Config/config_workflow-app-sdk-config.json")
+    )
+    sources = {
+        item["trigger_source_id"]: item
+        for item in workflow_config["trigger_sources"]
+    }
+    local_source = sources["local-shared-sdk-config"]
+    assert local_source["trigger_kind"] == "local-shared-memory"
+    assert "zero_mq" not in local_source
+    config = local_source["local_shared_memory"]
+    assert Path(config["buffers_root"]).is_absolute()
+    assert Path(config["buffers_root"]).name == "buffers"
+    assert config["route_generation"] == 1
+    assert config["default_input_binding"] == "request_image_ref"
+    assert config["max_image_bytes"] == 128 * 1024 * 1024
+    assert config["timeout_seconds"] == 7
 
 
 def test_sdk_config_package_uses_resource_ids_for_workflow_file_names(tmp_path: Path) -> None:
@@ -359,6 +401,61 @@ def _seed_workflow_runtime_and_trigger_source(
                     }
                 },
                 reply_timeout_seconds=5,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        unit_of_work.commit()
+    finally:
+        unit_of_work.close()
+
+
+def _seed_local_shared_memory_trigger_source(session_factory: object) -> None:
+    """写入带固定 response plan 的同机共享内存 TriggerSource。"""
+
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    response_plan = build_trigger_response_plan(
+        trigger_source_id="local-shared-sdk-config",
+        trigger_kind="local-shared-memory",
+        workflow_runtime_id="workflow-runtime-sdk-config",
+        workflow_runtime_revision_id="workflow-runtime-revision-sdk-config",
+        workflow_app_version_id="workflow-app-version-sdk-config",
+        workflow_runtime_generation=1,
+        expected_snapshot_fingerprint="snapshot-sdk-config",
+        contract_fingerprint="contract-sdk-config",
+        submit_mode="sync",
+        result_mode="sync-reply",
+        ack_policy="ack-after-run-finished",
+        reply_timeout_seconds=7,
+        selected_output_payload_types={},
+    )
+    unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
+    try:
+        unit_of_work.workflow_trigger_sources.save_trigger_source(
+            WorkflowTriggerSource(
+                trigger_source_id="local-shared-sdk-config",
+                project_id="project-1",
+                display_name="Local shared memory runtime",
+                trigger_kind="local-shared-memory",
+                workflow_runtime_id="workflow-runtime-sdk-config",
+                enabled=True,
+                desired_state="running",
+                observed_state="running",
+                transport_config={
+                    "pool_name": "image-4k",
+                    "default_input_binding": "request_image_ref",
+                },
+                input_binding_mapping={
+                    "request_image_ref": {
+                        "source": "payload.request_image_ref",
+                    }
+                },
+                reply_timeout_seconds=7,
+                metadata={
+                    TRIGGER_RESPONSE_PLAN_METADATA_KEY: response_plan.model_dump(
+                        mode="json"
+                    )
+                },
                 created_at=now,
                 updated_at=now,
             )

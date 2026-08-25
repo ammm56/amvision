@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
+from time import monotonic_ns
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -15,7 +17,11 @@ import pytest
 import zmq
 
 from backend.contracts.buffers.buffer_ref import BufferRef
-from backend.contracts.workflows import TriggerResultContract
+from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
+from backend.contracts.workflows import (
+    InputBindingMappingItemContract,
+    TriggerResultContract,
+)
 from backend.contracts.workflows.workflow_graph import (
     NODE_IMPLEMENTATION_CORE,
     NODE_RUNTIME_WORKER_TASK,
@@ -40,6 +46,16 @@ from backend.service.application.workflows.runtime_service import (
 )
 from backend.service.application.workflows.trigger_sources.trigger_source_supervisor import (
     TriggerSourceSupervisor,
+)
+from backend.service.application.workflows.trigger_sources.protocol_adapter import (
+    WorkflowTriggerDispatchResult,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    PreparedLogicalAttachment,
+    PreparedPhysicalPayload,
+    PreparedTriggerResult,
+    TRIGGER_RESPONSE_PLAN_METADATA_KEY,
+    build_trigger_response_plan,
 )
 from backend.service.application.workflows.trigger_sources.workflow_submitter import (
     WorkflowSubmitter,
@@ -75,6 +91,10 @@ _ZEROMQ_RUNTIME_CONFIG = ZeroMqTriggerRuntimeConfig(
     poll_timeout_ms=100,
     startup_timeout_seconds=2.0,
     shutdown_timeout_seconds=10.0,
+    transport_registry_max_entries=8,
+    transport_registry_max_bytes=1024 * 1024 * 1024,
+    transport_tracker_timeout_seconds=2.0,
+    transport_reaper_poll_interval_seconds=0.001,
 )
 
 
@@ -96,7 +116,7 @@ def test_trigger_event_normalizer_and_input_binding_mapper_resolve_payload_paths
 ):
     """验证事件标准化和 input binding 映射可以读取 payload 路径。"""
 
-    trigger_source = _build_trigger_source()
+    trigger_source = _build_trigger_source(submit_mode="sync")
     trigger_event = TriggerEventNormalizer().normalize(
         trigger_source,
         RawTriggerEvent(
@@ -136,6 +156,79 @@ def test_input_binding_mapper_rejects_missing_required_source() -> None:
         )
 
     assert error_info.value.details["binding_id"] == "request_image_base64"
+
+
+def test_input_binding_mapper_prefers_source_over_null_response_value() -> None:
+    """验证 REST 展示层补出的 value=null 不会覆盖有效 source。"""
+
+    trigger_source = _build_trigger_source(
+        input_binding_mapping={
+            "request_image_ref": {
+                "source": "payload.request_image_ref",
+                "value": None,
+                "required": True,
+            }
+        }
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(
+            event_id="event-1",
+            payload={"request_image_ref": {"transport_kind": "buffer"}},
+        ),
+    )
+
+    assert InputBindingMapper().map_input_bindings(
+        trigger_source=trigger_source,
+        trigger_event=trigger_event,
+    ) == {"request_image_ref": {"transport_kind": "buffer"}}
+
+
+def test_input_binding_mapper_rejects_ambiguous_source_and_static_value() -> None:
+    """验证动态 source 与非空静态 value 不能形成两个事实源。"""
+
+    trigger_source = _build_trigger_source(
+        input_binding_mapping={
+            "request_image_ref": {
+                "source": "payload.request_image_ref",
+                "value": {"transport_kind": "storage"},
+            }
+        }
+    )
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(
+            event_id="event-1",
+            payload={"request_image_ref": {"transport_kind": "buffer"}},
+        ),
+    )
+
+    with pytest.raises(InvalidRequestError, match="不能同时配置"):
+        InputBindingMapper().map_input_bindings(
+            trigger_source=trigger_source,
+            trigger_event=trigger_event,
+        )
+
+
+def test_input_binding_mapping_contract_distinguishes_static_null_from_missing() -> None:
+    """验证显式静态 null 与完全缺少映射值具有不同契约语义。"""
+
+    static_null = InputBindingMappingItemContract.model_validate({"value": None})
+    dynamic_source = InputBindingMappingItemContract.model_validate(
+        {"source": "payload.request_image_ref", "value": None}
+    )
+
+    assert static_null.value is None
+    assert dynamic_source.source == "payload.request_image_ref"
+    with pytest.raises(ValueError, match="必须提供 source 或 value"):
+        InputBindingMappingItemContract.model_validate({})
+    with pytest.raises(ValueError, match="不能同时提供"):
+        InputBindingMappingItemContract.model_validate(
+            {
+                "source": "payload.request_image_ref",
+                "value": {"transport_kind": "storage"},
+            }
+        )
 
 
 def test_trigger_source_supervisor_deduplicates_idempotency_key() -> None:
@@ -236,7 +329,7 @@ def test_input_binding_mapper_skips_missing_optional_source() -> None:
 def test_workflow_result_dispatcher_prefers_configured_output_binding() -> None:
     """验证结果回执优先读取 result_mapping 指定的输出 binding。"""
 
-    trigger_source = _build_trigger_source()
+    trigger_source = _build_trigger_source(submit_mode="sync")
     trigger_event = TriggerEventNormalizer().normalize(
         trigger_source,
         RawTriggerEvent(event_id="event-1", payload={"request": {"id": "request-1"}}),
@@ -257,8 +350,41 @@ def test_workflow_result_dispatcher_prefers_configured_output_binding() -> None:
     )
 
     assert trigger_result.state == "succeeded"
-    assert trigger_result.response_payload["result_binding"] == "http_response"
-    assert trigger_result.response_payload["result"] == {"status_code": 200}
+    assert trigger_result.response_payload["results"] == {
+        "http_response": {"status_code": 200}
+    }
+
+
+def test_workflow_result_dispatcher_preserves_failed_run_root_error() -> None:
+    """验证失败运行不会被成功态 result binding 校验覆盖根因。"""
+
+    trigger_source = _build_trigger_source(submit_mode="sync")
+    trigger_event = TriggerEventNormalizer().normalize(
+        trigger_source,
+        RawTriggerEvent(event_id="event-1", payload={"request": {"id": "request-1"}}),
+    )
+    workflow_run = WorkflowRun(
+        workflow_run_id="workflow-run-failed",
+        workflow_runtime_id="workflow-runtime-1",
+        project_id="project-1",
+        application_id="app-1",
+        state="failed",
+        outputs={},
+        error_message="原始节点执行错误",
+    )
+
+    trigger_result = WorkflowResultDispatcher().build_result(
+        trigger_source=trigger_source,
+        trigger_event=trigger_event,
+        workflow_run=workflow_run,
+    )
+
+    assert trigger_result.state == "failed"
+    assert trigger_result.error_message == "原始节点执行错误"
+    assert trigger_result.response_payload == {
+        "workflow_run_id": "workflow-run-failed",
+        "workflow_state": "failed",
+    }
 
 
 def test_workflow_submitter_sync_reply_prefers_unsanitized_outputs() -> None:
@@ -281,7 +407,7 @@ def test_workflow_submitter_sync_reply_prefers_unsanitized_outputs() -> None:
         )
     )
 
-    result_body = trigger_result.response_payload["result"]["body"]
+    result_body = trigger_result.response_payload["results"]["http_response"]["body"]
     assert trigger_result.state == "succeeded"
     assert result_body["data"]["detections"][0]["class_name"] == "box"
     assert result_body["data"]["annotated_image"]["image_base64"] == "YWJj"
@@ -353,6 +479,7 @@ def test_workflow_submitter_zeromq_defaults_to_no_trace() -> None:
     assert execution_metadata["workflow_run_record_mode"] == "minimal"
     assert execution_metadata["return_timing_metadata_enabled"] is False
     assert execution_metadata["return_node_timings_enabled"] is False
+    assert runtime_service.last_execution_acquisition_mode == "reject"
 
 
 def test_workflow_submitter_omits_diagnostics_by_default() -> None:
@@ -523,12 +650,14 @@ def test_zeromq_trigger_adapter_releases_unclaimed_replay_buffer() -> None:
 
     class _ReplayHandler:
         def handle_trigger_event(self, *, trigger_source, raw_event):
-            return TriggerResultContract(
-                trigger_source_id=trigger_source.trigger_source_id,
-                event_id=raw_event.event_id or "event-replay",
-                state="succeeded",
-                workflow_run_id="workflow-run-original",
-                metadata={"idempotent_replay": True},
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=raw_event.event_id or "event-replay",
+                    state="succeeded",
+                    workflow_run_id="workflow-run-original",
+                    metadata={"idempotent_replay": True},
+                )
             )
 
     result = adapter.handle_multipart_message(
@@ -568,7 +697,7 @@ def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_de
         runtime_service.gateway.last_request.image_payload["buffer_ref"]["media_type"]
         == "image/raw"
     )
-    result_payload = trigger_result.response_payload["result"]
+    result_payload = trigger_result.response_payload["results"]["http_response"]
     assert result_payload["detections"]["items"][0]["class_name"] == "barcode"
     assert "timings" not in result_payload["detections"]["metadata"]
     assert "runtime_infer_ms" not in result_payload["runtime_session_info"]["metadata"]
@@ -594,7 +723,7 @@ def test_zeromq_bgr24_trigger_returns_diagnostics_when_enabled() -> None:
         }
     ]
     assert runtime_service.gateway.last_request is not None
-    result_payload = trigger_result.response_payload["result"]
+    result_payload = trigger_result.response_payload["results"]["http_response"]
     assert (
         result_payload["detections"]["metadata"]["timings"]["runtime_infer_ms"] == 2.25
     )
@@ -716,6 +845,294 @@ def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
     assert adapter_health["submitted_count"] == 1
 
 
+def test_zeromq_trigger_adapter_sends_deduplicated_tracked_image_frames() -> None:
+    """验证 Result v1 用一个物理 frame 服务多个逻辑 attachment 并在发送后释放。"""
+
+    endpoint = f"inproc://zeromq-trigger-result-{uuid4().hex}"
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+        transport_config={"bind_endpoint": endpoint},
+    )
+    image_bytes = b"encoded-result-image"
+    buffer_writer = _FakeResultBufferWriter(image_bytes)
+    adapter = _build_zeromq_adapter(buffer_writer)
+    prepared = _build_prepared_zeromq_result(image_bytes)
+
+    class _ImageResultHandler:
+        def handle_trigger_event(self, *, trigger_source, raw_event):
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=raw_event.event_id or "event-result",
+                    state="succeeded",
+                    workflow_run_id="workflow-run-result",
+                    metadata={"timings": {"workflow_execute_ms": 1.0}},
+                ),
+                prepared_trigger_result=prepared,
+            )
+
+    context = zmq.Context.instance()
+    socket = context.socket(zmq.REQ)
+    socket.linger = 0
+    socket.rcvtimeo = 2000
+    socket.sndtimeo = 2000
+    adapter.start(trigger_source=trigger_source, event_handler=_ImageResultHandler())
+    try:
+        socket.connect(endpoint)
+        socket.send_multipart([b'{"event_id":"event-result"}'])
+        reply_frames = socket.recv_multipart()
+        manifest = json.loads(reply_frames[0].decode("utf-8"))
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and not buffer_writer.released_receipts:
+            time.sleep(0.005)
+        health = adapter.get_health(trigger_source_id=trigger_source.trigger_source_id)
+    finally:
+        socket.close(linger=0)
+        adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
+
+    assert len(reply_frames) == 2
+    assert reply_frames[1] == image_bytes
+    assert manifest["format_id"] == "amvision.workflow-trigger-result.v1"
+    assert manifest["response_payload"]["payloads"] == [
+        {
+            "payload_id": "physical-1",
+            "delivery_kind": "zeromq-frame",
+            "frame_index": 1,
+            "media_type": "image/png",
+            "content_length": len(image_bytes),
+            "checksum_algorithm": "crc32",
+            "checksum": "00000000",
+            "width": None,
+            "height": None,
+            "shape": [],
+            "dtype": None,
+            "layout": None,
+            "pixel_format": None,
+        }
+    ]
+    attachments = manifest["response_payload"]["attachments"]
+    assert [item["payload_id"] for item in attachments] == [
+        "physical-1",
+        "physical-1",
+    ]
+    assert buffer_writer.guard_enter_count == 1
+    assert buffer_writer.guard_exit_count == 1
+    assert len(buffer_writer.released_receipts) == 1
+    assert health["transport_registry_active_count"] == 0
+    assert manifest["metadata"]["timings"]["response_json_serialize_ms"] >= 0
+    assert health["transport_timings"]["response_json_serialize_ms"] >= 0
+    assert health["transport_timings"]["zeromq_attachment_send_ms"] >= 0
+    assert health["transport_timings"]["tracker_cleanup_ms"] >= 0
+    assert health["transport_timings"]["lease_reclaim_ms"] >= 0
+
+
+def test_zeromq_error_reply_uses_unified_trigger_result_contract() -> None:
+    """验证协议错误不再使用独立历史 error format。"""
+
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
+    payload = json.loads(
+        adapter.build_error_reply_frames(
+            trigger_source_id="trigger-source-1",
+            error=InvalidRequestError("bad envelope", details={"field": "payload"}),
+        )[0].decode("utf-8")
+    )
+
+    assert payload["format_id"] == "amvision.workflow-trigger-result.v1"
+    assert payload["state"] == "failed"
+    assert payload["metadata"] == {
+        "error_code": "invalid_request",
+        "error_details": {"field": "payload"},
+    }
+    assert "amvision.zeromq-trigger-error.v1" not in json.dumps(payload)
+
+
+def test_zeromq_image_reply_rejects_capacity_before_first_frame() -> None:
+    """验证 transport registry 满载在发送前失败，并释放未交付 output lease。"""
+
+    endpoint = f"inproc://zeromq-trigger-capacity-{uuid4().hex}"
+    trigger_source = _build_trigger_source(
+        trigger_kind="zeromq-topic",
+        submit_mode="sync",
+        input_binding_mapping={},
+        transport_config={"bind_endpoint": endpoint},
+    )
+    image_bytes = b"encoded-result-image"
+    buffer_writer = _FakeResultBufferWriter(image_bytes)
+    adapter = _build_zeromq_adapter(
+        buffer_writer,
+        transport_registry_max_bytes=4,
+    )
+    prepared = _build_prepared_zeromq_result(image_bytes)
+
+    class _ImageResultHandler:
+        def handle_trigger_event(self, *, trigger_source, raw_event):
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id=raw_event.event_id or "event-capacity",
+                    state="succeeded",
+                ),
+                prepared_trigger_result=prepared,
+            )
+
+    context = zmq.Context.instance()
+    socket = context.socket(zmq.REQ)
+    socket.linger = 0
+    socket.rcvtimeo = 2000
+    adapter.start(trigger_source=trigger_source, event_handler=_ImageResultHandler())
+    try:
+        socket.connect(endpoint)
+        socket.send_multipart([b'{"event_id":"event-capacity"}'])
+        reply_frames = socket.recv_multipart()
+        reply = json.loads(reply_frames[0].decode("utf-8"))
+    finally:
+        socket.close(linger=0)
+        adapter.stop(trigger_source_id=trigger_source.trigger_source_id)
+
+    assert len(reply_frames) == 1
+    assert reply["format_id"] == "amvision.workflow-trigger-result.v1"
+    assert reply["state"] == "failed"
+    assert reply["metadata"]["error_code"] == "zeromq_transport_capacity_exhausted"
+    assert buffer_writer.guard_enter_count == 0
+    assert len(buffer_writer.released_receipts) == 1
+
+
+def test_zeromq_send_failure_closes_socket_before_tracker_cleanup() -> None:
+    """验证部分发送异常不会在 libzmq tracker 完成前释放 reader guard。"""
+
+    image_bytes = b"encoded-result-image"
+    buffer_writer = _FakeResultBufferWriter(image_bytes)
+    adapter = _build_zeromq_adapter(buffer_writer)
+    prepared = _build_prepared_zeromq_result(image_bytes)
+    dispatch_result = WorkflowTriggerDispatchResult(
+        trigger_result=TriggerResultContract(
+            trigger_source_id="trigger-source-1",
+            event_id="event-send-failed",
+            state="succeeded",
+        ),
+        prepared_trigger_result=prepared,
+    )
+
+    class _Tracker:
+        def __init__(self) -> None:
+            self.done = False
+
+    class _Frame:
+        def __init__(self, _view, *, copy, track) -> None:
+            assert copy is False
+            assert track is True
+            self.tracker = _Tracker()
+
+    class _ZeroMq:
+        Frame = _Frame
+        SNDMORE = 2
+
+    class _FailingSocket:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def send(self, frame, *, flags, copy=None, track=None):
+            if isinstance(frame, bytes):
+                assert flags == _ZeroMq.SNDMORE
+                return None
+            assert flags == 0
+            assert copy is False
+            assert track is True
+            raise RuntimeError("send failed")
+
+        def close(self, *, linger) -> None:
+            assert linger == 0
+            self.closed = True
+
+    socket = _FailingSocket()
+    with pytest.raises(RuntimeError, match="send failed"):
+        adapter._send_dispatch_result(
+            socket=socket,
+            zeromq=_ZeroMq(),
+            dispatch_result=dispatch_result,
+            socket_generation="socket-failure-1",
+        )
+
+    assert socket.closed is True
+    assert buffer_writer.guard_enter_count == 1
+    assert buffer_writer.guard_exit_count == 1
+    assert len(buffer_writer.released_receipts) == 1
+    assert adapter._transport_registry.snapshot()[
+        "transport_registry_active_count"
+    ] == 0
+    assert adapter._transport_registry.wait_until_idle(timeout_seconds=1.0) is True
+
+
+def test_zeromq_rebuilds_rep_socket_with_new_generation() -> None:
+    """验证发送失败后替换 REP socket，而旧 tracker 可继续独立回收。"""
+
+    adapter = _build_zeromq_adapter(_FakeLocalBufferWriter())
+
+    class _Socket:
+        def __init__(self) -> None:
+            self.closed = False
+            self.bound_endpoint: str | None = None
+
+        def close(self, *, linger) -> None:
+            assert linger == 0
+            self.closed = True
+
+        def bind(self, endpoint: str) -> None:
+            self.bound_endpoint = endpoint
+
+    old_socket = _Socket()
+    replacement = _Socket()
+
+    class _Context:
+        def socket(self, socket_kind):
+            assert socket_kind == 1
+            return replacement
+
+    class _Poller:
+        def __init__(self) -> None:
+            self.unregistered: list[object] = []
+            self.registered: list[tuple[object, object]] = []
+
+        def unregister(self, socket) -> None:
+            self.unregistered.append(socket)
+
+        def register(self, socket, event) -> None:
+            self.registered.append((socket, event))
+
+    zeromq = SimpleNamespace(
+        REP=1,
+        POLLIN=2,
+        RCVHWM=3,
+        SNDHWM=4,
+        MAXMSGSIZE=5,
+    )
+    replacement.setsockopt = lambda option, value: None
+    poller = _Poller()
+    state = SimpleNamespace(
+        bind_endpoint="inproc://replacement",
+        socket_generation="socket-generation-old",
+        lifecycle_lock=adapter._lock,
+    )
+
+    rebuilt = adapter._rebuild_rep_socket(
+        zeromq=zeromq,
+        context=_Context(),
+        poller=poller,
+        socket=old_socket,
+        state=state,
+    )
+
+    assert rebuilt is replacement
+    assert old_socket.closed is True
+    assert poller.unregistered == [old_socket]
+    assert poller.registered == [(replacement, zeromq.POLLIN)]
+    assert replacement.bound_endpoint == state.bind_endpoint
+    assert state.socket_generation.startswith("zeromq-socket-")
+    assert state.socket_generation != "socket-generation-old"
+
+
 def test_zeromq_stop_keeps_stopping_state_until_listener_exits() -> None:
     """验证阻塞 handler 不会让 stop 假报成功或提前释放 endpoint 状态。"""
 
@@ -734,10 +1151,12 @@ def test_zeromq_stop_keeps_stopping_state_until_listener_exits() -> None:
             del raw_event
             entered.set()
             release.wait(timeout=2.0)
-            return TriggerResultContract(
-                trigger_source_id=trigger_source.trigger_source_id,
-                event_id="event-stop",
-                state="accepted",
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=trigger_source.trigger_source_id,
+                    event_id="event-stop",
+                    state="accepted",
+                )
             )
 
     adapter = _build_zeromq_adapter(
@@ -1265,6 +1684,28 @@ def _build_trigger_source(
 ) -> WorkflowTriggerSource:
     """构建测试使用的 WorkflowTriggerSource。"""
 
+    result_mode = "sync-reply" if submit_mode == "sync" else "accepted-then-query"
+    ack_policy = (
+        "ack-after-run-finished"
+        if submit_mode == "sync"
+        else "ack-after-run-created"
+    )
+    response_plan = build_trigger_response_plan(
+        trigger_source_id="trigger-source-1",
+        trigger_kind=trigger_kind,
+        workflow_runtime_id="workflow-runtime-1",
+        workflow_runtime_revision_id="revision-1",
+        workflow_app_version_id="version-1",
+        workflow_runtime_generation=1,
+        expected_snapshot_fingerprint="snapshot-1",
+        contract_fingerprint="contract-1",
+        submit_mode=submit_mode,
+        result_mode=result_mode,
+        ack_policy=ack_policy,
+        reply_timeout_seconds=None,
+        selected_output_payload_types={"http_response": "response-body.v1"},
+    )
+
     return WorkflowTriggerSource(
         trigger_source_id="trigger-source-1",
         project_id="project-1",
@@ -1282,9 +1723,14 @@ def _build_trigger_source(
                 "static_mode": {"value": "inspect"},
             }
         ),
-        result_mapping={"result_binding": "http_response"},
+        result_mapping={"result_bindings": ["http_response"]},
         default_execution_metadata=dict(default_execution_metadata or {}),
+        ack_policy=ack_policy,
+        result_mode=result_mode,
         idempotency_key_path="payload.request.id",
+        metadata={
+            TRIGGER_RESPONSE_PLAN_METADATA_KEY: response_plan.model_dump(mode="json")
+        },
         created_at="2026-05-13T00:00:00Z",
         updated_at="2026-05-13T00:00:00Z",
     )
@@ -1436,10 +1882,11 @@ class _DeploymentModelWorkflowRuntimeService:
         request,
         *,
         created_by: str | None,
+        execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeSyncInvokeResult:
         """把 WorkflowRuntime invoke 转成一次 deployment detection 节点调用。"""
 
-        _ = created_by
+        _ = created_by, execution_acquisition_mode
         self.last_request = request
         inference_result, _ = run_direct_model_inference(
             WorkflowNodeExecutionRequest(
@@ -1643,16 +2090,18 @@ class _FakeWorkflowSubmitter:
 
     def submit_event(
         self, request: WorkflowTriggerSubmitRequest
-    ) -> TriggerResultContract:
+    ) -> WorkflowTriggerDispatchResult:
         """记录提交请求并返回 accepted 结果。"""
 
         self.last_request = request
         self.submit_count += 1
-        return TriggerResultContract(
-            trigger_source_id=request.trigger_source.trigger_source_id,
-            event_id=request.trigger_event.event_id,
-            state="accepted",
-            workflow_run_id="workflow-run-1",
+        return WorkflowTriggerDispatchResult(
+            trigger_result=TriggerResultContract(
+                trigger_source_id=request.trigger_source.trigger_source_id,
+                event_id=request.trigger_event.event_id,
+                state="accepted",
+                workflow_run_id="workflow-run-1",
+            )
         )
 
 
@@ -1665,6 +2114,7 @@ class _FakeSyncRuntimeService:
         request,
         *,
         created_by: str | None,
+        execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeSyncInvokeResult:
         """返回已脱敏 WorkflowRun 与未脱敏最终输出。
 
@@ -1677,7 +2127,7 @@ class _FakeSyncRuntimeService:
         - WorkflowRuntimeSyncInvokeResult：测试用同步调用结果。
         """
 
-        _ = workflow_runtime_id, created_by
+        _ = workflow_runtime_id, created_by, execution_acquisition_mode
         assert request.input_bindings["request_image_base64"] == "base64-image"
         return WorkflowRuntimeSyncInvokeResult(
             workflow_run=WorkflowRun(
@@ -1739,6 +2189,7 @@ class _CapturingSyncRuntimeService(_FakeSyncRuntimeService):
         """初始化请求记录。"""
 
         self.last_request = None
+        self.last_execution_acquisition_mode: str | None = None
 
     def invoke_workflow_app_runtime_with_response(
         self,
@@ -1746,6 +2197,7 @@ class _CapturingSyncRuntimeService(_FakeSyncRuntimeService):
         request,
         *,
         created_by: str | None,
+        execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeSyncInvokeResult:
         """记录请求并返回固定成功结果。
 
@@ -1760,6 +2212,7 @@ class _CapturingSyncRuntimeService(_FakeSyncRuntimeService):
 
         _ = workflow_runtime_id, created_by
         self.last_request = request
+        self.last_execution_acquisition_mode = execution_acquisition_mode
         return WorkflowRuntimeSyncInvokeResult(
             workflow_run=WorkflowRun(
                 workflow_run_id="workflow-run-sync-1",
@@ -1782,10 +2235,11 @@ class _DiagnosticSyncRuntimeService:
         request,
         *,
         created_by: str | None,
+        execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeSyncInvokeResult:
         """返回带 timings 和 node_timings 的 WorkflowRun。"""
 
-        _ = workflow_runtime_id, created_by
+        _ = workflow_runtime_id, created_by, execution_acquisition_mode
         metadata = dict(request.execution_metadata)
         metadata["timings"] = {"worker_execute_ms": 12.5}
         metadata["node_timings"] = [
@@ -1815,7 +2269,7 @@ class _RejectingWorkflowSubmitter:
 
     def submit_event(
         self, request: WorkflowTriggerSubmitRequest
-    ) -> TriggerResultContract:
+    ) -> WorkflowTriggerDispatchResult:
         """模拟 WorkflowRun 创建前失败。
 
         参数：
@@ -1825,11 +2279,13 @@ class _RejectingWorkflowSubmitter:
         - TriggerResultContract：失败结果。
         """
 
-        return TriggerResultContract(
-            trigger_source_id=request.trigger_source.trigger_source_id,
-            event_id=request.trigger_event.event_id,
-            state="failed",
-            error_message="runtime not running",
+        return WorkflowTriggerDispatchResult(
+            trigger_result=TriggerResultContract(
+                trigger_source_id=request.trigger_source.trigger_source_id,
+                event_id=request.trigger_event.event_id,
+                state="failed",
+                error_message="runtime not running",
+            )
         )
 
 
@@ -1940,6 +2396,106 @@ class _FakeLocalBufferWriter:
         """
 
         self.released_leases.append((lease_id, pool_name))
+
+
+class _FakeResultBufferWriter(_FakeLocalBufferWriter):
+    """测试 ZeroMQ output reader guard 与条件释放的内存写入器。"""
+
+    def __init__(self, content: bytes) -> None:
+        super().__init__()
+        self.content = content
+        self.guard_enter_count = 0
+        self.guard_exit_count = 0
+        self.released_receipts: list[LeaseOwnershipReceipt] = []
+
+    @contextmanager
+    def acquire_buffer_reader_guard(
+        self,
+        *,
+        buffer_ref: BufferRef,
+        deadline_ns: int,
+    ):
+        """记录 reader guard 生命周期。"""
+
+        assert buffer_ref.lease_id == "result-lease-1"
+        assert deadline_ns > monotonic_ns()
+        self.guard_enter_count += 1
+        try:
+            yield
+        finally:
+            self.guard_exit_count += 1
+
+    def read_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
+        """返回图片结果的只读 view。"""
+
+        assert buffer_ref.size == len(self.content)
+        return memoryview(self.content)
+
+    def conditional_release(self, *, receipt: LeaseOwnershipReceipt) -> str:
+        """记录完整 identity fence 释放。"""
+
+        self.released_receipts.append(receipt)
+        return "released"
+
+
+def _build_prepared_zeromq_result(content: bytes) -> PreparedTriggerResult:
+    """构造两个逻辑 attachment 共享一个物理图片的 prepared result。"""
+
+    deadline_ns = monotonic_ns() + 10_000_000_000
+    buffer_ref = BufferRef(
+        buffer_id="result-buffer-1",
+        lease_id="result-lease-1",
+        path="data/buffers/result-pool.dat",
+        offset=0,
+        size=len(content),
+        media_type="image/png",
+        broker_epoch="epoch-1",
+        generation=1,
+    )
+    receipt = LeaseOwnershipReceipt(
+        pool_name="result-pool",
+        lease_id=buffer_ref.lease_id,
+        buffer_id=buffer_ref.buffer_id,
+        broker_epoch=buffer_ref.broker_epoch,
+        generation=buffer_ref.generation,
+        owner_kind="workflow-trigger-response",
+        owner_id="zeromq:trigger-source-1:event-result",
+        deadline_ns=deadline_ns,
+        writer_guard_path="data/buffers/result-pool.writer.guard",
+        reader_guard_path="data/buffers/result-pool.reader.guard",
+        reader_guard_slots=8,
+    )
+    return PreparedTriggerResult(
+        selected_results={"result": {"ok": True}},
+        attachments=(
+            PreparedLogicalAttachment(
+                attachment_id="attachment-1",
+                binding_id="image-a",
+                item_index=0,
+                binding_payload_type_id="image-ref.v1",
+                payload_id="physical-1",
+            ),
+            PreparedLogicalAttachment(
+                attachment_id="attachment-2",
+                binding_id="image-b",
+                item_index=0,
+                binding_payload_type_id="image-ref.v1",
+                payload_id="physical-1",
+            ),
+        ),
+        physical_payloads=(
+            PreparedPhysicalPayload(
+                payload_id="physical-1",
+                delivery_kind="local-buffer",
+                media_type="image/png",
+                content_length=len(content),
+                checksum_algorithm="crc32",
+                checksum="00000000",
+                buffer_ref=buffer_ref.model_dump(mode="json"),
+                ownership_receipt=receipt.model_dump(mode="json"),
+            ),
+        ),
+    )
 
 
 def _build_buffer_ref_payload(*, lease_id: str = "lease-1") -> dict[str, object]:

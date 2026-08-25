@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import re
 import zipfile
 from dataclasses import dataclass
@@ -14,6 +15,13 @@ from backend.service.application.deployments.deployment_instance_service import 
     SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.application.local_buffers.broker_settings import (
+    LocalBufferBrokerSettings,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    TRIGGER_RESPONSE_PLAN_METADATA_KEY,
+    TriggerResponsePlan,
+)
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.domain.workflows.workflow_trigger_source_records import WorkflowTriggerSource
 from backend.service.infrastructure.db.session import SessionFactory
@@ -113,6 +121,7 @@ class SdkConfigPackageService:
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
+        local_buffer_broker_settings: LocalBufferBrokerSettings,
     ) -> None:
         """初始化配置包服务。
 
@@ -123,6 +132,7 @@ class SdkConfigPackageService:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
+        self.local_buffer_broker_settings = local_buffer_broker_settings
 
     def build_plan(self, request: SdkConfigPackageBuildRequest) -> SdkConfigPackagePlan:
         """生成配置包计划，供 preview 和 download 共用。
@@ -136,7 +146,10 @@ class SdkConfigPackageService:
 
         normalized_request = _normalize_request(request)
         resources = self._load_project_resources(normalized_request.project_id)
-        builder = _SdkConfigPackageBuilder(normalized_request)
+        builder = _SdkConfigPackageBuilder(
+            normalized_request,
+            local_buffer_broker_settings=self.local_buffer_broker_settings,
+        )
         return builder.build(resources)
 
     def build_zip_bytes(self, plan: SdkConfigPackagePlan) -> bytes:
@@ -211,8 +224,19 @@ class _ProjectSdkConfigResources:
 class _SdkConfigPackageBuilder:
     """把 Project 资源转换成 SDK 配置文件。"""
 
-    def __init__(self, request: SdkConfigPackageBuildRequest) -> None:
+    def __init__(
+        self,
+        request: SdkConfigPackageBuildRequest,
+        *,
+        local_buffer_broker_settings: LocalBufferBrokerSettings,
+    ) -> None:
         self.request = request
+        self.local_buffer_broker_settings = local_buffer_broker_settings
+        self.buffers_root = Path(local_buffer_broker_settings.root_dir).resolve()
+        self.pool_capacity_by_name = {
+            pool.pool_name: pool.slot_size_bytes
+            for pool in local_buffer_broker_settings.pools
+        }
         self.generated_at = datetime.now(timezone.utc)
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
         self.warnings: list[str] = []
@@ -277,9 +301,12 @@ class _SdkConfigPackageBuilder:
         for trigger_source in trigger_sources:
             if not self.request.include_disabled_trigger_sources and not trigger_source.enabled:
                 continue
-            if trigger_source.trigger_kind != "zeromq-topic":
+            if trigger_source.trigger_kind not in {
+                "zeromq-topic",
+                "local-shared-memory",
+            }:
                 self.warnings.append(
-                    f"TriggerSource {trigger_source.trigger_source_id} 不是 ZeroMQ 类型，当前 Console 配置包已跳过。"
+                    f"TriggerSource {trigger_source.trigger_source_id} 当前没有仓库内 .NET SDK 调用实现，配置包已跳过。"
                 )
                 continue
             grouped.setdefault(trigger_source.workflow_runtime_id, []).append(trigger_source)
@@ -382,6 +409,12 @@ class _SdkConfigPackageBuilder:
             _build_trigger_source_key(trigger_source),
             fallback="trigger_source",
         )
+        if trigger_source.trigger_kind == "local-shared-memory":
+            return self._build_local_shared_trigger_source_config(
+                trigger_source,
+                trigger_key=trigger_key,
+            )
+
         bind_endpoint = _read_optional_text(trigger_source.transport_config, "bind_endpoint") or ""
         if not bind_endpoint:
             self.warnings.append(
@@ -395,9 +428,60 @@ class _SdkConfigPackageBuilder:
         return {
             "name": trigger_key,
             "trigger_source_id": trigger_source.trigger_source_id,
+            "trigger_kind": trigger_source.trigger_kind,
             "zero_mq": {
                 "bind_endpoint": bind_endpoint,
                 "default_input_binding": default_input_binding,
+                "timeout_seconds": trigger_source.reply_timeout_seconds or 5,
+            },
+        }
+
+    def _build_local_shared_trigger_source_config(
+        self,
+        trigger_source: WorkflowTriggerSource,
+        *,
+        trigger_key: str,
+    ) -> dict[str, object]:
+        """构建同机共享内存 SDK 所需的固定 mailbox 配置。"""
+
+        pool_name = (
+            _read_optional_text(trigger_source.transport_config, "pool_name")
+            or self.local_buffer_broker_settings.default_pool_name
+        )
+        max_image_bytes = self.pool_capacity_by_name.get(pool_name)
+        if max_image_bytes is None:
+            raise InvalidRequestError(
+                "Local shared-memory TriggerSource 引用了不存在的 LocalBuffer pool",
+                details={
+                    "trigger_source_id": trigger_source.trigger_source_id,
+                    "pool_name": pool_name,
+                },
+            )
+        raw_plan = trigger_source.metadata.get(TRIGGER_RESPONSE_PLAN_METADATA_KEY)
+        try:
+            response_plan = TriggerResponsePlan.model_validate(raw_plan)
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError(
+                "Local shared-memory TriggerSource 缺少有效的固定 response plan",
+                details={"trigger_source_id": trigger_source.trigger_source_id},
+            ) from error
+        default_input_binding = (
+            _read_optional_text(
+                trigger_source.transport_config,
+                "default_input_binding",
+            )
+            or _infer_default_input_binding(trigger_source)
+            or "request_image_ref"
+        )
+        return {
+            "name": trigger_key,
+            "trigger_source_id": trigger_source.trigger_source_id,
+            "trigger_kind": trigger_source.trigger_kind,
+            "local_shared_memory": {
+                "buffers_root": str(self.buffers_root),
+                "route_generation": response_plan.plan_generation,
+                "default_input_binding": default_input_binding,
+                "max_image_bytes": max_image_bytes,
                 "timeout_seconds": trigger_source.reply_timeout_seconds or 5,
             },
         }

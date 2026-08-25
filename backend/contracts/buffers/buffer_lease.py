@@ -9,7 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 BUFFER_LEASE_FORMAT = "amvision.buffer-lease.v1"
-BUFFER_LEASE_STATES = ("writing", "active", "released", "expired", "reclaimed")
+BUFFER_LEASE_STATES = (
+    "writing",
+    "active",
+    "revoking",
+    "quarantined",
+    "released",
+    "expired",
+    "reclaimed",
+)
 
 
 class BufferLease(BaseModel):
@@ -28,7 +36,7 @@ class BufferLease(BaseModel):
     - created_at：租约创建时间。
     - expires_at：租约过期时间；为空表示由调用方显式释放。
     - ref_count：当前引用计数。
-    - state：租约状态，支持 writing、active、released、expired 和 reclaimed。
+    - state：租约状态，支持 writing、active、revoking、quarantined、released、expired 和 reclaimed。
     - trace_id：链路追踪 id。
     - broker_epoch：broker 启动代次，用于识别重启后的旧引用。
     - generation：槽位复用代次，用于识别释放后被复用的旧引用。
@@ -48,7 +56,15 @@ class BufferLease(BaseModel):
     created_at: datetime
     expires_at: datetime | None = None
     ref_count: int = Field(default=1, ge=0)
-    state: Literal["writing", "active", "released", "expired", "reclaimed"] = "active"
+    state: Literal[
+        "writing",
+        "active",
+        "revoking",
+        "quarantined",
+        "released",
+        "expired",
+        "reclaimed",
+    ] = "active"
     trace_id: str | None = None
     broker_epoch: str
     generation: int = Field(ge=1)

@@ -9,6 +9,7 @@ using Amvar.Vision.ModelDeployment;
 using Amvar.Vision.Runtime;
 using Amvar.Vision.TriggerSource;
 using Amvar.Vision.TriggerSource.ZeroMQ;
+using Amvar.Vision.TriggerSource.SharedMemory;
 
 namespace Amvar.Vision
 {
@@ -50,6 +51,11 @@ namespace Amvar.Vision
         /// ZeroMQ TriggerSource 协议调用操作集合。
         /// </summary>
         private readonly ZeroMqTriggerOperations zeroMqTriggerOperations;
+
+        /// <summary>
+        /// 同机共享内存 TriggerSource 协议调用操作集合。
+        /// </summary>
+        private readonly LocalSharedMemoryTriggerOperations localSharedMemoryTriggerOperations;
 
         /// <summary>
         /// 当前 runner 是否负责释放底层 client。
@@ -147,6 +153,7 @@ namespace Amvar.Vision
             modelDeploymentOperations = new ModelDeploymentOperations(this.client, this.catalog);
             triggerSourceOperations = new WorkflowTriggerSourceOperations(this.client, this.catalog);
             zeroMqTriggerOperations = new ZeroMqTriggerOperations(this.catalog);
+            localSharedMemoryTriggerOperations = new LocalSharedMemoryTriggerOperations(this.catalog);
 
             runtimeNames = SortKeys(this.catalog.Runtimes.Keys);
             triggerSourceNames = SortKeys(this.catalog.TriggerSources.Keys);
@@ -212,6 +219,7 @@ namespace Amvar.Vision
             }
 
             zeroMqTriggerOperations.Dispose();
+            localSharedMemoryTriggerOperations.Dispose();
 
             if (ownsClient)
             {

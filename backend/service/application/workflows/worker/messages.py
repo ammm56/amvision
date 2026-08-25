@@ -36,6 +36,7 @@ class WorkflowRuntimeWorkerRunResult:
     error_message: str | None = None
     error_details: dict[str, object] = field(default_factory=dict)
     timings: dict[str, object] = field(default_factory=dict)
+    prepared_trigger_result: dict[str, object] | None = None
     worker_state: WorkflowRuntimeWorkerState = field(
         default_factory=lambda: WorkflowRuntimeWorkerState(observed_state="failed")
     )
@@ -134,6 +135,11 @@ def deserialize_run_result(message: object) -> WorkflowRuntimeWorkerRunResult:
         error_message=read_optional_str(message, "error_message"),
         error_details=require_payload_dict(message, "error_details"),
         timings=require_payload_dict(message, "timings"),
+        prepared_trigger_result=(
+            dict(message["prepared_trigger_result"])
+            if isinstance(message.get("prepared_trigger_result"), dict)
+            else None
+        ),
         worker_state=worker_state,
     )
 

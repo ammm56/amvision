@@ -145,6 +145,9 @@ def _build_sdk_config_package_service(request: Request) -> SdkConfigPackageServi
     return SdkConfigPackageService(
         session_factory=require_session_factory(request),
         dataset_storage=require_dataset_storage(request),
+        local_buffer_broker_settings=(
+            request.app.state.backend_service_settings.local_buffer_broker
+        ),
     )
 
 

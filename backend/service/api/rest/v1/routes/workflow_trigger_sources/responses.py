@@ -49,7 +49,7 @@ def build_trigger_source_contract(
         match_rule=dict(trigger_source.match_rule),
         input_binding_mapping=dict(trigger_source.input_binding_mapping),
         result_mapping=dict(trigger_source.result_mapping)
-        or {"result_binding": "workflow_result"},
+        or {"result_bindings": []},
         default_execution_metadata=dict(trigger_source.default_execution_metadata),
         ack_policy=trigger_source.ack_policy,
         result_mode=trigger_source.result_mode,

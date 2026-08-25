@@ -97,6 +97,15 @@ from backend.contracts.workflows.resource_semantics import (
     build_workflow_run_storage_dir,
     build_workflow_trigger_source_storage_dir,
 )
+from backend.contracts.workflows.local_shared_memory_trigger import (
+    WORKFLOW_TRIGGER_ALLOCATION_FORMAT,
+    WORKFLOW_TRIGGER_PREPARE_FORMAT,
+    WORKFLOW_TRIGGER_REQUEST_FORMAT,
+    WorkflowTriggerAllocationV1,
+    WorkflowTriggerInputImageSpec,
+    WorkflowTriggerPrepareV1,
+    WorkflowTriggerRequestV1,
+)
 from backend.contracts.workflows.trigger_sources import (
     WORKFLOW_TRIGGER_EVENT_FORMAT,
     WORKFLOW_TRIGGER_RESULT_FORMAT,
@@ -190,6 +199,13 @@ __all__ = [
     "WorkflowRunState",
     "WorkflowTriggerAckPolicy",
     "WorkflowTriggerKind",
+    "WORKFLOW_TRIGGER_ALLOCATION_FORMAT",
+    "WORKFLOW_TRIGGER_PREPARE_FORMAT",
+    "WORKFLOW_TRIGGER_REQUEST_FORMAT",
+    "WorkflowTriggerAllocationV1",
+    "WorkflowTriggerInputImageSpec",
+    "WorkflowTriggerPrepareV1",
+    "WorkflowTriggerRequestV1",
     "WorkflowTriggerResultMode",
     "WorkflowTriggerResultState",
     "WorkflowTriggerRuntimeState",

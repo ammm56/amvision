@@ -3,20 +3,33 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import mimetypes
 import os
 import shutil
 import stat
+import tempfile
 import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO
+from contextlib import contextmanager
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.filesystem.atomic_files import (
     replace_path_with_retry,
 )
 from backend.service.infrastructure.filesystem.windows_paths import to_filesystem_path
+from backend.service.application.ports.object_store import (
+    ObjectReadSnapshot,
+    ObjectSnapshotMetadata,
+    ObjectWriteReceipt,
+)
+
+
+_IMMUTABLE_DIRECTORY_NAME = "immutable"
+_IMMUTABLE_METADATA_FILE_NAME = "metadata.json"
 
 
 @dataclass(frozen=True)
@@ -267,6 +280,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
+        self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
         filesystem_target_path = to_filesystem_path(target_path)
         temporary_path = filesystem_target_path.with_name(
@@ -304,6 +318,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
+        self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
         filesystem_target_path = to_filesystem_path(target_path)
         if hasattr(source_stream, "seek"):
@@ -338,6 +353,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
+        self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
         encoded_payload = json.dumps(payload, ensure_ascii=False, indent=2)
         filesystem_target_path = to_filesystem_path(target_path)
@@ -374,6 +390,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(relative_path)
+        self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
         filesystem_target_path = to_filesystem_path(target_path)
         temporary_path = filesystem_target_path.with_name(
@@ -402,6 +419,7 @@ class LocalDatasetStorage:
         """
 
         target_path = self.resolve(destination_path)
+        self._reject_immutable_target(target_path)
         self._mkdir(target_path.parent)
         shutil.copy2(to_filesystem_path(source_path), to_filesystem_path(target_path))
 
@@ -430,6 +448,207 @@ class LocalDatasetStorage:
         """
 
         self.copy_file(self.resolve(source_object_key), destination_object_key)
+
+    def stat_object(self, object_key: str) -> ObjectSnapshotMetadata:
+        """读取对象元数据；不可变对象 checksum 来自原子发布 manifest。"""
+
+        target_path = self.resolve(object_key)
+        filesystem_target_path = to_filesystem_path(target_path)
+        if not filesystem_target_path.is_file():
+            raise InvalidRequestError(
+                "ObjectStore 对象不存在",
+                details={"object_key": object_key},
+            )
+        immutable_metadata = self._read_immutable_metadata(target_path)
+        if immutable_metadata is not None:
+            return immutable_metadata
+        return ObjectSnapshotMetadata(
+            object_key=target_path.relative_to(self.root_dir).as_posix(),
+            content_length=filesystem_target_path.stat().st_size,
+            media_type=mimetypes.guess_type(target_path.name)[0]
+            or "application/octet-stream",
+        )
+
+    @contextmanager
+    def open_read_snapshot(
+        self,
+        object_key: str,
+        *,
+        expected_version: str | None = None,
+        expected_checksum: str | None = None,
+    ):
+        """保持已打开文件 handle，避免原子替换改变当前发送内容。"""
+
+        target_path = self.resolve(object_key)
+        immutable_metadata = self._read_immutable_metadata(target_path)
+        stream: BinaryIO
+        owns_temporary_snapshot = immutable_metadata is None
+        try:
+            source_stream = _open_shared_read_snapshot(target_path)
+        except FileNotFoundError as error:
+            raise InvalidRequestError(
+                "ObjectStore 对象不存在",
+                details={"object_key": object_key},
+            ) from error
+        if owns_temporary_snapshot:
+            # 普通 object key 没有不可变 publication 约束。先复制到 adapter
+            # 私有临时快照，随后关闭源 handle，避免长期阻塞同 key 原子替换。
+            stream = tempfile.TemporaryFile(mode="w+b")
+            try:
+                shutil.copyfileobj(source_stream, stream)
+                stream.flush()
+                stream.seek(0)
+            finally:
+                source_stream.close()
+        else:
+            stream = source_stream
+        try:
+            metadata = immutable_metadata or ObjectSnapshotMetadata(
+                object_key=target_path.relative_to(self.root_dir).as_posix(),
+                content_length=os.fstat(stream.fileno()).st_size,
+                media_type=mimetypes.guess_type(target_path.name)[0]
+                or "application/octet-stream",
+            )
+            if os.fstat(stream.fileno()).st_size != metadata.content_length:
+                raise InvalidRequestError("ObjectStore snapshot 长度不匹配")
+            if (
+                expected_version is not None
+                and metadata.immutable_version != expected_version
+            ):
+                raise InvalidRequestError(
+                    "ObjectStore snapshot version 不匹配",
+                    details={"object_key": object_key},
+                )
+            if expected_checksum is not None and metadata.checksum != expected_checksum:
+                raise InvalidRequestError(
+                    "ObjectStore snapshot checksum 不匹配",
+                    details={"object_key": object_key},
+                )
+            yield ObjectReadSnapshot(stream=stream, metadata=metadata)
+        finally:
+            stream.close()
+
+    def write_immutable_object(
+        self,
+        *,
+        object_prefix: str,
+        content: bytes,
+        media_type: str,
+        extension: str | None = None,
+    ) -> ObjectWriteReceipt:
+        """用完整目录 rename 一次发布 content 和 manifest。"""
+
+        normalized_media_type = media_type.strip()
+        if not normalized_media_type:
+            raise InvalidRequestError("不可变对象 media_type 不能为空")
+        digest = hashlib.sha256(content).hexdigest()
+        normalized_extension = _normalize_immutable_extension(extension, normalized_media_type)
+        object_dir_key = (
+            PurePosixPath(object_prefix)
+            / _IMMUTABLE_DIRECTORY_NAME
+            / f"sha256-{digest}"
+        )
+        object_key = (object_dir_key / f"content{normalized_extension}").as_posix()
+        final_dir = to_filesystem_path(self.resolve(object_dir_key.as_posix()))
+        metadata = ObjectSnapshotMetadata(
+            object_key=object_key,
+            content_length=len(content),
+            media_type=normalized_media_type,
+            checksum_algorithm="sha256",
+            checksum=digest,
+            immutable_version=f"sha256:{digest}",
+            is_immutable=True,
+        )
+        if final_dir.is_dir():
+            existing = self.stat_object(object_key)
+            if existing != metadata:
+                raise InvalidRequestError("不可变 ObjectStore identity 已存在但元数据不一致")
+            return ObjectWriteReceipt(metadata=existing)
+
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging_dir = final_dir.with_name(f".{final_dir.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            staging_dir.mkdir(parents=False, exist_ok=False)
+            content_path = staging_dir / f"content{normalized_extension}"
+            with content_path.open("wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            metadata_path = staging_dir / _IMMUTABLE_METADATA_FILE_NAME
+            with metadata_path.open("w", encoding="utf-8", newline="") as stream:
+                json.dump(metadata.__dict__, stream, ensure_ascii=False, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.rename(staging_dir, final_dir)
+            except FileExistsError:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            _sync_directory_after_replace(final_dir.parent)
+        except Exception:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
+        published = self.stat_object(object_key)
+        if published != metadata:
+            raise InvalidRequestError("不可变 ObjectStore 对象发布校验失败")
+        return ObjectWriteReceipt(metadata=published)
+
+    def materialize_immutable_object(
+        self,
+        *,
+        source_object_key: str,
+        object_prefix: str,
+        media_type: str | None = None,
+    ) -> ObjectWriteReceipt:
+        """只读取旧对象一次并发布为 content-addressed 不可变对象。"""
+
+        source_metadata = self.stat_object(source_object_key)
+        if source_metadata.is_immutable:
+            return ObjectWriteReceipt(metadata=source_metadata)
+        with self.open_read_snapshot(source_object_key) as snapshot:
+            content = snapshot.stream.read()
+        return self.write_immutable_object(
+            object_prefix=object_prefix,
+            content=content,
+            media_type=media_type or source_metadata.media_type,
+            extension=Path(source_object_key).suffix,
+        )
+
+    def _read_immutable_metadata(
+        self,
+        target_path: Path,
+    ) -> ObjectSnapshotMetadata | None:
+        """只信任同一原子发布目录中的 manifest。"""
+
+        filesystem_target_path = to_filesystem_path(target_path)
+        metadata_path = to_filesystem_path(
+            target_path.parent / _IMMUTABLE_METADATA_FILE_NAME
+        )
+        if target_path.parent.parent.name != _IMMUTABLE_DIRECTORY_NAME:
+            return None
+        if not metadata_path.is_file():
+            raise InvalidRequestError("不可变 ObjectStore manifest 缺失")
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata = ObjectSnapshotMetadata(**payload)
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            raise InvalidRequestError("不可变 ObjectStore manifest 无效") from error
+        if metadata.object_key != target_path.relative_to(self.root_dir).as_posix():
+            raise InvalidRequestError("不可变 ObjectStore manifest object_key 不匹配")
+        if not _has_complete_immutable_identity(metadata):
+            raise InvalidRequestError("不可变 ObjectStore manifest identity 不完整")
+        if metadata.content_length != filesystem_target_path.stat().st_size:
+            raise InvalidRequestError("不可变 ObjectStore manifest 长度不匹配")
+        return metadata
+
+    def _reject_immutable_target(self, target_path: Path) -> None:
+        """普通写接口不得覆盖已发布的不可变对象目录。"""
+
+        try:
+            relative_parts = target_path.relative_to(self.root_dir).parts
+        except ValueError:
+            return
+        if _IMMUTABLE_DIRECTORY_NAME in relative_parts:
+            raise InvalidRequestError("不可变 ObjectStore 对象禁止覆盖")
 
     def create_zip_from_directory(
         self,
@@ -707,3 +926,79 @@ def _sync_directory_after_replace(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _normalize_immutable_extension(
+    extension: str | None,
+    media_type: str,
+) -> str:
+    """为不可变 content 选择短且稳定的文件扩展名。"""
+
+    candidate = extension.strip().lower() if isinstance(extension, str) else ""
+    if candidate and not candidate.startswith("."):
+        candidate = f".{candidate}"
+    if candidate and len(candidate) <= 16 and candidate[1:].replace("-", "").isalnum():
+        return candidate
+    guessed = mimetypes.guess_extension(media_type, strict=False)
+    if guessed and len(guessed) <= 16:
+        return guessed
+    return ".bin"
+
+
+def _has_complete_immutable_identity(metadata: ObjectSnapshotMetadata) -> bool:
+    """校验公开不可变 locator 所需的全部稳定字段。"""
+
+    return bool(
+        metadata.is_immutable
+        and metadata.immutable_version
+        and metadata.checksum_algorithm
+        and metadata.checksum
+        and metadata.content_length > 0
+        and metadata.media_type.strip()
+    )
+
+
+def _open_shared_read_snapshot(path: Path) -> BinaryIO:
+    """打开允许同 key 原子替换、但自身内容保持稳定的只读 handle。"""
+
+    filesystem_path = to_filesystem_path(path)
+    if os.name != "nt":
+        return filesystem_path.open("rb")
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    create_file = ctypes.windll.kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(filesystem_path),
+        0x80000000,  # GENERIC_READ
+        0x00000001 | 0x00000002 | 0x00000004,  # SHARE_READ|WRITE|DELETE
+        None,
+        3,  # OPEN_EXISTING
+        0x00000080,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    invalid_handle_value = wintypes.HANDLE(-1).value
+    if handle == invalid_handle_value:
+        error_code = ctypes.get_last_error()
+        raise FileNotFoundError(error_code, os.strerror(error_code), str(path))
+    try:
+        descriptor = msvcrt.open_osfhandle(
+            int(handle),
+            os.O_RDONLY | getattr(os, "O_BINARY", 0),
+        )
+    except Exception:
+        ctypes.windll.kernel32.CloseHandle(handle)
+        raise
+    return os.fdopen(descriptor, "rb", closefd=True)

@@ -1024,7 +1024,7 @@ def test_lightweight_sync_admission_blocks_delete_without_database_dispatch_writ
     blocked_run_ids = delete_error.details["workflow_run_ids"]
     assert len(blocked_run_ids) == 1
     assert delete_error.details["workflow_run_states"] == {
-        blocked_run_ids[0]: "sync-admission"
+        blocked_run_ids[0]: "execution-token"
     }
     with service._open_unit_of_work() as unit_of_work:
         runs_during_invoke = (
@@ -1043,7 +1043,7 @@ def test_lightweight_sync_admission_blocks_delete_without_database_dispatch_writ
     workflow_run = invoke_result["run"]
     assert isinstance(workflow_run, WorkflowRun)
     assert workflow_run.state == "succeeded"
-    assert worker_manager.list_sync_admission_run_ids(
+    assert worker_manager.list_execution_token_run_ids(
         runtime.workflow_runtime_id
     ) == ()
     with service._open_unit_of_work() as unit_of_work:
@@ -1107,7 +1107,7 @@ def test_lightweight_sync_admission_is_released_after_invoke_error(
             created_by="workflow-user",
         )
 
-    assert worker_manager.list_sync_admission_run_ids(
+    assert worker_manager.list_execution_token_run_ids(
         runtime.workflow_runtime_id
     ) == ()
     with service._open_unit_of_work() as unit_of_work:
@@ -1509,7 +1509,7 @@ class _FakeWorkerManager:
         self.reserve_entered_event: Event | None = None
         self.reserve_release_event: Event | None = None
         self.manager_lock = RLock()
-        self.sync_admissions: dict[str, set[str]] = {}
+        self.execution_tokens: dict[str, dict[str, object]] = {}
 
     @contextmanager
     def runtime_lifecycle_guard(self, workflow_runtime_id: str) -> Iterator[None]:
@@ -1519,46 +1519,62 @@ class _FakeWorkerManager:
         with self.lifecycle_lock:
             yield
 
-    def reserve_sync_admission(
+    def acquire_execution_token(
         self,
-        workflow_runtime_id: str,
-        workflow_run_id: str,
-    ) -> None:
-        """模拟 manager 锁保护的同步调用占用登记。"""
+        **kwargs: object,
+    ) -> object:
+        """模拟取得真实 execution token，并保留既有竞态测试控制点。"""
 
+        workflow_app_runtime = kwargs["workflow_app_runtime"]
+        workflow_runtime_id = workflow_app_runtime.workflow_runtime_id
+        workflow_run_id = str(kwargs["workflow_run_id"])
+        token = SimpleNamespace(
+            token_id=f"fake-token-{workflow_run_id}",
+            workflow_runtime_id=workflow_runtime_id,
+            workflow_run_id=workflow_run_id,
+        )
         with self.manager_lock:
-            self.sync_admissions.setdefault(workflow_runtime_id, set()).add(
-                workflow_run_id
-            )
+            self.execution_tokens.setdefault(workflow_runtime_id, {})[
+                token.token_id
+            ] = token
         if self.reserve_entered_event is not None:
             self.reserve_entered_event.set()
         if self.reserve_release_event is not None:
             if not self.reserve_release_event.wait(timeout=2):
-                raise AssertionError("测试未释放同步 admission 登记")
+                raise AssertionError("测试未释放 execution token 登记")
+        return token
 
-    def release_sync_admission(
+    def release_execution_token(
         self,
-        workflow_runtime_id: str,
-        workflow_run_id: str,
-    ) -> None:
-        """模拟同步调用占用的幂等释放。"""
+        token: object,
+    ) -> bool:
+        """模拟 execution token 的幂等释放。"""
 
         with self.manager_lock:
-            workflow_run_ids = self.sync_admissions.get(workflow_runtime_id)
-            if workflow_run_ids is None:
-                return
-            workflow_run_ids.discard(workflow_run_id)
-            if not workflow_run_ids:
-                self.sync_admissions.pop(workflow_runtime_id, None)
+            workflow_runtime_id = str(token.workflow_runtime_id)
+            runtime_tokens = self.execution_tokens.get(workflow_runtime_id)
+            if runtime_tokens is None or runtime_tokens.pop(token.token_id, None) is None:
+                return False
+            if not runtime_tokens:
+                self.execution_tokens.pop(workflow_runtime_id, None)
+            return True
 
-    def list_sync_admission_run_ids(
+    def list_execution_token_run_ids(
         self,
         workflow_runtime_id: str,
     ) -> tuple[str, ...]:
-        """读取当前同步调用占用。"""
+        """读取当前 execution token 对应的 Run。"""
 
         with self.manager_lock:
-            return tuple(sorted(self.sync_admissions.get(workflow_runtime_id, ())))
+            return tuple(
+                sorted(
+                    str(token.workflow_run_id)
+                    for token in self.execution_tokens.get(
+                        workflow_runtime_id,
+                        {},
+                    ).values()
+                )
+            )
 
     def start_runtime(
         self,

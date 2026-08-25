@@ -327,6 +327,8 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     - model_startup_timeout_seconds：等待图中 Load Checkpoint 节点完成加载、warmup 和验证的上限。
     - model_startup_parallelism：不同 Load Checkpoint 节点并行准备的线程上限。
     - preview_model_session_scope_limit：API 进程最多保留的编辑态 Preview 模型 scope 数量。
+    - local_shared_trigger_executor_worker_count：本机共享内存 Trigger 严格有界执行槽数量。
+    - local_shared_trigger_mailbox_poll_interval_seconds：全局 Trigger mailbox 空闲轮询间隔。
     """
 
     operator_thread_count: int = Field(
@@ -379,6 +381,16 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
         gt=0,
         description="API 进程最多保留的编辑态 Preview 模型 scope 数量",
     )
+    local_shared_trigger_executor_worker_count: int = Field(
+        default=16,
+        gt=0,
+        description="本机共享内存 Trigger 的固定 executor 容量；满载立即拒绝，不排队",
+    )
+    local_shared_trigger_mailbox_poll_interval_seconds: float = Field(
+        default=0.001,
+        gt=0,
+        description="全局 Workflow Trigger mailbox 空闲轮询间隔秒数",
+    )
 
 
 class BackendServiceZeroMqTriggerConfig(BaseModel):
@@ -393,6 +405,10 @@ class BackendServiceZeroMqTriggerConfig(BaseModel):
     - poll_timeout_ms：listener 轮询停止信号的间隔毫秒数。
     - startup_timeout_seconds：listener bind 启动超时秒数。
     - shutdown_timeout_seconds：listener 完整停止超时秒数。
+    - transport_registry_max_entries：进程内 tracked 图片发送数量上限。
+    - transport_registry_max_bytes：进程内 tracked 图片发送总字节上限。
+    - transport_tracker_timeout_seconds：发送 tracker 诊断超时秒数。
+    - transport_reaper_poll_interval_seconds：发送生命周期回收轮询秒数。
 
     说明：
     - 所有字段必须由 config JSON、环境变量或启动参数显式提供。
@@ -407,6 +423,10 @@ class BackendServiceZeroMqTriggerConfig(BaseModel):
     poll_timeout_ms: int = Field(gt=0)
     startup_timeout_seconds: float = Field(gt=0)
     shutdown_timeout_seconds: float = Field(gt=0)
+    transport_registry_max_entries: int = Field(gt=0)
+    transport_registry_max_bytes: int = Field(gt=0)
+    transport_tracker_timeout_seconds: float = Field(gt=0)
+    transport_reaper_poll_interval_seconds: float = Field(gt=0)
 
     def to_runtime_config(self) -> ZeroMqTriggerRuntimeConfig:
         """转换为 application/infrastructure 共用的不可变运行配置。"""
@@ -420,6 +440,12 @@ class BackendServiceZeroMqTriggerConfig(BaseModel):
             poll_timeout_ms=self.poll_timeout_ms,
             startup_timeout_seconds=self.startup_timeout_seconds,
             shutdown_timeout_seconds=self.shutdown_timeout_seconds,
+            transport_registry_max_entries=self.transport_registry_max_entries,
+            transport_registry_max_bytes=self.transport_registry_max_bytes,
+            transport_tracker_timeout_seconds=self.transport_tracker_timeout_seconds,
+            transport_reaper_poll_interval_seconds=(
+                self.transport_reaper_poll_interval_seconds
+            ),
         )
 
 

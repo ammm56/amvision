@@ -23,15 +23,29 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Net.Http" />
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\..\libs\net472\Newtonsoft.Json.dll</HintPath>
       <Private>true</Private>
       <SpecificVersion>false</SpecificVersion>
     </Reference>
+    <Reference Include="Microsoft.Bcl.AsyncInterfaces">
+      <HintPath>..\..\libs\net472\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>..\..\libs\net472\System.Memory.dll</HintPath>
+      <Private>true</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="WorkflowTriggerContractProbe.cs" />
+    <Compile Include="WorkflowTriggerBenchmarkProbe.cs" />
+    <Compile Include="WorkflowTriggerMailboxV1Fixture.g.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Amvar.Vision\Amvar.Vision.vs2019.net472.csproj">

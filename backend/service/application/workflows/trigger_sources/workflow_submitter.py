@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from time import monotonic
+from time import monotonic_ns, perf_counter
 
 from backend.contracts.workflows import TriggerEventContract, TriggerResultContract
 from backend.service.application.errors import ServiceError
@@ -17,8 +17,18 @@ from backend.service.application.workflows.runtime_service import WorkflowRuntim
 from backend.service.application.workflows.trigger_sources.input_binding_mapper import (
     InputBindingMapper,
 )
+from backend.service.application.workflows.trigger_sources.protocol_adapter import (
+    WorkflowTriggerDispatchResult,
+)
 from backend.service.application.workflows.trigger_sources.result_dispatcher import (
     WorkflowResultDispatcher,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    PreparedTriggerResult,
+    WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY,
+    TriggerResponsePlan,
+    build_workflow_output_delivery_plan,
+    require_trigger_response_plan,
 )
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
@@ -64,7 +74,7 @@ class WorkflowSubmitter:
 
     def submit_event(
         self, request: WorkflowTriggerSubmitRequest
-    ) -> TriggerResultContract:
+    ) -> WorkflowTriggerDispatchResult:
         """提交一次标准化触发事件。
 
         参数：
@@ -74,8 +84,8 @@ class WorkflowSubmitter:
         - TriggerResultContract：协议中立结果回执。
         """
 
-        submit_started_at = monotonic()
-        mapping_started_at = monotonic()
+        submit_started_at = perf_counter()
+        mapping_started_at = perf_counter()
         input_bindings = self.input_binding_mapper.map_input_bindings(
             trigger_source=request.trigger_source,
             trigger_event=request.trigger_event,
@@ -85,23 +95,28 @@ class WorkflowSubmitter:
         }
         execution_request = WorkflowRuntimeInvokeRequest(
             input_bindings=input_bindings,
-            execution_metadata=_build_execution_metadata(request),
+            execution_metadata=build_trigger_execution_metadata(request),
             timeout_seconds=request.trigger_source.reply_timeout_seconds,
         )
         response_outputs: dict[str, object] | None = None
         try:
             if request.trigger_source.submit_mode == "sync":
-                runtime_submit_started_at = monotonic()
+                runtime_submit_started_at = perf_counter()
                 invoke_result = self.runtime_service.invoke_workflow_app_runtime_with_response(
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
                     created_by=request.created_by,
+                    execution_acquisition_mode=(
+                        "reject"
+                        if _is_high_speed_trigger_source(request.trigger_source)
+                        else "wait"
+                    ),
                 )
                 timings["trigger_runtime_submit_ms"] = _elapsed_ms(runtime_submit_started_at)
                 workflow_run = invoke_result.workflow_run
                 response_outputs = dict(invoke_result.raw_outputs)
             else:
-                runtime_submit_started_at = monotonic()
+                runtime_submit_started_at = perf_counter()
                 workflow_run = self.runtime_service.create_workflow_run(
                     request.trigger_source.workflow_runtime_id,
                     execution_request,
@@ -118,25 +133,32 @@ class WorkflowSubmitter:
                     **timings,
                     "trigger_submit_total_ms": _elapsed_ms(submit_started_at),
                 }
-            return TriggerResultContract(
-                trigger_source_id=request.trigger_source.trigger_source_id,
-                event_id=request.trigger_event.event_id,
-                state="failed",
-                error_message=error.message,
-                metadata=metadata,
+            return WorkflowTriggerDispatchResult(
+                trigger_result=TriggerResultContract(
+                    trigger_source_id=request.trigger_source.trigger_source_id,
+                    event_id=request.trigger_event.event_id,
+                    state="failed",
+                    error_message=error.message,
+                    metadata=metadata,
+                )
             )
-        result_dispatch_started_at = monotonic()
+        result_dispatch_started_at = perf_counter()
         result = self.result_dispatcher.build_result(
             trigger_source=request.trigger_source,
             trigger_event=request.trigger_event,
             workflow_run=workflow_run,
             response_outputs=response_outputs,
+            prepared_trigger_result=(
+                invoke_result.prepared_trigger_result
+                if request.trigger_source.submit_mode == "sync"
+                else None
+            ),
         )
         timings["trigger_result_dispatch_ms"] = _elapsed_ms(result_dispatch_started_at)
         timings["trigger_submit_total_ms"] = _elapsed_ms(submit_started_at)
         if should_return_workflow_timing_metadata(workflow_run.metadata):
             timings.update(_read_workflow_run_timings(workflow_run.metadata))
-        return result.model_copy(
+        public_result = result.model_copy(
             update={
                 "metadata": _merge_trigger_result_diagnostics(
                     result.metadata,
@@ -149,9 +171,20 @@ class WorkflowSubmitter:
                 )
             }
         )
+        return WorkflowTriggerDispatchResult(
+            trigger_result=public_result,
+            prepared_trigger_result=(
+                PreparedTriggerResult.model_validate(
+                    invoke_result.prepared_trigger_result
+                )
+                if request.trigger_source.submit_mode == "sync"
+                and invoke_result.prepared_trigger_result is not None
+                else None
+            ),
+        )
 
 
-def _build_execution_metadata(
+def build_trigger_execution_metadata(
     request: WorkflowTriggerSubmitRequest,
 ) -> dict[str, object]:
     """构造传入 WorkflowRuntime 的执行元数据。"""
@@ -173,11 +206,64 @@ def _build_execution_metadata(
             "trigger_event_id": request.trigger_event.event_id,
         }
     )
+    response_plan = _require_current_trigger_response_plan(request.trigger_source)
+    if response_plan.attachment_delivery_kind == "zeromq-frame":
+        reply_seconds = float(response_plan.reply_timeout_seconds or 30)
+        metadata[WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY] = (
+            build_workflow_output_delivery_plan(
+                response_plan,
+                response_owner_kind="workflow-trigger-response",
+                response_owner_id=(
+                    f"zeromq:{request.trigger_source.trigger_source_id}:"
+                    f"{request.trigger_event.event_id}"
+                ),
+                deadline_ns=monotonic_ns() + int(reply_seconds * 1_000_000_000),
+            ).model_dump(mode="json")
+        )
+    elif response_plan.attachment_delivery_kind != "local-buffer":
+        metadata[WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY] = (
+            build_workflow_output_delivery_plan(response_plan).model_dump(mode="json")
+        )
     if request.trigger_event.trace_id is not None:
         metadata["trace_id"] = request.trigger_event.trace_id
     if request.trigger_event.idempotency_key is not None:
         metadata["idempotency_key"] = request.trigger_event.idempotency_key
     return metadata
+
+
+def _require_current_trigger_response_plan(
+    trigger_source: WorkflowTriggerSource,
+) -> TriggerResponsePlan:
+    """校验持久化计划仍与当前 TriggerSource 配置完全一致。"""
+
+    plan = require_trigger_response_plan(trigger_source.metadata)
+    raw_bindings = trigger_source.result_mapping.get("result_bindings")
+    configured_bindings = tuple(
+        item.strip()
+        for item in (
+            raw_bindings if isinstance(raw_bindings, list | tuple) else ()
+        )
+        if isinstance(item, str) and item.strip()
+    )
+    actual_bindings = tuple(item.binding_id for item in plan.result_bindings)
+    identity_matches = (
+        plan.trigger_source_id == trigger_source.trigger_source_id
+        and plan.trigger_kind == trigger_source.trigger_kind
+        and plan.workflow_runtime_id == trigger_source.workflow_runtime_id
+        and plan.submit_mode == trigger_source.submit_mode
+        and plan.result_mode == trigger_source.result_mode
+        and plan.ack_policy == trigger_source.ack_policy
+        and plan.reply_timeout_seconds == trigger_source.reply_timeout_seconds
+        and actual_bindings == configured_bindings
+    )
+    if not identity_matches:
+        from backend.service.application.errors import ResourceConflictError
+
+        raise ResourceConflictError(
+            "TriggerResponsePlan 与当前 TriggerSource 配置不一致",
+            details={"trigger_source_id": trigger_source.trigger_source_id},
+        )
+    return plan
 
 
 def _is_high_speed_trigger_source(trigger_source: WorkflowTriggerSource) -> bool:
@@ -190,7 +276,9 @@ def _is_high_speed_trigger_source(trigger_source: WorkflowTriggerSource) -> bool
     - bool：属于高速入口时返回 True。
     """
 
-    return trigger_source.trigger_kind.startswith("zeromq")
+    return trigger_source.trigger_kind == "local-shared-memory" or (
+        trigger_source.trigger_kind.startswith("zeromq")
+    )
 
 
 def _merge_trigger_result_timings(
@@ -270,4 +358,4 @@ def _read_workflow_run_node_timings(metadata: dict[str, object]) -> tuple[dict[s
 def _elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
-    return round((monotonic() - started_at) * 1000.0, 3)
+    return round((perf_counter() - started_at) * 1000.0, 3)

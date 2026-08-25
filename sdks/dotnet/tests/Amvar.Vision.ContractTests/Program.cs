@@ -1,18 +1,27 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
+using Amvar.Vision.SharedMemory;
 using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision.ContractTests
 {
     internal static class Program
     {
-        private static int Main()
+        private static int Main(string[] args)
         {
+            var probeResult = WorkflowTriggerContractProbe.TryRun(args);
+            if (probeResult.HasValue)
+            {
+                return probeResult.Value;
+            }
+
             try
             {
                 RunAsync().GetAwaiter().GetResult();
@@ -28,6 +37,9 @@ namespace Amvar.Vision.ContractTests
 
         private static async Task RunAsync()
         {
+            WorkflowTriggerMailboxV1Fixture.Verify();
+            VerifyZeroMqTriggerResultFrames();
+            VerifyLocalBufferMappingCache();
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
             await VerifyVersionArchiveRestoreAsync().ConfigureAwait(false);
@@ -35,6 +47,162 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyZeroMqTriggerResultFrames()
+        {
+            const string manifest = @"{
+                ""format_id"":""amvision.workflow-trigger-result.v1"",
+                ""trigger_source_id"":""trigger-source-1"",
+                ""event_id"":""event-1"",
+                ""state"":""succeeded"",
+                ""response_payload"":{
+                    ""results"":{""ok"":true},
+                    ""attachments"":[
+                        {""attachment_id"":""a-1"",""binding_id"":""image-a"",""item_index"":0,""payload_id"":""p-1""},
+                        {""attachment_id"":""a-2"",""binding_id"":""image-b"",""item_index"":0,""payload_id"":""p-1""}
+                    ],
+                    ""payloads"":[{
+                        ""payload_id"":""p-1"",
+                        ""delivery_kind"":""zeromq-frame"",
+                        ""frame_index"":1,
+                        ""media_type"":""image/png"",
+                        ""content_length"":12,
+                        ""checksum_algorithm"":""crc32"",
+                        ""checksum"":""1223ff19"",
+                        ""shape"":[]
+                    }]
+                }
+            }";
+            var content = Encoding.ASCII.GetBytes("result-image");
+            var result = AMVisionTriggerClient.ParseReply(new[]
+            {
+                Encoding.UTF8.GetBytes(manifest),
+                content
+            });
+
+            AssertEqual(2, result.ImageAttachments.Count, "ZeroMQ logical attachment count");
+            AssertEqual("image-a", result.ImageAttachments[0].BindingId, "first binding id");
+            AssertEqual("image/png", result.ImageAttachments[0].MediaType, "image media type");
+            Assert(
+                ReferenceEquals(result.ImageAttachments[0].Content, result.ImageAttachments[1].Content),
+                "duplicate logical attachments must share one physical byte[]");
+            AssertEqual("result-image", Encoding.ASCII.GetString(result.ImageAttachments[0].Content), "image bytes");
+
+            var failed = AMVisionTriggerClient.ParseReply(new[]
+            {
+                Encoding.UTF8.GetBytes(@"{
+                    ""format_id"":""amvision.workflow-trigger-result.v1"",
+                    ""trigger_source_id"":""trigger-source-1"",
+                    ""event_id"":""event-error"",
+                    ""state"":""failed"",
+                    ""error_message"":""bad envelope"",
+                    ""metadata"":{""error_code"":""invalid_request"",""error_details"":{}}
+                }")
+            });
+            AssertEqual("failed", failed.State, "unified failed result state");
+            AssertEqual("invalid_request", failed.Metadata["error_code"].Value<string>(), "unified failed result code");
+        }
+
+        private static void VerifyLocalBufferMappingCache()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "amvision-local-buffer-cache-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "pool.dat");
+            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            {
+                file.SetLength(4 * 1024 * 1024);
+            }
+
+            try
+            {
+                using (var cache = new LocalBufferMappingCache())
+                {
+                    var allocation = CreateAllocation(path, "epoch-1", "image-4k:0", 0, 1024 * 1024);
+                    using (var first = cache.Acquire(allocation))
+                    using (var second = cache.Acquire(allocation))
+                    {
+                        Assert(
+                            ReferenceEquals(first.View, second.View),
+                            "same physical allocation must reuse one mmap view");
+                    }
+
+                    using (var resized = cache.Acquire(
+                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
+                    {
+                        resized.View.Write(0, (byte)17);
+                        AssertEqual((byte)17, resized.View.ReadByte(0), "resized mapping access");
+                    }
+
+                    using (var slotZero = cache.Acquire(
+                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
+                    using (var slotOne = cache.Acquire(
+                        CreateAllocation(path, "epoch-1", "image-4k:1", 1024 * 1024, 512 * 1024)))
+                    using (var slotZeroAgain = cache.Acquire(
+                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
+                    {
+                        Assert(
+                            !ReferenceEquals(slotZero.View, slotOne.View),
+                            "different physical slots must use different mmap views");
+                        Assert(
+                            ReferenceEquals(slotZero.View, slotZeroAgain.View),
+                            "mapping another slot must not invalidate the first slot cache entry");
+                    }
+
+                    using (var nextEpoch = cache.Acquire(
+                        CreateAllocation(path, "epoch-2", "image-4k:0", 0, 512 * 1024)))
+                    {
+                        nextEpoch.View.Write(1, (byte)23);
+                        AssertEqual((byte)23, nextEpoch.View.ReadByte(1), "new epoch mapping access");
+                    }
+                }
+
+                var deferredCache = new LocalBufferMappingCache();
+                var active = deferredCache.Acquire(
+                    CreateAllocation(path, "epoch-3", "image-4k:1", 1024 * 1024, 512 * 1024));
+                deferredCache.Dispose();
+                active.View.Write(0, (byte)31);
+                AssertEqual((byte)31, active.View.ReadByte(0), "active mapping survives cache dispose request");
+                active.Dispose();
+                try
+                {
+                    deferredCache.Acquire(
+                        CreateAllocation(path, "epoch-3", "image-4k:1", 1024 * 1024, 512 * 1024));
+                    throw new InvalidOperationException("disposed mapping cache must reject acquire");
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+            finally
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        private static WorkflowTriggerAllocation CreateAllocation(
+            string path,
+            string brokerEpoch,
+            string bufferId,
+            long offset,
+            long size)
+        {
+            return new WorkflowTriggerAllocation
+            {
+                FormatId = "amvision.workflow-trigger-allocation.v1",
+                PoolName = "image-4k",
+                LeaseId = "lease-1",
+                BufferId = bufferId,
+                Path = path,
+                Offset = offset,
+                Size = size,
+                SlotCapacityBytes = 1024 * 1024,
+                BrokerEpoch = brokerEpoch,
+                Generation = 1,
+                WriterGuardPath = path + ".writer.guard"
+            };
         }
 
         private static async Task VerifyCreateSelectorAsync()

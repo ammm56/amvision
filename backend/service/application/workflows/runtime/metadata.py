@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from time import monotonic
+from time import perf_counter
 
 from backend.service.application.errors import ServiceError
 from backend.service.application.workflows.runtime.policies import (
@@ -178,7 +178,7 @@ def resolve_preview_retain_node_records_enabled(
 def elapsed_ms(started_at: float) -> float:
     """把 monotonic 起点转换为毫秒耗时。"""
 
-    return round((monotonic() - started_at) * 1000.0, 3)
+    return round((perf_counter() - started_at) * 1000.0, 3)
 
 
 def should_retain_runtime_payload(metadata: dict[str, object], key: str) -> bool:

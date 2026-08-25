@@ -170,7 +170,7 @@ def test_runtime_switches_versions_with_stable_ids_cas_rollback_and_run_provenan
                     "input_binding_mapping": {
                         "request_image_base64": {"source": "payload.image"}
                     },
-                    "result_mapping": {"result_binding": "http_response"},
+                    "result_mapping": {"result_bindings": ["http_response"]},
                 },
             )
             assert trigger_response.status_code == 201
@@ -201,7 +201,7 @@ def test_runtime_switches_versions_with_stable_ids_cas_rollback_and_run_provenan
                         "request_image_base64": {"source": "payload.image"},
                         "removed_input": {"source": "payload.removed"},
                     },
-                    "result_mapping": {"result_binding": "http_response"},
+                    "result_mapping": {"result_bindings": ["http_response"]},
                 },
             )
             assert invalid_trigger_response.status_code == 400
@@ -615,7 +615,7 @@ def test_breaking_contract_requires_override_and_never_breaks_trigger_mapping(
                     "input_binding_mapping": {
                         "request_image_base64": {"source": "payload.image"}
                     },
-                    "result_mapping": {"result_binding": "http_response"},
+                    "result_mapping": {"result_bindings": ["http_response"]},
                 },
             )
             assert trigger_response.status_code == 201
@@ -691,10 +691,10 @@ def test_breaking_contract_requires_override_and_never_breaks_trigger_mapping(
         mapping_error = mapping_blocked_response.json()["error"]
         assert mapping_error["code"] == "resource_conflict"
         assert mapping_error["details"]["mapping_issues"] == [
-            {
-                "trigger_source_id": "contract-stable-trigger",
-                "missing_output_binding_id": "http_response",
-            }
+                {
+                    "trigger_source_id": "contract-stable-trigger",
+                    "missing_output_binding_ids": ["http_response"],
+                }
         ]
         assert runtime_response.status_code == 200
         assert runtime_response.json()["revision_generation"] == 1
@@ -780,7 +780,7 @@ def test_startup_migrates_legacy_runtime_run_and_preserves_trigger_ids(
                 input_binding_mapping={
                     "request_image_base64": {"source": "payload.image"}
                 },
-                result_mapping={"result_binding": "http_response"},
+                result_mapping={"result_bindings": ["http_response"]},
                 created_at="2026-08-01T00:00:00Z",
                 updated_at="2026-08-01T00:00:00Z",
             )

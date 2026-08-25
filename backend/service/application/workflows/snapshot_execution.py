@@ -6,16 +6,22 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Callable
 from threading import Lock
+from time import perf_counter
 from uuid import uuid4
 import logging
 
+from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
 from backend.contracts.workflows.workflow_graph import (
     FLOW_BINDING_DIRECTION_INPUT,
     FLOW_BINDING_DIRECTION_OUTPUT,
     FlowApplication,
     WorkflowGraphTemplate,
 )
-from backend.nodes import ExecutionImageRegistry
+from backend.nodes import (
+    ExecutionImageRegistry,
+    prepare_workflow_image_access_timings,
+    read_workflow_image_access_timings,
+)
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.application.errors import ServiceConfigurationError, ServiceError
 from backend.service.application.runtime.resource_scope import (
@@ -36,6 +42,10 @@ from backend.service.application.workflows.graph_executor import (
 )
 from backend.service.application.workflows.execution.execution_control import (
     prepare_execution_control_metadata,
+)
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    PreparedTriggerResult,
+    prepare_trigger_result_before_cleanup,
 )
 from backend.service.application.workflows.execution.node_pack_timeout import (
     build_node_pack_timeout_policy_index,
@@ -60,6 +70,28 @@ from backend.service.application.workflows.model_sessions import (
 
 LOGGER = logging.getLogger(__name__)
 _MAX_VALIDATED_SNAPSHOT_PAIRS = 16
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """返回适合诊断输出的非负毫秒耗时。"""
+
+    return round(max(0.0, perf_counter() - started_at) * 1_000, 3)
+
+
+def _sum_response_image_encode_ms(
+    node_records: tuple[WorkflowNodeExecutionRecord, ...],
+) -> float:
+    """汇总显式 Image Encode 节点耗时；未编码时返回零。"""
+
+    return round(
+        sum(
+            float(record.duration_ms)
+            for record in node_records
+            if record.node_type_id == "core.io.image-encode"
+            and isinstance(record.duration_ms, int | float)
+        ),
+        3,
+    )
 
 
 @dataclass(frozen=True)
@@ -105,6 +137,8 @@ class WorkflowSnapshotExecutionResult:
     outputs: dict[str, object] = field(default_factory=dict)
     template_outputs: dict[str, object] = field(default_factory=dict)
     node_records: tuple[WorkflowNodeExecutionRecord, ...] = ()
+    prepared_trigger_result: PreparedTriggerResult | None = None
+    timings: dict[str, float] = field(default_factory=dict)
 
 
 class SnapshotExecutionService:
@@ -232,6 +266,7 @@ class SnapshotExecutionService:
             execution_metadata_payload
         )
         prepare_execution_control_metadata(execution_metadata_payload)
+        prepare_workflow_image_access_timings(execution_metadata_payload)
         execution_metadata_payload.setdefault("project_id", request.project_id)
         execution_metadata_payload.setdefault("application_id", request.application_id)
         execution_metadata_payload.setdefault("workflow_run_id", uuid4().hex)
@@ -262,6 +297,7 @@ class SnapshotExecutionService:
             )
         execution_error: Exception | None = None
         try:
+            workflow_execute_started_at = perf_counter()
             graph_execution_result = WorkflowGraphExecutor(
                 registry=self.runtime_registry,
                 node_pack_timeout_policies=self.node_pack_timeout_policies,
@@ -277,21 +313,44 @@ class SnapshotExecutionService:
                     frozenset((target_node_id,)) if target_node_id else frozenset()
                 ),
             )
+            binding_outputs = (
+                {}
+                if target_node_id
+                else _build_binding_outputs(
+                    application=application,
+                    template_outputs=graph_execution_result.outputs,
+                )
+            )
+            workflow_execute_ms = _elapsed_ms(workflow_execute_started_at)
+            output_handoff_started_at = perf_counter()
+            prepared_trigger_result = prepare_trigger_result_before_cleanup(
+                outputs=binding_outputs,
+                output_payload_types=_build_binding_output_payload_types(
+                    application=application,
+                    template=full_template,
+                ),
+                execution_metadata=execution_metadata_payload,
+                dataset_storage=self.dataset_storage,
+                local_buffer_client=self.runtime_context.local_buffer_reader,
+            )
+            output_handoff_ms = _elapsed_ms(output_handoff_started_at)
             snapshot_result = WorkflowSnapshotExecutionResult(
                 project_id=request.project_id,
                 application_id=request.application_id,
                 template_id=graph_execution_result.template_id,
                 template_version=graph_execution_result.template_version,
-                outputs=(
-                    {}
-                    if target_node_id
-                    else _build_binding_outputs(
-                        application=application,
-                        template_outputs=graph_execution_result.outputs,
-                    )
-                ),
+                outputs=binding_outputs,
                 template_outputs=dict(graph_execution_result.outputs),
                 node_records=graph_execution_result.node_records,
+                prepared_trigger_result=prepared_trigger_result,
+                timings={
+                    "workflow_execute_ms": workflow_execute_ms,
+                    "output_handoff_ms": output_handoff_ms,
+                    "response_image_encode_ms": _sum_response_image_encode_ms(
+                        graph_execution_result.node_records
+                    ),
+                    **read_workflow_image_access_timings(execution_metadata_payload),
+                },
             )
         except Exception as exc:
             execution_error = exc
@@ -550,11 +609,28 @@ def _cleanup_local_buffer_lease(
             }
         ]
     pool_name = cleanup.metadata.get("pool_name")
+    ownership_receipt_payload = cleanup.metadata.get("ownership_receipt")
     try:
-        release(
-            cleanup.resource_id,
-            pool_name=pool_name if isinstance(pool_name, str) else None,
-        )
+        if isinstance(ownership_receipt_payload, dict):
+            conditional_release = getattr(
+                local_buffer_reader,
+                "conditional_release",
+                None,
+            )
+            if not callable(conditional_release):
+                raise ServiceConfigurationError(
+                    "当前 LocalBufferBroker reader 不支持 identity-fenced release"
+                )
+            conditional_release(
+                receipt=LeaseOwnershipReceipt.model_validate(
+                    ownership_receipt_payload
+                )
+            )
+        else:
+            release(
+                cleanup.resource_id,
+                pool_name=pool_name if isinstance(pool_name, str) else None,
+            )
     except ServiceError as exc:
         return [
             {
@@ -737,6 +813,23 @@ def _build_binding_outputs(
 
     return {
         binding.binding_id: template_outputs[binding.template_port_id]
+        for binding in application.bindings
+        if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT
+    }
+
+
+def _build_binding_output_payload_types(
+    *,
+    application: FlowApplication,
+    template: WorkflowGraphTemplate,
+) -> dict[str, str]:
+    """按 application output binding 读取已发布 template payload type。"""
+
+    template_output_types = {
+        item.output_id: item.payload_type_id for item in template.template_outputs
+    }
+    return {
+        binding.binding_id: template_output_types[binding.template_port_id]
         for binding in application.bindings
         if binding.direction == FLOW_BINDING_DIRECTION_OUTPUT
     }

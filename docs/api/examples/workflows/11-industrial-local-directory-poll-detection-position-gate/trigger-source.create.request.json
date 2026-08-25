@@ -43,8 +43,7 @@
                                                          }
                               },
     "result_mapping":  {
-                           "result_binding":  "batch_record",
-                           "result_mode":  "accepted-then-query"
+                           "result_bindings":  ["batch_record"]
                        },
     "default_execution_metadata":  {
                                        "scenario":  "industrial-local-directory-poll-detection-position-gate",

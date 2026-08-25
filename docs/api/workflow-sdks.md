@@ -14,6 +14,7 @@ Python、Go 和 C SDK 当前没有实现，不能作为已交付能力使用。�
 - 同步 invoke、异步 run、Run/Event 查询和取消
 - TriggerSource 查询、启停与健康
 - ZeroMQ 图片、BGR24、Base64 和事件调用
+- 本机共享内存图片、BGR24、Mono8、Bitmap、文件和 Base64 同步调用
 - Model Deployment runtime 控制与同步/异步推理
 - `Config/config_*.json` 加载和按 name/id 调用
 
@@ -59,19 +60,21 @@ SDK BGR24/image bytes
   → Workflow Runtime
 ```
 
-SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和后端非 2xx/错误 reply 必须保留原始状态与错误详情，调用方自行决定现场处置；SDK 不隐藏队列或无限重试。
+ZeroMQ SDK 不直接操作 mmap 文件或 slot。timeout、transport error 和后端非 2xx/错误 reply 必须保留原始状态与错误详情，调用方自行决定现场处置；SDK 不隐藏队列或无限重试。
 
-当前 ZeroMQ reply 只有一帧 JSON。图片结果的版本化 multipart reply 尚未实现，不能把当前 SDK 的“接收 multipart”能力误写成已经支持图片附件。
+当前 ZeroMQ reply 统一为 `amvision.workflow-trigger-result.v1` multipart：Frame 0 是 JSON manifest，后续 0 到 N 帧是按完整物理 identity 去重的图片 payload。SDK 严格校验 frame 集合、长度和 checksum；多个逻辑 attachment 可以共享同一个物理 frame。
 
-## 尚未交付的本机共享内存 Trigger
+## 本机共享内存 Trigger
 
-项目已经接受新增独立 `local-shared-memory` TriggerSource 的架构决策，但 binary protocol 和代码尚未完成，不能作为当前 SDK capability 使用。完成后的新入口会由 SDK 通过受控 External LocalBuffer Writer Lease 直接写入图片，并以全局 Workflow Trigger mailbox 传递参数和结果；它不会改变或替代现有 ZeroMQ API。
+独立 `local-shared-memory` TriggerSource 的 binary protocol、External LocalBuffer Writer Lease、全局 Workflow Trigger mailbox、结果 reader 生命周期和 .NET SDK 已实现，并已通过性能矩阵、10,000 次混合 soak、真实 Workflow/Deployment/Trigger 业务链和故障恢复门禁。它与 ZeroMQ API 并列，不改变或替代 ZeroMQ。
 
-新入口必须同时完成每 lease writer/reader guard、异常 writer 隔离、真实 Runtime execution token、公开输出图片 owner handoff、ACK/deadline 回收和 Python/.NET binary contract 门禁。设计边界见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，实施步骤见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。在对应门禁全部通过前，SDK 不得生成该 transport 的可用配置或自动回退到它。
+现有实现已完成每 lease writer/reader guard、异常 writer 隔离、真实 Runtime execution token、公开输出图片 owner handoff、ACK/deadline 回收和 Python/.NET binary contract 门禁。设计边界见 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)，完整门禁见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)。SDK 不在两种 transport 之间自动 fallback。
 
-v1 固定为同步调用、每次一张输入图片、最多 512 KiB 结构化参数和 0 到 N 张输出图片。SDK 发布 REQUEST 后立即释放 writer guard；后端随后取得 guard、校验并 commit。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
+`SharedMemoryTriggerRequest.EnableTimings` 默认是 `false`。显式开启后，返回结果的 `Timings` 提供 `SdkConvertToBgr24Ms`、`SdkBase64DecodeMs`、`SdkWriteLocalBufferMs`、`SdkChecksumMs`、`InvokeReturnMs`、`AttachmentAccessMs` 和 `DisposeAckMs`。`SdkChecksumMs` 只记录结果 attachment 校验；trusted-local 输入通过 writer guard 与 descriptor publication 保证一致性，不做 full-image CRC。`InvokeReturnMs` 截止结果对象可返回；零复制 attachment 的读取持有耗时与最终 ACK 只有在结果 `Dispose`/`DisposeAsync` 后才完整。诊断关闭时不为图片写入热路径创建这些计时。
 
-### 计划中的统一结果模型
+v1 固定为同步调用、每次一张输入图片、最多 512 KiB 结构化参数和 0 到 N 张输出图片。SDK 必须先完成精确长度写入、销毁写 view并释放 writer guard，随后才发布 REQUEST；后端取得 guard并校验 receipt/epoch/generation/owner/deadline，在同一 Broker 锁内原子发布 lease与首次 owner transfer。SDK 不在 Workflow 执行期间继续持有输入 writer guard，也不自行写 Broker owner、lease state 或 descriptor FREE。
+
+### 统一结果模型
 
 Workflow 节点决定返回表示：
 

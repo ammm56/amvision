@@ -166,6 +166,25 @@ class InvalidRequestError(ServiceError):
         super().__init__(message, code="invalid_request", status_code=400, details=details)
 
 
+class EphemeralImageRefInJsonResultError(ServiceError):
+    """表示普通 JSON binding 中夹带了执行期临时图片引用。"""
+
+    def __init__(
+        self,
+        message: str = "普通 JSON 结果不能包含执行期临时图片引用",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化稳定的结果契约错误。"""
+
+        super().__init__(
+            message,
+            code="ephemeral_image_ref_in_json_result",
+            status_code=400,
+            details=details,
+        )
+
+
 class OperationTimeoutError(ServiceError):
     """表示一次同步操作在给定时限内未完成。"""
 
@@ -235,6 +254,82 @@ class ResourceConflictError(ServiceError):
         """初始化资源冲突错误。"""
 
         super().__init__(message, code="resource_conflict", status_code=409, details=details)
+
+
+class WorkflowRuntimeBusyError(ServiceError):
+    """表示目标 Workflow Runtime 当前没有可用执行槽位。"""
+
+    def __init__(
+        self,
+        message: str = "Workflow Runtime 当前正在执行其他请求",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化可稳定映射到 Trigger busy 响应的错误。"""
+
+        super().__init__(
+            message,
+            code="workflow_runtime_busy",
+            status_code=409,
+            details=details,
+        )
+
+
+class WorkflowTriggerSourceBusyError(ServiceError):
+    """表示同一 TriggerSource 已有一条尚未完成协议交付的请求。"""
+
+    def __init__(
+        self,
+        message: str = "TriggerSource 当前已有在途请求",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化 TriggerSource 单在途容量错误。"""
+
+        super().__init__(
+            message,
+            code="trigger_source_busy",
+            status_code=409,
+            details=details,
+        )
+
+
+class WorkflowTriggerExecutorBusyError(ServiceError):
+    """表示 Workflow Trigger 有界执行器当前没有可用执行 permit。"""
+
+    def __init__(
+        self,
+        message: str = "Workflow Trigger 执行器当前已满载",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化不排队的执行器容量错误。"""
+
+        super().__init__(
+            message,
+            code="trigger_executor_busy",
+            status_code=409,
+            details=details,
+        )
+
+
+class ZeroMqTransportCapacityError(ServiceError):
+    """表示 ZeroMQ 输出传输生命周期表当前没有可用容量。"""
+
+    def __init__(
+        self,
+        message: str = "ZeroMQ 图片结果传输容量已满",
+        *,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """初始化发送前可稳定返回的容量错误。"""
+
+        super().__init__(
+            message,
+            code="zeromq_transport_capacity_exhausted",
+            status_code=409,
+            details=details,
+        )
 
 
 class UnsupportedDatasetFormatError(ServiceError):

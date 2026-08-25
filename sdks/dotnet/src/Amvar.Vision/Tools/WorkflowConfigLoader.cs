@@ -68,7 +68,9 @@ namespace Amvar.Vision.Tools
         {
             "name",
             "trigger_source_id",
-            "zero_mq"
+            "trigger_kind",
+            "zero_mq",
+            "local_shared_memory"
         };
 
         /// <summary>
@@ -77,6 +79,18 @@ namespace Amvar.Vision.Tools
         private static readonly ISet<string> ZeroMqPropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "bind_endpoint",
+            "default_input_binding",
+            "max_image_bytes",
+            "timeout_seconds"
+        };
+
+        /// <summary>
+        /// local_shared_memory 节点允许的调用字段。
+        /// </summary>
+        private static readonly ISet<string> LocalSharedMemoryPropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "buffers_root",
+            "route_generation",
             "default_input_binding",
             "max_image_bytes",
             "timeout_seconds"
@@ -372,12 +386,35 @@ namespace Amvar.Vision.Tools
                 ValidateObjectProperties(item, TriggerSourcePropertyNames, itemPath);
 
                 var jsonObject = (JObject)item;
-                if (!jsonObject.TryGetValue("zero_mq", StringComparison.OrdinalIgnoreCase, out var zeroMqToken))
+                var triggerKind = jsonObject.Value<string>("trigger_kind") ?? string.Empty;
+                if (string.Equals(triggerKind, "zeromq-topic", StringComparison.Ordinal))
                 {
-                    throw new InvalidOperationException($"{itemPath}.zero_mq is required.");
+                    if (!jsonObject.TryGetValue("zero_mq", StringComparison.OrdinalIgnoreCase, out var zeroMqToken)
+                        || jsonObject.TryGetValue("local_shared_memory", StringComparison.OrdinalIgnoreCase, out _))
+                    {
+                        throw new InvalidOperationException($"{itemPath} must contain only zero_mq.");
+                    }
+
+                    ValidateObjectProperties(zeroMqToken, ZeroMqPropertyNames, $"{itemPath}.zero_mq");
+                    continue;
                 }
 
-                ValidateObjectProperties(zeroMqToken, ZeroMqPropertyNames, $"{itemPath}.zero_mq");
+                if (string.Equals(triggerKind, "local-shared-memory", StringComparison.Ordinal))
+                {
+                    if (!jsonObject.TryGetValue("local_shared_memory", StringComparison.OrdinalIgnoreCase, out var localToken)
+                        || jsonObject.TryGetValue("zero_mq", StringComparison.OrdinalIgnoreCase, out _))
+                    {
+                        throw new InvalidOperationException($"{itemPath} must contain only local_shared_memory.");
+                    }
+
+                    ValidateObjectProperties(
+                        localToken,
+                        LocalSharedMemoryPropertyNames,
+                        $"{itemPath}.local_shared_memory");
+                    continue;
+                }
+
+                throw new InvalidOperationException($"{itemPath}.trigger_kind is not supported by this SDK: {triggerKind}.");
             }
         }
 
