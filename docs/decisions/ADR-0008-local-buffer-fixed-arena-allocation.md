@@ -16,6 +16,8 @@
 
 LocalBuffer 承担图片 bytes 和短期生命周期，不承担图片格式识别、解码、业务排队或持久化。分配策略应只依据精确 `content_length`，不依据分辨率名称或 media type。
 
+主 LocalBuffer 是 HTTP/ZeroMQ/local-shared-memory 输入进入同步处理后的统一图片数据面，也承载 Workflow 节点间图片、同步 Deployment 输入与结果图、Preview运行期图片和节点新生成的图片。跨边界公开值使用 BufferRef/FrameRef；节点内部一次调用内的临时矩阵和模型tensor不属于公开传输契约。异步跨重启与长期保存仍使用ObjectStore。
+
 ## 决策
 
 ### 1. 每个 Broker owner 使用一个固定容量 arena
@@ -26,16 +28,15 @@ backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小
 
 | 参数 | 默认值 | 含义 |
 | --- | ---: | --- |
-| `arena_id` | `main` | 配置包与引用共同使用的稳定 arena 标识 |
+| `arena_id` | `local-buffer-main` | 配置包与引用共同使用、跨 Broker owner 唯一的稳定 arena 标识 |
 | `arena_size_bytes` | 2 GiB | 主图片 arena 总容量 |
 | `min_block_size_bytes` | 1 MiB | buddy allocator 最小块 |
 | `max_allocation_bytes` | 1 GiB | 单次连续分配上限 |
 | `huge_reserve_bytes` | 0 | 默认不为超大图硬保留容量 |
 | `reader_guard_slots` | 64 | 每个 descriptor 的并发只读 guard 数 |
-| `max_32bit_view_bytes` | 256 MiB | 32-bit .NET 进程允许建立的单 view 上限 |
 | `flush_on_write` | `false` | 临时图片写入不主动同步 flush |
 
-`min_block_size_bytes` 必须是 2 的幂；`arena_size_bytes / min_block_size_bytes` 与 `max_allocation_bytes / min_block_size_bytes` 必须是 2 的幂，且 max 不得超过 arena。当前 hard reserve 为保持单一简单语义，只允许 `0` 或 `max_allocation_bytes`；非零 reserve 固定在 arena 高地址端，剩余 general 区也必须形成完整 buddy root。配置不合法时启动失败，不能静默修正。
+`min_block_size_bytes` 必须是 2 的幂；`arena_size_bytes / min_block_size_bytes` 与 `max_allocation_bytes / min_block_size_bytes` 必须是 2 的幂，且 max 不得超过 arena。当前 hard reserve 为保持单一简单语义，只允许 `0` 或 `max_allocation_bytes`；非零 reserve 固定在 arena 高地址端。general 区由一个或多个大小等于 `max_allocation_bytes` 的顶级 buddy root 组成，不能跨 root 合并。配置不合法时启动失败，不能静默修正。
 
 ### 2. size class 是 allocator order，不是固定 pool
 
@@ -60,6 +61,8 @@ backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小
 
 1 GiB 分配在默认 `huge_reserve_bytes=0` 时属于“容量支持但不保证任意碎片状态下成功”。若现场必须保证随时可分配 1 GiB，必须显式配置 1 GiB hard reserve。hard reserve 是一个独立 buddy root，只接受 rounded capacity 等于该 reserve 大小的请求；普通 lease、较小请求和 frame channel 不能借用。因此 2 GiB arena 开启 1 GiB reserve 后，普通工作负载只剩 1 GiB。服务不得通过压缩、移动活动 block、临时文件或等待队列掩盖连续空间不足。
 
+general 区采用确定性的低地址聚集策略：从最小可容纳 order 向上查找，选择最低 offset 的 free block；split 时继续使用低地址 child，把高地址 child 放回按 offset 升序维护的 free list。该策略优先保留高地址顶级 root 的大连续 extent，使相同请求序列得到一致分配结果和可复现碎片指标。
+
 ### 4. 元数据持久化，free list 可重建
 
 arena 数据与 allocator 元数据分文件保存。descriptor 数量固定为 `arena_size_bytes / min_block_size_bytes`，默认 2048；descriptor 是分配状态、identity 和恢复的唯一持久化事实。buddy free list 只存在于 Broker 进程内，启动时从通过 guard/epoch 校验的 descriptor 状态重建，不持久化链表指针。
@@ -70,7 +73,7 @@ descriptor 保存固定长度字段：state、arena id、descriptor index/genera
 
 每个 descriptor 固定拥有一个 publication guard、一个 writer guard 和 64 个 reader guard byte ranges。公开 `BufferRef.v1` 只负责定位和数据表示；权威 owner、deadline、guard 和回收权限只存在于服务端私有 `LeaseOwnershipReceipt`。
 
-外部 SDK 取得 allocation 后必须先取得 writer guard，再在 publication guard 内重新校验 broker epoch、descriptor generation、lease、owner、offset、capacity 和 deadline，成功后才创建 writable view。Broker 在 WRITING/ACTIVE 回收时先发布 `REVOKING`，且只有确认 writer/reader guard 全部释放后才能提高 generation、归还 block并执行 buddy merge。Broker 重启不能让旧 SDK 在新 generation 上继续写入。
+外部 SDK 取得 allocation 后必须先取得 writer guard，再在 publication guard 内重新校验 broker epoch、descriptor generation、lease、owner、offset、capacity 和 deadline，成功后才创建 writable view。Broker 在 WRITING/ACTIVE 回收时先发布 `REVOKING`，随后按 writer、reader index 升序非阻塞取得并持续持有全部外部 guards；取得成功后才进入 allocator lock 与 publication guard 完成最终 identity/state 校验、generation 提升、FREE publication 和 buddy merge，最后释放外部 guards。无法取得全部 guards 时释放本次已取得的 guards并保持 `REVOKING`，超过 grace 后进入 `QUARANTINED`。Broker 重启不能让旧 SDK 在新 generation 上继续写入。
 
 ### 6. BufferRef 与 SDK 映射按 extent 工作
 
@@ -88,11 +91,13 @@ descriptor 保存固定长度字段：state、arena id、descriptor index/genera
 
 新 `BufferRef.v1` 与 Trigger allocation 不再传输可由请求选择的 `path`，SDK/worker只按 `arena_id` 从固定配置解析路径；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 分别由语义明确的 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id` 取代。`buffer_id` 如为日志展示保留，也不得参与权威回收。最终实现不保留旧字段双读。
 
-.NET SDK 缓存 arena 文件 handle，不按固定 slot 长期缓存 view。普通调用按当前 extent 建立精确 view并随 lease 释放；frame channel 可以按稳定 descriptor 集、generation、offset 和 capacity 复用 view。32-bit 宿主不是一律禁止，但单 view 超过 `max_32bit_view_bytes` 时必须在写入前明确拒绝；1 GiB 正式路径要求 64-bit 进程。
+.NET SDK 缓存 arena 文件 handle，不按固定 slot 长期缓存 view。普通调用按当前 extent 建立精确 view并随 lease 释放；frame channel 可以按稳定 descriptor 集、generation、offset 和 capacity 复用 view。backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 统一要求 64-bit；.NET SDK 固定使用 x64 目标并在启动时校验进程架构，不提供 32-bit 容量协商、错误分支或降级路径。
 
 ### 7. frame channel 使用预留 extent
 
-frame channel 创建时必须给出 `frame_count` 和 `max_frame_content_length`。Broker 按每帧最小可容纳 order 预留固定 descriptor/extent，通道存续期间容量计入 `frame_reserved_capacity_bytes`。帧切换仍使用 generation/sequence/guard publication，不能退回按分辨率选择 pool。
+frame channel 创建时必须给出 `frame_count` 和 `max_frame_content_length`。Broker 在一个 allocator 临界区内按每帧最小可容纳 order 预留全部 descriptor/extent，全部成功并初始化后才发布 channel；第 N 个 extent 分配或初始化失败时必须回滚本次已保留的全部 extent，外部不能观察到半创建 channel。通道存续期间容量计入 `frame_reserved_capacity_bytes`。帧切换仍使用 generation/sequence/guard publication，不能退回按分辨率选择 pool。
+
+同步结果图片在 RESPONSE publication前必须以batch CAS把owner和deadline一并切换到response owner与独立ACK deadline。成功、失败、deadline、busy和capacity等所有可读取RESPONSE都获得ACK deadline；只有不发布响应的CANCELLED不需要。任何batch handoff失败都不能发布部分图片引用。
 
 ### 8. 满载立即失败
 
@@ -102,10 +107,11 @@ frame channel 创建时必须给出 `frame_count` 和 `max_frame_content_length`
 - 连续块不足；
 - hard reserve 不可用；
 - 单请求超过配置上限；
-- 32-bit view 超限；
 - layout/identity/guard 状态异常。
 
 descriptor 数量按最小 block 数配置，正常情况下不会先于 arena 容量耗尽。descriptor 提前耗尽属于 allocator 完整性错误，不能当作普通满载。
+
+health按general与hard reserve分域报告free、reserved-writing、active、frame-reserved、REVOKING和QUARANTINED容量，并强制满足分域总量与`arena_total = general_total + huge_reserved_total`守恒。external fragmentation只按general free计算；守恒失败时停止新allocation并报告degraded，不能继续带病分配。
 
 ### 9. 文件根目录保持统一但范围不扩大
 
@@ -114,7 +120,7 @@ descriptor 数量按最小 block 数配置，正常情况下不会先于 arena �
 ```text
 data/buffers/
 ├─ local-buffer/
-│  ├─ arena-main.mmap
+│  ├─ arena-main.mmap              arena_id=local-buffer-main
 │  ├─ allocator-main.mmap
 │  ├─ arena-main.guard
 │  └─ arena-main.owner.lock
@@ -124,6 +130,8 @@ data/buffers/
 ```
 
 训练遥测继续使用 `data/runtime/training-telemetry/`，不属于图片数据面迁移范围。
+
+`arena_id` 必须在一次安装内跨 Broker owner 唯一且不能使用 PID 等临时值。主 Broker 固定使用 `local-buffer-main`；当前单一 inference daemon 私有 owner 使用 `inference-daemon-private`；未来存在多个私有 owner 时使用 `inference-daemon-private-<stable-daemon-id>`。公开 locator 只用该 id 查询受信任配置映射，不能根据调用方输入拼接路径。
 
 ## 未采用方案
 

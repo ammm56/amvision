@@ -54,6 +54,7 @@ Alembic
 
 ## 边界
 
+- 项目运行时只支持64-bit进程；当前正式发行profile为Windows x64。backend、worker、Broker、独立运行时和仓库内.NET SDK不提供32-bit兼容、容量协商或降级路径。
 - backend-service 不消费后台队列。
 - 源码开发由 `python -m backend.workers.supervisor` 注入 Worker Topology；不要直接运行低层 `backend.workers.main`。
 - 生产由发行包 full Supervisor 管理 daemon、service 和 Worker Profile。

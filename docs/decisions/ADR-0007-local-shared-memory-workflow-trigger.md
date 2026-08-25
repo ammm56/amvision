@@ -127,7 +127,7 @@ worker 对需要交付的 lease 执行批量全量校验和 handoff，并返回 
 
 一次响应包含多个图片引用时必须先把全部来源规范化，再批量全量校验、全量 handoff，不能产生部分成功。相同 lease 的重复引用只 handoff 一次。输入图未被返回时可以在图执行结束、输出已经稳定后先行条件释放，以便为新 output lease 让出 slot；任一 staging、分配或 handoff 失败时返回 `local_buffer_output_capacity_exhausted` 或对应结构化错误，并清理全部暂存资源。异步任务或需要长期保存的输出继续在持久化边界复制到 ObjectStore，不持久化短期 `BufferRef`。
 
-Runtime execution token 在图执行和 output handoff 完成后即可释放；TriggerSource 单在途 permit 必须保持到协议责任已经安全结束或原子移交。local-shared-memory 的零复制结果由 SDK 结果对象持有 reader guard，只有 `Dispose`/`DisposeAsync` 先使 view 失效并释放全部 guard 后才发布 ACK；JSON-only 或已经复制到 SDK 自有 `byte[]` 的结果可以提前 ACK。ZeroMQ 在全部已提交 physical frame tracker 完成，或未完成 Frame 已进入 adapter 进程内的 transport-lifetime registry 后释放 source permit。socket send 失败本身不代表 lease 可复用，不能在发布 RESPONSE 或关闭 socket 时直接结束全部生命周期责任。
+Runtime execution token 在图执行和 output handoff 完成后即可释放；TriggerSource 单在途 permit 必须保持到协议责任已经安全结束或原子移交。local-shared-memory 的成功、失败、deadline、busy和capacity等所有可读取RESPONSE都有独立ACK deadline；成功图片结果必须先批量把output lease owner/deadline切到response owner与同一ACK deadline，最后才发布RESPONSE。零复制结果由SDK结果对象持有reader guard，只有`Dispose`/`DisposeAsync`先使view失效并释放全部guard后才发布ACK；JSON-only或已经复制到SDK自有`byte[]`的结果可以提前ACK。显式取消且不发布响应的CANCELLED不需要ACK deadline。ZeroMQ在全部已提交physical frame tracker完成，或未完成Frame已进入adapter进程内的transport-lifetime registry后释放source permit。socket send失败本身不代表lease可复用，不能在发布RESPONSE或关闭socket时直接结束全部生命周期责任。
 
 ### 9. 幂等只重放稳定结果
 
@@ -150,7 +150,7 @@ backend-service 只有取得 Workflow mailbox owner lock 的进程才能创建�
 
 v1 的 PREPARE 必须给出最终 `content_length`，SDK 获得的 view 长度与之完全相等。BGR24、encoded byte array、File 和 Base64 还原后的 bytes 都能在 PREPARE 前确定精确长度，因此 v1 不保留 `capacity + written_size` 的可变长度语义。
 
-SDK 只提交相对 `timeout_ms`。backend-service 根据已启用 TriggerSource 快照校验并建立本进程 monotonic deadline，Workflow 使用剩余时间执行；不同进程不比较绝对 monotonic 值。输入 lease TTL 覆盖写入、admission、Workflow 和 cleanup grace，输出 lease TTL 覆盖 response 读取、ACK 和 cleanup grace。backend-service 或 Broker 重启时通过新 epoch 失效旧请求。
+SDK 只提交相对 `timeout_ms`。backend-service 根据已启用 TriggerSource 快照校验并建立本进程 monotonic deadline，PREPARE、写图、admission、Workflow、结果构建/序列化/压缩、page分配、output handoff和成功RESPONSE publication使用同一剩余预算；不同进程不比较绝对 monotonic 值。输入lease TTL覆盖请求与cleanup grace，输出lease在RESPONSE前更新为独立ACK deadline。binary schema使用固定`cancel_reason=none|request_timeout|explicit|client_shutdown`，不以单一bit混淆取消来源。backend-service或Broker重启时通过新epoch失效旧请求。
 
 ### 12. 路由和高速记录策略由服务端固定
 

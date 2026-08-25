@@ -10,6 +10,7 @@
 - local-shared-memory Trigger 的配置、health、前端入口与故障回收；
 - LocalBuffer 从固定分辨率 pool/slot 迁移到固定总容量 arena + buddy allocator；
 - Python/.NET SDK、BufferRef、frame channel、配置、已有开发数据和验证门禁的原子迁移。
+- HTTP/ZeroMQ/local-shared-memory 输入、Workflow 节点间图片、Deployment 推理输入与结果图、Preview 和异步任务物化边界统一使用 LocalBuffer 的项目级规则。
 
 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 继续定义 Trigger 产品边界，[ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 定义 LocalBuffer 分配模型。旧的[本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)保留已交付协议细节和历史性能证据，但不再作为下一阶段完成状态来源；与本文冲突时以本文和最新 ADR 为准。
 
@@ -30,6 +31,7 @@
 | LocalBuffer | 固定 `image-4k/image-1080p/image-640x640` pool/slot，默认进入 `image-4k` | 与目标容量模型冲突，P0 重构 |
 | BufferRef | 没有 arena descriptor locator 与 allocation capacity | 新 allocator 前置契约缺口 |
 | .NET mapping | 按 path、epoch、offset 缓存固定 slot capacity view | 不能直接适配动态 extent |
+| .NET 进程架构 | 当前 SDK、Console 和 contract tests 仍是 AnyCPU，mapping 代码仍保留 32-bit 说明 | 与项目 64-bit-only 边界冲突，阶段 9 原子改为 x64 |
 | frame channel | 只声明 frame 数量，不声明每帧最大长度 | 不能确定预留 order |
 
 现有协议、owner handoff、reader/writer guard、统一 Runtime gate、LocalBuffer 图片输出和 ZeroMQ transport-lifetime registry 的主体设计保留。此次不是重写 Workflow 引擎或 ZeroMQ Trigger。
@@ -44,6 +46,26 @@
 6. 外部 SDK 可以写受限 view，但不能修改 descriptor、owner、deadline 或 allocator 元数据。
 7. 当前处于开发阶段，协议和配置一次性原地升级；后端、前端、数据库、仓库内 SDK、fixture 和开发数据同批迁移，删除旧实现与双读代码。
 8. 所有正式图片数据面 mmap、guard 和 owner lock 位于 `data/buffers/`；训练遥测不迁移。
+9. backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 只支持 64-bit；不设计 32-bit 协商、容量上限或降级分支。
+
+### LocalBuffer 的项目级边界
+
+LocalBuffer 是本机进程间和 Workflow 节点间短期内存图片的统一数据面，不只是 Trigger 专用优化：
+
+| 边界 | 目标行为 |
+| --- | --- |
+| .NET local-shared-memory 输入 | SDK 把 raw BGR24/Mono8 或 encoded BMP/JPEG/PNG 直接写入主 arena，mailbox 只传 locator 与参数 |
+| ZeroMQ/HTTP 图片输入 | adapter 完成协议解包或 Base64 还原后只向主 arena 写入一次，后续链路只传 BufferRef/FrameRef |
+| storage/local-path 输入 | 进入同步内存处理链时物化到主 arena；长期事实仍由 ObjectStore/文件引用承担 |
+| Workflow 节点间图片 | 公开节点输出使用 image-ref；只读节点借用 view，产生新像素的节点分配新 extent并发布不可变输出 |
+| Workflow 到 Deployment/inference | inference mailbox 只传引用和结构化参数，模型进程直接读取主 arena |
+| 推理或节点结果图片 | 同步结果继续使用主 arena；local-shared SDK 持有 guard，ZeroMQ/HTTP 只在协议响应边界编码或复制 |
+| Preview | 运行期图片使用主 arena；只有前端显示或显式保存时生成显示图/ObjectStore对象 |
+| 持久异步任务 | 排队和跨重启边界使用 ObjectStore；任务被 daemon 领取后才物化到该 owner 的私有 arena |
+
+跨节点、跨进程或跨请求阶段保存的内存图片不得使用裸 `bytes`、Base64、任意 mmap 路径或进程私有 ndarray 作为公开契约。单个节点内部的临时 OpenCV/NumPy 矩阵、codec 输出和模型张量仍可存在于进程内，但只能在本次 handler 生命周期内使用，不能作为节点输出或跨进程引用。这里的“零整图复制”指不产生可避免的传输和桥接副本，不否认解码、颜色转换、裁剪、绘制或模型预处理本身必需的算法写入。
+
+主 arena 是 backend-service、Workflow Runtime、节点、同步 Deployment 和各种本机 Trigger 共享的动态容量，不按已部署实例、TriggerSource 或节点静态切片。只有实际在途 lease 占用容量；每次新输出按真实 `content_length` 动态申请，满载立即返回分类错误。
 
 ## 目标拓扑与唯一容量事实
 
@@ -90,13 +112,27 @@ descriptor guard
 
 ### 2. 一个请求总 deadline
 
-backend-service 在 PREPARE 接收 SDK 相对 timeout 后，用自身 monotonic clock 生成唯一权威 `request_deadline_ns`。Python 与 .NET 不交换可直接比较的 monotonic absolute value；SDK 只用自己的本地 timeout 约束等待。PREPARE、External lease 写入、REQUEST、Runtime admission、Workflow 执行和 output handoff 都消费 backend 的同一预算。每个后端阶段只接收 `request_deadline_ns - monotonic_now_ns` 的剩余值，禁止重新传入完整 timeout。
+backend-service 在 PREPARE 接收 SDK 相对 timeout 后，用自身 monotonic clock 生成唯一权威 `request_deadline_ns`。Python 与 .NET 不交换可直接比较的 monotonic absolute value；SDK 只用自己的本地 timeout 约束等待。PREPARE、External lease 写入、REQUEST、Runtime admission、Workflow 执行、结果构建、JSON 序列化、无损压缩、overflow page 分配与写入、output handoff 和成功 `RESPONSE` publication 都消费 backend 的同一预算。每个后端阶段只接收 `request_deadline_ns - monotonic_now_ns` 的剩余值，禁止重新传入完整 timeout。
 
-同步 TriggerSource 创建/更新时必须解析并持久化具体正数 `reply_timeout_seconds`；现有 sync source 的空值通过数据迁移填入服务端唯一默认值。新增唯一配置 `local_shared_trigger_default_reply_timeout_seconds=30.0`、`local_shared_trigger_response_ack_timeout_seconds=30.0` 和 `local_shared_trigger_cancellation_grace_seconds=2.0`，不再由 adapter 散落硬编码 5/30/300 秒。响应计划 fingerprint 包含解析后的 request timeout 与固定 ACK timeout，Runtime 不能读取 adapter 私有默认值。异步或无回复 source 可以保持其独立契约，但不能进入 local-shared-memory 同步热路径。
+`local-shared-memory + sync` TriggerSource 创建/更新时必须解析并持久化具体正数 `reply_timeout_seconds`；只迁移该类型 source 的空值并填入服务端唯一默认值。新增唯一配置 `local_shared_trigger_default_reply_timeout_seconds=30.0`、`local_shared_trigger_response_ack_timeout_seconds=30.0` 和 `local_shared_trigger_cancellation_grace_seconds=2.0`，不再由 local-shared adapter 散落硬编码 5/30/300 秒。响应计划 fingerprint 包含解析后的 request timeout 与固定 ACK timeout，Runtime 不能读取 adapter 私有默认值。ZeroMQ、Webhook、异步或无回复 source 保持各自现有 timeout 契约，不属于本轮迁移范围。
 
 ### 3. 独立 response ACK deadline
 
-descriptor v1 的保留字段原地加入 `response_ack_deadline_ns` 和必要的响应生命周期字段。Workflow 成功且输出 handoff 完成后才创建 ACK deadline：
+descriptor v1 的保留字段原地加入 `response_ack_deadline_ns` 和必要的响应生命周期字段。所有供 SDK 读取的 `RESPONSE` 都必须取得独立 ACK deadline，包括成功、`failed`、`deadline_exceeded`、busy 和 capacity 错误；显式取消且不发布响应的 `CANCELLED` 不需要 ACK deadline。
+
+成功响应的 publication 顺序固定为：
+
+```text
+构建结果并完成 JSON 序列化/压缩/page body 写入
+  -> 检查 request deadline
+  -> 生成 response_ack_deadline_ns
+  -> batch CAS transfer 全部输出 lease owner，并把 lease deadline 更新为同一 ACK deadline
+  -> descriptor guard 内再次检查 request deadline
+  -> 写 response_ack_deadline_ns、响应字段和 page identity
+  -> 最后发布 RESPONSE
+```
+
+第二次 request deadline 检查失败时不得发布迟到的成功响应：条件释放已经 handoff 的输出 lease、回滚未发布 page，然后改为不带输出 locator 的最小 `deadline_exceeded` inline 响应。错误响应单独生成 ACK deadline并发布 `RESPONSE`，即使触发原因本身就是 request deadline 到期。输出 lease 的 ACK deadline 必须在 `RESPONSE` publication 前批量更新，禁止继续沿用 request deadline；batch CAS 失败时整批不发布，不能返回部分图片。
 
 ```text
 request deadline 约束“服务何时完成响应”
@@ -108,7 +144,9 @@ ACK timeout 由服务配置固定并写入 response plan；SDK 不能延长。�
 
 ### 4. PROCESSING 取消传播
 
-client timeout/主动取消先在 descriptor guard 内发布 `cancel_requested`。supervisor 观察后调用当前 run 的 run-scoped cancellation primitive；worker 在节点/batch 安全点停止，不再提交后续节点，finally 仍执行 output/lease cleanup。
+binary schema 用固定 `cancel_reason` 枚举替换单一 `cancel_requested` bit：`none=0`、`request_timeout=1`、`explicit=2`、`client_shutdown=3`。client timeout、主动取消或 SDK 关闭先在 descriptor guard 内从 `none` CAS 为对应原因；supervisor 观察后调用当前 run 的 run-scoped cancellation primitive；worker 在节点/batch 安全点停止，不再提交后续节点，finally 仍执行 output/lease cleanup。backend 权威 request deadline 到期发布可读取的 `deadline_exceeded` RESPONSE；SDK 本地 timeout/显式取消/关闭在本地返回对应异常并允许服务端进入无响应 `CANCELLED` 清理路径，不把客户端 monotonic clock伪装成后端权威时间。
+
+若 `RESPONSE` 已先发布，迟到的 cancel CAS 必须失败，SDK仍按正常结果生命周期 Dispose/ACK；若 cancel 原因先发布，旧 completion 不能再发布成功响应。多个取消原因竞争时以 descriptor guard 内第一个非 `none` 原因为准，不覆盖原始原因，也不写可变字符串。
 
 在有界 cancellation grace 内未停止时，只重启或隔离当前 Runtime worker instance，不能杀死 backend-service、Broker 或无关 Runtime。旧 completion 必须被 request identity、Runtime generation 和 snapshot fingerprint 拒绝，不能覆盖新请求终态。
 
@@ -141,13 +179,12 @@ client timeout/主动取消先在 descriptor guard 内发布 `cancel_requested`�
   "local_buffer_broker": {
     "enabled": true,
     "root_dir": "./data/buffers",
-    "arena_id": "main",
+    "arena_id": "local-buffer-main",
     "arena_size_bytes": 2147483648,
     "min_block_size_bytes": 1048576,
     "max_allocation_bytes": 1073741824,
     "huge_reserve_bytes": 0,
     "reader_guard_slots": 64,
-    "max_32bit_view_bytes": 268435456,
     "flush_on_write": false,
     "startup_timeout_seconds": 60.0,
     "takeover_existing_process": true,
@@ -173,15 +210,17 @@ data/buffers/local-buffer/arena-main.owner.lock
 
 `workflow-trigger/`、`inference-control/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他图片数据面路径派生会漂移。
 
-backend-service/Broker 正式进程要求 64-bit。启动 preflight 必须校验整数寻址、arena/metadata 文件长度、buffers root 可写空间和 layout fingerprint；2 GiB 是固定逻辑 arena/file 容量，不表示启动时把全部页面常驻锁定到物理 RAM。文件支持 mmap 仍可能被操作系统分页或异步写回，`flush_on_write=false` 只禁止主动同步 flush。默认不预触碰整个 arena，性能门禁必须同时观察首次触页和稳态数据。
+backend-service、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 正式进程全部要求 64-bit；.NET SDK 固定使用 x64 目标。启动 preflight 必须校验进程位数、整数寻址、arena/metadata 文件长度、buffers root 可写空间和 layout fingerprint，不提供 32-bit 容量协商或降级。2 GiB 是固定逻辑 arena/file 容量，不表示启动时把全部页面常驻锁定到物理 RAM。文件支持 mmap 仍可能被操作系统分页或异步写回，`flush_on_write=false` 只禁止主动同步 flush。默认不预触碰整个 arena，性能门禁必须同时观察首次触页和稳态数据。
 
 ### 2. allocator 几何和 hard reserve
 
 buddy allocator 使用 1 MiB 最小块和 2 的幂 order。分配依据只有精确 `content_length`；media type、分辨率、BGR24/encoded 不参与 allocator 选择。
 
-几何校验固定为：min block 是2的幂；arena/min与max/min都是2的幂；max不超过arena；hard reserve只允许0或max，非零reserve固定在arena高地址端且剩余general区仍是完整buddy root。启动时不满足任一条件都直接失败。
+几何校验固定为：min block 是2的幂；arena/min与max/min都是2的幂；max不超过arena；hard reserve只允许0或max，非零reserve固定在arena高地址端；general容量必须能拆成整数个 `max_allocation_bytes` 顶级 root。root 之间不执行 buddy merge。启动时不满足任一条件都直接失败。
 
 默认不硬保留 Huge。现场若必须保证 1 GiB 请求，显式设置 `huge_reserve_bytes=1 GiB`；reserve 使用固定高地址区域和独立 free root，只接受 rounded capacity 等于 reserve 大小的请求，普通 lease、较小请求和 frame channel 不借用。没有 reserve 时，1 GiB 在连续空间存在时成功，因碎片不足时立即返回明确错误。
+
+general free list 按 order 分桶且每桶按 offset 升序。分配从请求 order 向上查找最低 offset block；split 时沿低地址 child 继续，把高地址 child 放回 free list。默认 2 GiB、无 reserve 时形成两个 1 GiB 顶级 root，低地址聚集能尽量保留第二个完整 1 GiB root。相同 allocation/free 序列必须产生相同 offset，便于复现碎片与性能问题。
 
 ### 3. persistent descriptor 与内存 free list
 
@@ -198,6 +237,8 @@ descriptor 保存固定二进制字段，包括128-bit opaque owner token，不�
 公开 locator 不增加权威 owner/deadline。服务端每次 transfer/release/revoke 都使用私有 receipt，并同时校验 arena、descriptor、generation、epoch、owner、deadline、offset 和 capacity。
 
 协议原子迁移时删除 locator/allocation 中可由请求选择的 `path`，SDK/worker按 `arena_id` 从固定配置包解析 arena、metadata和guard路径；把旧 `size`、`generation`、`slot_capacity_bytes`、`pool_name` 替换为 `content_length`、`descriptor_generation`、`allocation_capacity_bytes`、`arena_id`。`buffer_id` 若因日志/追踪保留也只是展示字段，不参与权威回收；不写双读或字段别名。
+
+`arena_id` 在一次安装内必须跨 Broker owner 唯一、稳定且不能包含 PID。主 Broker 固定为 `local-buffer-main`；当前 inference daemon 私有 owner 固定为 `inference-daemon-private`；未来多个私有 owner 使用 `inference-daemon-private-<stable-daemon-id>`。同步 Workflow/Deployment/Trigger 只使用主 arena，异步任务领取后的私有物化才使用 daemon 私有 arena，两个 arena 之间不能因 locator 同名而误映射。
 
 这一删除只针对 buffer/frame locator，不改变 storage `image-ref.v1` 对 ObjectStore 相对路径和受控本机绝对文件路径的支持。
 
@@ -235,14 +276,17 @@ Broker reclaim：
 ```text
 publication guard 内发布 REVOKING
   -> 释放 publication guard
-  -> 非阻塞检查 writer 和全部 reader guards
-  -> 若仍占用，保持 REVOKING，超过 grace 进入 QUARANTINED
-  -> guards 全空闲后取得 allocator lock + publication guard
+  -> 按 writer、reader index 升序非阻塞取得并持续持有全部外部 guards
+  -> 任一 guard 失败则释放本次已取得的 guards，保持 REVOKING
+  -> 超过 grace 仍不能取得全部 guards时进入 QUARANTINED
+  -> 持有全部外部 guards后取得 allocator lock + publication guard
   -> 再次校验 identity/state
   -> generation++、FREE、buddy merge
+  -> 释放 publication guard与allocator lock
+  -> 最后释放全部外部 guards
 ```
 
-禁止持有 publication guard 或 allocator lock 等待外部 guard，禁止 allocator lock 与 SDK guard 形成反向顺序。
+guard “探测后释放、稍后再回收”存在 TOCTOU，明确禁止。Broker 只能在持续持有 writer 和全部 reader guards 时提高 generation与归还 extent。禁止持有 publication guard 或 allocator lock 等待外部 guard；外部 guards 只允许非阻塞按固定顺序取得，不能形成等待环。
 
 Broker 在同一操作中需要两个内部锁时，唯一顺序是 `allocator lock -> publication guard`；SDK 永远不取得 allocator lock。初次发布 REVOKING 只需要 publication guard，释放后才检查外部 guards。代码和测试中不得出现 `publication guard -> allocator lock` 的反向路径。
 
@@ -256,27 +300,52 @@ layout fingerprint 不一致、arena 文件大小不一致或旧固定 pool 文�
 
 Python direct reader/writer 从配置允许的 arena id/path解析 locator，校验 descriptor range 后只映射/切片当前 extent。不得继续按固定 slot 对齐校验。
 
-.NET 缓存 arena `FileStream`/`MemoryMappedFile` handle；普通 lease 的 view key 至少包含 arena、epoch、descriptor generation、offset 和 capacity，view 随 lease/结果对象释放。frame channel 仅对稳定预留 extent复用 view。32-bit 进程只在单 view 不超过配置上限时支持，超限在 PREPARE/写入前失败；64-bit 是超大图正式要求。
+.NET 缓存 arena `FileStream`/`MemoryMappedFile` handle；普通 lease 的 view key 至少包含 arena、epoch、descriptor generation、offset 和 capacity，view 随 lease/结果对象释放。frame channel 仅对稳定预留 extent复用 view。.NET SDK 固定 x64，并在创建 client 时拒绝非 64-bit 进程；不保留 32-bit view 限制、配置或错误码。
 
 ### 8. frame channel
 
-API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_length)`。创建时一次性分配并固定多个等 order extent；每次 frame 写入仍使用实际 content length，超过 max 明确拒绝。销毁 channel 后只有在所有 reader guard 释放后才能 buddy merge。
+API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_length)`。创建时在一个 allocator 临界区内一次性分配并固定多个等 order extent，全部 descriptor 初始化成功后才发布 channel；任一 extent 分配或初始化失败都回滚本次全部 extent，不能留下半创建 channel。每次 frame 写入仍使用实际 content length，超过 max 明确拒绝。销毁 channel 后只有在所有 reader guard 释放后才能 buddy merge。
 
 ## 容量、指标和健康
 
 必须分别暴露：
 
-- `arena_total_bytes`、`general_total_bytes`、`huge_reserved_capacity_bytes`；
+- `arena_total_bytes`、`general_total_bytes`、`huge_reserved_total_bytes`；
+- general 与 hard reserve 各自的 `free`、`reserved_writing`、`active`、`frame_reserved`、`revoking`、`quarantined` 容量；hard reserve 的 `frame_reserved` 固定为 0；
+- `free_capacity_bytes`，以及 general/hard reserve 分域的 free capacity；
 - `allocated_capacity_bytes`、`published_content_bytes`；
 - `rounding_waste_bytes = allocation_capacity - content_length`；
 - `frame_reserved_capacity_bytes`；
 - `revoking_capacity_bytes`、`quarantined_capacity_bytes`；
 - 每个 order 的 free block 数和最大连续可分配块；
-- external fragmentation：总 free > 0 时 `1 - largest_free_block / total_free`；
-- allocation failure 按 total/contiguous/max/reserve/32-bit/integrity 分类；
+- general external fragmentation：general free > 0 时 `1 - largest_general_free_block / general_free_capacity`，不得混入 hard reserve；
+- allocation failure 按 total/contiguous/max/reserve/integrity 分类；
 - stale epoch/generation/owner fence、guard wait/revoke/quarantine 和 restart recovery 计数。
 
 不要把 frame reserve、hard reserve 或 quarantine 全部计入 rounding waste；否则指标无法解释实际内部碎片。
+
+容量指标必须满足以下守恒式，health 生成和恢复测试都直接断言，不允许只以日志近似：
+
+```text
+general_total
+  = general_free
+  + general_reserved_writing
+  + general_active
+  + general_frame_reserved
+  + general_revoking
+  + general_quarantined
+
+huge_reserved_total
+  = huge_free
+  + huge_reserved_writing
+  + huge_active
+  + huge_revoking
+  + huge_quarantined
+
+arena_total = general_total + huge_reserved_total
+```
+
+`allocated_capacity_bytes` 是 `reserved_writing + active + frame_reserved` 的派生汇总，不能在守恒式中重复相加。任何 descriptor state 都必须且只能落入一个容量 bucket；守恒不成立时 health 为 degraded并停止新 allocation，不能继续带病分配。
 
 ## 原子迁移与删除清单
 
@@ -291,9 +360,9 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 7. 测试 fixture、Postman/示例、已有开发数据库/TriggerSource 数据；
 8. 架构、部署、SDK 和运维文档。
 
-最终删除：固定 `MmapBufferPool` 分配路径、固定 pool preset、`pool_name` 传输字段、resolution-based test assumptions、旧 mapping cache key、旧 frame channel 签名、双 layout/双 contract 解析。低层 byte-range guard、owner lock、CRC 和 path containment 等中立原语继续复用。
+最终删除：固定 `MmapBufferPool` 分配路径、固定 pool preset、`pool_name` 传输字段、resolution-based test assumptions、旧 mapping cache key、旧 frame channel 签名、双 layout/双 contract 解析、AnyCPU/x86 项目配置和 32-bit mapping 分支。低层 byte-range guard、owner lock、CRC 和 path containment 等中立原语继续复用。
 
-阶段4至阶段8的新 allocator在隔离测试入口中构建，不增加可部署的 `allocator_mode` 开关。阶段9才原子切换全部运行时调用点并删除固定pool路径；任一正式提交状态都不能允许同一服务同时接受两种BufferRef/layout。
+阶段4至阶段8只在未接入正式 composition root 的内部模块和隔离测试入口中构建目标实现，不替换公开 `BufferRef.v1` generated artifacts，不修改正式 SDK package，也不增加可部署的 `allocator_mode` 开关。这些阶段可以在实现分支上连续推进，但不能单独作为新数据面发布。阶段9在一个不可拆分的切换提交中同时替换 contract/codegen、Broker、正式 composition root、全部调用点、.NET SDK、配置和开发数据，并删除固定pool路径；任一可运行提交都不能让同一服务接受两种 BufferRef/layout。
 
 ## 完整实施顺序
 
@@ -315,8 +384,8 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 
 ### 阶段 2：deadline、ACK、取消和终态
 
-- schema 原地加入 ACK deadline；统一 sync timeout 解析和数据迁移。
-- 全链路传递单个 absolute request deadline和剩余预算。
+- schema 原地加入 ACK deadline，以固定 `cancel_reason` 枚举替换 cancel bit；只统一 local-shared-memory sync timeout解析和数据迁移。
+- 全链路传递单个 absolute request deadline和剩余预算；成功响应 publication 前批量把输出 lease切换到同一 ACK deadline。
 - 传播 run-scoped cancel；实现 cancellation grace和旧 completion fencing。
 - 分开 deadline/cancel/busy/capacity错误。
 
@@ -333,7 +402,7 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 ### 阶段 4：arena binary contract 与纯 buddy allocator
 
 - 定义 header、descriptor、guard range、layout fingerprint。
-- 实现不依赖 mmap 的纯 buddy allocator，支持 split、merge、hard reserve、最大连续块和分类错误。
+- 实现不依赖 mmap 的纯 buddy allocator，支持确定性低地址聚集、顶级 root 边界、split、merge、hard reserve、最大连续块和分类错误。
 - 运行至少 100,000 次随机 allocate/free 的 property/invariant 测试。
 
 门禁：无重叠 extent；容量守恒；释放后完全合并；reserve不被普通请求借用；descriptor上限不会先于容量耗尽。
@@ -341,7 +410,7 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 ### 阶段 5：persistent descriptor、guard 与恢复
 
 - 建立 arena/allocator/guard/owner 文件和 publication 规则。
-- 实现 writer/reader/publication guard 与规定锁顺序。
+- 实现 writer/reader/publication guard 与规定锁顺序；reclaim 持有全部外部 guards直到 FREE/merge完成。
 - 启动从 descriptor重建 free list；实现 epoch、REVOKING、QUARANTINED和条件回收。
 - 加入64-bit、文件长度、可写空间、layout fingerprint和首次触页/稳态诊断。
 
@@ -349,36 +418,37 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 
 ### 阶段 6：普通 lease、External lease 与批量 handoff
 
-- 普通 allocate/commit/acquire/release 统一迁移到 extent。
-- External PREPARE/revalidate/commit、receipt CAS transfer/release、batch output handoff 统一迁移。
+- 在隔离 composition root 中把普通 allocate/commit/acquire/release 接到 extent。
+- 在隔离 composition root 中把 External PREPARE/revalidate/commit、receipt CAS transfer/release、batch output handoff接到新实现。
 - 保留 raw/encoded 表示和 output 生命周期，不改变 Workflow 公开语义。
 
 门禁：普通、External、输入转 Runtime、输入直接作为输出、批量输出全成功/全失败和 foreign ref normalization 均通过。
 
 ### 阶段 7：Python reader/writer 与 .NET SDK
 
-- 原地升级 BufferRef/allocation/fixture。
-- Python direct reader/writer 改为 descriptor/extent校验。
-- .NET 改为 arena handle cache + exact view，并加入32-bit明确限制。
+- 冻结目标 BufferRef/allocation/fixture，但暂不替换正式 v1 generated artifacts。
+- 在隔离测试入口完成 Python direct reader/writer 的 descriptor/extent校验。
+- 在未发布的 SDK 测试构建中完成 arena handle cache + exact view；SDK固定x64并拒绝非64-bit进程。
 - writer/reader均在 guard后重验 descriptor。
 
 门禁：Python/.NET逐字节 fixture一致；BGR24/Mono8/正负 stride/BMP/JPEG/PNG/Base64准确；raw链路无 decode和整图中间副本；encoded只首次消费解码一次。
 
 ### 阶段 8：frame channel 与所有调用点
 
-- API 增加 frame count/max frame length并预留 extent。
-- 迁移 inference、Workflow、Preview、ZeroMQ、local-shared和异步暂存调用点。
-- 删除调用方 pool选择。
+- 在隔离实现中增加 frame count/max frame length和全有或全无的批量extent预留。
+- 完成 inference、Workflow、Preview、ZeroMQ、local-shared和异步暂存调用点的目标适配器及切换清单，但正式 composition root 仍使用旧路径。
+- 验证所有目标调用点不再选择 pool，避免阶段9遗漏。
 
 门禁：ring wrap、旧 frame generation拒绝、channel销毁等待reader、不同大小帧复用和超限拒绝通过。
 
 ### 阶段 9：配置、数据迁移和旧实现删除
 
-- 更新源码 config/profile模板、SDK package、前端、fixture、Postman示例、现有TriggerSource JSON开发数据和维护命令；不手工修改 `release/<profile-id>/app/`。
+- 原子替换公开 v1 contract/codegen、Broker、正式 composition root、所有调用点和 x64 .NET SDK package；同一提交删除旧字段与固定 pool 实现。
+- 更新源码 config/profile模板、前端、fixture、Postman示例、现有TriggerSource JSON开发数据和维护命令；不手工修改 `release/<profile-id>/app/`。
 - 停止服务后验证 guard，重建开发 arena。
 - 删除固定 pool/slot实现和双读代码。
 
-门禁：`rg` 不再出现运行时 `default_pool_name`、`LocalBufferBrokerPoolSettings`、分辨率 preset或 Trigger `pool_name`；旧 layout启动明确失败；新安装一步启动。
+门禁：`rg` 不再出现运行时 `default_pool_name`、`LocalBufferBrokerPoolSettings`、分辨率 preset、Trigger `pool_name`、AnyCPU/x86项目配置或32-bit LocalBuffer分支；旧layout启动明确失败；新安装一步启动。
 
 ### 阶段 10：故障、容量、性能与业务 soak
 
@@ -394,12 +464,17 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 
 - 1 byte、1 MiB边界前后、2/4/8/64/512 MiB、1 GiB分配；超上限明确失败。
 - 100,000 次随机分配/释放后容量完全回到基线。
+- 相同allocation/free序列始终返回相同offset；默认低地址小图压力后，高地址完整1 GiB root在容量允许时保持可分配。
 - 多线程/多进程同时 allocate/commit/read/release无重叠和重复释放。
 - Broker 重启时 SDK 分别位于 allocation reply前后、guard前后、写入中、commit前后和读取中。
 - 旧 epoch/generation/owner、错误 offset/capacity、越界 view和损坏 descriptor全部拒绝。
+- reclaim在发布REVOKING后必须持续持有writer和全部reader guards直到FREE/merge；旧SDK在探测与回收竞态中不能把guard带入新generation。
 - reader/writer挂起时进入REVOKING/QUARANTINED，其他extent继续工作；guard释放后恢复。
 - hard reserve开启/关闭语义与health一致。
-- frame channel、普通 lease、External input、output lease并发混合无容量泄漏。
+- frame channel任一extent分配/初始化失败时全量回滚，外部无法观察半创建channel。
+- frame channel、普通 lease、External input、output lease并发混合无容量泄漏；general/hard reserve分域及arena总容量守恒式始终成立。
+- 主arena与daemon私有arena使用不同稳定arena id，错误domain locator无法映射或读取。
+- backend、Broker、worker和.NET SDK非64-bit启动门禁直接失败，仓库中不存在32-bit容量配置与兼容分支。
 
 ### Trigger mailbox
 
@@ -408,7 +483,10 @@ API 改为 `create_frame_channel(stream_id, frame_count, max_frame_content_lengt
 - client在请求写入、PROCESSING、response读取和ACK各阶段退出。
 - daemon在多页写入中退出重启；CRC、owner/generation、page loop/越界损坏明确隔离当前descriptor。
 - page pool满载时inline请求成功；满载不重跑Workflow。
-- request deadline只消费一次；ACK deadline独立；cancel传播到当前run。
+- request deadline覆盖结果构建、序列化、压缩、page分配、output handoff和成功RESPONSE publication，且只消费一次。
+- 成功、failed、deadline、busy和capacity等所有可读取RESPONSE都有独立ACK deadline；图片输出lease在RESPONSE前批量更新为同一deadline。
+- batch output handoff部分失败时不发布部分图片；请求deadline在handoff后到期时释放输出并改发最小deadline响应。
+- `cancel_reason`三种原因逐一传播到当前run，RESPONSE与cancel并发时只有一个终态获胜。
 
 ### 图片与业务准确率
 

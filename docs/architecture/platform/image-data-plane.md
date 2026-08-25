@@ -27,6 +27,21 @@ HTTP JSON 内联 Base64 主要用于远程调用、调试和结果查看，不�
 - 只有预览、保存、HTTP 响应或外部系统协议明确要求时，才生成 PNG、JPEG、Bitmap 或 Base64。
 - 同步推理热路径不使用持久化文件队列、ObjectStore 临时图片、目录扫描或轮询；backend-service 通过 mmap mailbox 调用 inference daemon，图片主体继续留在 LocalBufferBroker。持久异步任务只在必须跨重启的队列边界使用临时 ObjectStore 引用。
 
+## 全项目统一图片边界
+
+LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程交接的统一基础，不只是 local-shared-memory Trigger 的实现细节：
+
+- HTTP Base64、ZeroMQ multipart、SDK raw/encoded bytes 和 storage/local-path 图片进入同步 Workflow 后都收敛为主 arena 的 BufferRef/FrameRef；
+- Workflow 输入、节点间图片输出、OpenCV/Barcode/ROI处理结果、模型输入、同步结果图片和 Preview运行期图片都使用同一引用契约；
+- 节点只读时借用 mmap view，节点产生新像素时申请新 extent并发布不可变输出，不修改已经发布的输入；
+- inference mailbox、Workflow Trigger mailbox和节点结构化输出只携带引用与小型JSON，不携带图片主体；
+- 跨重启异步任务和长期保存仍使用ObjectStore，任务真正领取后才物化到相应Broker owner的arena；
+- 节点内部短生命周期的OpenCV/NumPy矩阵和模型tensor可以按算法需要存在，但不能作为公开节点输出或跨进程契约。
+
+主arena容量由所有实际在途图片动态共享，不按已创建的Runtime、Deployment、TriggerSource或节点数量预留。避免传输副本不等于禁止算法本身必要的decode、颜色转换、crop、draw或preprocess写入；性能审计需要把协议复制、arena写入、算法转换和模型计算分别计时。
+
+所有正式backend、Broker、Workflow/deployment worker、独立运行时和仓库内.NET SDK均要求64-bit；不维护32-bit数据面兼容模式。
+
 ## 数据模式
 
 | 模式 | 适用场景 | 规则 |

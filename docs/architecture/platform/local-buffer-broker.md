@@ -8,6 +8,8 @@ LocalBufferBroker 是同一主机内 backend-service、deployment runtime、Work
 
 LocalBuffer 不是持久化存储、任务队列、图片 codec、跨主机协议或 Workflow Trigger mailbox。
 
+LocalBuffer 是全项目短期内存图片的统一数据面。HTTP/ZeroMQ/local-shared-memory 输入进入本机同步处理链后、Workflow 节点间图片、同步 Deployment 输入与结果图、Preview运行期图片和节点生成的新图片都通过 BufferRef/FrameRef 交接。只有跨重启异步队列、长期保存和审计使用 ObjectStore/文件。节点内部仅在一次 handler 调用期间存在的 OpenCV/NumPy矩阵或模型 tensor不属于公开传输契约，不能作为节点输出跨边界泄漏。
+
 ## 进程与 owner
 
 - `LocalBufferBrokerSupervisor` 管理 broker companion process；
@@ -18,6 +20,8 @@ LocalBuffer 不是持久化存储、任务队列、图片 codec、跨主机协�
 
 backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena 是两个互不重叠的 owner。两者可以使用相同文件格式和分配器，但容量、epoch、owner lock 和 descriptor 表独立；同步调用不复制到私有 arena。
 
+主 arena 由 backend-service、Workflow Runtime、各种节点、同步 Deployment和本机 Trigger共享，按实际在途图片动态占用；不按 Runtime、Deployment、TriggerSource或节点数量静态预留。只读消费者借用 mmap view，产生新像素的节点申请新 extent并在写完后发布不可变引用。零整图复制指消除协议和模块桥接中的可避免副本，不包括解码、颜色转换、裁剪、绘制和模型预处理必需的算法写入。
+
 实现位于 `backend/service/application/local_buffers/` 和 `backend/service/infrastructure/local_buffers/`。
 
 ## 文件目录
@@ -27,7 +31,7 @@ backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena �
 ```text
 data/buffers/
 ├─ local-buffer/
-│  ├─ arena-main.mmap           主图片 bytes
+│  ├─ arena-main.mmap           主图片 bytes，arena_id=local-buffer-main
 │  ├─ allocator-main.mmap       固定 header 与 descriptor 表
 │  ├─ arena-main.guard          publication/writer/reader byte-range guards
 │  └─ arena-main.owner.lock     Broker 单 owner lock
@@ -62,6 +66,8 @@ backend-service 主 arena 默认总容量 2 GiB，最小 block 1 MiB，单次连
 
 默认 `huge_reserve_bytes=0`。这表示 arena 能在连续空间存在时支持 1 GiB 图片，但不保证任意碎片状态下都成功。现场需要 1 GiB 硬保证时显式保留 1 GiB 高地址区域；普通 lease 和 frame channel 不借用该区域，其容量成本必须在 health 中可见。
 
+general 区由一个或多个 `max_allocation_bytes` 大小的顶级 buddy root 组成，root之间不合并。free list按 order 分桶并按offset升序；分配优先最低offset，split继续使用低地址child并归还高地址child，从而聚集常用小图并尽量保留高地址大连续extent。相同请求序列必须得到确定性的offset结果。
+
 ## allocator metadata
 
 allocator metadata 使用固定 header 和 descriptor 表。descriptor 数量为 `arena_size_bytes / min_block_size_bytes`，默认 2048。header 固定 layout version/fingerprint、arena 几何、guard 几何、broker epoch 和 publication generation。
@@ -86,6 +92,8 @@ buddy free lists 只保存在 Broker 进程内，启动时从 descriptor 和 gua
 
 locator 不携带可由请求选择的 mmap/metadata/guard路径。SDK和worker按 `arena_id` 从固定配置解析；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 不进入新layout，分别使用 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id`。展示用 `buffer_id` 不能作为回收凭据。
 
+`arena_id` 在一次安装内跨 Broker owner唯一且稳定：主 Broker 使用 `local-buffer-main`，当前 inference daemon私有 owner使用 `inference-daemon-private`；未来多个私有 owner使用 `inference-daemon-private-<stable-daemon-id>`，不能使用 PID。同步 Workflow/Deployment/Trigger只解析主 arena id。
+
 该规则只约束短期 LocalBuffer locator，不删除 `image-ref.v1` 已有的 ObjectStore 相对路径或受控本机绝对文件路径能力；文件输入与 mmap arena 是两种不同 transport kind。
 
 generation、epoch、owner fence 和 guard 共同防止旧引用读取/释放新 lease。只按 buffer id、lease id、offset 或路径回收都不成立。
@@ -100,7 +108,7 @@ generation、epoch、owner fence 和 guard 共同防止旧引用读取/释放新
 
 producer 必须先取得 writer guard，再在 publication guard 内重验 descriptor/receipt，成功后才能创建 writable view。consumer 必须先取得一个 reader guard，再在 publication guard 内重验完整 locator，成功后才能创建 readonly view。
 
-Broker 回收先在 publication guard 内发布 `REVOKING`，随后不持有 publication/allocator lock 地检查 writer/reader guards。全部 guard 释放后才再次校验 identity、提高 generation、归还 block并执行 buddy merge；超出 grace 仍被占用时进入 `QUARANTINED`。Broker 不能等待 libzmq tracker，ZeroMQ tracker 只由 adapter 进程的 transport-lifetime registry 管理。
+Broker 回收先在 publication guard 内发布 `REVOKING`，释放内部 guard 后按 writer、reader index升序非阻塞取得并持续持有全部外部 guards。任一 guard失败就释放本次已取得的guards并保持`REVOKING`；超过grace后进入`QUARANTINED`。只有持续持有全部外部guards时，Broker才能按`allocator lock -> publication guard`重验identity/state、提高generation、发布FREE并buddy merge；内部锁释放后才释放外部guards。禁止“探测guards为空、释放后再回收”的TOCTOU路径。Broker不能等待libzmq tracker，ZeroMQ tracker只由adapter进程的transport-lifetime registry管理。
 
 Broker 同时需要内部锁时固定使用 `allocator lock -> publication guard`；SDK 不取得 allocator lock。任何路径都不能持有 publication/allocator lock等待外部 writer/reader guard，也不能使用 `publication guard -> allocator lock` 的反向顺序。
 
@@ -136,7 +144,7 @@ workflow-trigger-write
 
 WorkflowRun 建立并取得真实 Runtime/executor permit 后、提交 worker 前执行第一次条件 owner transfer。Run 创建或 admission 失败按 writer receipt 回收；transfer 成功但 worker 提交失败按 Runtime receipt 回收。不能跳过第一次 transfer 后假设输入已属于 Run。
 
-图片输出在 worker cleanup 前完成规范化与批量 handoff。local-shared-memory SDK 结果对象持有 reader guard 到 `Dispose`/`DisposeAsync`，先使 view 失效并释放 guard，再发布 ACK。JSON-only 或已复制到 SDK 自有 bytes 的结果可提前 ACK。
+图片输出在 worker cleanup 前完成规范化与批量 handoff。所有可读取 RESPONSE在 publication前生成独立`response_ack_deadline_ns`；成功图片结果必须先以batch CAS把全部输出lease的owner和deadline同时切到response owner与同一ACK deadline，再发布descriptor RESPONSE。失败、deadline、busy和capacity RESPONSE同样有ACK deadline但不携带未完成handoff的图片。local-shared-memory SDK结果对象持有reader guard到`Dispose`/`DisposeAsync`，先使view失效并释放guard，再发布ACK。JSON-only或已复制到SDK自有bytes的结果可提前ACK。
 
 ## 图片格式边界
 
@@ -150,17 +158,17 @@ LocalBuffer 只保存 bytes 和生命周期：
 
 ## frame channel
 
-frame channel 是对一组 extent 的长期预留，不是另一个 pool。创建时必须提供 `frame_count` 和 `max_frame_content_length`，Broker 为每帧预留同一最小可容纳 order。帧写入保存实际 content length，超过 max 立即拒绝；channel 销毁时等待所有 reader guard 释放后再归还和合并 extent。
+frame channel 是对一组 extent 的长期预留，不是另一个 pool。创建时必须提供 `frame_count` 和 `max_frame_content_length`，Broker在一个allocator临界区内为全部帧预留同一最小可容纳order；全部descriptor初始化后才发布channel，任一extent失败则回滚本次全部预留。帧写入保存实际content length，超过max立即拒绝；channel销毁时等待所有reader guard释放后再归还和合并extent。
 
-## .NET 和 32-bit 边界
+## 64-bit 运行边界
 
 .NET SDK 缓存 arena 文件 handle，普通 lease 按 descriptor generation、offset 和 capacity 建立精确 view并随结果生命周期释放；不能沿用固定 slot view cache。
 
-32-bit 宿主可以处理配置上限内的小 view，不做一刀切禁止。默认单 view 超过 256 MiB 时在写入前明确拒绝；1 GiB 线扫图链路要求 64-bit 进程。SDK 配置包固定 arena path、metadata path、guard path、layout version/fingerprint，不接受请求载荷指定任意文件。
+backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK全部只支持64-bit；.NET SDK固定x64并在创建client时校验进程架构。项目不提供32-bit view配置、容量协商、错误分支或降级路径。SDK配置包固定arena path、metadata path、guard path、layout version/fingerprint，不接受请求载荷指定任意文件。
 
 ## 满载语义
 
-错误至少区分总容量不足、连续块不足、hard reserve 不可用、单请求超限、32-bit view 超限和 allocator 完整性错误。所有满载立即返回，不引入业务请求队列、重试、压缩、移动、临时文件或跨通道 fallback。
+错误至少区分总容量不足、连续块不足、hard reserve不可用、单请求超限和allocator完整性错误。所有满载立即返回，不引入业务请求队列、重试、压缩、移动、临时文件或跨通道fallback。
 
 Workflow Runtime gate、TriggerSource 单在途 permit、executor permit 和 LocalBuffer capacity 是独立资源，必须分别报告，不能按已部署 Runtime/TriggerSource 总数量静态预占图片内存。
 
@@ -168,16 +176,18 @@ Workflow Runtime gate、TriggerSource 单在途 permit、executor permit 和 Loc
 
 health 至少报告：
 
-- arena/general/huge reserve 总容量；
+- arena/general/huge reserve总容量，以及general/hard reserve各自的free容量；
 - allocated capacity、published content、rounding waste；
-- frame reserved、REVOKING、QUARANTINED 容量；
+- general/hard reserve分域的reserved-writing、active、frame reserved、REVOKING、QUARANTINED容量；hard reserve的frame reserved固定为0；
 - 各 order free block 和最大连续块；
-- external fragmentation；
+- 只按general free和largest general free计算的external fragmentation；
 - active owner/lease、generation、deadline；
-- total/contiguous/max/reserve/32-bit/integrity 分类失败；
+- total/contiguous/max/reserve/integrity分类失败；
 - stale fence、guard wait、orphan/recovery 和 broker heartbeat。
 
 `rounding_waste_bytes` 只表示 block rounding，不混入 frame reserve、hard reserve 或 quarantine。
+
+health 必须直接校验容量守恒：`general_total = general_free + general_reserved_writing + general_active + general_frame_reserved + general_revoking + general_quarantined`；hard reserve使用相同公式但没有frame bucket；`arena_total = general_total + huge_reserved_total`。`allocated_capacity`只是reserved-writing、active和frame-reserved的派生汇总，不能重复计数。守恒失败时服务降级并停止新allocation。
 
 ## 启动、重启与迁移
 
