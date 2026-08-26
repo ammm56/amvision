@@ -206,9 +206,20 @@ namespace Amvar.Vision.ContractTests
                 this.config = config;
                 this.input = input;
                 this.base64 = base64;
+                var buffersRoot = Path.GetFullPath(config.BuffersRoot);
+                var localBufferRoot = Path.Combine(buffersRoot, "local-buffer");
+                var arenaPath = Path.Combine(localBufferRoot, "arena-main.mmap");
+                var arenaSizeBytes = new FileInfo(arenaPath).Length;
                 client = new SharedMemoryTriggerClient(new SharedMemoryTriggerClientOptions
                 {
-                    BuffersRoot = config.BuffersRoot,
+                    BuffersRoot = buffersRoot,
+                    ArenaId = "local-buffer-main",
+                    ArenaPath = arenaPath,
+                    AllocatorPath = Path.Combine(localBufferRoot, "allocator-main.mmap"),
+                    GuardPath = Path.Combine(localBufferRoot, "arena-main.guard"),
+                    ArenaSizeBytes = arenaSizeBytes,
+                    ReaderGuardSlots = 64,
+                    MaxImageBytes = Math.Min(1024L * 1024 * 1024, arenaSizeBytes),
                     TriggerSourceId = config.TriggerSourceId,
                     RouteGeneration = config.RouteGeneration,
                     DefaultInputBinding = config.InputBinding,

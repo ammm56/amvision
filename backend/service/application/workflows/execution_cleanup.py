@@ -378,7 +378,6 @@ def register_local_buffer_lease_cleanup(
     execution_metadata: dict[str, object],
     *,
     lease_id: str,
-    pool_name: str | None = None,
     ownership_receipt: LeaseOwnershipReceipt | None = None,
 ) -> None:
     """登记执行结束后需要释放的 LocalBufferBroker lease。
@@ -386,12 +385,10 @@ def register_local_buffer_lease_cleanup(
     参数：
     - execution_metadata：当前 workflow 执行元数据。
     - lease_id：要释放的 broker lease id。
-    - pool_name：可选的目标 pool 名称。
     """
 
     cleanup_item = build_local_buffer_lease_cleanup_item(
         lease_id=lease_id,
-        pool_name=pool_name,
         ownership_receipt=ownership_receipt,
     )
     if cleanup_item is None:
@@ -407,7 +404,6 @@ def register_local_buffer_lease_cleanup(
 def build_local_buffer_lease_cleanup_item(
     *,
     lease_id: str,
-    pool_name: str | None = None,
     ownership_receipt: LeaseOwnershipReceipt | None = None,
 ) -> dict[str, object] | None:
     """构造不含进程内锁、可随 worker 请求传递的 lease cleanup 描述。"""
@@ -416,8 +412,6 @@ def build_local_buffer_lease_cleanup_item(
     if not normalized_lease_id:
         return None
     metadata: dict[str, object] = {}
-    if isinstance(pool_name, str) and pool_name.strip():
-        metadata["pool_name"] = pool_name.strip()
     if ownership_receipt is not None:
         if ownership_receipt.lease_id != normalized_lease_id:
             raise ServiceConfigurationError(

@@ -83,7 +83,10 @@
       "model_startup_timeout_seconds": 600.0,
       "preview_model_session_scope_limit": 1,
       "local_shared_trigger_executor_worker_count": 16,
-      "local_shared_trigger_mailbox_poll_interval_seconds": 0.001
+      "local_shared_trigger_mailbox_poll_interval_seconds": 0.001,
+      "local_shared_trigger_default_reply_timeout_seconds": 30,
+      "local_shared_trigger_response_ack_timeout_seconds": 30.0,
+      "local_shared_trigger_cancellation_grace_seconds": 2.0
     },
   "zeromq_trigger": {
     "buffer_ttl_seconds": 330.0,
@@ -108,27 +111,14 @@
     "request_timeout_seconds": 5.0,
     "shutdown_timeout_seconds": 5.0,
     "expire_interval_seconds": 5.0,
-    "default_pool_name": "image-4k",
-    "pools": [
-      {
-        "pool_name": "image-4k",
-        "slot_size_bytes": 134217728,
-        "slot_count": 16,
-        "flush_on_write": false
-      },
-      {
-        "pool_name": "image-1080p",
-        "slot_size_bytes": 16777216,
-        "slot_count": 16,
-        "flush_on_write": false
-      },
-      {
-        "pool_name": "image-640x640",
-        "slot_size_bytes": 4194304,
-        "slot_count": 16,
-        "flush_on_write": false
-      }
-    ]
+    "arena_id": "local-buffer-main",
+    "arena_size_bytes": 2147483648,
+    "min_block_size_bytes": 1048576,
+    "max_allocation_bytes": 1073741824,
+    "huge_reserve_bytes": 0,
+    "reader_guard_slots": 64,
+    "flush_on_write": false,
+    "revocation_grace_seconds": 5.0
   },
   "deployment_process_supervisor": {
     "auto_restart": true,

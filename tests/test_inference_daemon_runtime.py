@@ -12,7 +12,6 @@ from backend.inference_daemon.runtime import (
     build_inference_daemon_runtime,
 )
 from backend.service.application.local_buffers import (
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
 )
 from backend.service.settings import BackendServiceSettings
@@ -38,14 +37,10 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
             ),
             "local_buffer_broker": LocalBufferBrokerSettings(
                 root_dir=str(backend_buffer_root),
-                default_pool_name="image-test",
-                pools=(
-                    LocalBufferBrokerPoolSettings(
-                        pool_name="image-test",
-                        slot_size_bytes=64 * 1024,
-                        slot_count=4,
-                    ),
-                ),
+                arena_size_bytes=16 * 1024 * 1024,
+                min_block_size_bytes=1024 * 1024,
+                max_allocation_bytes=8 * 1024 * 1024,
+                reader_guard_slots=4,
             ),
         }
     )
@@ -56,6 +51,7 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
         assert Path(private_broker.settings.root_dir) == (
             backend_buffer_root / "inference-daemon-private"
         )
+        assert private_broker.settings.arena_id == "inference-daemon-private"
         for task_runtime in runtime.task_runtimes:
             for supervisor in (
                 task_runtime.sync_supervisor,
@@ -67,9 +63,12 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
                 assert supervisor.local_buffer_direct_reader_settings[
                     "root_dir"
                 ] == str(backend_buffer_root)
+                assert supervisor.local_buffer_direct_reader_settings[
+                    "arena_id"
+                ] == "local-buffer-main"
 
         private_broker.start()
-        assert private_broker.get_status()["state"] == "running"
+        assert private_broker.get_status()["state"] == "healthy"
     finally:
         private_broker.stop()
         runtime.session_factory.engine.dispose()

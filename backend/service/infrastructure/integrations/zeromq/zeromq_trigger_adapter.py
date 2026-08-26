@@ -72,7 +72,6 @@ class LocalBufferByteWriter(Protocol):
         owner_kind: str,
         owner_id: str,
         media_type: str,
-        pool_name: str | None = None,
         shape: tuple[int, ...] = (),
         dtype: str | None = None,
         layout: str | None = None,
@@ -84,7 +83,7 @@ class LocalBufferByteWriter(Protocol):
 
         ...
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+    def release(self, lease_id: str) -> None:
         """释放指定 LocalBufferBroker lease。"""
 
         ...
@@ -438,9 +437,6 @@ class ZeroMqTriggerAdapter:
                 buffer_ref = BufferRef.model_validate(buffer_ref_payload)
                 cleanup_item = build_local_buffer_lease_cleanup_item(
                     lease_id=buffer_ref.lease_id,
-                    pool_name=_read_optional_transport_text(
-                        trigger_source, "pool_name"
-                    ),
                 )
                 execution_metadata = dict(trigger_source.default_execution_metadata)
                 execution_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] = (
@@ -904,7 +900,6 @@ class ZeroMqTriggerAdapter:
     ) -> dict[str, object]:
         """把 ZeroMQ 二进制帧写入 LocalBufferBroker。"""
 
-        pool_name = _read_optional_transport_text(trigger_source, "pool_name")
         ttl_seconds = max(
             self.runtime_config.buffer_ttl_seconds,
             float(trigger_source.reply_timeout_seconds or 300)
@@ -929,7 +924,6 @@ class ZeroMqTriggerAdapter:
             owner_kind="workflow-trigger-source",
             owner_id=owner_id,
             media_type=media_type,
-            pool_name=pool_name,
             shape=tuple(envelope.shape),
             dtype=envelope.dtype,
             layout=envelope.layout,
@@ -958,11 +952,7 @@ class ZeroMqTriggerAdapter:
             return
         try:
             buffer_ref = BufferRef.model_validate(buffer_ref_payload)
-            pool_name_value = buffer_ref.metadata.get("pool_name")
-            release(
-                buffer_ref.lease_id,
-                pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
-            )
+            release(buffer_ref.lease_id)
         except Exception:
             return
 

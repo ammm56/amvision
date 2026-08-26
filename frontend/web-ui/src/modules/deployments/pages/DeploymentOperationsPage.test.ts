@@ -138,7 +138,7 @@ const coldHealth: TaskDeploymentRuntimeHealth = {
     { instance_id: 'worker-1', healthy: true, warmed: false, busy: false },
   ],
   keep_warm: { enabled: true },
-  local_buffer_broker: { pool_name: 'default' },
+  local_buffer_broker: { arena_id: 'local-buffer-main' },
   requested_runtime_configuration: {},
   effective_runtime_configuration: {
     cpu_device_resource_manager: {

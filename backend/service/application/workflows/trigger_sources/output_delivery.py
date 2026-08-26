@@ -96,6 +96,7 @@ class TriggerResponsePlan(BaseModel):
     result_mode: Literal["sync-reply", "accepted-then-query", "event-only"]
     ack_policy: Literal["ack-after-run-created", "ack-after-run-finished"]
     reply_timeout_seconds: int | None = Field(default=None, gt=0)
+    response_ack_timeout_seconds: float | None = Field(default=None, gt=0)
     result_bindings: tuple[TriggerResponseBindingPlan, ...] = ()
     attachment_delivery_kind: AttachmentDeliveryKind = "none"
     adapter_capability_revision: str
@@ -134,6 +135,19 @@ class TriggerResponsePlan(BaseModel):
             raise ValueError("同步图片结果缺少 attachment delivery capability")
         elif not has_images and self.attachment_delivery_kind != "none":
             raise ValueError("没有图片 binding 时不能配置 attachment delivery")
+        if self.trigger_kind == "local-shared-memory":
+            if self.submit_mode != "sync" or self.reply_timeout_seconds is None:
+                raise ValueError(
+                    "local-shared-memory response plan 必须固定同步请求 timeout"
+                )
+            if self.response_ack_timeout_seconds is None:
+                raise ValueError(
+                    "local-shared-memory response plan 必须固定 ACK timeout"
+                )
+        elif self.response_ack_timeout_seconds is not None:
+            raise ValueError(
+                "非 local-shared-memory response plan 不能携带私有 ACK timeout"
+            )
         expected_fingerprint = _build_trigger_response_plan_fingerprint(
             self.model_dump(mode="json", exclude={"plan_fingerprint"})
         )
@@ -156,6 +170,7 @@ def build_trigger_response_plan(
     result_mode: str,
     ack_policy: str,
     reply_timeout_seconds: int | None,
+    response_ack_timeout_seconds: float | None = None,
     selected_output_payload_types: dict[str, str],
     previous_plan: object = None,
 ) -> TriggerResponsePlan:
@@ -195,6 +210,7 @@ def build_trigger_response_plan(
         "result_mode": result_mode,
         "ack_policy": ack_policy,
         "reply_timeout_seconds": reply_timeout_seconds,
+        "response_ack_timeout_seconds": response_ack_timeout_seconds,
         "result_bindings": [item.model_dump(mode="json") for item in bindings],
         "attachment_delivery_kind": delivery_kind,
         "adapter_capability_revision": capability_revision,
@@ -371,10 +387,12 @@ def build_public_prepared_result_payload(
         """构造单个公开物理 payload，不泄露 owner handoff receipt。"""
 
         reader_guard_path: str | None = None
+        reader_guard_offset: int | None = None
         reader_guard_slots: int | None = None
         if item.delivery_kind == "local-buffer":
             receipt = LeaseOwnershipReceipt.model_validate(item.ownership_receipt)
-            reader_guard_path = receipt.reader_guard_path
+            reader_guard_path = receipt.guard_path
+            reader_guard_offset = receipt.reader_guard_offset
             reader_guard_slots = receipt.reader_guard_slots
         return {
             "payload_id": item.payload_id,
@@ -392,6 +410,7 @@ def build_public_prepared_result_payload(
             "buffer_ref": dict(item.buffer_ref or {}),
             "object_locator": dict(item.object_locator or {}),
             "reader_guard_path": reader_guard_path,
+            "reader_guard_offset": reader_guard_offset,
             "reader_guard_slots": reader_guard_slots,
         }
 
@@ -519,7 +538,7 @@ def prepare_trigger_result_before_cleanup(
     # 所有 binding 和 payload 先完成结构校验，再开始 lease 分配或对象发布。
     for binding_id, payload_type_id, image_items in image_bindings:
         for item_index, image_payload in enumerate(image_items):
-            identity = _physical_image_identity(image_payload, receipt_index=receipt_index)
+            identity = _physical_image_identity(image_payload)
             payload_id = physical_index.get(identity)
             if payload_id is None:
                 payload_id = f"payload-{len(physical_index)}"
@@ -579,7 +598,7 @@ def prepare_trigger_result_before_cleanup(
             payload_id=pending.payload_id,
             delivery_kind="local-buffer",
             media_type=pending.media_type,
-            content_length=pending.buffer_ref.size,
+            content_length=pending.buffer_ref.content_length,
             checksum_algorithm="crc32",
             checksum=pending.checksum,
             width=pending.width,
@@ -689,24 +708,23 @@ def _require_image_refs_items(
 
 def _physical_image_identity(
     image_payload: dict[str, object],
-    *,
-    receipt_index: dict[str, LeaseOwnershipReceipt],
 ) -> tuple[object, ...]:
     """按完整物理表示 identity 去重，不以 checksum 推断所有权。"""
 
     kind = str(image_payload["transport_kind"])
     if kind == IMAGE_TRANSPORT_BUFFER:
         ref = BufferRef.model_validate(image_payload["buffer_ref"])
-        receipt = receipt_index.get(ref.lease_id)
         return (
             kind,
-            receipt.pool_name if receipt is not None else None,
+            ref.arena_id,
             ref.broker_epoch,
-            ref.generation,
+            ref.descriptor_index,
+            ref.descriptor_generation,
             ref.lease_id,
             ref.buffer_id,
             ref.offset,
-            ref.size,
+            ref.content_length,
+            ref.allocation_capacity_bytes,
             ref.media_type,
             ref.shape,
             ref.dtype,
@@ -717,13 +735,16 @@ def _physical_image_identity(
         ref = FrameRef.model_validate(image_payload["frame_ref"])
         return (
             kind,
+            ref.arena_id,
             ref.broker_epoch,
-            ref.generation,
+            ref.descriptor_index,
+            ref.descriptor_generation,
             ref.stream_id,
             ref.sequence_id,
             ref.buffer_id,
             ref.offset,
-            ref.size,
+            ref.content_length,
+            ref.allocation_capacity_bytes,
         )
     if kind == IMAGE_TRANSPORT_MEMORY:
         return (kind, str(image_payload["image_handle"]))
@@ -749,13 +770,12 @@ def _prepare_local_buffer_payload(
         ref = BufferRef.model_validate(image_payload["buffer_ref"])
         receipt = receipt_index.get(ref.lease_id)
         if receipt is not None and _receipt_matches_buffer_ref(receipt, ref):
-            content = _read_buffer_view(local_buffer_client, ref)
             return _PendingPhysicalPayload(
                 payload_id=payload_id,
                 buffer_ref=ref,
                 receipt=receipt,
                 media_type=ref.media_type,
-                checksum=f"{crc32(content) & 0xFFFFFFFF:08x}",
+                checksum=_buffer_crc32_hex(local_buffer_client, ref),
                 width=metadata.width,
                 height=metadata.height,
                 shape=ref.shape,
@@ -771,7 +791,7 @@ def _prepare_local_buffer_payload(
         deadline_ns=deadline_ns,
     )
     allocation = local_buffer_client.allocate_external_buffer(
-        size=len(content),
+        content_length=len(content),
         owner_kind="workflow-runtime",
         owner_id=str(execution_metadata.get("workflow_run_id") or "workflow-run"),
         deadline_ns=deadline_ns,
@@ -779,17 +799,13 @@ def _prepare_local_buffer_payload(
     register_local_buffer_lease_cleanup(
         execution_metadata,
         lease_id=allocation.receipt.lease_id,
-        pool_name=allocation.receipt.pool_name,
         ownership_receipt=allocation.receipt,
     )
     try:
-        with local_buffer_client.acquire_external_writer_guard(
-            receipt=allocation.receipt
-        ):
-            local_buffer_client.write_lease_bytes(
-                lease=allocation.lease,
-                content=content,
-            )
+        local_buffer_client.write_lease_bytes(
+            lease=allocation.lease,
+            content=content,
+        )
         checksum_value = crc32(content) & 0xFFFFFFFF
         committed = local_buffer_client.commit_external_buffer(
             receipt=allocation.receipt,
@@ -1039,6 +1055,16 @@ def _read_buffer_view(local_buffer_client: object, ref: BufferRef) -> bytes | me
     return read_view(ref) if callable(read_view) else local_buffer_client.read_buffer_ref(ref)
 
 
+def _buffer_crc32_hex(local_buffer_client: object, ref: BufferRef) -> str:
+    """让 reader guard 覆盖完整 CRC 扫描，不复制图片。"""
+
+    acquire_view = getattr(local_buffer_client, "acquire_buffer_ref_view", None)
+    if callable(acquire_view):
+        with acquire_view(ref) as content:
+            return f"{crc32(content) & 0xFFFFFFFF:08x}"
+    return f"{crc32(local_buffer_client.read_buffer_ref(ref)) & 0xFFFFFFFF:08x}"
+
+
 def _receipt_matches_buffer_ref(
     receipt: LeaseOwnershipReceipt,
     ref: BufferRef,
@@ -1048,8 +1074,13 @@ def _receipt_matches_buffer_ref(
     return (
         receipt.lease_id == ref.lease_id
         and receipt.buffer_id == ref.buffer_id
+        and receipt.arena_id == ref.arena_id
         and receipt.broker_epoch == ref.broker_epoch
-        and receipt.generation == ref.generation
+        and receipt.descriptor_index == ref.descriptor_index
+        and receipt.descriptor_generation == ref.descriptor_generation
+        and receipt.offset == ref.offset
+        and receipt.content_length == ref.content_length
+        and receipt.allocation_capacity_bytes == ref.allocation_capacity_bytes
     )
 
 

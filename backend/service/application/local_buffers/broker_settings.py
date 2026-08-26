@@ -1,150 +1,101 @@
-"""LocalBufferBroker 运行配置。"""
+"""LocalBufferBroker 固定 arena 运行配置。"""
 
 from __future__ import annotations
 
+import struct
+import sys
+
 from pydantic import BaseModel, Field, model_validator
+
+from backend.service.infrastructure.local_buffers.buddy_allocator import (
+    BuddyArenaGeometry,
+)
 
 
 _MIB = 1024 * 1024
-_DEFAULT_8K_SLOT_SIZE_BYTES = 256 * _MIB
-_DEFAULT_4K_SLOT_SIZE_BYTES = 128 * _MIB
-_DEFAULT_1080P_SLOT_SIZE_BYTES = 16 * _MIB
-_DEFAULT_640X640_SLOT_SIZE_BYTES = 4 * _MIB
-_DEFAULT_SLOT_COUNT = 16
-
-
-class LocalBufferBrokerPoolSettings(BaseModel):
-    """描述一个 mmap buffer pool 的固定配置。
-
-    字段：
-    - pool_name：pool 稳定名称。
-    - slot_size_bytes：单个固定槽位容量。
-    - slot_count：固定槽位数量。
-    - flush_on_write：写入后是否强制 flush 到 mmap 文件；默认关闭以避免临时图片输入刷盘。
-    - file_name：pool 对应的 mmap 文件名；为空时按 pool_name 自动生成。
-    - file_size_bytes：单个 pool 文件总容量；为空时按 slot_size_bytes * slot_count 自动计算。
-    """
-
-    pool_name: str = "image-4k"
-    slot_size_bytes: int = _DEFAULT_4K_SLOT_SIZE_BYTES
-    slot_count: int = _DEFAULT_SLOT_COUNT
-    flush_on_write: bool = False
-    file_name: str = ""
-    file_size_bytes: int = 0
-
-    @model_validator(mode="after")
-    def validate_pool_settings(self) -> LocalBufferBrokerPoolSettings:
-        """校验并补齐 pool 派生字段。"""
-
-        normalized_pool_name = self.pool_name.strip()
-        if not normalized_pool_name:
-            raise ValueError("LocalBufferBroker pool_name 不能为空")
-        self.pool_name = normalized_pool_name
-        self.file_name = self.file_name.strip() or f"{normalized_pool_name}-001.dat"
-        if self.slot_size_bytes <= 0:
-            raise ValueError("LocalBufferBroker slot_size_bytes 必须大于 0")
-        if self.slot_count <= 0:
-            raise ValueError("LocalBufferBroker slot_count 必须大于 0")
-
-        if self.file_size_bytes <= 0:
-            self.file_size_bytes = self.slot_size_bytes * self.slot_count
-            return self
-
-        if self.file_size_bytes % self.slot_size_bytes != 0:
-            raise ValueError("LocalBufferBroker file_size_bytes 必须是 slot_size_bytes 的整数倍")
-        file_size_slot_count = self.file_size_bytes // self.slot_size_bytes
-        if "slot_count" in self.model_fields_set and self.slot_count != file_size_slot_count:
-            raise ValueError("LocalBufferBroker slot_count 与 file_size_bytes 不一致")
-        self.slot_count = file_size_slot_count
-        return self
+_GIB = 1024 * _MIB
 
 
 class LocalBufferBrokerSettings(BaseModel):
-    """描述 LocalBufferBroker companion process 配置。
-
-    字段：
-    - enabled：是否随 backend-service 启动 broker 进程。
-    - root_dir：broker 管理的 mmap 文件根目录。
-    - startup_timeout_seconds：等待 broker 启动完成的最长秒数。
-    - takeover_existing_process：是否允许新 backend-service 安全接管同工作区的旧实例。
-    - takeover_timeout_seconds：结束已验证旧 backend-service 进程树的最长秒数。
-    - request_timeout_seconds：单次控制请求等待响应的最长秒数。
-    - shutdown_timeout_seconds：等待 broker 优雅退出的最长秒数。
-    - expire_interval_seconds：周期性触发过期 lease 回收的间隔秒数；小于等于 0 表示关闭循环。
-    - default_pool_name：未显式指定 pool_name 时使用的默认 pool。
-    - pools：启动时创建的 pool 列表，必须包含 default_pool_name。
-    """
+    """描述单 Broker owner、单固定容量图片 arena。"""
 
     enabled: bool = True
     root_dir: str = "./data/buffers"
-    startup_timeout_seconds: float = 60.0
+    arena_id: str = "local-buffer-main"
+    arena_size_bytes: int = 2 * _GIB
+    min_block_size_bytes: int = _MIB
+    max_allocation_bytes: int = _GIB
+    huge_reserve_bytes: int = 0
+    reader_guard_slots: int = Field(default=64, gt=0)
+    flush_on_write: bool = False
+    startup_timeout_seconds: float = Field(default=60.0, gt=0.0)
     takeover_existing_process: bool = True
     takeover_timeout_seconds: float = Field(default=10.0, gt=0.0, le=60.0)
-    request_timeout_seconds: float = 5.0
-    shutdown_timeout_seconds: float = 5.0
-    expire_interval_seconds: float = 5.0
-    default_pool_name: str = "image-4k"
-    pools: tuple[LocalBufferBrokerPoolSettings, ...] = Field(default_factory=tuple)
+    request_timeout_seconds: float = Field(default=5.0, gt=0.0)
+    shutdown_timeout_seconds: float = Field(default=5.0, gt=0.0)
+    expire_interval_seconds: float = Field(default=5.0, ge=0.0)
+    revocation_grace_seconds: float = Field(default=5.0, gt=0.0)
 
     @model_validator(mode="before")
     @classmethod
-    def reject_default_pool(cls, data: object) -> object:
-        """拒绝旧的单 default_pool 配置入口。"""
+    def reject_fixed_pool_fields(cls, data: object) -> object:
+        """开发期协议原地升级后拒绝全部旧 pool/slot 配置。"""
 
-        if isinstance(data, dict) and "default_pool" in data:
-            raise ValueError("LocalBufferBroker 不再支持 default_pool，请使用 default_pool_name + pools")
+        if isinstance(data, dict):
+            obsolete = {
+                "default_pool",
+                "default_pool_name",
+                "pools",
+                "pool_name",
+                "slot_size_bytes",
+                "slot_count",
+            }.intersection(data)
+            if obsolete:
+                raise ValueError(
+                    "LocalBufferBroker 不再支持固定 pool/slot 字段: "
+                    + ", ".join(sorted(obsolete))
+                )
         return data
 
     @model_validator(mode="after")
     def validate_settings(self) -> LocalBufferBrokerSettings:
-        """校验并补齐 LocalBufferBroker pool 配置。
+        """校验 64-bit 边界、稳定 arena id 与 buddy 几何。"""
 
-        返回：
-        - LocalBufferBrokerSettings：已补齐内置 pool preset 的配置。
-        """
-
-        normalized_default_pool_name = self.default_pool_name.strip()
-        if not normalized_default_pool_name:
-            raise ValueError("LocalBufferBroker default_pool_name 不能为空")
-        self.default_pool_name = normalized_default_pool_name
-        if not self.pools:
-            self.pools = (_build_default_buffer_pool(normalized_default_pool_name),)
-        pool_names = {item.pool_name.strip() for item in self.pools}
-        if normalized_default_pool_name not in pool_names:
-            raise ValueError("LocalBufferBroker default_pool_name 未出现在 pools 中")
-        if len(pool_names) != len(self.pools):
-            raise ValueError("LocalBufferBroker pool_name 不能重复")
+        if struct.calcsize("P") != 8 or sys.maxsize <= 2**32:
+            raise ValueError("LocalBufferBroker 只支持 64-bit 进程")
+        self.root_dir = self.root_dir.strip()
+        self.arena_id = self.arena_id.strip()
+        if not self.root_dir:
+            raise ValueError("LocalBufferBroker root_dir 不能为空")
+        if not self.arena_id:
+            raise ValueError("LocalBufferBroker arena_id 不能为空")
+        BuddyArenaGeometry(
+            arena_size_bytes=self.arena_size_bytes,
+            min_block_size_bytes=self.min_block_size_bytes,
+            max_allocation_bytes=self.max_allocation_bytes,
+            huge_reserve_bytes=self.huge_reserve_bytes,
+        )
         return self
 
 
-def _build_default_buffer_pool(pool_name: str) -> LocalBufferBrokerPoolSettings:
-    """按名称构造内置 LocalBufferBroker pool preset。
+def resolve_preview_reservation_length(
+    request: object,
+    settings: LocalBufferBrokerSettings,
+) -> int:
+    """按已暂存输入长度确定结果图片的有界连续预留长度。"""
 
-    参数：
-    - pool_name：内置 pool 名称，可选 image-640x640、image-1080p、image-4k 或 image-8k。
-
-    返回：
-    - LocalBufferBrokerPoolSettings：对应的 pool 配置。
-    """
-
-    if pool_name == "image-640x640":
-        return LocalBufferBrokerPoolSettings(
-            pool_name="image-640x640",
-            slot_size_bytes=_DEFAULT_640X640_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_SLOT_COUNT,
-        )
-    if pool_name == "image-1080p":
-        return LocalBufferBrokerPoolSettings(
-            pool_name="image-1080p",
-            slot_size_bytes=_DEFAULT_1080P_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_SLOT_COUNT,
-        )
-    if pool_name == "image-4k":
-        return LocalBufferBrokerPoolSettings()
-    if pool_name == "image-8k":
-        return LocalBufferBrokerPoolSettings(
-            pool_name="image-8k",
-            slot_size_bytes=_DEFAULT_8K_SLOT_SIZE_BYTES,
-            slot_count=_DEFAULT_SLOT_COUNT,
-        )
-    raise ValueError("LocalBufferBroker default_pool_name 只支持 image-640x640、image-1080p、image-4k 或 image-8k")
+    input_length = settings.min_block_size_bytes
+    image_payload = getattr(request, "input_image_payload", None)
+    if isinstance(image_payload, dict):
+        for field_name in ("buffer_ref", "frame_ref"):
+            ref = image_payload.get(field_name)
+            if not isinstance(ref, dict):
+                continue
+            value = ref.get("content_length")
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                input_length = value
+                break
+    return min(
+        settings.max_allocation_bytes,
+        max(4 * _MIB, input_length * 2),
+    )

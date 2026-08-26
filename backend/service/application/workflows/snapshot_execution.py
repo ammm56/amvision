@@ -608,7 +608,6 @@ def _cleanup_local_buffer_lease(
                 "error_message": "当前 LocalBufferBroker reader 不支持 release",
             }
         ]
-    pool_name = cleanup.metadata.get("pool_name")
     ownership_receipt_payload = cleanup.metadata.get("ownership_receipt")
     try:
         if isinstance(ownership_receipt_payload, dict):
@@ -627,10 +626,7 @@ def _cleanup_local_buffer_lease(
                 )
             )
         else:
-            release(
-                cleanup.resource_id,
-                pool_name=pool_name if isinstance(pool_name, str) else None,
-            )
+            release(cleanup.resource_id)
     except ServiceError as exc:
         return [
             {

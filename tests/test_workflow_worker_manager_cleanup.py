@@ -689,6 +689,7 @@ def test_failed_old_handle_termination_does_not_remove_replacement_handle() -> N
     workflow_runtime_id = "workflow-runtime-terminate-replacement"
     worker_manager = object.__new__(manager_module.WorkflowRuntimeWorkerManager)
     worker_manager._lock = Lock()  # noqa: SLF001
+    worker_manager._monitor_wake_event = Event()  # noqa: SLF001
     new_handle = manager_module._WorkflowRuntimeProcessHandle(  # noqa: SLF001
         workflow_runtime_id=workflow_runtime_id,
         process=SimpleNamespace(is_alive=lambda: True),
@@ -714,6 +715,7 @@ def test_failed_old_handle_termination_does_not_remove_replacement_handle() -> N
 
     assert worker_manager._handles[workflow_runtime_id] is new_handle  # noqa: SLF001
     assert cleaned_handles == [old_handle]
+    assert worker_manager._monitor_wake_event.is_set()  # noqa: SLF001
 
 
 def test_worker_response_identity_rejects_previous_worker_epoch() -> None:

@@ -98,9 +98,10 @@
         {"name": "runtime_generation", "type": "u64", "offset": 232},
         {"name": "snapshot_fingerprint", "type": "u64", "offset": 240},
         {"name": "updated_at_ns", "type": "u64", "offset": 248},
-        {"name": "cancel_requested", "type": "u32", "offset": 256},
+        {"name": "cancel_reason", "type": "u32", "offset": 256},
         {"name": "response_flags", "type": "u32", "offset": 260},
-        {"name": "reserved", "type": "bytes:56", "offset": 264}
+        {"name": "response_ack_deadline_ns", "type": "u64", "offset": 264},
+        {"name": "reserved", "type": "bytes:48", "offset": 272}
       ]
     },
     "page_header": {
@@ -125,6 +126,7 @@
     "descriptor_state": {"free": 0, "prepare": 1, "writing": 2, "request": 3, "processing": 4, "response": 5, "acked": 6, "cancelled": 7},
     "page_state": {"free": 0, "reserved": 1, "ready": 2},
     "response_codec": {"none": 0, "zlib": 1},
+    "cancel_reason": {"none": 0, "request_timeout": 1, "explicit": 2, "client_shutdown": 3},
     "handoff_state": {"none": 0, "pending": 1, "complete": 2, "detached": 3},
     "image_dtype": {"unspecified": 0, "uint8": 1},
     "image_layout": {"unspecified": 0, "hw": 1, "hwc": 2},
@@ -217,8 +219,9 @@
       "runtime_generation": 9,
       "snapshot_fingerprint": 1089357896855742840,
       "updated_at_ns": 11647051513882650536,
-      "cancel_requested": 0,
-      "response_flags": 5
+      "cancel_reason": 0,
+      "response_flags": 5,
+      "response_ack_deadline_ns": 1230066625199609624
     },
     "page_header": {
       "state": 2,

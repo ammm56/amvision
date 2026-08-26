@@ -110,17 +110,37 @@ namespace Amvar.Vision.ContractTests
                 Path.GetTempPath(),
                 "amvision-local-buffer-cache-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
-            var path = Path.Combine(root, "pool.dat");
-            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            var arenaPath = Path.Combine(root, "arena-main.mmap");
+            var allocatorPath = Path.Combine(root, "allocator-main.mmap");
+            var guardPath = Path.Combine(root, "arena-main.guard");
+            const long arenaSize = 4 * 1024 * 1024;
+            using (var file = new FileStream(arenaPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
             {
-                file.SetLength(4 * 1024 * 1024);
+                file.SetLength(arenaSize);
             }
+            var brokerEpoch = CreateArenaMetadata(allocatorPath, arenaSize);
+            using (var guard = new FileStream(guardPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            {
+                guard.SetLength(24);
+            }
+            var options = new SharedMemoryTriggerClientOptions
+            {
+                BuffersRoot = root,
+                ArenaId = "local-buffer-main",
+                ArenaPath = arenaPath,
+                AllocatorPath = allocatorPath,
+                GuardPath = guardPath,
+                ArenaSizeBytes = arenaSize,
+                ReaderGuardSlots = 4,
+                TriggerSourceId = "trigger-source-1",
+                RouteGeneration = 1
+            };
 
             try
             {
-                using (var cache = new LocalBufferMappingCache())
+                using (var cache = new LocalBufferMappingCache(options))
                 {
-                    var allocation = CreateAllocation(path, "epoch-1", "image-4k:0", 0, 1024 * 1024);
+                    var allocation = CreateAllocation(brokerEpoch, "buffer-0", 0, 0, 512 * 1024);
                     using (var first = cache.Acquire(allocation))
                     using (var second = cache.Acquire(allocation))
                     {
@@ -129,47 +149,35 @@ namespace Amvar.Vision.ContractTests
                             "same physical allocation must reuse one mmap view");
                     }
 
-                    using (var resized = cache.Acquire(
-                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
-                    {
-                        resized.View.Write(0, (byte)17);
-                        AssertEqual((byte)17, resized.View.ReadByte(0), "resized mapping access");
-                    }
-
                     using (var slotZero = cache.Acquire(
-                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
+                        CreateAllocation(brokerEpoch, "buffer-0", 0, 0, 512 * 1024)))
                     using (var slotOne = cache.Acquire(
-                        CreateAllocation(path, "epoch-1", "image-4k:1", 1024 * 1024, 512 * 1024)))
+                        CreateAllocation(brokerEpoch, "buffer-1", 1, 1024 * 1024, 512 * 1024)))
                     using (var slotZeroAgain = cache.Acquire(
-                        CreateAllocation(path, "epoch-1", "image-4k:0", 0, 512 * 1024)))
+                        CreateAllocation(brokerEpoch, "buffer-0", 0, 0, 512 * 1024)))
                     {
-                        Assert(
-                            !ReferenceEquals(slotZero.View, slotOne.View),
-                            "different physical slots must use different mmap views");
                         Assert(
                             ReferenceEquals(slotZero.View, slotZeroAgain.View),
-                            "mapping another slot must not invalidate the first slot cache entry");
-                    }
-
-                    using (var nextEpoch = cache.Acquire(
-                        CreateAllocation(path, "epoch-2", "image-4k:0", 0, 512 * 1024)))
-                    {
-                        nextEpoch.View.Write(1, (byte)23);
-                        AssertEqual((byte)23, nextEpoch.View.ReadByte(1), "new epoch mapping access");
+                            "all dynamic extents must reuse the single fixed arena view");
+                        Assert(
+                            ReferenceEquals(slotZero.View, slotOne.View),
+                            "different extents must not create per-image mmap views");
+                        slotOne.View.Write(slotOne.Offset, (byte)23);
+                        AssertEqual((byte)23, slotOne.View.ReadByte(slotOne.Offset), "extent offset access");
                     }
                 }
 
-                var deferredCache = new LocalBufferMappingCache();
+                var deferredCache = new LocalBufferMappingCache(options);
                 var active = deferredCache.Acquire(
-                    CreateAllocation(path, "epoch-3", "image-4k:1", 1024 * 1024, 512 * 1024));
+                    CreateAllocation(brokerEpoch, "buffer-1", 1, 1024 * 1024, 512 * 1024));
                 deferredCache.Dispose();
-                active.View.Write(0, (byte)31);
-                AssertEqual((byte)31, active.View.ReadByte(0), "active mapping survives cache dispose request");
+                active.View.Write(active.Offset, (byte)31);
+                AssertEqual((byte)31, active.View.ReadByte(active.Offset), "active mapping survives cache dispose request");
                 active.Dispose();
                 try
                 {
                     deferredCache.Acquire(
-                        CreateAllocation(path, "epoch-3", "image-4k:1", 1024 * 1024, 512 * 1024));
+                        CreateAllocation(brokerEpoch, "buffer-1", 1, 1024 * 1024, 512 * 1024));
                     throw new InvalidOperationException("disposed mapping cache must reject acquire");
                 }
                 catch (ObjectDisposedException)
@@ -183,26 +191,83 @@ namespace Amvar.Vision.ContractTests
         }
 
         private static WorkflowTriggerAllocation CreateAllocation(
-            string path,
             string brokerEpoch,
             string bufferId,
+            int descriptorIndex,
             long offset,
             long size)
         {
             return new WorkflowTriggerAllocation
             {
                 FormatId = "amvision.workflow-trigger-allocation.v1",
-                PoolName = "image-4k",
+                ArenaId = "local-buffer-main",
                 LeaseId = "lease-1",
                 BufferId = bufferId,
-                Path = path,
-                Offset = offset,
-                Size = size,
-                SlotCapacityBytes = 1024 * 1024,
+                DescriptorIndex = descriptorIndex,
+                DescriptorGeneration = 1,
                 BrokerEpoch = brokerEpoch,
-                Generation = 1,
-                WriterGuardPath = path + ".writer.guard"
+                Offset = offset,
+                ContentLength = size,
+                AllocationCapacityBytes = 1024 * 1024
             };
+        }
+
+        private static string CreateArenaMetadata(string path, long arenaSize)
+        {
+            var epoch = new byte[16];
+            for (var index = 0; index < epoch.Length; index++)
+            {
+                epoch[index] = checked((byte)(index + 1));
+            }
+
+            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            using (var writer = new BinaryWriter(file, Encoding.UTF8, leaveOpen: false))
+            {
+                file.SetLength(256 + 4 * 256);
+                writer.Write(Encoding.ASCII.GetBytes("AMVLBA01"));
+                writer.Write(1U);
+                writer.Write(256U);
+                writer.Write(256U);
+                writer.Write(4U);
+                writer.Write(checked((ulong)arenaSize));
+                writer.Write(1024UL * 1024UL);
+                writer.Write(4UL * 1024UL * 1024UL);
+                writer.Write(0UL);
+                writer.Write(epoch);
+                writer.Write(new byte[32]);
+                writer.Write(1UL);
+                WriteArenaDescriptor(writer, 0, 0, 512 * 1024);
+                WriteArenaDescriptor(writer, 1, 1024 * 1024, 512 * 1024);
+            }
+
+            var builder = new StringBuilder(32);
+            foreach (var item in epoch)
+            {
+                builder.Append(item.ToString("x2"));
+            }
+            return builder.ToString();
+        }
+
+        private static void WriteArenaDescriptor(
+            BinaryWriter writer,
+            int descriptorIndex,
+            long offset,
+            long contentLength)
+        {
+            writer.BaseStream.Position = 256 + descriptorIndex * 256;
+            writer.Write(1U);
+            writer.Write(0U);
+            writer.Write(1UL);
+            writer.Write(new byte[16]);
+            writer.Write(new byte[16]);
+            writer.Write(checked((ulong)offset));
+            writer.Write(1024UL * 1024UL);
+            writer.Write(checked((ulong)contentLength));
+            writer.Write(ulong.MaxValue >> 1);
+            writer.Write(0UL);
+            writer.Write(20U);
+            writer.Write(0U);
+            writer.Write(1UL);
         }
 
         private static async Task VerifyCreateSelectorAsync()

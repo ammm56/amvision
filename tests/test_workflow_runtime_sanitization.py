@@ -1689,10 +1689,12 @@ def _build_buffer_ref_payload(*, lease_id: str = "lease-1") -> dict[str, object]
     return BufferRef(
         buffer_id="buffer-1",
         lease_id=lease_id,
-        path="data/buffers/pool-001.dat",
-        offset=0,
-        size=10,
-        media_type="image/png",
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
         broker_epoch="epoch-1",
-        generation=1,
+        offset=0,
+        content_length=10,
+        allocation_capacity_bytes=1024 * 1024,
+        media_type="image/png",
     ).model_dump(mode="json")

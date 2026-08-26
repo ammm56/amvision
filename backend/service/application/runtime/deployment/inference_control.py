@@ -27,6 +27,9 @@ from backend.service.application.errors import (
     OperationTimeoutError,
     ServiceConfigurationError,
 )
+from backend.service.application.local_buffers.broker_settings import (
+    resolve_preview_reservation_length,
+)
 from backend.service.application.models.inference.inference_gateway import (
     _deserialize_error,
     _deserialize_process_config,
@@ -506,7 +509,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         *,
         request: PredictionRequest,
         owner_id: str,
-    ) -> tuple[PredictionRequest, tuple[str, str | None] | None]:
+    ) -> tuple[PredictionRequest, str | None]:
         """把图片统一转换为 LocalBuffer 引用，并返回当前请求拥有的 lease。"""
 
         image_bytes = getattr(request, "input_image_bytes", None)
@@ -580,11 +583,11 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 "buffer_ref": buffer_ref.model_dump(mode="json"),
             },
         )
-        return prepared, (write_result.lease.lease_id, write_result.lease.pool_name)
+        return prepared, write_result.lease.lease_id
 
     def _release_owned_input_buffer(
         self,
-        owned_buffer: tuple[str, str | None] | None,
+        owned_buffer: str | None,
     ) -> None:
         """释放本次推理临时创建的 LocalBuffer lease。"""
 
@@ -593,8 +596,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         release = getattr(self.local_buffer_reader, "release", None)
         if not callable(release):
             return
-        lease_id, pool_name = owned_buffer
-        release(lease_id, pool_name=pool_name)
+        release(owned_buffer)
 
     def _allocate_preview_output(
         self,
@@ -602,7 +604,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         request: PredictionRequest,
         owner_id: str,
     ) -> BufferLease | None:
-        """为结果图片预留 LocalBuffer 固定槽位；未请求图片时不占用。"""
+        """为结果图片预留 LocalBuffer 连续 extent；未请求图片时不占用。"""
 
         if not bool(getattr(request, "save_result_image", False)):
             return None
@@ -610,21 +612,10 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         settings = getattr(self.local_buffer_reader, "settings", None)
         if not callable(allocate) or settings is None:
             raise ServiceConfigurationError("结果图片推理缺少 LocalBuffer 预分配能力")
-        pool_name = str(settings.default_pool_name)
-        pool = next(
-            (item for item in settings.pools if item.pool_name == pool_name),
-            None,
-        )
-        if pool is None:
-            raise ServiceConfigurationError(
-                "LocalBuffer 默认图片 pool 不存在",
-                details={"pool_name": pool_name},
-            )
         return allocate(
-            size=int(pool.slot_size_bytes),
+            content_length=resolve_preview_reservation_length(request, settings),
             owner_kind="inference-preview",
             owner_id=owner_id,
-            pool_name=pool_name,
             ttl_seconds=(
                 self.request_timeout_seconds + _INFERENCE_BUFFER_TTL_GRACE_SECONDS
             ),
@@ -657,7 +648,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             raise ServiceConfigurationError(
                 "inference preview LocalBuffer 媒体类型缺失"
             )
-        if size > preview_output_lease.size:
+        if size > preview_output_lease.allocation_capacity_bytes:
             raise ServiceConfigurationError(
                 "inference preview 超出预分配 LocalBuffer 槽位"
             )
@@ -668,8 +659,9 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 "inference client 缺少 LocalBuffer 提交能力"
             )
         committed = commit(
-            lease=preview_output_lease.model_copy(update={"size": size}),
+            lease=preview_output_lease,
             media_type=media_type.strip(),
+            content_length=size,
         )
         try:
             execution_result["preview_image_bytes"] = bytes(
@@ -685,7 +677,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             return
         release = getattr(self.local_buffer_reader, "release", None)
         if callable(release):
-            release(lease.lease_id, pool_name=lease.pool_name)
+            release(lease.lease_id)
 
 
 class InferenceControlDispatcher:

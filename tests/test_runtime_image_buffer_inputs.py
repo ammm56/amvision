@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,10 +14,15 @@ from backend.contracts.buffers import BufferLease, BufferRef
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
     DirectMmapLocalBufferWriter,
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
 )
 from backend.service.application.errors import InvalidRequestError
+from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import (
+    LocalBufferArenaPool,
+)
+from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
+    MmapBufferArenaConfig,
+)
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     build_memory_image_payload,
@@ -135,23 +140,10 @@ def test_custom_model_image_content_borrows_encoded_buffer_view() -> None:
             "image": {
                 "transport_kind": "buffer",
                 "media_type": "image/png",
-                "buffer_ref": {
-                    "format_id": "amvision.buffer-ref.v1",
-                    "buffer_id": "buffer-1",
-                    "lease_id": "lease-1",
-                    "path": "buffers/workflow-images.mmap",
-                    "offset": 0,
-                    "size": len(encoded),
-                    "shape": [],
-                    "dtype": None,
-                    "layout": None,
-                    "pixel_format": None,
-                    "media_type": "image/png",
-                    "readonly": True,
-                    "broker_epoch": "epoch-1",
-                    "generation": 1,
-                    "metadata": {},
-                },
+                "buffer_ref": _buffer_ref_payload(
+                    content_length=len(encoded),
+                    media_type="image/png",
+                ),
             }
         },
         execution_metadata={"local_buffer_reader": reader},
@@ -177,23 +169,10 @@ def test_image_bytes_helper_keeps_explicit_bytes_contract() -> None:
             "image": {
                 "transport_kind": "buffer",
                 "media_type": "image/png",
-                "buffer_ref": {
-                    "format_id": "amvision.buffer-ref.v1",
-                    "buffer_id": "buffer-1",
-                    "lease_id": "lease-1",
-                    "path": "buffers/workflow-images.mmap",
-                    "offset": 0,
-                    "size": len(encoded),
-                    "shape": [],
-                    "dtype": None,
-                    "layout": None,
-                    "pixel_format": None,
-                    "media_type": "image/png",
-                    "readonly": True,
-                    "broker_epoch": "epoch-1",
-                    "generation": 1,
-                    "metadata": {},
-                },
+                "buffer_ref": _buffer_ref_payload(
+                    content_length=len(encoded),
+                    media_type="image/png",
+                ),
             }
         },
         execution_metadata={"local_buffer_reader": reader},
@@ -267,7 +246,7 @@ def test_deployment_worker_preserves_mmap_view_for_every_task(
 
     content = bytearray(range(18))
     reader = _DirectReader(content)
-    prediction_request = _build_prediction_request(
+    with _build_prediction_request(
         payload={
             "task_type": task_type,
             "prediction_request": {
@@ -282,23 +261,14 @@ def test_deployment_worker_preserves_mmap_view_for_every_task(
                     "dtype": "uint8",
                     "layout": "HWC",
                     "pixel_format": "bgr24",
-                    "buffer_ref": {
-                        "format_id": "amvision.buffer-ref.v1",
-                        "buffer_id": "buffer-1",
-                        "lease_id": "lease-1",
-                        "path": "buffers/workflow-images.mmap",
-                        "offset": 0,
-                        "size": len(content),
-                        "shape": [2, 3, 3],
-                        "dtype": "uint8",
-                        "layout": "HWC",
-                        "pixel_format": "bgr24",
-                        "media_type": "image/raw",
-                        "readonly": True,
-                        "broker_epoch": "epoch-1",
-                        "generation": 1,
-                        "metadata": {},
-                    },
+                    "buffer_ref": _buffer_ref_payload(
+                        content_length=len(content),
+                        media_type="image/raw",
+                        shape=(2, 3, 3),
+                        dtype="uint8",
+                        layout="HWC",
+                        pixel_format="BGR24",
+                    ),
                 },
                 "extra_options": {},
                 **task_options,
@@ -309,12 +279,11 @@ def test_deployment_worker_preserves_mmap_view_for_every_task(
             connected=True,
             channel_id="direct-readonly-mmap",
         ),
-    )
-
-    assert prediction_request.input_uri is None
-    assert isinstance(prediction_request.input_image_bytes, memoryview)
-    assert prediction_request.input_image_bytes.tobytes() == bytes(content)
-    assert prediction_request.input_image_payload["transport_kind"] == "buffer"
+    ) as prediction_request:
+        assert prediction_request.input_uri is None
+        assert isinstance(prediction_request.input_image_bytes, memoryview)
+        assert prediction_request.input_image_bytes.tobytes() == bytes(content)
+        assert prediction_request.input_image_payload["transport_kind"] == "buffer"
 
 
 def test_deployment_worker_rejects_non_localbuffer_image_reference(
@@ -327,7 +296,7 @@ def test_deployment_worker_rejects_non_localbuffer_image_reference(
     source_path.write_bytes(b"bmp-image-bytes")
 
     with pytest.raises(InvalidRequestError, match="不支持的 image-ref"):
-        _build_prediction_request(
+        with _build_prediction_request(
             payload={
                 "task_type": "classification",
                 "prediction_request": {
@@ -347,14 +316,15 @@ def test_deployment_worker_rejects_non_localbuffer_image_reference(
                 connected=False,
                 channel_id=None,
             ),
-        )
+        ):
+            pass
 
 
 def test_prediction_ipc_rejects_removed_base64_image_fields() -> None:
     """验证当前 IPC 契约不会重新接受已删除的图片 Base64 旁路。"""
 
     with pytest.raises(InvalidRequestError, match="不支持图片 Base64"):
-        _build_prediction_request(
+        with _build_prediction_request(
             payload={
                 "task_type": "detection",
                 "prediction_request": {
@@ -369,7 +339,8 @@ def test_prediction_ipc_rejects_removed_base64_image_fields() -> None:
                 connected=True,
                 channel_id="direct-readonly-mmap",
             ),
-        )
+        ):
+            pass
 
     with pytest.raises(InvalidRequestError, match="不支持结果图片 Base64"):
         deserialize_prediction_execution_result(
@@ -388,89 +359,121 @@ def test_prediction_ipc_rejects_removed_base64_image_fields() -> None:
 def test_deployment_worker_routes_backend_and_daemon_local_buffers(
     tmp_path: Path,
 ) -> None:
-    """验证同一 worker 按固定 pool 路径路由主池和 daemon 私有池。"""
+    """验证 worker 按 arena id 路由主 Broker 与 daemon 私有 Broker。"""
 
     settings = LocalBufferBrokerSettings(
         root_dir=str(tmp_path / "backend-buffers"),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                file_name="image-test.dat",
-                slot_size_bytes=64,
-                slot_count=1,
-            ),
-        ),
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
     )
-    backend_pool_path = Path(settings.root_dir) / "image-test" / "image-test.dat"
-    backend_pool_path.parent.mkdir(parents=True)
-    backend_pool_path.write_bytes(b"backend" + bytes(57))
+    pool = LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=Path(settings.root_dir),
+            arena_id=settings.arena_id,
+            arena_size_bytes=settings.arena_size_bytes,
+            min_block_size_bytes=settings.min_block_size_bytes,
+            max_allocation_bytes=settings.max_allocation_bytes,
+            reader_guard_slots=settings.reader_guard_slots,
+        )
+    )
+    active_lease = pool.allocate(
+        content_length=7,
+        owner_kind="workflow-runtime",
+        owner_id="run-1",
+    )
+    pool.write_lease_bytes(lease=active_lease, content=memoryview(b"backend"))
+    backend_result = pool.commit_lease(
+        lease=active_lease,
+        media_type="image/png",
+    )
+    writing_lease = pool.allocate(
+        content_length=7,
+        owner_kind="deployment-preview",
+        owner_id="request-1",
+    )
     broker = _PrivateBufferBroker()
     access = _RoutedLocalBufferAccess(
         broker_client=broker,
         direct_reader=DirectMmapLocalBufferReader(settings),
         direct_writer=DirectMmapLocalBufferWriter(settings),
     )
-    now = datetime.now(timezone.utc)
-    backend_ref = BufferRef(
-        buffer_id="backend-buffer",
-        lease_id="backend-lease",
-        path=str(backend_pool_path),
-        offset=0,
-        size=7,
-        media_type="image/png",
-        broker_epoch="backend-epoch",
-        generation=1,
-    )
-    daemon_ref = backend_ref.model_copy(
+    daemon_ref = backend_result.buffer_ref.model_copy(
         update={
             "buffer_id": "daemon-buffer",
             "lease_id": "daemon-lease",
-            "path": str(tmp_path / "daemon-private.dat"),
+            "arena_id": "inference-daemon-private",
+            "broker_epoch": "2" * 32,
         }
     )
-    backend_lease = BufferLease(
-        lease_id="backend-lease",
-        buffer_id="backend-buffer",
-        owner_kind="deployment-preview",
-        owner_id="request-1",
-        pool_name="image-test",
-        file_path=str(backend_pool_path),
-        offset=0,
-        size=8,
-        created_at=now,
-        expires_at=now + timedelta(minutes=2),
-        state="writing",
-        broker_epoch="backend-epoch",
-        generation=1,
-    )
-    daemon_lease = backend_lease.model_copy(
+    daemon_lease = writing_lease.model_copy(
         update={
             "lease_id": "daemon-lease",
             "buffer_id": "daemon-buffer",
-            "pool_name": "daemon-private",
-            "file_path": str(tmp_path / "daemon-private.dat"),
-            "broker_epoch": "daemon-epoch",
+            "arena_id": "inference-daemon-private",
+            "broker_epoch": "2" * 32,
         }
     )
 
     try:
-        assert bytes(access.read_buffer_ref(backend_ref)) == b"backend"
+        assert bytes(access.read_buffer_ref(backend_result.buffer_ref)) == b"backend"
         assert access.read_buffer_ref(daemon_ref) == b"daemon"
-        access.write_lease_bytes(lease=backend_lease, content=b"updated")
+        access.write_lease_bytes(lease=writing_lease, content=b"updated")
         access.write_lease_bytes(lease=daemon_lease, content=b"preview")
-        with pytest.raises(InvalidRequestError, match="超出固定槽位"):
+        with pytest.raises(InvalidRequestError):
             access.write_lease_bytes(
-                lease=backend_lease.model_copy(update={"offset": 64}),
+                lease=writing_lease.model_copy(
+                    update={
+                        "offset": (
+                            writing_lease.offset
+                            + writing_lease.allocation_capacity_bytes
+                        )
+                    }
+                ),
                 content=b"outside",
             )
 
-        assert backend_pool_path.read_bytes()[:7] == b"updated"
-        assert len(access.direct_writer._mapped_files) == 1
+        committed = pool.commit_lease(
+            lease=writing_lease,
+            media_type="image/png",
+        )
+        assert pool.read_buffer_ref(committed.buffer_ref) == b"updated"
         assert broker.read_count == 1
         assert broker.writes == [("daemon-lease", b"preview")]
     finally:
         access.close()
+        pool.close()
+
+
+def _buffer_ref_payload(
+    *,
+    content_length: int,
+    media_type: str,
+    shape: tuple[int, ...] = (),
+    dtype: str | None = None,
+    layout: str | None = None,
+    pixel_format: str | None = None,
+) -> dict[str, object]:
+    """构造不暴露文件路径的当前 BufferRef.v1 测试载荷。"""
+
+    return BufferRef(
+        buffer_id="local-buffer-main:0",
+        lease_id="lease-1",
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
+        broker_epoch="1" * 32,
+        offset=0,
+        content_length=content_length,
+        allocation_capacity_bytes=max(content_length, 1024 * 1024),
+        shape=shape,
+        dtype=dtype,
+        layout=layout,
+        pixel_format=pixel_format,
+        media_type=media_type,
+        readonly=True,
+    ).model_dump(mode="json")
 
 
 class _BorrowedViewReader:
@@ -557,6 +560,26 @@ class _DirectReader:
         """返回零拷贝只读帧 view。"""
 
         return memoryview(self.content).toreadonly()
+
+    @contextmanager
+    def acquire_buffer_ref_view(self, _buffer_ref):
+        """让测试 view 生命周期覆盖完整预测调用。"""
+
+        view = memoryview(self.content).toreadonly()
+        try:
+            yield view
+        finally:
+            view.release()
+
+    @contextmanager
+    def acquire_frame_ref_view(self, _frame_ref):
+        """让测试 frame view 生命周期覆盖完整预测调用。"""
+
+        view = memoryview(self.content).toreadonly()
+        try:
+            yield view
+        finally:
+            view.release()
 
 
 class _MemoryviewCopyReader:

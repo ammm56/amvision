@@ -233,10 +233,6 @@ class _SdkConfigPackageBuilder:
         self.request = request
         self.local_buffer_broker_settings = local_buffer_broker_settings
         self.buffers_root = Path(local_buffer_broker_settings.root_dir).resolve()
-        self.pool_capacity_by_name = {
-            pool.pool_name: pool.slot_size_bytes
-            for pool in local_buffer_broker_settings.pools
-        }
         self.generated_at = datetime.now(timezone.utc)
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
         self.warnings: list[str] = []
@@ -425,6 +421,12 @@ class _SdkConfigPackageBuilder:
             or _infer_default_input_binding(trigger_source)
             or "request_image_ref"
         )
+        timeout_seconds = trigger_source.reply_timeout_seconds
+        if timeout_seconds is None:
+            raise InvalidRequestError(
+                "Local shared-memory TriggerSource 缺少固定 reply timeout",
+                details={"trigger_source_id": trigger_source.trigger_source_id},
+            )
         return {
             "name": trigger_key,
             "trigger_source_id": trigger_source.trigger_source_id,
@@ -432,7 +434,7 @@ class _SdkConfigPackageBuilder:
             "zero_mq": {
                 "bind_endpoint": bind_endpoint,
                 "default_input_binding": default_input_binding,
-                "timeout_seconds": trigger_source.reply_timeout_seconds or 5,
+                "timeout_seconds": timeout_seconds,
             },
         }
 
@@ -444,19 +446,6 @@ class _SdkConfigPackageBuilder:
     ) -> dict[str, object]:
         """构建同机共享内存 SDK 所需的固定 mailbox 配置。"""
 
-        pool_name = (
-            _read_optional_text(trigger_source.transport_config, "pool_name")
-            or self.local_buffer_broker_settings.default_pool_name
-        )
-        max_image_bytes = self.pool_capacity_by_name.get(pool_name)
-        if max_image_bytes is None:
-            raise InvalidRequestError(
-                "Local shared-memory TriggerSource 引用了不存在的 LocalBuffer pool",
-                details={
-                    "trigger_source_id": trigger_source.trigger_source_id,
-                    "pool_name": pool_name,
-                },
-            )
         raw_plan = trigger_source.metadata.get(TRIGGER_RESPONSE_PLAN_METADATA_KEY)
         try:
             response_plan = TriggerResponsePlan.model_validate(raw_plan)
@@ -479,9 +468,33 @@ class _SdkConfigPackageBuilder:
             "trigger_kind": trigger_source.trigger_kind,
             "local_shared_memory": {
                 "buffers_root": str(self.buffers_root),
+                "arena_id": self.local_buffer_broker_settings.arena_id,
+                "arena_path": str(
+                    self.buffers_root / "local-buffer" / "arena-main.mmap"
+                ),
+                "allocator_path": str(
+                    self.buffers_root / "local-buffer" / "allocator-main.mmap"
+                ),
+                "guard_path": str(
+                    self.buffers_root / "local-buffer" / "arena-main.guard"
+                ),
+                "arena_size_bytes": (
+                    self.local_buffer_broker_settings.arena_size_bytes
+                ),
+                "min_block_size_bytes": (
+                    self.local_buffer_broker_settings.min_block_size_bytes
+                ),
+                "max_allocation_bytes": (
+                    self.local_buffer_broker_settings.max_allocation_bytes
+                ),
+                "reader_guard_slots": (
+                    self.local_buffer_broker_settings.reader_guard_slots
+                ),
                 "route_generation": response_plan.plan_generation,
                 "default_input_binding": default_input_binding,
-                "max_image_bytes": max_image_bytes,
+                "max_image_bytes": (
+                    self.local_buffer_broker_settings.max_allocation_bytes
+                ),
                 "timeout_seconds": trigger_source.reply_timeout_seconds or 5,
             },
         }

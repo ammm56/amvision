@@ -1,7 +1,6 @@
 """LocalBufferBroker 应用层接口导出。"""
 
 from backend.service.application.local_buffers.broker_settings import (
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
 )
 from backend.service.application.local_buffers.direct_mmap_reader import (
@@ -20,7 +19,6 @@ from backend.service.application.local_buffers.local_buffer_client import (
 __all__ = [
     "LocalBufferBrokerClient",
     "LocalBufferBrokerEventChannel",
-    "LocalBufferBrokerPoolSettings",
     "LocalBufferBrokerProcessSupervisor",
     "LocalBufferBrokerSettings",
     "LocalBufferReader",

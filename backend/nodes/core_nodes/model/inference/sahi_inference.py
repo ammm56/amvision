@@ -77,7 +77,6 @@ class _PreparedSliceImageInput:
     image_payload: dict[str, object]
     input_image_bytes: bytes | None
     lease_id: str | None = None
-    pool_name: str | None = None
 
 
 def _sahi_inference_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
@@ -398,7 +397,6 @@ def _prepare_slice_image_input(
         },
         input_image_bytes=None,
         lease_id=str(getattr(lease, "lease_id", "") or "").strip() or None,
-        pool_name=str(getattr(lease, "pool_name", "") or "").strip() or None,
     )
 
 
@@ -415,7 +413,7 @@ def _release_slice_image_input(
     release = getattr(local_buffer_writer, "release", None)
     if callable(release):
         try:
-            release(prepared_input.lease_id, pool_name=prepared_input.pool_name)
+            release(prepared_input.lease_id)
             return
         except Exception:
             pass
@@ -426,7 +424,6 @@ def _release_slice_image_input(
     register_local_buffer_lease_cleanup(
         request.execution_metadata,
         lease_id=prepared_input.lease_id,
-        pool_name=prepared_input.pool_name,
     )
 
 

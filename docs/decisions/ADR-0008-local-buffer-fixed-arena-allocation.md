@@ -2,11 +2,11 @@
 
 ## 状态
 
-已接受，尚未实现。实现必须遵循[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)，不能只替换分配器而遗漏 Trigger mailbox、deadline、取消、SDK 映射和故障回收。
+已接受并完成阶段0–9实现。固定 arena、buddy allocator、持久 descriptor、guard/reclaim、BufferRef、Python/.NET SDK、frame channel、配置和正式调用点已原子迁移；阶段10源码开发环境的故障、容量、完整回归、真实图片传输与有界 soak 已通过，发行重组后的10,000次和24小时持续认证仍按[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)执行。
 
 ## 背景
 
-当前 LocalBufferBroker 按 `image-640x640`、`image-1080p`、`image-4k` 等名称创建固定大小、固定数量的 slot。该实现能提供简单的连续 mmap 区域，但存在以下结构性问题：
+迁移前 LocalBufferBroker 按 `image-640x640`、`image-1080p`、`image-4k` 等名称创建固定大小、固定数量的 slot。该实现能提供简单的连续 mmap 区域，但存在以下结构性问题：
 
 - 未显式指定 `pool_name` 时进入默认大图 pool，小图也会占用完整大 slot；
 - 调用方必须理解服务端 pool 配置，图片尺寸与资源配置耦合；

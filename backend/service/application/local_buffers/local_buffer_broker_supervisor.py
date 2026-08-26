@@ -38,7 +38,7 @@ from backend.service.application.runtime.support.safe_counter import (
     increment_safe_counter,
     snapshot_safe_counter,
 )
-from backend.service.infrastructure.local_buffers import MmapBufferWriteResult
+from backend.service.infrastructure.local_buffers import LocalBufferWriteResult
 
 
 logger = logging.getLogger(__name__)
@@ -526,14 +526,11 @@ class LocalBufferBrokerProcessSupervisor:
                             "process_id": process_id,
                             "process_exitcode": process_exitcode,
                             "root_dir": self.settings.root_dir,
-                            "pool_files": [
-                                str(
-                                    Path(self.settings.root_dir)
-                                    / pool.pool_name
-                                    / pool.file_name
-                                )
-                                for pool in self.settings.pools
-                            ],
+                            "arena_file": str(
+                                Path(self.settings.root_dir)
+                                / "local-buffer"
+                                / "arena-main.mmap"
+                            ),
                         },
                     )
                 try:
@@ -675,7 +672,14 @@ class LocalBufferBrokerProcessSupervisor:
             router = self._router
         if router is None:
             return None
-        return router.create_event_channel()
+        channel = router.create_event_channel()
+        return LocalBufferBrokerEventChannel(
+            request_queue=channel.request_queue,
+            response_queue=channel.response_queue,
+            request_timeout_seconds=channel.request_timeout_seconds,
+            channel_id=channel.channel_id,
+            direct_access_settings=self.settings.model_dump(mode="python"),
+        )
 
     def create_client(self) -> LocalBufferBrokerClient | None:
         """创建一个当前 broker 的同进程 client。"""
@@ -686,7 +690,16 @@ class LocalBufferBrokerProcessSupervisor:
             router = self._router
         if router is None:
             return None
-        return LocalBufferBrokerClient(router.create_local_event_channel())
+        channel = router.create_local_event_channel()
+        return LocalBufferBrokerClient(
+            LocalBufferBrokerEventChannel(
+                request_queue=channel.request_queue,
+                response_queue=channel.response_queue,
+                request_timeout_seconds=channel.request_timeout_seconds,
+                channel_id=channel.channel_id,
+                direct_access_settings=self.settings.model_dump(mode="python"),
+            )
+        )
 
     def get_status(self) -> dict[str, object]:
         """读取 broker 状态摘要。"""
@@ -758,14 +771,13 @@ class LocalBufferBrokerProcessSupervisor:
         owner_kind: str,
         owner_id: str,
         media_type: str,
-        pool_name: str | None = None,
         shape: tuple[int, ...] = (),
         dtype: str | None = None,
         layout: str | None = None,
         pixel_format: str | None = None,
         ttl_seconds: float | None = None,
         trace_id: str | None = None,
-    ) -> MmapBufferWriteResult:
+    ) -> LocalBufferWriteResult:
         """写入 bytes 并返回可跨进程传递的 BufferRef。"""
 
         client = self._require_client()
@@ -775,7 +787,6 @@ class LocalBufferBrokerProcessSupervisor:
                 owner_kind=owner_kind,
                 owner_id=owner_id,
                 media_type=media_type,
-                pool_name=pool_name,
                 shape=shape,
                 dtype=dtype,
                 layout=layout,
@@ -793,30 +804,26 @@ class LocalBufferBrokerProcessSupervisor:
     def allocate_buffer(
         self,
         *,
-        size: int,
+        content_length: int,
         owner_kind: str,
         owner_id: str,
-        pool_name: str | None = None,
         ttl_seconds: float | None = None,
         trace_id: str | None = None,
     ) -> BufferLease:
         """分配 writing lease，供独立 daemon 直接写入结果图片。"""
 
-        client = self._require_client()
+        client = self._require_direct_io_client()
         try:
             return client.allocate_buffer(
-                size=size,
+                content_length=content_length,
                 owner_kind=owner_kind,
                 owner_id=owner_id,
-                pool_name=pool_name,
                 ttl_seconds=ttl_seconds,
                 trace_id=trace_id,
             )
         except Exception as exc:
             self._record_recent_error(action="allocate-buffer", error=exc)
             raise
-        finally:
-            client.close()
 
     def commit_buffer(
         self,
@@ -827,10 +834,11 @@ class LocalBufferBrokerProcessSupervisor:
         dtype: str | None = None,
         layout: str | None = None,
         pixel_format: str | None = None,
-    ) -> MmapBufferWriteResult:
+        content_length: int | None = None,
+    ) -> LocalBufferWriteResult:
         """提交由独立 daemon 写完的结果图片 lease。"""
 
-        client = self._require_client()
+        client = self._require_direct_io_client()
         try:
             return client.commit_buffer(
                 lease=lease,
@@ -839,12 +847,11 @@ class LocalBufferBrokerProcessSupervisor:
                 dtype=dtype,
                 layout=layout,
                 pixel_format=pixel_format,
+                content_length=content_length,
             )
         except Exception as exc:
             self._record_recent_error(action="commit-buffer", error=exc)
             raise
-        finally:
-            client.close()
 
     def write_lease_bytes(
         self,
@@ -879,15 +886,15 @@ class LocalBufferBrokerProcessSupervisor:
         self,
         *,
         stream_id: str,
-        frame_capacity: int,
-        pool_name: str | None = None,
+        frame_count: int,
+        max_frame_content_length: int,
     ) -> dict[str, object]:
         """创建一个 ring buffer frame channel。
 
         参数：
         - stream_id：连续帧来源 id。
-        - frame_capacity：预留帧槽位数量。
-        - pool_name：目标 pool 名称；未提供时使用默认 pool。
+        - frame_count：长期预留的 frame extent 数量。
+        - max_frame_content_length：每个 frame extent 的最大有效字节数。
 
         返回：
         - dict[str, object]：channel 状态摘要。
@@ -897,8 +904,8 @@ class LocalBufferBrokerProcessSupervisor:
         try:
             return client.create_frame_channel(
                 stream_id=stream_id,
-                frame_capacity=frame_capacity,
-                pool_name=pool_name,
+                frame_count=frame_count,
+                max_frame_content_length=max_frame_content_length,
             )
         except Exception as exc:
             self._record_recent_error(action="create-frame-channel", error=exc)
@@ -912,7 +919,6 @@ class LocalBufferBrokerProcessSupervisor:
         stream_id: str,
         content: bytes | bytearray | memoryview,
         media_type: str,
-        pool_name: str | None = None,
         shape: tuple[int, ...] = (),
         dtype: str | None = None,
         layout: str | None = None,
@@ -925,7 +931,6 @@ class LocalBufferBrokerProcessSupervisor:
         - stream_id：连续帧来源 id。
         - content：当前帧字节内容。
         - media_type：当前帧媒体类型。
-        - pool_name：目标 pool 名称；未提供时使用默认 pool。
         - shape：raw 图像或 tensor 形状。
         - dtype：raw 数据类型。
         - layout：raw 数据布局。
@@ -942,7 +947,6 @@ class LocalBufferBrokerProcessSupervisor:
                 stream_id=stream_id,
                 content=content,
                 media_type=media_type,
-                pool_name=pool_name,
                 shape=shape,
                 dtype=dtype,
                 layout=layout,
@@ -984,27 +988,24 @@ class LocalBufferBrokerProcessSupervisor:
         self,
         *,
         stream_id: str,
-        pool_name: str | None = None,
     ) -> int:
         """销毁 frame channel 并释放其预留槽位。"""
 
         client = self._require_client()
         try:
-            return client.destroy_frame_channel(
-                stream_id=stream_id, pool_name=pool_name
-            )
+            return client.destroy_frame_channel(stream_id=stream_id)
         except Exception as exc:
             self._record_recent_error(action="destroy-frame-channel", error=exc)
             raise
         finally:
             client.close()
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+    def release(self, lease_id: str) -> None:
         """释放一条 broker lease。"""
 
         client = self._require_client()
         try:
-            client.release(lease_id, pool_name=pool_name)
+            client.release(lease_id)
         except Exception as exc:
             self._record_recent_error(action="release", error=exc)
             raise
@@ -1017,7 +1018,6 @@ class LocalBufferBrokerProcessSupervisor:
         owner_kind: str | None = None,
         owner_id: str | None = None,
         owner_id_prefix: str | None = None,
-        pool_name: str | None = None,
     ) -> int:
         """释放指定 owner 匹配的全部 broker lease。
 
@@ -1025,8 +1025,6 @@ class LocalBufferBrokerProcessSupervisor:
         - owner_kind：可选 owner 类型过滤条件。
         - owner_id：可选 owner id 精确匹配条件。
         - owner_id_prefix：可选 owner id 前缀匹配条件。
-        - pool_name：可选的目标 pool 名称。
-
         返回：
         - int：本次释放的 lease 数量。
         """
@@ -1037,7 +1035,6 @@ class LocalBufferBrokerProcessSupervisor:
                 owner_kind=owner_kind,
                 owner_id=owner_id,
                 owner_id_prefix=owner_id_prefix,
-                pool_name=pool_name,
             )
             return released_count
         except Exception as exc:
@@ -1046,11 +1043,8 @@ class LocalBufferBrokerProcessSupervisor:
         finally:
             client.close()
 
-    def expire_leases(self, *, pool_name: str | None = None) -> int:
+    def expire_leases(self) -> int:
         """触发 broker 回收已经过期的 lease。
-
-        参数：
-        - pool_name：可选的目标 pool 名称。
 
         返回：
         - int：本次回收的 lease 数量。
@@ -1058,7 +1052,7 @@ class LocalBufferBrokerProcessSupervisor:
 
         client = self._require_client()
         try:
-            expired_count = client.expire_leases(pool_name=pool_name)
+            expired_count = client.expire_leases()
             return expired_count
         except Exception as exc:
             self._record_recent_error(action="expire-leases", error=exc)

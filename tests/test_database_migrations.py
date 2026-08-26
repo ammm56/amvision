@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
+import json
 
 from alembic import command
 from alembic.migration import MigrationContext
@@ -30,9 +32,12 @@ from backend.maintenance.database_migrations import (
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.settings import BackendServiceSettings
+from backend.service.application.workflows.trigger_sources.output_delivery import (
+    TriggerResponsePlan,
+)
 
 
-_DATABASE_HEAD = "e2a7c9d1f4b6"
+_DATABASE_HEAD = "b4d6f8a2c5e1"
 
 
 def test_migrate_database_adopts_unversioned_create_all_database(
@@ -145,7 +150,8 @@ def test_migrate_database_upgrades_preserved_task_idempotency_revision(
     assert script.get_revision("b6e4f1a8c2d7").down_revision == "fa4c6e8b1d25"
     assert script.get_revision("c7a9e2d4f6b8").down_revision == "b6e4f1a8c2d7"
     assert script.get_revision("d8e4f6a1b3c7").down_revision == "c7a9e2d4f6b8"
-    assert script.get_revision(_DATABASE_HEAD).down_revision == "d8e4f6a1b3c7"
+    assert script.get_revision("e2a7c9d1f4b6").down_revision == "d8e4f6a1b3c7"
+    assert script.get_revision(_DATABASE_HEAD).down_revision == "e2a7c9d1f4b6"
     assert script.get_current_head() == _DATABASE_HEAD
 
     command.upgrade(config, "c4a2f7b8d3e5")
@@ -390,6 +396,99 @@ def test_publication_migration_rejects_active_legacy_conversion(
                 text("SELECT version_num FROM alembic_version")
             ).scalar_one()
         assert revision == "c7a9e2d4f6b8"
+    finally:
+        verification_factory.engine.dispose()
+
+
+def test_local_shared_timeout_migration_updates_response_plan_atomically(
+    tmp_path: Path,
+) -> None:
+    """local-shared 空 timeout 与旧 response plan 必须在同次 migration 收敛。"""
+
+    database_path = tmp_path / "local-shared-timeout.db"
+    settings = BackendServiceSettings(
+        database={"url": f"sqlite:///{database_path.as_posix()}", "echo": False}
+    )
+    config = _build_alembic_config(settings)
+    command.upgrade(config, "e2a7c9d1f4b6")
+    session_factory = SessionFactory(settings.to_database_settings())
+    try:
+        metadata = MetaData()
+        sources = Table(
+            "workflow_trigger_sources",
+            metadata,
+            autoload_with=session_factory.engine,
+        )
+        old_plan: dict[str, object] = {
+            "format_id": "amvision.trigger-response-plan.v1",
+            "trigger_source_id": "source-local",
+            "trigger_kind": "local-shared-memory",
+            "workflow_runtime_id": "runtime-1",
+            "workflow_runtime_revision_id": "revision-1",
+            "workflow_app_version_id": "version-1",
+            "workflow_runtime_generation": 1,
+            "expected_snapshot_fingerprint": "snapshot-1",
+            "contract_fingerprint": "contract-1",
+            "plan_generation": 1,
+            "submit_mode": "sync",
+            "result_mode": "sync-reply",
+            "ack_policy": "ack-after-run-finished",
+            "reply_timeout_seconds": None,
+            "result_bindings": [],
+            "attachment_delivery_kind": "none",
+            "adapter_capability_revision": "local-shared-memory.local-buffer-result.v1",
+        }
+        old_plan["plan_fingerprint"] = _test_plan_fingerprint(old_plan)
+        with session_factory.engine.begin() as connection:
+            connection.execute(
+                sources.insert().values(
+                    trigger_source_id="source-local",
+                    project_id="project-1",
+                    display_name="Local source",
+                    trigger_kind="local-shared-memory",
+                    workflow_runtime_id="runtime-1",
+                    submit_mode="sync",
+                    enabled=False,
+                    desired_state="stopped",
+                    observed_state="stopped",
+                    transport_config_json={},
+                    match_rule_json={},
+                    input_binding_mapping_json={},
+                    result_mapping_json={"result_bindings": []},
+                    default_execution_metadata_json={},
+                    ack_policy="ack-after-run-finished",
+                    result_mode="sync-reply",
+                    reply_timeout_seconds=None,
+                    health_summary_json={},
+                    metadata_json={"trigger_response_plan": old_plan},
+                    created_at="2026-08-26T00:00:00Z",
+                    updated_at="2026-08-26T00:00:00Z",
+                )
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    command.upgrade(config, "head")
+    verification_factory = SessionFactory(settings.to_database_settings())
+    try:
+        sources = Table(
+            "workflow_trigger_sources",
+            MetaData(),
+            autoload_with=verification_factory.engine,
+        )
+        with verification_factory.engine.connect() as connection:
+            row = connection.execute(
+                sources.select().where(
+                    sources.c.trigger_source_id == "source-local"
+                )
+            ).mappings().one()
+        assert row["reply_timeout_seconds"] == 30
+        migrated = TriggerResponsePlan.model_validate(
+            row["metadata_json"]["trigger_response_plan"]
+        )
+        assert migrated.reply_timeout_seconds == 30
+        assert migrated.response_ack_timeout_seconds == 30.0
+        assert migrated.plan_generation == 2
     finally:
         verification_factory.engine.dispose()
 
@@ -804,6 +903,21 @@ def _assert_workflow_runtime_revision_foreign_keys(inspector: Inspector) -> None
         ("workflow_app_version_id",),
         None,
     ) in signatures
+
+
+def _test_plan_fingerprint(payload: dict[str, object]) -> str:
+    """为迁移夹具生成旧 TriggerResponsePlan 的稳定 fingerprint。"""
+
+    normalized = dict(payload)
+    normalized.pop("plan_fingerprint", None)
+    return sha256(
+        json.dumps(
+            normalized,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _assert_worker_instance_column(inspector: Inspector) -> None:

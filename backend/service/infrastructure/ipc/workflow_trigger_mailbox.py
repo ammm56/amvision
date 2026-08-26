@@ -9,6 +9,7 @@ import mmap
 import os
 from pathlib import Path
 import struct
+from threading import Lock
 from time import monotonic_ns, time_ns
 from typing import BinaryIO, Iterator
 from uuid import UUID, uuid4
@@ -111,6 +112,7 @@ class WorkflowTriggerMailboxResponse:
     error_code: int
     response_output_lease_count: int
     handoff_state: int
+    response_ack_deadline_ns: int
 
     def json_payload(self) -> dict[str, object]:
         """把 UTF-8 JSON response 解码为对象。"""
@@ -129,6 +131,7 @@ class WorkflowTriggerMailboxServer:
         *,
         buffers_root: str | Path,
         max_request_timeout_ms: int = 120_000,
+        response_ack_timeout_ms: int = 30_000,
     ) -> None:
         """创建或接管固定 mailbox，并以新 server epoch 清空旧状态。"""
 
@@ -136,9 +139,14 @@ class WorkflowTriggerMailboxServer:
             raise ServiceConfigurationError(
                 "Workflow Trigger 最大请求 timeout 必须大于 0"
             )
+        if response_ack_timeout_ms <= 0:
+            raise ServiceConfigurationError(
+                "Workflow Trigger response ACK timeout 必须大于 0"
+            )
 
         self.path = build_workflow_trigger_mailbox_path(buffers_root)
         self.max_request_timeout_ms = max_request_timeout_ms
+        self.response_ack_timeout_ms = response_ack_timeout_ms
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._owner_lock = acquire_mmap_owner_lock(
             build_workflow_trigger_owner_lock_path(self.path)
@@ -153,6 +161,10 @@ class WorkflowTriggerMailboxServer:
         self._last_timeout_diagnostic: dict[str, int] | None = None
         self._prepare_poll_cursor = 0
         self._request_poll_cursor = 0
+        # page pool 由单个 server 进程拥有，但多个 Runtime completion 线程会
+        # 并发发布不同 descriptor 的响应。descriptor guard 不能保护共享 page
+        # 选择，因此分配、回滚和释放必须经过同一把进程内 allocator lock。
+        self._page_allocator_lock = Lock()
         try:
             self._initialize_descriptor_guard_files()
             self._file = self._open_fixed_file()
@@ -222,9 +234,9 @@ class WorkflowTriggerMailboxServer:
                         "accepted_timeout_ms": accepted_timeout_ms,
                         "accepted_at_ns": current_ns,
                     }
-                    identity = self._read_identity(descriptor_index)
+                identity = self._read_identity(descriptor_index)
                 if current_ns >= identity.deadline_ns:
-                    self._publish_cancelled_locked(identity)
+                    self._publish_deadline_exceeded_locked(identity)
                     continue
                 try:
                     payload = self._read_request_payload_locked(identity)
@@ -370,7 +382,7 @@ class WorkflowTriggerMailboxServer:
                     self._reset_descriptor_locked(identity)
                     continue
                 if current_ns >= identity.deadline_ns:
-                    self._publish_cancelled_locked(identity)
+                    self._publish_deadline_exceeded_locked(identity)
                     continue
                 try:
                     payload = self._read_request_payload_locked(identity)
@@ -450,7 +462,8 @@ class WorkflowTriggerMailboxServer:
         error_code: int = contract.ERROR_CODE_NONE,
         response_output_lease_count: int = 0,
         handoff_state: int = contract.HANDOFF_STATE_NONE,
-    ) -> None:
+        response_ack_deadline_ns: int | None = None,
+    ) -> int:
         """一次序列化结果只写一次 inline/page-chain，最后发布 RESPONSE。"""
 
         if not isinstance(payload, bytes):
@@ -460,25 +473,39 @@ class WorkflowTriggerMailboxServer:
                 "Workflow Trigger response 超过 32 MiB 上限",
                 details={"response_size": len(payload)},
             )
+        resolved_ack_deadline_ns = (
+            response_ack_deadline_ns
+            if response_ack_deadline_ns is not None
+            else self.new_response_ack_deadline_ns()
+        )
+        if resolved_ack_deadline_ns <= monotonic_ns():
+            raise InvalidRequestError(
+                "Workflow Trigger response ACK deadline 必须位于未来"
+            )
         with self._descriptor_guard(identity.descriptor_index, identity.deadline_ns):
             self._require_identity_locked(
                 identity,
                 expected_states={contract.DESCRIPTOR_STATE_PROCESSING},
             )
             descriptor_offset = _descriptor_offset(identity.descriptor_index)
-            if _read_u32(
+            cancel_reason = _read_u32(
                 self._require_view(),
                 descriptor_offset
-                + contract.DESCRIPTOR_HEADER_CANCEL_REQUESTED_OFFSET,
-            ):
+                + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
+            )
+            if cancel_reason != contract.CANCEL_REASON_NONE:
                 self._publish_cancelled_locked(identity)
-                return
-            self._publish_response_locked(
+                return contract.ERROR_CODE_CANCELLED
+            if monotonic_ns() >= identity.deadline_ns:
+                self._publish_deadline_exceeded_locked(identity)
+                return contract.ERROR_CODE_DEADLINE_EXCEEDED
+            return self._publish_response_locked(
                 identity,
                 payload=payload,
                 error_code=error_code,
                 response_output_lease_count=response_output_lease_count,
                 handoff_state=handoff_state,
+                response_ack_deadline_ns=resolved_ack_deadline_ns,
             )
 
     def publish_json_response(
@@ -489,7 +516,7 @@ class WorkflowTriggerMailboxServer:
         error_code: int = contract.ERROR_CODE_NONE,
         response_output_lease_count: int = 0,
         handoff_state: int = contract.HANDOFF_STATE_NONE,
-    ) -> None:
+    ) -> int:
         """生成紧凑 UTF-8 JSON 并发布。"""
 
         serialized = json.dumps(
@@ -497,7 +524,7 @@ class WorkflowTriggerMailboxServer:
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
-        self.publish_response(
+        return self.publish_response(
             identity=identity,
             payload=serialized,
             error_code=error_code,
@@ -512,7 +539,7 @@ class WorkflowTriggerMailboxServer:
         error_code: int,
         message: str,
         expected_states: set[int] | None = None,
-    ) -> None:
+    ) -> int:
         """在 PREPARE/WRITING/REQUEST/PROCESSING 任一失败点发布 inline 错误。"""
 
         states = expected_states or {
@@ -523,10 +550,50 @@ class WorkflowTriggerMailboxServer:
         }
         with self._descriptor_guard(identity.descriptor_index, identity.deadline_ns):
             self._require_identity_locked(identity, expected_states=states)
-            self._publish_error_locked(
+            descriptor_offset = _descriptor_offset(identity.descriptor_index)
+            cancel_reason = _read_u32(
+                self._require_view(),
+                descriptor_offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
+            )
+            if cancel_reason != contract.CANCEL_REASON_NONE:
+                self._publish_cancelled_locked(identity)
+                return contract.ERROR_CODE_CANCELLED
+            if monotonic_ns() >= identity.deadline_ns:
+                self._publish_deadline_exceeded_locked(identity)
+                return contract.ERROR_CODE_DEADLINE_EXCEEDED
+            return self._publish_error_locked(
                 identity,
                 error_code=error_code,
                 message=message,
+            )
+
+    def new_response_ack_deadline_ns(self) -> int:
+        """按 server 唯一配置生成独立于 request 的 ACK deadline。"""
+
+        return monotonic_ns() + self.response_ack_timeout_ms * 1_000_000
+
+    def read_cancel_reason(
+        self,
+        *,
+        identity: WorkflowTriggerDescriptorIdentity,
+    ) -> int:
+        """锁外快速跳过无取消请求，命中后在 descriptor guard 内重验。"""
+
+        descriptor_offset = _descriptor_offset(identity.descriptor_index)
+        reason = _read_u32(
+            self._require_view(),
+            descriptor_offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
+        )
+        if reason == contract.CANCEL_REASON_NONE:
+            return reason
+        with self._descriptor_guard(identity.descriptor_index, identity.deadline_ns):
+            self._require_identity_locked(
+                identity,
+                expected_states={contract.DESCRIPTOR_STATE_PROCESSING},
+            )
+            return _read_u32(
+                self._require_view(),
+                descriptor_offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
             )
 
     def sweep(
@@ -544,7 +611,12 @@ class WorkflowTriggerMailboxServer:
 
         current_ns = now_ns if now_ns is not None else monotonic_ns()
         cancelled_count = 0
+        deadline_exceeded_count = 0
+        response_ack_timeout_count = 0
         released_count = 0
+        cancelled_identities: list[WorkflowTriggerDescriptorIdentity] = []
+        deadline_exceeded_identities: list[WorkflowTriggerDescriptorIdentity] = []
+        response_ack_timeout_identities: list[WorkflowTriggerDescriptorIdentity] = []
         released_identities: list[WorkflowTriggerDescriptorIdentity] = []
         indexes = (
             range(contract.DESCRIPTOR_COUNT)
@@ -570,14 +642,24 @@ class WorkflowTriggerMailboxServer:
                 contract.DESCRIPTOR_STATE_ACKED,
                 contract.DESCRIPTOR_STATE_CANCELLED,
             }:
-                deadline_ns = _read_u64(
+                cancel_reason = _read_u32(
                     view,
-                    descriptor_offset + contract.DESCRIPTOR_HEADER_DEADLINE_NS_OFFSET,
+                    descriptor_offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
                 )
+                deadline_offset = (
+                    contract.DESCRIPTOR_HEADER_RESPONSE_ACK_DEADLINE_NS_OFFSET
+                    if state == contract.DESCRIPTOR_STATE_RESPONSE
+                    else contract.DESCRIPTOR_HEADER_DEADLINE_NS_OFFSET
+                )
+                deadline_ns = _read_u64(view, descriptor_offset + deadline_offset)
                 if (
                     state == contract.DESCRIPTOR_STATE_PREPARE
                     and deadline_ns == 0
-                ) or current_ns < deadline_ns:
+                    and cancel_reason == contract.CANCEL_REASON_NONE
+                ) or (
+                    cancel_reason == contract.CANCEL_REASON_NONE
+                    and current_ns < deadline_ns
+                ):
                     continue
             with self._try_descriptor_guard(descriptor_index) as acquired:
                 if not acquired:
@@ -604,11 +686,39 @@ class WorkflowTriggerMailboxServer:
                     # client 只提交相对 timeout；poll_prepare 尚未接受前没有
                     # backend absolute deadline，terminal sweep 不得抢先取消。
                     continue
-                if current_ns >= identity.deadline_ns:
+                cancel_reason = _read_u32(
+                    view,
+                    descriptor_offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
+                )
+                if cancel_reason != contract.CANCEL_REASON_NONE:
                     self._publish_cancelled_locked(identity)
                     cancelled_count += 1
+                    cancelled_identities.append(identity)
+                    continue
+                if state == contract.DESCRIPTOR_STATE_RESPONSE:
+                    response_ack_deadline_ns = _read_u64(
+                        view,
+                        descriptor_offset
+                        + contract.DESCRIPTOR_HEADER_RESPONSE_ACK_DEADLINE_NS_OFFSET,
+                    )
+                    if current_ns >= response_ack_deadline_ns:
+                        self._publish_cancelled_locked(identity)
+                        response_ack_timeout_count += 1
+                        response_ack_timeout_identities.append(identity)
+                    continue
+                if current_ns >= identity.deadline_ns:
+                    self._publish_deadline_exceeded_locked(identity)
+                    deadline_exceeded_count += 1
+                    deadline_exceeded_identities.append(identity)
         return {
             "cancelled_count": cancelled_count,
+            "deadline_exceeded_count": deadline_exceeded_count,
+            "response_ack_timeout_count": response_ack_timeout_count,
+            "cancelled_identities": tuple(cancelled_identities),
+            "deadline_exceeded_identities": tuple(deadline_exceeded_identities),
+            "response_ack_timeout_identities": tuple(
+                response_ack_timeout_identities
+            ),
             "released_count": released_count,
             "released_identities": tuple(released_identities),
         }
@@ -625,14 +735,15 @@ class WorkflowTriggerMailboxServer:
             )
             if 0 <= state < len(descriptor_states):
                 descriptor_states[state] += 1
-        free_pages = sum(
-            _read_u32(
-                view,
-                _page_offset(index) + contract.PAGE_HEADER_STATE_OFFSET,
+        with self._page_allocator_lock:
+            free_pages = sum(
+                _read_u32(
+                    view,
+                    _page_offset(index) + contract.PAGE_HEADER_STATE_OFFSET,
+                )
+                == contract.PAGE_STATE_FREE
+                for index in range(contract.OVERFLOW_PAGE_COUNT)
             )
-            == contract.PAGE_STATE_FREE
-            for index in range(contract.OVERFLOW_PAGE_COUNT)
-        )
         return {
             "contract_id": contract.CONTRACT_ID,
             "path": str(self.path),
@@ -764,7 +875,8 @@ class WorkflowTriggerMailboxServer:
         error_code: int,
         response_output_lease_count: int,
         handoff_state: int,
-    ) -> None:
+        response_ack_deadline_ns: int,
+    ) -> int:
         """在 descriptor guard 内发布 inline 或 page-chain response。"""
 
         view = self._require_view()
@@ -787,14 +899,17 @@ class WorkflowTriggerMailboxServer:
             ) // contract.OVERFLOW_PAGE_CAPACITY_BYTES
             if page_count > contract.MAX_OVERFLOW_PAGES_PER_RESPONSE:
                 raise InvalidRequestError("Workflow Trigger response page 数超过上限")
-            page_indices = self._allocate_pages_locked(page_count)
+            page_indices = self._reserve_pages(
+                page_count=page_count,
+                identity=identity,
+            )
             if not page_indices:
                 self._publish_error_locked(
                     identity,
                     error_code=contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
                     message="Workflow Trigger response page pool 已满载",
                 )
-                return
+                return contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED
             try:
                 for ordinal, page_index in enumerate(page_indices):
                     chunk_start = ordinal * contract.OVERFLOW_PAGE_CAPACITY_BYTES
@@ -802,20 +917,16 @@ class WorkflowTriggerMailboxServer:
                         chunk_start : chunk_start
                         + contract.OVERFLOW_PAGE_CAPACITY_BYTES
                     ]
-                    next_page_index = (
-                        page_indices[ordinal + 1]
-                        if ordinal + 1 < len(page_indices)
-                        else _NO_PAGE_INDEX
-                    )
-                    self._write_page_locked(
+                    self._write_reserved_page(
                         page_index=page_index,
-                        next_page_index=next_page_index,
                         chunk=chunk,
                         identity=identity,
-                        ordinal=ordinal,
                     )
             except Exception:
-                self._release_selected_pages_locked(page_indices)
+                self._release_reserved_pages(
+                    identity=identity,
+                    page_indices=page_indices,
+                )
                 raise
         _write_u32(
             view,
@@ -875,11 +986,18 @@ class WorkflowTriggerMailboxServer:
             descriptor_offset + contract.DESCRIPTOR_HEADER_UPDATED_AT_NS_OFFSET,
             time_ns(),
         )
+        _write_u64(
+            view,
+            descriptor_offset
+            + contract.DESCRIPTOR_HEADER_RESPONSE_ACK_DEADLINE_NS_OFFSET,
+            response_ack_deadline_ns,
+        )
         publish_u32(
             view,
             offset=descriptor_offset + contract.DESCRIPTOR_HEADER_STATE_OFFSET,
             value=contract.DESCRIPTOR_STATE_RESPONSE,
         )
+        return error_code
 
     def _publish_error_locked(
         self,
@@ -887,7 +1005,7 @@ class WorkflowTriggerMailboxServer:
         *,
         error_code: int,
         message: str,
-    ) -> None:
+    ) -> int:
         """发布不依赖 overflow page 的紧凑错误。"""
 
         payload = json.dumps(
@@ -895,39 +1013,52 @@ class WorkflowTriggerMailboxServer:
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
-        self._publish_response_locked(
+        return self._publish_response_locked(
             identity,
             payload=payload,
             error_code=error_code,
             response_output_lease_count=0,
             handoff_state=contract.HANDOFF_STATE_NONE,
+            response_ack_deadline_ns=self.new_response_ack_deadline_ns(),
         )
 
-    def _write_page_locked(
+    def _publish_deadline_exceeded_locked(
+        self,
+        identity: WorkflowTriggerDescriptorIdentity,
+    ) -> int:
+        """发布可读取的最小 deadline_exceeded inline RESPONSE。"""
+
+        return self._publish_error_locked(
+            identity,
+            error_code=contract.ERROR_CODE_DEADLINE_EXCEEDED,
+            message="Workflow Trigger request deadline 已到期",
+        )
+
+    def _write_reserved_page(
         self,
         *,
         page_index: int,
-        next_page_index: int,
         chunk: bytes,
         identity: WorkflowTriggerDescriptorIdentity,
-        ordinal: int,
     ) -> None:
-        """写完 page body/header 后最后发布 READY。"""
+        """在 allocator lock 外写完已预留 page，最后发布 READY。"""
 
         view = self._require_view()
         page_offset = _page_offset(page_index)
-        publish_u32(
-            view,
-            offset=page_offset + contract.PAGE_HEADER_STATE_OFFSET,
-            value=contract.PAGE_STATE_RESERVED,
-        )
+        header = self._read_page_header(page_index)[1]
+        if (
+            header["state"] != contract.PAGE_STATE_RESERVED
+            or header["descriptor_index"] != identity.descriptor_index
+            or header["descriptor_generation"] != identity.generation
+            or header["owner_token"] != identity.owner_token
+            or header["server_epoch"] != identity.server_epoch
+        ):
+            raise InvalidRequestError(
+                "Workflow Trigger response page reservation identity 不匹配",
+                details={"page_index": page_index},
+            )
         body_offset = page_offset + contract.PAGE_HEADER_SIZE
         view[body_offset : body_offset + len(chunk)] = chunk
-        _write_i32(
-            view,
-            page_offset + contract.PAGE_HEADER_NEXT_PAGE_INDEX_OFFSET,
-            next_page_index,
-        )
         _write_u32(
             view,
             page_offset + contract.PAGE_HEADER_USED_SIZE_OFFSET,
@@ -943,61 +1074,78 @@ class WorkflowTriggerMailboxServer:
             page_offset + contract.PAGE_HEADER_CHECKSUM_OFFSET,
             crc32_ieee(chunk),
         )
-        _write_u32(
-            view,
-            page_offset + contract.PAGE_HEADER_DESCRIPTOR_INDEX_OFFSET,
-            identity.descriptor_index,
-        )
-        _write_u64(
-            view,
-            page_offset + contract.PAGE_HEADER_DESCRIPTOR_GENERATION_OFFSET,
-            identity.generation,
-        )
-        _write_u64(
-            view,
-            page_offset + contract.PAGE_HEADER_OWNER_TOKEN_OFFSET,
-            identity.owner_token,
-        )
-        _write_u64(
-            view,
-            page_offset + contract.PAGE_HEADER_SERVER_EPOCH_OFFSET,
-            identity.server_epoch,
-        )
-        _write_u32(
-            view,
-            page_offset + contract.PAGE_HEADER_ORDINAL_OFFSET,
-            ordinal,
-        )
         publish_u32(
             view,
             offset=page_offset + contract.PAGE_HEADER_STATE_OFFSET,
             value=contract.PAGE_STATE_READY,
         )
 
-    def _allocate_pages_locked(self, page_count: int) -> tuple[int, ...]:
-        """连续优先选择 page；碎片化时允许非连续 chain。"""
+    def _reserve_pages(
+        self,
+        *,
+        page_count: int,
+        identity: WorkflowTriggerDescriptorIdentity,
+    ) -> tuple[int, ...]:
+        """原子选择 page 并写入不可混淆的 reservation identity。"""
 
         view = self._require_view()
-        free_pages = tuple(
-            index
-            for index in range(contract.OVERFLOW_PAGE_COUNT)
-            if _read_u32(
-                view,
-                _page_offset(index) + contract.PAGE_HEADER_STATE_OFFSET,
+        with self._page_allocator_lock:
+            free_pages = tuple(
+                index
+                for index in range(contract.OVERFLOW_PAGE_COUNT)
+                if _read_u32(
+                    view,
+                    _page_offset(index) + contract.PAGE_HEADER_STATE_OFFSET,
+                )
+                == contract.PAGE_STATE_FREE
             )
-            == contract.PAGE_STATE_FREE
-        )
-        selected = select_page_indices(
-            free_page_indices=free_pages,
-            page_count=page_count,
-        )
-        for page_index in selected:
-            publish_u32(
-                view,
-                offset=_page_offset(page_index) + contract.PAGE_HEADER_STATE_OFFSET,
-                value=contract.PAGE_STATE_RESERVED,
+            selected = select_page_indices(
+                free_page_indices=free_pages,
+                page_count=page_count,
             )
-        return selected
+            for ordinal, page_index in enumerate(selected):
+                page_offset = _page_offset(page_index)
+                view[page_offset : page_offset + contract.PAGE_HEADER_SIZE] = bytes(
+                    contract.PAGE_HEADER_SIZE
+                )
+                _write_i32(
+                    view,
+                    page_offset + contract.PAGE_HEADER_NEXT_PAGE_INDEX_OFFSET,
+                    selected[ordinal + 1]
+                    if ordinal + 1 < len(selected)
+                    else _NO_PAGE_INDEX,
+                )
+                _write_u32(
+                    view,
+                    page_offset + contract.PAGE_HEADER_DESCRIPTOR_INDEX_OFFSET,
+                    identity.descriptor_index,
+                )
+                _write_u64(
+                    view,
+                    page_offset + contract.PAGE_HEADER_DESCRIPTOR_GENERATION_OFFSET,
+                    identity.generation,
+                )
+                _write_u64(
+                    view,
+                    page_offset + contract.PAGE_HEADER_OWNER_TOKEN_OFFSET,
+                    identity.owner_token,
+                )
+                _write_u64(
+                    view,
+                    page_offset + contract.PAGE_HEADER_SERVER_EPOCH_OFFSET,
+                    identity.server_epoch,
+                )
+                _write_u32(
+                    view,
+                    page_offset + contract.PAGE_HEADER_ORDINAL_OFFSET,
+                    ordinal,
+                )
+                publish_u32(
+                    view,
+                    offset=page_offset + contract.PAGE_HEADER_STATE_OFFSET,
+                    value=contract.PAGE_STATE_RESERVED,
+                )
+            return selected
 
     def _release_pages_locked(self, identity: WorkflowTriggerDescriptorIdentity) -> None:
         """只释放完整 identity 匹配的 page chain。"""
@@ -1014,19 +1162,52 @@ class WorkflowTriggerMailboxServer:
         )
         if page_count == 0:
             return
-        try:
-            entries = read_page_chain(
-                first_page_index=first_page_index,
-                expected_page_count=page_count,
-                total_page_count=contract.OVERFLOW_PAGE_COUNT,
-                no_page_index=_NO_PAGE_INDEX,
-                read_header=self._read_page_header,
+        with self._page_allocator_lock:
+            try:
+                entries = read_page_chain(
+                    first_page_index=first_page_index,
+                    expected_page_count=page_count,
+                    total_page_count=contract.OVERFLOW_PAGE_COUNT,
+                    no_page_index=_NO_PAGE_INDEX,
+                    read_header=self._read_page_header,
+                )
+            except MmapPageChainError:
+                entries = tuple(
+                    (index, self._read_page_header(index)[1])
+                    for index in range(contract.OVERFLOW_PAGE_COUNT)
+                )
+            self._release_matching_pages_locked(
+                identity=identity,
+                entries=entries,
             )
-        except MmapPageChainError:
+
+    def _release_reserved_pages(
+        self,
+        *,
+        identity: WorkflowTriggerDescriptorIdentity,
+        page_indices: tuple[int, ...],
+    ) -> None:
+        """回滚尚未发布到 descriptor 的 RESERVED/READY pages。"""
+
+        with self._page_allocator_lock:
             entries = tuple(
-                (index, self._read_page_header(index)[1])
-                for index in range(contract.OVERFLOW_PAGE_COUNT)
+                (page_index, self._read_page_header(page_index)[1])
+                for page_index in page_indices
             )
+            self._release_matching_pages_locked(
+                identity=identity,
+                entries=entries,
+            )
+
+    def _release_matching_pages_locked(
+        self,
+        *,
+        identity: WorkflowTriggerDescriptorIdentity,
+        entries: tuple[tuple[int, dict[str, int]], ...],
+    ) -> None:
+        """在 allocator lock 内按完整 identity 归还 pages。"""
+
+        view = self._require_view()
         for page_index, header in entries:
             if (
                 header["descriptor_index"] != identity.descriptor_index
@@ -1035,21 +1216,6 @@ class WorkflowTriggerMailboxServer:
                 or header["server_epoch"] != identity.server_epoch
             ):
                 continue
-            page_offset = _page_offset(page_index)
-            view[page_offset : page_offset + contract.PAGE_HEADER_SIZE] = bytes(
-                contract.PAGE_HEADER_SIZE
-            )
-            _write_i32(
-                view,
-                page_offset + contract.PAGE_HEADER_NEXT_PAGE_INDEX_OFFSET,
-                _NO_PAGE_INDEX,
-            )
-
-    def _release_selected_pages_locked(self, page_indices: tuple[int, ...]) -> None:
-        """回滚尚未发布到 descriptor 的 RESERVED/READY pages。"""
-
-        view = self._require_view()
-        for page_index in page_indices:
             page_offset = _page_offset(page_index)
             view[page_offset : page_offset + contract.PAGE_HEADER_SIZE] = bytes(
                 contract.PAGE_HEADER_SIZE
@@ -1217,7 +1383,8 @@ class WorkflowTriggerMailboxServer:
                 self.path,
                 descriptor_index,
             ),
-            deadline_ns=deadline_ns,
+            # request deadline 到期后仍需发布 deadline RESPONSE 或收敛终态。
+            deadline_ns=max(deadline_ns, monotonic_ns() + 2_000_000),
             poll_interval_seconds=0.001,
         ):
             yield
@@ -1588,6 +1755,11 @@ class WorkflowTriggerMailboxClient:
                     self._view,
                     descriptor_offset + contract.DESCRIPTOR_HEADER_HANDOFF_STATE_OFFSET,
                 ),
+                response_ack_deadline_ns=_read_u64(
+                    self._view,
+                    descriptor_offset
+                    + contract.DESCRIPTOR_HEADER_RESPONSE_ACK_DEADLINE_NS_OFFSET,
+                ),
             )
 
     def acknowledge(self, *, identity: WorkflowTriggerDescriptorIdentity) -> None:
@@ -1605,8 +1777,20 @@ class WorkflowTriggerMailboxClient:
                 value=contract.DESCRIPTOR_STATE_ACKED,
             )
 
-    def cancel(self, *, identity: WorkflowTriggerDescriptorIdentity) -> None:
+    def cancel(
+        self,
+        *,
+        identity: WorkflowTriggerDescriptorIdentity,
+        reason: int = contract.CANCEL_REASON_EXPLICIT,
+    ) -> None:
         """请求取消；PROCESSING 只置位，其他未完成状态直接发布 CANCELLED。"""
+
+        if reason not in {
+            contract.CANCEL_REASON_REQUEST_TIMEOUT,
+            contract.CANCEL_REASON_EXPLICIT,
+            contract.CANCEL_REASON_CLIENT_SHUTDOWN,
+        }:
+            raise InvalidRequestError("Workflow Trigger cancel reason 不合法")
 
         with self._descriptor_guard(identity):
             self._require_identity_locked(
@@ -1624,11 +1808,16 @@ class WorkflowTriggerMailboxClient:
                 self._view,
                 offset + contract.DESCRIPTOR_HEADER_STATE_OFFSET,
             )
-            _write_u32(
+            current_reason = _read_u32(
                 self._view,
-                offset + contract.DESCRIPTOR_HEADER_CANCEL_REQUESTED_OFFSET,
-                1,
+                offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
             )
+            if current_reason == contract.CANCEL_REASON_NONE:
+                _write_u32(
+                    self._view,
+                    offset + contract.DESCRIPTOR_HEADER_CANCEL_REASON_OFFSET,
+                    reason,
+                )
             if state != contract.DESCRIPTOR_STATE_PROCESSING:
                 publish_u32(
                     self._view,

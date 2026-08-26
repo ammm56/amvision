@@ -1,101 +1,54 @@
-"""LocalBufferBroker 客户端协议与事件通道实现。"""
+"""LocalBufferBroker 单 arena 客户端协议与事件通道。"""
 
 from __future__ import annotations
 
-import mmap
 from contextlib import AbstractContextManager, contextmanager
-from datetime import datetime, timezone
+from dataclasses import dataclass
+import mmap
 from pathlib import Path
 from queue import Empty
 from threading import Lock, RLock
 from time import monotonic_ns
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 from uuid import uuid4
-
-from dataclasses import dataclass
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.contracts.buffers.lease_ownership import (
     ExternalBufferAllocation,
     LeaseOwnershipReceipt,
 )
-from backend.service.application.errors import InvalidRequestError, OperationTimeoutError, ServiceConfigurationError
+from backend.service.application.errors import (
+    InvalidRequestError,
+    LocalBufferCapacityError,
+    OperationTimeoutError,
+    ServiceConfigurationError,
+)
 from backend.service.application.runtime.support.safe_counter import (
     SafeCounterState,
     increment_safe_counter,
     snapshot_safe_counter,
 )
-from backend.service.infrastructure.local_buffers import (
-    ExternalBufferCommitTransferResult,
-    MmapBufferWriteResult,
-)
 from backend.service.infrastructure.ipc.mmap_primitives import (
     acquire_mmap_guard,
     acquire_mmap_reader_guard,
+)
+from backend.service.infrastructure.local_buffers import (
+    ExternalBufferCommitTransferResult,
+    LocalBufferWriteResult,
 )
 
 
 LocalBufferContent = bytes | bytearray | memoryview
 
 
-def _normalize_write_content(content: LocalBufferContent) -> bytes | memoryview:
-    """把 bytes-like 内容规范化为一维连续字节视图。"""
-
-    if isinstance(content, bytes):
-        normalized: bytes | memoryview = content
-    elif isinstance(content, (bytearray, memoryview)):
-        view = memoryview(content)
-        try:
-            normalized = view.cast("B")
-        except TypeError as error:
-            raise InvalidRequestError(
-                "LocalBufferBroker direct mmap 写入内容必须是连续 buffer"
-            ) from error
-    else:
-        raise InvalidRequestError(
-            "LocalBufferBroker direct mmap 写入内容必须支持 buffer protocol"
-        )
-    if len(normalized) <= 0:
-        raise InvalidRequestError("LocalBufferBroker direct mmap 写入内容不能为空")
-    return normalized
-
-
 class LocalBufferReader(Protocol):
-    """定义 workflow 节点读取 LocalBufferBroker 引用所需的最小接口。"""
+    """定义 Workflow 节点读取和释放 LocalBuffer 引用的最小接口。"""
 
-    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes | memoryview:
-        """读取普通 BufferRef 对应的字节。
+    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes | memoryview: ...
 
-        参数：
-        - buffer_ref：普通 mmap buffer 引用。
+    def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview: ...
 
-        返回：
-        - bytes | memoryview：引用范围内的复制内容或只读共享视图。
-        """
-
-        ...
-
-    def read_frame_ref(self, frame_ref: FrameRef) -> bytes:
-        """读取 FrameRef 对应的帧字节。
-
-        参数：
-        - frame_ref：ring buffer 帧引用。
-
-        返回：
-        - bytes：引用范围内的帧字节内容。
-        """
-
-        ...
-
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
-        """释放一条 LocalBufferBroker lease。
-
-        参数：
-        - lease_id：待释放的 lease id。
-        - pool_name：可选的目标 pool 名称。
-        """
-
-        ...
+    def release(self, lease_id: str) -> None: ...
 
     def release_owner(
         self,
@@ -103,74 +56,53 @@ class LocalBufferReader(Protocol):
         owner_kind: str | None = None,
         owner_id: str | None = None,
         owner_id_prefix: str | None = None,
-        pool_name: str | None = None,
-    ) -> int:
-        """释放指定 owner 匹配的全部 LocalBufferBroker lease。
+    ) -> int: ...
 
-        参数：
-        - owner_kind：可选 owner 类型过滤条件。
-        - owner_id：可选 owner id 精确匹配条件。
-        - owner_id_prefix：可选 owner id 前缀匹配条件。
-        - pool_name：可选的目标 pool 名称。
-
-        返回：
-        - int：本次释放的 lease 数量。
-        """
-
-        ...
-
-    def expire_leases(self, *, pool_name: str | None = None) -> int:
-        """触发 broker 回收已经过期的 lease。
-
-        参数：
-        - pool_name：可选的目标 pool 名称。
-
-        返回：
-        - int：本次回收的 lease 数量。
-        """
-
-        ...
+    def expire_leases(self) -> int: ...
 
 
 @dataclass(frozen=True)
 class LocalBufferBrokerEventChannel:
-    """描述访问 LocalBufferBroker 状态机所需的事件通道。
-
-    字段：
-    - channel_id：当前客户端通道 id；为空表示直接 broker 队列或测试通道。
-    - request_queue：客户端发送 broker 控制事件的队列。
-    - response_queue：broker 返回事件结果的队列。
-    - request_timeout_seconds：单次请求等待响应的最长秒数。
-    """
+    """描述访问 Broker 状态机所需的进程间事件通道。"""
 
     request_queue: Any
     response_queue: Any
     request_timeout_seconds: float = 5.0
     channel_id: str | None = None
+    direct_access_settings: dict[str, object] | None = None
 
 
 class LocalBufferBrokerClient:
-    """通过事件通道访问 LocalBufferBroker。"""
+    """通过控制通道访问 Broker，图片 bytes 直接读写固定 arena。"""
 
     def __init__(self, channel: LocalBufferBrokerEventChannel) -> None:
-        """初始化 broker client。
-
-        参数：
-        - channel：broker 事件通道。
-        """
+        """初始化控制计数、mmap handle cache 和 writer locator cache。"""
 
         self.channel = channel
         self._mmap_cache = _MmapFileCache()
+        self._writer_locations: dict[str, dict[str, object]] = {}
+        self._direct_reader = None
+        self._direct_writer = None
+        if channel.direct_access_settings is not None:
+            from backend.service.application.local_buffers.direct_mmap_reader import (
+                DirectMmapLocalBufferReader,
+                DirectMmapLocalBufferWriter,
+            )
+
+            self._direct_reader = DirectMmapLocalBufferReader(
+                channel.direct_access_settings
+            )
+            self._direct_writer = DirectMmapLocalBufferWriter(
+                channel.direct_access_settings
+            )
         self._closed = False
         self._request_count = SafeCounterState()
         self._error_count = SafeCounterState()
         self._last_error: dict[str, object] | None = None
-        # broker response queue 是单消费者通道。控制请求必须成对串行读取，避免并发
-        # workflow 分支取走其他 request_id 的响应；mmap 数据写入仍在锁外完成。
         self._request_response_lock = Lock()
 
     def get_status(self) -> dict[str, object]:
-        """读取 broker 当前状态摘要。"""
+        """读取 Broker arena、容量守恒和健康摘要。"""
 
         return self._send_request(action="status", payload={})
 
@@ -181,44 +113,25 @@ class LocalBufferBrokerClient:
         owner_kind: str,
         owner_id: str,
         media_type: str,
-        pool_name: str | None = None,
         shape: tuple[int, ...] = (),
         dtype: str | None = None,
         layout: str | None = None,
         pixel_format: str | None = None,
         ttl_seconds: float | None = None,
         trace_id: str | None = None,
-    ) -> MmapBufferWriteResult:
-        """写入 bytes 并返回可跨进程传递的 BufferRef。
+    ) -> LocalBufferWriteResult:
+        """按精确 content length 动态分配、直接写 arena 并发布引用。"""
 
-        参数：
-        - content：要写入 mmap pool 的字节内容。
-        - owner_kind：lease 拥有者类型。
-        - owner_id：lease 拥有者实例 id。
-        - media_type：内容媒体类型。
-        - pool_name：目标 pool 名称；未提供时使用 broker 默认 pool。
-        - shape：raw 图像或 tensor 形状。
-        - dtype：raw 数据类型。
-        - layout：raw 数据布局。
-        - pixel_format：像素格式。
-        - ttl_seconds：可选过期秒数。
-        - trace_id：链路追踪 id。
-
-        返回：
-        - MmapBufferWriteResult：写入后的 active lease 和 BufferRef。
-        """
-
-        normalized_content = _normalize_write_content(content)
+        normalized = _normalize_write_content(content)
         lease = self.allocate_buffer(
-            size=len(normalized_content),
+            content_length=len(normalized),
             owner_kind=owner_kind,
             owner_id=owner_id,
-            pool_name=pool_name,
             ttl_seconds=ttl_seconds,
             trace_id=trace_id,
         )
         try:
-            self.write_lease_bytes(lease=lease, content=normalized_content)
+            self.write_lease_bytes(lease=lease, content=normalized)
             return self.commit_buffer(
                 lease=lease,
                 media_type=media_type,
@@ -228,249 +141,53 @@ class LocalBufferBrokerClient:
                 pixel_format=pixel_format,
             )
         except Exception:
-            self.release(lease.lease_id, pool_name=lease.pool_name)
-            raise
-
-    def create_frame_channel(
-        self,
-        *,
-        stream_id: str,
-        frame_capacity: int,
-        pool_name: str | None = None,
-    ) -> dict[str, object]:
-        """创建一个 ring buffer frame channel。
-
-        参数：
-        - stream_id：连续帧来源 id。
-        - frame_capacity：预留帧槽位数量。
-        - pool_name：目标 pool 名称；未提供时使用 broker 默认 pool。
-
-        返回：
-        - dict[str, object]：channel 状态摘要。
-        """
-
-        payload = self._send_request(
-            action="create-frame-channel",
-            payload={"stream_id": stream_id, "frame_capacity": frame_capacity, "pool_name": pool_name},
-        )
-        return _require_payload_dict(payload, "channel")
-
-    def write_frame(
-        self,
-        *,
-        stream_id: str,
-        content: LocalBufferContent,
-        media_type: str,
-        pool_name: str | None = None,
-        shape: tuple[int, ...] = (),
-        dtype: str | None = None,
-        layout: str | None = None,
-        pixel_format: str | None = None,
-        metadata: dict[str, object] | None = None,
-    ) -> FrameRef:
-        """写入一帧并返回可跨进程传递的 FrameRef。
-
-        参数：
-        - stream_id：连续帧来源 id。
-        - content：当前帧字节内容。
-        - media_type：当前帧媒体类型。
-        - pool_name：目标 pool 名称；未提供时使用 broker 默认 pool。
-        - shape：raw 图像或 tensor 形状。
-        - dtype：raw 数据类型。
-        - layout：raw 数据布局。
-        - pixel_format：像素格式。
-        - metadata：附加元数据。
-
-        返回：
-        - FrameRef：当前帧引用。
-        """
-
-        normalized_content = _normalize_write_content(content)
-        reservation = self.allocate_frame(
-            stream_id=stream_id,
-            size=len(normalized_content),
-            pool_name=pool_name,
-        )
-        try:
-            with acquire_mmap_guard(
-                guard_path=_require_payload_str(
-                    reservation, "reader_guard_path"
-                ),
-                deadline_ns=monotonic_ns()
-                + int(self.channel.request_timeout_seconds * 1_000_000_000),
-                poll_interval_seconds=0.001,
-                length=_require_payload_positive_int(
-                    reservation, "reader_guard_slots"
-                ),
-            ):
-                self._mmap_cache.write(
-                    path=str(reservation["file_path"]),
-                    offset=int(reservation["offset"]),
-                    content=normalized_content,
-                    size=int(reservation["size"]),
-                )
-                return self.commit_frame(
-                    reservation=reservation,
-                    media_type=media_type,
-                    shape=shape,
-                    dtype=dtype,
-                    layout=layout,
-                    pixel_format=pixel_format,
-                    metadata=metadata,
-                )
-        except Exception:
             try:
-                self.abort_frame(reservation=reservation)
+                self.release(lease.lease_id)
             except Exception:
                 pass
             raise
 
-    def allocate_frame(
-        self,
-        *,
-        stream_id: str,
-        size: int,
-        pool_name: str | None = None,
-    ) -> dict[str, object]:
-        """通过 broker 状态机分配 ring frame writing reservation。
-
-        参数：
-        - stream_id：连续帧来源 id。
-        - size：当前帧有效字节数。
-        - pool_name：目标 pool 名称；未提供时使用 broker 默认 pool。
-
-        返回：
-        - dict[str, object]：direct mmap 写入所需的 reservation。
-        """
-
-        payload = self._send_request(
-            action="allocate-frame",
-            payload={"stream_id": stream_id, "size": size, "pool_name": pool_name},
-        )
-        return _require_payload_dict(payload, "reservation")
-
-    def commit_frame(
-        self,
-        *,
-        reservation: dict[str, object],
-        media_type: str,
-        shape: tuple[int, ...] = (),
-        dtype: str | None = None,
-        layout: str | None = None,
-        pixel_format: str | None = None,
-        metadata: dict[str, object] | None = None,
-    ) -> FrameRef:
-        """把已经 direct mmap 写完的 ring frame 提交为 FrameRef。
-
-        参数：
-        - reservation：allocate_frame 返回的写入 reservation。
-        - media_type：当前帧媒体类型。
-        - shape：raw 图像或 tensor 形状。
-        - dtype：raw 数据类型。
-        - layout：raw 数据布局。
-        - pixel_format：像素格式。
-        - metadata：附加元数据。
-
-        返回：
-        - FrameRef：当前帧引用。
-        """
-
-        payload = self._send_request(
-            action="commit-frame",
-            payload={
-                "reservation": dict(reservation),
-                "media_type": media_type,
-                "shape": tuple(shape),
-                "dtype": dtype,
-                "layout": layout,
-                "pixel_format": pixel_format,
-                "metadata": dict(metadata or {}),
-            },
-        )
-        frame_ref_payload = _require_payload_dict(payload, "frame_ref")
-        return FrameRef.model_validate(frame_ref_payload)
-
-    def abort_frame(self, *, reservation: dict[str, object]) -> None:
-        """放弃尚未 commit 的 frame reservation。"""
-
-        self._send_request(
-            action="abort-frame",
-            payload={"reservation": dict(reservation)},
-        )
-
-    def destroy_frame_channel(
-        self,
-        *,
-        stream_id: str,
-        pool_name: str | None = None,
-    ) -> int:
-        """销毁 frame channel 并返回释放的槽位数。"""
-
-        payload = self._send_request(
-            action="destroy-frame-channel",
-            payload={"stream_id": stream_id, "pool_name": pool_name},
-        )
-        released_slot_count = payload.get("released_slot_count")
-        if not isinstance(released_slot_count, int) or isinstance(released_slot_count, bool):
-            raise ServiceConfigurationError("LocalBufferBroker destroy-frame-channel 返回格式无效")
-        return released_slot_count
-
     def allocate_buffer(
         self,
         *,
-        size: int,
+        content_length: int,
         owner_kind: str,
         owner_id: str,
-        pool_name: str | None = None,
         ttl_seconds: float | None = None,
         trace_id: str | None = None,
     ) -> BufferLease:
-        """通过 broker 状态机分配 writing lease。
-
-        参数：
-        - size：本次写入需要的有效字节数。
-        - owner_kind：lease 拥有者类型。
-        - owner_id：lease 拥有者实例 id。
-        - pool_name：目标 pool 名称；未提供时使用 broker 默认 pool。
-        - ttl_seconds：可选过期秒数。
-        - trace_id：链路追踪 id。
-
-        返回：
-        - BufferLease：writing 状态 lease。
-        """
+        """申请普通 WRITING extent 并缓存内部 writer locator。"""
 
         payload = self._send_request(
             action="allocate-buffer",
             payload={
-                "pool_name": pool_name,
-                "size": size,
+                "content_length": content_length,
                 "owner_kind": owner_kind,
                 "owner_id": owner_id,
                 "ttl_seconds": ttl_seconds,
                 "trace_id": trace_id,
             },
         )
-        lease_payload = _require_payload_dict(payload, "lease")
-        return BufferLease.model_validate(lease_payload)
+        lease = BufferLease.model_validate(_require_dict(payload, "lease"))
+        self._writer_locations[lease.lease_id] = _require_dict(payload, "writer")
+        return lease
 
     def allocate_external_buffer(
         self,
         *,
-        size: int,
+        content_length: int,
         owner_kind: str,
         owner_id: str,
         deadline_ns: int,
-        pool_name: str | None = None,
         ttl_seconds: float | None = None,
         trace_id: str | None = None,
     ) -> ExternalBufferAllocation:
-        """为可信本机外部 writer 分配精确长度 lease 与私有 receipt。"""
+        """为可信本机 external writer 申请精确 extent。"""
 
         payload = self._send_request(
             action="allocate-external-buffer",
             payload={
-                "pool_name": pool_name,
-                "size": size,
+                "content_length": content_length,
                 "owner_kind": owner_kind,
                 "owner_id": owner_id,
                 "deadline_ns": deadline_ns,
@@ -478,15 +195,14 @@ class LocalBufferBrokerClient:
                 "trace_id": trace_id,
             },
         )
-        return ExternalBufferAllocation(
-            lease=BufferLease.model_validate(_require_payload_dict(payload, "lease")),
-            receipt=LeaseOwnershipReceipt.model_validate(
-                _require_payload_dict(payload, "receipt")
-            ),
-            slot_capacity_bytes=_require_payload_positive_int(
-                payload, "slot_capacity_bytes"
-            ),
+        allocation = ExternalBufferAllocation.model_validate(
+            _require_dict(payload, "allocation")
         )
+        self._writer_locations[allocation.lease.lease_id] = _require_dict(
+            payload,
+            "writer",
+        )
+        return allocation
 
     def acquire_external_writer_guard(
         self,
@@ -494,10 +210,11 @@ class LocalBufferBrokerClient:
         receipt: LeaseOwnershipReceipt,
         poll_interval_seconds: float = 0.001,
     ) -> AbstractContextManager[None]:
-        """返回 external writer 在写入和发布前必须持有的 OS guard。"""
+        """按 receipt 固定 byte range 取得 external writer guard。"""
 
         return acquire_mmap_guard(
-            guard_path=receipt.writer_guard_path,
+            guard_path=receipt.guard_path,
+            offset=receipt.writer_guard_offset,
             deadline_ns=receipt.deadline_ns,
             poll_interval_seconds=poll_interval_seconds,
         )
@@ -508,25 +225,38 @@ class LocalBufferBrokerClient:
         lease: BufferLease,
         content: LocalBufferContent,
     ) -> None:
-        """向 writing lease 对应的 mmap 区域直接写入 bytes。
+        """在 writer guard 内把精确内容直接写入 arena extent。"""
 
-        参数：
-        - lease：broker 分配的 writing lease。
-        - content：要写入的内容。
-        """
-
-        normalized_content = _normalize_write_content(content)
-        if len(normalized_content) > lease.size:
+        normalized = _normalize_write_content(content)
+        if len(normalized) <= 0 or len(normalized) > lease.content_length:
             raise InvalidRequestError(
-                "LocalBufferBroker direct mmap 写入内容超过 lease 大小",
-                details={"lease_id": lease.lease_id, "content_size": len(normalized_content), "lease_size": lease.size},
+                "写入长度必须位于预分配 lease 的有效范围内",
+                details={
+                    "lease_id": lease.lease_id,
+                    "reserved_content_length": lease.content_length,
+                    "content_length": len(normalized),
+                },
             )
-        self._mmap_cache.write(
-            path=lease.file_path,
-            offset=lease.offset,
-            content=normalized_content,
-            size=lease.size,
-        )
+        direct_writer = self._direct_writer
+        if direct_writer is not None and direct_writer.accepts_lease(lease):
+            direct_writer.write_lease_bytes(lease=lease, content=normalized)
+            return
+        writer = self._writer_locations.get(lease.lease_id)
+        if writer is None:
+            raise InvalidRequestError("当前 client 不持有 lease writer locator")
+        with acquire_mmap_guard(
+            guard_path=_require_text(writer, "guard_path"),
+            offset=_require_nonnegative_int(writer, "writer_guard_offset"),
+            deadline_ns=monotonic_ns()
+            + int(self.channel.request_timeout_seconds * 1_000_000_000),
+            poll_interval_seconds=0.001,
+        ):
+            self._mmap_cache.write(
+                path=_require_text(writer, "arena_path"),
+                offset=lease.offset,
+                content=normalized,
+                content_length=lease.content_length,
+            )
 
     def commit_buffer(
         self,
@@ -537,37 +267,26 @@ class LocalBufferBrokerClient:
         dtype: str | None = None,
         layout: str | None = None,
         pixel_format: str | None = None,
-    ) -> MmapBufferWriteResult:
-        """把已经 direct mmap 写完的 lease 提交为 BufferRef。
-
-        参数：
-        - lease：broker 分配的 writing lease。
-        - media_type：内容媒体类型。
-        - shape：raw 图像或 tensor 形状。
-        - dtype：raw 数据类型。
-        - layout：raw 数据布局。
-        - pixel_format：像素格式。
-
-        返回：
-        - MmapBufferWriteResult：提交后的 active lease 和 BufferRef。
-        """
+        content_length: int | None = None,
+    ) -> LocalBufferWriteResult:
+        """发布普通 WRITING lease 为 ACTIVE BufferRef。"""
 
         payload = self._send_request(
             action="commit-buffer",
             payload={
                 "lease": lease.model_dump(mode="json"),
                 "media_type": media_type,
-                "shape": tuple(shape),
+                "shape": shape,
                 "dtype": dtype,
                 "layout": layout,
                 "pixel_format": pixel_format,
+                "content_length": content_length,
             },
         )
-        lease_payload = _require_payload_dict(payload, "lease")
-        buffer_ref_payload = _require_payload_dict(payload, "buffer_ref")
-        return MmapBufferWriteResult(
-            lease=BufferLease.model_validate(lease_payload),
-            buffer_ref=BufferRef.model_validate(buffer_ref_payload),
+        self._writer_locations.pop(lease.lease_id, None)
+        return LocalBufferWriteResult(
+            lease=BufferLease.model_validate(_require_dict(payload, "lease")),
+            buffer_ref=BufferRef.model_validate(_require_dict(payload, "buffer_ref")),
         )
 
     def commit_external_buffer(
@@ -580,27 +299,25 @@ class LocalBufferBrokerClient:
         dtype: str | None = None,
         layout: str | None = None,
         pixel_format: str | None = None,
-    ) -> MmapBufferWriteResult:
-        """在 external writer guard 释放后校验 CRC32 并发布 BufferRef。"""
+    ) -> LocalBufferWriteResult:
+        """校验 external writer 完整性并发布 ACTIVE。"""
 
         payload = self._send_request(
             action="commit-external-buffer",
             payload={
                 "receipt": receipt.model_dump(mode="json"),
-                "checksum_algorithm": 1,
                 "checksum": checksum,
                 "media_type": media_type,
-                "shape": tuple(shape),
+                "shape": shape,
                 "dtype": dtype,
                 "layout": layout,
                 "pixel_format": pixel_format,
             },
         )
-        return MmapBufferWriteResult(
-            lease=BufferLease.model_validate(_require_payload_dict(payload, "lease")),
-            buffer_ref=BufferRef.model_validate(
-                _require_payload_dict(payload, "buffer_ref")
-            ),
+        self._writer_locations.pop(receipt.lease_id, None)
+        return LocalBufferWriteResult(
+            lease=BufferLease.model_validate(_require_dict(payload, "lease")),
+            buffer_ref=BufferRef.model_validate(_require_dict(payload, "buffer_ref")),
         )
 
     def publish_and_transfer_external_buffer(
@@ -616,7 +333,7 @@ class LocalBufferBrokerClient:
         layout: str | None = None,
         pixel_format: str | None = None,
     ) -> ExternalBufferCommitTransferResult:
-        """以一次 Broker 往返确认 writer 已结束并原子转移首个 owner。"""
+        """一次 Broker 往返完成 external 发布与首次 owner handoff。"""
 
         payload = self._send_request(
             action="publish-and-transfer-external-buffer",
@@ -626,19 +343,18 @@ class LocalBufferBrokerClient:
                 "new_owner_kind": new_owner_kind,
                 "new_owner_id": new_owner_id,
                 "deadline_ns": deadline_ns,
-                "shape": tuple(shape),
+                "shape": shape,
                 "dtype": dtype,
                 "layout": layout,
                 "pixel_format": pixel_format,
             },
         )
+        self._writer_locations.pop(receipt.lease_id, None)
         return ExternalBufferCommitTransferResult(
-            lease=BufferLease.model_validate(_require_payload_dict(payload, "lease")),
-            buffer_ref=BufferRef.model_validate(
-                _require_payload_dict(payload, "buffer_ref")
-            ),
+            lease=BufferLease.model_validate(_require_dict(payload, "lease")),
+            buffer_ref=BufferRef.model_validate(_require_dict(payload, "buffer_ref")),
             receipt=LeaseOwnershipReceipt.model_validate(
-                _require_payload_dict(payload, "receipt")
+                _require_dict(payload, "receipt")
             ),
         )
 
@@ -650,7 +366,7 @@ class LocalBufferBrokerClient:
         new_owner_id: str,
         deadline_ns: int,
     ) -> tuple[LeaseOwnershipReceipt, ...]:
-        """批量 CAS transfer；任一 receipt 失效时整批不改变 owner。"""
+        """批量 CAS transfer；任一失效时整批不改变。"""
 
         payload = self._send_request(
             action="transfer-lease-ownership",
@@ -661,15 +377,13 @@ class LocalBufferBrokerClient:
                 "deadline_ns": deadline_ns,
             },
         )
-        raw_receipts = payload.get("receipts")
-        if not isinstance(raw_receipts, list):
-            raise ServiceConfigurationError(
-                "LocalBufferBroker transfer-lease-ownership 返回格式无效"
-            )
-        return tuple(LeaseOwnershipReceipt.model_validate(item) for item in raw_receipts)
+        raw = payload.get("receipts")
+        if not isinstance(raw, list):
+            raise ServiceConfigurationError("Broker transfer 返回格式无效")
+        return tuple(LeaseOwnershipReceipt.model_validate(item) for item in raw)
 
     def conditional_release(self, *, receipt: LeaseOwnershipReceipt) -> str:
-        """按完整 receipt fence 条件释放；旧 receipt 只返回 stale。"""
+        """按完整 receipt fence 条件释放。"""
 
         payload = self._send_request(
             action="conditional-release",
@@ -677,146 +391,281 @@ class LocalBufferBrokerClient:
         )
         status = payload.get("status")
         if not isinstance(status, str):
-            raise ServiceConfigurationError(
-                "LocalBufferBroker conditional-release 返回格式无效"
-            )
+            raise ServiceConfigurationError("Broker conditional-release 返回格式无效")
+        if status in {"released", "stale", "revoking", "quarantined"}:
+            self._writer_locations.pop(receipt.lease_id, None)
         return status
 
-    def sweep_reclaiming_leases(self, *, pool_name: str | None = None) -> dict[str, int]:
-        """触发非阻塞 REVOKING/QUARANTINED sweep。"""
+    def sweep_reclaiming_leases(self) -> dict[str, int]:
+        """推进 REVOKING/QUARANTINED 回收。"""
 
-        payload = self._send_request(
-            action="sweep-reclaiming-leases",
-            payload={"pool_name": pool_name},
-        )
+        payload = self._send_request(action="sweep-reclaiming-leases", payload={})
         return {
             "released_count": int(payload.get("released_count") or 0),
             "quarantined_count": int(payload.get("quarantined_count") or 0),
         }
 
-    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
-        """读取普通 BufferRef 对应的字节。
+    def create_frame_channel(
+        self,
+        *,
+        stream_id: str,
+        frame_count: int,
+        max_frame_content_length: int,
+    ) -> dict[str, object]:
+        """全有或全无地建立固定 extent frame channel。"""
 
-        参数：
-        - buffer_ref：普通 mmap buffer 引用。
-
-        返回：
-        - bytes：引用范围内的字节内容。
-        """
-
-        self._send_request(
-            action="validate-buffer-ref",
-            payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
+        payload = self._send_request(
+            action="create-frame-channel",
+            payload={
+                "stream_id": stream_id,
+                "frame_count": frame_count,
+                "max_frame_content_length": max_frame_content_length,
+            },
         )
-        return self._mmap_cache.read(path=buffer_ref.path, offset=buffer_ref.offset, size=buffer_ref.size)
+        return _require_dict(payload, "channel")
+
+    def allocate_frame(
+        self,
+        *,
+        stream_id: str,
+        content_length: int,
+    ) -> dict[str, object]:
+        """申请下一 frame reservation。"""
+
+        payload = self._send_request(
+            action="allocate-frame",
+            payload={"stream_id": stream_id, "content_length": content_length},
+        )
+        return _require_dict(payload, "reservation")
+
+    def write_frame(
+        self,
+        *,
+        stream_id: str,
+        content: LocalBufferContent,
+        media_type: str,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> FrameRef:
+        """在 writer+全部 reader guards 内覆盖 frame extent并发布。"""
+
+        normalized = _normalize_write_content(content)
+        reservation = self.allocate_frame(
+            stream_id=stream_id,
+            content_length=len(normalized),
+        )
+        guard_path = _require_text(reservation, "guard_path")
+        deadline = monotonic_ns() + int(
+            self.channel.request_timeout_seconds * 1_000_000_000
+        )
+        try:
+            with acquire_mmap_guard(
+                guard_path=guard_path,
+                offset=_require_nonnegative_int(reservation, "writer_guard_offset"),
+                deadline_ns=deadline,
+                poll_interval_seconds=0.001,
+            ):
+                with acquire_mmap_guard(
+                    guard_path=guard_path,
+                    offset=_require_nonnegative_int(reservation, "reader_guard_offset"),
+                    length=_require_positive_int(reservation, "reader_guard_slots"),
+                    deadline_ns=deadline,
+                    poll_interval_seconds=0.001,
+                ):
+                    self._mmap_cache.write(
+                        path=_require_text(reservation, "arena_path"),
+                        offset=_require_nonnegative_int(reservation, "offset"),
+                        content=normalized,
+                        content_length=len(normalized),
+                    )
+            return self.commit_frame(
+                reservation=reservation,
+                media_type=media_type,
+                shape=shape,
+                dtype=dtype,
+                layout=layout,
+                pixel_format=pixel_format,
+                metadata=metadata,
+            )
+        except Exception:
+            try:
+                self.abort_frame(reservation=reservation)
+            except Exception:
+                pass
+            raise
+
+    def commit_frame(
+        self,
+        *,
+        reservation: dict[str, object],
+        media_type: str,
+        shape: tuple[int, ...] = (),
+        dtype: str | None = None,
+        layout: str | None = None,
+        pixel_format: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> FrameRef:
+        """发布 frame reservation。"""
+
+        payload = self._send_request(
+            action="commit-frame",
+            payload={
+                "reservation": dict(reservation),
+                "media_type": media_type,
+                "shape": shape,
+                "dtype": dtype,
+                "layout": layout,
+                "pixel_format": pixel_format,
+                "metadata": dict(metadata or {}),
+            },
+        )
+        return FrameRef.model_validate(_require_dict(payload, "frame_ref"))
+
+    def abort_frame(self, *, reservation: dict[str, object]) -> None:
+        self._send_request(
+            action="abort-frame",
+            payload={"reservation": dict(reservation)},
+        )
+
+    def destroy_frame_channel(self, *, stream_id: str) -> int:
+        payload = self._send_request(
+            action="destroy-frame-channel",
+            payload={"stream_id": stream_id},
+        )
+        return _require_nonnegative_int(payload, "released_extent_count")
+
+    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
+        """持有 reader guard 时读取精确 content range。"""
+
+        with self.acquire_buffer_ref_view(buffer_ref) as view:
+            return bytes(view)
+
+    @contextmanager
+    def acquire_buffer_ref_view(self, buffer_ref: BufferRef) -> Iterator[memoryview]:
+        """单次 Broker 校验后让 reader guard 覆盖完整零复制消费过程。"""
+
+        direct_reader = self._direct_reader
+        if direct_reader is not None and direct_reader.accepts_arena(
+            buffer_ref.arena_id
+        ):
+            with direct_reader.acquire_buffer_ref_view(buffer_ref) as view:
+                yield view
+            return
+        location = self._prepare_buffer_reader(buffer_ref)
+        with acquire_mmap_reader_guard(
+            guard_path=_require_text(location, "guard_path"),
+            start_offset=_require_nonnegative_int(location, "reader_guard_offset"),
+            slot_count=_require_positive_int(location, "reader_guard_slots"),
+            deadline_ns=monotonic_ns()
+            + int(self.channel.request_timeout_seconds * 1_000_000_000),
+            poll_interval_seconds=0.001,
+        ):
+            view = self._mmap_cache.read_view(
+                path=_require_text(location, "arena_path"),
+                offset=buffer_ref.offset,
+                content_length=buffer_ref.content_length,
+            )
+            try:
+                yield view
+            finally:
+                view.release()
 
     def read_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
-        """校验引用后直接借用只读 mmap view，不复制整段 bytes。"""
+        """返回 arena view；调用方必须已持有 reader guard。"""
 
-        self._send_request(
-            action="validate-buffer-ref",
-            payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
-        )
+        location = self._prepare_buffer_reader(buffer_ref)
         return self._mmap_cache.read_view(
-            path=buffer_ref.path,
+            path=_require_text(location, "arena_path"),
             offset=buffer_ref.offset,
-            size=buffer_ref.size,
+            content_length=buffer_ref.content_length,
         )
 
-    @contextmanager
     def acquire_buffer_reader_guard(
         self,
-        *,
         buffer_ref: BufferRef,
-        deadline_ns: int,
+        *,
+        deadline_ns: int | None = None,
         poll_interval_seconds: float = 0.001,
-    ):
-        """持有 BufferRef reader guard，并在加锁后再次校验代次。"""
+    ) -> AbstractContextManager[None]:
+        """取得一个 reader byte 后由 Broker 重验 BufferRef。"""
 
-        payload = self._send_request(
-            action="prepare-buffer-reader",
-            payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
-        )
-        guard_path = _require_payload_str(payload, "reader_guard_path")
-        guard_slots = _require_payload_positive_int(payload, "reader_guard_slots")
-        with acquire_mmap_reader_guard(
-            guard_path=guard_path,
-            slot_count=guard_slots,
-            deadline_ns=deadline_ns,
+        location = self._prepare_buffer_reader(buffer_ref)
+        return acquire_mmap_reader_guard(
+            guard_path=_require_text(location, "guard_path"),
+            start_offset=_require_nonnegative_int(location, "reader_guard_offset"),
+            slot_count=_require_positive_int(location, "reader_guard_slots"),
+            deadline_ns=deadline_ns
+            or monotonic_ns()
+            + int(self.channel.request_timeout_seconds * 1_000_000_000),
             poll_interval_seconds=poll_interval_seconds,
-        ):
-            self._send_request(
-                action="validate-buffer-ref",
-                payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
-            )
-            yield
+        )
+
+    def read_frame_ref(self, frame_ref: FrameRef) -> bytes:
+        with self.acquire_frame_ref_view(frame_ref) as view:
+            return bytes(view)
 
     @contextmanager
-    def acquire_frame_reader_guard(
-        self,
-        *,
-        frame_ref: FrameRef,
-        deadline_ns: int,
-        poll_interval_seconds: float = 0.001,
-    ):
-        """持有 FrameRef reader guard，并在加锁后再次校验代次。"""
+    def acquire_frame_ref_view(self, frame_ref: FrameRef) -> Iterator[memoryview]:
+        """单次 Broker 校验后让 reader guard 覆盖完整 frame 消费过程。"""
 
-        payload = self._send_request(
-            action="prepare-frame-reader",
-            payload={"frame_ref": frame_ref.model_dump(mode="json")},
-        )
-        guard_path = _require_payload_str(payload, "reader_guard_path")
-        guard_slots = _require_payload_positive_int(payload, "reader_guard_slots")
-        with acquire_mmap_reader_guard(
-            guard_path=guard_path,
-            slot_count=guard_slots,
-            deadline_ns=deadline_ns,
-            poll_interval_seconds=poll_interval_seconds,
+        direct_reader = self._direct_reader
+        if direct_reader is not None and direct_reader.accepts_arena(
+            frame_ref.arena_id
         ):
-            self._send_request(
-                action="validate-frame-ref",
-                payload={"frame_ref": frame_ref.model_dump(mode="json")},
+            with direct_reader.acquire_frame_ref_view(frame_ref) as view:
+                yield view
+            return
+        location = self._prepare_frame_reader(frame_ref)
+        with acquire_mmap_reader_guard(
+            guard_path=_require_text(location, "guard_path"),
+            start_offset=_require_nonnegative_int(location, "reader_guard_offset"),
+            slot_count=_require_positive_int(location, "reader_guard_slots"),
+            deadline_ns=monotonic_ns()
+            + int(self.channel.request_timeout_seconds * 1_000_000_000),
+            poll_interval_seconds=0.001,
+        ):
+            view = self._mmap_cache.read_view(
+                path=_require_text(location, "arena_path"),
+                offset=frame_ref.offset,
+                content_length=frame_ref.content_length,
             )
-            yield
-
-    def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview:
-        """读取 FrameRef 对应的帧字节。
-
-        参数：
-        - frame_ref：ring buffer 帧引用。
-
-        返回：
-        - bytes | memoryview：帧复制内容或只读共享视图。
-        """
-
-        self._send_request(
-            action="validate-frame-ref",
-            payload={"frame_ref": frame_ref.model_dump(mode="json")},
-        )
-        return self._mmap_cache.read(path=frame_ref.path, offset=frame_ref.offset, size=frame_ref.size)
+            try:
+                yield view
+            finally:
+                view.release()
 
     def read_frame_ref_view(self, frame_ref: FrameRef) -> memoryview:
-        """校验帧引用后直接借用只读 mmap view，不复制整帧 bytes。"""
-
-        self._send_request(
-            action="validate-frame-ref",
-            payload={"frame_ref": frame_ref.model_dump(mode="json")},
-        )
+        location = self._prepare_frame_reader(frame_ref)
         return self._mmap_cache.read_view(
-            path=frame_ref.path,
+            path=_require_text(location, "arena_path"),
             offset=frame_ref.offset,
-            size=frame_ref.size,
+            content_length=frame_ref.content_length,
         )
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
-        """释放一条 broker lease。
+    def acquire_frame_reader_guard(
+        self,
+        frame_ref: FrameRef,
+        *,
+        deadline_ns: int | None = None,
+        poll_interval_seconds: float = 0.001,
+    ) -> AbstractContextManager[None]:
+        location = self._prepare_frame_reader(frame_ref)
+        return acquire_mmap_reader_guard(
+            guard_path=_require_text(location, "guard_path"),
+            start_offset=_require_nonnegative_int(location, "reader_guard_offset"),
+            slot_count=_require_positive_int(location, "reader_guard_slots"),
+            deadline_ns=deadline_ns
+            or monotonic_ns()
+            + int(self.channel.request_timeout_seconds * 1_000_000_000),
+            poll_interval_seconds=poll_interval_seconds,
+        )
 
-        参数：
-        - lease_id：待释放的 lease id。
-        - pool_name：可选的目标 pool 名称。
-        """
-
-        self._send_request(action="release", payload={"lease_id": lease_id, "pool_name": pool_name})
+    def release(self, lease_id: str) -> None:
+        self._send_request(action="release", payload={"lease_id": lease_id})
+        self._writer_locations.pop(lease_id, None)
 
     def release_owner(
         self,
@@ -824,336 +673,259 @@ class LocalBufferBrokerClient:
         owner_kind: str | None = None,
         owner_id: str | None = None,
         owner_id_prefix: str | None = None,
-        pool_name: str | None = None,
     ) -> int:
-        """释放指定 owner 匹配的全部 broker lease。
-
-        参数：
-        - owner_kind：可选 owner 类型过滤条件。
-        - owner_id：可选 owner id 精确匹配条件。
-        - owner_id_prefix：可选 owner id 前缀匹配条件。
-        - pool_name：可选的目标 pool 名称。
-
-        返回：
-        - int：本次释放的 lease 数量。
-        """
-
         payload = self._send_request(
             action="release-owner",
             payload={
                 "owner_kind": owner_kind,
                 "owner_id": owner_id,
                 "owner_id_prefix": owner_id_prefix,
-                "pool_name": pool_name,
             },
         )
-        released_count = payload.get("released_count")
-        return int(released_count) if isinstance(released_count, int) else 0
+        return _require_nonnegative_int(payload, "released_count")
 
-    def expire_leases(self, *, pool_name: str | None = None) -> int:
-        """触发 broker 回收已经过期的 lease。
-
-        参数：
-        - pool_name：可选的目标 pool 名称。
-
-        返回：
-        - int：本次回收的 lease 数量。
-        """
-
-        payload = self._send_request(action="expire-leases", payload={"pool_name": pool_name})
-        expired_count = payload.get("expired_count")
-        return int(expired_count) if isinstance(expired_count, int) else 0
+    def expire_leases(self) -> int:
+        payload = self._send_request(action="expire-leases", payload={})
+        return _require_nonnegative_int(payload, "expired_count")
 
     def shutdown(self) -> None:
-        """请求 broker 进程优雅退出。"""
-
         self._send_request(action="shutdown", payload={})
 
     def close(self) -> None:
-        """关闭当前 client 持有的 mmap 文件缓存。"""
-
         if self._closed:
             return
-        self._closed = True
+        # 每个 LocalBufferBrokerClient 独占 supervisor 分配的 event channel。
+        # close 必须显式注销路由；否则健康检查、Preview 和短生命周期调用会让
+        # router 的 client route 永久增长。关闭通知不等待响应，且不得阻断本地
+        # mmap handle 的确定性释放。
         if self.channel.channel_id is not None:
             try:
                 self.channel.request_queue.put(
                     {
-                        "request_id": f"close-{uuid4().hex}",
+                        "request_id": f"close-client-channel-{uuid4().hex}",
+                        "channel_id": self.channel.channel_id,
                         "action": "__close-client-channel__",
                         "payload": {"channel_id": self.channel.channel_id},
                     }
                 )
             except Exception:
                 pass
+        if self._direct_reader is not None:
+            self._direct_reader.close()
+            self._direct_reader = None
+        if self._direct_writer is not None:
+            self._direct_writer.close()
+            self._direct_writer = None
         self._mmap_cache.close()
-
-    def __enter__(self) -> "LocalBufferBrokerClient":
-        """进入 client 生命周期上下文。"""
-
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        """退出上下文并关闭 mmap 与事件通道。"""
-
-        self.close()
-
-    def __del__(self) -> None:
-        """在调用方遗漏显式 close 时兜底释放 mmap 文件句柄。"""
-
-        try:
-            self.close()
-        except Exception:
-            pass
+        self._writer_locations.clear()
+        self._closed = True
 
     def get_health_summary(self) -> dict[str, object]:
-        """返回当前 client 的 broker 调用健康摘要。
-
-        返回：
-        - dict[str, object]：包含 channel、请求计数、错误计数和最近错误。
-        """
-
-        request_counter_snapshot = snapshot_safe_counter(self._request_count)
-        error_counter_snapshot = snapshot_safe_counter(self._error_count)
+        request = snapshot_safe_counter(self._request_count)
+        errors = snapshot_safe_counter(self._error_count)
         return {
-            "connected": not self._closed,
-            "channel_id": self.channel.channel_id,
-            "request_timeout_seconds": self.channel.request_timeout_seconds,
-            "request_count": request_counter_snapshot["value"],
-            "request_count_rollover_count": request_counter_snapshot["rollover_count"],
-            "error_count": error_counter_snapshot["value"],
-            "error_count_rollover_count": error_counter_snapshot["rollover_count"],
-            "recent_error": dict(self._last_error) if self._last_error is not None else None,
+            "state": "degraded" if errors["value"] else "healthy",
+            "request_count": request["value"],
+            "request_count_rollover_count": request["rollover_count"],
+            "error_count": errors["value"],
+            "error_count_rollover_count": errors["rollover_count"],
+            "last_error": dict(self._last_error) if self._last_error else None,
         }
 
-    def _send_request(self, *, action: str, payload: dict[str, object]) -> dict[str, object]:
-        """发送一条 broker 事件并解析响应。"""
+    def _prepare_buffer_reader(self, buffer_ref: BufferRef) -> dict[str, object]:
+        return self._send_request(
+            action="prepare-buffer-reader",
+            payload={"buffer_ref": buffer_ref.model_dump(mode="json")},
+        )
 
+    def _prepare_frame_reader(self, frame_ref: FrameRef) -> dict[str, object]:
+        return self._send_request(
+            action="prepare-frame-reader",
+            payload={"frame_ref": frame_ref.model_dump(mode="json")},
+        )
+
+    def _send_request(
+        self,
+        *,
+        action: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        """串行发送控制请求并严格匹配 response id。"""
+
+        if self._closed:
+            raise ServiceConfigurationError("LocalBufferBroker client 已关闭")
+        request_id = f"local-buffer-request-{uuid4().hex}"
+        message = {
+            "request_id": request_id,
+            "channel_id": self.channel.channel_id,
+            "action": action,
+            "payload": payload,
+        }
+        increment_safe_counter(self._request_count)
         with self._request_response_lock:
-            request_id = f"broker-{uuid4().hex}"
-            increment_safe_counter(self._request_count)
+            self.channel.request_queue.put(message)
             try:
-                self.channel.request_queue.put(
-                    {"request_id": request_id, "action": action, "payload": dict(payload)}
-                )
                 response = self.channel.response_queue.get(
-                    timeout=max(0.1, self.channel.request_timeout_seconds)
+                    timeout=self.channel.request_timeout_seconds
                 )
-            except Empty as exc:
-                error = OperationTimeoutError(
+            except Empty as error:
+                timeout = OperationTimeoutError(
                     "等待 LocalBufferBroker 响应超时",
-                    details={"action": action, "timeout_seconds": self.channel.request_timeout_seconds},
+                    details={"action": action},
                 )
-                self._record_error(action=action, error=error)
-                raise error from exc
-            except Exception as exc:
-                self._record_error(action=action, error=exc)
-                raise
-            try:
-                response_payload = _deserialize_response(
-                    response,
-                    action=action,
-                    request_id=request_id,
+                self._record_error(action=action, error=timeout)
+                raise timeout from error
+        if not isinstance(response, dict) or response.get("request_id") != request_id:
+            error = ServiceConfigurationError("LocalBufferBroker 响应 identity 不匹配")
+            self._record_error(action=action, error=error)
+            raise error
+        if not response.get("ok"):
+            error_payload = response.get("error")
+            details = dict(error_payload) if isinstance(error_payload, dict) else {}
+            error_code = str(details.get("code") or "")
+            error_details = (
+                dict(details.get("details"))
+                if isinstance(details.get("details"), dict)
+                else {}
+            )
+            message = str(details.get("message") or "LocalBufferBroker 请求失败")
+            if error_code in {
+                "local_buffer_capacity_exhausted",
+                "local_buffer_contiguous_capacity_exhausted",
+            }:
+                error = LocalBufferCapacityError(
+                    message,
+                    contiguous=(
+                        error_code
+                        == "local_buffer_contiguous_capacity_exhausted"
+                    ),
+                    details=error_details,
                 )
-                self._last_error = None
-                return response_payload
-            except Exception as exc:
-                self._record_error(action=action, error=exc)
-                raise
+            else:
+                error = InvalidRequestError(message, details=error_details)
+            self._record_error(action=action, error=error)
+            raise error
+        result = response.get("payload")
+        if not isinstance(result, dict):
+            error = ServiceConfigurationError("LocalBufferBroker 响应 payload 无效")
+            self._record_error(action=action, error=error)
+            raise error
+        return dict(result)
 
     def _record_error(self, *, action: str, error: Exception) -> None:
-        """记录一次 broker client 调用错误。"""
-
-        details = getattr(error, "details", None)
         increment_safe_counter(self._error_count)
         self._last_error = {
             "action": action,
             "error_type": type(error).__name__,
-            "message": getattr(error, "message", str(error) or type(error).__name__),
-            "code": getattr(error, "code", "service_configuration_error"),
-            "details": dict(details) if isinstance(details, dict) else {},
-            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "message": str(error),
         }
 
+    def __enter__(self) -> LocalBufferBrokerClient:
+        return self
 
-def _deserialize_response(response: object, *, action: str, request_id: str) -> dict[str, object]:
-    """把 broker 响应转换为稳定 payload。"""
-
-    if not isinstance(response, dict):
-        raise ServiceConfigurationError("LocalBufferBroker 返回了无效响应", details={"action": action})
-    if response.get("request_id") != request_id:
-        raise ServiceConfigurationError(
-            "LocalBufferBroker 返回了不匹配的事件响应",
-            details={"action": action, "request_id": request_id, "response_request_id": response.get("request_id")},
-        )
-    if response.get("ok") is True:
-        payload = response.get("payload")
-        return dict(payload) if isinstance(payload, dict) else {}
-    error_payload = response.get("error") if isinstance(response.get("error"), dict) else {}
-    error_code = str(error_payload.get("code") or "service_configuration_error")
-    error_message = str(error_payload.get("message") or "LocalBufferBroker 请求失败")
-    error_details = error_payload.get("details") if isinstance(error_payload.get("details"), dict) else {}
-    if error_code == "invalid_request":
-        raise InvalidRequestError(error_message, details=error_details)
-    if error_code == "operation_timeout":
-        raise OperationTimeoutError(error_message, details=error_details)
-    raise ServiceConfigurationError(error_message, details=error_details)
-
-
-def _require_payload_dict(payload: dict[str, object], field_name: str) -> dict[str, object]:
-    """读取 broker payload 中的对象字段。"""
-
-    value = payload.get(field_name)
-    if not isinstance(value, dict):
-        raise ServiceConfigurationError(
-            "LocalBufferBroker 返回 payload 缺少对象字段",
-            details={"field_name": field_name},
-        )
-    return dict(value)
-
-
-def _require_payload_str(payload: dict[str, object], field_name: str) -> str:
-    """读取 broker payload 中的非空字符串字段。"""
-
-    value = payload.get(field_name)
-    normalized = value.strip() if isinstance(value, str) else ""
-    if not normalized:
-        raise ServiceConfigurationError(
-            "LocalBufferBroker 返回 payload 缺少字符串字段",
-            details={"field_name": field_name},
-        )
-    return normalized
-
-
-def _require_payload_positive_int(
-    payload: dict[str, object], field_name: str
-) -> int:
-    """读取 broker payload 中的正整数字段。"""
-
-    value = payload.get(field_name)
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ServiceConfigurationError(
-            "LocalBufferBroker 返回 payload 缺少正整数字段",
-            details={"field_name": field_name},
-        )
-    return value
+    def __exit__(self, *_args: object) -> None:
+        self.close()
 
 
 class _MappedFile:
-    """描述客户端进程内缓存的一份 mmap 文件映射。
-
-    字段：
-    - file：底层文件句柄。
-    - mmap_view：映射视图。
-    """
+    """保存一个长期 arena 文件 handle 与 mmap。"""
 
     def __init__(self, path: Path) -> None:
-        """打开并映射指定文件。"""
-
         self.file = path.open("r+b")
-        self.mmap_view = mmap.mmap(self.file.fileno(), 0)
+        self.view = mmap.mmap(self.file.fileno(), 0)
 
     def close(self) -> None:
-        """关闭 mmap 视图和文件句柄。"""
-
-        try:
-            self.mmap_view.close()
-        finally:
-            self.file.close()
+        self.view.close()
+        self.file.close()
 
 
 class _MmapFileCache:
-    """缓存当前进程已经打开的 mmap 文件。"""
+    """按受信 arena path 复用文件 handle，不缓存普通 extent view。"""
 
     def __init__(self) -> None:
-        """初始化空 mmap 文件缓存。"""
-
-        self._mapped_files: dict[Path, _MappedFile] = {}
         self._lock = RLock()
+        self._files: dict[str, _MappedFile] = {}
 
     def write(
         self,
         *,
         path: str,
         offset: int,
-        content: LocalBufferContent,
-        size: int,
-        flush: bool = False,
+        content: bytes | memoryview,
+        content_length: int,
     ) -> None:
-        """直接写入 mmap 文件指定区域。
+        if len(content) != content_length:
+            raise InvalidRequestError("mmap write content length 不一致")
+        mapped = self._require_mapped_file(path)
+        mapped.view[offset : offset + content_length] = content
 
-        参数：
-        - path：mmap 文件路径。
-        - offset：写入起始偏移。
-        - content：写入内容。
-        - size：lease 允许写入的区域大小。
-        - flush：是否强制 flush 到 mmap 文件。
-        """
-
-        with self._lock:
-            normalized_content = _normalize_write_content(content)
-            mapped_file = self._require_mapped_file(path)
-            mapped_file.mmap_view.seek(offset)
-            mapped_file.mmap_view.write(normalized_content)
-            if len(normalized_content) < size:
-                mapped_file.mmap_view.write(b"\x00" * (size - len(normalized_content)))
-            if flush:
-                mapped_file.mmap_view.flush()
-
-    def read(self, *, path: str, offset: int, size: int) -> bytes:
-        """直接读取 mmap 文件指定区域。
-
-        参数：
-        - path：mmap 文件路径。
-        - offset：读取起始偏移。
-        - size：读取字节数。
-
-        返回：
-        - bytes：读取到的内容。
-        """
-
-        with self._lock:
-            mapped_file = self._require_mapped_file(path)
-            mapped_file.mmap_view.seek(offset)
-            return mapped_file.mmap_view.read(size)
-
-    def read_view(self, *, path: str, offset: int, size: int) -> memoryview:
-        """返回指定 mmap 区域的只读 view，不复制底层字节。"""
-
-        with self._lock:
-            mapped_file = self._require_mapped_file(path)
-            end_offset = int(offset) + int(size)
-            if int(offset) < 0 or int(size) <= 0 or end_offset > len(mapped_file.mmap_view):
-                raise InvalidRequestError(
-                    "LocalBufferBroker mmap view 范围无效",
-                    details={
-                        "offset": int(offset),
-                        "size": int(size),
-                        "mapped_size": len(mapped_file.mmap_view),
-                    },
-                )
-            return memoryview(mapped_file.mmap_view)[int(offset):end_offset].toreadonly()
+    def read_view(
+        self,
+        *,
+        path: str,
+        offset: int,
+        content_length: int,
+    ) -> memoryview:
+        mapped = self._require_mapped_file(path)
+        return memoryview(mapped.view)[offset : offset + content_length]
 
     def close(self) -> None:
-        """关闭全部缓存的 mmap 文件。"""
-
         with self._lock:
-            mapped_files = tuple(self._mapped_files.values())
-            self._mapped_files.clear()
-        for mapped_file in mapped_files:
-            try:
-                mapped_file.close()
-            except BufferError:
-                # 调用方仍持有 memoryview 时，文件句柄已由 _MappedFile.close
-                # 的 finally 释放；view 将由最后一个借用方释放。
-                continue
+            files = tuple(self._files.values())
+            self._files.clear()
+        for mapped in files:
+            mapped.close()
 
     def _require_mapped_file(self, path: str) -> _MappedFile:
-        """返回指定路径对应的 mmap 文件映射。"""
+        normalized = str(Path(path).resolve())
+        with self._lock:
+            mapped = self._files.get(normalized)
+            if mapped is None:
+                mapped = _MappedFile(Path(normalized))
+                self._files[normalized] = mapped
+            return mapped
 
-        file_path = Path(path).resolve()
-        mapped_file = self._mapped_files.get(file_path)
-        if mapped_file is None:
-            mapped_file = _MappedFile(file_path)
-            self._mapped_files[file_path] = mapped_file
-        return mapped_file
+
+def _normalize_write_content(content: LocalBufferContent) -> bytes | memoryview:
+    """把 bytes-like 内容规范化为一维连续字节视图。"""
+
+    if isinstance(content, bytes):
+        normalized: bytes | memoryview = content
+    elif isinstance(content, (bytearray, memoryview)):
+        try:
+            normalized = memoryview(content).cast("B")
+        except TypeError as error:
+            raise InvalidRequestError("写入内容必须是连续 buffer") from error
+    else:
+        raise InvalidRequestError("写入内容必须支持 buffer protocol")
+    if len(normalized) <= 0:
+        raise InvalidRequestError("写入内容不能为空")
+    return normalized
+
+
+def _require_dict(payload: dict[str, object], field_name: str) -> dict[str, object]:
+    value = payload.get(field_name)
+    if not isinstance(value, dict):
+        raise ServiceConfigurationError(f"Broker payload 缺少 {field_name}")
+    return dict(value)
+
+
+def _require_text(payload: dict[str, object], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ServiceConfigurationError(f"Broker payload 缺少 {field_name}")
+    return value.strip()
+
+
+def _require_nonnegative_int(payload: dict[str, object], field_name: str) -> int:
+    value = payload.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ServiceConfigurationError(f"Broker payload {field_name} 不是非负整数")
+    return value
+
+
+def _require_positive_int(payload: dict[str, object], field_name: str) -> int:
+    value = _require_nonnegative_int(payload, field_name)
+    if value <= 0:
+        raise ServiceConfigurationError(f"Broker payload {field_name} 必须大于 0")
+    return value

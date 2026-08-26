@@ -28,7 +28,6 @@ from backend.service.application.runtime.support.safe_counter import (
     JSON_SAFE_INTEGER_MAX,
 )
 from backend.service.application.local_buffers import (
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
@@ -108,14 +107,10 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
     buffer_broker = LocalBufferBrokerProcessSupervisor(
         settings=LocalBufferBrokerSettings(
             root_dir=str(tmp_path / "buffers"),
-            default_pool_name="image-test",
-            pools=(
-                LocalBufferBrokerPoolSettings(
-                    pool_name="image-test",
-                    slot_size_bytes=64 * 1024,
-                    slot_count=8,
-                ),
-            ),
+            arena_size_bytes=16 * 1024 * 1024,
+            min_block_size_bytes=1024 * 1024,
+            max_allocation_bytes=8 * 1024 * 1024,
+            reader_guard_slots=4,
         )
     )
     dataset_storage = LocalDatasetStorage(

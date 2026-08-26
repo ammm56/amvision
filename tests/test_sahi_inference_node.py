@@ -292,29 +292,30 @@ class _FakeLocalBufferWriter:
                 "format_id": "amvision.buffer-ref.v1",
                 "buffer_id": f"buffer-{index}",
                 "lease_id": lease_id,
-                "path": f"buffers/{index}.mmap",
+                "arena_id": "local-buffer-main",
+                "descriptor_index": index - 1,
+                "descriptor_generation": 1,
+                "broker_epoch": "epoch-1",
                 "offset": 0,
-                "size": len(content),
+                "content_length": len(content),
+                "allocation_capacity_bytes": 1024 * 1024,
                 "shape": list(kwargs["shape"]),
                 "dtype": kwargs["dtype"],
                 "layout": kwargs["layout"],
                 "pixel_format": kwargs["pixel_format"],
                 "media_type": kwargs["media_type"],
                 "readonly": True,
-                "broker_epoch": "epoch-1",
-                "generation": 1,
                 "metadata": {},
             }
         )
         return SimpleNamespace(
             buffer_ref=buffer_ref,
-            lease=SimpleNamespace(lease_id=lease_id, pool_name="workflow-images"),
+            lease=SimpleNamespace(lease_id=lease_id),
         )
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+    def release(self, lease_id: str) -> None:
         """记录同步推理结束后的 lease 释放。"""
 
-        assert pool_name == "workflow-images"
         with self._lock:
             self.released_lease_ids.append(lease_id)
 

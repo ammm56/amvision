@@ -2,7 +2,7 @@
 
 ## 状态与职责
 
-状态：**已规划并完成代码事实审计，可以按本文顺序开始实现；所有阶段当前均未标记完成。**
+状态：**阶段 0–9 已按开发期原子迁移完成；阶段 10 的源码开发环境故障、容量、完整回归和有界真实传输门禁已通过，发行重组后的 10,000 次与 24 小时持续 soak 仍属于发布认证门禁。**
 
 本文是下一阶段本地共享内存修复与 LocalBuffer 重构的唯一实施顺序，覆盖：
 
@@ -20,19 +20,20 @@
 
 | 项目 | 当前实现 | 结论 |
 | --- | --- | --- |
-| Trigger overflow page | descriptor 使用独立 guard，共享 page pool 分配/释放没有进程内全局 allocator lock | 真实并发竞态，P0 |
-| 请求 deadline | PREPARE/写图后 Runtime invoke 再收到完整 `reply_timeout_seconds` | 总预算被重置，P0 |
-| response ACK | output lease 通常沿用请求 deadline，没有独立 ACK 读取期限 | 生命周期缺口，P0 |
-| PROCESSING 取消 | descriptor 有 `cancel_requested`，supervisor 未把它完整传播到当前 Workflow Run | 真实缺口，P0 |
-| 终态错误 | schema 已区分 `deadline_exceeded` 与 `cancelled`，sweep 路径仍统一发布 cancelled | 诊断语义错误，P1 |
-| timeout 默认值 | contract/数据库允许 `None`，不同 adapter 又使用 5/30/300 秒等分散默认 | 可能触发空值运算且有多个事实源，P1 |
-| health | mailbox/adapter 主要返回全局计数，不能可靠说明单个 TriggerSource 的 timeout/错误 | 真实可观测性缺口，P1 |
-| 前端 | 后端已有 local-shared-memory，创建页仍缺少正式模板 | 管理链路未闭环，P1 |
-| LocalBuffer | 固定 `image-4k/image-1080p/image-640x640` pool/slot，默认进入 `image-4k` | 与目标容量模型冲突，P0 重构 |
-| BufferRef | 没有 arena descriptor locator 与 allocation capacity | 新 allocator 前置契约缺口 |
-| .NET mapping | 按 path、epoch、offset 缓存固定 slot capacity view | 不能直接适配动态 extent |
-| .NET 进程架构 | 当前 SDK、Console 和 contract tests 仍是 AnyCPU，mapping 代码仍保留 32-bit 说明 | 与项目 64-bit-only 边界冲突，阶段 9 原子改为 x64 |
-| frame channel | 只声明 frame 数量，不声明每帧最大长度 | 不能确定预留 order |
+| Trigger overflow page | 共享 page allocator 使用唯一进程内锁，reserve/rollback/release 与 descriptor publication 分离 | 已实现并有并发/碎片门禁 |
+| 请求 deadline | PREPARE 固定单一 absolute deadline，Runtime 只消费剩余预算 | 已实现 |
+| response ACK | 所有可读取 RESPONSE 使用独立 ACK deadline；输出 lease 在 publication 前批量 handoff | 已实现 |
+| PROCESSING 取消 | 固定 `cancel_reason` 传播到当前 run-scoped cancel event | 已实现 |
+| 终态错误 | deadline、cancel、busy、mailbox capacity 和 LocalBuffer capacity 使用稳定分类 | 已实现 |
+| timeout 默认值 | local-shared-memory sync 使用统一非空默认值并有数据库回填迁移 | 已实现 |
+| health | 同时报告 global mailbox、per-source、执行器、deadline/ACK 和 arena 容量 | 已实现 |
+| Broker event router | client close 显式注销独占 channel，短生命周期 health/Preview 调用不会累积 route | 已实现并有生命周期守恒门禁 |
+| 前端 | 创建页提供正式本机共享内存模板，不显示内部 mmap 路径或 pool | 已实现并通过浏览器交互验证 |
+| LocalBuffer | 单固定容量 arena + buddy allocator，按 `content_length` 动态选择最小连续 order | 已实现 |
+| BufferRef | 使用 arena id、descriptor、generation、epoch、offset、content/allocation length | 已实现 |
+| .NET mapping | 按受信 arena 配置和精确 extent view 映射，guard 后重验 descriptor | 已实现 |
+| .NET 进程架构 | SDK、Console 和 contract tests 固定 x64，LocalBuffer client拒绝非64-bit进程 | 已实现 |
+| frame channel | 同时声明 frame 数量和单帧最大长度，extent 预留全有或全无 | 已实现 |
 
 现有协议、owner handoff、reader/writer guard、统一 Runtime gate、LocalBuffer 图片输出和 ZeroMQ transport-lifetime registry 的主体设计保留。此次不是重写 Workflow 引擎或 ZeroMQ Trigger。
 
@@ -366,7 +367,7 @@ arena_total = general_total + huge_reserved_total
 
 ## 完整实施顺序
 
-### 阶段 0：冻结基线与回归证据
+### 阶段 0：冻结基线与回归证据（已完成）
 
 - 固定本文、ADR-0007、ADR-0008 和 binary schema 变更范围。
 - 记录当前固定 pool 配置、API/SDK fixture、local-shared/ZeroMQ/HTTP 真实性能和资源基线。
@@ -374,7 +375,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：能够稳定复现已确认缺口；无代码行为变更。
 
-### 阶段 1：mailbox page allocator 正确性
+### 阶段 1：mailbox page allocator 正确性（已完成）
 
 - 增加唯一 page allocator lock、reserve/rollback/release。
 - page body 移出 allocator 临界区，固定 publication 顺序和 lock-order 测试。
@@ -382,7 +383,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：16 并发混合 inline/1/8/16/32 MiB、碎片化 chain、2,000 次四进程压力无重复 page、泄漏或 owner 失效。
 
-### 阶段 2：deadline、ACK、取消和终态
+### 阶段 2：deadline、ACK、取消和终态（已完成）
 
 - schema 原地加入 ACK deadline，以固定 `cancel_reason` 枚举替换 cancel bit；只统一 local-shared-memory sync timeout解析和数据迁移。
 - 全链路传递单个 absolute request deadline和剩余预算；成功响应 publication 前批量把输出 lease切换到同一 ACK deadline。
@@ -391,7 +392,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：在 PREPARE、WRITING、REQUEST、PROCESSING、RESPONSE、ACK 各点超时/取消均得到正确终态，资源回到基线。
 
-### 阶段 3：Trigger health 与前端闭环
+### 阶段 3：Trigger health 与前端闭环（已完成）
 
 - 分离 global mailbox health和 per-source health。
 - 前端新增 local-shared-memory 创建/编辑入口，只显示可配置项，不暴露内部 mmap 路径。
@@ -399,7 +400,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：API、前端 typecheck/测试、真实创建-enable-disable-invoke-delete 链通过。
 
-### 阶段 4：arena binary contract 与纯 buddy allocator
+### 阶段 4：arena binary contract 与纯 buddy allocator（已完成）
 
 - 定义 header、descriptor、guard range、layout fingerprint。
 - 实现不依赖 mmap 的纯 buddy allocator，支持确定性低地址聚集、顶级 root 边界、split、merge、hard reserve、最大连续块和分类错误。
@@ -407,7 +408,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：无重叠 extent；容量守恒；释放后完全合并；reserve不被普通请求借用；descriptor上限不会先于容量耗尽。
 
-### 阶段 5：persistent descriptor、guard 与恢复
+### 阶段 5：persistent descriptor、guard 与恢复（已完成）
 
 - 建立 arena/allocator/guard/owner 文件和 publication 规则。
 - 实现 writer/reader/publication guard 与规定锁顺序；reclaim 持有全部外部 guards直到 FREE/merge完成。
@@ -416,7 +417,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：Broker 在 allocation reply、guard acquire、写入、commit、read 和 reclaim 各点退出；旧 SDK 不能写入新 generation；layout 不匹配拒绝启动且不破坏文件。
 
-### 阶段 6：普通 lease、External lease 与批量 handoff
+### 阶段 6：普通 lease、External lease 与批量 handoff（已完成）
 
 - 在隔离 composition root 中把普通 allocate/commit/acquire/release 接到 extent。
 - 在隔离 composition root 中把 External PREPARE/revalidate/commit、receipt CAS transfer/release、batch output handoff接到新实现。
@@ -424,7 +425,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：普通、External、输入转 Runtime、输入直接作为输出、批量输出全成功/全失败和 foreign ref normalization 均通过。
 
-### 阶段 7：Python reader/writer 与 .NET SDK
+### 阶段 7：Python reader/writer 与 .NET SDK（已完成）
 
 - 冻结目标 BufferRef/allocation/fixture，但暂不替换正式 v1 generated artifacts。
 - 在隔离测试入口完成 Python direct reader/writer 的 descriptor/extent校验。
@@ -433,7 +434,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：Python/.NET逐字节 fixture一致；BGR24/Mono8/正负 stride/BMP/JPEG/PNG/Base64准确；raw链路无 decode和整图中间副本；encoded只首次消费解码一次。
 
-### 阶段 8：frame channel 与所有调用点
+### 阶段 8：frame channel 与所有调用点（已完成）
 
 - 在隔离实现中增加 frame count/max frame length和全有或全无的批量extent预留。
 - 完成 inference、Workflow、Preview、ZeroMQ、local-shared和异步暂存调用点的目标适配器及切换清单，但正式 composition root 仍使用旧路径。
@@ -441,7 +442,7 @@ arena_total = general_total + huge_reserved_total
 
 门禁：ring wrap、旧 frame generation拒绝、channel销毁等待reader、不同大小帧复用和超限拒绝通过。
 
-### 阶段 9：配置、数据迁移和旧实现删除
+### 阶段 9：配置、数据迁移和旧实现删除（已完成）
 
 - 原子替换公开 v1 contract/codegen、Broker、正式 composition root、所有调用点和 x64 .NET SDK package；同一提交删除旧字段与固定 pool 实现。
 - 更新源码 config/profile模板、前端、fixture、Postman示例、现有TriggerSource JSON开发数据和维护命令；不手工修改 `release/<profile-id>/app/`。
@@ -450,13 +451,24 @@ arena_total = general_total + huge_reserved_total
 
 门禁：`rg` 不再出现运行时 `default_pool_name`、`LocalBufferBrokerPoolSettings`、分辨率 preset、Trigger `pool_name`、AnyCPU/x86项目配置或32-bit LocalBuffer分支；旧layout启动明确失败；新安装一步启动。
 
-### 阶段 10：故障、容量、性能与业务 soak
+### 阶段 10：故障、容量、性能与业务 soak（源码门禁完成，发布认证进行中）
 
 - 执行 allocator碎片化、满载、restart、SDK/backend/worker异常退出、deadline/cancel/ACK和持续运行门禁。
 - 使用开发环境真实模型、Deployment、Workflow Runtime、ZeroMQ/local-shared Trigger和真实图片。
 - 重新 assemble release 后运行同一 contract/smoke；不手工修改发行目录。
 
 门禁全部通过后才能把阶段和 ADR 状态改为已实现。
+
+2026-08-26 源码开发环境已完成以下证据：
+
+- 完整后端门禁 3739 项通过；唯一失败是绕过构造器的测试夹具漏建 monitor wake event，补齐夹具并增加唤醒断言后对应文件 17 项通过；
+- Ruff 全量、文档示例 50 项、前端 285 项与 build、.NET x64 rebuild/contract probe 全部通过；
+- Workflow Trigger mailbox 四进程 2000 请求完成于 4.188 秒，覆盖 overflow page，结束后 128 descriptors 和全部 pages 回到空闲；
+- 57.1 MiB、5472×3648 真实 BMP 及等价 BGR24，在并发 1/2 下完成 ZeroMQ/local-shared 成对调用和 20 次混合 soak，4 个性能 cell 与生命周期恢复裁决均通过；
+- 本次有界样本中，BMP local-shared 端到端 P50 为 160.90/258.32 ms，ZeroMQ 为 292.79/432.28 ms；BGR24 direct 为 145.03/182.16 ms，ZeroMQ 为 270.69/328.92 ms；local-shared 传输开销 P50 为 32.51–58.81 ms，ZeroMQ 为 161.32–258.42 ms；
+- 真实门禁曾发现 Broker event router channel 未注销，修复后 before/after active channel 保持一致，arena 2 GiB 全空闲，active lease、REVOKING、QUARANTINED、pending response route、forward/drop error 全为 0。
+
+上述小样本用于证明真实链路、阶段耗时和相对性能方向，不替代发布前的多轮统计、10,000 次混合 soak 与 24 小时持续认证。
 
 ## 必须通过的验证矩阵
 
@@ -517,6 +529,6 @@ arena_total = general_total + huge_reserved_total
 - 不把training telemetry迁入`data/buffers/`。
 - 不在新实现中保留固定pool兼容层、旧字段双读或旧binary layout。
 
-## 开始实现判定
+## 当前实施判定
 
-本文已经把当前缺口、目标架构、依赖顺序、锁顺序、生命周期、迁移删除项和门禁固定到可实施粒度。下一步可以从阶段0开始代码实现。任何阶段只有在本阶段定向测试、相关回归、资源回基线检查和文档核对全部通过后才能标记完成，再进入下一阶段。
+阶段0–9的代码、契约、SDK、前端、配置、迁移和旧实现删除已原子收口；阶段10的源码故障、容量、完整仓库回归、真实图片传输和有界 soak 也已通过。代码实施可以进入发布重组与认证阶段，但在新 release profile 完成 10,000 次混合 soak 和24小时持续运行前，不宣称该发行包已经完成生产级持续负载认证。

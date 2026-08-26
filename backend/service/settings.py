@@ -329,6 +329,9 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
     - preview_model_session_scope_limit：API 进程最多保留的编辑态 Preview 模型 scope 数量。
     - local_shared_trigger_executor_worker_count：本机共享内存 Trigger 严格有界执行槽数量。
     - local_shared_trigger_mailbox_poll_interval_seconds：全局 Trigger mailbox 空闲轮询间隔。
+    - local_shared_trigger_default_reply_timeout_seconds：本机共享内存同步请求唯一默认总预算。
+    - local_shared_trigger_response_ack_timeout_seconds：响应和输出图片 lease 的独立 ACK 窗口。
+    - local_shared_trigger_cancellation_grace_seconds：取消后等待当前 Runtime 协作停止的上限。
     """
 
     operator_thread_count: int = Field(
@@ -390,6 +393,21 @@ class BackendServiceWorkflowRuntimeConfig(BaseModel):
         default=0.001,
         gt=0,
         description="全局 Workflow Trigger mailbox 空闲轮询间隔秒数",
+    )
+    local_shared_trigger_default_reply_timeout_seconds: int = Field(
+        default=30,
+        gt=0,
+        description="local-shared-memory sync TriggerSource 的唯一默认请求总预算秒数",
+    )
+    local_shared_trigger_response_ack_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description="local-shared-memory RESPONSE 与输出 lease 的独立 ACK 窗口秒数",
+    )
+    local_shared_trigger_cancellation_grace_seconds: float = Field(
+        default=2.0,
+        ge=0,
+        description="local-shared-memory 请求取消后等待当前 Runtime 协作停止的秒数",
     )
 
 

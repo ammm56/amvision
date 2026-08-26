@@ -83,18 +83,18 @@ mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 W
 
 detection、classification、segmentation、pose、OBB 的结构化结果全部走同一 mailbox。常见小结果使用 descriptor 内联响应区；较大的 segmentation polygon/RLE 等结果使用固定页池。预览图、绘制结果或调试图片必须使用 LocalBuffer 或显式持久化保存位置，不得放入页池。
 
-### 与 LocalBufferBroker 图片 pool 的关系
+### 与 LocalBufferBroker 图片 arena 的关系
 
-mailbox 只保存控制信息和结构化结果，LocalBufferBroker pool 才保存输入和输出图片。以 raw BGR24 为例：
+mailbox 只保存控制信息和结构化结果，LocalBufferBroker 固定总容量 arena 保存输入和输出图片。以 raw BGR24 为例：
 
 - 2048×1080：约 6.33 MiB。
 - 2560×1440：约 10.55 MiB。
 - 3840×2160：约 23.73 MiB。
 - 5000×4000：约 57.22 MiB。
 
-当前 `image-1080p` 单槽 16 MiB，可以容纳常见 2K/QHD raw BGR24；当前默认 `image-4k` 单槽 128 MiB，可以容纳上述 2K、4K 和 20MP 输入。是否能写入由 `local_buffer_broker.pools[].slot_size_bytes` 决定，与 mailbox 的 512 KiB 无关。
+backend 主 arena 默认总容量 2 GiB、最小 block 1 MiB、单次连续分配上限 1 GiB。Broker 根据精确 `content_length` 动态选择最小可容纳的 1/2/4/.../1024 MiB buddy order，因此不同尺寸图片不会预占固定分辨率槽位。是否能写入由当前总空闲容量、最大连续块和单次分配上限共同决定，与 mailbox 的 512 KiB 无关；满载或碎片不足立即返回分类错误，不排队或切换传输协议。
 
-同步 Workflow、OpenCV 和 deployment worker 共同引用 backend 主池中的同一个 BufferRef，不建立同步“推理专用图片 pool”，也不在推理前复制图片。持久异步任务是不同边界：短期 BufferRef 不能写入可跨重启队列，因此队列保存 ObjectStore 引用；daemon 实际领取任务后，才把图片写入 `inference-daemon-private` 根目录下的私有 broker，模型 worker 完成后立即释放。worker 的路由只接受 backend 主池和 daemon 私有池这两组固定配置路径，不接受任意磁盘路径。
+同步 Workflow、OpenCV 和 deployment worker 共同引用 backend 主 arena 中的同一个 BufferRef，不建立同步“推理专用图片池”，也不在推理前复制图片。持久异步任务是不同边界：短期 BufferRef 不能写入可跨重启队列，因此队列保存 ObjectStore 引用；daemon 实际领取任务后，才把图片写入 `inference-daemon-private` arena，模型 worker 完成后立即释放。worker 的路由只接受 backend 主 arena 和 daemon 私有 arena 这两组固定配置路径，不接受任意磁盘路径。
 
 daemon 私有 broker 不是第三条业务传输协议，也不承载同步调用。它只解决异步队列“输入必须可恢复”和模型 worker“图片必须走 LocalBuffer”之间的生命周期转换。同步调用没有这次复制；异步调用只在真正开始执行时复制一次 ObjectStore 图片，且不会把图片 bytes 放进 mailbox 或进程 Queue。
 

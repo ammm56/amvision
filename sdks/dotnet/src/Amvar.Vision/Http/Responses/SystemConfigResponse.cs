@@ -71,34 +71,28 @@ namespace Amvar.Vision
         [JsonProperty("expire_interval_seconds")]
         public double ExpireIntervalSeconds { get; set; }
 
-        [JsonProperty("default_pool_name")]
-        public string DefaultPoolName { get; set; } = string.Empty;
+        [JsonProperty("arena_id")]
+        public string ArenaId { get; set; } = string.Empty;
 
-        [JsonProperty("pools")]
-        public List<LocalBufferBrokerPoolConfig> Pools { get; set; } = new List<LocalBufferBrokerPoolConfig>();
-    }
+        [JsonProperty("arena_size_bytes")]
+        public long ArenaSizeBytes { get; set; }
 
-    /// <summary>
-    /// LocalBufferBroker mmap pool 配置摘要。
-    /// </summary>
-    public sealed class LocalBufferBrokerPoolConfig
-    {
-        [JsonProperty("pool_name")]
-        public string PoolName { get; set; } = string.Empty;
+        [JsonProperty("min_block_size_bytes")]
+        public long MinBlockSizeBytes { get; set; }
 
-        [JsonProperty("slot_size_bytes")]
-        public long SlotSizeBytes { get; set; }
+        [JsonProperty("max_allocation_bytes")]
+        public long MaxAllocationBytes { get; set; }
 
-        [JsonProperty("slot_count")]
-        public int SlotCount { get; set; }
+        [JsonProperty("huge_reserve_bytes")]
+        public long HugeReserveBytes { get; set; }
+
+        [JsonProperty("reader_guard_slots")]
+        public int ReaderGuardSlots { get; set; }
 
         [JsonProperty("flush_on_write")]
         public bool FlushOnWrite { get; set; }
 
-        [JsonProperty("file_name")]
-        public string FileName { get; set; } = string.Empty;
-
-        [JsonProperty("file_size_bytes")]
-        public long FileSizeBytes { get; set; }
+        [JsonProperty("revocation_grace_seconds")]
+        public double RevocationGraceSeconds { get; set; }
     }
 }

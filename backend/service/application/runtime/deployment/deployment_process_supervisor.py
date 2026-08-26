@@ -32,6 +32,9 @@ from backend.service.application.local_buffers import (
     LocalBufferBrokerClient,
     LocalBufferBrokerEventChannel,
 )
+from backend.service.application.local_buffers.broker_settings import (
+    resolve_preview_reservation_length,
+)
 from backend.service.application.project_summary import (
     PROJECT_SUMMARY_TOPIC_DEPLOYMENTS,
     publish_project_summary_event,
@@ -785,7 +788,7 @@ class DeploymentProcessSupervisor:
         *,
         request: PredictionRequest,
         owner_id: str,
-    ) -> tuple[PredictionRequest, tuple[str, str | None] | None]:
+    ) -> tuple[PredictionRequest, str | None]:
         """把 embedded owner 收到的图片写入 LocalBuffer；daemon 只接受既有引用。"""
 
         image_payload = getattr(request, "input_image_payload", None)
@@ -868,7 +871,7 @@ class DeploymentProcessSupervisor:
                     "buffer_ref": buffer_ref.model_dump(mode="json"),
                 },
             ),
-            (write_result.lease.lease_id, write_result.lease.pool_name),
+            write_result.lease.lease_id,
         )
 
     def _allocate_preview_output(
@@ -890,21 +893,10 @@ class DeploymentProcessSupervisor:
         allocate = getattr(local_buffer_io, "allocate_buffer", None)
         if settings is None or not callable(allocate):
             raise ServiceConfigurationError("deployment 缺少 LocalBuffer 预分配能力")
-        pool_name = str(settings.default_pool_name)
-        pool = next(
-            (item for item in settings.pools if item.pool_name == pool_name),
-            None,
-        )
-        if pool is None:
-            raise ServiceConfigurationError(
-                "LocalBuffer 默认图片 pool 不存在",
-                details={"pool_name": pool_name},
-            )
         return allocate(
-            size=int(pool.slot_size_bytes),
+            content_length=resolve_preview_reservation_length(request, settings),
             owner_kind="deployment-preview",
             owner_id=owner_id,
-            pool_name=pool_name,
             ttl_seconds=self.settings.request_timeout_seconds + 60.0,
         )
 
@@ -926,8 +918,8 @@ class DeploymentProcessSupervisor:
         media_type = preview_transfer.get("media_type")
         if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
             raise ServiceConfigurationError("结果图片 LocalBuffer 长度不合法")
-        if size > preview_output_lease.size:
-            raise ServiceConfigurationError("结果图片超出 LocalBuffer 槽位")
+        if size > preview_output_lease.allocation_capacity_bytes:
+            raise ServiceConfigurationError("结果图片超出 LocalBuffer 预留 extent")
         if not isinstance(media_type, str) or not media_type.strip():
             raise ServiceConfigurationError("结果图片 LocalBuffer 媒体类型缺失")
         local_buffer_io = self.local_buffer_io
@@ -936,8 +928,9 @@ class DeploymentProcessSupervisor:
         if not callable(commit) or not callable(read):
             raise ServiceConfigurationError("deployment 缺少 LocalBuffer 提交能力")
         committed = commit(
-            lease=preview_output_lease.model_copy(update={"size": size}),
+            lease=preview_output_lease,
             media_type=media_type.strip(),
+            content_length=size,
         )
         try:
             preview_image_bytes = bytes(
@@ -952,16 +945,15 @@ class DeploymentProcessSupervisor:
 
     def _release_local_buffer(
         self,
-        owned_input: tuple[str, str | None] | None,
+        owned_input: str | None,
     ) -> None:
         """释放当前请求创建的图片输入 lease。"""
 
         if owned_input is None:
             return
-        lease_id, pool_name = owned_input
         release = getattr(self.local_buffer_io, "release", None)
         if callable(release):
-            release(lease_id, pool_name=pool_name)
+            release(owned_input)
 
     def _release_local_buffer_lease(self, lease: BufferLease | None) -> None:
         """释放当前请求创建的结果图片 lease。"""
@@ -970,7 +962,7 @@ class DeploymentProcessSupervisor:
             return
         release = getattr(self.local_buffer_io, "release", None)
         if callable(release):
-            release(lease.lease_id, pool_name=lease.pool_name)
+            release(lease.lease_id)
 
     def _ensure_state(self, config: DeploymentProcessConfig) -> _DeploymentProcessState:
         """读取或初始化指定 deployment 的监督状态。"""

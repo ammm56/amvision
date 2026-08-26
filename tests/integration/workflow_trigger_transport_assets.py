@@ -137,7 +137,6 @@ def create_assets(
                         ),
                         "default_input_binding": "request_image_ref",
                         "content_transport": "local-buffer",
-                        "pool_name": "image-4k",
                     },
                 },
                 expected_status=201,

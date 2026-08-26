@@ -1,15 +1,21 @@
-"""LocalBufferBroker 基础设施实现导出。"""
+"""LocalBufferBroker 固定 arena 基础设施导出。"""
 
-from backend.service.infrastructure.local_buffers.mmap_buffer_pool import (
+from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import (
     ExternalBufferCommitTransferResult,
-    MmapBufferPool,
-    MmapBufferPoolConfig,
-    MmapBufferWriteResult,
+    LocalBufferArenaPool,
+    LocalBufferWriteResult,
+)
+from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
+    MmapBufferArena,
+    MmapBufferArenaConfig,
+    MmapBufferArenaExternalAccess,
 )
 
 __all__ = [
     "ExternalBufferCommitTransferResult",
-    "MmapBufferPool",
-    "MmapBufferPoolConfig",
-    "MmapBufferWriteResult",
+    "LocalBufferArenaPool",
+    "LocalBufferWriteResult",
+    "MmapBufferArena",
+    "MmapBufferArenaConfig",
+    "MmapBufferArenaExternalAccess",
 ]

@@ -155,6 +155,8 @@ class WorkflowTriggerSourceService:
         trigger_source_supervisor: "TriggerSourceSupervisor | None" = None,
         dataset_storage: "LocalDatasetStorage | None" = None,
         workflow_runtime_worker_manager: "WorkflowRuntimeWorkerManager | None" = None,
+        local_shared_default_reply_timeout_seconds: int = 30,
+        local_shared_response_ack_timeout_seconds: float = 30.0,
     ) -> None:
         """初始化 WorkflowTriggerSourceService。
 
@@ -169,6 +171,20 @@ class WorkflowTriggerSourceService:
         self.trigger_source_supervisor = trigger_source_supervisor
         self.dataset_storage = dataset_storage
         self.workflow_runtime_worker_manager = workflow_runtime_worker_manager
+        if local_shared_default_reply_timeout_seconds <= 0:
+            raise ValueError(
+                "local_shared_default_reply_timeout_seconds 必须大于 0"
+            )
+        self.local_shared_default_reply_timeout_seconds = (
+            local_shared_default_reply_timeout_seconds
+        )
+        if local_shared_response_ack_timeout_seconds <= 0:
+            raise ValueError(
+                "local_shared_response_ack_timeout_seconds 必须大于 0"
+            )
+        self.local_shared_response_ack_timeout_seconds = (
+            local_shared_response_ack_timeout_seconds
+        )
         self.application_lifecycle = (
             WorkflowApplicationLifecycleService(
                 session_factory=session_factory,
@@ -286,6 +302,11 @@ class WorkflowTriggerSourceService:
                         result_mode=request.result_mode,
                         ack_policy=request.ack_policy,
                         reply_timeout_seconds=request.reply_timeout_seconds,
+                        response_ack_timeout_seconds=(
+                            self.local_shared_response_ack_timeout_seconds
+                            if request.trigger_kind == "local-shared-memory"
+                            else None
+                        ),
                         result_mapping=dict(request.result_mapping or {}),
                     ),
                     created_by,
@@ -480,6 +501,11 @@ class WorkflowTriggerSourceService:
                         result_mode=trigger_source.result_mode,
                         ack_policy=trigger_source.ack_policy,
                         reply_timeout_seconds=trigger_source.reply_timeout_seconds,
+                        response_ack_timeout_seconds=(
+                            self.local_shared_response_ack_timeout_seconds
+                            if trigger_source.trigger_kind == "local-shared-memory"
+                            else None
+                        ),
                         result_mapping=dict(trigger_source.result_mapping),
                     ),
                     updated_by,
@@ -712,6 +738,11 @@ class WorkflowTriggerSourceService:
                             result_mode=current.result_mode,
                             ack_policy=current.ack_policy,
                             reply_timeout_seconds=current.reply_timeout_seconds,
+                            response_ack_timeout_seconds=(
+                                self.local_shared_response_ack_timeout_seconds
+                                if current.trigger_kind == "local-shared-memory"
+                                else None
+                            ),
                             result_mapping=dict(current.result_mapping),
                         ),
                         updated_at=_now_isoformat(),
@@ -779,6 +810,12 @@ class WorkflowTriggerSourceService:
             and request.reply_timeout_seconds <= 0
         ):
             raise InvalidRequestError("reply_timeout_seconds 必须大于 0")
+        reply_timeout_seconds = request.reply_timeout_seconds
+        if trigger_kind == "local-shared-memory" and submit_mode == "sync":
+            reply_timeout_seconds = (
+                reply_timeout_seconds
+                or self.local_shared_default_reply_timeout_seconds
+            )
         if request.debounce_window_ms is not None and request.debounce_window_ms < 0:
             raise InvalidRequestError("debounce_window_ms 不能小于 0")
         idempotency_key_path = _normalize_optional_str(request.idempotency_key_path)
@@ -829,7 +866,7 @@ class WorkflowTriggerSourceService:
             default_execution_metadata=dict(request.default_execution_metadata or {}),
             ack_policy=ack_policy,
             result_mode=result_mode,
-            reply_timeout_seconds=request.reply_timeout_seconds,
+            reply_timeout_seconds=reply_timeout_seconds,
             debounce_window_ms=request.debounce_window_ms,
             idempotency_key_path=idempotency_key_path,
             metadata=dict(request.metadata or {}),
@@ -1362,6 +1399,7 @@ def _with_validated_trigger_configuration(
     result_mode: str,
     ack_policy: str,
     reply_timeout_seconds: int | None,
+    response_ack_timeout_seconds: float | None,
     result_mapping: dict[str, object],
 ) -> dict[str, object]:
     """同时固定 Runtime contract token 和不可变 TriggerResponsePlan。"""
@@ -1400,6 +1438,7 @@ def _with_validated_trigger_configuration(
         result_mode=result_mode,
         ack_policy=ack_policy,
         reply_timeout_seconds=reply_timeout_seconds,
+        response_ack_timeout_seconds=response_ack_timeout_seconds,
         selected_output_payload_types=selected_output_payload_types,
         previous_plan=payload.get(TRIGGER_RESPONSE_PLAN_METADATA_KEY),
     )

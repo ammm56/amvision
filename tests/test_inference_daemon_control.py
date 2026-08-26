@@ -24,7 +24,6 @@ from backend.service.application.errors import (
 from backend.service.application.local_buffers import (
     DirectMmapLocalBufferReader,
     DirectMmapLocalBufferWriter,
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
@@ -154,7 +153,7 @@ class _FakeRefSupervisor(_FakeSupervisor):
         assert request.input_uri is None
         assert request.input_image_payload is not None
         assert request.input_image_payload["transport_kind"] == "buffer"
-        assert request.input_image_payload["buffer_ref"]["size"] == 12
+        assert request.input_image_payload["buffer_ref"]["content_length"] == 12
         return DeploymentProcessExecution(
             deployment_instance_id=config.deployment_instance_id,
             instance_id="instance-mmap",
@@ -463,16 +462,13 @@ def test_preview_image_request_uses_mmap_v1(
     buffer_settings = LocalBufferBrokerSettings(
         enabled=True,
         root_dir=str(tmp_path / "preview-buffers"),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=64 * 1024,
-                slot_count=4,
-            ),
-        ),
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
     )
     buffer_broker = LocalBufferBrokerProcessSupervisor(settings=buffer_settings)
+    buffer_broker.start()
     preview_buffer_writer = DirectMmapLocalBufferWriter(buffer_settings)
     fake_supervisor = _FakePreviewSupervisor(
         dataset_storage=dataset_storage,
@@ -520,25 +516,19 @@ def test_preview_image_request_uses_mmap_v1(
         local_mmap_client=mmap_client,
     )
 
-    buffer_broker.start()
     expiring_lease = buffer_broker.allocate_buffer(
-        size=12,
+        content_length=12,
         owner_kind="test",
         owner_id="expiring-preview",
-        pool_name="image-test",
         ttl_seconds=1.0,
     )
     try:
-        with pytest.raises(InvalidRequestError, match="剩余有效期不足"):
-            preview_buffer_writer.write_lease_bytes(
-                lease=expiring_lease,
-                content=b"abcdefghijkl",
-            )
-    finally:
-        buffer_broker.release(
-            expiring_lease.lease_id,
-            pool_name=expiring_lease.pool_name,
+        preview_buffer_writer.write_lease_bytes(
+            lease=expiring_lease,
+            content=b"abcdefghijkl",
         )
+    finally:
+        buffer_broker.release(expiring_lease.lease_id)
     mmap_server.start()
     try:
         preview_result = client.run_inference(
@@ -599,10 +589,11 @@ def test_preview_image_request_uses_mmap_v1(
                     save_result_image=True,
                 ),
             )
-        retained_pool_status = buffer_broker.get_status()["pools"][0]
+        retained_pool_status = buffer_broker.get_status()
     finally:
         mmap_client.close()
         mmap_server.stop()
+        preview_buffer_writer.close()
         buffer_broker.stop()
 
     assert preview_result.instance_id == "instance-mmap"
@@ -611,9 +602,11 @@ def test_preview_image_request_uses_mmap_v1(
     assert object_store_result.execution_result.preview_image_bytes is None
     assert absolute_path_result.execution_result.preview_image_bytes is None
     assert fake_supervisor.actions == ["infer", "infer", "infer", "infer"]
-    assert retained_pool_status["used_count"] == 2
-    assert retained_pool_status["active_count"] == 1
-    assert retained_pool_status["writing_count"] == 1
+    assert retained_pool_status["active_lease_count"] == 2
+    general_capacity = retained_pool_status["general"]
+    assert isinstance(general_capacity, dict)
+    assert general_capacity["active"] >= 1024 * 1024
+    assert general_capacity["reserved_writing"] >= 1024 * 1024
     assert len(captured_mmap_results) == 4
     for result in captured_mmap_results:
         execution_result = result["execution_result"]
@@ -766,18 +759,20 @@ def test_local_mmap_hot_path_keeps_buffer_ref_and_handles_eighty_calls(
         local_mmap_client=mmap_client,
     )
     buffer_ref = BufferRef(
-        buffer_id="buffer-1",
+        buffer_id="local-buffer-main:0",
         lease_id="lease-1",
-        path=str(tmp_path / "buffers" / "image.dat"),
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
+        broker_epoch="1" * 32,
         offset=0,
-        size=12,
+        content_length=12,
+        allocation_capacity_bytes=1024 * 1024,
         shape=(2, 2, 3),
         dtype="uint8",
         layout="HWC",
-        pixel_format="BGR",
+        pixel_format="BGR24",
         media_type="image/raw",
-        broker_epoch="epoch-1",
-        generation=1,
     )
     request = DetectionPredictionRequest(
         input_image_payload={
@@ -813,54 +808,42 @@ def test_local_mmap_hot_path_keeps_buffer_ref_and_handles_eighty_calls(
     assert not staged_root.exists()
 
 
-def test_direct_mmap_reader_reads_only_configured_pool_range(tmp_path: Path) -> None:
-    """验证 daemon worker 可直接读取 broker mmap，且不能借 ref 读取任意路径。"""
+def test_direct_mmap_reader_reads_only_configured_arena_identity(tmp_path: Path) -> None:
+    """daemon worker 只读取受信 arena locator，拒绝伪造 identity。"""
 
     root_dir = tmp_path / "buffers"
-    pool_dir = root_dir / "image-test"
-    pool_dir.mkdir(parents=True)
-    pool_path = pool_dir / "image-test.dat"
-    pool_path.write_bytes(b"abcdefghijkl" + bytes(116))
     settings = LocalBufferBrokerSettings(
         root_dir=str(root_dir),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=64,
-                slot_count=2,
-                file_name=pool_path.name,
-            ),
-        ),
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
+    )
+    supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
+    supervisor.start()
+    result = supervisor.write_bytes(
+        content=b"abcdefghijkl",
+        owner_kind="workflow-runtime",
+        owner_id="run-1",
+        media_type="image/raw",
     )
     reader = DirectMmapLocalBufferReader(settings)
-    valid_ref = BufferRef(
-        buffer_id="buffer-1",
-        lease_id="lease-1",
-        path=str(pool_path),
-        offset=0,
-        size=12,
-        media_type="image/raw",
-        broker_epoch="epoch-1",
-        generation=1,
-    )
 
     try:
-        raw_view = reader.read_buffer_ref(valid_ref)
-        assert isinstance(raw_view, memoryview)
-        assert raw_view.readonly is True
-        assert bytes(raw_view) == b"abcdefghijkl"
-        encoded_view = reader.read_buffer_ref(
-            valid_ref.model_copy(update={"media_type": "image/png"})
-        )
-        assert isinstance(encoded_view, memoryview)
-        assert bytes(encoded_view) == b"abcdefghijkl"
-        with pytest.raises(InvalidRequestError, match="不属于已配置 mmap pool"):
+        assert reader.read_buffer_ref(result.buffer_ref) == b"abcdefghijkl"
+        with pytest.raises(InvalidRequestError, match="arena identity"):
             reader.read_buffer_ref(
-                valid_ref.model_copy(update={"path": str(tmp_path / "outside.dat")})
+                result.buffer_ref.model_copy(
+                    update={"arena_id": "inference-daemon-private"}
+                )
+            )
+        with pytest.raises(InvalidRequestError, match="identity"):
+            reader.read_buffer_ref(
+                result.buffer_ref.model_copy(update={"offset": 1024 * 1024})
             )
     finally:
         reader.close()
+        supervisor.stop()
 
 
 def test_local_mmap_hot_path_crosses_independent_spawn_process(tmp_path: Path) -> None:
@@ -2263,19 +2246,22 @@ def _one_pixel_png() -> bytes:
 def _buffer_image_payload(tmp_path: Path) -> dict[str, object]:
     """构造无需物化图片内容的 LocalBuffer 引用载荷。"""
 
+    del tmp_path
     buffer_ref = BufferRef(
-        buffer_id="buffer-test",
+        buffer_id="local-buffer-main:0",
         lease_id="lease-test",
-        path=str(tmp_path / "buffers" / "image.dat"),
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
+        broker_epoch="1" * 32,
         offset=0,
-        size=12,
+        content_length=12,
+        allocation_capacity_bytes=1024 * 1024,
         shape=(2, 2, 3),
         dtype="uint8",
         layout="HWC",
-        pixel_format="BGR",
+        pixel_format="BGR24",
         media_type="image/raw",
-        broker_epoch="epoch-test",
-        generation=1,
     )
     return {
         "transport_kind": "buffer",

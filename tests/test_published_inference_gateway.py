@@ -343,7 +343,7 @@ def test_yolox_detection_node_releases_local_buffer_lease_after_gateway_call() -
         )
     )
 
-    assert fake_writer.release_calls == [("lease-memory", "image-test")]
+    assert fake_writer.release_calls == ["lease-memory"]
     assert not list_registered_execution_cleanups(execution_metadata)
 
 
@@ -394,20 +394,20 @@ def test_yolox_detection_node_registers_cleanup_when_local_buffer_release_fails(
     )
 
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
-    assert fake_writer.release_calls == [("lease-memory", "image-test")]
+    assert fake_writer.release_calls == ["lease-memory"]
     assert len(cleanup_items) == 1
     assert (
         cleanup_items[0].resource_kind
         == WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
     )
     assert cleanup_items[0].resource_id == "lease-memory"
-    assert cleanup_items[0].metadata == {"pool_name": "image-test"}
+    assert cleanup_items[0].metadata == {}
 
 
-def test_yolox_detection_node_reuses_one_local_buffer_slot_within_workflow_run() -> (
+def test_yolox_detection_node_releases_each_dynamic_extent_within_workflow_run() -> (
     None
 ):
-    """验证同一 Workflow Run 的串行模型节点只分配一个 mmap 槽位。"""
+    """验证串行模型调用不覆盖已发布 extent，并在每次完成后立即释放。"""
 
     source_bytes = build_test_jpeg_bytes()
     image_registry = ExecutionImageRegistry()
@@ -452,11 +452,10 @@ def test_yolox_detection_node_reuses_one_local_buffer_slot_within_workflow_run()
     _deployment_detection_handler(request)
 
     cleanup_items = list_registered_execution_cleanups(execution_metadata)
-    assert fake_writer.write_count == 1
-    assert fake_writer.rewrite_count == 1
-    assert fake_writer.release_calls == []
-    assert len(cleanup_items) == 1
-    assert cleanup_items[0].resource_id == "lease-memory"
+    assert fake_writer.write_count == 2
+    assert fake_writer.rewrite_count == 0
+    assert fake_writer.release_calls == ["lease-memory", "lease-memory"]
+    assert cleanup_items == ()
 
 
 def test_run_detection_inference_task_preserves_input_image_payload() -> None:
@@ -587,7 +586,7 @@ class _FakeLocalBufferWriter:
         self.last_ttl_seconds: float | None = None
         self.write_count = 0
         self.rewrite_count = 0
-        self.release_calls: list[tuple[str, str | None]] = []
+        self.release_calls: list[str] = []
         self.fail_release = False
 
     def write_bytes(
@@ -612,7 +611,7 @@ class _FakeLocalBufferWriter:
             float(ttl_seconds) if isinstance(ttl_seconds, int | float) else None
         )
         return SimpleNamespace(
-            lease=SimpleNamespace(lease_id="lease-memory", pool_name="image-test"),
+            lease=SimpleNamespace(lease_id="lease-memory"),
             buffer_ref=_build_buffer_ref(
                 lease_id="lease-memory", media_type=media_type
             ),
@@ -625,10 +624,10 @@ class _FakeLocalBufferWriter:
         self.rewrite_count += 1
         self.last_content = content
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
+    def release(self, lease_id: str) -> None:
         """记录 lease 释放参数。"""
 
-        self.release_calls.append((lease_id, pool_name))
+        self.release_calls.append(lease_id)
         if self.fail_release:
             raise RuntimeError("release failed")
 
@@ -714,12 +713,14 @@ def _build_buffer_ref(
     return BufferRef(
         buffer_id="image-test:0",
         lease_id=lease_id,
-        path="runtime/buffers/image-test/pool-001.dat",
-        offset=0,
-        size=16,
-        media_type=media_type,
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
         broker_epoch="epoch-1",
-        generation=1,
+        offset=0,
+        content_length=16,
+        allocation_capacity_bytes=1024 * 1024,
+        media_type=media_type,
     )
 
 

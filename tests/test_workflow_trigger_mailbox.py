@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import mmap
 import os
 from pathlib import Path
+from time import sleep
 
 import pytest
 
@@ -107,6 +109,212 @@ def test_large_compressible_response_uses_lossless_inline_codec(tmp_path: Path) 
             assert server.build_status()["used_page_count"] == 0
 
 
+def test_page_reservation_is_serialized_across_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """不同 descriptor 并发选择 page 时不得得到重叠 reservation。"""
+
+    import backend.service.infrastructure.ipc.workflow_trigger_mailbox as mailbox_module
+
+    original_select = mailbox_module.select_page_indices
+
+    def slow_select(*, free_page_indices: tuple[int, ...], page_count: int):
+        # 放大“扫描 FREE 后、发布 RESERVED 前”的旧竞态窗口。allocator lock
+        # 正确时第二个线程不能在第一个 reservation 发布前重新扫描 page pool。
+        sleep(0.02)
+        return original_select(
+            free_page_indices=free_page_indices,
+            page_count=page_count,
+        )
+
+    monkeypatch.setattr(mailbox_module, "select_page_indices", slow_select)
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identities = tuple(
+                _publish_request(server, client, b"{}") for _ in range(2)
+            )
+            requests = tuple(server.poll_request() for _ in identities)
+            assert all(request is not None for request in requests)
+            resolved = tuple(request for request in requests if request is not None)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = tuple(
+                    executor.submit(
+                        server._reserve_pages,
+                        page_count=4,
+                        identity=request.identity,
+                    )
+                    for request in resolved
+                )
+                reservations = tuple(future.result() for future in futures)
+
+            assert len(set(reservations[0]) & set(reservations[1])) == 0
+            assert server.build_status()["used_page_count"] == 8
+            for request, page_indices in zip(resolved, reservations, strict=True):
+                server._release_reserved_pages(
+                    identity=request.identity,
+                    page_indices=page_indices,
+                )
+                server.publish_json_response(
+                    identity=request.identity,
+                    payload={"state": "succeeded"},
+                )
+                client.acknowledge(identity=request.identity)
+            server.sweep()
+            assert server.build_status()["used_page_count"] == 0
+
+
+def test_concurrent_page_chain_responses_keep_payload_and_identity(
+    tmp_path: Path,
+) -> None:
+    """16 个并发 page-chain 响应不得串页、泄漏或破坏 owner identity。"""
+
+    payloads = tuple(
+        index.to_bytes(4, "little") + os.urandom(1024 * 1024)
+        for index in range(16)
+    )
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identities = tuple(
+                _publish_request(server, client, b"{}") for _ in payloads
+            )
+            requests = tuple(server.poll_request() for _ in payloads)
+            assert all(request is not None for request in requests)
+            resolved = tuple(request for request in requests if request is not None)
+
+            with ThreadPoolExecutor(max_workers=16) as executor:
+                futures = tuple(
+                    executor.submit(
+                        server.publish_response,
+                        identity=request.identity,
+                        payload=payload,
+                    )
+                    for request, payload in zip(resolved, payloads, strict=True)
+                )
+                for future in futures:
+                    future.result()
+
+            assert server.build_status()["used_page_count"] == 48
+            for identity, payload in zip(identities, payloads, strict=True):
+                response = client.read_response(identity=identity)
+                assert response is not None
+                assert response.payload == payload
+                client.acknowledge(identity=identity)
+            assert server.sweep()["released_count"] == 16
+            assert server.build_status()["used_page_count"] == 0
+
+
+def test_page_pool_full_keeps_inline_and_capacity_error_available(
+    tmp_path: Path,
+) -> None:
+    """overflow page 满载时 inline success/error 仍可发布且不抢占 page。"""
+
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identities = tuple(
+                _publish_request(server, client, b"{}") for _ in range(6)
+            )
+            requests = tuple(server.poll_request() for _ in identities)
+            assert all(request is not None for request in requests)
+            resolved = tuple(request for request in requests if request is not None)
+            reservations = tuple(
+                server._reserve_pages(
+                    page_count=contract.MAX_OVERFLOW_PAGES_PER_RESPONSE,
+                    identity=request.identity,
+                )
+                for request in resolved[:4]
+            )
+            assert server.build_status()["free_page_count"] == 0
+
+            server.publish_response(
+                identity=resolved[4].identity,
+                payload=os.urandom(contract.INLINE_RESPONSE_CAPACITY_BYTES + 1),
+            )
+            capacity_response = client.read_response(identity=identities[4])
+            assert capacity_response is not None
+            assert (
+                capacity_response.error_code
+                == contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED
+            )
+            server.publish_json_response(
+                identity=resolved[5].identity,
+                payload={"state": "succeeded"},
+            )
+            inline_response = client.read_response(identity=identities[5])
+            assert inline_response is not None
+            assert inline_response.json_payload() == {"state": "succeeded"}
+            assert server.build_status()["free_page_count"] == 0
+
+            for request, page_indices in zip(
+                resolved[:4], reservations, strict=True
+            ):
+                server._release_reserved_pages(
+                    identity=request.identity,
+                    page_indices=page_indices,
+                )
+                server.publish_json_response(
+                    identity=request.identity,
+                    payload={"state": "succeeded"},
+                )
+            for identity in identities:
+                client.acknowledge(identity=identity)
+            assert server.sweep()["released_count"] == 6
+            assert server.build_status()["used_page_count"] == 0
+
+
+def test_fragmented_page_pool_builds_non_contiguous_chain(tmp_path: Path) -> None:
+    """连续空间耗尽后仍按 page identity 构造非连续 response chain。"""
+
+    with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
+        with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+            identities = tuple(
+                _publish_request(server, client, b"{}") for _ in range(5)
+            )
+            requests = tuple(server.poll_request() for _ in identities)
+            assert all(request is not None for request in requests)
+            resolved = tuple(request for request in requests if request is not None)
+            reservations = tuple(
+                server._reserve_pages(
+                    page_count=contract.MAX_OVERFLOW_PAGES_PER_RESPONSE,
+                    identity=request.identity,
+                )
+                for request in resolved[:4]
+            )
+            for request, page_indices in zip(
+                resolved[:4], reservations, strict=True
+            ):
+                server._release_reserved_pages(
+                    identity=request.identity,
+                    page_indices=tuple(index for index in page_indices if index % 2 == 0),
+                )
+
+            fragmented = server._reserve_pages(
+                page_count=4,
+                identity=resolved[4].identity,
+            )
+            assert fragmented == (0, 2, 4, 6)
+            server._release_reserved_pages(
+                identity=resolved[4].identity,
+                page_indices=fragmented,
+            )
+            for request, page_indices in zip(
+                resolved[:4], reservations, strict=True
+            ):
+                server._release_reserved_pages(
+                    identity=request.identity,
+                    page_indices=tuple(index for index in page_indices if index % 2 == 1),
+                )
+            for request in resolved:
+                server.publish_json_response(
+                    identity=request.identity,
+                    payload={"state": "succeeded"},
+                )
+                client.acknowledge(identity=request.identity)
+            assert server.sweep()["released_count"] == 5
+            assert server.build_status()["used_page_count"] == 0
+
+
 def test_cancel_and_deadline_are_swept_without_page_leak(tmp_path: Path) -> None:
     """取消和超时均由 server 统一归还 descriptor/page。"""
 
@@ -124,7 +332,11 @@ def test_cancel_and_deadline_are_swept_without_page_leak(tmp_path: Path) -> None
             assert accepted is not None
             expired = accepted.identity
             result = server.sweep(now_ns=expired.deadline_ns)
-            assert result["cancelled_count"] == 1
+            assert result["deadline_exceeded_count"] == 1
+            response = client.read_response(identity=expired)
+            assert response.error_code == contract.ERROR_CODE_DEADLINE_EXCEEDED
+            assert response.response_ack_deadline_ns > expired.deadline_ns
+            client.acknowledge(identity=expired)
             assert server.sweep()["released_count"] == 1
             assert server.build_status()["used_page_count"] == 0
 

@@ -180,7 +180,7 @@ def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path)
     assert Path(config["buffers_root"]).name == "buffers"
     assert config["route_generation"] == 1
     assert config["default_input_binding"] == "request_image_ref"
-    assert config["max_image_bytes"] == 128 * 1024 * 1024
+    assert config["max_image_bytes"] == 1024 * 1024 * 1024
     assert config["timeout_seconds"] == 7
 
 
@@ -427,6 +427,7 @@ def _seed_local_shared_memory_trigger_source(session_factory: object) -> None:
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
         reply_timeout_seconds=7,
+        response_ack_timeout_seconds=30.0,
         selected_output_payload_types={},
     )
     unit_of_work = SqlAlchemyUnitOfWork(session_factory.create_session())
@@ -442,7 +443,6 @@ def _seed_local_shared_memory_trigger_source(session_factory: object) -> None:
                 desired_state="running",
                 observed_state="running",
                 transport_config={
-                    "pool_name": "image-4k",
                     "default_input_binding": "request_image_ref",
                 },
                 input_binding_mapping={

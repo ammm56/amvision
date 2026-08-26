@@ -210,7 +210,7 @@
                 "config"
               ]
             },
-            "description": "读取 backend-service 已解析的统一配置快照。ZeroMQ TriggerSource 创建前可从 config.local_buffer_broker.default_pool_name 和 config.local_buffer_broker.pools 获取真实 pool 配置。"
+            "description": "读取 backend-service 已解析的统一配置快照。LocalBuffer 使用服务端固定 arena 与容量几何；TriggerSource 不再选择或传递 pool。"
           },
           "response": []
         }

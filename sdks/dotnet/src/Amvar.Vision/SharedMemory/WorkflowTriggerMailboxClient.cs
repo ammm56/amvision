@@ -27,6 +27,7 @@ namespace Amvar.Vision.SharedMemory
         internal int ErrorCode { get; set; }
         internal int OutputLeaseCount { get; set; }
         internal int HandoffState { get; set; }
+        internal ulong ResponseAckDeadlineNs { get; set; }
     }
 
     internal sealed class WorkflowTriggerAllocationRead
@@ -330,7 +331,8 @@ namespace Amvar.Vision.SharedMemory
                         Payload = payload,
                         ErrorCode = ReadInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderErrorCodeOffset),
                         OutputLeaseCount = ReadInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderResponseOutputLeaseCountOffset),
-                        HandoffState = ReadInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderHandoffStateOffset)
+                        HandoffState = ReadInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderHandoffStateOffset),
+                        ResponseAckDeadlineNs = ReadUInt64(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderResponseAckDeadlineNsOffset)
                     };
                 }
             }
@@ -378,8 +380,17 @@ namespace Amvar.Vision.SharedMemory
             throw new SharedMemoryTriggerException("timeout", "Timed out waiting for Workflow Trigger ACK reclaim.");
         }
 
-        internal void Cancel(WorkflowTriggerDescriptorIdentity identity)
+        internal void Cancel(
+            WorkflowTriggerDescriptorIdentity identity,
+            int reason = WorkflowTriggerMailboxV1.CancelReasonExplicit)
         {
+            if (reason != WorkflowTriggerMailboxV1.CancelReasonRequestTimeout
+                && reason != WorkflowTriggerMailboxV1.CancelReasonExplicit
+                && reason != WorkflowTriggerMailboxV1.CancelReasonClientShutdown)
+            {
+                throw new ArgumentOutOfRangeException(nameof(reason), reason, "Workflow Trigger cancel reason is not supported.");
+            }
+
             using (var guard = ByteRangeGuard.Acquire(DescriptorGuardPath(identity.DescriptorIndex), 0, 1, LocalDeadline(TimeSpan.FromSeconds(2))))
             {
                 lock (accessSync)
@@ -393,7 +404,11 @@ namespace Amvar.Vision.SharedMemory
                         return;
                     }
 
-                    WriteInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderCancelRequestedOffset, 1);
+                    var currentReason = ReadInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderCancelReasonOffset);
+                    if (currentReason == WorkflowTriggerMailboxV1.CancelReasonNone)
+                    {
+                        WriteInt32(descriptorOffset + WorkflowTriggerMailboxV1.DescriptorHeaderCancelReasonOffset, reason);
+                    }
                     if (state != WorkflowTriggerMailboxV1.DescriptorStateProcessing)
                     {
                         Thread.MemoryBarrier();
@@ -648,6 +663,20 @@ namespace Amvar.Vision.SharedMemory
             return checked(Stopwatch.GetTimestamp() + timeoutTicks);
         }
 
+        internal static long LocalDeadlineFromBackendMonotonicNs(ulong deadlineNs)
+        {
+            // local-shared-memory 只允许同机调用。Python monotonic_ns 与
+            // .NET Stopwatch 均基于系统 monotonic performance counter，
+            // 这里只进行单位换算，不引入新的相对 timeout。
+            var deadlineTicks = deadlineNs * (double)Stopwatch.Frequency / 1_000_000_000d;
+            if (deadlineTicks <= 0d || deadlineTicks > long.MaxValue)
+            {
+                throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger response ACK deadline is invalid.");
+            }
+
+            return (long)Math.Floor(deadlineTicks);
+        }
+
         private void ThrowIfDisposed()
         {
             if (disposed)
@@ -805,7 +834,7 @@ namespace Amvar.Vision.SharedMemory
             throw new SharedMemoryTriggerException("timeout", "Timed out acquiring a shared-memory guard.");
         }
 
-        internal static ByteRangeGuard AcquireReader(string path, int slotCount, long localDeadlineTicks)
+        internal static ByteRangeGuard AcquireReader(string path, long startOffset, int slotCount, long localDeadlineTicks)
         {
             if (slotCount <= 0)
             {
@@ -816,7 +845,7 @@ namespace Amvar.Vision.SharedMemory
             {
                 for (var slot = 0; slot < slotCount; slot++)
                 {
-                    var guard = TryAcquire(path, slot, 1);
+                    var guard = TryAcquire(path, checked(startOffset + slot), 1);
                     if (guard != null)
                     {
                         return guard;

@@ -4,7 +4,7 @@ namespace Amvar.Vision.SharedMemory
     internal static class WorkflowTriggerMailboxV1
     {
         internal const string ContractId = "amvision.workflow-trigger-mailbox.v1";
-        internal const string SchemaSha256 = "2b13e8e1f996c8eb38fd01fd23e0349feb3a618ea9e08fe0355d18528f77fdd7";
+        internal const string SchemaSha256 = "dd753a31e1b3aeff496a087c3aed0ebcbd1b5ab87b739bad322354b459839988";
         internal const int Version = 1;
         internal const int AlignmentBytes = 8;
         internal const int ChecksumAlgorithmCrc32Ieee = 1;
@@ -83,9 +83,10 @@ namespace Amvar.Vision.SharedMemory
         internal const int DescriptorHeaderRuntimeGenerationOffset = 232;
         internal const int DescriptorHeaderSnapshotFingerprintOffset = 240;
         internal const int DescriptorHeaderUpdatedAtNsOffset = 248;
-        internal const int DescriptorHeaderCancelRequestedOffset = 256;
+        internal const int DescriptorHeaderCancelReasonOffset = 256;
         internal const int DescriptorHeaderResponseFlagsOffset = 260;
-        internal const int DescriptorHeaderReservedOffset = 264;
+        internal const int DescriptorHeaderResponseAckDeadlineNsOffset = 264;
+        internal const int DescriptorHeaderReservedOffset = 272;
         internal const int PageHeaderSize = 64;
         internal const int PageHeaderStateOffset = 0;
         internal const int PageHeaderNextPageIndexOffset = 4;
@@ -112,6 +113,10 @@ namespace Amvar.Vision.SharedMemory
         internal const int PageStateReady = 2;
         internal const int ResponseCodecNone = 0;
         internal const int ResponseCodecZlib = 1;
+        internal const int CancelReasonNone = 0;
+        internal const int CancelReasonRequestTimeout = 1;
+        internal const int CancelReasonExplicit = 2;
+        internal const int CancelReasonClientShutdown = 3;
         internal const int HandoffStateNone = 0;
         internal const int HandoffStatePending = 1;
         internal const int HandoffStateComplete = 2;

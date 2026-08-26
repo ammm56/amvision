@@ -101,7 +101,7 @@ async def create_workflow_preview_run_multipart(
     if channel is None:
         raise ServiceConfigurationError("LocalBufferBroker 未启用，无法执行图片 Preview")
     input_bindings = dict(body.input_bindings)
-    lease_refs: list[tuple[str, str]] = []
+    lease_ids: list[str] = []
     client = LocalBufferBrokerClient(channel)
     try:
         owner_id = f"preview-upload-{uuid4().hex}"
@@ -127,9 +127,7 @@ async def create_workflow_preview_run_multipart(
                 ttl_seconds=float(body.timeout_seconds or 120) + 30.0,
                 trace_id=getattr(request.state, "request_id", None),
             )
-            lease_refs.append(
-                (write_result.lease.lease_id, write_result.lease.pool_name)
-            )
+            lease_ids.append(write_result.lease.lease_id)
             input_bindings[binding_id] = {
                 "transport_kind": "buffer",
                 "buffer_ref": write_result.buffer_ref.model_dump(mode="json"),
@@ -142,9 +140,9 @@ async def create_workflow_preview_run_multipart(
         )
         return _build_preview_run_contract(preview_run)
     finally:
-        for lease_id, pool_name in lease_refs:
+        for lease_id in lease_ids:
             try:
-                client.release(lease_id, pool_name=pool_name)
+                client.release(lease_id)
             except Exception:
                 pass
         client.close()

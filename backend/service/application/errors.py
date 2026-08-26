@@ -332,6 +332,30 @@ class ZeroMqTransportCapacityError(ServiceError):
         )
 
 
+class LocalBufferCapacityError(ServiceError):
+    """表示 LocalBuffer arena 没有满足当前请求的连续容量。"""
+
+    def __init__(
+        self,
+        message: str = "LocalBuffer 图片内存容量不足",
+        *,
+        contiguous: bool = False,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """保留总容量与连续容量两种稳定错误码。"""
+
+        super().__init__(
+            message,
+            code=(
+                "local_buffer_contiguous_capacity_exhausted"
+                if contiguous
+                else "local_buffer_capacity_exhausted"
+            ),
+            status_code=409,
+            details=details,
+        )
+
+
 class UnsupportedDatasetFormatError(ServiceError):
     """表示当前数据集格式暂不支持。"""
 

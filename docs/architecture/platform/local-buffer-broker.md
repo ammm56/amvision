@@ -4,7 +4,7 @@
 
 LocalBufferBroker 是同一主机内 backend-service、deployment runtime、Workflow Runtime 和其他 Worker 之间传递大图片与视频帧的共享内存数据面。控制消息只携带引用和元数据，像素字节由消费者直接读取 mmap，避免 Base64、JSON 和重复整图复制。
 
-当前代码仍使用固定分辨率 pool/slot；已接受的目标架构是固定总容量 arena + buddy allocator，尚未实现。实现顺序见[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)，架构决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
+当前实现使用固定总容量 arena、动态 extent、lease 和控制协议，并由 buddy allocator 依据精确 `content_length` 分配最小可容纳的连续 extent。实现与验证顺序见[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)，架构决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
 
 LocalBuffer 不是持久化存储、任务队列、图片 codec、跨主机协议或 Workflow Trigger mailbox。
 
@@ -184,10 +184,13 @@ health 至少报告：
 - active owner/lease、generation、deadline；
 - total/contiguous/max/reserve/integrity分类失败；
 - stale fence、guard wait、orphan/recovery 和 broker heartbeat。
+- event router 的 active client channel、active forward thread、pending response route、closed channel、forward/drop error；短生命周期 client close 后 active/pending 必须回到调用前基线。
 
 `rounding_waste_bytes` 只表示 block rounding，不混入 frame reserve、hard reserve 或 quarantine。
 
 health 必须直接校验容量守恒：`general_total = general_free + general_reserved_writing + general_active + general_frame_reserved + general_revoking + general_quarantined`；hard reserve使用相同公式但没有frame bucket；`arena_total = general_total + huge_reserved_total`。`allocated_capacity`只是reserved-writing、active和frame-reserved的派生汇总，不能重复计数。守恒失败时服务降级并停止新allocation。
+
+每个 `LocalBufferBrokerClient` 独占 supervisor 为其建立的 event channel。`close()` 必须发送无响应注销事件：同进程 route 同步移除，跨进程 route 由 forward thread 在处理关闭事件后移除并关闭队列。请求是同步的，关闭前不得存在未消费 response；router 停止时仍统一清理全部剩余 route。健康检查、Preview 和一次性控制调用不得因重复创建 client 让 active channel 单调增长。
 
 ## 启动、重启与迁移
 

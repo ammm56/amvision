@@ -1,126 +1,40 @@
-"""LocalBufferBroker 第 1 阶段进程与运行时接入测试。"""
+"""LocalBufferBroker 固定 arena 进程、控制面与 Workflow cleanup 门禁。"""
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from queue import Empty
-from threading import Thread
-from time import monotonic, monotonic_ns, sleep
-from zlib import crc32
-import json
-import multiprocessing
-import pickle
+from time import monotonic_ns
 
 import pytest
 
-from backend.contracts.buffers import BufferRef, FrameRef
-from backend.contracts.nodes.node_pack_manifest import NodePackManifest
-from backend.contracts.workflows.workflow_graph import (
-    NODE_IMPLEMENTATION_CORE,
-    NODE_RUNTIME_PYTHON_CALLABLE,
-    FlowApplication,
-    FlowApplicationBinding,
-    FlowTemplateReference,
-    NodeDefinition,
-    NodePortDefinition,
-    WorkflowGraphInput,
-    WorkflowGraphNode,
-    WorkflowGraphOutput,
-    WorkflowGraphTemplate,
-    WorkflowPayloadContract,
-)
-from backend.nodes.node_pack_loader import NodeCatalogSnapshot
-from backend.nodes.node_catalog_registry import NodeCatalogRegistry
-from backend.nodes.runtime_support import ExecutionImageRegistry
 from backend.service.application.local_buffers import (
-    LocalBufferBrokerEventChannel,
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
-from backend.service.application.local_buffers.local_buffer_broker_process import (
-    run_local_buffer_broker_process,
-)
-from backend.service.domain.deployments.deployment_runtime_configuration import (
-    DeploymentRuntimeConfiguration,
-)
-from backend.service.application.runtime.deployment.deployment_process_settings import (
-    DeploymentProcessSupervisorConfig,
-)
-from backend.service.application.runtime.deployment.deployment_process_supervisor import (
-    DeploymentProcessConfig,
-    DeploymentProcessSupervisor,
-)
-from backend.service.application.runtime.contracts.detection.prediction import (
-    DetectionPredictionRequest,
-)
-from backend.service.application.runtime.targets.runtime_target import (
-    RuntimeTargetSnapshot,
-)
-from backend.service.application.errors import (
-    InvalidRequestError,
-    ServiceConfigurationError,
-)
+from backend.service.application.errors import LocalBufferCapacityError
 from backend.service.application.workflows.execution_cleanup import (
-    WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
-    WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY,
-    build_process_safe_execution_metadata,
     register_local_buffer_lease_cleanup,
-)
-from backend.service.application.workflows.execution.parallel_safety import (
-    PARALLEL_BRANCH_ACTIVE_KEY,
-    PARALLEL_EXCLUSIVE_LOCK_KEY,
-    PARALLEL_NODE_LOCKS_KEY,
-    prepare_parallel_execution_state,
-)
-from backend.service.application.workflows.graph_executor import (
-    WorkflowNodeExecutionRequest,
-    WorkflowNodeRuntimeRegistry,
-)
-from backend.service.application.workflows.service_runtime.context import (
-    WorkflowServiceNodeRuntimeContext,
-)
-from backend.service.application.workflows.snapshot_execution import (
-    SnapshotExecutionService,
-    WorkflowSnapshotExecutionRequest,
-)
-from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
-from backend.service.infrastructure.object_store.local_dataset_storage import (
-    DatasetStorageSettings,
-    LocalDatasetStorage,
-)
-from backend.service.api.bootstrap import BackendServiceBootstrap
-from backend.service.settings import (
-    BackendServiceDatabaseConfig,
-    BackendServiceDatasetStorageConfig,
-    BackendServiceQueueConfig,
-    BackendServiceSettings,
 )
 from backend.service.application.workflows.worker.manager import (
     WorkflowRuntimeWorkerManager,
 )
-from tests.local_buffer_broker_fake_worker import (
-    fake_deployment_worker_records_broker_event_channel,
-)
 
 
-def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(
+_MIB = 1024 * 1024
+
+
+def test_broker_process_serves_dynamic_extents_and_capacity_metrics(
     tmp_path: Path,
 ) -> None:
-    """验证 broker supervisor 能启动独立进程并通过 client 读写 BufferRef。"""
+    """独立 Broker 按内容分配最小 extent，并暴露 arena 守恒指标。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-
+    supervisor = _supervisor(tmp_path)
     supervisor.start()
     try:
         client = supervisor.create_client()
         assert client is not None
-
-        status = client.get_status()
-        write_result = client.write_bytes(
+        result = client.write_bytes(
             content=b"abcdef",
             owner_kind="preview-run",
             owner_id="preview-1",
@@ -128,106 +42,167 @@ def test_local_buffer_broker_supervisor_starts_process_and_serves_mmap_refs(
             shape=(2, 3, 1),
             dtype="uint8",
             layout="HWC",
-            pixel_format="GRAY",
+            pixel_format="GRAY8",
         )
+        status = client.get_status()
 
-        assert status["state"] == "running"
-        assert status["default_pool_name"] == "image-test"
-        assert client.read_buffer_ref(write_result.buffer_ref) == b"abcdef"
-        client.release(write_result.lease.lease_id)
+        assert status["state"] == "healthy"
+        assert status["arena_id"] == "local-buffer-main"
+        assert result.lease.allocation_capacity_bytes == _MIB
+        assert client.read_buffer_ref(result.buffer_ref) == b"abcdef"
+        client.release(result.lease.lease_id)
+        assert client.get_status()["free_capacity_bytes"] == 16 * _MIB
     finally:
         supervisor.stop()
 
     assert supervisor.is_running is False
 
 
-def test_local_buffer_broker_supervisor_rewrites_active_lease_without_control_event(
-    tmp_path: Path,
-) -> None:
-    """验证监督器可复用 direct mmap client 覆盖活动槽位。"""
+def test_shared_client_serializes_control_responses(tmp_path: Path) -> None:
+    """多线程复用同一 client 时控制响应不会串包。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-    supervisor.start()
-    try:
-        write_result = supervisor.write_bytes(
-            content=b"abcdef",
-            owner_kind="workflow-runtime",
-            owner_id="workflow-1:model-1",
-            media_type="image/raw",
-        )
-
-        supervisor.write_lease_bytes(
-            lease=write_result.lease,
-            content=b"ghijkl",
-        )
-        first_direct_client = supervisor._direct_io_client
-        supervisor.write_lease_bytes(
-            lease=write_result.lease,
-            content=b"mnopqr",
-        )
-
-        assert first_direct_client is not None
-        assert supervisor._direct_io_client is first_direct_client
-        assert supervisor.read_buffer_ref(write_result.buffer_ref) == b"mnopqr"
-        supervisor.release(
-            write_result.lease.lease_id,
-            pool_name=write_result.lease.pool_name,
-        )
-    finally:
-        supervisor.stop()
-
-    assert supervisor._direct_io_client is None
-
-
-def test_local_buffer_broker_client_serializes_shared_response_channel(
-    tmp_path: Path,
-) -> None:
-    """验证同一个 client 被三路分支复用时不会交叉消费 broker 响应。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
+    supervisor = _supervisor(tmp_path)
     supervisor.start()
     try:
         client = supervisor.create_client()
         assert client is not None
 
-        def read_status_repeatedly() -> tuple[str, ...]:
+        def read_status() -> tuple[str, ...]:
             return tuple(str(client.get_status()["state"]) for _ in range(20))
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            results = tuple(executor.map(lambda _: read_status_repeatedly(), range(3)))
-
-        assert all(states == ("running",) * 20 for states in results)
+            results = tuple(executor.map(lambda _index: read_status(), range(3)))
+        assert all(states == ("healthy",) * 20 for states in results)
     finally:
         supervisor.stop()
 
 
-def test_workflow_parent_cleanup_releases_registered_buffer_lease(
+def test_transient_clients_unregister_router_channels(tmp_path: Path) -> None:
+    """短生命周期同进程 client 关闭后不得泄漏 router channel。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        for _index in range(20):
+            assert supervisor.get_status()["state"] == "healthy"
+        health = supervisor.get_health_summary()
+        router = health["router"]
+        assert router["active_client_channel_count"] == 0
+        assert router["pending_response_route_count"] == 0
+        assert router["closed_channel_count"] >= 21
+    finally:
+        supervisor.stop()
+
+
+def test_broker_client_preserves_capacity_error_and_failure_metrics(
     tmp_path: Path,
 ) -> None:
-    """验证 worker 未执行 finally 时父进程可按 cleanup 元数据兜底释放 lease。"""
+    """跨进程控制面保留满载错误码及 allocator 分类计数。"""
 
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
+    supervisor = _supervisor(tmp_path)
     supervisor.start()
     try:
         client = supervisor.create_client()
         assert client is not None
-        result = client.write_bytes(
-            content=b"parent-cleanup",
-            owner_kind="workflow-trigger-source",
-            owner_id="trigger-1:event-1",
+        for index in range(2):
+            client.allocate_buffer(
+                content_length=8 * _MIB,
+                owner_kind="test",
+                owner_id=f"request-{index}",
+            )
+        with pytest.raises(LocalBufferCapacityError) as caught:
+            client.allocate_buffer(
+                content_length=1,
+                owner_kind="test",
+                owner_id="request-overflow",
+            )
+        assert caught.value.code == "local_buffer_capacity_exhausted"
+        status = client.get_status()
+        assert status["allocation_failure_counts"]["total_capacity"] == 1
+    finally:
+        supervisor.stop()
+
+
+def test_external_writer_commit_handoff_and_fenced_release(tmp_path: Path) -> None:
+    """External 写入、CRC、owner CAS 与旧 receipt fencing 形成完整闭环。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        content = b"external-image"
+        allocation = client.allocate_external_buffer(
+            content_length=len(content),
+            owner_kind="workflow-trigger-write",
+            owner_id="request-1",
+            deadline_ns=monotonic_ns() + 5_000_000_000,
+        )
+        client.write_lease_bytes(lease=allocation.lease, content=content)
+        committed = client.publish_and_transfer_external_buffer(
+            receipt=allocation.receipt,
+            media_type="image/raw",
+            new_owner_kind="workflow-runtime",
+            new_owner_id="run-1",
+            deadline_ns=monotonic_ns() + 5_000_000_000,
+        )
+
+        assert client.read_buffer_ref(committed.buffer_ref) == content
+        assert client.conditional_release(receipt=allocation.receipt) == "stale"
+        assert client.conditional_release(receipt=committed.receipt) == "released"
+    finally:
+        supervisor.stop()
+
+
+def test_frame_channel_reuses_extents_without_stale_frame_access(
+    tmp_path: Path,
+) -> None:
+    """Broker frame channel 原地复用 extent，ring wrap 后旧引用失效。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        client = supervisor.create_client()
+        assert client is not None
+        client.create_frame_channel(
+            stream_id="camera-1",
+            frame_count=1,
+            max_frame_content_length=32,
+        )
+        first = client.write_frame(
+            stream_id="camera-1",
+            content=b"first",
+            media_type="image/raw",
+        )
+        second = client.write_frame(
+            stream_id="camera-1",
+            content=b"second",
+            media_type="image/raw",
+        )
+
+        assert first.descriptor_generation != second.descriptor_generation
+        assert client.read_frame_ref(second) == b"second"
+        assert client.destroy_frame_channel(stream_id="camera-1") == 1
+    finally:
+        supervisor.stop()
+
+
+def test_workflow_parent_cleanup_releases_registered_lease(tmp_path: Path) -> None:
+    """Worker 异常退出时父进程可按 lease id 幂等兜底回收。"""
+
+    supervisor = _supervisor(tmp_path)
+    supervisor.start()
+    try:
+        result = supervisor.write_bytes(
+            content=b"cleanup",
+            owner_kind="workflow-runtime",
+            owner_id="run-1",
             media_type="image/raw",
         )
         metadata: dict[str, object] = {}
         register_local_buffer_lease_cleanup(
             metadata,
             lease_id=result.lease.lease_id,
-            pool_name=result.lease.pool_name,
         )
         manager = object.__new__(WorkflowRuntimeWorkerManager)
         manager.local_buffer_broker_event_channel_provider = (
@@ -235,1429 +210,22 @@ def test_workflow_parent_cleanup_releases_registered_buffer_lease(
         )
 
         assert manager.cleanup_parent_local_buffer_leases(metadata) == 1
-        assert supervisor.get_status()["pools"][0]["free_count"] == 2
-        # 重复 cleanup 不抛错，满足 worker/父进程并发收尾时的幂等语义。
         assert manager.cleanup_parent_local_buffer_leases(metadata) == 0
+        assert supervisor.get_status()["free_capacity_bytes"] == 16 * _MIB
     finally:
         supervisor.stop()
 
 
-def test_workflow_parent_cleanup_releases_unpublished_output_receipt(
-    tmp_path: Path,
-) -> None:
-    """验证父进程可按 Worker 返回的新 owner receipt 回收未发布输出。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-    supervisor.start()
-    try:
-        client = supervisor.create_client()
-        assert client is not None
-        content = b"unpublished-output"
-        deadline_ns = monotonic_ns() + 5_000_000_000
-        allocation = client.allocate_external_buffer(
-            size=len(content),
-            owner_kind="workflow-trigger-response",
-            owner_id="trigger-1:request-1",
-            deadline_ns=deadline_ns,
-        )
-        with client.acquire_external_writer_guard(receipt=allocation.receipt):
-            client.write_lease_bytes(lease=allocation.lease, content=content)
-        client.commit_external_buffer(
-            receipt=allocation.receipt,
-            checksum=crc32(content) & 0xFFFFFFFF,
-            media_type="application/octet-stream",
-        )
-        manager = object.__new__(WorkflowRuntimeWorkerManager)
-        manager.local_buffer_broker_event_channel_provider = (
-            supervisor.get_event_channel
-        )
-
-        assert manager.cleanup_local_buffer_ownership_receipts(
-            (allocation.receipt, allocation.receipt)
-        ) == 1
-        assert supervisor.get_status()["pools"][0]["free_count"] == 2
-        assert manager.cleanup_local_buffer_ownership_receipts(
-            (allocation.receipt,)
-        ) == 0
-    finally:
-        supervisor.stop()
-
-
-def test_local_buffer_broker_default_pool_is_4k_ready() -> None:
-    """验证默认 buffer pool 面向 20MP 工业相机输入而不是 small pool。"""
-
-    settings = LocalBufferBrokerSettings()
-    pools = {item.pool_name: item for item in settings.pools}
-    default_pool = pools[settings.default_pool_name]
-    raw_20mp_rgba_bytes = 5000 * 4000 * 4
-
-    assert settings.default_pool_name == "image-4k"
-    assert default_pool.slot_size_bytes >= 128 * 1024 * 1024
-    assert default_pool.slot_size_bytes > raw_20mp_rgba_bytes
-    assert default_pool.slot_count == 16
-    assert (
-        default_pool.file_size_bytes
-        == default_pool.slot_size_bytes * default_pool.slot_count
-    )
-    assert default_pool.flush_on_write is False
-    assert set(pools) == {"image-4k"}
-
-
-@pytest.mark.parametrize(
-    ("pool_name", "minimum_slot_size_bytes"),
-    (
-        ("image-640x640", 4 * 1024 * 1024),
-        ("image-1080p", 16 * 1024 * 1024),
-        ("image-4k", 128 * 1024 * 1024),
-        ("image-8k", 256 * 1024 * 1024),
-    ),
-)
-def test_local_buffer_broker_builtin_pool_presets_are_selectable(
-    pool_name: str,
-    minimum_slot_size_bytes: int,
-) -> None:
-    """验证配置 default_pool_name 可以选择内置 pool preset。
-
-    参数：
-    - pool_name：待选择的内置 pool 名称。
-    - minimum_slot_size_bytes：预期最小单槽字节数。
-    """
-
-    settings = LocalBufferBrokerSettings(default_pool_name=pool_name)
-    pools = {item.pool_name: item for item in settings.pools}
-    selected_pool = pools[pool_name]
-
-    assert settings.default_pool_name == pool_name
-    assert set(pools) == {pool_name}
-    assert selected_pool.slot_size_bytes >= minimum_slot_size_bytes
-    assert selected_pool.slot_count == 16
-    assert (
-        selected_pool.file_size_bytes
-        == selected_pool.slot_size_bytes * selected_pool.slot_count
-    )
-    assert selected_pool.flush_on_write is False
-
-
-@pytest.mark.parametrize("slot_count", (16, 8, 4))
-def test_local_buffer_broker_pool_settings_support_low_memory_slot_counts(
-    slot_count: int,
-) -> None:
-    """验证现场配置可以把 pool 调整为 16、8 或 4 个槽位。"""
-
-    settings = LocalBufferBrokerSettings(
-        default_pool_name="image-4k",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-4k",
-                slot_size_bytes=128 * 1024 * 1024,
-                slot_count=slot_count,
-            ),
-        ),
-    )
-    pool = settings.pools[0]
-
-    assert pool.slot_count == slot_count
-    assert pool.file_size_bytes == pool.slot_size_bytes * slot_count
-
-
-def test_backend_service_config_uses_multi_pool_with_4k_default() -> None:
-    """验证 backend-service.json 默认创建多 pool 并选择 image-4k。"""
-
-    payload = json.loads(
-        Path("config/backend-service.json").read_text(encoding="utf-8")
-    )
-    settings = BackendServiceSettings.model_validate(payload)
-    pool_names = {item.pool_name for item in settings.local_buffer_broker.pools}
-
-    assert settings.local_buffer_broker.default_pool_name == "image-4k"
-    assert settings.local_buffer_broker.startup_timeout_seconds >= 60.0
-    assert settings.local_buffer_broker.takeover_existing_process is True
-    assert settings.local_buffer_broker.takeover_timeout_seconds == 10.0
-    assert pool_names == {"image-4k", "image-1080p", "image-640x640"}
-    pools = {item.pool_name: item for item in settings.local_buffer_broker.pools}
-    default_pool = pools["image-4k"]
-    mid_res_pool = pools["image-1080p"]
-    low_res_pool = pools["image-640x640"]
-    assert default_pool.file_name == "image-4k-001.dat"
-    assert default_pool.slot_size_bytes == 128 * 1024 * 1024
-    assert default_pool.slot_count == 16
-    assert default_pool.file_size_bytes == default_pool.slot_size_bytes * 16
-    assert default_pool.flush_on_write is False
-    assert mid_res_pool.file_name == "image-1080p-001.dat"
-    assert mid_res_pool.slot_size_bytes == 16 * 1024 * 1024
-    assert mid_res_pool.slot_count == 16
-    assert mid_res_pool.file_size_bytes == mid_res_pool.slot_size_bytes * 16
-    assert mid_res_pool.flush_on_write is False
-    assert low_res_pool.file_name == "image-640x640-001.dat"
-    assert low_res_pool.slot_size_bytes == 4 * 1024 * 1024
-    assert low_res_pool.slot_count == 16
-    assert low_res_pool.file_size_bytes == low_res_pool.slot_size_bytes * 16
-    assert low_res_pool.flush_on_write is False
-
-
-def test_local_buffer_broker_rejects_legacy_default_pool_config() -> None:
-    """验证旧的 default_pool 简化配置不会被静默忽略。"""
-
-    with pytest.raises(ValueError, match="default_pool"):
-        LocalBufferBrokerSettings.model_validate(
-            {
-                "default_pool": {
-                    "pool_name": "image-1080p",
-                    "slot_size_bytes": 16 * 1024 * 1024,
-                    "slot_count": 16,
-                }
-            }
-        )
-
-
-def test_local_buffer_broker_process_closes_quietly_on_keyboard_interrupt(
-    tmp_path: Path,
-) -> None:
-    """验证 reload 传播 KeyboardInterrupt 时 broker 会关闭 mmap 且不向外抛错。"""
-
-    class _CollectQueue:
-        def __init__(self) -> None:
-            self.messages: list[object] = []
-
-        def put(self, message: object) -> None:
-            self.messages.append(message)
-
-    class _InterruptConnection:
-        def poll(self, timeout: float) -> bool:
-            _ = timeout
-            raise KeyboardInterrupt
-
-        def close(self) -> None:
-            return
-
-    settings = LocalBufferBrokerSettings(
-        root_dir=str(tmp_path / "interrupt-broker"),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=4096,
-                slot_count=2,
-            ),
-        ),
-    )
-    startup_queue = _CollectQueue()
-
-    run_local_buffer_broker_process(
-        settings_payload=settings.model_dump(mode="python"),
-        startup_queue=startup_queue,
-        request_connection=_InterruptConnection(),
-        response_connection=_CollectQueue(),
-    )
-
-    assert startup_queue.messages
-    startup_message = startup_queue.messages[0]
-    assert isinstance(startup_message, dict)
-    assert startup_message["ok"] is True
-    pool_file = tmp_path / "interrupt-broker" / "image-test" / "image-test-001.dat"
-    pool_file.unlink()
-    assert pool_file.exists() is False
-
-
-def test_local_buffer_broker_process_stops_when_supervisor_exits(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证父进程失效后孤立 broker 会自行关闭 mmap。"""
-
-    class _CollectQueue:
-        def __init__(self) -> None:
-            self.messages: list[object] = []
-
-        def put(self, message: object) -> None:
-            self.messages.append(message)
-
-    class _IdleConnection:
-        def poll(self, timeout: float) -> bool:
-            _ = timeout
-            return False
-
-        def close(self) -> None:
-            return
-
-    class _ExitedSupervisor:
-        def is_alive(self) -> bool:
-            return False
-
-    monkeypatch.setattr(
-        "backend.service.application.local_buffers.local_buffer_broker_process.parent_process",
-        lambda: _ExitedSupervisor(),
-    )
-    settings = LocalBufferBrokerSettings(
-        root_dir=str(tmp_path / "orphan-broker"),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=4096,
-                slot_count=2,
-            ),
-        ),
-    )
-    startup_queue = _CollectQueue()
-
-    run_local_buffer_broker_process(
-        settings_payload=settings.model_dump(mode="python"),
-        startup_queue=startup_queue,
-        request_connection=_IdleConnection(),
-        response_connection=_CollectQueue(),
-    )
-
-    assert startup_queue.messages
-    pool_file = tmp_path / "orphan-broker" / "image-test" / "image-test-001.dat"
-    pool_file.unlink()
-    assert pool_file.exists() is False
-
-
-def test_local_buffer_broker_supervisor_reports_early_child_exit(
-    tmp_path: Path,
-) -> None:
-    """验证 broker 子进程提前退出时立即返回 exit code，不等待启动超时。"""
-
-    class _EmptyQueue:
-        def get(self, *, timeout: float) -> object:
-            _ = timeout
-            raise Empty
-
-        def close(self) -> None:
-            return
-
-        def join_thread(self) -> None:
-            return
-
-    class _ExitedProcess:
-        pid = 43210
-        exitcode = 7
-
-        def start(self) -> None:
-            return
-
-        def is_alive(self) -> bool:
-            return False
-
-    class _ExitedProcessContext:
-        def Queue(self) -> _EmptyQueue:
-            return _EmptyQueue()
-
-        def Pipe(self, *, duplex: bool) -> tuple["_FakeConnection", "_FakeConnection"]:
-            assert duplex is False
-            return _FakeConnection(), _FakeConnection()
-
-        def Process(self, **kwargs: object) -> _ExitedProcess:
-            assert kwargs["daemon"] is True
-            return _ExitedProcess()
-
-    class _FakeConnection:
-        def close(self) -> None:
-            return
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-    supervisor._context = _ExitedProcessContext()
-
-    started_at = monotonic()
-    with pytest.raises(
-        ServiceConfigurationError,
-        match="子进程在启动完成前退出",
-    ) as exc_info:
-        supervisor.start()
-
-    assert monotonic() - started_at < 1.0
-    assert exc_info.value.details["process_id"] == 43210
-    assert exc_info.value.details["process_exitcode"] == 7
-
-
-def test_local_buffer_broker_rejects_unmanaged_duplicate_root_without_killing_owner(
-    tmp_path: Path,
-) -> None:
-    """验证非 backend-service 测试进程不会因自动接管被误杀。"""
-
-    settings = _build_broker_settings(tmp_path)
-    first_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
-    second_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
-
-    first_supervisor.start()
-    try:
-        first_status = first_supervisor.get_status()
-        started_at = monotonic()
-        with pytest.raises(
-            ServiceConfigurationError,
-            match="占用者不是受支持的 AMVision backend-service",
-        ) as exc_info:
-            second_supervisor.start()
-
-        assert monotonic() - started_at < settings.startup_timeout_seconds
-        assert exc_info.value.details["reason"] == "unsafe-owner-process"
-        assert exc_info.value.details["root_dir"] == str(
-            Path(settings.root_dir).resolve()
-        )
-        assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
-        assert first_supervisor.get_status()["state"] == "running"
-    finally:
-        second_supervisor.stop()
-        first_supervisor.stop()
-
-    replacement_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
-    replacement_supervisor.start()
-    try:
-        assert replacement_supervisor.get_status()["state"] == "running"
-    finally:
-        replacement_supervisor.stop()
-
-
-def test_local_buffer_broker_can_disable_existing_process_takeover(
-    tmp_path: Path,
-) -> None:
-    """验证关闭自动接管时直接返回原始根目录占用详情。"""
-
-    settings = _build_broker_settings(tmp_path).model_copy(
-        update={"takeover_existing_process": False}
-    )
-    first_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
-    second_supervisor = LocalBufferBrokerProcessSupervisor(settings=settings)
-
-    first_supervisor.start()
-    try:
-        first_status = first_supervisor.get_status()
-        with pytest.raises(
-            ServiceConfigurationError,
-            match="根目录已被其他进程占用",
-        ) as exc_info:
-            second_supervisor.start()
-
-        assert exc_info.value.details["reason"] == "root-lock-busy"
-        assert exc_info.value.details["owner_process_id"] == first_status["process_id"]
-        assert first_supervisor.get_status()["state"] == "running"
-    finally:
-        second_supervisor.stop()
-        first_supervisor.stop()
-
-
-def test_local_buffer_broker_client_writes_and_reads_by_direct_mmap(
-    tmp_path: Path,
-) -> None:
-    """验证 broker 控制面只分配和提交，客户端直接通过 mmap 读写大图 bytes。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-
-    supervisor.start()
-    try:
-        client = supervisor.create_client()
-        assert client is not None
-        lease = client.allocate_buffer(
-            size=6,
-            owner_kind="preview-run",
-            owner_id="preview-direct-mmap",
-            pool_name="image-test",
-        )
-
-        client.write_lease_bytes(
-            lease=lease,
-            content=memoryview(bytearray(b"abcdef")),
-        )
-        with Path(lease.file_path).open("rb") as pool_file:
-            pool_file.seek(lease.offset)
-            assert pool_file.read(lease.size) == b"abcdef"
-
-        write_result = client.commit_buffer(
-            lease=lease,
-            media_type="image/raw",
-            shape=(2, 3, 1),
-            dtype="uint8",
-            layout="HWC",
-            pixel_format="GRAY",
-        )
-
-        assert write_result.buffer_ref.lease_id == lease.lease_id
-        assert client.read_buffer_ref(write_result.buffer_ref) == b"abcdef"
-        borrowed_view = client.read_buffer_ref_view(write_result.buffer_ref)
-        assert isinstance(borrowed_view, memoryview)
-        assert borrowed_view.readonly is True
-        assert borrowed_view.tobytes() == b"abcdef"
-        borrowed_view.release()
-        client.release(write_result.lease.lease_id)
-    finally:
-        supervisor.stop()
-
-    assert supervisor.is_running is False
-
-
-def test_local_buffer_broker_client_writes_and_reads_frame_refs_by_direct_mmap(
-    tmp_path: Path,
-) -> None:
-    """验证 broker client 可以通过 direct mmap 写入和读取 ring FrameRef。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path, slot_count=3)
-    )
-
-    supervisor.start()
-    try:
-        client = supervisor.create_client()
-        assert client is not None
-        channel = client.create_frame_channel(
-            stream_id="line-a-camera-1", frame_capacity=2
-        )
-        abandoned = client.allocate_frame(stream_id="line-a-camera-1", size=7)
-        client.abort_frame(reservation=abandoned)
-
-        first_frame = client.write_frame(
-            stream_id="line-a-camera-1",
-            content=memoryview(bytearray(b"frame-1")),
-            media_type="image/raw",
-            shape=(1, 7, 1),
-            dtype="uint8",
-            layout="HWC",
-            pixel_format="GRAY",
-        )
-        second_frame = client.write_frame(
-            stream_id="line-a-camera-1",
-            content=b"frame-2",
-            media_type="image/raw",
-        )
-        third_frame = client.write_frame(
-            stream_id="line-a-camera-1",
-            content=b"frame-3",
-            media_type="image/raw",
-        )
-        status = client.get_status()["pools"][0]
-
-        assert channel["frame_capacity"] == 2
-        # abort 的 reservation 保留已分配序号，避免并发写入时回退序号产生冲突。
-        assert first_frame.sequence_id == 1
-        assert first_frame.path.endswith("image-test-001.dat")
-        assert client.read_frame_ref(second_frame) == b"frame-2"
-        assert client.read_frame_ref(third_frame) == b"frame-3"
-        borrowed_frame_view = client.read_frame_ref_view(third_frame)
-        assert borrowed_frame_view.readonly is True
-        assert borrowed_frame_view.tobytes() == b"frame-3"
-        borrowed_frame_view.release()
-        with pytest.raises(InvalidRequestError):
-            client.read_frame_ref(first_frame)
-        assert status["frame_active_count"] == 2
-        assert status["frame_write_count"] == 3
-        assert status["frame_overwrite_count"] == 1
-        assert status["frame_channels"][0]["published_frame_count"] == 3
-        assert client.destroy_frame_channel(stream_id="line-a-camera-1") == 2
-        destroyed_status = client.get_status()["pools"][0]
-        assert destroyed_status["frame_reserved_count"] == 0
-        assert destroyed_status["free_count"] == 3
-        assert destroyed_status["frame_channel_count"] == 0
-        assert destroyed_status["frame_channel_destroy_count"] == 1
-        assert destroyed_status["frame_abort_count"] == 1
-        with pytest.raises(InvalidRequestError):
-            client.read_frame_ref(third_frame)
-    finally:
-        supervisor.stop()
-
-    assert supervisor.is_running is False
-
-
-def test_local_buffer_broker_supervisor_isolates_multiple_client_response_queues(
-    tmp_path: Path,
-) -> None:
-    """验证 supervisor 会为多个 broker client 隔离响应队列。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-
-    supervisor.start()
-    client_a = supervisor.create_client()
-    client_b = supervisor.create_client()
-    assert client_a is not None
-    assert client_b is not None
-    assert client_a.channel.channel_id != client_b.channel.channel_id
-    assert client_a.channel.response_queue is not client_b.channel.response_queue
-    errors: list[BaseException] = []
-
-    def _run_client(client_index: int, client) -> None:
-        """并发读写同一个 broker process。"""
-
-        try:
-            for item_index in range(4):
-                content = f"client-{client_index}-{item_index}".encode("utf-8")
-                write_result = client.write_bytes(
-                    content=content,
-                    owner_kind="preview-run",
-                    owner_id=f"preview-{client_index}",
-                    media_type="image/raw",
-                )
-                assert client.read_buffer_ref(write_result.buffer_ref) == content
-                client.release(
-                    write_result.lease.lease_id, pool_name=write_result.lease.pool_name
-                )
-        except BaseException as exc:  # pragma: no cover - 线程异常通过主线程断言
-            errors.append(exc)
-
-    try:
-        threads = (
-            Thread(target=_run_client, args=(1, client_a)),
-            Thread(target=_run_client, args=(2, client_b)),
-        )
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=5.0)
-
-        assert all(not thread.is_alive() for thread in threads)
-        assert errors == []
-    finally:
-        client_a.close()
-        client_b.close()
-        supervisor.stop()
-
-
-def test_local_buffer_broker_release_owner_keeps_other_runs(tmp_path: Path) -> None:
-    """验证 owner 批量释放只影响匹配 workflow run 的 lease。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path, slot_count=3)
-    )
-
-    supervisor.start()
-    client = supervisor.create_client()
-    assert client is not None
-    try:
-        first_run_first = client.write_bytes(
-            content=b"run-a-node-1",
-            owner_kind="workflow-runtime",
-            owner_id="run-a:node-1",
-            media_type="image/raw",
-        )
-        first_run_second = client.write_bytes(
-            content=b"run-a-node-2",
-            owner_kind="workflow-runtime",
-            owner_id="run-a:node-2",
-            media_type="image/raw",
-        )
-        other_run = client.write_bytes(
-            content=b"run-b-node-1",
-            owner_kind="workflow-runtime",
-            owner_id="run-b:node-1",
-            media_type="image/raw",
-        )
-
-        released_count = client.release_owner(
-            owner_kind="workflow-runtime",
-            owner_id_prefix="run-a:",
-        )
-
-        assert released_count == 2
-        with pytest.raises(InvalidRequestError):
-            client.read_buffer_ref(first_run_first.buffer_ref)
-        with pytest.raises(InvalidRequestError):
-            client.read_buffer_ref(first_run_second.buffer_ref)
-        assert client.read_buffer_ref(other_run.buffer_ref) == b"run-b-node-1"
-    finally:
-        client.close()
-        supervisor.stop()
-
-
-def test_workflow_parent_cleanup_releases_unregistered_run_owner_leases(
-    tmp_path: Path,
-) -> None:
-    """验证 worker 硬退出时父进程可按 run owner 前缀回收未登记 crop lease。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-    supervisor.start()
-    manager = object.__new__(WorkflowRuntimeWorkerManager)
-    manager.local_buffer_broker_event_channel_provider = supervisor.get_event_channel
-    try:
-        client = supervisor.create_client()
-        assert client is not None
-        client.write_bytes(
-            content=b"crop-a",
-            owner_kind="workflow-runtime",
-            owner_id="workflow-run-hard-exit:classification-a",
-            media_type="image/raw",
-            ttl_seconds=60,
-        )
-        client.write_bytes(
-            content=b"crop-b",
-            owner_kind="workflow-runtime",
-            owner_id="workflow-run-hard-exit:classification-b",
-            media_type="image/raw",
-            ttl_seconds=60,
-        )
-
-        assert (
-            manager.cleanup_workflow_run_local_buffer_owner("workflow-run-hard-exit")
-            == 2
-        )
-        assert supervisor.get_status()["pools"][0]["free_count"] == 2
-    finally:
-        manager._close_cleanup_local_buffer_client()
-        supervisor.stop()
-
-
-def test_workflow_cleanup_metadata_is_safe_across_process_boundary() -> None:
-    """验证并行 cleanup 锁不会进入 workflow worker 的进程消息。"""
-
-    metadata: dict[str, object] = {}
-    register_local_buffer_lease_cleanup(
-        metadata,
-        lease_id="lease-process-boundary",
-        pool_name="image-4k",
-    )
-    metadata[PARALLEL_BRANCH_ACTIVE_KEY] = True
-    prepare_parallel_execution_state(metadata)
-
-    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
-    assert PARALLEL_EXCLUSIVE_LOCK_KEY in metadata
-    assert PARALLEL_NODE_LOCKS_KEY in metadata
-    process_metadata = build_process_safe_execution_metadata(metadata)
-
-    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY not in process_metadata
-    assert PARALLEL_BRANCH_ACTIVE_KEY not in process_metadata
-    assert PARALLEL_EXCLUSIVE_LOCK_KEY not in process_metadata
-    assert PARALLEL_NODE_LOCKS_KEY not in process_metadata
-    assert process_metadata[WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY] == [
-        {
-            "resource_kind": "local_buffer_lease",
-            "resource_id": "lease-process-boundary",
-            "metadata": {"pool_name": "image-4k"},
-        }
-    ]
-    assert pickle.loads(pickle.dumps(process_metadata)) == process_metadata
-    # 父进程仍保留自己的锁，可在入队失败、取消和超时路径执行兜底 cleanup。
-    assert WORKFLOW_EXECUTION_CLEANUP_LOCK_KEY in metadata
-
-
-def test_local_buffer_broker_status_reports_pool_counts_and_failures(
-    tmp_path: Path,
-) -> None:
-    """验证 broker status 会返回 pool 容量、占用和分配失败指标。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-
-    supervisor.start()
-    client = supervisor.create_client()
-    assert client is not None
-    try:
-        first_result = client.write_bytes(
-            content=b"first",
-            owner_kind="preview-run",
-            owner_id="preview-1",
-            media_type="image/raw",
-        )
-        second_result = client.write_bytes(
-            content=b"second",
-            owner_kind="preview-run",
-            owner_id="preview-2",
-            media_type="image/raw",
-        )
-        full_status = client.get_status()["pools"][0]
-
-        assert full_status["active_count"] == 2
-        assert full_status["writing_count"] == 0
-        assert full_status["free_count"] == 0
-        assert full_status["used_count"] == 2
-        assert full_status["allocation_count"] == 2
-        assert full_status["max_used_count"] == 2
-
-        with pytest.raises(InvalidRequestError, match="pool 已满"):
-            client.write_bytes(
-                content=b"third",
-                owner_kind="preview-run",
-                owner_id="preview-3",
-                media_type="image/raw",
-            )
-        failed_status = client.get_status()["pools"][0]
-        assert failed_status["allocation_failure_count"] == 1
-        assert failed_status["pool_full_count"] == 1
-
-        client.release(
-            first_result.lease.lease_id, pool_name=first_result.lease.pool_name
-        )
-        released_status = client.get_status()["pools"][0]
-
-        assert released_status["active_count"] == 1
-        assert released_status["free_count"] == 1
-        assert released_status["released_count"] == 1
-        assert client.read_buffer_ref(second_result.buffer_ref) == b"second"
-    finally:
-        client.close()
-        supervisor.stop()
-
-
-def test_local_buffer_broker_expire_loop_reclaims_ttl_lease(tmp_path: Path) -> None:
-    """验证 supervisor 周期性 expire loop 会回收过期 lease。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(
-            tmp_path,
-            expire_interval_seconds=0.05,
-        )
-    )
-
-    supervisor.start()
-    client = supervisor.create_client()
-    assert client is not None
-    try:
-        write_result = client.write_bytes(
-            content=b"ttl-buffer",
-            owner_kind="preview-run",
-            owner_id="preview-ttl",
-            media_type="image/raw",
-            ttl_seconds=0.05,
-        )
-        deadline = monotonic() + 2.0
-        expired_status: dict[str, object] | None = None
-        while monotonic() < deadline:
-            status = client.get_status()["pools"][0]
-            if status["expired_count"] == 1:
-                expired_status = status
-                break
-            sleep(0.02)
-
-        assert expired_status is not None
-        assert expired_status["active_count"] == 0
-        assert expired_status["free_count"] == 2
-        with pytest.raises(InvalidRequestError):
-            client.read_buffer_ref(write_result.buffer_ref)
-    finally:
-        client.close()
-        supervisor.stop()
-
-
-def test_local_buffer_broker_health_keeps_recent_control_error(tmp_path: Path) -> None:
-    """验证 health 会保留最近一次 broker 控制错误。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-
-    supervisor.start()
-    try:
-        with pytest.raises(InvalidRequestError):
-            supervisor.release("missing-lease")
-
-        health = supervisor.get_health_summary()
-
-        assert health["state"] == "running"
-        assert health["recent_error"]["action"] == "release"
-        assert health["recent_error"]["code"] == "invalid_request"
-        assert health["expire_loop_running"] is True
-    finally:
-        supervisor.stop()
-
-
-def test_snapshot_execution_releases_registered_local_buffer_lease(
-    tmp_path: Path,
-) -> None:
-    """验证 workflow 执行结束会释放节点登记的 broker lease。"""
-
-    supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=_build_broker_settings(tmp_path)
-    )
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
-    )
-    session_factory = SessionFactory(
-        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
-    )
-    template = _build_metadata_probe_template()
-    application = _build_metadata_probe_application()
-    dataset_storage.write_json(
-        "workflow/application.json", application.model_dump(mode="json")
-    )
-    dataset_storage.write_json(
-        "workflow/template.json", template.model_dump(mode="json")
-    )
-
-    supervisor.start()
-    client = supervisor.create_client()
-    assert client is not None
-    try:
-        runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(
-            _build_metadata_probe_node(), _buffer_cleanup_probe_handler
-        )
-        execution_result = SnapshotExecutionService(
-            dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(
-                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
-            ),
-            runtime_registry=runtime_registry,
-            runtime_context=WorkflowServiceNodeRuntimeContext(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                local_buffer_reader=client,
-            ),
-        ).execute(
-            WorkflowSnapshotExecutionRequest(
-                project_id="project-1",
-                application_id=application.application_id,
-                application_snapshot_object_key="workflow/application.json",
-                template_snapshot_object_key="workflow/template.json",
-                input_bindings={"source_text": {"value": "ok"}},
-            )
-        )
-        buffer_ref = BufferRef.model_validate(
-            execution_result.outputs["final_text"]["buffer_ref"]
-        )
-
-        with pytest.raises(InvalidRequestError):
-            client.read_buffer_ref(buffer_ref)
-    finally:
-        client.close()
-        supervisor.stop()
-        session_factory.engine.dispose()
-
-
-def test_snapshot_execution_injects_local_buffer_reader_into_node_metadata(
-    tmp_path: Path,
-) -> None:
-    """验证 snapshot 执行会把 runtime context 中的 broker reader 注入节点元数据。"""
-
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
-    )
-    session_factory = SessionFactory(
-        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
-    )
-    marker_reader = _MarkerLocalBufferReader()
-    template = _build_metadata_probe_template()
-    application = _build_metadata_probe_application()
-    dataset_storage.write_json(
-        "workflow/application.json", application.model_dump(mode="json")
-    )
-    dataset_storage.write_json(
-        "workflow/template.json", template.model_dump(mode="json")
-    )
-
-    try:
-        runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(
-            _build_metadata_probe_node(), _metadata_probe_handler
-        )
-        execution_result = SnapshotExecutionService(
-            dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(
-                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
-            ),
-            runtime_registry=runtime_registry,
-            runtime_context=WorkflowServiceNodeRuntimeContext(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-                local_buffer_reader=marker_reader,
-            ),
-        ).execute(
-            WorkflowSnapshotExecutionRequest(
-                project_id="project-1",
-                application_id=application.application_id,
-                application_snapshot_object_key="workflow/application.json",
-                template_snapshot_object_key="workflow/template.json",
-                input_bindings={"source_text": {"value": "ok"}},
-            )
-        )
-
-        assert execution_result.outputs["final_text"] == {
-            "value": "ok",
-            "has_reader": True,
-        }
-        assert execution_result.timings["workflow_execute_ms"] >= 0
-        assert execution_result.timings["output_handoff_ms"] >= 0
-        assert execution_result.timings["response_image_encode_ms"] == 0
-    finally:
-        session_factory.engine.dispose()
-
-
-def test_snapshot_execution_clears_decoded_image_cache_after_each_run(
-    tmp_path: Path,
-) -> None:
-    """验证长期驻留 SnapshotExecutionService 不会跨 Run 持有解码矩阵。"""
-
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
-    )
-    session_factory = SessionFactory(
-        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
-    )
-    template = _build_metadata_probe_template()
-    application = _build_metadata_probe_application()
-    dataset_storage.write_json(
-        "workflow/application.json", application.model_dump(mode="json")
-    )
-    dataset_storage.write_json(
-        "workflow/template.json", template.model_dump(mode="json")
-    )
-    image_registry = ExecutionImageRegistry()
-
-    try:
-        runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(
-            _build_metadata_probe_node(), _image_cache_probe_handler
-        )
-        execution_result = SnapshotExecutionService(
-            dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(
-                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
-            ),
-            runtime_registry=runtime_registry,
-            runtime_context=WorkflowServiceNodeRuntimeContext(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-            ),
-        ).execute(
-            WorkflowSnapshotExecutionRequest(
-                project_id="project-1",
-                application_id=application.application_id,
-                application_snapshot_object_key="workflow/application.json",
-                template_snapshot_object_key="workflow/template.json",
-                input_bindings={"source_text": {"value": "ok"}},
-                execution_metadata={"execution_image_registry": image_registry},
-            )
-        )
-
-        assert execution_result.outputs["final_text"]["cache_entries_during_node"] == 1
-        assert image_registry.decoded_cache_entry_count == 0
-        assert image_registry.decoded_cache_total_bytes == 0
-    finally:
-        session_factory.engine.dispose()
-
-
-def test_snapshot_execution_clears_owned_image_registry_after_run(
-    tmp_path: Path,
-) -> None:
-    """验证服务内部创建的 registry 在 Run 结束时释放缓存和 memory handles。"""
-
-    dataset_storage = LocalDatasetStorage(
-        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
-    )
-    session_factory = SessionFactory(
-        DatabaseSettings(url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
-    )
-    template = _build_metadata_probe_template()
-    application = _build_metadata_probe_application()
-    dataset_storage.write_json(
-        "workflow/application.json", application.model_dump(mode="json")
-    )
-    dataset_storage.write_json(
-        "workflow/template.json", template.model_dump(mode="json")
-    )
-    captured_registries: list[ExecutionImageRegistry] = []
-    captured_handles: list[str] = []
-
-    def registry_probe_handler(
-        request: WorkflowNodeExecutionRequest,
-    ) -> dict[str, object]:
-        """注册矩阵和解码缓存，并把 registry 暴露给测试断言。"""
-
-        image_registry = request.execution_metadata["execution_image_registry"]
-        assert isinstance(image_registry, ExecutionImageRegistry)
-        entry = image_registry.register_image_bytes(
-            content=b"encoded", media_type="image/png"
-        )
-        image_registry.get_or_decode_matrix(
-            cache_key="probe", decoder=lambda: bytearray(b"matrix")
-        )
-        captured_registries.append(image_registry)
-        captured_handles.append(entry.image_handle)
-        return {"result": {"value": "ok"}}
-
-    try:
-        runtime_registry = WorkflowNodeRuntimeRegistry()
-        runtime_registry.register_python_callable(
-            _build_metadata_probe_node(), registry_probe_handler
-        )
-        SnapshotExecutionService(
-            dataset_storage=dataset_storage,
-            node_catalog_registry=NodeCatalogRegistry(
-                node_pack_loader=_SingleNodePackLoader(_build_metadata_probe_node())
-            ),
-            runtime_registry=runtime_registry,
-            runtime_context=WorkflowServiceNodeRuntimeContext(
-                session_factory=session_factory,
-                dataset_storage=dataset_storage,
-            ),
-        ).execute(
-            WorkflowSnapshotExecutionRequest(
-                project_id="project-1",
-                application_id=application.application_id,
-                application_snapshot_object_key="workflow/application.json",
-                template_snapshot_object_key="workflow/template.json",
-                input_bindings={"source_text": {"value": "ok"}},
-            )
-        )
-
-        assert len(captured_registries) == 1
-        assert captured_registries[0].decoded_cache_entry_count == 0
-        assert captured_registries[0].decoded_cache_total_bytes == 0
-        with pytest.raises(InvalidRequestError):
-            captured_registries[0].get_entry(captured_handles[0])
-    finally:
-        session_factory.engine.dispose()
-
-
-def test_backend_service_runtime_starts_broker_and_binds_workflow_context(
-    tmp_path: Path,
-) -> None:
-    """验证 backend-service 生命周期会启动 broker 并绑定 workflow context。"""
-
-    settings = BackendServiceSettings(
-        database=BackendServiceDatabaseConfig(
-            url=f"sqlite:///{(tmp_path / 'service.db').as_posix()}"
-        ),
-        dataset_storage=BackendServiceDatasetStorageConfig(
-            root_dir=str(tmp_path / "service-files")
-        ),
-        queue=BackendServiceQueueConfig(root_dir=str(tmp_path / "service-queue")),
-        local_buffer_broker=_build_broker_settings(tmp_path / "service-broker"),
-    )
-    bootstrap = BackendServiceBootstrap(settings=settings)
-    runtime = bootstrap.build_runtime(bootstrap.load_settings())
-
-    bootstrap.initialize(runtime)
-    bootstrap.start_runtime(runtime)
-    try:
-        status = runtime.local_buffer_broker_supervisor.get_status()
-        broker_event_channel = runtime.workflow_runtime_worker_manager._resolve_local_buffer_broker_event_channel()
-        outbox_thread = runtime.queue_outbox_dispatcher._thread  # noqa: SLF001
-
-        assert status["state"] == "running"
-        assert outbox_thread is not None
-        assert outbox_thread.is_alive()
-        assert (
-            runtime.workflow_service_node_runtime_context.local_buffer_reader
-            is runtime.local_buffer_broker_supervisor
-        )
-        assert broker_event_channel is not None
-        assert (
-            broker_event_channel.request_timeout_seconds
-            == settings.local_buffer_broker.request_timeout_seconds
-        )
-    finally:
-        bootstrap.stop_runtime(runtime)
-    assert runtime.queue_outbox_dispatcher._thread is None  # noqa: SLF001
-
-
-def test_deployment_supervisor_passes_broker_event_channel_to_worker(
-    tmp_path: Path,
-) -> None:
-    """验证 deployment worker 子进程能收到 broker 事件通道。"""
-
-    runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
-    runtime_artifact_path.write_bytes(b"fake-runtime-artifact")
-    context = multiprocessing.get_context("spawn")
-    broker_channel = LocalBufferBrokerEventChannel(
-        request_queue=context.Queue(),
-        response_queue=context.Queue(),
-        request_timeout_seconds=1.0,
-    )
-    process_config = DeploymentProcessConfig(
-        deployment_instance_id="deployment-with-broker",
-        runtime_target=_build_runtime_target(runtime_artifact_path),
-        runtime_configuration=DeploymentRuntimeConfiguration(),
-    )
-    supervisor = DeploymentProcessSupervisor(
-        dataset_storage_root_dir=str(tmp_path),
-        runtime_mode="sync",
-        settings=DeploymentProcessSupervisorConfig(
-            auto_restart=False,
+def _supervisor(tmp_path: Path) -> LocalBufferBrokerProcessSupervisor:
+    return LocalBufferBrokerProcessSupervisor(
+        settings=LocalBufferBrokerSettings(
+            root_dir=str(tmp_path / "buffers"),
+            arena_size_bytes=16 * _MIB,
+            min_block_size_bytes=_MIB,
+            max_allocation_bytes=8 * _MIB,
+            reader_guard_slots=4,
+            startup_timeout_seconds=10.0,
             request_timeout_seconds=5.0,
-            shutdown_timeout_seconds=1.0,
-            operator_thread_count=1,
-        ),
-        local_buffer_broker_event_channel=broker_channel,
-        worker_target=fake_deployment_worker_records_broker_event_channel,
-    )
-
-    supervisor.start()
-    try:
-        supervisor.start_deployment(process_config)
-        execution = supervisor.run_inference(
-            config=process_config,
-            request=DetectionPredictionRequest(
-                input_image_payload={
-                    "transport_kind": "buffer",
-                    "media_type": "image/raw",
-                    "buffer_ref": BufferRef(
-                        buffer_id="buffer-test",
-                        lease_id="lease-test",
-                        path=str(tmp_path / "buffers.dat"),
-                        offset=0,
-                        size=12,
-                        shape=(2, 2, 3),
-                        dtype="uint8",
-                        layout="HWC",
-                        pixel_format="BGR",
-                        media_type="image/raw",
-                        broker_epoch="epoch-test",
-                        generation=1,
-                    ).model_dump(mode="json"),
-                },
-                score_threshold=0.3,
-                save_result_image=False,
-                extra_options={},
-            ),
+            revocation_grace_seconds=0.05,
         )
-
-        assert (
-            execution.execution_result.runtime_session_info.metadata[
-                "broker_timeout_seconds"
-            ]
-            == 1.0
-        )
-    finally:
-        supervisor.stop()
-        broker_channel.request_queue.close()
-        broker_channel.request_queue.join_thread()
-        broker_channel.response_queue.close()
-        broker_channel.response_queue.join_thread()
-
-
-class _MarkerLocalBufferReader:
-    """测试用 LocalBufferReader。"""
-
-    def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes:
-        """返回测试字节。"""
-
-        del buffer_ref
-        return b"buffer"
-
-    def read_frame_ref(self, frame_ref: FrameRef) -> bytes:
-        """返回测试帧字节。"""
-
-        del frame_ref
-        return b"frame"
-
-
-class _SingleNodePackLoader:
-    """只返回一个测试节点定义的 node pack loader。"""
-
-    def __init__(self, node_definition: NodeDefinition) -> None:
-        """初始化测试 loader。"""
-
-        self.node_definition = node_definition
-
-    def get_catalog_snapshot(self) -> NodeCatalogSnapshot:
-        """返回测试节点目录快照。"""
-
-        return NodeCatalogSnapshot(
-            node_pack_manifests=(),
-            payload_contracts=(),
-            node_definitions=(self.node_definition,),
-        )
-
-    def get_node_pack_manifests(self) -> tuple[NodePackManifest, ...]:
-        """返回空 manifest 列表。"""
-
-        return ()
-
-    def get_workflow_payload_contracts(self) -> tuple[WorkflowPayloadContract, ...]:
-        """返回空 payload 规则 列表。"""
-
-        return ()
-
-    def get_workflow_node_definitions(self) -> tuple[NodeDefinition, ...]:
-        """返回测试节点定义。"""
-
-        return (self.node_definition,)
-
-
-def _metadata_probe_handler(request: WorkflowNodeExecutionRequest) -> dict[str, object]:
-    """验证节点执行元数据中存在 LocalBufferBroker reader。"""
-
-    raw_payload = request.input_values["text"]
-    raw_text = (
-        str(raw_payload.get("value") or "")
-        if isinstance(raw_payload, dict)
-        else str(raw_payload)
-    )
-    return {
-        "result": {
-            "value": raw_text,
-            "has_reader": "local_buffer_reader" in request.execution_metadata,
-        }
-    }
-
-
-def _buffer_cleanup_probe_handler(
-    request: WorkflowNodeExecutionRequest,
-) -> dict[str, object]:
-    """写入 broker buffer 并登记执行结束清理。"""
-
-    local_buffer_writer = request.execution_metadata["local_buffer_reader"]
-    write_result = local_buffer_writer.write_bytes(
-        content=b"cleanup-buffer",
-        owner_kind="workflow-runtime",
-        owner_id="cleanup-probe",
-        media_type="image/raw",
-    )
-    register_local_buffer_lease_cleanup(
-        request.execution_metadata,
-        lease_id=write_result.lease.lease_id,
-        pool_name=write_result.lease.pool_name,
-    )
-    return {"result": {"buffer_ref": write_result.buffer_ref.model_dump(mode="json")}}
-
-
-def _image_cache_probe_handler(
-    request: WorkflowNodeExecutionRequest,
-) -> dict[str, object]:
-    """在节点中写入一次解码缓存，供 Run finally 清理测试使用。"""
-
-    image_registry = request.execution_metadata["execution_image_registry"]
-    assert isinstance(image_registry, ExecutionImageRegistry)
-    image_registry.get_or_decode_matrix(
-        cache_key="probe", decoder=lambda: bytearray(b"matrix")
-    )
-    return {
-        "result": {
-            "value": "ok",
-            "cache_entries_during_node": image_registry.decoded_cache_entry_count,
-        }
-    }
-
-
-def _build_broker_settings(
-    tmp_path: Path,
-    *,
-    slot_count: int = 2,
-    expire_interval_seconds: float = 5.0,
-) -> LocalBufferBrokerSettings:
-    """构造测试用 broker 配置。"""
-
-    return LocalBufferBrokerSettings(
-        root_dir=str(tmp_path / "buffers"),
-        default_pool_name="image-test",
-        startup_timeout_seconds=3.0,
-        request_timeout_seconds=3.0,
-        shutdown_timeout_seconds=1.0,
-        expire_interval_seconds=expire_interval_seconds,
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=64,
-                slot_count=slot_count,
-            ),
-        ),
-    )
-
-
-def _build_metadata_probe_node() -> NodeDefinition:
-    """构造测试用 metadata probe 节点定义。"""
-
-    return NodeDefinition(
-        node_type_id="core.test.metadata-probe",
-        display_name="Metadata Probe",
-        category="test",
-        description="检查执行元数据。",
-        implementation_kind=NODE_IMPLEMENTATION_CORE,
-        runtime_kind=NODE_RUNTIME_PYTHON_CALLABLE,
-        input_ports=(
-            NodePortDefinition(
-                name="text", display_name="Text", payload_type_id="value.v1"
-            ),
-        ),
-        output_ports=(
-            NodePortDefinition(
-                name="result", display_name="Result", payload_type_id="value.v1"
-            ),
-        ),
-        parameter_schema={"type": "object", "properties": {}},
-    )
-
-
-def _build_metadata_probe_template() -> WorkflowGraphTemplate:
-    """构造测试用 workflow template。"""
-
-    return WorkflowGraphTemplate(
-        template_id="metadata-probe-template",
-        template_version="1.0.0",
-        display_name="Metadata Probe Template",
-        nodes=(
-            WorkflowGraphNode(node_id="probe", node_type_id="core.test.metadata-probe"),
-        ),
-        template_inputs=(
-            WorkflowGraphInput(
-                input_id="source_text",
-                display_name="Source Text",
-                payload_type_id="value.v1",
-                target_node_id="probe",
-                target_port="text",
-            ),
-        ),
-        template_outputs=(
-            WorkflowGraphOutput(
-                output_id="final_text",
-                display_name="Final Text",
-                payload_type_id="value.v1",
-                source_node_id="probe",
-                source_port="result",
-            ),
-        ),
-    )
-
-
-def _build_metadata_probe_application() -> FlowApplication:
-    """构造测试用 workflow application。"""
-
-    return FlowApplication(
-        application_id="metadata-probe-app",
-        display_name="Metadata Probe App",
-        template_ref=FlowTemplateReference(
-            template_id="metadata-probe-template",
-            template_version="1.0.0",
-            source_kind="json-file",
-            source_uri="workflow/template.json",
-        ),
-        bindings=(
-            FlowApplicationBinding(
-                binding_id="source_text",
-                direction="input",
-                template_port_id="source_text",
-                binding_kind="api-request",
-                config={},
-            ),
-            FlowApplicationBinding(
-                binding_id="final_text",
-                direction="output",
-                template_port_id="final_text",
-                binding_kind="api-response",
-                config={},
-            ),
-        ),
-    )
-
-
-def _build_runtime_target(runtime_artifact_path: Path) -> RuntimeTargetSnapshot:
-    """构造 deployment supervisor 测试使用的 RuntimeTargetSnapshot。"""
-
-    return RuntimeTargetSnapshot(
-        project_id="project-1",
-        model_id="model-1",
-        model_version_id="model-version-1",
-        model_build_id="model-build-1",
-        model_name="broker-test-model",
-        model_scale="nano",
-        model_type="yolox",
-        task_type="detection",
-        source_kind="training-output",
-        runtime_profile_id=None,
-        runtime_backend="onnxruntime",
-        device_name="cpu",
-        runtime_precision="fp32",
-        input_size=(64, 64),
-        labels=("bolt",),
-        runtime_artifact_file_id="build-file-1",
-        runtime_artifact_storage_uri="projects/project-1/models/build.onnx",
-        runtime_artifact_path=runtime_artifact_path,
-        runtime_artifact_file_type="onnx",
     )

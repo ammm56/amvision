@@ -18,7 +18,6 @@ from backend.service.application.auth.local_auth_service import (
     LocalAuthUserCreateRequest,
 )
 from backend.service.application.local_buffers.broker_settings import (
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
 )
 from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
@@ -138,14 +137,10 @@ def create_api_test_context(
             enabled=enable_local_buffer_broker,
             root_dir=str(tmp_path / "local-buffer-broker"),
             startup_timeout_seconds=10.0,
-            default_pool_name="image-test",
-            pools=(
-                LocalBufferBrokerPoolSettings(
-                    pool_name="image-test",
-                    slot_size_bytes=4 * 1024 * 1024,
-                    slot_count=4,
-                ),
-            ),
+            arena_size_bytes=16 * 1024 * 1024,
+            min_block_size_bytes=1024 * 1024,
+            max_allocation_bytes=8 * 1024 * 1024,
+            reader_guard_slots=4,
         ),
     )
     application = create_app(

@@ -65,32 +65,29 @@ class WorkflowTriggerAllocationV1(BaseModel):
     format_id: Literal[WORKFLOW_TRIGGER_ALLOCATION_FORMAT] = (
         WORKFLOW_TRIGGER_ALLOCATION_FORMAT
     )
-    pool_name: str
+    arena_id: str
     lease_id: str
     buffer_id: str
-    path: str
-    offset: int = Field(ge=0)
-    size: int = Field(gt=0)
-    slot_capacity_bytes: int = Field(gt=0)
+    descriptor_index: int = Field(ge=0)
+    descriptor_generation: int = Field(ge=1)
     broker_epoch: str
-    generation: int = Field(ge=1)
-    writer_guard_path: str
+    offset: int = Field(ge=0)
+    content_length: int = Field(gt=0)
+    allocation_capacity_bytes: int = Field(gt=0)
 
     @model_validator(mode="after")
     def validate_allocation(self) -> WorkflowTriggerAllocationV1:
         """拒绝空 locator identity。"""
 
         for field_name in (
-            "pool_name",
+            "arena_id",
             "lease_id",
             "buffer_id",
-            "path",
             "broker_epoch",
-            "writer_guard_path",
         ):
             _require_text(getattr(self, field_name), field_name)
-        if self.size > self.slot_capacity_bytes:
-            raise ValueError("slot_capacity_bytes 不能小于 size")
+        if self.content_length > self.allocation_capacity_bytes:
+            raise ValueError("allocation_capacity_bytes 不能小于 content_length")
         return self
 
 

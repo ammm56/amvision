@@ -136,13 +136,10 @@ namespace Amvar.Vision.ContractTests
             {
                 var routeGeneration = long.Parse(args[3], CultureInfo.InvariantCulture);
                 var imageBytes = File.ReadAllBytes(args[4]);
-                using (var client = new SharedMemoryTriggerClient(new SharedMemoryTriggerClientOptions
-                {
-                    BuffersRoot = args[1],
-                    TriggerSourceId = args[2],
-                    RouteGeneration = routeGeneration,
-                    Timeout = TimeSpan.FromSeconds(10)
-                }))
+                using (var client = new SharedMemoryTriggerClient(BuildSharedMemoryOptions(
+                    args[1],
+                    args[2],
+                    routeGeneration)))
                 using (var result = client.InvokeImageBytes(
                     imageBytes,
                     "application/octet-stream",
@@ -192,13 +189,10 @@ namespace Amvar.Vision.ContractTests
             {
                 var imageBytes = File.ReadAllBytes(args[4]);
                 SharedMemoryTriggerTimings? timings = null;
-                using (var client = new SharedMemoryTriggerClient(new SharedMemoryTriggerClientOptions
-                {
-                    BuffersRoot = args[1],
-                    TriggerSourceId = args[2],
-                    RouteGeneration = long.Parse(args[3], CultureInfo.InvariantCulture),
-                    Timeout = TimeSpan.FromSeconds(10)
-                }))
+                using (var client = new SharedMemoryTriggerClient(BuildSharedMemoryOptions(
+                    args[1],
+                    args[2],
+                    long.Parse(args[3], CultureInfo.InvariantCulture))))
                 {
                     using (var result = client.InvokeImageBytes(
                         imageBytes,
@@ -267,13 +261,10 @@ namespace Amvar.Vision.ContractTests
                 var width = int.Parse(args[7], CultureInfo.InvariantCulture);
                 var height = int.Parse(args[8], CultureInfo.InvariantCulture);
                 var rowStride = int.Parse(args[9], CultureInfo.InvariantCulture);
-                using (var client = new SharedMemoryTriggerClient(new SharedMemoryTriggerClientOptions
-                {
-                    BuffersRoot = args[1],
-                    TriggerSourceId = args[2],
-                    RouteGeneration = long.Parse(args[3], CultureInfo.InvariantCulture),
-                    Timeout = TimeSpan.FromSeconds(10)
-                }))
+                using (var client = new SharedMemoryTriggerClient(BuildSharedMemoryOptions(
+                    args[1],
+                    args[2],
+                    long.Parse(args[3], CultureInfo.InvariantCulture))))
                 using (var result = InvokeInputMode(
                     client,
                     mode,
@@ -357,6 +348,29 @@ namespace Amvar.Vision.ContractTests
                 default:
                     throw new ArgumentException("Unsupported input conversion mode.", nameof(mode));
             }
+        }
+
+        private static SharedMemoryTriggerClientOptions BuildSharedMemoryOptions(
+            string buffersRoot,
+            string triggerSourceId,
+            long routeGeneration)
+        {
+            var localBufferRoot = Path.Combine(buffersRoot, "local-buffer");
+            var arenaPath = Path.Combine(localBufferRoot, "arena-main.mmap");
+            return new SharedMemoryTriggerClientOptions
+            {
+                BuffersRoot = buffersRoot,
+                ArenaId = "local-buffer-main",
+                ArenaPath = arenaPath,
+                AllocatorPath = Path.Combine(localBufferRoot, "allocator-main.mmap"),
+                GuardPath = Path.Combine(localBufferRoot, "arena-main.guard"),
+                ArenaSizeBytes = new FileInfo(arenaPath).Length,
+                ReaderGuardSlots = 8,
+                MaxImageBytes = new FileInfo(arenaPath).Length,
+                TriggerSourceId = triggerSourceId,
+                RouteGeneration = routeGeneration,
+                Timeout = TimeSpan.FromSeconds(10)
+            };
         }
 
         private static string ComputeChecksum(string algorithm, byte[] input, int chunkSize)

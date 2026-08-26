@@ -62,7 +62,7 @@ def test_health_route_returns_request_id_header(tmp_path: Path) -> None:
     assert response.headers["x-request-id"] == "request-1"
     assert response.json()["request_id"] == "request-1"
     assert response.json()["local_buffer_broker"]["enabled"] is True
-    assert response.json()["local_buffer_broker"]["state"] == "running"
+    assert response.json()["local_buffer_broker"]["state"] == "healthy"
 
 
 def test_me_route_requires_principal(tmp_path: Path) -> None:
@@ -158,11 +158,11 @@ def test_system_config_route_returns_resolved_backend_config(tmp_path: Path) -> 
     assert payload["format_id"] == "amvision.backend-service-config.v1"
     assert payload["metadata"]["source"] == "runtime-resolved"
     local_buffer_config = payload["config"]["local_buffer_broker"]
-    assert local_buffer_config["default_pool_name"] == "image-test"
-    assert "default_pool" not in local_buffer_config
-    assert [pool["pool_name"] for pool in local_buffer_config["pools"]] == [
-        "image-test"
-    ]
+    assert local_buffer_config["arena_id"] == "local-buffer-main"
+    assert local_buffer_config["arena_size_bytes"] == 16 * 1024 * 1024
+    assert local_buffer_config["min_block_size_bytes"] == 1024 * 1024
+    assert local_buffer_config["max_allocation_bytes"] == 8 * 1024 * 1024
+    assert "pools" not in local_buffer_config
 
 
 def test_system_config_payload_redacts_sensitive_config_values() -> None:

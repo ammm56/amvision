@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import os
 from threading import BoundedSemaphore, Event, Lock, Thread
-from typing import Any
+from typing import Any, Iterator
 
 from backend.contracts.buffers import BufferLease, BufferRef, FrameRef
 from backend.nodes.runtime_support import (
@@ -132,7 +133,7 @@ class _LocalBufferBrokerRuntimeHealth:
 
 
 class _RoutedLocalBufferAccess:
-    """按固定 pool 归属路由 backend 主池和 daemon 私有池。
+    """按 arena 归属路由 backend 主 arena 和 daemon 私有 arena。
 
     backend 主池由 backend-service 管理，独立 daemon worker 只能通过 direct
     mmap reader/writer 访问已授权区间；daemon 私有池由本进程树内的 broker
@@ -157,16 +158,41 @@ class _RoutedLocalBufferAccess:
     def read_buffer_ref(self, buffer_ref: BufferRef) -> bytes | memoryview:
         """按 BufferRef 所属 pool 读取有效区间。"""
 
-        if self.direct_reader.accepts_path(buffer_ref.path):
+        if self.direct_reader.accepts_arena(buffer_ref.arena_id):
             return self.direct_reader.read_buffer_ref(buffer_ref)
         return self.broker_client.read_buffer_ref(buffer_ref)
+
+    @contextmanager
+    def acquire_buffer_ref_view(
+        self,
+        buffer_ref: BufferRef,
+    ) -> Iterator[memoryview]:
+        """按 arena domain 持有 reader guard 并暴露零复制 view。"""
+
+        if self.direct_reader.accepts_arena(buffer_ref.arena_id):
+            with self.direct_reader.acquire_buffer_ref_view(buffer_ref) as view:
+                yield view
+            return
+        with self.broker_client.acquire_buffer_ref_view(buffer_ref) as view:
+            yield view
 
     def read_frame_ref(self, frame_ref: FrameRef) -> bytes | memoryview:
         """按 FrameRef 所属 pool 读取有效区间。"""
 
-        if self.direct_reader.accepts_path(frame_ref.path):
+        if self.direct_reader.accepts_arena(frame_ref.arena_id):
             return self.direct_reader.read_frame_ref(frame_ref)
         return self.broker_client.read_frame_ref(frame_ref)
+
+    @contextmanager
+    def acquire_frame_ref_view(self, frame_ref: FrameRef) -> Iterator[memoryview]:
+        """按 arena domain 持有 frame reader guard。"""
+
+        if self.direct_reader.accepts_arena(frame_ref.arena_id):
+            with self.direct_reader.acquire_frame_ref_view(frame_ref) as view:
+                yield view
+            return
+        with self.broker_client.acquire_frame_ref_view(frame_ref) as view:
+            yield view
 
     def write_lease_bytes(
         self,
@@ -484,15 +510,15 @@ def _run_inference_request(
     """在独立线程中执行一次 deployment 推理请求。"""
 
     try:
-        prediction_request = _build_prediction_request(
+        with _build_prediction_request(
             payload=payload,
             local_buffer_reader=local_buffer_reader,
             local_buffer_health=local_buffer_health,
-        )
-        execution = runtime_pool.run_inference(
-            config=runtime_pool_config,
-            request=prediction_request,
-        )
+        ) as prediction_request:
+            execution = runtime_pool.run_inference(
+                config=runtime_pool_config,
+                request=prediction_request,
+            )
         task_type = runtime_pool_config.runtime_target.task_type
         preview_image_bytes = execution.execution_result.preview_image_bytes
         preview_image_transfer: dict[str, object] | None = None
@@ -536,12 +562,13 @@ def _run_inference_request(
         _finish_real_inference(keep_warm_state)
 
 
+@contextmanager
 def _build_prediction_request(
     *,
     payload: dict[str, object],
     local_buffer_reader: _LocalBufferReader | None,
     local_buffer_health: _LocalBufferBrokerRuntimeHealth,
-) -> PredictionRequest:
+) -> Iterator[PredictionRequest]:
     """把 deployment worker 控制 payload 转换为预测请求。"""
 
     task_type = _require_payload_str(payload, "task_type")
@@ -551,18 +578,45 @@ def _build_prediction_request(
     )
     image_payload = getattr(prediction_request, "input_image_payload", None)
     if not isinstance(image_payload, dict) or not image_payload:
-        return prediction_request
-    resolved_uri, resolved_bytes, resolved_image_payload = _resolve_input_image_payload(
-        image_payload=image_payload,
-        local_buffer_reader=local_buffer_reader,
-        local_buffer_health=local_buffer_health,
+        yield prediction_request
+        return
+    normalized_payload = require_image_payload(image_payload)
+    transport_kind = str(normalized_payload.get("transport_kind") or "")
+    if transport_kind not in {IMAGE_TRANSPORT_BUFFER, IMAGE_TRANSPORT_FRAME}:
+        if transport_kind == IMAGE_TRANSPORT_MEMORY:
+            raise InvalidRequestError(
+                "deployment worker 不支持 execution memory image-ref"
+            )
+        raise InvalidRequestError(
+            "deployment worker 收到不支持的 image-ref transport_kind"
+        )
+    if local_buffer_reader is None:
+        raise ServiceConfigurationError("deployment worker 缺少 LocalBufferBroker reader")
+    ref = (
+        BufferRef.model_validate(normalized_payload.get("buffer_ref"))
+        if transport_kind == IMAGE_TRANSPORT_BUFFER
+        else FrameRef.model_validate(normalized_payload.get("frame_ref"))
     )
-    return replace_prediction_request_inputs(
-        request=prediction_request,
-        input_uri=resolved_uri,
-        input_image_bytes=resolved_bytes,
-        input_image_payload=resolved_image_payload,
+    acquire = (
+        local_buffer_reader.acquire_buffer_ref_view
+        if transport_kind == IMAGE_TRANSPORT_BUFFER
+        else local_buffer_reader.acquire_frame_ref_view
     )
+    try:
+        with acquire(ref) as content:
+            _record_local_buffer_input(
+                local_buffer_health,
+                transport_kind=transport_kind,
+            )
+            yield replace_prediction_request_inputs(
+                request=prediction_request,
+                input_uri=None,
+                input_image_bytes=content,
+                input_image_payload=normalized_payload,
+            )
+    except Exception as exc:
+        _record_local_buffer_error(local_buffer_health, exc)
+        raise
 
 
 def _resolve_input_image_payload(

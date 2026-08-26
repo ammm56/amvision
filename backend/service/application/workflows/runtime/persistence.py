@@ -98,11 +98,9 @@ def with_input_buffer_ref_cleanups(
 
     payload = dict(execution_metadata)
     for buffer_ref in _iter_input_buffer_refs(input_bindings):
-        pool_name_value = buffer_ref.metadata.get("pool_name")
         register_local_buffer_lease_cleanup(
             payload,
             lease_id=buffer_ref.lease_id,
-            pool_name=pool_name_value if isinstance(pool_name_value, str) else None,
         )
     return payload
 

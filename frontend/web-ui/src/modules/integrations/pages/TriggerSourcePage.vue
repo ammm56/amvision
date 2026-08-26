@@ -78,19 +78,9 @@
             <span>display_name</span>
             <input v-model="displayName" />
           </label>
-          <label class="field">
+          <label v-if="selectedProtocolTemplate.requiresEndpoint" class="field">
             <span>{{ selectedProtocolTemplate.endpointLabel }}</span>
             <input v-model="endpoint" />
-          </label>
-          <label v-if="selectedProtocolTemplate.templateId === 'zeromq-image-trigger'" class="field">
-            <span>pool_name</span>
-            <SelectField
-              :model-value="localBufferPoolName"
-              :options="localBufferPoolOptions"
-              :disabled="localBufferPoolOptions.length === 0"
-              :placeholder="t('triggerSources.placeholders.poolUnavailable')"
-              @update:model-value="setLocalBufferPoolName"
-            />
           </label>
           <label class="field">
             <span>result_bindings</span>
@@ -139,15 +129,15 @@
             <div class="form-grid">
               <label class="field">
                 <span>submit_mode</span>
-                <SelectField :model-value="submitMode" :options="submitModeOptions" @update:model-value="setSubmitMode" />
+                <SelectField :model-value="submitMode" :options="submitModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setSubmitMode" />
               </label>
               <label class="field">
                 <span>result_mode</span>
-                <SelectField :model-value="resultMode" :options="resultModeOptions" @update:model-value="setResultMode" />
+                <SelectField :model-value="resultMode" :options="resultModeOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setResultMode" />
               </label>
               <label class="field">
                 <span>ack_policy</span>
-                <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" @update:model-value="setAckPolicy" />
+                <SelectField :model-value="ackPolicy" :options="ackPolicyOptions" :disabled="selectedProtocolTemplate.triggerKind === 'local-shared-memory'" @update:model-value="setAckPolicy" />
               </label>
               <label class="field">
                 <span>reply_timeout_seconds</span>
@@ -301,7 +291,6 @@ import { Activity, Power, PowerOff, RefreshCw, Save, Settings2, Trash2, Workflow
 
 import { useProjectStore } from '@/app/stores/project.store'
 import type { PaginationMeta } from '@/shared/api/pagination'
-import { getSystemConfig } from '@/shared/api/system-config'
 import { formatSystemDateTime } from '@/shared/formatters/date-time'
 import Button from '@/shared/ui/components/Button.vue'
 import ButtonLink from '@/shared/ui/components/ButtonLink.vue'
@@ -334,7 +323,7 @@ import {
 } from '../services/trigger-source.service'
 
 type MappingMode = 'source' | 'static' | 'skip'
-type ProtocolTemplateId = 'zeromq-image-trigger' | 'webhook-json'
+type ProtocolTemplateId = 'local-shared-memory' | 'zeromq-image-trigger' | 'webhook-json'
 type WorkflowRunRecordMode = 'full' | 'minimal' | 'none'
 type TriggerSourceAction = 'state' | 'health' | 'delete'
 type SelectValue = string | number | boolean | null
@@ -361,6 +350,7 @@ interface ProtocolTemplateOption {
   triggerKind: string
   defaultEndpoint: string
   endpointLabel: string
+  requiresEndpoint: boolean
   submitMode: 'async' | 'sync'
   resultMode: string
   ackPolicy: string
@@ -377,11 +367,30 @@ const { t } = useI18n()
 
 const protocolTemplates: ProtocolTemplateOption[] = [
   {
+    templateId: 'local-shared-memory',
+    displayNameKey: 'triggerSources.protocols.localSharedMemory',
+    triggerKind: 'local-shared-memory',
+    defaultEndpoint: '',
+    endpointLabel: '',
+    requiresEndpoint: false,
+    submitMode: 'sync',
+    resultMode: 'sync-reply',
+    ackPolicy: 'ack-after-run-finished',
+    imageBase64SourcePath: 'payload.request_image_base64',
+    imageRefSourcePath: 'payload.request_image_ref',
+    fallbackImageSourcePath: 'payload.request_image_ref',
+    requestSourcePath: 'payload.deployment_request',
+    defaultInputBinding: 'request_image_ref',
+    defaultReplyTimeoutSeconds: 30,
+    defaultIdempotencyKeyPath: 'payload.idempotency_key',
+  },
+  {
     templateId: 'zeromq-image-trigger',
     displayNameKey: 'triggerSources.protocols.zeromqImage',
     triggerKind: 'zeromq-topic',
     defaultEndpoint: 'tcp://127.0.0.1:5555',
     endpointLabel: 'bind_endpoint',
+    requiresEndpoint: true,
     submitMode: 'sync',
     resultMode: 'sync-reply',
     ackPolicy: 'ack-after-run-finished',
@@ -399,6 +408,7 @@ const protocolTemplates: ProtocolTemplateOption[] = [
     triggerKind: 'webhook',
     defaultEndpoint: '/workflow-triggers/{trigger_source_id}',
     endpointLabel: 'webhook path',
+    requiresEndpoint: true,
     submitMode: 'sync',
     resultMode: 'sync-reply',
     ackPolicy: 'ack-after-run-finished',
@@ -460,14 +470,12 @@ const statusMessage = ref<string | null>(null)
 const runtimes = ref<WorkflowAppRuntime[]>([])
 const triggerSources = ref<WorkflowTriggerSource[]>([])
 const triggerSourcePagination = ref<PaginationMeta>(createPaginationState())
-const backendServiceConfig = ref<Record<string, unknown>>({})
 const workflowApp = ref<WorkflowAppDocument | null>(null)
 const selectedRuntimeId = ref('')
-const protocolTemplateId = ref<ProtocolTemplateId>('zeromq-image-trigger')
+const protocolTemplateId = ref<ProtocolTemplateId>('local-shared-memory')
 const triggerSourceId = ref('')
 const displayName = ref('')
-const endpoint = ref('tcp://127.0.0.1:5555')
-const localBufferPoolName = ref('')
+const endpoint = ref('')
 const submitMode = ref<'async' | 'sync'>('sync')
 const resultBindings = ref<string[]>([])
 const resultMode = ref('sync-reply')
@@ -513,7 +521,7 @@ const runtimeOptions = computed<SelectOption[]>(() => [
 const protocolTemplateOptions = computed<SelectOption[]>(() => protocolTemplates.map((template) => ({
   label: protocolTemplateDisplayName(template),
   value: template.templateId,
-  description: template.templateId === 'zeromq-image-trigger' ? 'multipart bytes -> payload.request_image_ref' : 'JSON body -> payload.request_image_base64',
+  description: protocolTemplateDescription(template),
 })))
 const resultBindingOptions = computed(() => [
   ...appOutputBindings.value.map((binding) => ({
@@ -528,32 +536,18 @@ const resultBindingDeliverySummary = computed(() => resultBindings.value.map((bi
   return `${bindingId} → ${delivery}`
 }).join(' · '))
 const totalTriggerSourceCount = computed(() => triggerSourcePagination.value.totalCount ?? triggerSources.value.length)
-const localBufferBrokerConfig = computed(() => {
-  const value = backendServiceConfig.value.local_buffer_broker
-  return isRecord(value) ? value : {}
-})
-const configuredLocalBufferPoolNames = computed(() => {
-  const pools = localBufferBrokerConfig.value.pools
-  if (!Array.isArray(pools)) return []
-  return pools
-    .map((pool) => {
-      if (!isRecord(pool)) return ''
-      const poolName = pool.pool_name
-      return typeof poolName === 'string' ? poolName.trim() : ''
-    })
-    .filter((poolName): poolName is string => poolName.length > 0)
-})
-const localBufferDefaultPoolName = computed(() => {
-  const defaultPoolName = localBufferBrokerConfig.value.default_pool_name
-  return typeof defaultPoolName === 'string' ? defaultPoolName.trim() : ''
-})
-const localBufferPoolOptions = computed<SelectOption[]>(() => configuredLocalBufferPoolNames.value.map((poolName) => ({
-  label: poolName,
-  value: poolName,
-})))
-
 function protocolTemplateDisplayName(template: ProtocolTemplateOption): string {
   return t(template.displayNameKey)
+}
+
+function protocolTemplateDescription(template: ProtocolTemplateOption): string {
+  if (template.triggerKind === 'local-shared-memory') return t('triggerSources.protocols.localSharedMemoryDescription')
+  if (template.triggerKind === 'zeromq-topic') return t('triggerSources.protocols.zeromqImageDescription')
+  return t('triggerSources.protocols.webhookJsonDescription')
+}
+
+function usesImageRefTransport(template: ProtocolTemplateOption): boolean {
+  return template.triggerKind === 'local-shared-memory' || template.triggerKind === 'zeromq-topic'
 }
 
 function readQueryString(name: string): string {
@@ -573,7 +567,9 @@ async function selectRuntime(value: SelectValue): Promise<void> {
 
 function selectProtocolTemplate(value: SelectValue): void {
   const nextValue = selectValueToString(value)
-  protocolTemplateId.value = nextValue === 'webhook-json' ? 'webhook-json' : 'zeromq-image-trigger'
+  protocolTemplateId.value = nextValue === 'webhook-json' || nextValue === 'zeromq-image-trigger'
+    ? nextValue
+    : 'local-shared-memory'
   applyProtocolTemplateDefaults()
 }
 
@@ -585,30 +581,8 @@ function setResultBindings(value: string[]): void {
   resultBindings.value = [...value]
 }
 
-function setLocalBufferPoolName(value: SelectValue): void {
-  const nextValue = selectValueToString(value).trim()
-  localBufferPoolName.value = nextValue
-}
-
-function syncLocalBufferPoolSelection(): void {
-  const configuredPoolNames = configuredLocalBufferPoolNames.value
-  const currentPoolName = localBufferPoolName.value.trim()
-  if (currentPoolName && configuredPoolNames.includes(currentPoolName)) return
-  if (localBufferDefaultPoolName.value && configuredPoolNames.includes(localBufferDefaultPoolName.value)) {
-    localBufferPoolName.value = localBufferDefaultPoolName.value
-    return
-  }
-  localBufferPoolName.value = configuredPoolNames[0] ?? ''
-}
-
-function resolveLocalBufferPoolName(): string {
-  const selectedPoolName = localBufferPoolName.value.trim()
-  if (selectedPoolName) return selectedPoolName
-  if (localBufferDefaultPoolName.value) return localBufferDefaultPoolName.value
-  return configuredLocalBufferPoolNames.value[0] ?? ''
-}
-
 function setSubmitMode(value: SelectValue): void {
+  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory') return
   submitMode.value = selectValueToString(value) === 'async' ? 'async' : 'sync'
   resultMode.value = submitMode.value === 'sync' ? 'sync-reply' : 'accepted-then-query'
   ackPolicy.value = submitMode.value === 'sync' ? 'ack-after-run-finished' : 'ack-after-run-created'
@@ -726,7 +700,7 @@ function findImageInputBindings(): FlowApplicationBinding[] {
   const metadataBinding = findBindingFromMetadata('trigger_source_input_binding')
   const imageBase64Binding = appInputBindings.value.find(isImageBase64Binding) ?? null
   const imageRefBinding = appInputBindings.value.find(isImageRefBinding) ?? null
-  if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
+  if (usesImageRefTransport(selectedProtocolTemplate.value)) {
     addUniqueBinding(bindings, imageRefBinding)
     if (metadataBinding && isImageRefBinding(metadataBinding)) addUniqueBinding(bindings, metadataBinding)
   } else {
@@ -734,7 +708,7 @@ function findImageInputBindings(): FlowApplicationBinding[] {
     addUniqueBinding(bindings, metadataBinding)
     addUniqueBinding(bindings, imageRefBinding)
   }
-  if (bindings.length === 0 && selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') {
+  if (bindings.length === 0 && !usesImageRefTransport(selectedProtocolTemplate.value)) {
     addUniqueBinding(bindings, appInputBindings.value.find(isImageInputBinding) ?? null)
   }
   return bindings
@@ -765,6 +739,7 @@ function defaultSourcePath(binding: FlowApplicationBinding): string {
 }
 
 function buildDefaultEndpoint(template: ProtocolTemplateOption): string {
+  if (!template.requiresEndpoint) return ''
   const baseEndpoint = template.defaultEndpoint.replace('{trigger_source_id}', triggerSourceId.value)
   if (template.templateId !== 'zeromq-image-trigger') return baseEndpoint
   return allocateZeroMqTcpEndpoint(baseEndpoint, collectUsedZeroMqBindEndpoints())
@@ -820,12 +795,12 @@ function isZeroMqTcpWildcardHost(host: string): boolean {
 function buildMappingRows(): void {
   mappingRows.value = appInputBindings.value.map((binding) => {
     const inferred = inferredImageBindings.value.some((item) => item.binding_id === binding.binding_id) || binding.binding_id === inferredRequestBinding.value?.binding_id
-    const zeromqBase64Image = selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' && isImageBase64Binding(binding)
+    const binaryBase64Image = usesImageRefTransport(selectedProtocolTemplate.value) && isImageBase64Binding(binding)
     return {
       bindingId: binding.binding_id,
       payloadTypeId: getBindingPayloadTypeId(binding),
       required: binding.required,
-      mode: inferred || (binding.required && !zeromqBase64Image) ? 'source' : 'skip',
+      mode: inferred || (binding.required && !binaryBase64Image) ? 'source' : 'skip',
       sourcePath: defaultSourcePath(binding),
       staticValue: '',
       inferred,
@@ -840,11 +815,12 @@ function applyProtocolTemplateDefaults(): void {
   resultMode.value = template.resultMode
   ackPolicy.value = template.ackPolicy
   const runtimeSuffix = sanitizeIdentifier(runtime?.workflow_runtime_id || runtime?.application_id || 'runtime')
-  const templatePrefix = template.templateId === 'webhook-json' ? 'webhook' : 'zeromq'
+  const templatePrefix = template.templateId === 'webhook-json'
+    ? 'webhook'
+    : template.templateId === 'zeromq-image-trigger' ? 'zeromq' : 'local-shared'
   triggerSourceId.value = `${templatePrefix}-${runtimeSuffix}`
   displayName.value = `${protocolTemplateDisplayName(template)} ${runtime?.display_name || runtime?.application_id || ''}`.trim()
   endpoint.value = buildDefaultEndpoint(template)
-  syncLocalBufferPoolSelection()
   resultBindings.value = findDefaultResultBindings()
   replyTimeoutSeconds.value = String(template.defaultReplyTimeoutSeconds)
   idempotencyKeyPath.value = template.defaultIdempotencyKeyPath
@@ -881,8 +857,7 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
   }
   try {
     const triggerSourceOffset = options.resetTriggerSourcePage ? 0 : options.triggerSourceOffset ?? triggerSourcePagination.value.offset
-    const [configResult, runtimeResult, triggerSourceResult] = await Promise.all([
-      getSystemConfig(),
+    const [runtimeResult, triggerSourceResult] = await Promise.all([
       listWorkflowAppRuntimes({ projectId: selectedProjectId.value, limit: 100 }),
       listWorkflowTriggerSources({
         projectId: selectedProjectId.value,
@@ -894,8 +869,6 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
       refreshWorkflowAppRuntimeStatuses(runtimeResult.items),
       refreshWorkflowTriggerSourceStatuses(triggerSourceResult.items),
     ])
-    backendServiceConfig.value = configResult.config
-    syncLocalBufferPoolSelection()
     runtimes.value = runtimeStatusResult.items
     triggerSources.value = triggerStatusResult.items
     healthByTriggerSourceId.value = triggerStatusResult.healthByTriggerSourceId
@@ -921,14 +894,16 @@ async function loadPage(options: { triggerSourceOffset?: number; resetTriggerSou
 
 function buildTransportConfig(): WorkflowJsonObject {
   const normalizedEndpoint = endpoint.value.trim().replace('{trigger_source_id}', triggerSourceId.value.trim())
+  if (selectedProtocolTemplate.value.triggerKind === 'local-shared-memory') {
+    return {
+      default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
+    }
+  }
   if (selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger') {
-    const selectedPoolName = resolveLocalBufferPoolName()
-    if (!selectedPoolName) throw new Error(t('triggerSources.messages.poolRequired'))
     return {
       bind_endpoint: normalizedEndpoint,
       default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
       content_transport: 'local-buffer',
-      pool_name: selectedPoolName,
     }
   }
   return { path: normalizedEndpoint, method: 'POST' }
@@ -943,7 +918,7 @@ function buildDefaultExecutionMetadata(): WorkflowJsonObject {
     retain_trace_enabled: false,
     retain_node_records_enabled: false,
   }
-  if (selectedProtocolTemplate.value.templateId !== 'zeromq-image-trigger') return metadata
+  if (selectedProtocolTemplate.value.triggerKind === 'webhook') return metadata
   return {
     ...metadata,
     retain_input_payload_enabled: false,
@@ -1073,7 +1048,9 @@ async function submitTriggerSource(): Promise<void> {
         protocol_template: protocolTemplateId.value,
         application_id: runtime.application_id,
         default_input_binding: selectedProtocolTemplate.value.defaultInputBinding,
-        local_buffer_pool_name: selectedProtocolTemplate.value.templateId === 'zeromq-image-trigger' ? resolveLocalBufferPoolName() : null,
+        image_transport: selectedProtocolTemplate.value.triggerKind === 'local-shared-memory'
+          ? 'local-buffer-arena'
+          : selectedProtocolTemplate.value.triggerKind === 'zeromq-topic' ? 'zeromq-multipart' : 'json',
         inferred_image_binding: inferredImageBinding.value?.binding_id ?? null,
         inferred_image_bindings: inferredImageBindings.value.map((binding) => binding.binding_id),
         inferred_request_binding: inferredRequestBinding.value?.binding_id ?? null,

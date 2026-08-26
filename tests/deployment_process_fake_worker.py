@@ -6,6 +6,9 @@ import os
 from queue import Empty
 from typing import Any
 
+from backend.contracts.buffers import BufferLease
+from backend.service.application.local_buffers import LocalBufferBrokerClient
+
 
 def fake_deployment_process_worker(
     *,
@@ -25,7 +28,11 @@ def fake_deployment_process_worker(
     del dataset_storage_root_dir
     del operator_thread_count
     del supervisor_settings
-    del local_buffer_broker_event_channel
+    local_buffer_client = (
+        LocalBufferBrokerClient(local_buffer_broker_event_channel)
+        if local_buffer_broker_event_channel is not None
+        else None
+    )
 
     warmed_instance_indexes: set[int] = set()
     keep_warm_activated = False
@@ -44,6 +51,8 @@ def fake_deployment_process_worker(
         )
 
         if action == "shutdown":
+            if local_buffer_client is not None:
+                local_buffer_client.close()
             response_queue.put({"request_id": request_id, "ok": True, "payload": {}})
             return
         if action == "start":
@@ -117,12 +126,13 @@ def fake_deployment_process_worker(
                 lease_payload = payload.get("preview_output_lease")
                 if not isinstance(lease_payload, dict):
                     raise RuntimeError("fake worker 缺少 preview_output_lease")
+                if local_buffer_client is None:
+                    raise RuntimeError("fake worker 缺少 LocalBuffer writer")
                 preview_content = b"preview-jpg"
-                lease_path = str(lease_payload["file_path"])
-                lease_offset = int(lease_payload["offset"])
-                with open(lease_path, "r+b", buffering=0) as lease_file:
-                    lease_file.seek(lease_offset)
-                    lease_file.write(preview_content)
+                local_buffer_client.write_lease_bytes(
+                    lease=BufferLease.model_validate(lease_payload),
+                    content=preview_content,
+                )
                 preview_image_transfer = {
                     "size": len(preview_content),
                     "media_type": "image/jpeg",

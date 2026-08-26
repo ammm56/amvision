@@ -186,6 +186,7 @@ def _source(
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
         reply_timeout_seconds=30,
+        response_ack_timeout_seconds=30.0,
         selected_output_payload_types={},
         previous_plan=(previous_metadata or {}).get(
             TRIGGER_RESPONSE_PLAN_METADATA_KEY

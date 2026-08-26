@@ -20,7 +20,7 @@ namespace Amvar.Vision.SharedMemory
         private readonly object syncRoot = new object();
         private readonly SharedMemoryTriggerClientOptions options;
         private readonly WorkflowTriggerMailboxClient mailbox;
-        private readonly LocalBufferMappingCache mappingCache = new LocalBufferMappingCache();
+        private readonly LocalBufferMappingCache mappingCache;
         private int activeInvocationCount;
         private int activeResultCount;
         private bool disposeRequested;
@@ -31,6 +31,7 @@ namespace Amvar.Vision.SharedMemory
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
             this.options.Validate();
+            mappingCache = new LocalBufferMappingCache(this.options);
             mailbox = new WorkflowTriggerMailboxClient(this.options.BuffersRoot);
         }
 
@@ -427,7 +428,9 @@ namespace Amvar.Vision.SharedMemory
                     timings.SdkResponseWaitMs = ElapsedMilliseconds(responseWaitStartedAt);
                 }
                 var resultBuildStartedAt = StartTiming(timings);
-                var result = BuildResult(response, localDeadline, timings);
+                var responseAckDeadline = WorkflowTriggerMailboxClient.LocalDeadlineFromBackendMonotonicNs(
+                    response.ResponseAckDeadlineNs);
+                var result = BuildResult(response, responseAckDeadline, timings);
                 if (timings != null)
                 {
                     timings.SdkResultBuildMs = ElapsedMilliseconds(resultBuildStartedAt);
@@ -436,11 +439,15 @@ namespace Amvar.Vision.SharedMemory
 
                 return result;
             }
-            catch
+            catch (Exception error)
             {
                 try
                 {
-                    mailbox.Cancel(identity);
+                    var cancelReason = error is SharedMemoryTriggerException triggerError
+                        && string.Equals(triggerError.ErrorCode, "timeout", StringComparison.Ordinal)
+                            ? WorkflowTriggerMailboxV1.CancelReasonRequestTimeout
+                            : WorkflowTriggerMailboxV1.CancelReasonExplicit;
+                    mailbox.Cancel(identity, cancelReason);
                 }
                 catch
                 {
@@ -512,13 +519,13 @@ namespace Amvar.Vision.SharedMemory
             }
             catch (Exception error)
             {
-                mailbox.Cancel(response.Identity);
+                mailbox.Cancel(response.Identity, WorkflowTriggerMailboxV1.CancelReasonExplicit);
                 throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger response is not valid result JSON.", error);
             }
 
             if (!string.Equals(triggerResult.FormatId, AMVisionTriggerClient.TriggerResultFormatId, StringComparison.Ordinal))
             {
-                mailbox.Cancel(response.Identity);
+                mailbox.Cancel(response.Identity, WorkflowTriggerMailboxV1.CancelReasonExplicit);
                 throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger result format_id is not supported.");
             }
 
@@ -527,7 +534,7 @@ namespace Amvar.Vision.SharedMemory
             var localPayloads = physical.Where(item => string.Equals(item.DeliveryKind, "local-buffer", StringComparison.Ordinal)).ToArray();
             if (localPayloads.Length != response.OutputLeaseCount)
             {
-                mailbox.Cancel(response.Identity);
+                mailbox.Cancel(response.Identity, WorkflowTriggerMailboxV1.CancelReasonExplicit);
                 throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger output lease count does not match the manifest.");
             }
 
@@ -585,7 +592,7 @@ namespace Amvar.Vision.SharedMemory
                     reader.Dispose();
                 }
 
-                mailbox.Cancel(response.Identity);
+                mailbox.Cancel(response.Identity, WorkflowTriggerMailboxV1.CancelReasonExplicit);
                 throw;
             }
         }
@@ -597,25 +604,47 @@ namespace Amvar.Vision.SharedMemory
         {
             if (payload.BufferRef == null
                 || string.IsNullOrWhiteSpace(payload.ReaderGuardPath)
+                || payload.ReaderGuardOffset.GetValueOrDefault(-1) < 0
                 || payload.ReaderGuardSlots.GetValueOrDefault() <= 0
                 || payload.ContentLength <= 0)
             {
                 throw new SharedMemoryTriggerException("protocol_error", "LocalBuffer result locator is incomplete.");
             }
 
-            var path = payload.BufferRef.Value<string>("path") ?? string.Empty;
+            var arenaId = payload.BufferRef.Value<string>("arena_id") ?? string.Empty;
+            var brokerEpoch = payload.BufferRef.Value<string>("broker_epoch") ?? string.Empty;
+            var descriptorIndex = payload.BufferRef.Value<int?>("descriptor_index") ?? -1;
+            var descriptorGeneration = payload.BufferRef.Value<long?>("descriptor_generation") ?? -1;
             var offset = payload.BufferRef.Value<long?>("offset") ?? -1;
-            var size = payload.BufferRef.Value<long?>("size") ?? -1;
-            if (string.IsNullOrWhiteSpace(path) || offset < 0 || size != payload.ContentLength)
+            var size = payload.BufferRef.Value<long?>("content_length") ?? -1;
+            var capacity = payload.BufferRef.Value<long?>("allocation_capacity_bytes") ?? -1;
+            if (string.IsNullOrWhiteSpace(arenaId)
+                || string.IsNullOrWhiteSpace(brokerEpoch)
+                || descriptorIndex < 0
+                || descriptorGeneration <= 0
+                || offset < 0
+                || size != payload.ContentLength
+                || capacity < size
+                || !string.Equals(payload.ReaderGuardPath, options.GuardPath, StringComparison.OrdinalIgnoreCase)
+                || payload.ReaderGuardOffset != mappingCache.ReaderGuardOffset(descriptorIndex))
             {
                 throw new SharedMemoryTriggerException("protocol_error", "LocalBuffer result range is invalid.");
             }
 
             var guard = ByteRangeGuard.AcquireReader(
                 payload.ReaderGuardPath!,
+                payload.ReaderGuardOffset.GetValueOrDefault(),
                 payload.ReaderGuardSlots.GetValueOrDefault(),
                 localDeadline);
-            var reader = new PhysicalPayloadReader(payload.PayloadId, payload.MediaType, path, offset, size, guard);
+            mappingCache.ValidateActiveBufferRef(
+                arenaId,
+                brokerEpoch,
+                descriptorIndex,
+                descriptorGeneration,
+                offset,
+                size,
+                capacity);
+            var reader = new PhysicalPayloadReader(payload.PayloadId, payload.MediaType, options.ArenaPath, offset, size, guard);
             try
             {
                 if (!string.Equals(payload.ChecksumAlgorithm, "crc32", StringComparison.OrdinalIgnoreCase))
@@ -776,13 +805,13 @@ namespace Amvar.Vision.SharedMemory
         private static void ValidateAllocation(WorkflowTriggerAllocation allocation, long expectedSize)
         {
             if (!string.Equals(allocation.FormatId, "amvision.workflow-trigger-allocation.v1", StringComparison.Ordinal)
-                || allocation.Size != expectedSize
+                || allocation.ContentLength != expectedSize
                 || allocation.Offset < 0
-                || allocation.SlotCapacityBytes < allocation.Size
-                || string.IsNullOrWhiteSpace(allocation.Path)
-                || string.IsNullOrWhiteSpace(allocation.WriterGuardPath)
+                || allocation.AllocationCapacityBytes < allocation.ContentLength
+                || string.IsNullOrWhiteSpace(allocation.ArenaId)
                 || string.IsNullOrWhiteSpace(allocation.BrokerEpoch)
-                || allocation.Generation <= 0)
+                || allocation.DescriptorIndex < 0
+                || allocation.DescriptorGeneration <= 0)
             {
                 throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger allocation does not match the requested image.");
             }

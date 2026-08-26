@@ -39,7 +39,6 @@ DEFAULT_DIRECT_MODEL_TOP_K = 5
 DEFAULT_DIRECT_MODEL_KEYPOINT_CONFIDENCE_THRESHOLD = 0.3
 DEFAULT_WORKFLOW_LOCAL_BUFFER_TTL_SECONDS = 330.0
 WORKFLOW_LOCAL_BUFFER_TTL_GRACE_SECONDS = 30.0
-_WORKFLOW_REUSABLE_MODEL_BUFFERS_KEY = "_workflow_reusable_model_buffers"
 
 
 @dataclass(frozen=True)
@@ -48,16 +47,7 @@ class _TemporaryLocalBufferInput:
 
     payload: dict[str, object]
     lease_id: str | None
-    pool_name: str | None
     release_after_inference: bool = True
-
-
-@dataclass(frozen=True)
-class _ReusableLocalBufferInput:
-    """描述一次 Workflow Run 内可串行复用的模型输入槽位。"""
-
-    lease: object
-    buffer_ref_payload: dict[str, object]
 
 
 def run_direct_model_inference(
@@ -194,14 +184,6 @@ def _try_write_memory_image_to_local_buffer(
     write_bytes = getattr(local_buffer_writer, "write_bytes", None)
     if not callable(write_bytes):
         return None
-    reusable_input = _try_reuse_local_buffer_input(
-        request=request,
-        local_buffer_writer=local_buffer_writer,
-        normalized_payload=normalized_payload,
-        image_bytes=image_bytes,
-    )
-    if reusable_input is not None:
-        return reusable_input
     write_result = write_bytes(
         content=image_bytes,
         owner_kind="workflow-runtime",
@@ -226,30 +208,13 @@ def _try_write_memory_image_to_local_buffer(
     buffer_payload.pop("frame_ref", None)
     lease = getattr(write_result, "lease", None)
     lease_id = getattr(lease, "lease_id", None)
-    pool_name = getattr(lease, "pool_name", None)
     temporary_input = _TemporaryLocalBufferInput(
         payload=buffer_payload,
         lease_id=lease_id.strip()
         if isinstance(lease_id, str) and lease_id.strip()
         else None,
-        pool_name=pool_name.strip()
-        if isinstance(pool_name, str) and pool_name.strip()
-        else None,
-        release_after_inference=not _supports_reusable_model_buffer(request),
+        release_after_inference=True,
     )
-    if not temporary_input.release_after_inference and temporary_input.lease_id is not None:
-        _register_local_buffer_lease_cleanup(
-            request=request,
-            lease_id=temporary_input.lease_id,
-            pool_name=temporary_input.pool_name,
-        )
-        _remember_reusable_local_buffer_input(
-            request=request,
-            normalized_payload=normalized_payload,
-            image_bytes=image_bytes,
-            lease=write_result.lease,
-            buffer_ref_payload=write_result.buffer_ref.model_dump(mode="json"),
-        )
     return temporary_input
 
 
@@ -272,16 +237,14 @@ def _release_temporary_local_buffer_input(
         _register_local_buffer_lease_cleanup(
             request=request,
             lease_id=temporary_input.lease_id,
-            pool_name=temporary_input.pool_name,
         )
         return
     try:
-        release(temporary_input.lease_id, pool_name=temporary_input.pool_name)
+        release(temporary_input.lease_id)
     except Exception:
         _register_local_buffer_lease_cleanup(
             request=request,
             lease_id=temporary_input.lease_id,
-            pool_name=temporary_input.pool_name,
         )
 
 
@@ -289,7 +252,6 @@ def _register_local_buffer_lease_cleanup(
     *,
     request: WorkflowNodeExecutionRequest,
     lease_id: str,
-    pool_name: str | None,
 ) -> None:
     """登记当前节点写入的 LocalBufferBroker lease 清理项。"""
 
@@ -302,114 +264,6 @@ def _register_local_buffer_lease_cleanup(
     register_local_buffer_lease_cleanup(
         request.execution_metadata,
         lease_id=lease_id.strip(),
-        pool_name=pool_name.strip()
-        if isinstance(pool_name, str) and pool_name.strip()
-        else None,
-    )
-
-
-def _supports_reusable_model_buffer(request: WorkflowNodeExecutionRequest) -> bool:
-    """判断当前调用是否处于具备统一 cleanup 的 Workflow Run。"""
-
-    from backend.service.application.workflows.execution_cleanup import (
-        WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY,
-    )
-
-    local_buffer_writer = request.execution_metadata.get("local_buffer_reader")
-    return (
-        isinstance(
-            request.execution_metadata.get(WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY),
-            list,
-        )
-        and callable(getattr(local_buffer_writer, "write_lease_bytes", None))
-    )
-
-
-def _try_reuse_local_buffer_input(
-    *,
-    request: WorkflowNodeExecutionRequest,
-    local_buffer_writer: object,
-    normalized_payload: dict[str, object],
-    image_bytes: bytes | memoryview,
-) -> _TemporaryLocalBufferInput | None:
-    """在同一循环节点的串行推理间复用已经提交的 mmap 槽位。"""
-
-    if not _supports_reusable_model_buffer(request):
-        return None
-    cache = request.execution_metadata.get(_WORKFLOW_REUSABLE_MODEL_BUFFERS_KEY)
-    if not isinstance(cache, dict):
-        return None
-    cache_key = _build_reusable_model_buffer_key(
-        request=request,
-        normalized_payload=normalized_payload,
-        image_bytes=image_bytes,
-    )
-    cached = cache.get(cache_key)
-    if not isinstance(cached, _ReusableLocalBufferInput):
-        return None
-    write_lease_bytes = getattr(local_buffer_writer, "write_lease_bytes", None)
-    if not callable(write_lease_bytes):
-        return None
-    write_lease_bytes(lease=cached.lease, content=image_bytes)
-    buffer_payload = dict(normalized_payload)
-    buffer_payload["transport_kind"] = IMAGE_TRANSPORT_BUFFER
-    buffer_payload["buffer_ref"] = dict(cached.buffer_ref_payload)
-    buffer_payload.pop("image_handle", None)
-    buffer_payload.pop("object_key", None)
-    buffer_payload.pop("local_path", None)
-    buffer_payload.pop("frame_ref", None)
-    lease_id = cached.buffer_ref_payload.get("lease_id")
-    return _TemporaryLocalBufferInput(
-        payload=buffer_payload,
-        lease_id=lease_id if isinstance(lease_id, str) else None,
-        pool_name=None,
-        release_after_inference=False,
-    )
-
-
-def _remember_reusable_local_buffer_input(
-    *,
-    request: WorkflowNodeExecutionRequest,
-    normalized_payload: dict[str, object],
-    image_bytes: bytes | memoryview,
-    lease: object,
-    buffer_ref_payload: dict[str, object],
-) -> None:
-    """保存本次循环节点后续调用可直接覆盖的 mmap 槽位。"""
-
-    raw_cache = request.execution_metadata.get(_WORKFLOW_REUSABLE_MODEL_BUFFERS_KEY)
-    if not isinstance(raw_cache, dict):
-        raw_cache = {}
-        request.execution_metadata[_WORKFLOW_REUSABLE_MODEL_BUFFERS_KEY] = raw_cache
-    raw_cache[
-        _build_reusable_model_buffer_key(
-            request=request,
-            normalized_payload=normalized_payload,
-            image_bytes=image_bytes,
-        )
-    ] = _ReusableLocalBufferInput(
-        lease=lease,
-        buffer_ref_payload=dict(buffer_ref_payload),
-    )
-
-
-def _build_reusable_model_buffer_key(
-    *,
-    request: WorkflowNodeExecutionRequest,
-    normalized_payload: dict[str, object],
-    image_bytes: bytes | memoryview,
-) -> tuple[object, ...]:
-    """构造仅在图片存储布局完全一致时命中的槽位复用键。"""
-
-    image_payload = require_image_payload(normalized_payload)
-    return (
-        request.node_id,
-        len(image_bytes),
-        str(normalized_payload.get("media_type") or ""),
-        tuple(image_payload.get("shape", ())),
-        _read_optional_payload_text(normalized_payload, "dtype"),
-        _read_optional_payload_text(normalized_payload, "layout"),
-        _read_optional_payload_text(normalized_payload, "pixel_format"),
     )
 
 

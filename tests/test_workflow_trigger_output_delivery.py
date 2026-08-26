@@ -15,7 +15,6 @@ from backend.service.application.errors import (
     InvalidRequestError,
 )
 from backend.service.application.local_buffers import (
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerProcessSupervisor,
     LocalBufferBrokerSettings,
 )
@@ -155,7 +154,7 @@ def test_current_run_buffer_is_handed_off_once_for_duplicate_attachments(
 ) -> None:
     """同一物理 BufferRef 的多个逻辑 item 只发生一次 owner transfer。"""
 
-    with _broker(tmp_path, slot_count=3) as supervisor:
+    with _broker(tmp_path, capacity_units=3) as supervisor:
         client = supervisor.create_client()
         assert client is not None
         content = b"BGR" * 1024
@@ -180,7 +179,6 @@ def test_current_run_buffer_is_handed_off_once_for_duplicate_attachments(
         register_local_buffer_lease_cleanup(
             execution_metadata,
             lease_id=allocation.receipt.lease_id,
-            pool_name=allocation.receipt.pool_name,
             ownership_receipt=allocation.receipt,
         )
         image_ref = {
@@ -209,7 +207,7 @@ def test_current_run_buffer_is_handed_off_once_for_duplicate_attachments(
         public_payload = build_public_prepared_result_payload(prepared)
         public_physical = public_payload["payloads"][0]
         assert public_physical["reader_guard_path"] == (
-            response_receipts[0].reader_guard_path
+            response_receipts[0].guard_path
         )
         assert public_physical["reader_guard_slots"] == (
             response_receipts[0].reader_guard_slots
@@ -225,7 +223,7 @@ def test_foreign_buffer_is_copied_under_reader_guard(
 ) -> None:
     """缺少当前 Run receipt 的 BufferRef 复制到新 lease，不转移 foreign owner。"""
 
-    with _broker(tmp_path, slot_count=3) as supervisor:
+    with _broker(tmp_path, capacity_units=3) as supervisor:
         client = supervisor.create_client()
         assert client is not None
         content = b"foreign-image" * 128
@@ -371,6 +369,9 @@ def _response_plan(
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
         reply_timeout_seconds=30,
+        response_ack_timeout_seconds=(
+            30.0 if trigger_kind == "local-shared-memory" else None
+        ),
         selected_output_payload_types=selected_output_payload_types,
         previous_plan=previous_plan,
     )
@@ -380,22 +381,19 @@ def _response_plan(
 def _broker(
     tmp_path: Path,
     *,
-    slot_count: int,
+    capacity_units: int,
 ) -> object:
-    """构造可作为 context manager 使用的真实 Broker supervisor。"""
+    """构造小容量固定 arena；capacity_units 只调节测试总容量。"""
 
     supervisor = LocalBufferBrokerProcessSupervisor(
         settings=LocalBufferBrokerSettings(
             root_dir=str(tmp_path / "buffers"),
-            default_pool_name="image",
+            arena_id="local-buffer-main",
+            arena_size_bytes=max(4, capacity_units) * 1024 * 1024,
+            min_block_size_bytes=1024 * 1024,
+            max_allocation_bytes=4 * 1024 * 1024,
+            reader_guard_slots=8,
             request_timeout_seconds=5.0,
-            pools=(
-                LocalBufferBrokerPoolSettings(
-                    pool_name="image",
-                    slot_size_bytes=64 * 1024,
-                    slot_count=slot_count,
-                ),
-            ),
         )
     )
     supervisor.start()
@@ -416,13 +414,12 @@ def _write_external(
 
     deadline_ns = monotonic_ns() + 5_000_000_000
     allocation = client.allocate_external_buffer(
-        size=len(content),
+        content_length=len(content),
         owner_kind=owner_kind,
         owner_id=owner_id,
         deadline_ns=deadline_ns,
     )
-    with client.acquire_external_writer_guard(receipt=allocation.receipt):
-        client.write_lease_bytes(lease=allocation.lease, content=content)
+    client.write_lease_bytes(lease=allocation.lease, content=content)
     result = client.commit_external_buffer(
         receipt=allocation.receipt,
         checksum=crc32(content) & 0xFFFFFFFF,

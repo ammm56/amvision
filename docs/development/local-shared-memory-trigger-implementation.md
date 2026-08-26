@@ -71,7 +71,7 @@
 - [ZeroMQ adapter 写 LocalBuffer](../../backend/service/infrastructure/integrations/zeromq/zeromq_trigger_adapter.py)
 - [raw/encoded 图片矩阵读取](../../backend/service/application/images/image_matrix.py)
 - [Workflow 单次执行图片缓存](../../backend/nodes/runtime_support.py)
-- [普通 LocalBuffer lease 与 frame channel](../../backend/service/infrastructure/local_buffers/mmap_buffer_pool.py)
+- [LocalBuffer arena lease 与 frame channel](../../backend/service/infrastructure/local_buffers/local_buffer_arena_pool.py)
 - [Workflow Runtime manager](../../backend/service/application/workflows/worker/manager.py)
 - [现有 inference mailbox guard](../../backend/service/application/runtime/deployment/inference_local_mmap.py)
 - [全局 Workflow Trigger mailbox](../../backend/service/infrastructure/ipc/workflow_trigger_mailbox.py)
@@ -582,13 +582,13 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 | Workflow 执行 | `workflow-runtime` | runtime id、run id、request id |
 | 协议交付输出 | `workflow-trigger-response` | `delivery_kind + response_id`；local-shared-memory 包含 server epoch、descriptor、generation、request id，ZeroMQ 包含 listener/source/event/send generation |
 
-所有 cleanup 项必须保存私有 `LeaseOwnershipReceipt`，至少包含 expected lease id、buffer id、pool、broker epoch、generation、owner kind/id、deadline、guard identity 和精确范围。旧 owner cleanup 遇到 handoff 后的新 owner 时返回幂等 no-op，不能按公开 BufferRef 或 lease id 释放。
+所有 cleanup 项必须保存私有 `LeaseOwnershipReceipt`，至少包含 expected lease id、buffer id、arena id、broker epoch、descriptor generation、owner kind/id、deadline、guard identity 和精确范围。旧 owner cleanup 遇到 handoff 后的新 owner 时返回幂等 no-op，不能按公开 BufferRef 或 lease id 释放。
 
 ### writer/reader guard
 
-本节记录已交付固定 pool/slot 实现的 guard 语义。下一阶段只保留“写入/读取期间持有 OS guard、回收前重验 identity”的原则；物理 guard 布局和锁顺序必须迁移为 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 与[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)定义的 descriptor publication/writer/reader ranges，不能继续新增固定 pool 代码。
+当前实现使用固定总容量 arena、持久 descriptor 和动态 buddy extent。写入/读取期间持有 OS guard，回收按 `REVOKING` publication → writer/全部 reader guards → allocator lock → publication guard → identity 重验 → FREE/merge 的固定顺序执行。物理 layout 与锁顺序以 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 和[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)为准。
 
-- 每个 pool 使用固定 guard 文件和 slot 对应 byte range，文件仍位于该 pool 的 `data/buffers/` 根目录内。
+- 每个 arena 使用固定 guard 文件，descriptor 拥有独立 publication、writer 和 reader byte ranges；正式图片数据面文件位于 `data/buffers/local-buffer/`。
 - SDK writer 从首字节写入前持有 guard，到 REQUEST 发布后释放。
 - Broker commit、cancel 或 expiry 只有取得 guard 后才能读取或复用字节区。
 - SDK output reader 在结果对象返回前取得 guard，并持有到结果 `Dispose`/`DisposeAsync`；首次 checksum/内容校验完成不是释放时点。
@@ -600,10 +600,10 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 - WRITING 超时、SDK cancel 或 descriptor epoch 失效时进入 REVOKING；ACTIVE response reader/tracker 超时或协议交付失败时同样先进入 REVOKING。
 - backend-service 在 descriptor 中发布 CANCELLED，SDK 观察后停止并释放 writer guard。
 - Broker 在可配置撤销宽限期内非阻塞重试对应 writer/reader OS guard，不能阻塞主控制循环。ZeroMQ adapter 进程内 transport-lifetime registry 独立等待 `zmq.Frame`/`MessageTracker`，结束后再调用 Broker 条件释放接口。
-- 宽限期结束仍无法取得 guard时进入 QUARANTINED，不计入可用 slot。
+- 宽限期结束仍无法取得 guard时进入 QUARANTINED，不计入可用容量。
 - sweep 后续取得 guard 后按 identity 清空并回到 FREE。
-- Broker 重启时生成新 broker epoch，旧引用失效；仍需取得旧 external guard 后才能复用对应物理 slot。
-- trusted-local 之外的恶意进程可以绕过 guard直接写 pool，该威胁不在本协议解决范围内。
+- Broker 重启时生成新 broker epoch，旧引用失效；仍需取得旧 external guard 后才能复用对应物理 extent。
+- trusted-local 之外的恶意进程可以绕过 guard直接写 arena，该威胁不在本协议解决范围内。
 
 ## Runtime execution token
 

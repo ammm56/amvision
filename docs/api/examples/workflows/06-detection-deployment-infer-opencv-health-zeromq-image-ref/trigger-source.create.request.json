@@ -9,8 +9,7 @@
   "transport_config": {
     "bind_endpoint": "tcp://127.0.0.1:5555",
     "default_input_binding": "request_image_ref",
-    "content_transport": "local-buffer",
-    "pool_name": "image-4k"
+    "content_transport": "local-buffer"
   },
   "input_binding_mapping": {
     "request_image_ref": {

@@ -176,6 +176,7 @@ def acquire_mmap_reader_guard(
     slot_count: int,
     deadline_ns: int,
     poll_interval_seconds: float,
+    start_offset: int = 0,
 ) -> Iterator[None]:
     """从固定 byte-range 中取得一个共享 reader guard 槽位。
 
@@ -188,18 +189,20 @@ def acquire_mmap_reader_guard(
         raise ValueError("reader guard slot_count 必须大于 0")
     if poll_interval_seconds <= 0:
         raise ValueError("poll_interval_seconds 必须大于 0")
+    if start_offset < 0:
+        raise ValueError("reader guard start_offset 不能小于 0")
     path = Path(guard_path)
     try:
         guard_file = path.open("r+b", buffering=0)
     except FileNotFoundError:
         path.parent.mkdir(parents=True, exist_ok=True)
         guard_file = path.open("a+b", buffering=0)
-        if os.fstat(guard_file.fileno()).st_size < slot_count:
-            guard_file.truncate(slot_count)
+        if os.fstat(guard_file.fileno()).st_size < start_offset + slot_count:
+            guard_file.truncate(start_offset + slot_count)
     acquired_offset: int | None = None
     try:
         while acquired_offset is None:
-            for offset in range(slot_count):
+            for offset in range(start_offset, start_offset + slot_count):
                 try:
                     try_lock_byte_range_file(guard_file, offset=offset, length=1)
                 except (BlockingIOError, OSError):

@@ -1,4 +1,4 @@
-"""LocalBufferBroker ring buffer 帧引用规则。"""
+"""LocalBuffer 固定 arena frame channel 引用规则。"""
 
 from __future__ import annotations
 
@@ -11,72 +11,49 @@ FRAME_REF_FORMAT = "amvision.frame-ref.v1"
 
 
 class FrameRef(BaseModel):
-    """描述 ring buffer channel 中某一帧的短期引用。
-
-    字段：
-    - format_id：当前引用 JSON 格式版本。
-    - stream_id：连续帧来源 id。
-    - sequence_id：帧递增序号。
-    - buffer_id：ring buffer 槽位 id。
-    - path：ring buffer mmap 文件路径；仅本机短期有效。
-    - offset：帧数据在 mmap 文件中的起始偏移。
-    - size：当前帧的有效字节数。
-    - shape：raw 图像或 tensor 的形状。
-    - dtype：raw 数据类型，例如 uint8。
-    - layout：raw 数据布局，例如 HWC 或 CHW。
-    - pixel_format：像素格式，例如 BGR 或 RGB。
-    - media_type：媒体类型，例如 image/raw。
-    - broker_epoch：broker 启动代次，用于识别重启后的旧引用。
-    - generation：槽位复用代次，用于识别覆盖后的旧引用。
-    - metadata：附加元数据。
-    """
+    """描述 frame channel 中某一代连续 extent 的短期引用。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    format_id: Literal["amvision.frame-ref.v1"] = FRAME_REF_FORMAT
+    format_id: Literal[FRAME_REF_FORMAT] = FRAME_REF_FORMAT
     stream_id: str
     sequence_id: int = Field(ge=0)
     buffer_id: str
-    path: str
+    arena_id: str
+    descriptor_index: int = Field(ge=0)
+    descriptor_generation: int = Field(ge=1)
+    broker_epoch: str
     offset: int = Field(ge=0)
-    size: int = Field(gt=0)
+    content_length: int = Field(gt=0)
+    allocation_capacity_bytes: int = Field(gt=0)
     shape: tuple[int, ...] = ()
     dtype: str | None = None
     layout: str | None = None
     pixel_format: str | None = None
     media_type: str
-    broker_epoch: str
-    generation: int = Field(ge=1)
     metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_ref(self) -> FrameRef:
-        """校验 FrameRef 字段的基础一致性。
+        """校验 frame identity、连续范围和表示元数据。"""
 
-        返回：
-        - FrameRef：校验后的引用。
-        """
-
-        _require_stripped_text(self.stream_id, "stream_id")
-        _require_stripped_text(self.buffer_id, "buffer_id")
-        _require_stripped_text(self.path, "path")
-        _require_stripped_text(self.media_type, "media_type")
-        _require_stripped_text(self.broker_epoch, "broker_epoch")
+        for field_name in (
+            "stream_id",
+            "buffer_id",
+            "arena_id",
+            "broker_epoch",
+            "media_type",
+        ):
+            _require_stripped_text(getattr(self, field_name), field_name)
+        if self.content_length > self.allocation_capacity_bytes:
+            raise ValueError("content_length 不能超过 allocation_capacity_bytes")
         if any(dimension <= 0 for dimension in self.shape):
             raise ValueError("shape 中的维度必须为正整数")
         return self
 
 
 def _require_stripped_text(value: str, field_name: str) -> str:
-    """校验字符串字段非空。
-
-    参数：
-    - value：待校验字符串。
-    - field_name：字段名称。
-
-    返回：
-    - str：去除两端空白后的字符串。
-    """
+    """校验字符串字段非空。"""
 
     normalized_value = value.strip()
     if not normalized_value:

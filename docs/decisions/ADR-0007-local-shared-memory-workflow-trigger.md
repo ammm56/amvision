@@ -2,9 +2,9 @@
 
 ## 状态
 
-已接受并交付主体实现。历史阶段 0–9 曾通过对应源码开发环境门禁，但后续代码复审确认仍需修复 Workflow Trigger mailbox 的共享 overflow page 并发、总 deadline、独立 ACK deadline、PROCESSING 取消和 per-source health；LocalBuffer 固定分辨率 pool/slot 也将由 ADR-0008 的固定 arena 方案替代。这些是实现完整性修正，不改变本 ADR 的 Trigger 产品边界。
+已接受并完成阶段0–9实现。Workflow Trigger mailbox 的共享 overflow page 并发、单一总 deadline、独立 ACK deadline、PROCESSING 取消、per-source health，以及 ADR-0008 固定 arena 数据面均已接入正式链路；完整故障、容量、性能和业务 soak 仍在执行。这些实现完整性修正没有改变本 ADR 的 Trigger 产品边界。
 
-本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。已交付协议细节与历史性能数据见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；下一阶段修复与迁移顺序见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
+本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。协议细节与性能边界见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；当前完成状态和剩余门禁见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
 
 ## 背景
 

@@ -19,7 +19,7 @@
 GET {{baseUrl}}/api/v1/system/config
 ```
 
-该请求用于读取当前 backend-service 已解析的统一配置。创建 ZeroMQ TriggerSource 前，应从响应的 `config.local_buffer_broker.default_pool_name` 和 `config.local_buffer_broker.pools` 确认可选 pool，再把选中的名称写入 TriggerSource 的 `transport_config.pool_name`。
+该请求用于读取当前 backend-service 已解析的统一配置。LocalBuffer 使用服务端固定的 `config.local_buffer_broker.arena_id` 与容量几何，TriggerSource 不选择 pool，也不在 `transport_config` 中传递 arena 文件或路径。ZeroMQ 只需配置 endpoint 与输入 binding；本机共享内存 Trigger 使用全局 mailbox 和主 arena，无需 endpoint。
 
 正式 workflow 场景已经拆到 `docs/api/postman/workflows/`：
 

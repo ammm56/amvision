@@ -22,7 +22,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Event, Lock
+from threading import Barrier, Event, Lock
 from typing import Any, Callable, Final
 from uuid import uuid4
 
@@ -564,9 +564,14 @@ def run_soak(config: RuntimeSoakConfig) -> int:
             resolved_config, preflight = run_preflight(config, api_client)
         _write_json_atomically(config.output_dir / "preflight.json", preflight)
 
-        # 预检可能包含 runtime 恢复或较慢的控制面调用；持续时长只计算正式负载阶段。
-        deadline = time.monotonic() + config.duration_seconds
         worker_count = max(1, len(lanes) * config.concurrency_per_lane)
+        deadline_holder = [0.0]
+        ready_barrier = Barrier(
+            worker_count + 1,
+            action=lambda: deadline_holder.__setitem__(
+                0, time.monotonic() + config.duration_seconds
+            ),
+        )
         with ThreadPoolExecutor(
             max_workers=worker_count,
             thread_name_prefix="runtime-soak",
@@ -581,10 +586,16 @@ def run_soak(config: RuntimeSoakConfig) -> int:
                             config=resolved_config,
                             metrics=metrics[lane.name],
                             stop_event=stop_event,
-                            deadline=deadline,
+                            ready_barrier=ready_barrier,
+                            deadline_holder=deadline_holder,
                         )
                     )
 
+            # 所有 lane 完成 client 和输入资产准备后，再统一开始正式负载窗口。
+            ready_barrier.wait(
+                timeout=max(10.0, config.http_timeout_seconds + 5.0)
+            )
+            deadline = deadline_holder[0]
             next_sample_at = time.monotonic()
             while time.monotonic() < deadline:
                 now = time.monotonic()
@@ -787,7 +798,8 @@ def _run_lane_worker(
     config: RuntimeSoakConfig,
     metrics: LaneMetrics,
     stop_event: Event,
-    deadline: float,
+    ready_barrier: Barrier,
+    deadline_holder: list[float],
 ) -> None:
     """持续执行一个通道，错误计入指标后继续下一次请求。"""
 
@@ -797,7 +809,8 @@ def _run_lane_worker(
             metrics=metrics,
             worker_index=worker_index,
             stop_event=stop_event,
-            deadline=deadline,
+            ready_barrier=ready_barrier,
+            deadline_holder=deadline_holder,
         )
         return
 
@@ -812,6 +825,7 @@ def _run_lane_worker(
             if config.workflow_image_path is not None
             else None
         )
+        ready_barrier.wait()
 
         def operation(sequence: int) -> None:
             if lane.kind == "deployment-sync":
@@ -842,7 +856,7 @@ def _run_lane_worker(
             config=config,
             metrics=metrics,
             stop_event=stop_event,
-            deadline=deadline,
+            deadline=deadline_holder[0],
         )
 
 
@@ -852,7 +866,8 @@ def _run_trigger_lane(
     metrics: LaneMetrics,
     worker_index: int,
     stop_event: Event,
-    deadline: float,
+    ready_barrier: Barrier,
+    deadline_holder: list[float],
 ) -> None:
     endpoint = config.trigger_endpoint
     if endpoint is None:
@@ -867,6 +882,7 @@ def _run_trigger_lane(
         else None
     )
     try:
+        ready_barrier.wait()
 
         def operation(sequence: int) -> None:
             envelope = dict(config.trigger_envelope)
@@ -887,7 +903,7 @@ def _run_trigger_lane(
             config=config,
             metrics=metrics,
             stop_event=stop_event,
-            deadline=deadline,
+            deadline=deadline_holder[0],
         )
     finally:
         client.close()

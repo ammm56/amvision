@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import logging
-from threading import Lock
+from threading import Event, Lock
 from time import monotonic, perf_counter
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -242,6 +242,8 @@ class WorkflowRuntimeSyncAdmission:
     workflow_run: WorkflowRun
     dispatch_record_persisted: bool
     execution_token: WorkflowRuntimeExecutionToken
+    cancel_event: Event
+    cancellation_grace_seconds: float
 
 
 def _read_contract_binding_ids(contract: dict[str, object], direction: str) -> set[str]:
@@ -2304,6 +2306,7 @@ class WorkflowRuntimeService:
         *,
         created_by: str | None,
         execution_acquisition_mode: str = "reject",
+        cancellation_grace_seconds: float = 0.0,
     ) -> WorkflowRuntimeSyncAdmission:
         """建立 WorkflowRun identity 并取得真实 Runtime execution token。
 
@@ -2318,6 +2321,7 @@ class WorkflowRuntimeService:
                 request,
                 created_by=created_by,
                 execution_acquisition_mode=execution_acquisition_mode,
+                cancellation_grace_seconds=cancellation_grace_seconds,
             )
 
     def invoke_admitted_sync_workflow_run(
@@ -2394,6 +2398,8 @@ class WorkflowRuntimeService:
                 expected_snapshot_fingerprint=(
                     active_revision.expected_snapshot_fingerprint
                 ),
+                cancel_event=admission.cancel_event,
+                cancellation_grace_seconds=admission.cancellation_grace_seconds,
                 execution_token=admission.execution_token,
             )
             sync_timings["workflow_worker_invoke_ms"] = _elapsed_ms(
@@ -2608,6 +2614,7 @@ class WorkflowRuntimeService:
         *,
         created_by: str | None,
         execution_acquisition_mode: str,
+        cancellation_grace_seconds: float,
     ) -> WorkflowRuntimeSyncAdmission:
         """在生命周期锁内固定执行来源并持久化同步 dispatching 记录。"""
 
@@ -2674,6 +2681,7 @@ class WorkflowRuntimeService:
         dispatch_record_persisted = should_persist_workflow_run_dispatch_record(
             execution_metadata
         )
+        cancel_event = Event()
         execution_token = self.worker_manager.acquire_execution_token(
             workflow_app_runtime=workflow_app_runtime,
             workflow_run_id=workflow_run.workflow_run_id,
@@ -2684,6 +2692,7 @@ class WorkflowRuntimeService:
             expected_snapshot_fingerprint=(
                 active_revision.expected_snapshot_fingerprint
             ),
+            cancel_event=cancel_event,
         )
         try:
             if dispatch_record_persisted:
@@ -2722,6 +2731,8 @@ class WorkflowRuntimeService:
             workflow_run=workflow_run,
             dispatch_record_persisted=dispatch_record_persisted,
             execution_token=execution_token,
+            cancel_event=cancel_event,
+            cancellation_grace_seconds=cancellation_grace_seconds,
         )
 
     def _finish_sync_dispatch_error(

@@ -588,7 +588,6 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
         transport_config={
             "bind_endpoint": f"inproc://zeromq-trigger-test-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
-            "pool_name": "image-640x640",
         },
     )
     local_buffer_writer = _FakeLocalBufferWriter()
@@ -622,7 +621,7 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
     assert image_payload["transport_kind"] == "buffer"
     assert image_payload["buffer_ref"]["format_id"] == "amvision.buffer-ref.v1"
     assert image_payload["buffer_ref"]["media_type"] == "image/png"
-    assert local_buffer_writer.write_calls[0]["pool_name"] == "image-640x640"
+    assert local_buffer_writer.write_calls[0]["content"] == b"image-bytes"
     cleanup_items = submitter.last_request.trigger_source.default_execution_metadata[
         WORKFLOW_EXECUTION_CLEANUP_ITEMS_KEY
     ]
@@ -630,7 +629,7 @@ def test_zeromq_trigger_adapter_maps_content_frame_to_buffer_ref_payload() -> No
         {
             "resource_kind": "local_buffer_lease",
             "resource_id": "lease-1",
-            "metadata": {"pool_name": "image-640x640"},
+            "metadata": {},
         }
     ]
 
@@ -667,7 +666,7 @@ def test_zeromq_trigger_adapter_releases_unclaimed_replay_buffer() -> None:
     )
 
     assert result.metadata["idempotent_replay"] is True
-    assert local_buffer_writer.released_leases == [("lease-1", None)]
+    assert local_buffer_writer.released_leases == ["lease-1"]
 
 
 def test_zeromq_bgr24_trigger_invokes_deployment_model_without_diagnostics_by_default() -> (
@@ -793,7 +792,7 @@ def test_zeromq_trigger_adapter_releases_buffer_when_submit_is_rejected() -> Non
 
     assert result.state == "failed"
     assert result.workflow_run_id is None
-    assert local_buffer_writer.released_leases == [("lease-1", None)]
+    assert local_buffer_writer.released_leases == ["lease-1"]
 
 
 def test_zeromq_trigger_adapter_serves_req_rep_message() -> None:
@@ -1702,7 +1701,10 @@ def _build_trigger_source(
         submit_mode=submit_mode,
         result_mode=result_mode,
         ack_policy=ack_policy,
-        reply_timeout_seconds=None,
+        reply_timeout_seconds=(30 if trigger_kind == "local-shared-memory" else None),
+        response_ack_timeout_seconds=(
+            30.0 if trigger_kind == "local-shared-memory" else None
+        ),
         selected_output_payload_types={"http_response": "response-body.v1"},
     )
 
@@ -1763,7 +1765,6 @@ def _run_bgr24_deployment_trigger_smoke(
         transport_config={
             "bind_endpoint": f"inproc://zeromq-bgr24-deployment-{uuid4().hex}",
             "default_input_binding": "request_image_ref",
-            "pool_name": "image-raw-bgr24",
         },
         default_execution_metadata=default_execution_metadata,
     )
@@ -2335,7 +2336,7 @@ class _FakeLocalBufferWriter:
     def __init__(self) -> None:
         """初始化释放记录。"""
 
-        self.released_leases: list[tuple[str, str | None]] = []
+        self.released_leases: list[str] = []
         self.write_calls: list[dict[str, object]] = []
 
     def write_bytes(
@@ -2345,7 +2346,6 @@ class _FakeLocalBufferWriter:
         owner_kind: str,
         owner_id: str,
         media_type: str,
-        pool_name: str | None = None,
         shape: tuple[int, ...] = (),
         dtype: str | None = None,
         layout: str | None = None,
@@ -2361,7 +2361,6 @@ class _FakeLocalBufferWriter:
                 "owner_kind": owner_kind,
                 "owner_id": owner_id,
                 "media_type": media_type,
-                "pool_name": pool_name,
                 "shape": shape,
                 "dtype": dtype,
                 "layout": layout,
@@ -2374,28 +2373,25 @@ class _FakeLocalBufferWriter:
             buffer_ref=BufferRef(
                 buffer_id="buffer-1",
                 lease_id="lease-1",
-                path="data/buffers/pool-001.dat",
+                arena_id="local-buffer-main",
+                descriptor_index=0,
+                descriptor_generation=1,
+                broker_epoch="epoch-1",
                 offset=0,
-                size=len(content),
+                content_length=len(content),
+                allocation_capacity_bytes=1024 * 1024,
                 shape=shape,
                 dtype=dtype,
                 layout=layout,
                 pixel_format=pixel_format,
                 media_type=media_type,
-                broker_epoch="epoch-1",
-                generation=1,
             )
         )
 
-    def release(self, lease_id: str, *, pool_name: str | None = None) -> None:
-        """记录释放的 lease。
+    def release(self, lease_id: str) -> None:
+        """记录释放的 lease。"""
 
-        参数：
-        - lease_id：待释放的 lease id。
-        - pool_name：可选 pool 名称。
-        """
-
-        self.released_leases.append((lease_id, pool_name))
+        self.released_leases.append(lease_id)
 
 
 class _FakeResultBufferWriter(_FakeLocalBufferWriter):
@@ -2428,7 +2424,7 @@ class _FakeResultBufferWriter(_FakeLocalBufferWriter):
     def read_buffer_ref_view(self, buffer_ref: BufferRef) -> memoryview:
         """返回图片结果的只读 view。"""
 
-        assert buffer_ref.size == len(self.content)
+        assert buffer_ref.content_length == len(self.content)
         return memoryview(self.content)
 
     def conditional_release(self, *, receipt: LeaseOwnershipReceipt) -> str:
@@ -2445,24 +2441,35 @@ def _build_prepared_zeromq_result(content: bytes) -> PreparedTriggerResult:
     buffer_ref = BufferRef(
         buffer_id="result-buffer-1",
         lease_id="result-lease-1",
-        path="data/buffers/result-pool.dat",
-        offset=0,
-        size=len(content),
-        media_type="image/png",
+        arena_id="local-buffer-main",
+        descriptor_index=1,
+        descriptor_generation=1,
         broker_epoch="epoch-1",
-        generation=1,
+        offset=0,
+        content_length=len(content),
+        allocation_capacity_bytes=1024 * 1024,
+        media_type="image/png",
     )
     receipt = LeaseOwnershipReceipt(
-        pool_name="result-pool",
+        arena_id=buffer_ref.arena_id,
+        descriptor_index=buffer_ref.descriptor_index,
+        descriptor_generation=buffer_ref.descriptor_generation,
+        broker_epoch=buffer_ref.broker_epoch,
         lease_id=buffer_ref.lease_id,
         buffer_id=buffer_ref.buffer_id,
-        broker_epoch=buffer_ref.broker_epoch,
-        generation=buffer_ref.generation,
+        lease_token="1" * 32,
+        owner_token="2" * 32,
         owner_kind="workflow-trigger-response",
         owner_id="zeromq:trigger-source-1:event-result",
         deadline_ns=deadline_ns,
-        writer_guard_path="data/buffers/result-pool.writer.guard",
-        reader_guard_path="data/buffers/result-pool.reader.guard",
+        offset=buffer_ref.offset,
+        content_length=buffer_ref.content_length,
+        allocation_capacity_bytes=buffer_ref.allocation_capacity_bytes,
+        layout_fingerprint="3" * 64,
+        guard_path="data/buffers/local-buffer-main.guard",
+        publication_guard_offset=0,
+        writer_guard_offset=1,
+        reader_guard_offset=2,
         reader_guard_slots=8,
     )
     return PreparedTriggerResult(
@@ -2511,10 +2518,12 @@ def _build_buffer_ref_payload(*, lease_id: str = "lease-1") -> dict[str, object]
     return BufferRef(
         buffer_id="buffer-1",
         lease_id=lease_id,
-        path="data/buffers/pool-001.dat",
-        offset=0,
-        size=10,
-        media_type="image/png",
+        arena_id="local-buffer-main",
+        descriptor_index=0,
+        descriptor_generation=1,
         broker_epoch="epoch-1",
-        generation=1,
+        offset=0,
+        content_length=10,
+        allocation_capacity_bytes=1024 * 1024,
+        media_type="image/png",
     ).model_dump(mode="json")

@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import logging
+from math import ceil
 from pathlib import Path
 from threading import Event, Lock, Thread
-from time import perf_counter, sleep
+from time import monotonic_ns, perf_counter, sleep
 from typing import Callable
 
 from pydantic import ValidationError
@@ -26,6 +27,8 @@ from backend.contracts.workflows import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    OperationCancelledError,
+    OperationTimeoutError,
     ServiceError,
     WorkflowRuntimeBusyError,
     WorkflowTriggerExecutorBusyError,
@@ -95,8 +98,10 @@ class _PendingMailboxRequest:
     trigger_event: TriggerEventContract | None = None
     admission: WorkflowRuntimeSyncAdmission | None = None
     executor_permit: WorkflowTriggerExecutorPermit | None = None
+    cancel_event: Event | None = None
     task_active: bool = False
     protocol_terminal: bool = False
+    cleanup_started: bool = False
     output_receipts: tuple[LeaseOwnershipReceipt, ...] = ()
     started_at: float = field(default_factory=perf_counter)
     writing_published_at: float | None = None
@@ -118,11 +123,17 @@ class WorkflowTriggerMailboxSupervisor:
         ) = None,
         max_executor_workers: int,
         poll_interval_seconds: float = 0.001,
+        response_ack_timeout_seconds: float = 30.0,
+        cancellation_grace_seconds: float = 0.0,
     ) -> None:
         """初始化全局 mailbox、route registry 和无隐藏队列 executor。"""
 
         if poll_interval_seconds <= 0:
             raise ValueError("poll_interval_seconds 必须大于 0")
+        if response_ack_timeout_seconds <= 0:
+            raise ValueError("response_ack_timeout_seconds 必须大于 0")
+        if cancellation_grace_seconds < 0:
+            raise ValueError("cancellation_grace_seconds 不能小于 0")
         if local_buffer_client is None and local_buffer_client_provider is None:
             raise ValueError(
                 "local_buffer_client 与 local_buffer_client_provider 至少提供一个"
@@ -140,6 +151,8 @@ class WorkflowTriggerMailboxSupervisor:
         self.input_binding_mapper = InputBindingMapper()
         self.result_dispatcher = WorkflowResultDispatcher()
         self.poll_interval_seconds = poll_interval_seconds
+        self.response_ack_timeout_seconds = response_ack_timeout_seconds
+        self.cancellation_grace_seconds = cancellation_grace_seconds
         self._pending: dict[
             WorkflowTriggerDescriptorIdentity,
             _PendingMailboxRequest,
@@ -161,7 +174,13 @@ class WorkflowTriggerMailboxSupervisor:
 
         mailbox = self._mailbox
         if mailbox is None:
-            mailbox = WorkflowTriggerMailboxServer(buffers_root=self.buffers_root)
+            mailbox = WorkflowTriggerMailboxServer(
+                buffers_root=self.buffers_root,
+                response_ack_timeout_ms=max(
+                    1,
+                    round(self.response_ack_timeout_seconds * 1_000),
+                ),
+            )
             self._mailbox = mailbox
         return mailbox
 
@@ -177,6 +196,23 @@ class WorkflowTriggerMailboxSupervisor:
             )
         if trigger_source.submit_mode != "sync":
             raise InvalidRequestError("local-shared-memory 仅支持 sync submit_mode")
+        if trigger_source.reply_timeout_seconds is None:
+            raise InvalidRequestError(
+                "local-shared-memory sync TriggerSource 必须固定 reply_timeout_seconds"
+            )
+        response_plan = require_trigger_response_plan(trigger_source.metadata)
+        if response_plan.response_ack_timeout_seconds != self.response_ack_timeout_seconds:
+            raise InvalidRequestError(
+                "local-shared-memory response plan ACK timeout 与服务配置不一致",
+                details={
+                    "plan_response_ack_timeout_seconds": (
+                        response_plan.response_ack_timeout_seconds
+                    ),
+                    "configured_response_ack_timeout_seconds": (
+                        self.response_ack_timeout_seconds
+                    ),
+                },
+            )
         return self.routes.register(trigger_source)
 
     def unregister_trigger_source(self, trigger_source_id: str) -> None:
@@ -234,6 +270,22 @@ class WorkflowTriggerMailboxSupervisor:
                 orphan_descriptor_index,
             )
         )
+        for key, protocol_terminal in (
+            ("cancelled_identities", True),
+            ("deadline_exceeded_identities", False),
+            ("response_ack_timeout_identities", True),
+        ):
+            identities = sweep_result.get(key)
+            if not isinstance(identities, tuple):
+                continue
+            for identity in identities:
+                if not isinstance(identity, WorkflowTriggerDescriptorIdentity):
+                    continue
+                progressed = True
+                self._signal_request_cancel(
+                    identity,
+                    protocol_terminal=protocol_terminal,
+                )
         released_identities = sweep_result.get("released_identities")
         if isinstance(released_identities, tuple):
             for identity in released_identities:
@@ -361,13 +413,12 @@ class WorkflowTriggerMailboxSupervisor:
                 self._pending[identity] = pending
             broker_allocate_started_at = perf_counter()
             allocation = self._require_local_buffer_client().allocate_external_buffer(
-                size=prepare.image.content_length,
+                content_length=prepare.image.content_length,
                 owner_kind="workflow-trigger-write",
                 owner_id=(
                     f"{prepare.trigger_source_id}:{identity.request_id.hex}"
                 ),
                 deadline_ns=identity.deadline_ns,
-                pool_name=_read_optional_pool_name(route.trigger_source),
                 trace_id=prepare.event_id,
             )
             pending.timings["broker_allocate_ms"] = _elapsed_ms(
@@ -376,16 +427,17 @@ class WorkflowTriggerMailboxSupervisor:
             pending.allocation = allocation
             pending.current_receipt = allocation.receipt
             allocation_contract = WorkflowTriggerAllocationV1(
-                pool_name=allocation.lease.pool_name,
+                arena_id=allocation.lease.arena_id,
                 lease_id=allocation.lease.lease_id,
                 buffer_id=allocation.lease.buffer_id,
-                path=allocation.lease.file_path,
-                offset=allocation.lease.offset,
-                size=allocation.lease.size,
-                slot_capacity_bytes=allocation.slot_capacity_bytes,
+                descriptor_index=allocation.lease.descriptor_index,
+                descriptor_generation=allocation.lease.descriptor_generation,
                 broker_epoch=allocation.lease.broker_epoch,
-                generation=allocation.lease.generation,
-                writer_guard_path=allocation.receipt.writer_guard_path,
+                offset=allocation.lease.offset,
+                content_length=allocation.lease.content_length,
+                allocation_capacity_bytes=(
+                    allocation.lease.allocation_capacity_bytes
+                ),
             )
             mailbox_publish_writing_started_at = perf_counter()
             self.mailbox.publish_writing(
@@ -435,6 +487,7 @@ class WorkflowTriggerMailboxSupervisor:
                 request.payload
             )
             self._validate_request_identity(pending, request_contract)
+            self._raise_if_request_terminal(pending)
             pending.timings["request_decode_validate_ms"] = _elapsed_ms(
                 request_decode_started_at
             )
@@ -461,6 +514,11 @@ class WorkflowTriggerMailboxSupervisor:
                 input_binding_started_at
             )
             runtime_admission_started_at = perf_counter()
+            remaining_ns = request.identity.deadline_ns - monotonic_ns()
+            if remaining_ns <= 0:
+                raise OperationTimeoutError(
+                    "Workflow Trigger request deadline 已到期"
+                )
             admission = self.runtime_service.admit_sync_workflow_run(
                 pending.route.trigger_source.workflow_runtime_id,
                 WorkflowRuntimeInvokeRequest(
@@ -468,23 +526,27 @@ class WorkflowTriggerMailboxSupervisor:
                     execution_metadata=build_trigger_execution_metadata(
                         submit_request
                     ),
-                    timeout_seconds=(
-                        pending.route.trigger_source.reply_timeout_seconds
-                    ),
+                    # Runtime 的秒级公开契约只作为 worker 内部上限；mailbox
+                    # cancel_event 继续以同一个纳秒绝对 deadline 负责精确截止。
+                    timeout_seconds=max(1, ceil(remaining_ns / 1_000_000_000)),
                 ),
                 created_by=pending.route.trigger_source.created_by,
                 execution_acquisition_mode="reject",
+                cancellation_grace_seconds=self.cancellation_grace_seconds,
             )
             pending.timings["runtime_admission_ms"] = _elapsed_ms(
                 runtime_admission_started_at
             )
             pending.admission = admission
+            pending.cancel_event = admission.cancel_event
+            self._raise_if_request_terminal(pending)
             executor_reserve_started_at = perf_counter()
             executor_permit = self.executor.reserve()
             pending.timings["executor_reserve_ms"] = _elapsed_ms(
                 executor_reserve_started_at
             )
             pending.executor_permit = executor_permit
+            self._raise_if_request_terminal(pending)
             commit_handoff_started_at = perf_counter()
             committed = self._require_local_buffer_client().publish_and_transfer_external_buffer(
                 receipt=pending.current_receipt,
@@ -525,12 +587,12 @@ class WorkflowTriggerMailboxSupervisor:
             register_local_buffer_lease_cleanup(
                 execution_metadata,
                 lease_id=runtime_receipt.lease_id,
-                pool_name=runtime_receipt.pool_name,
                 ownership_receipt=runtime_receipt,
             )
             admission = replace(admission, execution_metadata=execution_metadata)
             pending.admission = admission
             pending.task_active = True
+            self._raise_if_request_terminal(pending)
             executor_submit_started_at = perf_counter()
             pending.executor_submitted_at = executor_submit_started_at
             # 任务一旦提交即可立即在另一个线程完成，所有需要随响应返回的
@@ -643,8 +705,23 @@ class WorkflowTriggerMailboxSupervisor:
             pending.timings["response_serialize_ms"] = _elapsed_ms(
                 response_serialize_started_at
             )
+            self._raise_if_request_terminal(pending)
+            response_ack_deadline_ns = self.mailbox.new_response_ack_deadline_ns()
+            if pending.output_receipts:
+                output_handoff_started_at = perf_counter()
+                pending.output_receipts = (
+                    self._require_local_buffer_client().transfer_lease_ownership(
+                        receipts=pending.output_receipts,
+                        new_owner_kind="workflow-trigger-response",
+                        new_owner_id=_build_response_owner_id(identity),
+                        deadline_ns=response_ack_deadline_ns,
+                    )
+                )
+                pending.timings["response_output_ack_handoff_ms"] = _elapsed_ms(
+                    output_handoff_started_at
+                )
             mailbox_publish_response_started_at = perf_counter()
-            self.mailbox.publish_response(
+            published_error_code = self.mailbox.publish_response(
                 identity=identity,
                 payload=response_payload,
                 error_code=error_code,
@@ -654,10 +731,15 @@ class WorkflowTriggerMailboxSupervisor:
                     if pending.output_receipts
                     else mailbox_contract.HANDOFF_STATE_NONE
                 ),
+                response_ack_deadline_ns=response_ack_deadline_ns,
             )
             pending.timings["mailbox_publish_response_ms"] = _elapsed_ms(
                 mailbox_publish_response_started_at
             )
+            if published_error_code != error_code:
+                # page capacity/deadline/cancel 的紧凑响应不携带图片 locator；
+                # 已完成 handoff 的 lease 必须立即按新 receipt 回收。
+                self._release_output_receipts(pending)
             self._record_request_observation(
                 pending,
                 failed=trigger_result.state != "succeeded",
@@ -665,10 +747,12 @@ class WorkflowTriggerMailboxSupervisor:
         except Exception as error:
             self._publish_failure(identity, error, pending=pending)
         finally:
-            pending.task_active = False
             pending.executor_permit = None
             self._release_receipt_if_present(pending)
-            if pending.protocol_terminal:
+            with self._pending_lock:
+                pending.task_active = False
+                should_cleanup = pending.protocol_terminal
+            if should_cleanup:
                 self._cleanup_pending(identity)
 
     def _compensate_before_worker_submit(
@@ -679,15 +763,31 @@ class WorkflowTriggerMailboxSupervisor:
         """按当前权威 receipt 逆序补偿 executor、Runtime 和 LocalBuffer。"""
 
         if pending.executor_permit is not None:
-            self.executor.release_reserved(pending.executor_permit)
-            pending.executor_permit = None
-        if pending.admission is not None:
-            self.runtime_service.fail_admitted_sync_workflow_run(
-                pending.admission,
-                error=error,
+            released = self._run_cleanup_step(
+                pending.identity,
+                step="executor-permit-before-submit",
+                callback=lambda: self.executor.release_reserved(
+                    pending.executor_permit
+                ),
             )
-            pending.admission = None
-        self._release_receipt_if_present(pending)
+            if released:
+                pending.executor_permit = None
+        if pending.admission is not None:
+            compensated = self._run_cleanup_step(
+                pending.identity,
+                step="runtime-admission-before-submit",
+                callback=lambda: self.runtime_service.fail_admitted_sync_workflow_run(
+                    pending.admission,
+                    error=error,
+                ),
+            )
+            if compensated:
+                pending.admission = None
+        self._run_cleanup_step(
+            pending.identity,
+            step="input-lease-before-submit",
+            callback=lambda: self._release_receipt_if_present(pending),
+        )
 
     def _build_trigger_event(
         self,
@@ -731,17 +831,19 @@ class WorkflowTriggerMailboxSupervisor:
         return BufferRef(
             buffer_id=lease.buffer_id,
             lease_id=lease.lease_id,
-            path=lease.file_path,
+            arena_id=lease.arena_id,
+            descriptor_index=lease.descriptor_index,
+            descriptor_generation=lease.descriptor_generation,
+            broker_epoch=lease.broker_epoch,
             offset=lease.offset,
-            size=lease.size,
+            content_length=lease.content_length,
+            allocation_capacity_bytes=lease.allocation_capacity_bytes,
             shape=image.shape,
             dtype=image.dtype,
             layout=image.layout,
             pixel_format=image.pixel_format,
             media_type=image.media_type,
             readonly=True,
-            broker_epoch=lease.broker_epoch,
-            generation=lease.generation,
         )
 
     @staticmethod
@@ -788,40 +890,133 @@ class WorkflowTriggerMailboxSupervisor:
                 if not pending.task_active:
                     self._cleanup_pending(identity)
 
+    def _raise_if_request_terminal(self, pending: _PendingMailboxRequest) -> None:
+        """在每个昂贵阶段前执行同一 cancel/deadline 快速检查。"""
+
+        cancel_event = pending.cancel_event
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelledError("Workflow Trigger request 已取消")
+        if monotonic_ns() >= pending.identity.deadline_ns:
+            if cancel_event is not None:
+                cancel_event.set()
+            raise OperationTimeoutError("Workflow Trigger request deadline 已到期")
+        cancel_reason = self.mailbox.read_cancel_reason(identity=pending.identity)
+        if cancel_reason != mailbox_contract.CANCEL_REASON_NONE:
+            if cancel_event is not None:
+                cancel_event.set()
+            raise OperationCancelledError(
+                "Workflow Trigger request 已取消",
+                details={"cancel_reason": cancel_reason},
+            )
+
+    def _signal_request_cancel(
+        self,
+        identity: WorkflowTriggerDescriptorIdentity,
+        *,
+        protocol_terminal: bool,
+    ) -> None:
+        """把 mailbox 终止信号传播到唯一 Runtime 调用。"""
+
+        with self._pending_lock:
+            pending = self._pending.get(identity)
+            if pending is None:
+                return
+            if pending.cancel_event is not None:
+                pending.cancel_event.set()
+            if protocol_terminal:
+                pending.protocol_terminal = True
+            should_cleanup = protocol_terminal and not pending.task_active
+        if should_cleanup:
+            self._cleanup_pending(identity)
+
     def _mark_protocol_terminal(
         self,
         identity: WorkflowTriggerDescriptorIdentity,
     ) -> None:
         """ACK/CANCEL/deadline 回收后结束 source permit 或等待活动 task。"""
 
-        pending = self._get_pending(identity)
-        if pending is None:
-            return
-        pending.protocol_terminal = True
-        if not pending.task_active:
+        with self._pending_lock:
+            pending = self._pending.get(identity)
+            if pending is None:
+                return
+            pending.protocol_terminal = True
+            should_cleanup = not pending.task_active
+        if should_cleanup:
             self._cleanup_pending(identity)
 
     def _cleanup_pending(self, identity: WorkflowTriggerDescriptorIdentity) -> None:
         """幂等释放当前 receipt、未消费 permit 和 source permit。"""
 
         with self._pending_lock:
-            pending = self._pending.pop(identity, None)
-        if pending is None:
-            return
-        reclaim_started_at = perf_counter()
-        if pending.executor_permit is not None:
-            self.executor.release_reserved(pending.executor_permit)
-        if pending.admission is not None:
-            self.runtime_service.fail_admitted_sync_workflow_run(
-                pending.admission,
-                error=InvalidRequestError("Workflow Trigger 协议已终止"),
+            pending = self._pending.get(identity)
+            if pending is None or pending.cleanup_started:
+                return
+            pending.cleanup_started = True
+        try:
+            reclaim_started_at = perf_counter()
+            if pending.executor_permit is not None:
+                self._run_cleanup_step(
+                    identity,
+                    step="executor-permit",
+                    callback=lambda: self.executor.release_reserved(
+                        pending.executor_permit
+                    ),
+                )
+            if pending.admission is not None:
+                self._run_cleanup_step(
+                    identity,
+                    step="runtime-admission",
+                    callback=lambda: self.runtime_service.fail_admitted_sync_workflow_run(
+                        pending.admission,
+                        error=InvalidRequestError("Workflow Trigger 协议已终止"),
+                    ),
+                )
+            self._run_cleanup_step(
+                identity,
+                step="input-lease",
+                callback=lambda: self._release_receipt_if_present(pending),
             )
-        self._release_receipt_if_present(pending)
-        self._release_output_receipts(pending)
-        self.routes.release_source_permit(pending.source_permit)
-        pending.timings["lease_reclaim_ms"] = _elapsed_ms(reclaim_started_at)
-        with self._pending_lock:
-            self._latest_timings = dict(pending.timings)
+            self._run_cleanup_step(
+                identity,
+                step="output-leases",
+                callback=lambda: self._release_output_receipts(pending),
+            )
+            self._run_cleanup_step(
+                identity,
+                step="source-permit",
+                callback=lambda: self.routes.release_source_permit(
+                    pending.source_permit
+                ),
+            )
+            pending.timings["lease_reclaim_ms"] = _elapsed_ms(reclaim_started_at)
+        finally:
+            with self._pending_lock:
+                if self._pending.get(identity) is pending:
+                    self._pending.pop(identity, None)
+                self._latest_timings = dict(pending.timings)
+
+    @staticmethod
+    def _run_cleanup_step(
+        identity: WorkflowTriggerDescriptorIdentity,
+        *,
+        step: str,
+        callback: Callable[[], object],
+    ) -> bool:
+        """逐项执行补偿；单项异常不得阻断其余容量和 lease 回收。"""
+
+        try:
+            callback()
+            return True
+        except Exception:
+            logger.exception(
+                "Workflow Trigger 清理步骤失败",
+                extra={
+                    "cleanup_step": step,
+                    "descriptor_index": identity.descriptor_index,
+                    "descriptor_generation": identity.generation,
+                },
+            )
+            return False
 
     def _record_request_observation(
         self,
@@ -887,13 +1082,6 @@ class WorkflowTriggerMailboxSupervisor:
         with self._pending_lock:
             return self._pending.get(identity)
 
-def _read_optional_pool_name(trigger_source: WorkflowTriggerSource) -> str | None:
-    """读取 source 固定的可选 LocalBuffer pool。"""
-
-    value = trigger_source.transport_config.get("pool_name")
-    return value.strip() if isinstance(value, str) and value.strip() else None
-
-
 def _build_response_owner_id(identity: WorkflowTriggerDescriptorIdentity) -> str:
     """用完整 descriptor identity 隔离迟到 ACK 和槽位复用。"""
 
@@ -912,6 +1100,10 @@ def _map_error_code(error: Exception) -> int:
         return mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY
     if isinstance(error, WorkflowTriggerExecutorBusyError):
         return mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY
+    if isinstance(error, OperationTimeoutError):
+        return mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+    if isinstance(error, OperationCancelledError):
+        return mailbox_contract.ERROR_CODE_CANCELLED
     if isinstance(error, (ValidationError, InvalidRequestError)):
         return mailbox_contract.ERROR_CODE_INVALID_REQUEST
     if isinstance(error, ServiceError):

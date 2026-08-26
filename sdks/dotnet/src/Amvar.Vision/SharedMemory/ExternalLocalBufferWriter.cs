@@ -25,19 +25,23 @@ namespace Amvar.Vision.SharedMemory
                 throw new ArgumentNullException(nameof(allocation));
             }
 
-            if (string.IsNullOrWhiteSpace(allocation.Path)
-                || string.IsNullOrWhiteSpace(allocation.WriterGuardPath)
+            if (string.IsNullOrWhiteSpace(allocation.ArenaId)
                 || allocation.Offset < 0
-                || allocation.Size <= 0)
+                || allocation.ContentLength <= 0)
             {
                 throw new SharedMemoryTriggerException("protocol_error", "Workflow Trigger allocation locator is invalid.");
             }
 
             this.collectTimings = collectTimings;
-            writerGuard = ByteRangeGuard.Acquire(allocation.WriterGuardPath, 0, 1, localDeadlineTicks);
+            var cache = mappingCache ?? throw new ArgumentNullException(nameof(mappingCache));
+            writerGuard = ByteRangeGuard.Acquire(
+                cache.GuardPath,
+                cache.WriterGuardOffset(allocation.DescriptorIndex),
+                1,
+                localDeadlineTicks);
             try
             {
-                mapping = (mappingCache ?? throw new ArgumentNullException(nameof(mappingCache))).Acquire(allocation);
+                mapping = cache.Acquire(allocation);
                 capacity = mapping.Size;
             }
             catch
@@ -73,7 +77,7 @@ namespace Amvar.Vision.SharedMemory
                 }
 
                 var destination = new Span<byte>(
-                    pointer + view.PointerOffset,
+                    pointer + view.PointerOffset + mapping.Offset,
                     checked((int)capacity));
                 var writeStartedAt = collectTimings ? Stopwatch.GetTimestamp() : 0L;
                 content.AsSpan().CopyTo(destination);
@@ -121,7 +125,7 @@ namespace Amvar.Vision.SharedMemory
                 }
 
                 var destination = new Span<byte>(
-                    pointer + view.PointerOffset,
+                    pointer + view.PointerOffset + mapping.Offset,
                     checked((int)capacity));
                 while (total < contentLength)
                 {
@@ -173,7 +177,7 @@ namespace Amvar.Vision.SharedMemory
                 }
 
                 var destination = new Span<byte>(
-                    pointer + view.PointerOffset,
+                    pointer + view.PointerOffset + mapping.Offset,
                     checked((int)capacity));
                 var writeStartedAt = collectTimings ? Stopwatch.GetTimestamp() : 0L;
                 fill(destination);

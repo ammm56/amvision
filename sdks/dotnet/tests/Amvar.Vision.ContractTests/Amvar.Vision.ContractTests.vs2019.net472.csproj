@@ -8,7 +8,7 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.props" Condition="Exists('$(MSBuildToolsPath)\Microsoft.CSharp.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <ProjectGuid>{3A3D3B11-5697-4EB1-8727-BF5553CB5118}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>Amvar.Vision.ContractTests</RootNamespace>
@@ -19,6 +19,8 @@
     <FileAlignment>512</FileAlignment>
     <OutputPath>bin\$(Configuration)\net472\</OutputPath>
     <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />

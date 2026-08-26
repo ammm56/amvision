@@ -31,12 +31,21 @@ from backend.service.infrastructure.object_store.local_dataset_storage import (
 def build_trigger_source_service(request: Request) -> WorkflowTriggerSourceService:
     """基于 application.state 构建 WorkflowTriggerSourceService。"""
 
+    settings = getattr(request.app.state, "backend_service_settings", None)
+    if settings is None:
+        raise ServiceConfigurationError("当前服务尚未完成 backend_service_settings 装配")
     return WorkflowTriggerSourceService(
         session_factory=require_session_factory(request),
         trigger_source_supervisor=read_trigger_source_supervisor(request),
         dataset_storage=require_dataset_storage(request),
         workflow_runtime_worker_manager=require_workflow_runtime_worker_manager(
             request
+        ),
+        local_shared_default_reply_timeout_seconds=(
+            settings.workflow_runtime.local_shared_trigger_default_reply_timeout_seconds
+        ),
+        local_shared_response_ack_timeout_seconds=(
+            settings.workflow_runtime.local_shared_trigger_response_ack_timeout_seconds
         ),
     )
 

@@ -767,12 +767,15 @@ class WorkflowRuntimeWorkerManager:
         expected_generation: int | None = None,
         expected_snapshot_fingerprint: str | None = None,
         cancel_event: Event | None = None,
+        cancellation_grace_seconds: float = 0.0,
         on_dispatched: Callable[[], None] | None = None,
         execution_token: WorkflowRuntimeExecutionToken | None = None,
         execution_acquisition_mode: str = "wait",
     ) -> WorkflowRuntimeWorkerRunResult:
         """通过统一 execution token 向已运行 worker 发起一次调用。"""
 
+        if cancellation_grace_seconds < 0:
+            raise ValueError("cancellation_grace_seconds 不能小于 0")
         invoke_started_at = perf_counter()
         deadline = monotonic() + float(timeout_seconds)
         owns_execution_token = execution_token is None
@@ -864,9 +867,13 @@ class WorkflowRuntimeWorkerManager:
             reply_wait_started_at = perf_counter()
             while True:
                 if cancel_event is not None and cancel_event.is_set():
-                    self._terminate_failed_handle(
-                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                    worker_response_received = self._cancel_runtime_invocation(
+                        workflow_runtime_id=(
+                            workflow_app_runtime.workflow_runtime_id
+                        ),
                         handle=handle,
+                        pending=pending,
+                        cancellation_grace_seconds=cancellation_grace_seconds,
                     )
                     raise OperationCancelledError(
                         "workflow run 已取消",
@@ -877,9 +884,13 @@ class WorkflowRuntimeWorkerManager:
                     )
                 remaining_seconds = deadline - monotonic()
                 if remaining_seconds <= 0:
-                    self._terminate_failed_handle(
-                        workflow_runtime_id=workflow_app_runtime.workflow_runtime_id,
+                    worker_response_received = self._cancel_runtime_invocation(
+                        workflow_runtime_id=(
+                            workflow_app_runtime.workflow_runtime_id
+                        ),
                         handle=handle,
+                        pending=pending,
+                        cancellation_grace_seconds=cancellation_grace_seconds,
                     )
                     raise OperationTimeoutError(
                         "等待 workflow runtime worker 同步调用结果超时",
@@ -965,6 +976,31 @@ class WorkflowRuntimeWorkerManager:
             }
         )
         return replace(worker_result, timings=timings)
+
+    def _cancel_runtime_invocation(
+        self,
+        *,
+        workflow_runtime_id: str,
+        handle: _WorkflowRuntimeProcessHandle,
+        pending: _WorkflowRuntimePendingResponse,
+        cancellation_grace_seconds: float,
+    ) -> bool:
+        """先协作取消当前 Run，超出 grace 后只隔离当前 Runtime worker。"""
+
+        if handle.run_cancellation_event is not None:
+            handle.run_cancellation_event.set()
+        grace_deadline = monotonic() + cancellation_grace_seconds
+        while handle.process.is_alive():
+            remaining_seconds = grace_deadline - monotonic()
+            if remaining_seconds <= 0:
+                break
+            if pending.event.wait(timeout=min(0.05, remaining_seconds)):
+                return True
+        self._terminate_failed_handle(
+            workflow_runtime_id=workflow_runtime_id,
+            handle=handle,
+        )
+        return False
 
     def _run_async_workflow(self, async_handle: _WorkflowRuntimeAsyncRunHandle) -> None:
         """在后台线程里执行一条异步 WorkflowRun。"""
@@ -1146,7 +1182,6 @@ class WorkflowRuntimeWorkerManager:
             return 0
         released_count = 0
         for cleanup_item in cleanup_items:
-            pool_name_value = cleanup_item.metadata.get("pool_name")
             ownership_receipt_payload = cleanup_item.metadata.get(
                 "ownership_receipt"
             )
@@ -1158,12 +1193,7 @@ class WorkflowRuntimeWorkerManager:
                         )
                     )
                 else:
-                    client.release(
-                        cleanup_item.resource_id,
-                        pool_name=pool_name_value
-                        if isinstance(pool_name_value, str)
-                        else None,
-                    )
+                    client.release(cleanup_item.resource_id)
                 released_count += 1
             except InvalidRequestError:
                 # worker 可能已在退出前完成 cleanup；release 保持幂等兜底语义。
@@ -1193,10 +1223,11 @@ class WorkflowRuntimeWorkerManager:
         unique_receipts = tuple(
             {
                 (
-                    receipt.pool_name,
+                    receipt.arena_id,
+                    receipt.descriptor_index,
+                    receipt.descriptor_generation,
                     receipt.lease_id,
                     receipt.broker_epoch,
-                    receipt.generation,
                     receipt.owner_kind,
                     receipt.owner_id,
                     receipt.deadline_ns,
@@ -1441,6 +1472,9 @@ class WorkflowRuntimeWorkerManager:
         with handle.state_lock:
             handle.expected_shutdown = True
         self._cleanup_handle(handle)
+        # 同步调用线程可能在 monitor 已取得旧句柄快照后完成清理。显式唤醒
+        # monitor，使其立即扫描 desired=running 且已缺失 worker 的 Runtime。
+        self._monitor_wake_event.set()
 
     def _remove_handle_if_current(
         self,
@@ -1741,99 +1775,109 @@ class WorkflowRuntimeWorkerManager:
                 event_type: str | None = None
                 message: str | None = None
                 remove_handle = False
-                node_timeout_to_force = self._monitor_node_pack_timeouts(
-                    handle=handle,
-                    now=now,
-                )
-                with handle.state_lock:
-                    process_alive = handle.process.is_alive()
-                    latest_runtime_state = handle.latest_runtime_state
-                    latest_runtime_state_monotonic = (
-                        handle.latest_runtime_state_monotonic
+                # cleanup_lock 覆盖 Process 句柄检查：同步超时、显式 stop/restart
+                # 可能并行 close() 该句柄。若 monitor 使用旧快照读取已关闭的
+                # Process，会抛出 ValueError 并导致整个恢复监控线程退出。
+                with handle.cleanup_lock:
+                    if handle.cleanup_completed:
+                        continue
+                    node_timeout_to_force = self._monitor_node_pack_timeouts(
+                        handle=handle,
+                        now=now,
                     )
-                    if node_timeout_to_force is not None and (
-                        handle.node_timeout_states.get(
-                            node_timeout_to_force.workflow_run_id
+                    with handle.state_lock:
+                        process_alive = handle.process.is_alive()
+                        latest_runtime_state = handle.latest_runtime_state
+                        latest_runtime_state_monotonic = (
+                            handle.latest_runtime_state_monotonic
                         )
-                        != node_timeout_to_force
-                        or handle.active_run_request_ids.get(
-                            node_timeout_to_force.workflow_run_id
-                        )
-                        != node_timeout_to_force.request_id
-                    ):
-                        node_timeout_to_force = None
-                    if node_timeout_to_force is not None:
-                        timeout_request_id = node_timeout_to_force.request_id
-                        pending = handle.pending_responses.pop(
-                            timeout_request_id, None
-                        )
-                        if pending is not None:
-                            pending.response = self._build_node_timeout_response(
-                                handle=handle,
-                                timeout_state=node_timeout_to_force,
+                        if node_timeout_to_force is not None and (
+                            handle.node_timeout_states.get(
+                                node_timeout_to_force.workflow_run_id
                             )
-                            pending.event.set()
-                        handle.active_run_request_ids.pop(
-                            node_timeout_to_force.workflow_run_id, None
-                        )
-                        handle.node_timeout_states.pop(
-                            node_timeout_to_force.workflow_run_id, None
-                        )
-                        handle.active_node_invocations = {
-                            invocation_id: invocation
-                            for invocation_id, invocation in (
-                                handle.active_node_invocations.items()
+                            != node_timeout_to_force
+                            or handle.active_run_request_ids.get(
+                                node_timeout_to_force.workflow_run_id
                             )
-                            if invocation.workflow_run_id
-                            != node_timeout_to_force.workflow_run_id
-                        }
-                        handle.expected_shutdown = True
-                        runtime_state_to_persist = build_synthetic_runtime_state(
-                            previous_state=latest_runtime_state,
-                            observed_state="failed",
-                            last_error=(
-                                "Workflow Node Pack 节点执行超时，grace 到期后终止 worker"
-                            ),
-                        )
-                        handle.latest_runtime_state = runtime_state_to_persist
-                        handle.latest_runtime_state_monotonic = now
-                        event_type = "runtime.node_timed_out"
-                        message = "workflow runtime Node Pack timeout 后已终止 worker"
-                        remove_handle = True
-                    elif not process_alive:
-                        if handle.expected_shutdown:
-                            # stop/restart 调用方持有生命周期锁并负责移除、回收句柄；
-                            # monitor 不能并发关闭相同 Queue/Process 资源。
-                            continue
-                        if not handle.background_failure_reported:
-                            handle.background_failure_reported = True
+                            != node_timeout_to_force.request_id
+                        ):
+                            node_timeout_to_force = None
+                        if node_timeout_to_force is not None:
+                            timeout_request_id = node_timeout_to_force.request_id
+                            pending = handle.pending_responses.pop(
+                                timeout_request_id, None
+                            )
+                            if pending is not None:
+                                pending.response = self._build_node_timeout_response(
+                                    handle=handle,
+                                    timeout_state=node_timeout_to_force,
+                                )
+                                pending.event.set()
+                            handle.active_run_request_ids.pop(
+                                node_timeout_to_force.workflow_run_id, None
+                            )
+                            handle.node_timeout_states.pop(
+                                node_timeout_to_force.workflow_run_id, None
+                            )
+                            handle.active_node_invocations = {
+                                invocation_id: invocation
+                                for invocation_id, invocation in (
+                                    handle.active_node_invocations.items()
+                                )
+                                if invocation.workflow_run_id
+                                != node_timeout_to_force.workflow_run_id
+                            }
+                            handle.expected_shutdown = True
                             runtime_state_to_persist = build_synthetic_runtime_state(
                                 previous_state=latest_runtime_state,
                                 observed_state="failed",
-                                last_error="workflow runtime worker 进程已退出",
+                                last_error=(
+                                    "Workflow Node Pack 节点执行超时，grace 到期后终止 worker"
+                                ),
                             )
                             handle.latest_runtime_state = runtime_state_to_persist
                             handle.latest_runtime_state_monotonic = now
-                            event_type = "runtime.failed"
-                            message = "workflow runtime worker 进程异常退出"
-                        remove_handle = True
-                    elif (
-                        latest_runtime_state is not None
-                        and latest_runtime_state_monotonic is not None
-                        and not handle.heartbeat_timeout_reported
-                        and now - latest_runtime_state_monotonic
-                        > float(handle.heartbeat_timeout_seconds)
-                    ):
-                        handle.heartbeat_timeout_reported = True
-                        runtime_state_to_persist = build_synthetic_runtime_state(
-                            previous_state=latest_runtime_state,
-                            observed_state="failed",
-                            last_error="workflow runtime heartbeat 超时",
-                        )
-                        handle.latest_runtime_state = runtime_state_to_persist
-                        handle.latest_runtime_state_monotonic = now
-                        event_type = "runtime.heartbeat_timed_out"
-                        message = "workflow app runtime heartbeat 超时"
+                            event_type = "runtime.node_timed_out"
+                            message = (
+                                "workflow runtime Node Pack timeout 后已终止 worker"
+                            )
+                            remove_handle = True
+                        elif not process_alive:
+                            if handle.expected_shutdown:
+                                # stop/restart 调用方持有生命周期锁并负责移除、回收句柄；
+                                # monitor 不能并发关闭相同 Queue/Process 资源。
+                                continue
+                            if not handle.background_failure_reported:
+                                handle.background_failure_reported = True
+                                runtime_state_to_persist = (
+                                    build_synthetic_runtime_state(
+                                        previous_state=latest_runtime_state,
+                                        observed_state="failed",
+                                        last_error="workflow runtime worker 进程已退出",
+                                    )
+                                )
+                                handle.latest_runtime_state = runtime_state_to_persist
+                                handle.latest_runtime_state_monotonic = now
+                                event_type = "runtime.failed"
+                                message = "workflow runtime worker 进程异常退出"
+                            remove_handle = True
+                        elif (
+                            latest_runtime_state is not None
+                            and latest_runtime_state_monotonic is not None
+                            and not handle.heartbeat_timeout_reported
+                            and now - latest_runtime_state_monotonic
+                            > float(handle.heartbeat_timeout_seconds)
+                        ):
+                            handle.heartbeat_timeout_reported = True
+                            runtime_state_to_persist = build_synthetic_runtime_state(
+                                previous_state=latest_runtime_state,
+                                observed_state="failed",
+                                last_error="workflow runtime heartbeat 超时",
+                            )
+                            handle.latest_runtime_state = runtime_state_to_persist
+                            handle.latest_runtime_state_monotonic = now
+                            event_type = "runtime.heartbeat_timed_out"
+                            message = "workflow app runtime heartbeat 超时"
                 if (
                     runtime_state_to_persist is not None
                     and event_type is not None

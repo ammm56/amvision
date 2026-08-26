@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import mmap
 import os
 from pathlib import Path
 import shutil
@@ -26,7 +25,10 @@ from backend.contracts.workflows import (
     WorkflowTriggerPrepareV1,
     WorkflowTriggerRequestV1,
 )
-from backend.service.application.errors import WorkflowRuntimeBusyError
+from backend.service.application.errors import (
+    OperationCancelledError,
+    WorkflowRuntimeBusyError,
+)
 from backend.service.application.workflows.execution_cleanup import (
     WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE,
     list_registered_execution_cleanups,
@@ -55,8 +57,9 @@ from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     WorkflowTriggerMailboxClient,
 )
 from backend.service.infrastructure.local_buffers import (
-    MmapBufferPool,
-    MmapBufferPoolConfig,
+    LocalBufferArenaPool,
+    MmapBufferArenaConfig,
+    MmapBufferArenaExternalAccess,
 )
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     DatasetStorageSettings,
@@ -90,6 +93,8 @@ class _FakeAdmission:
     workflow_run: WorkflowRun
     execution_metadata: dict[str, object]
     input_bindings: dict[str, object]
+    cancel_event: Event
+    cancellation_grace_seconds: float = 0.0
 
 
 class _FakeRuntimeService:
@@ -121,6 +126,7 @@ class _FakeRuntimeService:
             ),
             execution_metadata=dict(request.execution_metadata or {}),
             input_bindings=dict(request.input_bindings or {}),
+            cancel_event=Event(),
         )
 
     def invoke_admitted_sync_workflow_run(self, admission):
@@ -249,16 +255,34 @@ class _CapturedInputRuntimeService(_FakeRuntimeService):
         return super().invoke_admitted_sync_workflow_run(admission)
 
 
-class _PoolClient:
-    """把正式 LocalBuffer client API 映射到同进程真实 mmap pool。"""
+class _CancellationAwareRuntimeService(_FakeRuntimeService):
+    """阻塞到 supervisor 传播当前请求的 run-scoped cancel。"""
 
-    def __init__(self, pool: MmapBufferPool) -> None:
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self.cancel_observed = Event()
+
+    def invoke_admitted_sync_workflow_run(self, admission):
+        """只响应当前 admission 的 cancel_event，不使用全局停止信号。"""
+
+        self.started.set()
+        if admission.cancel_event.wait(timeout=5.0):
+            self.cancel_observed.set()
+            raise OperationCancelledError("注入 Runtime 已观察取消")
+        raise AssertionError("Runtime 未在 deadline 后收到 cancel_event")
+
+
+class _PoolClient:
+    """把正式 LocalBuffer client API 映射到同进程真实 arena。"""
+
+    def __init__(self, pool: LocalBufferArenaPool) -> None:
         self.pool = pool
         self.fail_transfer = False
 
     def allocate_external_buffer(self, **kwargs):
         return self.pool.allocate_external(
-            size=kwargs["size"],
+            content_length=kwargs["content_length"],
             owner_kind=kwargs["owner_kind"],
             owner_id=kwargs["owner_id"],
             deadline_ns=kwargs["deadline_ns"],
@@ -313,7 +337,7 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -330,7 +354,7 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
                 assert result.response_payload["results"] == {
                     "workflow_result": {"code": 200}
                 }
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
 
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
@@ -360,7 +384,7 @@ def test_completed_runtime_input_cleanup_does_not_send_stale_release(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -371,7 +395,7 @@ def test_completed_runtime_input_cleanup_does_not_send_stale_release(
 
                 response = _wait_response(supervisor, client, identity)
                 assert response.error_code == mailbox_contract.ERROR_CODE_NONE
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 assert pool.build_status()["stale_fence_count"] == 0
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
@@ -406,7 +430,7 @@ def test_local_shared_memory_diagnostics_expose_stage_timings_and_health(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -445,6 +469,101 @@ def test_local_shared_memory_diagnostics_expose_stage_timings_and_health(
             supervisor.close()
 
 
+def test_output_lease_uses_response_ack_deadline_before_publication(
+    tmp_path: Path,
+) -> None:
+    """输出 lease 不得继续沿用即将到期的 request deadline。"""
+
+    with _build_pool(tmp_path, capacity_units=1) as pool:
+        pool_client = _PoolClient(pool)
+        runtime = _ImageOutputRuntimeService(
+            pool_client=pool_client,
+            storage=LocalDatasetStorage(
+                DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+            ),
+        )
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_image_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = os.urandom(3 * 1024)
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    ).model_dump_json().encode("utf-8"),
+                )
+
+                response = _wait_response(supervisor, client, identity)
+                assert response.response_ack_deadline_ns > identity.deadline_ns
+                assert response.response_output_lease_count == 1
+                pool.sweep_reclaiming_leases(now_ns=identity.deadline_ns + 1)
+                assert pool.build_status()["active_lease_count"] == 1
+
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+                assert pool.build_status()["active_lease_count"] == 0
+        finally:
+            supervisor.close()
+
+
+def test_request_deadline_propagates_cancel_to_active_runtime(
+    tmp_path: Path,
+) -> None:
+    """单一 absolute deadline 到期后应取消当前 Run 并返回可 ACK 错误。"""
+
+    runtime = _CancellationAwareRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = b"encoded-image"
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                    timeout_ms=100,
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    ).model_dump_json().encode("utf-8"),
+                )
+                supervisor.process_once()
+                assert runtime.started.wait(timeout=1.0)
+                while monotonic_ns() < identity.deadline_ns:
+                    sleep(0.001)
+                supervisor.process_once()
+                assert runtime.cancel_observed.wait(timeout=1.0)
+
+                response = client.read_response(identity=identity)
+                assert response is not None
+                assert response.error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+                client.acknowledge(identity=identity)
+                for _ in range(20):
+                    supervisor.process_once()
+                    if not supervisor.build_status()["pending_request_count"]:
+                        break
+                    sleep(0.005)
+                assert supervisor.build_status()["pending_request_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
+        finally:
+            supervisor.close()
+
+
 @pytest.mark.skipif(os.name != "nt", reason="net472 共享内存门禁仅适用于 Windows")
 def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
     tmp_path: Path,
@@ -475,7 +594,7 @@ def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
     assert build.returncode == 0, build.stdout + build.stderr
 
     runtime = _FakeRuntimeService()
-    with _build_pool(tmp_path, slot_count=2) as pool:
+    with _build_pool(tmp_path, capacity_units=2) as pool:
         supervisor = _build_supervisor(tmp_path, pool, runtime)
         try:
             route = supervisor.register_trigger_source(_source("source-dotnet"))
@@ -512,11 +631,11 @@ def test_dotnet_sdk_runs_real_prepare_write_request_response_ack_chain(
             assert payload["AttachmentCount"] == 0
             deadline = monotonic_ns() + 2_000_000_000
             while (
-                pool.build_status()["used_count"] != 0
+                pool.build_status()["active_lease_count"] != 0
                 and monotonic_ns() < deadline
             ):
                 sleep(0.01)
-            assert pool.build_status()["used_count"] == 0
+            assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
 
@@ -530,7 +649,7 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
     dotnet = shutil.which("dotnet")
     if dotnet is None or not DOTNET_CONTRACT_PROBE.is_file():
         pytest.skip("net472 contract probe 尚未编译")
-    with _build_pool(tmp_path, slot_count=1) as pool:
+    with _build_pool(tmp_path, capacity_units=1) as pool:
         pool_client = _PoolClient(pool)
         runtime = _ImageOutputRuntimeService(
             pool_client=pool_client,
@@ -577,14 +696,15 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
                 if copied_path.with_suffix(".bin.error.json").exists()
                 else "等待 .NET output reader 超时"
             )
-            assert pool.build_status()["used_count"] == 1
-            _, reader_guard_path = pool.ensure_slot_guard_files(0)
+            assert pool.build_status()["active_lease_count"] == 1
+            guard_location = pool.arena.guard_location(0)
             with pytest.raises(MmapGuardBusyError):
                 with acquire_mmap_guard(
-                    guard_path=str(reader_guard_path),
+                    guard_path=str(guard_location["guard_path"]),
+                    offset=int(guard_location["reader_guard_offset"]),
                     deadline_ns=monotonic_ns() + 20_000_000,
                     poll_interval_seconds=0.001,
-                    length=pool.config.reader_guard_slots,
+                    length=int(guard_location["reader_guard_slots"]),
                 ):
                     pass
             release_path.touch()
@@ -599,9 +719,9 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
             assert timing_payload["SdkWriteLocalBufferMs"] >= 0
             assert timing_payload["SdkChecksumMs"] >= 0
             deadline = monotonic_ns() + 2_000_000_000
-            while pool.build_status()["used_count"] and monotonic_ns() < deadline:
+            while pool.build_status()["active_lease_count"] and monotonic_ns() < deadline:
                 sleep(0.01)
-            assert pool.build_status()["used_count"] == 0
+            assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
 
@@ -696,7 +816,7 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
         ("bitmap", encoded_path.read_bytes(), 0, expected_bgr24, "image/raw", (height, width, 3)),
     ]
 
-    with _build_pool(tmp_path, slot_count=2) as pool:
+    with _build_pool(tmp_path, capacity_units=2) as pool:
         pool_client = _PoolClient(pool)
         runtime = _CapturedInputRuntimeService(pool_client=pool_client)
         supervisor = _build_supervisor(tmp_path, pool, runtime)
@@ -759,7 +879,7 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
                     assert ref.dtype is None
                     assert ref.layout is None
                     assert ref.pixel_format is None
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
 
@@ -767,7 +887,7 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
 def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
     """第一条处于 WRITING 时，同 source 第二条只返回 busy，不占第二个图片槽。"""
 
-    with _build_pool(tmp_path, slot_count=2) as pool:
+    with _build_pool(tmp_path, capacity_units=2) as pool:
         supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
         try:
             route = supervisor.register_trigger_source(_source("source-1"))
@@ -785,13 +905,13 @@ def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
                 assert response is not None
                 assert response.error_code != 0
                 assert response.json_payload()["error_code"] == 4
-                assert pool.build_status()["used_count"] == 1
+                assert pool.build_status()["active_lease_count"] == 1
 
                 client.acknowledge(identity=second)
                 client.cancel(identity=first)
                 supervisor.process_once()
                 supervisor.process_once()
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
 
@@ -814,7 +934,7 @@ def test_runtime_busy_releases_input_but_holds_source_until_ack(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -827,7 +947,7 @@ def test_runtime_busy_releases_input_but_holds_source_until_ack(
 
                 assert response is not None
                 assert response.error_code == 5
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.routes.build_status()[
                     "active_source_permit_count"
                 ] == 1
@@ -866,7 +986,7 @@ def test_transfer_failure_closes_admission_and_releases_writer_receipt(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -878,7 +998,7 @@ def test_transfer_failure_closes_admission_and_releases_writer_receipt(
 
                 assert client.read_response(identity=identity) is not None
                 assert runtime.failed_admission_count == 1
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 0
         finally:
             supervisor.close()
@@ -906,7 +1026,7 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -923,7 +1043,7 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
                     == mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY
                 )
                 assert runtime.failed_admission_count == 1
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 1
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
@@ -957,7 +1077,7 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -971,10 +1091,63 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                 assert response is not None
                 assert response.error_code == mailbox_contract.ERROR_CODE_PROTOCOL_ERROR
                 assert runtime.failed_admission_count == 1
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 0
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
+                assert supervisor.routes.build_status()[
+                    "active_source_permit_count"
+                ] == 0
+        finally:
+            supervisor.close()
+
+
+def test_cleanup_step_failure_does_not_block_remaining_resource_reclaim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runtime 补偿异常时仍须释放 input、executor 与 source permit。"""
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+
+        def _fail_submit(*_args, **_kwargs):
+            raise RuntimeError("注入 worker submit 失败")
+
+        def _fail_runtime_cleanup(*_args, **_kwargs):
+            raise RuntimeError("注入 Runtime admission 清理失败")
+
+        monkeypatch.setattr(supervisor.executor, "submit_reserved", _fail_submit)
+        monkeypatch.setattr(
+            runtime,
+            "fail_admitted_sync_workflow_run",
+            _fail_runtime_cleanup,
+        )
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=9,
+                )
+                _write_allocation(pool, allocation, b"raw-image", identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    ).model_dump_json().encode("utf-8"),
+                )
+                supervisor.process_once()
+
+                assert client.read_response(identity=identity) is not None
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+                assert pool.build_status()["active_lease_count"] == 0
+                assert supervisor.executor.build_status()["active_count"] == 0
                 assert supervisor.routes.build_status()[
                     "active_source_permit_count"
                 ] == 0
@@ -1000,7 +1173,7 @@ def test_worker_execution_failure_does_not_repeat_pre_submit_compensation(
                     route.route_generation,
                     content_length=len(content),
                 )
-                _write_allocation(allocation, content, identity.deadline_ns)
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
                 client.publish_request(
                     identity=identity,
                     payload=WorkflowTriggerRequestV1(
@@ -1012,7 +1185,7 @@ def test_worker_execution_failure_does_not_repeat_pre_submit_compensation(
 
                 assert response.error_code == mailbox_contract.ERROR_CODE_PROTOCOL_ERROR
                 assert runtime.failed_admission_count == 0
-                assert pool.build_status()["used_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
         finally:
@@ -1021,7 +1194,7 @@ def test_worker_execution_failure_does_not_repeat_pre_submit_compensation(
 
 def _build_supervisor(
     tmp_path: Path,
-    pool: MmapBufferPool,
+    pool: LocalBufferArenaPool,
     runtime: _FakeRuntimeService,
 ) -> WorkflowTriggerMailboxSupervisor:
     """创建不启动后台线程的可确定性 supervisor。"""
@@ -1041,11 +1214,12 @@ def _prepare(
     client: WorkflowTriggerMailboxClient,
     route_generation: int,
     content_length: int = 4096,
+    timeout_ms: int = 5_000,
 ):
     """完成 PREPARE -> WRITING 并返回 allocation。"""
 
     identity = client.claim(
-        timeout_ms=5_000,
+        timeout_ms=timeout_ms,
         route_generation=route_generation,
         prepare_payload=_prepare_payload(content_length).model_dump_json().encode(
             "utf-8"
@@ -1073,23 +1247,20 @@ def _prepare_payload(content_length: int) -> WorkflowTriggerPrepareV1:
 
 
 def _write_allocation(
+    pool: LocalBufferArenaPool,
     allocation: WorkflowTriggerAllocationV1,
     content: bytes,
     deadline_ns: int,
 ) -> None:
     """模拟 SDK 在 writer guard 内直接写精确 mmap 区。"""
 
-    assert len(content) <= allocation.size
-    with acquire_mmap_guard(
-        guard_path=allocation.writer_guard_path,
-        deadline_ns=deadline_ns,
-        poll_interval_seconds=0.001,
-    ):
-        with Path(allocation.path).open("r+b", buffering=0) as handle:
-            with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_WRITE) as view:
-                view[
-                    allocation.offset : allocation.offset + len(content)
-                ] = content
+    assert len(content) <= allocation.content_length
+    access = MmapBufferArenaExternalAccess(pool.config)
+    try:
+        with access.acquire_writer_view(allocation) as view:
+            view[: len(content)] = content
+    finally:
+        access.close()
 
 
 def _wait_response(supervisor, client, identity):
@@ -1120,6 +1291,7 @@ def _source(trigger_source_id: str) -> WorkflowTriggerSource:
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
         reply_timeout_seconds=5,
+        response_ack_timeout_seconds=30.0,
         selected_output_payload_types={"workflow_result": "value.v1"},
     )
     return WorkflowTriggerSource(
@@ -1164,6 +1336,7 @@ def _image_source(trigger_source_id: str) -> WorkflowTriggerSource:
         result_mode="sync-reply",
         ack_policy="ack-after-run-finished",
         reply_timeout_seconds=5,
+        response_ack_timeout_seconds=30.0,
         selected_output_payload_types={"image": "image-ref.v1"},
     )
     return WorkflowTriggerSource(
@@ -1178,19 +1351,18 @@ def _image_source(trigger_source_id: str) -> WorkflowTriggerSource:
         }
     )
 
-def _build_pool(tmp_path: Path, *, slot_count: int = 1) -> MmapBufferPool:
-    """创建小容量真实 mmap pool。"""
+def _build_pool(tmp_path: Path, *, capacity_units: int = 1) -> LocalBufferArenaPool:
+    """创建符合正式 1 MiB 最小块边界的小容量固定 arena。"""
 
-    slot_size = 4096
-    return MmapBufferPool(
-        MmapBufferPoolConfig(
-            pool_name="image-test",
-            root_dir=tmp_path / "buffers" / "image-test",
-            file_size_bytes=slot_size * slot_count,
-            slot_size_bytes=slot_size,
-            file_name="image-test.dat",
-            broker_epoch="epoch-stage4",
+    return LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=tmp_path,
+            arena_id="local-buffer-main",
+            arena_size_bytes=max(4, capacity_units) * 1024 * 1024,
+            min_block_size_bytes=1024 * 1024,
+            max_allocation_bytes=4 * 1024 * 1024,
             reader_guard_slots=8,
             revocation_grace_seconds=0.01,
+            file_stem="main",
         )
     )

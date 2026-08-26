@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from queue import Queue
 from threading import BoundedSemaphore, Event, Thread
 
-from backend.contracts.buffers import BufferLease
 from backend.service.application.local_buffers import (
+    DirectMmapLocalBufferReader,
     DirectMmapLocalBufferWriter,
-    LocalBufferBrokerPoolSettings,
     LocalBufferBrokerSettings,
+)
+from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import (
+    LocalBufferArenaPool,
+)
+from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
+    MmapBufferArenaConfig,
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
@@ -135,15 +139,6 @@ class _PreviewRuntimePool:
         )
 
 
-class _PreviewInputReader:
-    """返回固定输入图片 view 的最小 LocalBuffer reader。"""
-
-    def read_buffer_ref(self, _buffer_ref) -> memoryview:
-        """返回只读输入图片 view。"""
-
-        return memoryview(b"input-image")
-
-
 def test_deployment_worker_returns_preview_only_through_localbuffer(
     tmp_path: Path,
 ) -> None:
@@ -151,34 +146,33 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
 
     settings = LocalBufferBrokerSettings(
         root_dir=str(tmp_path / "buffers"),
-        default_pool_name="image-test",
-        pools=(
-            LocalBufferBrokerPoolSettings(
-                pool_name="image-test",
-                slot_size_bytes=64 * 1024,
-                slot_count=1,
-            ),
-        ),
+        arena_size_bytes=16 * 1024 * 1024,
+        min_block_size_bytes=1024 * 1024,
+        max_allocation_bytes=8 * 1024 * 1024,
+        reader_guard_slots=4,
     )
-    pool = settings.pools[0]
-    pool_path = Path(settings.root_dir) / pool.pool_name / pool.file_name
-    pool_path.parent.mkdir(parents=True)
-    pool_path.write_bytes(b"\x00" * pool.slot_size_bytes)
-    created_at = datetime.now(timezone.utc)
-    lease = BufferLease(
-        lease_id="lease-preview",
-        buffer_id="image-test:0",
-        owner_kind="test",
-        owner_id="test-preview",
-        pool_name=pool.pool_name,
-        file_path=str(pool_path),
-        offset=0,
-        size=pool.slot_size_bytes,
-        created_at=created_at,
-        expires_at=created_at + timedelta(seconds=60),
-        state="writing",
-        broker_epoch="epoch-test",
-        generation=1,
+    pool = LocalBufferArenaPool(
+        MmapBufferArenaConfig(
+            root_dir=Path(settings.root_dir),
+            arena_id=settings.arena_id,
+            arena_size_bytes=settings.arena_size_bytes,
+            min_block_size_bytes=settings.min_block_size_bytes,
+            max_allocation_bytes=settings.max_allocation_bytes,
+            reader_guard_slots=settings.reader_guard_slots,
+        )
+    )
+    input_lease = pool.allocate(
+        content_length=len(b"input-image"),
+        owner_kind="workflow-runtime",
+        owner_id="run-1",
+    )
+    pool.write_lease_bytes(lease=input_lease, content=memoryview(b"input-image"))
+    input_result = pool.commit_lease(lease=input_lease, media_type="image/jpeg")
+    lease = pool.allocate(
+        content_length=1024 * 1024,
+        owner_kind="deployment-preview",
+        owner_id="request-preview",
+        ttl_seconds=60,
     )
     runtime_target = _build_runtime_target(tmp_path)
     preview_bytes = b"\xff\xd8\xffpreview-image"
@@ -191,6 +185,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     assert infer_slots.acquire(blocking=False) is True
 
     writer = DirectMmapLocalBufferWriter(settings)
+    reader = DirectMmapLocalBufferReader(settings)
     try:
         _run_inference_request(
             response_queue=response_queue,
@@ -207,20 +202,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
                     "input_image_payload": {
                         "transport_kind": "buffer",
                         "media_type": "image/jpeg",
-                        "buffer_ref": {
-                            "buffer_id": "buffer-input",
-                            "lease_id": "lease-input",
-                            "path": str(pool_path),
-                            "offset": 0,
-                            "size": len(b"input-image"),
-                            "shape": [],
-                            "dtype": None,
-                            "layout": None,
-                            "pixel_format": None,
-                            "media_type": "image/jpeg",
-                            "broker_epoch": "epoch-test",
-                            "generation": 1,
-                        },
+                        "buffer_ref": input_result.buffer_ref.model_dump(mode="json"),
                     },
                     "score_threshold": 0.3,
                     "save_result_image": True,
@@ -228,7 +210,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
                 },
                 "preview_output_lease": lease.model_dump(mode="json"),
             },
-            local_buffer_reader=_PreviewInputReader(),
+            local_buffer_reader=reader,
             local_buffer_writer=writer,
             local_buffer_health=_LocalBufferBrokerRuntimeHealth(
                 connected=True,
@@ -238,6 +220,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
             keep_warm_state=None,
         )
     finally:
+        reader.close()
         writer.close()
 
     response = response_queue.get_nowait()
@@ -249,7 +232,13 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     }
     assert "preview_image_bytes" not in payload["execution_result"]
     assert "preview_image_bytes_base64" not in payload["execution_result"]
-    assert pool_path.read_bytes()[: len(preview_bytes)] == preview_bytes
+    output = pool.commit_lease(
+        lease=lease,
+        media_type="image/jpeg",
+        content_length=len(preview_bytes),
+    )
+    assert pool.read_buffer_ref(output.buffer_ref) == preview_bytes
+    pool.close()
 
 
 def test_increment_safe_counter_normalizes_negative_value_and_rolls_over() -> None:

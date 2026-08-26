@@ -773,6 +773,12 @@ class BackendServiceBootstrap(
                 poll_interval_seconds=(
                     settings.workflow_runtime.local_shared_trigger_mailbox_poll_interval_seconds
                 ),
+                response_ack_timeout_seconds=(
+                    settings.workflow_runtime.local_shared_trigger_response_ack_timeout_seconds
+                ),
+                cancellation_grace_seconds=(
+                    settings.workflow_runtime.local_shared_trigger_cancellation_grace_seconds
+                ),
             )
             if settings.local_buffer_broker.enabled
             else None
@@ -978,6 +984,12 @@ class BackendServiceBootstrap(
             trigger_source_supervisor=runtime.trigger_source_supervisor,
             dataset_storage=runtime.dataset_storage,
             workflow_runtime_worker_manager=runtime.workflow_runtime_worker_manager,
+            local_shared_default_reply_timeout_seconds=(
+                runtime.settings.workflow_runtime.local_shared_trigger_default_reply_timeout_seconds
+            ),
+            local_shared_response_ack_timeout_seconds=(
+                runtime.settings.workflow_runtime.local_shared_trigger_response_ack_timeout_seconds
+            ),
         ).start_enabled_trigger_sources()
         if runtime.training_telemetry_receiver is not None:
             runtime.training_telemetry_receiver.start()

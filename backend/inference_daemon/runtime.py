@@ -167,7 +167,8 @@ def build_inference_daemon_runtime(
                 "root_dir": str(
                     Path(settings.local_buffer_broker.root_dir)
                     / "inference-daemon-private"
-                )
+                ),
+                "arena_id": "inference-daemon-private",
             }
         )
     )

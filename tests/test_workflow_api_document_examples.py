@@ -2320,11 +2320,11 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
     ).read_text(encoding="utf-8")
 
     assert "# LocalBufferBroker" in document_text
-    assert "mmap pool、slot、lease 和控制协议" in document_text
+    assert "固定总容量 arena、动态 extent、lease 和控制协议" in document_text
     assert "broker companion process" in document_text
-    assert "allocate -> write -> commit -> acquire -> read -> release" in document_text
-    assert "generation 与 owner fence" in document_text
-    assert "不在 broker 内引入业务请求队列" in document_text
+    assert "allocate -> write/commit -> reader guard -> read -> release" in document_text
+    assert "generation、epoch、owner fence" in document_text
+    assert "不引入业务请求队列、重试、压缩" in document_text
     assert "LocalBufferBroker" in architecture_readme_text
     assert "LocalBufferBroker" in docs_readme_text
     assert "docs/examples/workflows/README.md" in docs_readme_text
@@ -2340,8 +2340,8 @@ def test_local_buffer_broker_architecture_document_is_indexed() -> None:
     assert "大图热路径不得把图片转成 Base64 JSON" in trigger_sources_text
     assert "不执行图内图片转换、模型推理或业务规则" in trigger_sources_text
     assert "TriggerSource id 和外部 endpoint 不变" in trigger_sources_text
-    assert "status/health 不修改 slot 所有权" in document_text
-    assert "不把 LocalBuffer 引用写成长期公开业务资源" in document_text
+    assert "health 必须直接校验容量守恒" in document_text
+    assert "不把短期 BufferRef 写入数据库、异步结果或长期业务资源" in document_text
 
 
 def test_workflow_example_documents_postman_collection_contains_remaining_debug_examples() -> (
