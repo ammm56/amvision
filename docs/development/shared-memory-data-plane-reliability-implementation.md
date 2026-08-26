@@ -167,7 +167,7 @@ binary schema 用固定 `cancel_reason` 枚举替换单一 `cancel_requested` bi
 
 ### 6. per-source health
 
-全局 mailbox health 与 TriggerSource health 分开。每个 source 至少记录 active request、last state/error、request timeout count、client cancel count、busy reject count、capacity reject count、最近总耗时和最近成功时间；只保存数值摘要，不保存图片、参数或本地路径。health entry 只为已配置或当前 active source 保留，source 删除后同步清理，禁止以 request id 建立无界 metrics label。
+全局 mailbox health 与 TriggerSource health 分开。每个 source 至少记录 active request、last state/error、request timeout count、response ACK timeout count、client cancel count、busy reject count、capacity reject count、最近总耗时和最近成功时间；这些字段必须进入正式 REST health 响应，不能只停留在 adapter 内部字典。最终计数以 SDK 实际可见的 mailbox error code 和 Workflow result state共同裁决，RESPONSE publication把原成功结果替换为容量不足、deadline或cancel时必须记失败。health只保存数值摘要，不保存图片、参数或本地路径；entry只为已配置或当前active source保留，未知source不得创建entry，source删除后在最后一个在途请求结束时清理，禁止以request id或未验证source id建立无界metrics label。
 
 ## 第二部分：LocalBuffer 固定 arena + buddy allocator
 
@@ -225,7 +225,7 @@ general free list 按 order 分桶且每桶按 offset 升序。分配从请求 o
 
 ### 3. persistent descriptor 与内存 free list
 
-allocator metadata header 固定保存 magic、layout version、layout fingerprint、arena size、min/max order、descriptor count、guard layout、broker epoch 和 publication generation。descriptor count 默认 2048。
+allocator metadata header 固定保存 magic、layout version、layout fingerprint、arena size、min/max order、descriptor count、guard layout、broker epoch 和 publication generation。descriptor count 默认 2048。当前开发阶段该完整布局直接定义为 `v1`，Python、.NET和测试夹具只接受同一个版本，不保留先前内部版本号或兼容读取分支。
 
 descriptor 保存固定二进制字段，包括128-bit opaque owner token，不保存可变 owner 文本或 JSON。buddy free list、order buckets 和统计索引由 Broker 启动时从 descriptor 重建；allocator metadata 不保存进程地址、链表指针或 Python 对象。
 
@@ -239,7 +239,7 @@ descriptor 保存固定二进制字段，包括128-bit opaque owner token，不�
 
 协议原子迁移时删除 locator/allocation 中可由请求选择的 `path`。SDK配置只保留受信 `buffers_root`，从固定 allocator header自动发现arena容量、metadata/guard几何、epoch和fingerprint；worker按服务端registry解析 `arena_id`。旧 `size`、`generation`、`slot_capacity_bytes`、`pool_name` 替换为 `content_length`、`descriptor_generation`、`allocation_capacity_bytes`、`arena_id`。`buffer_id` 若因日志/追踪保留也只是展示字段，不参与权威回收；不写双读或字段别名。
 
-`arena_id` 在一次安装内必须跨 Broker owner 唯一、稳定且不能包含 PID。主 Broker 固定为 `local-buffer-main`；当前 inference daemon 私有 owner 固定为 `inference-daemon-private`；未来多个私有 owner 使用 `inference-daemon-private-<stable-daemon-id>`。同步 Workflow/Deployment/Trigger 只使用主 arena，异步任务领取后的私有物化才使用 daemon 私有 arena，两个 arena 之间不能因 locator 同名而误映射。
+`arena_id` 在一次安装内必须跨 Broker owner 唯一、稳定且不能包含 PID。主 Broker 固定为 `local-buffer-main`，服务配置出现其他主 id 时立即拒绝启动；当前 inference daemon 私有 owner 固定为 `inference-daemon-private`；未来多个私有 owner 使用 `inference-daemon-private-<stable-daemon-id>`。同步 Workflow/Deployment/Trigger 只使用主 arena，异步任务领取后的私有物化才使用 daemon 私有 arena，两个 arena 之间不能因 locator 同名而误映射。
 
 这一删除只针对 buffer/frame locator，不改变 storage `image-ref.v1` 对 ObjectStore 相对路径和受控本机绝对文件路径的支持。
 

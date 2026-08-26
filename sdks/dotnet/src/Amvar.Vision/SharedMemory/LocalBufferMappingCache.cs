@@ -14,7 +14,7 @@ namespace Amvar.Vision.SharedMemory
     {
         private const int HeaderSize = 256;
         private const int DescriptorStride = 256;
-        private const int LayoutVersion = 2;
+        private const int LayoutVersion = 1;
         private const string ArenaId = "local-buffer-main";
         private const int StateWriting = 1;
         private readonly object syncRoot = new object();

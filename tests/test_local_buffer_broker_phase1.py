@@ -24,6 +24,13 @@ from backend.service.application.workflows.worker.manager import (
 _MIB = 1024 * 1024
 
 
+def test_broker_rejects_noncanonical_main_arena_id() -> None:
+    """后端主 arena identity 必须与所有 SDK 固定为同一个 v1 值。"""
+
+    with pytest.raises(ValueError, match="必须固定为 local-buffer-main"):
+        LocalBufferBrokerSettings(arena_id="custom-main")
+
+
 def test_broker_process_serves_dynamic_extents_and_capacity_metrics(
     tmp_path: Path,
 ) -> None:

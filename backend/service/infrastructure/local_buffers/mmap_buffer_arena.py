@@ -32,7 +32,7 @@ from backend.service.infrastructure.local_buffers.buddy_allocator import (
 
 
 _MAGIC = b"AMVLBA01"
-_LAYOUT_VERSION = 2
+_LAYOUT_VERSION = 1
 _HEADER_SIZE = 256
 _DESCRIPTOR_STRIDE = 256
 _HEADER = struct.Struct("<8sIIIIIIQQQQ16s32sQ")
@@ -529,10 +529,7 @@ class MmapBufferArena:
                         deadline_ns=current.deadline_ns,
                         revocation_deadline_ns=(
                             monotonic_ns()
-                            + int(
-                                self.config.revocation_grace_seconds
-                                * 1_000_000_000
-                            )
+                            + int(self.config.revocation_grace_seconds * 1_000_000_000)
                         ),
                         publication_guard_held=True,
                     )
@@ -733,9 +730,7 @@ class MmapBufferArena:
                 "general_external_fragmentation"
             ],
             "free_blocks_by_order": allocator_status["free_blocks_by_order"],
-            "allocation_failure_counts": allocator_status[
-                "allocation_failure_counts"
-            ],
+            "allocation_failure_counts": allocator_status["allocation_failure_counts"],
         }
 
     @contextmanager
@@ -824,9 +819,7 @@ class MmapBufferArena:
                     receipt,
                     expected_states={"frame_reserved"},
                 )
-                generation = (descriptor.descriptor_generation + 1) & (
-                    (1 << 64) - 1
-                )
+                generation = (descriptor.descriptor_generation + 1) & ((1 << 64) - 1)
                 if generation == 0:
                     generation = 1
                 lease_token = token_bytes(16)
@@ -954,7 +947,6 @@ class MmapBufferArena:
         """退出 context manager 时释放 owner。"""
 
         self.close()
-
 
     def _open_files(self) -> None:
         """严格创建或打开固定长度 arena/allocator 文件。"""
@@ -1588,9 +1580,7 @@ class MmapBufferArenaExternalAccess:
         broker_epoch = bytes(header[11]).hex()
         if str(getattr(locator, "broker_epoch")) != broker_epoch:
             raise LocalBufferArenaError("LocalBuffer broker epoch 已失效")
-        descriptor = self._read_descriptor(
-            int(getattr(locator, "descriptor_index"))
-        )
+        descriptor = self._read_descriptor(int(getattr(locator, "descriptor_index")))
         locator_content_length = int(getattr(locator, "content_length"))
         content_length_matches = (
             0 < locator_content_length <= descriptor.content_length
@@ -1647,9 +1637,7 @@ class MmapBufferArenaExternalAccess:
             revocation_deadline_ns=revocation_deadline_ns,
             order=order,
             domain=(
-                "huge_reserve"
-                if domain_code == _DOMAIN_HUGE_RESERVE
-                else "general"
+                "huge_reserve" if domain_code == _DOMAIN_HUGE_RESERVE else "general"
             ),
             publication_generation=publication_generation,
         )

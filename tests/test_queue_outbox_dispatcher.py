@@ -77,6 +77,50 @@ def test_queue_outbox_dispatches_and_marks_message_in_separate_transactions(
     assert stored.attempt_count == 1
 
 
+def test_queue_outbox_stop_finishes_already_claimed_batch(tmp_path: Path) -> None:
+    """停止信号不能遗留同一批已领取但尚未投递的消息 lease。"""
+
+    session_factory = _create_session_factory(tmp_path)
+    queue_backend = LocalFileQueueBackend(
+        LocalFileQueueSettings(root_dir=str(tmp_path / "queue"))
+    )
+    _save_outbox_message(session_factory, message_id="queue-message-task-1")
+    _save_outbox_message(session_factory, message_id="queue-message-task-2")
+    dispatcher: QueueOutboxDispatcher
+
+    class _StopAfterFirstEnqueue:
+        def __init__(self) -> None:
+            self.enqueue_count = 0
+
+        def enqueue(self, **kwargs: object) -> object:
+            self.enqueue_count += 1
+            result = queue_backend.enqueue(**kwargs)  # type: ignore[arg-type]
+            if self.enqueue_count == 1:
+                dispatcher.stop()
+            return result
+
+    stopping_queue = _StopAfterFirstEnqueue()
+    dispatcher = QueueOutboxDispatcher(
+        session_factory=session_factory,
+        queue_backend=stopping_queue,  # type: ignore[arg-type]
+        dispatcher_id="dispatcher-stop",
+    )
+
+    assert (
+        dispatcher.dispatch_once(now=datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc))
+        == 2
+    )
+    assert stopping_queue.enqueue_count == 2
+    assert (
+        _get_outbox_message(session_factory, "queue-message-task-1").state
+        == "dispatched"
+    )
+    assert (
+        _get_outbox_message(session_factory, "queue-message-task-2").state
+        == "dispatched"
+    )
+
+
 def test_queue_outbox_replay_after_enqueue_crash_window_is_idempotent(
     tmp_path: Path,
 ) -> None:

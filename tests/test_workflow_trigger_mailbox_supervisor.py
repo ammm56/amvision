@@ -100,9 +100,16 @@ class _FakeAdmission:
 class _FakeRuntimeService:
     """不启动子进程的 Runtime admission/execute 行为替身。"""
 
-    def __init__(self, *, busy: bool = False, fail_invoke: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        busy: bool = False,
+        fail_invoke: bool = False,
+        result_state: str = "succeeded",
+    ) -> None:
         self.busy = busy
         self.fail_invoke = fail_invoke
+        self.result_state = result_state
         self.admitted_count = 0
         self.failed_admission_count = 0
 
@@ -137,7 +144,7 @@ class _FakeRuntimeService:
         run = WorkflowRun(
             **{
                 **admission.workflow_run.__dict__,
-                "state": "succeeded",
+                "state": self.result_state,
                 "outputs": {"workflow_result": {"code": 200}},
                 "metadata": {
                     **admission.execution_metadata,
@@ -214,9 +221,7 @@ class _CompletedInputCleanupRuntimeService(_FakeRuntimeService):
     def invoke_admitted_sync_workflow_run(self, admission):
         """先完成 execution cleanup，再返回带完成回执的同步结果。"""
 
-        for cleanup in list_registered_execution_cleanups(
-            admission.execution_metadata
-        ):
+        for cleanup in list_registered_execution_cleanups(admission.execution_metadata):
             if (
                 cleanup.resource_kind
                 != WORKFLOW_EXECUTION_CLEANUP_KIND_LOCAL_BUFFER_LEASE
@@ -224,9 +229,12 @@ class _CompletedInputCleanupRuntimeService(_FakeRuntimeService):
                 continue
             receipt_payload = cleanup.metadata.get("ownership_receipt")
             assert isinstance(receipt_payload, dict)
-            assert self.pool_client.conditional_release(
-                receipt=LeaseOwnershipReceipt.model_validate(receipt_payload)
-            ) == "released"
+            assert (
+                self.pool_client.conditional_release(
+                    receipt=LeaseOwnershipReceipt.model_validate(receipt_payload)
+                )
+                == "released"
+            )
         result = super().invoke_admitted_sync_workflow_run(admission)
         return WorkflowRuntimeSyncInvokeResult(
             workflow_run=result.workflow_run,
@@ -344,7 +352,9 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
                         trigger_source_id="source-1",
                         event_id="event-1",
                         payload={"station": "line-1"},
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
 
                 response = _wait_response(supervisor, client, identity)
@@ -358,9 +368,234 @@ def test_full_prepare_request_runtime_response_ack_chain(tmp_path: Path) -> None
 
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
-                assert supervisor.routes.build_status()[
-                    "active_source_permit_count"
-                ] == 0
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 0
+                )
+        finally:
+            supervisor.close()
+
+
+@pytest.mark.parametrize(
+    ("published_error_code", "counter_name", "error_name"),
+    (
+        (
+            mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
+            "capacity_reject_count",
+            "trigger_response_capacity_exhausted",
+        ),
+        (
+            mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED,
+            "request_timeout_count",
+            "deadline_exceeded",
+        ),
+        (
+            mailbox_contract.ERROR_CODE_CANCELLED,
+            "cancel_count",
+            "cancelled",
+        ),
+    ),
+)
+def test_health_uses_final_published_mailbox_terminal(
+    tmp_path: Path,
+    monkeypatch,
+    published_error_code: int,
+    counter_name: str,
+    error_name: str,
+) -> None:
+    """Workflow 成功但公开 RESPONSE 被替换时必须按客户端终态记失败。"""
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            mailbox = supervisor.mailbox
+            original_publish_response = mailbox.publish_response
+
+            def publish_forced_terminal(**kwargs):
+                return original_publish_response(
+                    identity=kwargs["identity"],
+                    payload=json.dumps(
+                        {
+                            "state": "failed",
+                            "error_code": published_error_code,
+                        },
+                        separators=(",", ":"),
+                    ).encode("utf-8"),
+                    error_code=published_error_code,
+                    response_ack_deadline_ns=kwargs["response_ack_deadline_ns"],
+                )
+
+            monkeypatch.setattr(
+                mailbox,
+                "publish_response",
+                publish_forced_terminal,
+            )
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = b"image"
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
+                )
+
+                response = _wait_response(supervisor, client, identity)
+                assert response.error_code == published_error_code
+                health = supervisor.build_source_status("source-1")
+                assert health["success_count"] == 0
+                assert health["error_count"] == 1
+                assert health[counter_name] == 1
+                assert health["recent_error"]["error_code"] == error_name
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+        finally:
+            supervisor.close()
+
+
+def test_workflow_timed_out_increments_source_timeout(tmp_path: Path) -> None:
+    """Runtime timed_out 即使使用通用执行失败码也必须进入 timeout 子计数。"""
+
+    runtime = _FakeRuntimeService(result_state="timed_out")
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = b"image"
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
+                )
+
+                response = _wait_response(supervisor, client, identity)
+                assert (
+                    response.error_code
+                    == mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTION_FAILED
+                )
+                health = supervisor.build_source_status("source-1")
+                assert health["success_count"] == 0
+                assert health["error_count"] == 1
+                assert health["timeout_count"] == 1
+                assert health["request_timeout_count"] == 0
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+        finally:
+            supervisor.close()
+
+
+def test_unknown_sources_do_not_create_health_entries(tmp_path: Path) -> None:
+    """不存在的随机 source id 不得扩张常驻 source health 字典。"""
+
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
+        try:
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                for index in range(20):
+                    prepare = WorkflowTriggerPrepareV1(
+                        trigger_source_id=f"unknown-{index}",
+                        event_id=f"event-{index}",
+                        image=WorkflowTriggerInputImageSpec(
+                            content_length=1,
+                            media_type="application/octet-stream",
+                        ),
+                    )
+                    identity = client.claim(
+                        timeout_ms=5_000,
+                        route_generation=1,
+                        prepare_payload=prepare.model_dump_json().encode("utf-8"),
+                    )
+                    supervisor.process_once()
+                    response = client.read_response(identity=identity)
+                    assert response is not None
+                    assert response.error_code != mailbox_contract.ERROR_CODE_NONE
+                    client.acknowledge(identity=identity)
+                    supervisor.process_once()
+
+            assert supervisor.build_status()["source_health_entry_count"] == 0
+        finally:
+            supervisor.close()
+
+
+def test_prepare_capacity_failure_uses_local_buffer_error_code(
+    tmp_path: Path,
+) -> None:
+    """输入 extent 无法分配时公开 v1 错误码与 health 分类必须一致。"""
+
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                identity = client.claim(
+                    timeout_ms=5_000,
+                    route_generation=route.route_generation,
+                    prepare_payload=_prepare_payload(5 * 1024 * 1024)
+                    .model_dump_json()
+                    .encode("utf-8"),
+                )
+                supervisor.process_once()
+                response = client.read_response(identity=identity)
+                assert response is not None
+                assert (
+                    response.error_code
+                    == mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED
+                )
+                health = supervisor.build_source_status("source-1")
+                assert health["error_count"] == 1
+                assert health["capacity_reject_count"] == 1
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+        finally:
+            supervisor.close()
+
+
+def test_unregistered_source_health_is_pruned_after_inflight_cleanup(
+    tmp_path: Path,
+) -> None:
+    """删除 source 后仅保留在途诊断，最后一个请求回收后立即清理。"""
+
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, _FakeRuntimeService())
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                identity, _allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=1,
+                )
+                supervisor.unregister_trigger_source("source-1")
+                assert supervisor.build_status()["source_health_entry_count"] == 1
+
+                client.cancel(identity=identity)
+                for _ in range(3):
+                    supervisor.process_once()
+                assert supervisor.build_status()["source_health_entry_count"] == 0
+                assert pool.build_status()["active_lease_count"] == 0
         finally:
             supervisor.close()
 
@@ -390,7 +625,9 @@ def test_completed_runtime_input_cleanup_does_not_send_stale_release(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
 
                 response = _wait_response(supervisor, client, identity)
@@ -436,7 +673,9 @@ def test_local_shared_memory_diagnostics_expose_stage_timings_and_health(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
 
                 response = _wait_response(supervisor, client, identity)
@@ -499,7 +738,9 @@ def test_output_lease_uses_response_ack_deadline_before_publication(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
 
                 response = _wait_response(supervisor, client, identity)
@@ -540,7 +781,9 @@ def test_request_deadline_propagates_cancel_to_active_runtime(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
                 assert runtime.started.wait(timeout=1.0)
@@ -551,7 +794,9 @@ def test_request_deadline_propagates_cancel_to_active_runtime(
 
                 response = client.read_response(identity=identity)
                 assert response is not None
-                assert response.error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+                assert (
+                    response.error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+                )
                 client.acknowledge(identity=identity)
                 for _ in range(20):
                     supervisor.process_once()
@@ -690,9 +935,7 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
             while not ready_path.exists() and monotonic_ns() < deadline:
                 sleep(0.01)
             assert ready_path.exists(), (
-                copied_path.with_suffix(".bin.error.json").read_text(
-                    encoding="utf-8"
-                )
+                copied_path.with_suffix(".bin.error.json").read_text(encoding="utf-8")
                 if copied_path.with_suffix(".bin.error.json").exists()
                 else "等待 .NET output reader 超时"
             )
@@ -719,7 +962,9 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
             assert timing_payload["SdkWriteLocalBufferMs"] >= 0
             assert timing_payload["SdkChecksumMs"] >= 0
             deadline = monotonic_ns() + 2_000_000_000
-            while pool.build_status()["active_lease_count"] and monotonic_ns() < deadline:
+            while (
+                pool.build_status()["active_lease_count"] and monotonic_ns() < deadline
+            ):
                 sleep(0.01)
             assert pool.build_status()["active_lease_count"] == 0
         finally:
@@ -776,11 +1021,46 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
     encoded_path.write_bytes(encoded_png.tobytes())
 
     cases: list[tuple[str, bytes, int, bytes, str, tuple[int, ...]]] = [
-        ("encoded-bytes", encoded_path.read_bytes(), 0, encoded_path.read_bytes(), "image/png", ()),
-        ("encoded-file", encoded_path.read_bytes(), 0, encoded_path.read_bytes(), "image/png", ()),
-        ("base64", encoded_path.read_bytes(), 0, encoded_path.read_bytes(), "image/png", ()),
-        ("bgr24", expected_bgr24, width * 3, expected_bgr24, "image/raw", (height, width, 3)),
-        ("bgr24-direct", expected_bgr24, width * 3, expected_bgr24, "image/raw", (height, width, 3)),
+        (
+            "encoded-bytes",
+            encoded_path.read_bytes(),
+            0,
+            encoded_path.read_bytes(),
+            "image/png",
+            (),
+        ),
+        (
+            "encoded-file",
+            encoded_path.read_bytes(),
+            0,
+            encoded_path.read_bytes(),
+            "image/png",
+            (),
+        ),
+        (
+            "base64",
+            encoded_path.read_bytes(),
+            0,
+            encoded_path.read_bytes(),
+            "image/png",
+            (),
+        ),
+        (
+            "bgr24",
+            expected_bgr24,
+            width * 3,
+            expected_bgr24,
+            "image/raw",
+            (height, width, 3),
+        ),
+        (
+            "bgr24-direct",
+            expected_bgr24,
+            width * 3,
+            expected_bgr24,
+            "image/raw",
+            (height, width, 3),
+        ),
         (
             "bgr24-stride",
             top_row + b"\x00\x00\x00" + bottom_row + b"\x00\x00\x00",
@@ -813,7 +1093,14 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
             "image/raw",
             (height, width, 3),
         ),
-        ("bitmap", encoded_path.read_bytes(), 0, expected_bgr24, "image/raw", (height, width, 3)),
+        (
+            "bitmap",
+            encoded_path.read_bytes(),
+            0,
+            expected_bgr24,
+            "image/raw",
+            (height, width, 3),
+        ),
     ]
 
     with _build_pool(tmp_path, capacity_units=2) as pool:
@@ -823,7 +1110,9 @@ def test_dotnet_sdk_input_conversions_write_exact_local_buffer_contracts(
         try:
             route = supervisor.register_trigger_source(_source("source-conversion"))
             supervisor.start()
-            for index, (mode, source, stride, expected, media_type, shape) in enumerate(cases):
+            for index, (mode, source, stride, expected, media_type, shape) in enumerate(
+                cases
+            ):
                 input_path = tmp_path / f"input-{index}.bin"
                 if mode in {"encoded-bytes", "encoded-file", "base64", "bitmap"}:
                     input_path = tmp_path / f"input-{index}.png"
@@ -896,9 +1185,9 @@ def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
                 second = client.claim(
                     timeout_ms=5_000,
                     route_generation=route.route_generation,
-                    prepare_payload=_prepare_payload(4096).model_dump_json().encode(
-                        "utf-8"
-                    ),
+                    prepare_payload=_prepare_payload(4096)
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
                 response = client.read_response(identity=second)
@@ -910,9 +1199,7 @@ def test_same_source_second_prepare_is_immediate_busy(tmp_path: Path) -> None:
                 assert health["request_count"] == 2
                 assert health["error_count"] == 1
                 assert health["busy_count"] == 1
-                assert supervisor.build_source_status("source-2")[
-                    "request_count"
-                ] == 0
+                assert supervisor.build_source_status("source-2")["request_count"] == 0
 
                 client.acknowledge(identity=second)
                 client.cancel(identity=first)
@@ -947,7 +1234,9 @@ def test_runtime_busy_releases_input_but_holds_source_until_ack(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
                 response = client.read_response(identity=identity)
@@ -955,18 +1244,18 @@ def test_runtime_busy_releases_input_but_holds_source_until_ack(
                 assert response is not None
                 assert response.error_code == 5
                 assert pool.build_status()["active_lease_count"] == 0
-                assert supervisor.routes.build_status()[
-                    "active_source_permit_count"
-                ] == 1
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 1
+                )
                 health = supervisor.build_source_status("source-1")
                 assert health["request_count"] == 1
                 assert health["error_count"] == 1
                 assert health["busy_count"] == 1
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
-                assert supervisor.routes.build_status()[
-                    "active_source_permit_count"
-                ] == 0
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 0
+                )
         finally:
             supervisor.close()
 
@@ -1003,7 +1292,9 @@ def test_transfer_failure_closes_admission_and_releases_writer_receipt(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
 
@@ -1043,7 +1334,9 @@ def test_executor_busy_rejects_without_hidden_queue_and_compensates(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
 
@@ -1094,7 +1387,9 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
 
@@ -1106,9 +1401,9 @@ def test_worker_submit_failure_releases_reserved_capacity_and_input(
                 assert supervisor.executor.build_status()["active_count"] == 0
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
-                assert supervisor.routes.build_status()[
-                    "active_source_permit_count"
-                ] == 0
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 0
+                )
         finally:
             supervisor.close()
 
@@ -1150,7 +1445,9 @@ def test_cleanup_step_failure_does_not_block_remaining_resource_reclaim(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 supervisor.process_once()
 
@@ -1159,9 +1456,9 @@ def test_cleanup_step_failure_does_not_block_remaining_resource_reclaim(
                 supervisor.process_once()
                 assert pool.build_status()["active_lease_count"] == 0
                 assert supervisor.executor.build_status()["active_count"] == 0
-                assert supervisor.routes.build_status()[
-                    "active_source_permit_count"
-                ] == 0
+                assert (
+                    supervisor.routes.build_status()["active_source_permit_count"] == 0
+                )
         finally:
             supervisor.close()
 
@@ -1190,13 +1487,77 @@ def test_worker_execution_failure_does_not_repeat_pre_submit_compensation(
                     payload=WorkflowTriggerRequestV1(
                         trigger_source_id="source-1",
                         event_id="event-1",
-                    ).model_dump_json().encode("utf-8"),
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
                 )
                 response = _wait_response(supervisor, client, identity)
 
                 assert response.error_code == mailbox_contract.ERROR_CODE_PROTOCOL_ERROR
                 assert runtime.failed_admission_count == 0
                 assert pool.build_status()["active_lease_count"] == 0
+                client.acknowledge(identity=identity)
+                supervisor.process_once()
+        finally:
+            supervisor.close()
+
+
+def test_worker_failure_health_uses_error_publication_terminal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """异常路径也必须以 publish_error 实际公开的 v1 终态分类。"""
+
+    runtime = _FakeRuntimeService(fail_invoke=True)
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        try:
+            route = supervisor.register_trigger_source(_source("source-1"))
+            mailbox = supervisor.mailbox
+            original_publish_error = mailbox.publish_error
+
+            def publish_deadline_terminal(**kwargs):
+                return original_publish_error(
+                    identity=kwargs["identity"],
+                    error_code=mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED,
+                    message=kwargs["message"],
+                )
+
+            monkeypatch.setattr(
+                mailbox,
+                "publish_error",
+                publish_deadline_terminal,
+            )
+            with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
+                content = b"raw-image"
+                identity, allocation = _prepare(
+                    supervisor,
+                    client,
+                    route.route_generation,
+                    content_length=len(content),
+                )
+                _write_allocation(pool, allocation, content, identity.deadline_ns)
+                client.publish_request(
+                    identity=identity,
+                    payload=WorkflowTriggerRequestV1(
+                        trigger_source_id="source-1",
+                        event_id="event-1",
+                    )
+                    .model_dump_json()
+                    .encode("utf-8"),
+                )
+
+                response = _wait_response(supervisor, client, identity)
+                assert (
+                    response.error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+                )
+                health = supervisor.build_source_status("source-1")
+                assert health["error_count"] == 1
+                assert health["timeout_count"] == 1
+                assert health["request_timeout_count"] == 1
+                assert health["recent_error"]["published_error_code"] == (
+                    "deadline_exceeded"
+                )
                 client.acknowledge(identity=identity)
                 supervisor.process_once()
         finally:
@@ -1232,9 +1593,9 @@ def _prepare(
     identity = client.claim(
         timeout_ms=timeout_ms,
         route_generation=route_generation,
-        prepare_payload=_prepare_payload(content_length).model_dump_json().encode(
-            "utf-8"
-        ),
+        prepare_payload=_prepare_payload(content_length)
+        .model_dump_json()
+        .encode("utf-8"),
     )
     supervisor.process_once()
     allocation = client.read_writing_allocation(identity=identity)
@@ -1361,6 +1722,7 @@ def _image_source(trigger_source_id: str) -> WorkflowTriggerSource:
             },
         }
     )
+
 
 def _build_pool(tmp_path: Path, *, capacity_units: int = 1) -> LocalBufferArenaPool:
     """创建符合正式 1 MiB 最小块边界的小容量固定 arena。"""

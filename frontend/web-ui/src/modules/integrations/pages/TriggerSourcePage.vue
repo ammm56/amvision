@@ -998,6 +998,7 @@ function formatHealthSummary(value: unknown): string {
   const timeoutCount = value.timeout_count
   const busyCount = value.busy_count
   const capacityRejectCount = value.capacity_reject_count
+  const requestTimeoutCount = value.request_timeout_count
   const responseAckTimeoutCount = value.response_ack_timeout_count
   const cancelCount = value.cancel_count
   if (adapterRunning !== undefined || requestCount !== undefined || successCount !== undefined || errorCount !== undefined) {
@@ -1009,6 +1010,7 @@ function formatHealthSummary(value: unknown): string {
       `timeout=${String(timeoutCount ?? 0)}`,
       `busy=${String(busyCount ?? 0)}`,
       `capacity=${String(capacityRejectCount ?? 0)}`,
+      `request-timeout=${String(requestTimeoutCount ?? 0)}`,
       `ack-timeout=${String(responseAckTimeoutCount ?? 0)}`,
       `cancel=${String(cancelCount ?? 0)}`,
     ].join(' ')

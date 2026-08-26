@@ -21,7 +21,7 @@ backend-service
 ```
 
 - **backend-service**：校验请求，在同一事务内创建业务资源、TaskRecord、初始事件和 Outbox，不直接跨越数据库事务写文件队列。
-- **Outbox Dispatcher**：短事务领取待发送记录，在事务外写 QueueBackend，再用 CAS 标记已发送或安排重试。
+- **Outbox Dispatcher**：短事务领取待发送记录，在事务外写 QueueBackend，再用 CAS 标记已发送或安排重试。停止信号只阻止领取下一批；已经领取的当前批必须逐条投递或进入失败释放路径，不能遗留到 lease 到期后再恢复。
 - **QueueBackend**：本地持久化任务队列和 claim/ack/recovery。
 - **TaskAttempt CAS claim**：以 `task_id + attempt_no` 原子取得执行权，lease recovery 只接管同一 attempt，旧执行者不能写入终态。
 - **Worker Profile**：按职责消费一种任务池，由 full Supervisor 注入 topology identity。

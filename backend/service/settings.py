@@ -668,6 +668,17 @@ class BackendServiceSettings(BaseSettings):
         default_factory=BackendServiceTrainingTelemetryConfig
     )
 
+    @model_validator(mode="after")
+    def validate_main_local_buffer_arena(self) -> BackendServiceSettings:
+        """正式 backend 配置只允许公开、稳定的主图片 arena。"""
+
+        if self.local_buffer_broker.arena_id != "local-buffer-main":
+            raise ValueError(
+                "backend-service 的 LocalBufferBroker arena_id 必须固定为 "
+                "local-buffer-main"
+            )
+        return self
+
     @classmethod
     def settings_customise_sources(
         cls,

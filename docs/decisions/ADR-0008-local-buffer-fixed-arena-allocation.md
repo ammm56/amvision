@@ -87,7 +87,7 @@ descriptor 保存固定长度字段：state、arena id、descriptor index/genera
 - `content_length`；
 - `allocation_capacity_bytes`。
 
-服务端私有 receipt 另含权威 owner、deadline、guard identity 和 layout fingerprint。SDK 配置包只固定允许的 `buffers_root`；SDK从固定 allocator header自动发现arena容量、descriptor/guard几何、epoch和fingerprint，并用 allocation 携带的fingerprint交叉校验。配置包不复制arena path、容量、reader guard数或图片上限，SDK也不接受请求载荷指定任意 mmap/metadata 路径。
+服务端私有 receipt 另含权威 owner、deadline、guard identity 和 layout fingerprint。SDK 配置包只固定允许的 `buffers_root`；SDK从固定 allocator header自动发现arena容量、descriptor/guard几何、epoch和fingerprint，并用 allocation 携带的fingerprint交叉校验。当前开发期完整header直接作为唯一`v1`布局，Python与.NET不保留旧版本兼容。配置包不复制arena path、容量、reader guard数或图片上限，SDK也不接受请求载荷指定任意 mmap/metadata 路径。
 
 新 `BufferRef.v1` 与 Trigger allocation 不再传输可由请求选择的 `path`，SDK/worker只按 `arena_id` 从固定配置解析路径；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 分别由语义明确的 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id` 取代。`buffer_id` 如为日志展示保留，也不得参与权威回收。最终实现不保留旧字段双读。
 

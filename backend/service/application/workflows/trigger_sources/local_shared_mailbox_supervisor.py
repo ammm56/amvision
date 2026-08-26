@@ -164,9 +164,7 @@ class WorkflowTriggerMailboxSupervisor:
         self._owns_local_buffer_client = local_buffer_client is None
         self._mailbox: WorkflowTriggerMailboxServer | None = None
         self.routes = WorkflowTriggerRouteRegistry()
-        self.executor = BoundedWorkflowTriggerExecutor(
-            max_workers=max_executor_workers
-        )
+        self.executor = BoundedWorkflowTriggerExecutor(max_workers=max_executor_workers)
         self.input_binding_mapper = InputBindingMapper()
         self.result_dispatcher = WorkflowResultDispatcher()
         self.poll_interval_seconds = poll_interval_seconds
@@ -183,6 +181,7 @@ class WorkflowTriggerMailboxSupervisor:
         self._completed_request_count = 0
         self._failed_request_count = 0
         self._source_health: dict[str, _SourceMailboxHealth] = {}
+        self._registered_source_ids: set[str] = set()
         self._idle_poll_sleep_count = 0
         self._orphan_sweep_cursor = 0
         self._stop_event = Event()
@@ -221,7 +220,10 @@ class WorkflowTriggerMailboxSupervisor:
                 "local-shared-memory sync TriggerSource 必须固定 reply_timeout_seconds"
             )
         response_plan = require_trigger_response_plan(trigger_source.metadata)
-        if response_plan.response_ack_timeout_seconds != self.response_ack_timeout_seconds:
+        if (
+            response_plan.response_ack_timeout_seconds
+            != self.response_ack_timeout_seconds
+        ):
             raise InvalidRequestError(
                 "local-shared-memory response plan ACK timeout 与服务配置不一致",
                 details={
@@ -235,6 +237,7 @@ class WorkflowTriggerMailboxSupervisor:
             )
         route = self.routes.register(trigger_source)
         with self._pending_lock:
+            self._registered_source_ids.add(trigger_source.trigger_source_id)
             self._source_health.setdefault(
                 trigger_source.trigger_source_id,
                 _SourceMailboxHealth(),
@@ -245,6 +248,10 @@ class WorkflowTriggerMailboxSupervisor:
         """停止一条 source 的新 PREPARE，不中断已有请求。"""
 
         self.routes.unregister(trigger_source_id)
+        normalized_id = trigger_source_id.strip()
+        with self._pending_lock:
+            self._registered_source_ids.discard(normalized_id)
+            self._prune_source_health_locked(normalized_id)
 
     def start(self) -> None:
         """启动唯一 poller；重复调用保持幂等。"""
@@ -339,6 +346,7 @@ class WorkflowTriggerMailboxSupervisor:
             )
             completed_request_count = self._completed_request_count
             failed_request_count = self._failed_request_count
+            source_health_entry_count = len(self._source_health)
             idle_poll_sleep_count = self._idle_poll_sleep_count
             latest_timings = dict(self._latest_timings)
         mailbox_status = dict(self.mailbox.build_status())
@@ -354,6 +362,7 @@ class WorkflowTriggerMailboxSupervisor:
             "recent_request_error": recent_request_error,
             "completed_request_count": completed_request_count,
             "failed_request_count": failed_request_count,
+            "source_health_entry_count": source_health_entry_count,
             "idle_poll_sleep_count": idle_poll_sleep_count,
             "latest_timings": latest_timings,
         }
@@ -380,9 +389,7 @@ class WorkflowTriggerMailboxSupervisor:
                 "busy_count": counters.busy_count,
                 "capacity_reject_count": counters.capacity_reject_count,
                 "request_timeout_count": counters.request_timeout_count,
-                "response_ack_timeout_count": (
-                    counters.response_ack_timeout_count
-                ),
+                "response_ack_timeout_count": (counters.response_ack_timeout_count),
                 "cancel_count": counters.cancel_count,
                 "pending_request_count": len(pending),
                 "active_task_count": sum(item.task_active for item in pending),
@@ -448,12 +455,12 @@ class WorkflowTriggerMailboxSupervisor:
         try:
             prepare_decode_started_at = perf_counter()
             prepare = WorkflowTriggerPrepareV1.model_validate_json(payload)
-            source_id = prepare.trigger_source_id
-            self._record_source_request(source_id)
             route = self.routes.get_route(
                 trigger_source_id=prepare.trigger_source_id,
                 expected_generation=route_generation,
             )
+            source_id = prepare.trigger_source_id
+            self._record_source_request(source_id)
             identity = self.mailbox.tighten_accepted_timeout(
                 identity=identity,
                 timeout_ms=min(
@@ -480,9 +487,7 @@ class WorkflowTriggerMailboxSupervisor:
             allocation = self._require_local_buffer_client().allocate_external_buffer(
                 content_length=prepare.image.content_length,
                 owner_kind="workflow-trigger-write",
-                owner_id=(
-                    f"{prepare.trigger_source_id}:{identity.request_id.hex}"
-                ),
+                owner_id=(f"{prepare.trigger_source_id}:{identity.request_id.hex}"),
                 deadline_ns=identity.deadline_ns,
                 trace_id=prepare.event_id,
             )
@@ -501,9 +506,7 @@ class WorkflowTriggerMailboxSupervisor:
                 layout_fingerprint=allocation.receipt.layout_fingerprint,
                 offset=allocation.lease.offset,
                 content_length=allocation.lease.content_length,
-                allocation_capacity_bytes=(
-                    allocation.lease.allocation_capacity_bytes
-                ),
+                allocation_capacity_bytes=(allocation.lease.allocation_capacity_bytes),
             )
             mailbox_publish_writing_started_at = perf_counter()
             self.mailbox.publish_writing(
@@ -515,9 +518,7 @@ class WorkflowTriggerMailboxSupervisor:
             pending.timings["mailbox_publish_writing_ms"] = _elapsed_ms(
                 mailbox_publish_writing_started_at
             )
-            pending.timings["mailbox_prepare_ms"] = _elapsed_ms(
-                prepare_started_at
-            )
+            pending.timings["mailbox_prepare_ms"] = _elapsed_ms(prepare_started_at)
             pending.writing_published_at = perf_counter()
         except Exception as error:
             if pending is not None and pending.current_receipt is not None:
@@ -587,16 +588,12 @@ class WorkflowTriggerMailboxSupervisor:
             runtime_admission_started_at = perf_counter()
             remaining_ns = request.identity.deadline_ns - monotonic_ns()
             if remaining_ns <= 0:
-                raise OperationTimeoutError(
-                    "Workflow Trigger request deadline 已到期"
-                )
+                raise OperationTimeoutError("Workflow Trigger request deadline 已到期")
             admission = self.runtime_service.admit_sync_workflow_run(
                 pending.route.trigger_source.workflow_runtime_id,
                 WorkflowRuntimeInvokeRequest(
                     input_bindings=input_bindings,
-                    execution_metadata=build_trigger_execution_metadata(
-                        submit_request
-                    ),
+                    execution_metadata=build_trigger_execution_metadata(submit_request),
                     # Runtime 的秒级公开契约只作为 worker 内部上限；mailbox
                     # cancel_event 继续以同一个纳秒绝对 deadline 负责精确截止。
                     timeout_seconds=max(1, ceil(remaining_ns / 1_000_000_000)),
@@ -687,7 +684,11 @@ class WorkflowTriggerMailboxSupervisor:
         """在有界 worker 中执行 Workflow；完成后只发布结果，不在 poller 等待。"""
 
         pending = self._get_pending(identity)
-        if pending is None or pending.admission is None or pending.trigger_event is None:
+        if (
+            pending is None
+            or pending.admission is None
+            or pending.trigger_event is None
+        ):
             return
         try:
             if pending.executor_submitted_at is not None:
@@ -813,10 +814,22 @@ class WorkflowTriggerMailboxSupervisor:
                 self._release_output_receipts(pending)
             self._record_request_observation(
                 pending,
-                failed=trigger_result.state != "succeeded",
+                workflow_state=trigger_result.state,
+                published_error_code=published_error_code,
             )
         except Exception as error:
-            self._publish_failure(identity, error, pending=pending)
+            # 错误 RESPONSE 不公开任何图片 locator。先回收当前 input/output
+            # receipt，再发布客户端可见终态，避免终态已返回但容量仍显示 active。
+            self._release_output_receipts(pending)
+            self._release_receipt_if_present(pending)
+            self._publish_failure(
+                identity,
+                error,
+                pending=pending,
+                capacity_error_code=(
+                    mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED
+                ),
+            )
         finally:
             pending.executor_permit = None
             self._release_receipt_if_present(pending)
@@ -939,44 +952,58 @@ class WorkflowTriggerMailboxSupervisor:
         *,
         pending: _PendingMailboxRequest | None,
         source_id: str | None = None,
+        capacity_error_code: int = (
+            mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED
+        ),
     ) -> None:
         """发布稳定 inline 错误；无法发布时立即结束本 descriptor 的责任。"""
 
         message = error.message if isinstance(error, ServiceError) else str(error)
-        with self._pending_lock:
-            self._recent_request_error = {
-                "error_type": type(error).__name__,
-                "error_code": getattr(error, "code", "protocol_error"),
-                "occurred_at": datetime.now(timezone.utc).isoformat(),
-            }
-            if pending is None or not pending.outcome_recorded:
-                self._failed_request_count += 1
-                if pending is not None:
-                    pending.outcome_recorded = True
-                resolved_source_id = (
-                    source_id
-                    or (
-                        pending.prepare.trigger_source_id
-                        if pending is not None
-                        else None
-                    )
-                )
-                if resolved_source_id is not None:
-                    self._record_source_failure_locked(
-                        resolved_source_id,
-                        error,
-                    )
+        requested_error_code = _map_error_code(
+            error,
+            capacity_error_code=capacity_error_code,
+        )
+        published_error_code = requested_error_code
+        cleanup_after_record = False
         try:
-            self.mailbox.publish_error(
+            published_error_code = self.mailbox.publish_error(
                 identity=identity,
-                error_code=_map_error_code(error),
+                error_code=requested_error_code,
                 message=message or type(error).__name__,
             )
         except Exception:
             if pending is not None:
                 pending.protocol_terminal = True
-                if not pending.task_active:
-                    self._cleanup_pending(identity)
+                cleanup_after_record = not pending.task_active
+        finally:
+            with self._pending_lock:
+                self._recent_request_error = {
+                    "error_type": type(error).__name__,
+                    "error_code": getattr(error, "code", "protocol_error"),
+                    "published_error_code": _mailbox_error_code_name(
+                        published_error_code
+                    ),
+                    "occurred_at": datetime.now(timezone.utc).isoformat(),
+                }
+                if pending is None or not pending.outcome_recorded:
+                    self._failed_request_count += 1
+                    if pending is not None:
+                        pending.outcome_recorded = True
+                    resolved_source_id = source_id or (
+                        pending.prepare.trigger_source_id
+                        if pending is not None
+                        else None
+                    )
+                    if resolved_source_id is not None:
+                        self._record_source_failure_locked(
+                            resolved_source_id,
+                            error,
+                            published_error_code=published_error_code,
+                            pending=pending,
+                        )
+                        self._prune_source_health_locked(resolved_source_id)
+        if cleanup_after_record:
+            self._cleanup_pending(identity)
 
     def _raise_if_request_terminal(self, pending: _PendingMailboxRequest) -> None:
         """在每个昂贵阶段前执行同一 cancel/deadline 快速检查。"""
@@ -1054,9 +1081,11 @@ class WorkflowTriggerMailboxSupervisor:
                 self._run_cleanup_step(
                     identity,
                     step="runtime-admission",
-                    callback=lambda: self.runtime_service.fail_admitted_sync_workflow_run(
-                        pending.admission,
-                        error=InvalidRequestError("Workflow Trigger 协议已终止"),
+                    callback=lambda: (
+                        self.runtime_service.fail_admitted_sync_workflow_run(
+                            pending.admission,
+                            error=InvalidRequestError("Workflow Trigger 协议已终止"),
+                        )
                     ),
                 )
             self._run_cleanup_step(
@@ -1081,6 +1110,7 @@ class WorkflowTriggerMailboxSupervisor:
             with self._pending_lock:
                 if self._pending.get(identity) is pending:
                     self._pending.pop(identity, None)
+                self._prune_source_health_locked(pending.prepare.trigger_source_id)
                 self._latest_timings = dict(pending.timings)
 
     @staticmethod
@@ -1110,9 +1140,10 @@ class WorkflowTriggerMailboxSupervisor:
         self,
         pending: _PendingMailboxRequest,
         *,
-        failed: bool,
+        workflow_state: str,
+        published_error_code: int,
     ) -> None:
-        """记录不含请求内容的完成计数和最近阶段耗时。"""
+        """以 SDK 最终可见终态记录完成计数和稳定错误分类。"""
 
         with self._pending_lock:
             self._latest_timings = dict(pending.timings)
@@ -1123,12 +1154,58 @@ class WorkflowTriggerMailboxSupervisor:
                 pending.prepare.trigger_source_id,
                 _SourceMailboxHealth(),
             )
-            if failed:
-                self._failed_request_count += 1
-                source.error_count += 1
-            else:
+            succeeded = (
+                workflow_state == "succeeded"
+                and published_error_code == mailbox_contract.ERROR_CODE_NONE
+            )
+            if succeeded:
                 self._completed_request_count += 1
                 source.success_count += 1
+                return
+
+            self._failed_request_count += 1
+            source.error_count += 1
+            if published_error_code in {
+                mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY,
+                mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY,
+                mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY,
+            }:
+                source.busy_count += 1
+            if published_error_code in {
+                mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED,
+                mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED,
+                mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
+            }:
+                source.capacity_reject_count += 1
+            if (
+                workflow_state == "timed_out"
+                or published_error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
+            ):
+                source.timeout_count += 1
+            if published_error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED:
+                source.request_timeout_count += 1
+                pending.terminal_categories.add("deadline_exceeded_identities")
+            if published_error_code == mailbox_contract.ERROR_CODE_CANCELLED:
+                source.cancel_count += 1
+                pending.terminal_categories.add("cancelled_identities")
+            source.recent_error = {
+                "error_type": "WorkflowTriggerPublishedResult",
+                "error_code": _mailbox_error_code_name(published_error_code),
+                "workflow_state": workflow_state,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    def _prune_source_health_locked(self, trigger_source_id: str) -> None:
+        """只为已登记或仍有在途请求的 source 保留 health。"""
+
+        if trigger_source_id in self._registered_source_ids:
+            return
+        if any(
+            item.prepare.trigger_source_id == trigger_source_id
+            for item in self._pending.values()
+        ):
+            return
+        self._source_health.pop(trigger_source_id, None)
 
     def _record_source_request(self, trigger_source_id: str) -> None:
         """在 PREPARE 能确定 source identity 后只记录一次请求。"""
@@ -1144,33 +1221,42 @@ class WorkflowTriggerMailboxSupervisor:
         self,
         trigger_source_id: str,
         error: Exception,
+        *,
+        published_error_code: int,
+        pending: _PendingMailboxRequest | None,
     ) -> None:
-        """在 ``_pending_lock`` 内记录 source 失败及稳定分类。"""
+        """按 SDK 最终可见错误码记录 PREPARE/REQUEST 失败分类。"""
 
         source = self._source_health.setdefault(
             trigger_source_id,
             _SourceMailboxHealth(),
         )
         source.error_count += 1
-        if isinstance(
-            error,
-            (
-                WorkflowTriggerSourceBusyError,
-                WorkflowRuntimeBusyError,
-                WorkflowTriggerExecutorBusyError,
-            ),
-        ):
+        if published_error_code in {
+            mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY,
+            mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY,
+            mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY,
+        }:
             source.busy_count += 1
-        if isinstance(error, LocalBufferCapacityError):
+        if published_error_code in {
+            mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED,
+            mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED,
+            mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED,
+        }:
             source.capacity_reject_count += 1
-        if isinstance(error, OperationTimeoutError):
+        if published_error_code == mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED:
             source.timeout_count += 1
             source.request_timeout_count += 1
-        if isinstance(error, OperationCancelledError):
+            if pending is not None:
+                pending.terminal_categories.add("deadline_exceeded_identities")
+        if published_error_code == mailbox_contract.ERROR_CODE_CANCELLED:
             source.cancel_count += 1
+            if pending is not None:
+                pending.terminal_categories.add("cancelled_identities")
         source.recent_error = {
             "error_type": type(error).__name__,
             "error_code": getattr(error, "code", "protocol_error"),
+            "published_error_code": _mailbox_error_code_name(published_error_code),
             "occurred_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -1256,6 +1342,7 @@ class WorkflowTriggerMailboxSupervisor:
         with self._pending_lock:
             return self._pending.get(identity)
 
+
 def _build_response_owner_id(identity: WorkflowTriggerDescriptorIdentity) -> str:
     """用完整 descriptor identity 隔离迟到 ACK 和槽位复用。"""
 
@@ -1265,7 +1352,13 @@ def _build_response_owner_id(identity: WorkflowTriggerDescriptorIdentity) -> str
     )
 
 
-def _map_error_code(error: Exception) -> int:
+def _map_error_code(
+    error: Exception,
+    *,
+    capacity_error_code: int = (
+        mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED
+    ),
+) -> int:
     """把应用错误映射到冻结的 mailbox error code。"""
 
     if isinstance(error, WorkflowTriggerSourceBusyError):
@@ -1274,6 +1367,8 @@ def _map_error_code(error: Exception) -> int:
         return mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY
     if isinstance(error, WorkflowTriggerExecutorBusyError):
         return mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY
+    if isinstance(error, LocalBufferCapacityError):
+        return capacity_error_code
     if isinstance(error, OperationTimeoutError):
         return mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED
     if isinstance(error, OperationCancelledError):
@@ -1283,6 +1378,34 @@ def _map_error_code(error: Exception) -> int:
     if isinstance(error, ServiceError):
         return mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTION_FAILED
     return mailbox_contract.ERROR_CODE_PROTOCOL_ERROR
+
+
+def _mailbox_error_code_name(error_code: int) -> str:
+    """把当前 v1 mailbox 数字错误码转换为稳定诊断名称。"""
+
+    names = {
+        mailbox_contract.ERROR_CODE_NONE: "none",
+        mailbox_contract.ERROR_CODE_TRIGGER_SOURCE_BUSY: "trigger_source_busy",
+        mailbox_contract.ERROR_CODE_WORKFLOW_RUNTIME_BUSY: "workflow_runtime_busy",
+        mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTOR_BUSY: "workflow_executor_busy",
+        mailbox_contract.ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED: (
+            "local_buffer_capacity_exhausted"
+        ),
+        mailbox_contract.ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED: (
+            "local_buffer_output_capacity_exhausted"
+        ),
+        mailbox_contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED: (
+            "trigger_response_capacity_exhausted"
+        ),
+        mailbox_contract.ERROR_CODE_DEADLINE_EXCEEDED: "deadline_exceeded",
+        mailbox_contract.ERROR_CODE_CANCELLED: "cancelled",
+        mailbox_contract.ERROR_CODE_WORKFLOW_EXECUTION_FAILED: (
+            "workflow_execution_failed"
+        ),
+        mailbox_contract.ERROR_CODE_OUTPUT_HANDOFF_FAILED: "output_handoff_failed",
+        mailbox_contract.ERROR_CODE_PROTOCOL_ERROR: "protocol_error",
+    }
+    return names.get(error_code, f"mailbox_error_{error_code}")
 
 
 def _elapsed_ms(started_at: float) -> float:

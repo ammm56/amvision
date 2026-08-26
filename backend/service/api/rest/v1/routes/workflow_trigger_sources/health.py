@@ -19,6 +19,11 @@ class WorkflowTriggerSourceHealthSummaryResponse(BaseModel):
     - error_count_rollover_count：error_count 计数回卷次数。
     - timeout_count：累计超时请求数。
     - timeout_count_rollover_count：timeout_count 计数回卷次数。
+    - busy_count：累计满载立即拒绝数。
+    - capacity_reject_count：累计容量不足立即拒绝数。
+    - request_timeout_count：累计请求执行期限超时数。
+    - response_ack_timeout_count：累计响应 ACK 超时数。
+    - cancel_count：累计客户端取消数。
     - recent_error：最近一次错误摘要；无错误时为空。
     - supervisor：底层 supervisor 原始健康摘要；不可用时为空对象。
     """
@@ -33,6 +38,11 @@ class WorkflowTriggerSourceHealthSummaryResponse(BaseModel):
     error_count_rollover_count: int = Field(description="error_count 计数回卷次数")
     timeout_count: int = Field(description="累计超时请求数")
     timeout_count_rollover_count: int = Field(description="timeout_count 计数回卷次数")
+    busy_count: int = Field(description="累计满载立即拒绝数")
+    capacity_reject_count: int = Field(description="累计容量不足立即拒绝数")
+    request_timeout_count: int = Field(description="累计请求执行期限超时数")
+    response_ack_timeout_count: int = Field(description="累计响应 ACK 超时数")
+    cancel_count: int = Field(description="累计客户端取消数")
     recent_error: dict[str, object] | str | None = Field(
         default=None, description="最近一次错误摘要"
     )
@@ -107,6 +117,17 @@ def build_trigger_source_health_response(
             timeout_count_rollover_count=read_health_counter(
                 health_summary, "timeout_count_rollover_count"
             ),
+            busy_count=read_health_counter(health_summary, "busy_count"),
+            capacity_reject_count=read_health_counter(
+                health_summary, "capacity_reject_count"
+            ),
+            request_timeout_count=read_health_counter(
+                health_summary, "request_timeout_count"
+            ),
+            response_ack_timeout_count=read_health_counter(
+                health_summary, "response_ack_timeout_count"
+            ),
+            cancel_count=read_health_counter(health_summary, "cancel_count"),
             recent_error=normalize_health_error(health_summary.get("recent_error")),
             supervisor=(
                 dict(health_summary.get("supervisor"))
@@ -136,4 +157,3 @@ def read_health_counter(payload: dict[str, object], key: str) -> int:
     if isinstance(value, float):
         return int(value)
     return 0
-

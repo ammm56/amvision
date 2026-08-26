@@ -19,14 +19,41 @@ namespace Amvar.Vision
         [JsonProperty("request_count")]
         public int RequestCount { get; set; }
 
+        [JsonProperty("request_count_rollover_count")]
+        public int RequestCountRolloverCount { get; set; }
+
         [JsonProperty("success_count")]
         public int SuccessCount { get; set; }
+
+        [JsonProperty("success_count_rollover_count")]
+        public int SuccessCountRolloverCount { get; set; }
 
         [JsonProperty("error_count")]
         public int ErrorCount { get; set; }
 
+        [JsonProperty("error_count_rollover_count")]
+        public int ErrorCountRolloverCount { get; set; }
+
         [JsonProperty("timeout_count")]
         public int TimeoutCount { get; set; }
+
+        [JsonProperty("timeout_count_rollover_count")]
+        public int TimeoutCountRolloverCount { get; set; }
+
+        [JsonProperty("busy_count")]
+        public int BusyCount { get; set; }
+
+        [JsonProperty("capacity_reject_count")]
+        public int CapacityRejectCount { get; set; }
+
+        [JsonProperty("request_timeout_count")]
+        public int RequestTimeoutCount { get; set; }
+
+        [JsonProperty("response_ack_timeout_count")]
+        public int ResponseAckTimeoutCount { get; set; }
+
+        [JsonProperty("cancel_count")]
+        public int CancelCount { get; set; }
 
         [JsonProperty("recent_error")]
         public JToken? RecentError { get; set; }

@@ -6,6 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
+from backend.service.api.rest.v1.routes.workflow_trigger_sources.health import (
+    build_trigger_source_health_response,
+)
 from backend.service.infrastructure.integrations.modbus import ModbusBitsReadResponse
 from backend.service.domain.workflows.workflow_runtime_records import WorkflowAppRuntime
 from backend.service.infrastructure.db.session import SessionFactory
@@ -15,6 +18,52 @@ from tests.api_test_support import (
     create_api_test_context,
     get_default_test_principal_id,
 )
+
+
+def test_trigger_source_health_response_preserves_detailed_counters() -> None:
+    """正式 REST 模型不得丢弃 local-shared-memory 的细分计数。"""
+
+    response = build_trigger_source_health_response(
+        {
+            "trigger_source_id": "source-health",
+            "enabled": True,
+            "desired_state": "running",
+            "observed_state": "running",
+            "health_summary": {
+                "adapter_configured": True,
+                "adapter_running": True,
+                "request_count": 17,
+                "success_count": 9,
+                "error_count": 8,
+                "timeout_count": 5,
+                "busy_count": 1,
+                "capacity_reject_count": 2,
+                "request_timeout_count": 3,
+                "response_ack_timeout_count": 4,
+                "cancel_count": 6,
+            },
+        }
+    ).model_dump(mode="json")
+
+    assert response["health_summary"] == {
+        "adapter_configured": True,
+        "adapter_running": True,
+        "request_count": 17,
+        "request_count_rollover_count": 0,
+        "success_count": 9,
+        "success_count_rollover_count": 0,
+        "error_count": 8,
+        "error_count_rollover_count": 0,
+        "timeout_count": 5,
+        "timeout_count_rollover_count": 0,
+        "busy_count": 1,
+        "capacity_reject_count": 2,
+        "request_timeout_count": 3,
+        "response_ack_timeout_count": 4,
+        "cancel_count": 6,
+        "recent_error": None,
+        "supervisor": {},
+    }
 
 
 def test_workflow_trigger_source_api_manages_first_phase_resource(

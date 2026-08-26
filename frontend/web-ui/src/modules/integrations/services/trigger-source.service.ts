@@ -55,11 +55,11 @@ export interface WorkflowTriggerSourceHealthSummary {
   error_count_rollover_count: number
   timeout_count: number
   timeout_count_rollover_count: number
-  busy_count?: number
-  capacity_reject_count?: number
-  request_timeout_count?: number
-  response_ack_timeout_count?: number
-  cancel_count?: number
+  busy_count: number
+  capacity_reject_count: number
+  request_timeout_count: number
+  response_ack_timeout_count: number
+  cancel_count: number
   recent_error?: WorkflowJsonObject | string | null
   supervisor: WorkflowJsonObject
 }

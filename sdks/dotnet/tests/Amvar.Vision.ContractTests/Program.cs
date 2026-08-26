@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Amvar.Vision;
 using Amvar.Vision.SharedMemory;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Amvar.Vision.ContractTests
@@ -40,6 +41,7 @@ namespace Amvar.Vision.ContractTests
             WorkflowTriggerMailboxV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
             VerifyLocalBufferMappingCache();
+            VerifyWorkflowTriggerHealthResponse();
             VerifyAutomaticConfigurationRequiresAsyncFactory();
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
@@ -48,6 +50,46 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyWorkflowTriggerHealthResponse()
+        {
+            const string payload = @"{
+                ""trigger_source_id"":""source-health"",
+                ""enabled"":true,
+                ""desired_state"":""running"",
+                ""observed_state"":""running"",
+                ""health_summary"":{
+                    ""adapter_configured"":true,
+                    ""adapter_running"":true,
+                    ""request_count"":17,
+                    ""request_count_rollover_count"":1,
+                    ""success_count"":9,
+                    ""success_count_rollover_count"":2,
+                    ""error_count"":8,
+                    ""error_count_rollover_count"":3,
+                    ""timeout_count"":5,
+                    ""timeout_count_rollover_count"":4,
+                    ""busy_count"":6,
+                    ""capacity_reject_count"":7,
+                    ""request_timeout_count"":8,
+                    ""response_ack_timeout_count"":9,
+                    ""cancel_count"":10,
+                    ""supervisor"":{}
+                }
+            }";
+            var response = JsonConvert.DeserializeObject<WorkflowTriggerSourceHealthResponse>(payload);
+            Assert(response != null, "health response must deserialize");
+            var health = response!.HealthSummary;
+            Assert(health.RequestCountRolloverCount == 1, "request rollover count mismatch");
+            Assert(health.SuccessCountRolloverCount == 2, "success rollover count mismatch");
+            Assert(health.ErrorCountRolloverCount == 3, "error rollover count mismatch");
+            Assert(health.TimeoutCountRolloverCount == 4, "timeout rollover count mismatch");
+            Assert(health.BusyCount == 6, "busy count mismatch");
+            Assert(health.CapacityRejectCount == 7, "capacity count mismatch");
+            Assert(health.RequestTimeoutCount == 8, "request timeout count mismatch");
+            Assert(health.ResponseAckTimeoutCount == 9, "ACK timeout count mismatch");
+            Assert(health.CancelCount == 10, "cancel count mismatch");
         }
 
         private static void VerifyAutomaticConfigurationRequiresAsyncFactory()
@@ -285,7 +327,7 @@ namespace Amvar.Vision.ContractTests
             {
                 file.SetLength(256 + 4 * 256);
                 writer.Write(Encoding.ASCII.GetBytes("AMVLBA01"));
-                writer.Write(2U);
+                writer.Write(1U);
                 writer.Write(256U);
                 writer.Write(256U);
                 writer.Write(4U);

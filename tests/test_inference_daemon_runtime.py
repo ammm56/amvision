@@ -17,6 +17,17 @@ from backend.service.application.local_buffers import (
 from backend.service.settings import BackendServiceSettings
 
 
+def test_backend_service_rejects_private_arena_as_public_main() -> None:
+    """正式 backend 配置不能把 daemon 私有 arena 暴露为主图片数据面。"""
+
+    with pytest.raises(ValueError, match="必须固定为 local-buffer-main"):
+        BackendServiceSettings(
+            local_buffer_broker=LocalBufferBrokerSettings(
+                arena_id="inference-daemon-private"
+            )
+        )
+
+
 def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool(
     tmp_path: Path,
 ) -> None:
@@ -63,9 +74,10 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
                 assert supervisor.local_buffer_direct_reader_settings[
                     "root_dir"
                 ] == str(backend_buffer_root)
-                assert supervisor.local_buffer_direct_reader_settings[
-                    "arena_id"
-                ] == "local-buffer-main"
+                assert (
+                    supervisor.local_buffer_direct_reader_settings["arena_id"]
+                    == "local-buffer-main"
+                )
 
         private_broker.start()
         assert private_broker.get_status()["state"] == "healthy"

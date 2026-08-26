@@ -14,6 +14,9 @@ from backend.service.infrastructure.local_buffers.buddy_allocator import (
 
 _MIB = 1024 * 1024
 _GIB = 1024 * _MIB
+_MAIN_ARENA_ID = "local-buffer-main"
+_PRIVATE_INFERENCE_ARENA_ID = "inference-daemon-private"
+_SUPPORTED_ARENA_IDS = frozenset({_MAIN_ARENA_ID, _PRIVATE_INFERENCE_ARENA_ID})
 
 
 class LocalBufferBrokerSettings(BaseModel):
@@ -21,7 +24,7 @@ class LocalBufferBrokerSettings(BaseModel):
 
     enabled: bool = True
     root_dir: str = "./data/buffers"
-    arena_id: str = "local-buffer-main"
+    arena_id: str = _MAIN_ARENA_ID
     arena_size_bytes: int = 2 * _GIB
     min_block_size_bytes: int = _MIB
     max_allocation_bytes: int = _GIB
@@ -67,8 +70,11 @@ class LocalBufferBrokerSettings(BaseModel):
         self.arena_id = self.arena_id.strip()
         if not self.root_dir:
             raise ValueError("LocalBufferBroker root_dir 不能为空")
-        if not self.arena_id:
-            raise ValueError("LocalBufferBroker arena_id 不能为空")
+        if self.arena_id not in _SUPPORTED_ARENA_IDS:
+            raise ValueError(
+                "LocalBufferBroker 主 arena_id 必须固定为 local-buffer-main；"
+                "内部推理暂存 arena 只能使用 inference-daemon-private"
+            )
         BuddyArenaGeometry(
             arena_size_bytes=self.arena_size_bytes,
             min_block_size_bytes=self.min_block_size_bytes,

@@ -163,8 +163,9 @@ class QueueOutboxDispatcher:
 
         dispatched_count = 0
         for message in messages:
-            if self._stop_event.is_set():
-                break
+            # stop 只阻止下一轮领取。当前批次已经持有数据库 lease，必须逐条
+            # 投递或进入失败释放路径；中途退出会让未处理消息一直等待 lease
+            # 到期，造成服务重启和短生命周期测试中的可见任务停顿。
             try:
                 self.queue_backend.enqueue(
                     queue_name=message.queue_name,

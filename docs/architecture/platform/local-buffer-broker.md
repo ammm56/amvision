@@ -70,7 +70,7 @@ general 区由一个或多个 `max_allocation_bytes` 大小的顶级 buddy root 
 
 ## allocator metadata
 
-allocator metadata 使用固定 header 和 descriptor 表。descriptor 数量为 `arena_size_bytes / min_block_size_bytes`，默认 2048。header 固定 layout version/fingerprint、arena 几何、guard 几何、broker epoch 和 publication generation。
+allocator metadata 使用固定 header 和 descriptor 表。descriptor 数量为 `arena_size_bytes / min_block_size_bytes`，默认 2048。当前开发期只保留一个现行 `v1` layout，不维护旧布局或 `v2` 兼容层；header 固定 layout version/fingerprint、arena 几何、guard 几何、broker epoch 和 publication generation。
 
 descriptor 是活动 allocation、identity 与恢复的持久化事实，保存固定长度 state、descriptor index/generation、offset/order/capacity、content length、lease identity、128-bit opaque owner token、deadline 和必要 checksum/flags。media type、shape、dtype、layout、pixel format、可变 owner 文本和业务 JSON 不进入 descriptor。
 
@@ -92,7 +92,7 @@ buddy free lists 只保存在 Broker 进程内，启动时从 descriptor 和 gua
 
 locator 不携带可由请求选择的 mmap/metadata/guard路径。SDK从受信 `buffers_root` 派生固定主 arena 文件，再从 allocator header发现真实容量、descriptor/guard几何、epoch和layout fingerprint；worker按服务端 arena registry解析。旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 不进入新layout，分别使用 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id`。展示用 `buffer_id` 不能作为回收凭据。
 
-`arena_id` 在一次安装内跨 Broker owner唯一且稳定：主 Broker 使用 `local-buffer-main`，当前 inference daemon私有 owner使用 `inference-daemon-private`；未来多个私有 owner使用 `inference-daemon-private-<stable-daemon-id>`，不能使用 PID。同步 Workflow/Deployment/Trigger只解析主 arena id。
+`arena_id` 在一次安装内跨 Broker owner唯一且稳定：主 Broker 强制使用 `local-buffer-main`，配置为其他值时启动校验直接失败；当前 inference daemon私有 owner使用 `inference-daemon-private`；未来多个私有 owner使用 `inference-daemon-private-<stable-daemon-id>`，不能使用 PID。同步 Workflow/Deployment/Trigger只解析主 arena id。
 
 该规则只约束短期 LocalBuffer locator，不删除 `image-ref.v1` 已有的 ObjectStore 相对路径或受控本机绝对文件路径能力；文件输入与 mmap arena 是两种不同 transport kind。
 
