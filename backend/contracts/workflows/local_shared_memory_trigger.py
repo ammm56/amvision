@@ -71,6 +71,7 @@ class WorkflowTriggerAllocationV1(BaseModel):
     descriptor_index: int = Field(ge=0)
     descriptor_generation: int = Field(ge=1)
     broker_epoch: str
+    layout_fingerprint: str = Field(min_length=64, max_length=64)
     offset: int = Field(ge=0)
     content_length: int = Field(gt=0)
     allocation_capacity_bytes: int = Field(gt=0)
@@ -84,8 +85,13 @@ class WorkflowTriggerAllocationV1(BaseModel):
             "lease_id",
             "buffer_id",
             "broker_epoch",
+            "layout_fingerprint",
         ):
             _require_text(getattr(self, field_name), field_name)
+        try:
+            bytes.fromhex(self.layout_fingerprint)
+        except ValueError as error:
+            raise ValueError("layout_fingerprint 必须为 SHA-256 hex") from error
         if self.content_length > self.allocation_capacity_bytes:
             raise ValueError("allocation_capacity_bytes 不能小于 content_length")
         return self

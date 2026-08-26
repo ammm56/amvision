@@ -1474,42 +1474,54 @@ def _build_supervisor_health_summary(
     adapter_health = supervisor_health.get("adapter_health")
     if not isinstance(adapter_health, dict):
         adapter_health = {}
+    source_scoped = bool(adapter_health.get("source_scoped"))
+
+    def _select_count(name: str) -> int:
+        """source-scoped adapter 不能与通用 supervisor 计数取 max。"""
+
+        if source_scoped:
+            return _as_int(adapter_health.get(name))
+        return max(
+            _as_int(supervisor_health.get(name)),
+            _as_int(adapter_health.get(name)),
+        )
+
     return {
         "adapter_configured": adapter_configured,
         "adapter_running": bool(adapter_health.get("running")),
-        "request_count": max(
-            _as_int(supervisor_health.get("request_count")),
-            _as_int(adapter_health.get("request_count")),
-        ),
+        "request_count": _select_count("request_count"),
         "request_count_rollover_count": _as_int(
             supervisor_health.get("request_count_rollover_count")
         ),
-        "success_count": max(
-            _as_int(supervisor_health.get("success_count")),
-            _as_int(adapter_health.get("success_count")),
-        ),
+        "success_count": _select_count("success_count"),
         "success_count_rollover_count": _as_int(
             supervisor_health.get("success_count_rollover_count")
         ),
-        "error_count": max(
-            _as_int(supervisor_health.get("error_count")),
-            _as_int(adapter_health.get("error_count")),
-        ),
+        "error_count": _select_count("error_count"),
         "error_count_rollover_count": _as_int(
             supervisor_health.get("error_count_rollover_count")
         ),
-        "timeout_count": max(
-            _as_int(supervisor_health.get("timeout_count")),
-            _as_int(adapter_health.get("timeout_count")),
-        ),
+        "timeout_count": _select_count("timeout_count"),
         "timeout_count_rollover_count": _as_int(
             supervisor_health.get("timeout_count_rollover_count")
         ),
         "recent_error": supervisor_health.get("last_error")
         or adapter_health.get("last_error")
+        or adapter_health.get("recent_error")
         or adapter_health.get("recent_request_error")
         or adapter_health.get("recent_poller_error"),
         "supervisor": dict(supervisor_health),
+        "busy_count": _as_int(adapter_health.get("busy_count")),
+        "capacity_reject_count": _as_int(
+            adapter_health.get("capacity_reject_count")
+        ),
+        "request_timeout_count": _as_int(
+            adapter_health.get("request_timeout_count")
+        ),
+        "response_ack_timeout_count": _as_int(
+            adapter_health.get("response_ack_timeout_count")
+        ),
+        "cancel_count": _as_int(adapter_health.get("cancel_count")),
     }
 
 

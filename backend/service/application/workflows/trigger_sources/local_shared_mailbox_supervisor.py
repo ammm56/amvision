@@ -27,6 +27,7 @@ from backend.contracts.workflows import (
 )
 from backend.service.application.errors import (
     InvalidRequestError,
+    LocalBufferCapacityError,
     OperationCancelledError,
     OperationTimeoutError,
     ServiceError,
@@ -102,11 +103,29 @@ class _PendingMailboxRequest:
     task_active: bool = False
     protocol_terminal: bool = False
     cleanup_started: bool = False
+    outcome_recorded: bool = False
+    terminal_categories: set[str] = field(default_factory=set)
     output_receipts: tuple[LeaseOwnershipReceipt, ...] = ()
     started_at: float = field(default_factory=perf_counter)
     writing_published_at: float | None = None
     executor_submitted_at: float | None = None
     timings: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class _SourceMailboxHealth:
+    """保存单个 TriggerSource 的无内容运行计数。"""
+
+    request_count: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    timeout_count: int = 0
+    busy_count: int = 0
+    capacity_reject_count: int = 0
+    request_timeout_count: int = 0
+    response_ack_timeout_count: int = 0
+    cancel_count: int = 0
+    recent_error: dict[str, object] | None = None
 
 
 class WorkflowTriggerMailboxSupervisor:
@@ -163,6 +182,7 @@ class WorkflowTriggerMailboxSupervisor:
         self._latest_timings: dict[str, float] = {}
         self._completed_request_count = 0
         self._failed_request_count = 0
+        self._source_health: dict[str, _SourceMailboxHealth] = {}
         self._idle_poll_sleep_count = 0
         self._orphan_sweep_cursor = 0
         self._stop_event = Event()
@@ -213,7 +233,13 @@ class WorkflowTriggerMailboxSupervisor:
                     ),
                 },
             )
-        return self.routes.register(trigger_source)
+        route = self.routes.register(trigger_source)
+        with self._pending_lock:
+            self._source_health.setdefault(
+                trigger_source.trigger_source_id,
+                _SourceMailboxHealth(),
+            )
+        return route
 
     def unregister_trigger_source(self, trigger_source_id: str) -> None:
         """停止一条 source 的新 PREPARE，不中断已有请求。"""
@@ -282,6 +308,7 @@ class WorkflowTriggerMailboxSupervisor:
                 if not isinstance(identity, WorkflowTriggerDescriptorIdentity):
                     continue
                 progressed = True
+                self._record_terminal_category(identity, category=key)
                 self._signal_request_cancel(
                     identity,
                     protocol_terminal=protocol_terminal,
@@ -330,6 +357,41 @@ class WorkflowTriggerMailboxSupervisor:
             "idle_poll_sleep_count": idle_poll_sleep_count,
             "latest_timings": latest_timings,
         }
+
+    def build_source_status(self, trigger_source_id: str) -> dict[str, object]:
+        """返回严格按 TriggerSource 隔离的计数和当前在途数。"""
+
+        with self._pending_lock:
+            counters = self._source_health.get(
+                trigger_source_id,
+                _SourceMailboxHealth(),
+            )
+            pending = tuple(
+                item
+                for item in self._pending.values()
+                if item.prepare.trigger_source_id == trigger_source_id
+            )
+            return {
+                "source_scoped": True,
+                "request_count": counters.request_count,
+                "success_count": counters.success_count,
+                "error_count": counters.error_count,
+                "timeout_count": counters.timeout_count,
+                "busy_count": counters.busy_count,
+                "capacity_reject_count": counters.capacity_reject_count,
+                "request_timeout_count": counters.request_timeout_count,
+                "response_ack_timeout_count": (
+                    counters.response_ack_timeout_count
+                ),
+                "cancel_count": counters.cancel_count,
+                "pending_request_count": len(pending),
+                "active_task_count": sum(item.task_active for item in pending),
+                "recent_error": (
+                    dict(counters.recent_error)
+                    if counters.recent_error is not None
+                    else None
+                ),
+            }
 
     def close(self) -> None:
         """停止 poller，等待正式任务结束，并按 receipt 清理全部上下文。"""
@@ -381,10 +443,13 @@ class WorkflowTriggerMailboxSupervisor:
         """固定路由、取得 source permit 并分配精确 input lease。"""
 
         pending: _PendingMailboxRequest | None = None
+        source_id: str | None = None
         prepare_started_at = perf_counter()
         try:
             prepare_decode_started_at = perf_counter()
             prepare = WorkflowTriggerPrepareV1.model_validate_json(payload)
+            source_id = prepare.trigger_source_id
+            self._record_source_request(source_id)
             route = self.routes.get_route(
                 trigger_source_id=prepare.trigger_source_id,
                 expected_generation=route_generation,
@@ -433,6 +498,7 @@ class WorkflowTriggerMailboxSupervisor:
                 descriptor_index=allocation.lease.descriptor_index,
                 descriptor_generation=allocation.lease.descriptor_generation,
                 broker_epoch=allocation.lease.broker_epoch,
+                layout_fingerprint=allocation.receipt.layout_fingerprint,
                 offset=allocation.lease.offset,
                 content_length=allocation.lease.content_length,
                 allocation_capacity_bytes=(
@@ -457,7 +523,12 @@ class WorkflowTriggerMailboxSupervisor:
             if pending is not None and pending.current_receipt is not None:
                 self._release_receipt(pending.current_receipt)
                 pending.current_receipt = None
-            self._publish_failure(identity, error, pending=pending)
+            self._publish_failure(
+                identity,
+                error,
+                pending=pending,
+                source_id=source_id,
+            )
 
     def _handle_request(
         self,
@@ -867,6 +938,7 @@ class WorkflowTriggerMailboxSupervisor:
         error: Exception,
         *,
         pending: _PendingMailboxRequest | None,
+        source_id: str | None = None,
     ) -> None:
         """发布稳定 inline 错误；无法发布时立即结束本 descriptor 的责任。"""
 
@@ -877,7 +949,23 @@ class WorkflowTriggerMailboxSupervisor:
                 "error_code": getattr(error, "code", "protocol_error"),
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             }
-            self._failed_request_count += 1
+            if pending is None or not pending.outcome_recorded:
+                self._failed_request_count += 1
+                if pending is not None:
+                    pending.outcome_recorded = True
+                resolved_source_id = (
+                    source_id
+                    or (
+                        pending.prepare.trigger_source_id
+                        if pending is not None
+                        else None
+                    )
+                )
+                if resolved_source_id is not None:
+                    self._record_source_failure_locked(
+                        resolved_source_id,
+                        error,
+                    )
         try:
             self.mailbox.publish_error(
                 identity=identity,
@@ -1028,10 +1116,96 @@ class WorkflowTriggerMailboxSupervisor:
 
         with self._pending_lock:
             self._latest_timings = dict(pending.timings)
+            if pending.outcome_recorded:
+                return
+            pending.outcome_recorded = True
+            source = self._source_health.setdefault(
+                pending.prepare.trigger_source_id,
+                _SourceMailboxHealth(),
+            )
             if failed:
                 self._failed_request_count += 1
+                source.error_count += 1
             else:
                 self._completed_request_count += 1
+                source.success_count += 1
+
+    def _record_source_request(self, trigger_source_id: str) -> None:
+        """在 PREPARE 能确定 source identity 后只记录一次请求。"""
+
+        with self._pending_lock:
+            source = self._source_health.setdefault(
+                trigger_source_id,
+                _SourceMailboxHealth(),
+            )
+            source.request_count += 1
+
+    def _record_source_failure_locked(
+        self,
+        trigger_source_id: str,
+        error: Exception,
+    ) -> None:
+        """在 ``_pending_lock`` 内记录 source 失败及稳定分类。"""
+
+        source = self._source_health.setdefault(
+            trigger_source_id,
+            _SourceMailboxHealth(),
+        )
+        source.error_count += 1
+        if isinstance(
+            error,
+            (
+                WorkflowTriggerSourceBusyError,
+                WorkflowRuntimeBusyError,
+                WorkflowTriggerExecutorBusyError,
+            ),
+        ):
+            source.busy_count += 1
+        if isinstance(error, LocalBufferCapacityError):
+            source.capacity_reject_count += 1
+        if isinstance(error, OperationTimeoutError):
+            source.timeout_count += 1
+            source.request_timeout_count += 1
+        if isinstance(error, OperationCancelledError):
+            source.cancel_count += 1
+        source.recent_error = {
+            "error_type": type(error).__name__,
+            "error_code": getattr(error, "code", "protocol_error"),
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _record_terminal_category(
+        self,
+        identity: WorkflowTriggerDescriptorIdentity,
+        *,
+        category: str,
+    ) -> None:
+        """记录 sweep 发现的 request/cancel/ACK terminal，避免重复计数。"""
+
+        with self._pending_lock:
+            pending = self._pending.get(identity)
+            if pending is None or category in pending.terminal_categories:
+                return
+            pending.terminal_categories.add(category)
+            source = self._source_health.setdefault(
+                pending.prepare.trigger_source_id,
+                _SourceMailboxHealth(),
+            )
+            if category == "cancelled_identities":
+                source.cancel_count += 1
+            elif category == "deadline_exceeded_identities":
+                source.timeout_count += 1
+                source.request_timeout_count += 1
+            elif category == "response_ack_timeout_identities":
+                source.timeout_count += 1
+                source.response_ack_timeout_count += 1
+            if (
+                category != "response_ack_timeout_identities"
+                and not pending.outcome_recorded
+            ):
+                pending.outcome_recorded = True
+                source.error_count += 1
+                self._failed_request_count += 1
 
     def _release_receipt_if_present(self, pending: _PendingMailboxRequest) -> None:
         """条件释放 context 当前 receipt，stale 表示 worker 已完成清理。"""

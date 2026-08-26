@@ -14,9 +14,16 @@ namespace Amvar.Vision.SharedMemory
     {
         private const int HeaderSize = 256;
         private const int DescriptorStride = 256;
+        private const int LayoutVersion = 2;
+        private const string ArenaId = "local-buffer-main";
         private const int StateWriting = 1;
         private readonly object syncRoot = new object();
-        private readonly SharedMemoryTriggerClientOptions options;
+        private readonly string arenaPath;
+        private readonly string guardPath;
+        private readonly long arenaSizeBytes;
+        private readonly int readerGuardSlots;
+        private readonly int guardStride;
+        private readonly string layoutFingerprint;
         private readonly FileStream arenaFile;
         private readonly FileStream allocatorFile;
         private readonly MemoryMappedFile arenaMap;
@@ -29,15 +36,39 @@ namespace Amvar.Vision.SharedMemory
 
         internal LocalBufferMappingCache(SharedMemoryTriggerClientOptions options)
         {
-            this.options = options ?? throw new ArgumentNullException(nameof(options));
-            arenaFile = OpenExact(options.ArenaPath, options.ArenaSizeBytes);
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            var localBufferRoot = Path.Combine(options.BuffersRoot, "local-buffer");
+            arenaPath = Path.GetFullPath(Path.Combine(localBufferRoot, "arena-main.mmap"));
+            var allocatorPath = Path.GetFullPath(Path.Combine(localBufferRoot, "allocator-main.mmap"));
+            guardPath = Path.GetFullPath(Path.Combine(localBufferRoot, "arena-main.guard"));
+            allocatorFile = new FileStream(
+                allocatorPath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete);
             try
             {
-                allocatorFile = new FileStream(
-                    options.AllocatorPath,
-                    FileMode.Open,
-                    FileAccess.ReadWrite,
-                    FileShare.ReadWrite | FileShare.Delete);
+                allocatorMap = MemoryMappedFile.CreateFromFile(
+                    allocatorFile,
+                    null,
+                    0,
+                    MemoryMappedFileAccess.ReadWrite,
+                    HandleInheritability.None,
+                    false);
+                allocatorView = allocatorMap.CreateViewAccessor(
+                    0,
+                    allocatorFile.Length,
+                    MemoryMappedFileAccess.ReadWrite);
+                var layout = ReadLayout(allocatorView, allocatorFile.Length);
+                arenaSizeBytes = layout.ArenaSizeBytes;
+                readerGuardSlots = layout.ReaderGuardSlots;
+                guardStride = layout.GuardStride;
+                layoutFingerprint = layout.LayoutFingerprint;
+                arenaFile = OpenExact(arenaPath, arenaSizeBytes);
                 try
                 {
                     arenaMap = MemoryMappedFile.CreateFromFile(
@@ -47,46 +78,41 @@ namespace Amvar.Vision.SharedMemory
                         MemoryMappedFileAccess.ReadWrite,
                         HandleInheritability.None,
                         false);
-                    allocatorMap = MemoryMappedFile.CreateFromFile(
-                        allocatorFile,
-                        null,
-                        0,
-                        MemoryMappedFileAccess.ReadWrite,
-                        HandleInheritability.None,
-                        false);
                     arenaView = arenaMap.CreateViewAccessor(
                         0,
-                        options.ArenaSizeBytes,
+                        arenaSizeBytes,
                         MemoryMappedFileAccess.ReadWrite);
-                    allocatorView = allocatorMap.CreateViewAccessor(
-                        0,
-                        allocatorFile.Length,
-                        MemoryMappedFileAccess.ReadWrite);
-                    ValidateHeader();
+                    ValidateGuardFile(layout.DescriptorCount);
                 }
                 catch
                 {
-                    allocatorFile.Dispose();
+                    arenaFile.Dispose();
                     throw;
                 }
             }
             catch
             {
-                arenaFile.Dispose();
+                allocatorView?.Dispose();
+                allocatorMap?.Dispose();
+                allocatorFile.Dispose();
                 throw;
             }
         }
 
-        internal string GuardPath => options.GuardPath;
+        internal string ArenaPath => arenaPath;
+
+        internal string GuardPath => guardPath;
+
+        internal int ReaderGuardSlots => readerGuardSlots;
 
         internal int WriterGuardOffset(int descriptorIndex)
         {
-            return checked(descriptorIndex * (2 + options.ReaderGuardSlots) + 1);
+            return checked(descriptorIndex * guardStride + 1);
         }
 
         internal int ReaderGuardOffset(int descriptorIndex)
         {
-            return checked(descriptorIndex * (2 + options.ReaderGuardSlots) + 2);
+            return checked(descriptorIndex * guardStride + 2);
         }
 
         internal LocalBufferMappingLease Acquire(WorkflowTriggerAllocation allocation)
@@ -111,13 +137,14 @@ namespace Amvar.Vision.SharedMemory
 
         internal void ValidateAllocation(WorkflowTriggerAllocation allocation)
         {
-            if (!string.Equals(allocation.ArenaId, options.ArenaId, StringComparison.Ordinal)
+            if (!string.Equals(allocation.ArenaId, ArenaId, StringComparison.Ordinal)
                 || allocation.DescriptorIndex < 0
                 || allocation.DescriptorGeneration <= 0
                 || allocation.Offset < 0
                 || allocation.ContentLength <= 0
                 || allocation.AllocationCapacityBytes < allocation.ContentLength
-                || allocation.Offset > options.ArenaSizeBytes - allocation.AllocationCapacityBytes)
+                || allocation.Offset > arenaSizeBytes - allocation.AllocationCapacityBytes
+                || !string.Equals(allocation.LayoutFingerprint, layoutFingerprint, StringComparison.OrdinalIgnoreCase))
             {
                 throw new SharedMemoryTriggerException(
                     "protocol_error",
@@ -135,7 +162,7 @@ namespace Amvar.Vision.SharedMemory
             }
 
             var headerEpoch = new byte[16];
-            allocatorView.ReadArray(56, headerEpoch, 0, headerEpoch.Length);
+            allocatorView.ReadArray(64, headerEpoch, 0, headerEpoch.Length);
             var descriptorState = allocatorView.ReadUInt32(descriptorOffset);
             var descriptorGeneration = allocatorView.ReadUInt64(descriptorOffset + 8);
             var descriptorDataOffset = checked((long)allocatorView.ReadUInt64(descriptorOffset + 48));
@@ -163,13 +190,13 @@ namespace Amvar.Vision.SharedMemory
             long contentLength,
             long allocationCapacityBytes)
         {
-            if (!string.Equals(arenaId, options.ArenaId, StringComparison.Ordinal)
+            if (!string.Equals(arenaId, ArenaId, StringComparison.Ordinal)
                 || descriptorIndex < 0
                 || descriptorGeneration <= 0
                 || offset < 0
                 || contentLength <= 0
                 || allocationCapacityBytes < contentLength
-                || offset > options.ArenaSizeBytes - allocationCapacityBytes)
+                || offset > arenaSizeBytes - allocationCapacityBytes)
             {
                 throw new SharedMemoryTriggerException(
                     "protocol_error",
@@ -183,7 +210,7 @@ namespace Amvar.Vision.SharedMemory
             }
 
             var headerEpoch = new byte[16];
-            allocatorView.ReadArray(56, headerEpoch, 0, headerEpoch.Length);
+            allocatorView.ReadArray(64, headerEpoch, 0, headerEpoch.Length);
             if (allocatorView.ReadUInt32(descriptorOffset) != 2
                 || allocatorView.ReadUInt64(descriptorOffset + 8) != checked((ulong)descriptorGeneration)
                 || !string.Equals(ToHex(headerEpoch), brokerEpoch, StringComparison.OrdinalIgnoreCase)
@@ -212,20 +239,59 @@ namespace Amvar.Vision.SharedMemory
             }
         }
 
-        private void ValidateHeader()
+        private void ValidateGuardFile(int descriptorCount)
+        {
+            var expectedLength = checked((long)descriptorCount * guardStride + 1);
+            using (var guardFile = new FileStream(
+                guardPath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (guardFile.Length != expectedLength)
+                {
+                    throw new SharedMemoryTriggerException(
+                        "protocol_error",
+                        "LocalBuffer guard layout does not match allocator metadata.");
+                }
+            }
+        }
+
+        private static LocalBufferLayout ReadLayout(
+            MemoryMappedViewAccessor view,
+            long allocatorLength)
         {
             var magic = new byte[8];
-            allocatorView.ReadArray(0, magic, 0, magic.Length);
+            view.ReadArray(0, magic, 0, magic.Length);
+            var descriptorCount = checked((int)view.ReadUInt32(20));
+            var readerSlots = checked((int)view.ReadUInt32(24));
+            var discoveredGuardStride = checked((int)view.ReadUInt32(28));
+            var discoveredArenaSize = checked((long)view.ReadUInt64(32));
+            var fingerprint = new byte[32];
+            view.ReadArray(80, fingerprint, 0, fingerprint.Length);
+            var expectedAllocatorLength = checked(
+                HeaderSize + (long)descriptorCount * DescriptorStride);
             if (!string.Equals(Encoding.ASCII.GetString(magic), "AMVLBA01", StringComparison.Ordinal)
-                || allocatorView.ReadUInt32(8) != 1
-                || allocatorView.ReadUInt32(12) != HeaderSize
-                || allocatorView.ReadUInt32(16) != DescriptorStride
-                || checked((long)allocatorView.ReadUInt64(24)) != options.ArenaSizeBytes)
+                || view.ReadUInt32(8) != LayoutVersion
+                || view.ReadUInt32(12) != HeaderSize
+                || view.ReadUInt32(16) != DescriptorStride
+                || descriptorCount <= 0
+                || readerSlots <= 0
+                || discoveredGuardStride != 2 + readerSlots
+                || discoveredArenaSize <= 0
+                || allocatorLength != expectedAllocatorLength)
             {
                 throw new SharedMemoryTriggerException(
                     "protocol_error",
-                    "LocalBuffer allocator layout does not match the SDK configuration.");
+                    "LocalBuffer allocator header is invalid or unsupported.");
             }
+
+            return new LocalBufferLayout(
+                descriptorCount,
+                readerSlots,
+                discoveredGuardStride,
+                discoveredArenaSize,
+                ToHex(fingerprint));
         }
 
         private void ThrowIfDisposed()
@@ -296,6 +362,33 @@ namespace Amvar.Vision.SharedMemory
             }
 
             return builder.ToString();
+        }
+
+        private sealed class LocalBufferLayout
+        {
+            internal LocalBufferLayout(
+                int descriptorCount,
+                int readerGuardSlots,
+                int guardStride,
+                long arenaSizeBytes,
+                string layoutFingerprint)
+            {
+                DescriptorCount = descriptorCount;
+                ReaderGuardSlots = readerGuardSlots;
+                GuardStride = guardStride;
+                ArenaSizeBytes = arenaSizeBytes;
+                LayoutFingerprint = layoutFingerprint;
+            }
+
+            internal int DescriptorCount { get; }
+
+            internal int ReaderGuardSlots { get; }
+
+            internal int GuardStride { get; }
+
+            internal long ArenaSizeBytes { get; }
+
+            internal string LayoutFingerprint { get; }
         }
 
         internal sealed class LocalBufferMappingLease : IDisposable

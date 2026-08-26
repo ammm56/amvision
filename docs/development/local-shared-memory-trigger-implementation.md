@@ -707,7 +707,7 @@ REQUEST 时 route generation 已变化、source 已禁用或 Runtime 已切版�
 
 ## .NET SDK 实现边界
 
-新增 `SharedMemoryTriggerClient`、External LocalBuffer writer/reader 和职责等价的 helper，继续通过 SDK 配置包获得 endpoint、mailbox identity、pool 能力和协议参数。
+新增 `SharedMemoryTriggerClient`、External LocalBuffer writer/reader 和职责等价的 helper。SDK配置包提供稳定TriggerSource路由、`buffers_root`和协议参数；arena容量、descriptor/guard几何与layout fingerprint由allocator header自动发现，不复制pool能力和内部文件路径。
 
 `local-shared-memory` v1 只提供同步调用，不复用异步 task handle 语义。公开结果对象实现确定性释放：.NET 使用 `IDisposable`/`IAsyncDisposable` 管理唯一物理 output readers 与 ACK；reader guard 在 `Invoke` 返回后继续由结果对象持有。`Dispose`/`DisposeAsync` 使用原子状态机禁止新读取、等待 SDK 内活动 accessor 结束、使 owner-backed attachment view 失效、释放全部 guard，再发布一次 ACK。重复 Dispose 为幂等 no-op。调用方释放结果前 attachment view 保持有效，释放后不得继续访问或保留先前取得的 `Span`。SDK 终结器只能作为泄漏诊断和最后防线，不能替代显式 dispose。
 

@@ -267,27 +267,36 @@ class LocalBufferArenaPool:
         layout: str | None = None,
         pixel_format: str | None = None,
     ) -> ExternalBufferCommitTransferResult:
-        """发布 external lease 并执行第一次 owner handoff。"""
+        """在 writer publication barrier 内发布并执行第一次 owner handoff。"""
 
         record = self._require_receipt(receipt, expected_states={"writing"})
-        committed = self.commit_lease(
-            lease=record.lease,
-            media_type=media_type,
-            shape=shape,
-            dtype=dtype,
-            layout=layout,
-            pixel_format=pixel_format,
-        )
-        transferred = self.transfer_ownership_batch(
-            receipts=(self._build_receipt(record),),
-            new_owner_kind=new_owner_kind,
-            new_owner_id=new_owner_id,
-            deadline_ns=deadline_ns,
-        )[0]
-        current = self._require_record(committed.lease.lease_id)
+        owner_kind = _require_text(new_owner_kind, "new_owner_kind")
+        owner_id = _require_text(new_owner_id, "new_owner_id")
+        try:
+            low_receipt = self.arena.publish_external_active_and_transfer(
+                record.low_receipt,
+                new_deadline_ns=deadline_ns,
+            )
+        except LocalBufferArenaError as error:
+            raise InvalidRequestError(str(error)) from error
+        with self._lock:
+            record.low_receipt = low_receipt
+            record.lease = record.lease.model_copy(
+                update={
+                    "state": "active",
+                    "owner_kind": owner_kind,
+                    "owner_id": owner_id,
+                }
+            )
+            record.media_type = _require_text(media_type, "media_type")
+            record.shape = tuple(shape)
+            record.dtype = _optional_text(dtype)
+            record.layout = _optional_text(layout)
+            record.pixel_format = _optional_text(pixel_format)
+            transferred = self._build_receipt(record)
         return ExternalBufferCommitTransferResult(
-            lease=current.lease,
-            buffer_ref=self._build_buffer_ref(current),
+            lease=record.lease,
+            buffer_ref=self._build_buffer_ref(record),
             receipt=transferred,
         )
 

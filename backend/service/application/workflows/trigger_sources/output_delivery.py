@@ -381,19 +381,11 @@ class PreparedTriggerResult(BaseModel):
 def build_public_prepared_result_payload(
     prepared_result: PreparedTriggerResult,
 ) -> dict[str, object]:
-    """移除 private owner 字段，只公开安全读取所需的 guard locator。"""
+    """移除 owner/guard 私有字段，只公开图片定位与表示信息。"""
 
     def build_physical_payload(item: PreparedPhysicalPayload) -> dict[str, object]:
         """构造单个公开物理 payload，不泄露 owner handoff receipt。"""
 
-        reader_guard_path: str | None = None
-        reader_guard_offset: int | None = None
-        reader_guard_slots: int | None = None
-        if item.delivery_kind == "local-buffer":
-            receipt = LeaseOwnershipReceipt.model_validate(item.ownership_receipt)
-            reader_guard_path = receipt.guard_path
-            reader_guard_offset = receipt.reader_guard_offset
-            reader_guard_slots = receipt.reader_guard_slots
         return {
             "payload_id": item.payload_id,
             "delivery_kind": item.delivery_kind,
@@ -409,9 +401,6 @@ def build_public_prepared_result_payload(
             "pixel_format": item.pixel_format,
             "buffer_ref": dict(item.buffer_ref or {}),
             "object_locator": dict(item.object_locator or {}),
-            "reader_guard_path": reader_guard_path,
-            "reader_guard_offset": reader_guard_offset,
-            "reader_guard_slots": reader_guard_slots,
         }
 
     return {

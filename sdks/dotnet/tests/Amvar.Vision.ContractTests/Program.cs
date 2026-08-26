@@ -40,6 +40,7 @@ namespace Amvar.Vision.ContractTests
             WorkflowTriggerMailboxV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
             VerifyLocalBufferMappingCache();
+            VerifyAutomaticConfigurationRequiresAsyncFactory();
             await VerifyCreateSelectorAsync().ConfigureAwait(false);
             await VerifySelectVersionRequestAsync().ConfigureAwait(false);
             await VerifyVersionArchiveRestoreAsync().ConfigureAwait(false);
@@ -47,6 +48,51 @@ namespace Amvar.Vision.ContractTests
             await VerifyRuntimeAndRevisionResponsesAsync().ConfigureAwait(false);
             await VerifyRunResponseAsync().ConfigureAwait(false);
             await VerifyConflictDetailsAsync().ConfigureAwait(false);
+        }
+
+        private static void VerifyAutomaticConfigurationRequiresAsyncFactory()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "amvision-sdk-bootstrap-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(root, "sdk-bootstrap.json"),
+                    @"{
+                        ""format_id"":""amvision.sdk-bootstrap.v1"",
+                        ""backend"":{
+                            ""base_api_url"":""http://127.0.0.1:5600"",
+                            ""configuration_path"":""/api/v1/projects/project-1/sdk-config-packages/current"",
+                            ""access_token"":""token"",
+                            ""http_timeout_seconds"":10
+                        },
+                        ""configuration_sync"":{
+                            ""enabled"":true,
+                            ""use_last_known_good"":true
+                        }
+                    }",
+                    Encoding.UTF8);
+                try
+                {
+                    AMVisionClient.CreateFromConfigDirectory(root);
+                }
+                catch (InvalidOperationException error)
+                {
+                    Assert(
+                        error.Message.Contains("CreateFromConfigDirectoryAsync"),
+                        "automatic configuration sync must require the async factory");
+                    return;
+                }
+
+                throw new InvalidOperationException(
+                    "Automatic configuration sync was silently ignored by the synchronous factory.");
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
         }
 
         private static void VerifyZeroMqTriggerResultFrames()
@@ -109,10 +155,11 @@ namespace Amvar.Vision.ContractTests
             var root = Path.Combine(
                 Path.GetTempPath(),
                 "amvision-local-buffer-cache-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(root);
-            var arenaPath = Path.Combine(root, "arena-main.mmap");
-            var allocatorPath = Path.Combine(root, "allocator-main.mmap");
-            var guardPath = Path.Combine(root, "arena-main.guard");
+            var localBufferRoot = Path.Combine(root, "local-buffer");
+            Directory.CreateDirectory(localBufferRoot);
+            var arenaPath = Path.Combine(localBufferRoot, "arena-main.mmap");
+            var allocatorPath = Path.Combine(localBufferRoot, "allocator-main.mmap");
+            var guardPath = Path.Combine(localBufferRoot, "arena-main.guard");
             const long arenaSize = 4 * 1024 * 1024;
             using (var file = new FileStream(arenaPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
             {
@@ -121,17 +168,11 @@ namespace Amvar.Vision.ContractTests
             var brokerEpoch = CreateArenaMetadata(allocatorPath, arenaSize);
             using (var guard = new FileStream(guardPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
             {
-                guard.SetLength(24);
+                guard.SetLength(25);
             }
             var options = new SharedMemoryTriggerClientOptions
             {
                 BuffersRoot = root,
-                ArenaId = "local-buffer-main",
-                ArenaPath = arenaPath,
-                AllocatorPath = allocatorPath,
-                GuardPath = guardPath,
-                ArenaSizeBytes = arenaSize,
-                ReaderGuardSlots = 4,
                 TriggerSourceId = "trigger-source-1",
                 RouteGeneration = 1
             };
@@ -141,6 +182,24 @@ namespace Amvar.Vision.ContractTests
                 using (var cache = new LocalBufferMappingCache(options))
                 {
                     var allocation = CreateAllocation(brokerEpoch, "buffer-0", 0, 0, 512 * 1024);
+                    var mismatchedLayout = CreateAllocation(
+                        brokerEpoch,
+                        "buffer-layout-mismatch",
+                        0,
+                        0,
+                        512 * 1024);
+                    mismatchedLayout.LayoutFingerprint = new string('f', 64);
+                    try
+                    {
+                        cache.Acquire(mismatchedLayout).Dispose();
+                        throw new InvalidOperationException(
+                            "LocalBuffer mapping accepted a mismatched layout fingerprint.");
+                    }
+                    catch (SharedMemoryTriggerException error)
+                    {
+                        AssertEqual("protocol_error", error.ErrorCode, "layout mismatch error code");
+                    }
+
                     using (var first = cache.Acquire(allocation))
                     using (var second = cache.Acquire(allocation))
                     {
@@ -206,6 +265,7 @@ namespace Amvar.Vision.ContractTests
                 DescriptorIndex = descriptorIndex,
                 DescriptorGeneration = 1,
                 BrokerEpoch = brokerEpoch,
+                LayoutFingerprint = new string('0', 64),
                 Offset = offset,
                 ContentLength = size,
                 AllocationCapacityBytes = 1024 * 1024
@@ -225,10 +285,12 @@ namespace Amvar.Vision.ContractTests
             {
                 file.SetLength(256 + 4 * 256);
                 writer.Write(Encoding.ASCII.GetBytes("AMVLBA01"));
-                writer.Write(1U);
+                writer.Write(2U);
                 writer.Write(256U);
                 writer.Write(256U);
                 writer.Write(4U);
+                writer.Write(4U);
+                writer.Write(6U);
                 writer.Write(checked((ulong)arenaSize));
                 writer.Write(1024UL * 1024UL);
                 writer.Write(4UL * 1024UL * 1024UL);

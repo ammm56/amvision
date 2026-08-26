@@ -64,18 +64,15 @@ class LocalSharedMemoryTriggerAdapter:
         with self._lock:
             route_generation = self._route_generations.get(trigger_source_id)
         status = self.mailbox_supervisor.build_status()
-        completed_request_count = int(status["completed_request_count"])
-        failed_request_count = int(status["failed_request_count"])
+        source_status = self.mailbox_supervisor.build_source_status(
+            trigger_source_id
+        )
         return {
             "adapter_kind": self.adapter_kind,
+            "source_scoped": True,
             "running": route_generation is not None and status["running"],
             "route_generation": route_generation,
-            "pending_request_count": status["pending_request_count"],
-            "active_task_count": status["active_task_count"],
-            "request_count": completed_request_count + failed_request_count,
-            "success_count": completed_request_count,
-            "error_count": failed_request_count,
-            "timeout_count": 0,
+            **source_status,
             "idle_poll_sleep_count": status["idle_poll_sleep_count"],
             "mailbox": status["mailbox"],
             "executor": status["executor"],

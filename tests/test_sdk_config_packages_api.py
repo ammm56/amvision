@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import zipfile
 from datetime import datetime, timezone
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
@@ -146,6 +147,56 @@ def test_sdk_config_package_can_include_current_access_token(tmp_path: Path) -> 
     assert workflow_config["backend"]["access_token"] == token
 
 
+def test_sdk_config_current_snapshot_supports_etag_and_file_checksums(
+    tmp_path: Path,
+) -> None:
+    """自动同步快照使用稳定 revision、ETag 和逐文件 checksum。"""
+
+    client, session_factory, dataset_storage = _create_sdk_config_package_test_client(
+        tmp_path
+    )
+    _seed_workflow_runtime_and_trigger_source(session_factory, dataset_storage)
+    try:
+        with client:
+            first = client.get(
+                "/api/v1/projects/project-1/sdk-config-packages/current",
+                headers=_build_headers(),
+            )
+            second = client.get(
+                "/api/v1/projects/project-1/sdk-config-packages/current",
+                headers={
+                    **_build_headers(),
+                    "If-None-Match": first.headers["etag"],
+                },
+            )
+    finally:
+        session_factory.engine.dispose()
+
+    assert first.status_code == 200
+    assert first.headers["content-type"] == "application/zip"
+    revision = first.headers["x-amvision-config-revision"]
+    assert first.headers["etag"] == f'"{revision}"'
+    assert second.status_code == 304
+    assert second.content == b""
+
+    archive = zipfile.ZipFile(BytesIO(first.content))
+    manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["configuration_revision"] == revision
+    files = {item["path"]: item for item in manifest["files"]}
+    assert "Config/sdk-bootstrap.json" in files
+    for path, item in files.items():
+        assert item["sha256"] == sha256(archive.read(path)).hexdigest()
+
+    bootstrap = json.loads(archive.read("Config/sdk-bootstrap.json"))
+    assert bootstrap["configuration_sync"] == {
+        "enabled": False,
+        "use_last_known_good": True,
+    }
+    assert bootstrap["backend"]["configuration_path"].endswith(
+        "/projects/project-1/sdk-config-packages/current"
+    )
+
+
 def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path) -> None:
     """验证配置包为同机 SDK 固定 buffers root、route generation 和容量。"""
 
@@ -180,8 +231,13 @@ def test_sdk_config_package_includes_local_shared_memory_trigger(tmp_path: Path)
     assert Path(config["buffers_root"]).name == "buffers"
     assert config["route_generation"] == 1
     assert config["default_input_binding"] == "request_image_ref"
-    assert config["max_image_bytes"] == 1024 * 1024 * 1024
     assert config["timeout_seconds"] == 7
+    assert set(config) == {
+        "buffers_root",
+        "route_generation",
+        "default_input_binding",
+        "timeout_seconds",
+    }
 
 
 def test_sdk_config_package_uses_resource_ids_for_workflow_file_names(tmp_path: Path) -> None:

@@ -148,6 +148,7 @@ def test_local_shared_memory_adapter_uses_common_running_health_field() -> None:
 
     assert adapter.get_health(trigger_source_id=source.trigger_source_id) == {
         "adapter_kind": "local-shared-memory",
+        "source_scoped": True,
         "running": True,
         "route_generation": 7,
         "pending_request_count": 0,
@@ -156,6 +157,12 @@ def test_local_shared_memory_adapter_uses_common_running_health_field() -> None:
         "success_count": 4,
         "error_count": 1,
         "timeout_count": 0,
+        "busy_count": 1,
+        "capacity_reject_count": 2,
+        "request_timeout_count": 0,
+        "response_ack_timeout_count": 0,
+        "cancel_count": 3,
+        "recent_error": None,
         "idle_poll_sleep_count": 8,
         "mailbox": {"used_page_count": 0},
         "executor": {"active_count": 0},
@@ -241,4 +248,22 @@ class _FakeMailboxSupervisor:
             "recent_poller_error": None,
             "recent_request_error": None,
             "latest_timings": {"total_ms": 12.5},
+        }
+
+    def build_source_status(self, trigger_source_id: str) -> dict[str, object]:
+        assert trigger_source_id == "source-health"
+        return {
+            "source_scoped": True,
+            "pending_request_count": 0,
+            "active_task_count": 0,
+            "request_count": 5,
+            "success_count": 4,
+            "error_count": 1,
+            "timeout_count": 0,
+            "busy_count": 1,
+            "capacity_reject_count": 2,
+            "request_timeout_count": 0,
+            "response_ack_timeout_count": 0,
+            "cancel_count": 3,
+            "recent_error": None,
         }

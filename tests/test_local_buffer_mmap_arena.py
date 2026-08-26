@@ -10,6 +10,7 @@ import pytest
 
 from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
     LocalBufferArenaError,
+    LocalBufferArenaIntegrityError,
     MmapBufferArena,
     MmapBufferArenaConfig,
 )
@@ -247,6 +248,75 @@ def test_batch_handoff_is_all_or_nothing(tmp_path) -> None:
         assert transferred[1].owner_token != second.owner_token
         assert arena.request_reclaim(transferred[0]) == "released"
         assert arena.request_reclaim(transferred[1]) == "released"
+
+
+def test_batch_handoff_rolls_back_mid_write_failure(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """第二个 descriptor 写入异常时恢复整批旧 owner/deadline。"""
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        first = arena.allocate(content_length=10, deadline_ns=_deadline())
+        second = arena.allocate(content_length=20, deadline_ns=_deadline())
+        arena.publish_active(first)
+        arena.publish_active(second)
+        original_publish = arena._publish_descriptor
+        call_count = 0
+
+        def fail_second_publish(**kwargs) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise OSError("injected descriptor write failure")
+            original_publish(**kwargs)
+
+        monkeypatch.setattr(arena, "_publish_descriptor", fail_second_publish)
+        with pytest.raises(LocalBufferArenaError, match="已回滚全部 descriptor"):
+            arena.transfer_owners_batch(
+                (first, second),
+                new_deadline_ns=_deadline(),
+            )
+        arena.validate_receipt(first, expected_states={"active"})
+        arena.validate_receipt(second, expected_states={"active"})
+
+
+def test_batch_handoff_quarantines_rollback_failure(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """写入和回滚都失败时把对应 lease 收敛到 REVOKING。"""
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        first = arena.allocate(content_length=10, deadline_ns=_deadline())
+        second = arena.allocate(content_length=20, deadline_ns=_deadline())
+        arena.publish_active(first)
+        arena.publish_active(second)
+        original_publish = arena._publish_descriptor
+        call_count = 0
+
+        def fail_write_and_one_rollback(**kwargs) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count in {2, 3}:
+                raise OSError("injected persistent descriptor failure")
+            original_publish(**kwargs)
+
+        monkeypatch.setattr(
+            arena,
+            "_publish_descriptor",
+            fail_write_and_one_rollback,
+        )
+        with pytest.raises(
+            LocalBufferArenaIntegrityError,
+            match="进入 REVOKING",
+        ):
+            arena.transfer_owners_batch(
+                (first, second),
+                new_deadline_ns=_deadline(),
+            )
+        arena.validate_receipt(first, expected_states={"active"})
+        arena.validate_receipt(second, expected_states={"revoking"})
 
 
 def test_frame_channel_allocation_is_all_or_nothing(tmp_path) -> None:

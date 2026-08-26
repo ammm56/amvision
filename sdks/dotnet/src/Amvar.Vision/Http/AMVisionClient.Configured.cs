@@ -20,9 +20,26 @@ namespace Amvar.Vision
         /// <returns>已经加载配置的 SDK client。</returns>
         public static AMVisionClient CreateFromConfig()
         {
-            var catalog = WorkflowConfigLoader.LoadDefault();
+            var configDirectory = WorkflowConfigLoader.FindConfigDirectory();
+            SdkConfigurationSnapshotManager.ThrowIfAutomaticSyncRequiresAsync(
+                configDirectory);
+            var catalog = WorkflowConfigLoader.LoadDirectory(configDirectory);
             var client = CreateFromCatalog(catalog);
             return client;
+        }
+
+        /// <summary>
+        /// 从默认 Config 目录加载配置；启用 HTTP 自动同步时先取得并校验最新快照。
+        /// </summary>
+        public static async Task<AMVisionClient> CreateFromConfigAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var configDirectory = WorkflowConfigLoader.FindConfigDirectory();
+            var selectedDirectory = await SdkConfigurationSnapshotManager
+                .ResolveConfigurationDirectoryAsync(configDirectory, cancellationToken)
+                .ConfigureAwait(false);
+            var catalog = WorkflowConfigLoader.LoadDirectory(selectedDirectory);
+            return CreateFromCatalog(catalog);
         }
 
         /// <summary>
@@ -32,9 +49,25 @@ namespace Amvar.Vision
         /// <returns>已经加载配置的 SDK client。</returns>
         public static AMVisionClient CreateFromConfigDirectory(string configDirectory)
         {
+            SdkConfigurationSnapshotManager.ThrowIfAutomaticSyncRequiresAsync(
+                configDirectory);
             var catalog = WorkflowConfigLoader.LoadDirectory(configDirectory);
             var client = CreateFromCatalog(catalog);
             return client;
+        }
+
+        /// <summary>
+        /// 从指定 Config 目录加载配置；启用 HTTP 自动同步时先取得并校验最新快照。
+        /// </summary>
+        public static async Task<AMVisionClient> CreateFromConfigDirectoryAsync(
+            string configDirectory,
+            CancellationToken cancellationToken = default)
+        {
+            var selectedDirectory = await SdkConfigurationSnapshotManager
+                .ResolveConfigurationDirectoryAsync(configDirectory, cancellationToken)
+                .ConfigureAwait(false);
+            var catalog = WorkflowConfigLoader.LoadDirectory(selectedDirectory);
+            return CreateFromCatalog(catalog);
         }
 
         /// <summary>

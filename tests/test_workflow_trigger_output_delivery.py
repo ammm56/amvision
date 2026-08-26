@@ -206,12 +206,9 @@ def test_current_run_buffer_is_handed_off_once_for_duplicate_attachments(
         assert len(response_receipts) == 1
         public_payload = build_public_prepared_result_payload(prepared)
         public_physical = public_payload["payloads"][0]
-        assert public_physical["reader_guard_path"] == (
-            response_receipts[0].guard_path
-        )
-        assert public_physical["reader_guard_slots"] == (
-            response_receipts[0].reader_guard_slots
-        )
+        assert "reader_guard_path" not in public_physical
+        assert "reader_guard_offset" not in public_physical
+        assert "reader_guard_slots" not in public_physical
         assert "ownership_receipt" not in public_physical
         assert client.read_buffer_ref(buffer_ref) == content
         assert client.conditional_release(receipt=response_receipts[0]) == "released"

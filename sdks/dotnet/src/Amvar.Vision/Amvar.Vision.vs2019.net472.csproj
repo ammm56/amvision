@@ -216,6 +216,7 @@
     <Compile Include="Tools\Bgr24ImageFrame.cs" />
     <Compile Include="Tools\ConfiguredPathResolver.cs" />
     <Compile Include="Tools\ImageConversionTools.cs" />
+    <Compile Include="Tools\SdkConfigurationSnapshotManager.cs" />
     <Compile Include="Tools\WorkflowConfigLoader.cs" />
     <Compile Include="TriggerSource\DisableTriggerSourceAsync.cs" />
     <Compile Include="TriggerSource\EnableTriggerSourceAsync.cs" />

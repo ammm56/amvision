@@ -10,7 +10,7 @@
 
 LocalBuffer raw/encoded 输入、ZeroMQ 图片请求、Workflow 单次解码复用、多 `result_bindings`、固定 `TriggerResponsePlan`、输出规范化、ObjectStore 稳定快照、output lease handoff、`Image Encode`、统一 ZeroMQ binary attachments、SDK 返回生命周期和 `local-shared-memory` Trigger 主体已经交付，并保留过往性能与 soak 证据。
 
-代码复审仍确认两组待实现项：Workflow Trigger mailbox 的共享 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消和 per-source health；LocalBuffer 当前仍是固定分辨率 pool/slot，尚未迁移到固定总容量 arena + buddy allocator。因此不能把历史门禁表述为“当前设计全部完成”。下一阶段唯一实施顺序见[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)，LocalBuffer 目标决策见 [ADR-0008](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)。
+Workflow Trigger mailbox 的共享 overflow page、总 deadline、独立 ACK deadline、PROCESSING 取消和 per-source health 已闭环；LocalBuffer 也已原子迁移为固定总容量 arena + buddy allocator。External writer publication 会重新取得 writer guard，批量 owner handoff 的普通中途异常会回滚，回滚失败的 lease 进入 `REVOKING`。SDK 只配置 `data/buffers` 根目录，arena 容量、descriptor/guard 几何和 layout fingerprint 从 allocator header 自动发现。发行重组后的长期 soak 仍按[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)执行。
 
 ## 现场目标
 

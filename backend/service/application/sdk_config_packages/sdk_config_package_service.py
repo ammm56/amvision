@@ -8,7 +8,9 @@ import re
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 from io import BytesIO
+from urllib.parse import quote
 
 from backend.service.application.deployments.deployment_instance_service import (
     DeploymentInstanceView,
@@ -106,6 +108,7 @@ class SdkConfigPackagePlan:
     package_name: str
     base_api_url: str
     contains_access_token: bool
+    configuration_revision: str
     files: tuple[SdkConfigPackageFile, ...]
     warnings: tuple[str, ...] = ()
     workflow_runtime_count: int = 0
@@ -262,6 +265,9 @@ class _SdkConfigPackageBuilder:
         if model_file is not None:
             files.append(model_file)
 
+        if files:
+            files.append(self._build_bootstrap_file())
+
         workflow_runtime_count = len(resources.runtimes)
         trigger_source_count = sum(
             item.trigger_source_count for item in files if item.kind == "workflow-runtime"
@@ -280,6 +286,11 @@ class _SdkConfigPackageBuilder:
             package_name=package_name,
             base_api_url=self.request.base_api_url,
             contains_access_token=self.request.include_access_token and bool(self.request.access_token),
+            configuration_revision=_build_configuration_revision(
+                project_id=self.request.project_id,
+                base_api_url=self.request.base_api_url,
+                files=tuple(files),
+            ),
             files=tuple(files),
             warnings=tuple(self.warnings),
             workflow_runtime_count=workflow_runtime_count,
@@ -468,33 +479,8 @@ class _SdkConfigPackageBuilder:
             "trigger_kind": trigger_source.trigger_kind,
             "local_shared_memory": {
                 "buffers_root": str(self.buffers_root),
-                "arena_id": self.local_buffer_broker_settings.arena_id,
-                "arena_path": str(
-                    self.buffers_root / "local-buffer" / "arena-main.mmap"
-                ),
-                "allocator_path": str(
-                    self.buffers_root / "local-buffer" / "allocator-main.mmap"
-                ),
-                "guard_path": str(
-                    self.buffers_root / "local-buffer" / "arena-main.guard"
-                ),
-                "arena_size_bytes": (
-                    self.local_buffer_broker_settings.arena_size_bytes
-                ),
-                "min_block_size_bytes": (
-                    self.local_buffer_broker_settings.min_block_size_bytes
-                ),
-                "max_allocation_bytes": (
-                    self.local_buffer_broker_settings.max_allocation_bytes
-                ),
-                "reader_guard_slots": (
-                    self.local_buffer_broker_settings.reader_guard_slots
-                ),
                 "route_generation": response_plan.plan_generation,
                 "default_input_binding": default_input_binding,
-                "max_image_bytes": (
-                    self.local_buffer_broker_settings.max_allocation_bytes
-                ),
                 "timeout_seconds": trigger_source.reply_timeout_seconds or 5,
             },
         }
@@ -568,6 +554,34 @@ class _SdkConfigPackageBuilder:
             "http_timeout_seconds": _DEFAULT_HTTP_TIMEOUT_SECONDS,
         }
 
+    def _build_bootstrap_file(self) -> SdkConfigPackageFile:
+        """构建默认关闭自动同步的 SDK 本地引导配置。"""
+
+        project_path_id = quote(self.request.project_id, safe="")
+        payload = {
+            "format_id": "amvision.sdk-bootstrap.v1",
+            "backend": {
+                "base_api_url": self.request.base_api_url,
+                "configuration_path": (
+                    f"/api/v1/projects/{project_path_id}/sdk-config-packages/current"
+                ),
+                "access_token": self.request.access_token
+                if self.request.include_access_token and self.request.access_token
+                else _DEFAULT_ACCESS_TOKEN_PLACEHOLDER,
+                "http_timeout_seconds": 10,
+            },
+            "configuration_sync": {
+                "enabled": False,
+                "use_last_known_good": True,
+            },
+        }
+        return SdkConfigPackageFile(
+            path="Config/sdk-bootstrap.json",
+            kind="sdk-bootstrap",
+            content=_to_pretty_json(payload),
+            count=1,
+        )
+
     def _unique_key(self, value: str, *, fallback: str) -> str:
         """生成 zip 内唯一的配置 key。"""
 
@@ -624,6 +638,7 @@ def _build_manifest(plan: SdkConfigPackagePlan) -> dict[str, object]:
         "generated_at": plan.generated_at,
         "project_id": plan.project_id,
         "base_api_url": plan.base_api_url,
+        "configuration_revision": plan.configuration_revision,
         "contains_access_token": plan.contains_access_token,
         "workflow_runtime_count": plan.workflow_runtime_count,
         "trigger_source_count": plan.trigger_source_count,
@@ -635,11 +650,66 @@ def _build_manifest(plan: SdkConfigPackagePlan) -> dict[str, object]:
                 "count": item.count,
                 "runtime_key": item.runtime_key,
                 "trigger_source_count": item.trigger_source_count,
+                "sha256": sha256(item.content.encode("utf-8")).hexdigest(),
             }
             for item in plan.files
         ],
         "warnings": list(plan.warnings),
     }
+
+
+def _build_configuration_revision(
+    *,
+    project_id: str,
+    base_api_url: str,
+    files: tuple[SdkConfigPackageFile, ...],
+) -> str:
+    """按去除 secret 后的规范化配置内容生成稳定 revision。"""
+
+    normalized_files: list[dict[str, object]] = []
+    for item in sorted(files, key=lambda value: value.path):
+        try:
+            payload = json.loads(item.content)
+        except json.JSONDecodeError:
+            normalized_content: object = item.content
+        else:
+            normalized_content = _redact_access_tokens(payload)
+        normalized_files.append(
+            {
+                "path": item.path,
+                "kind": item.kind,
+                "content": normalized_content,
+            }
+        )
+    canonical = json.dumps(
+        {
+            "format_id": _PACKAGE_FORMAT_ID,
+            "project_id": project_id,
+            "base_api_url": base_api_url,
+            "files": normalized_files,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(canonical).hexdigest()
+
+
+def _redact_access_tokens(value: object) -> object:
+    """递归移除 revision 中的 access token，避免 token 轮换触发配置变化。"""
+
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "<access-token>"
+                if str(key).casefold() == "access_token"
+                else _redact_access_tokens(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_access_tokens(item) for item in value]
+    return value
 
 
 def _build_package_readme(plan: SdkConfigPackagePlan) -> str:

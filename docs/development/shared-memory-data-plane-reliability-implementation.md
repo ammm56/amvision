@@ -31,7 +31,7 @@
 | 前端 | 创建页提供正式本机共享内存模板，不显示内部 mmap 路径或 pool | 已实现并通过浏览器交互验证 |
 | LocalBuffer | 单固定容量 arena + buddy allocator，按 `content_length` 动态选择最小连续 order | 已实现 |
 | BufferRef | 使用 arena id、descriptor、generation、epoch、offset、content/allocation length | 已实现 |
-| .NET mapping | 按受信 arena 配置和精确 extent view 映射，guard 后重验 descriptor | 已实现 |
+| .NET mapping | 配置只保留 buffers root；allocator header 自动发现容量、guard 几何和 fingerprint，guard 后重验 descriptor | 已实现 |
 | .NET 进程架构 | SDK、Console 和 contract tests 固定 x64，LocalBuffer client拒绝非64-bit进程 | 已实现 |
 | frame channel | 同时声明 frame 数量和单帧最大长度，extent 预留全有或全无 | 已实现 |
 
@@ -237,7 +237,7 @@ descriptor 保存固定二进制字段，包括128-bit opaque owner token，不�
 
 公开 locator 不增加权威 owner/deadline。服务端每次 transfer/release/revoke 都使用私有 receipt，并同时校验 arena、descriptor、generation、epoch、owner、deadline、offset 和 capacity。
 
-协议原子迁移时删除 locator/allocation 中可由请求选择的 `path`，SDK/worker按 `arena_id` 从固定配置包解析 arena、metadata和guard路径；把旧 `size`、`generation`、`slot_capacity_bytes`、`pool_name` 替换为 `content_length`、`descriptor_generation`、`allocation_capacity_bytes`、`arena_id`。`buffer_id` 若因日志/追踪保留也只是展示字段，不参与权威回收；不写双读或字段别名。
+协议原子迁移时删除 locator/allocation 中可由请求选择的 `path`。SDK配置只保留受信 `buffers_root`，从固定 allocator header自动发现arena容量、metadata/guard几何、epoch和fingerprint；worker按服务端registry解析 `arena_id`。旧 `size`、`generation`、`slot_capacity_bytes`、`pool_name` 替换为 `content_length`、`descriptor_generation`、`allocation_capacity_bytes`、`arena_id`。`buffer_id` 若因日志/追踪保留也只是展示字段，不参与权威回收；不写双读或字段别名。
 
 `arena_id` 在一次安装内必须跨 Broker owner 唯一、稳定且不能包含 PID。主 Broker 固定为 `local-buffer-main`；当前 inference daemon 私有 owner 固定为 `inference-daemon-private`；未来多个私有 owner 使用 `inference-daemon-private-<stable-daemon-id>`。同步 Workflow/Deployment/Trigger 只使用主 arena，异步任务领取后的私有物化才使用 daemon 私有 arena，两个 arena 之间不能因 locator 同名而误映射。
 

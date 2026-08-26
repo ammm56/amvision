@@ -995,8 +995,23 @@ function formatHealthSummary(value: unknown): string {
   const requestCount = value.request_count
   const successCount = value.success_count
   const errorCount = value.error_count
+  const timeoutCount = value.timeout_count
+  const busyCount = value.busy_count
+  const capacityRejectCount = value.capacity_reject_count
+  const responseAckTimeoutCount = value.response_ack_timeout_count
+  const cancelCount = value.cancel_count
   if (adapterRunning !== undefined || requestCount !== undefined || successCount !== undefined || errorCount !== undefined) {
-    return `running=${String(adapterRunning ?? '-')} request=${String(requestCount ?? 0)} success=${String(successCount ?? 0)} error=${String(errorCount ?? 0)}`
+    return [
+      `running=${String(adapterRunning ?? '-')}`,
+      `request=${String(requestCount ?? 0)}`,
+      `success=${String(successCount ?? 0)}`,
+      `error=${String(errorCount ?? 0)}`,
+      `timeout=${String(timeoutCount ?? 0)}`,
+      `busy=${String(busyCount ?? 0)}`,
+      `capacity=${String(capacityRejectCount ?? 0)}`,
+      `ack-timeout=${String(responseAckTimeoutCount ?? 0)}`,
+      `cancel=${String(cancelCount ?? 0)}`,
+    ].join(' ')
   }
   return Object.keys(value).length > 0 ? JSON.stringify(value) : ''
 }

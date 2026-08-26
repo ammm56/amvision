@@ -328,9 +328,9 @@ namespace Amvar.Vision.SharedMemory
             Action<ExternalLocalBufferWriter> write,
             SharedMemoryTriggerTimings? timings)
         {
-            if (contentLength <= 0 || contentLength > options.MaxImageBytes)
+            if (contentLength <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(contentLength), contentLength, "Image length exceeds the configured boundary.");
+                throw new ArgumentOutOfRangeException(nameof(contentLength), contentLength, "Image length must be positive.");
             }
 
             var call = request ?? new SharedMemoryTriggerRequest();
@@ -603,9 +603,6 @@ namespace Amvar.Vision.SharedMemory
             SharedMemoryTriggerTimings? timings)
         {
             if (payload.BufferRef == null
-                || string.IsNullOrWhiteSpace(payload.ReaderGuardPath)
-                || payload.ReaderGuardOffset.GetValueOrDefault(-1) < 0
-                || payload.ReaderGuardSlots.GetValueOrDefault() <= 0
                 || payload.ContentLength <= 0)
             {
                 throw new SharedMemoryTriggerException("protocol_error", "LocalBuffer result locator is incomplete.");
@@ -624,17 +621,15 @@ namespace Amvar.Vision.SharedMemory
                 || descriptorGeneration <= 0
                 || offset < 0
                 || size != payload.ContentLength
-                || capacity < size
-                || !string.Equals(payload.ReaderGuardPath, options.GuardPath, StringComparison.OrdinalIgnoreCase)
-                || payload.ReaderGuardOffset != mappingCache.ReaderGuardOffset(descriptorIndex))
+                || capacity < size)
             {
                 throw new SharedMemoryTriggerException("protocol_error", "LocalBuffer result range is invalid.");
             }
 
             var guard = ByteRangeGuard.AcquireReader(
-                payload.ReaderGuardPath!,
-                payload.ReaderGuardOffset.GetValueOrDefault(),
-                payload.ReaderGuardSlots.GetValueOrDefault(),
+                mappingCache.GuardPath,
+                mappingCache.ReaderGuardOffset(descriptorIndex),
+                mappingCache.ReaderGuardSlots,
                 localDeadline);
             mappingCache.ValidateActiveBufferRef(
                 arenaId,
@@ -644,7 +639,7 @@ namespace Amvar.Vision.SharedMemory
                 offset,
                 size,
                 capacity);
-            var reader = new PhysicalPayloadReader(payload.PayloadId, payload.MediaType, options.ArenaPath, offset, size, guard);
+            var reader = new PhysicalPayloadReader(payload.PayloadId, payload.MediaType, mappingCache.ArenaPath, offset, size, guard);
             try
             {
                 if (!string.Equals(payload.ChecksumAlgorithm, "crc32", StringComparison.OrdinalIgnoreCase))
@@ -810,6 +805,8 @@ namespace Amvar.Vision.SharedMemory
                 || allocation.AllocationCapacityBytes < allocation.ContentLength
                 || string.IsNullOrWhiteSpace(allocation.ArenaId)
                 || string.IsNullOrWhiteSpace(allocation.BrokerEpoch)
+                || allocation.LayoutFingerprint == null
+                || allocation.LayoutFingerprint.Length != 64
                 || allocation.DescriptorIndex < 0
                 || allocation.DescriptorGeneration <= 0)
             {

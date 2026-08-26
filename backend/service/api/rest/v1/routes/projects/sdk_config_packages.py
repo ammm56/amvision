@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,7 @@ class SdkConfigPackagePreviewResponse(BaseModel):
     package_name: str = Field(description="下载时使用的 zip 文件名")
     base_api_url: str = Field(description="配置文件中的 backend-service 根地址")
     contains_access_token: bool = Field(description="配置文件是否包含真实 access token")
+    configuration_revision: str = Field(description="不含 secret 的稳定配置 revision")
     workflow_runtime_count: int = Field(description="导出的 WorkflowAppRuntime 数量")
     trigger_source_count: int = Field(description="导出的 TriggerSource 数量")
     model_deployment_count: int = Field(description="导出的模型 deployment key 数量")
@@ -126,6 +127,55 @@ def download_sdk_config_package(
     )
 
 
+@sdk_config_packages_router.get("/{project_id}/sdk-config-packages/current")
+def get_current_sdk_config_package(
+    project_id: str,
+    request: Request,
+    principal: Annotated[
+        AuthenticatedPrincipal,
+        Depends(require_scopes("workflows:read", "models:read")),
+    ],
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """返回 SDK 自动同步使用的完整配置快照，支持 ETag 条件请求。"""
+
+    ensure_project_known_and_visible(
+        request=request,
+        principal=principal,
+        project_id=project_id,
+    )
+    service = _build_sdk_config_package_service(request)
+    plan = service.build_plan(
+        SdkConfigPackageBuildRequest(
+            project_id=project_id,
+            base_api_url=_resolve_base_api_url(request),
+            include_access_token=False,
+            access_token=None,
+            model_runtime_modes=("sync",),
+            include_disabled_trigger_sources=True,
+        )
+    )
+    etag = f'"{plan.configuration_revision}"'
+    if if_none_match is not None and if_none_match.strip() == etag:
+        return Response(
+            status_code=304,
+            headers={
+                "ETag": etag,
+                "X-AmVision-Config-Revision": plan.configuration_revision,
+                "Cache-Control": "no-cache",
+            },
+        )
+    zip_bytes = service.build_zip_bytes(plan)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{plan.package_name}"',
+            "ETag": etag,
+            "X-AmVision-Config-Revision": plan.configuration_revision,
+            "Cache-Control": "no-cache",
+        },
+    )
 def _build_sdk_config_package_plan(
     *,
     project_id: str,
@@ -178,6 +228,7 @@ def _build_preview_response(plan: SdkConfigPackagePlan) -> SdkConfigPackagePrevi
         package_name=plan.package_name,
         base_api_url=plan.base_api_url,
         contains_access_token=plan.contains_access_token,
+        configuration_revision=plan.configuration_revision,
         workflow_runtime_count=plan.workflow_runtime_count,
         trigger_source_count=plan.trigger_source_count,
         model_deployment_count=plan.model_deployment_count,

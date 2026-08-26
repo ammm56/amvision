@@ -164,6 +164,73 @@ def test_external_checksum_failure_keeps_writing_lease_recoverable(tmp_path) -> 
         pool.close()
 
 
+def test_external_publish_rejects_writer_guard_still_held(tmp_path) -> None:
+    """REQUEST 发布后 writer 仍持有 guard 时不得向 Runtime 发布图片。"""
+
+    pool = _pool(tmp_path)
+    external = MmapBufferArenaExternalAccess(pool.config)
+    try:
+        allocation = pool.allocate_external(
+            content_length=4,
+            owner_kind="workflow-trigger-write",
+            owner_id="request-1",
+            deadline_ns=_deadline(),
+        )
+        with external.acquire_writer_view(allocation.lease) as view:
+            view[:] = b"data"
+            with pytest.raises(InvalidRequestError, match="writer guard"):
+                pool.publish_external_lease_and_transfer(
+                    receipt=allocation.receipt,
+                    media_type="image/raw",
+                    new_owner_kind="workflow-runtime",
+                    new_owner_id="run-1",
+                    deadline_ns=_deadline(),
+                )
+
+        record = pool._require_record(allocation.lease.lease_id)
+        assert record.lease.state == "writing"
+        assert record.lease.owner_kind == "workflow-trigger-write"
+        assert pool.conditional_release(receipt=allocation.receipt) == "released"
+    finally:
+        external.close()
+        pool.close()
+
+
+def test_external_publish_and_transfer_is_single_active_publication(tmp_path) -> None:
+    """writer 退出后 ACTIVE 与新 owner 必须在一次底层 publication 中生效。"""
+
+    pool = _pool(tmp_path)
+    external = MmapBufferArenaExternalAccess(pool.config)
+    try:
+        allocation = pool.allocate_external(
+            content_length=4,
+            owner_kind="workflow-trigger-write",
+            owner_id="request-1",
+            deadline_ns=_deadline(),
+        )
+        with external.acquire_writer_view(allocation.lease) as view:
+            view[:] = b"data"
+        result = pool.publish_external_lease_and_transfer(
+            receipt=allocation.receipt,
+            media_type="image/raw",
+            new_owner_kind="workflow-runtime",
+            new_owner_id="run-1",
+            deadline_ns=_deadline(),
+        )
+
+        assert result.lease.state == "active"
+        assert result.receipt.owner_kind == "workflow-runtime"
+        assert result.receipt.owner_token != allocation.receipt.owner_token
+        pool.validate_ownership_batch(
+            receipts=(result.receipt,),
+            expected_states={"active"},
+        )
+        assert pool.conditional_release(receipt=result.receipt) == "released"
+    finally:
+        external.close()
+        pool.close()
+
+
 def test_frame_channel_ring_wrap_rejects_old_sequence_and_destroys_all(tmp_path) -> None:
     """frame extent 长期复用，ring wrap 后旧 FrameRef 失效。"""
 

@@ -48,7 +48,7 @@ data/buffers/
 - 发行包使用发行应用根下的 `data/buffers/`，不能引用源码工作区绝对路径；
 - 测试可重定向到 `.tmp/<test>/buffers/`，但使用同一 binary layout、guard 和路径 containment；
 - 文件由 Broker/daemon owner 创建，SDK 不创建或选择 arena/metadata 路径；
-- locator 打开前解析绝对路径，并按 SDK 配置包中的 arena id、layout fingerprint 和允许根校验。
+- locator 打开前解析绝对路径；SDK 只从配置包取得受信 `data/buffers` 根目录，arena 文件名、容量、descriptor/guard 几何和 layout fingerprint 从 allocator header 自动发现并与本次 allocation fingerprint 交叉校验。
 
 ## 固定 arena 与动态 size class
 
@@ -90,7 +90,7 @@ buddy free lists 只保存在 Broker 进程内，启动时从 descriptor 和 gua
 
 公开引用不承担权威 owner、deadline、guard 或清理授权。服务端所有权操作使用私有 `LeaseOwnershipReceipt`，额外保存 expected owner kind/id、deadline、guard identity、layout fingerprint 和完整 extent identity。
 
-locator 不携带可由请求选择的 mmap/metadata/guard路径。SDK和worker按 `arena_id` 从固定配置解析；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 不进入新layout，分别使用 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id`。展示用 `buffer_id` 不能作为回收凭据。
+locator 不携带可由请求选择的 mmap/metadata/guard路径。SDK从受信 `buffers_root` 派生固定主 arena 文件，再从 allocator header发现真实容量、descriptor/guard几何、epoch和layout fingerprint；worker按服务端 arena registry解析。旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 不进入新layout，分别使用 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id`。展示用 `buffer_id` 不能作为回收凭据。
 
 `arena_id` 在一次安装内跨 Broker owner唯一且稳定：主 Broker 使用 `local-buffer-main`，当前 inference daemon私有 owner使用 `inference-daemon-private`；未来多个私有 owner使用 `inference-daemon-private-<stable-daemon-id>`，不能使用 PID。同步 Workflow/Deployment/Trigger只解析主 arena id。
 
@@ -164,7 +164,7 @@ frame channel 是对一组 extent 的长期预留，不是另一个 pool。创�
 
 .NET SDK 缓存 arena 文件 handle，普通 lease 按 descriptor generation、offset 和 capacity 建立精确 view并随结果生命周期释放；不能沿用固定 slot view cache。
 
-backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK全部只支持64-bit；.NET SDK固定x64并在创建client时校验进程架构。项目不提供32-bit view配置、容量协商、错误分支或降级路径。SDK配置包固定arena path、metadata path、guard path、layout version/fingerprint，不接受请求载荷指定任意文件。
+backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK全部只支持64-bit；.NET SDK固定x64并在创建client时校验进程架构。项目不提供32-bit view配置、容量协商、错误分支或降级路径。SDK配置包只固定受信 `buffers_root`；不复制arena容量、内部路径、reader guard数量或图片上限，也不接受请求载荷指定任意文件。
 
 ## 满载语义
 

@@ -185,16 +185,9 @@ namespace Amvar.Vision.TriggerSource.SharedMemory
                         BuffersRoot = ConfiguredPathResolver.ResolvePath(
                             local.BuffersRoot,
                             configured.SourceFile),
-                        ArenaId = local.ArenaId,
-                        ArenaPath = ConfiguredPathResolver.ResolvePath(local.ArenaPath, configured.SourceFile),
-                        AllocatorPath = ConfiguredPathResolver.ResolvePath(local.AllocatorPath, configured.SourceFile),
-                        GuardPath = ConfiguredPathResolver.ResolvePath(local.GuardPath, configured.SourceFile),
-                        ArenaSizeBytes = local.ArenaSizeBytes,
-                        ReaderGuardSlots = local.ReaderGuardSlots,
                         TriggerSourceId = configured.TriggerSource.TriggerSourceId,
                         RouteGeneration = local.RouteGeneration,
                         DefaultInputBinding = local.DefaultInputBinding,
-                        MaxImageBytes = local.MaxImageBytes,
                         Timeout = TimeSpan.FromSeconds(local.TimeoutSeconds)
                     });
                     clients[key] = client;

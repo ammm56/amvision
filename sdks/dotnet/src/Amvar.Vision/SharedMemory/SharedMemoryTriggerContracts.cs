@@ -20,24 +20,6 @@ namespace Amvar.Vision.SharedMemory
         /// <summary>backend 发行实例的 data/buffers 绝对目录。</summary>
         public string BuffersRoot { get; set; } = string.Empty;
 
-        /// <summary>受信任的 LocalBuffer arena domain id。</summary>
-        public string ArenaId { get; set; } = "local-buffer-main";
-
-        /// <summary>固定 arena mmap 绝对路径。</summary>
-        public string ArenaPath { get; set; } = string.Empty;
-
-        /// <summary>固定 allocator metadata mmap 绝对路径。</summary>
-        public string AllocatorPath { get; set; } = string.Empty;
-
-        /// <summary>固定 descriptor guard 文件绝对路径。</summary>
-        public string GuardPath { get; set; } = string.Empty;
-
-        /// <summary>固定 arena 总容量。</summary>
-        public long ArenaSizeBytes { get; set; } = 2L * 1024 * 1024 * 1024;
-
-        /// <summary>每个 descriptor 的 reader guard 数量。</summary>
-        public int ReaderGuardSlots { get; set; } = 64;
-
         /// <summary>已启用的 local-shared-memory TriggerSource id。</summary>
         public string TriggerSourceId { get; set; } = string.Empty;
 
@@ -50,19 +32,13 @@ namespace Amvar.Vision.SharedMemory
         /// <summary>请求的相对 timeout；后端仍会按 TriggerSource 上限裁剪。</summary>
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(5);
 
-        /// <summary>单次允许写入的最大图片字节数。</summary>
-        public long MaxImageBytes { get; set; } = 1024L * 1024 * 1024;
-
         /// <summary>mailbox 状态轮询间隔。</summary>
         public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(1);
 
         internal void Validate()
         {
             BuffersRoot = RequireText(BuffersRoot, nameof(BuffersRoot));
-            ArenaId = RequireText(ArenaId, nameof(ArenaId));
-            ArenaPath = Path.GetFullPath(RequireText(ArenaPath, nameof(ArenaPath)));
-            AllocatorPath = Path.GetFullPath(RequireText(AllocatorPath, nameof(AllocatorPath)));
-            GuardPath = Path.GetFullPath(RequireText(GuardPath, nameof(GuardPath)));
+            BuffersRoot = Path.GetFullPath(BuffersRoot);
             TriggerSourceId = RequireText(TriggerSourceId, nameof(TriggerSourceId));
             DefaultInputBinding = RequireText(DefaultInputBinding, nameof(DefaultInputBinding));
             if (RouteGeneration <= 0)
@@ -75,19 +51,9 @@ namespace Amvar.Vision.SharedMemory
                 throw new ArgumentOutOfRangeException(nameof(Timeout), Timeout, "Timeout must fit in an unsigned 32-bit millisecond value.");
             }
 
-            if (MaxImageBytes <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(MaxImageBytes), MaxImageBytes, "MaxImageBytes must be positive.");
-            }
-
             if (!Environment.Is64BitProcess)
             {
                 throw new PlatformNotSupportedException("Local shared-memory Trigger requires a 64-bit process.");
-            }
-
-            if (ArenaSizeBytes <= 0 || ReaderGuardSlots <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(ArenaSizeBytes), "Arena size and reader guard count must be positive.");
             }
 
             if (PollInterval <= TimeSpan.Zero)
@@ -265,6 +231,9 @@ namespace Amvar.Vision.SharedMemory
         [JsonProperty("broker_epoch")]
         public string BrokerEpoch { get; set; } = string.Empty;
 
+        [JsonProperty("layout_fingerprint")]
+        public string LayoutFingerprint { get; set; } = string.Empty;
+
         [JsonProperty("offset")]
         public long Offset { get; set; }
 
@@ -318,15 +287,6 @@ namespace Amvar.Vision.SharedMemory
 
         [JsonProperty("checksum")]
         public string Checksum { get; set; } = string.Empty;
-
-        [JsonProperty("reader_guard_path")]
-        public string? ReaderGuardPath { get; set; }
-
-        [JsonProperty("reader_guard_slots")]
-        public int? ReaderGuardSlots { get; set; }
-
-        [JsonProperty("reader_guard_offset")]
-        public long? ReaderGuardOffset { get; set; }
 
         [JsonProperty("buffer_ref")]
         public JObject? BufferRef { get; set; }

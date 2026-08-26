@@ -28,7 +28,7 @@ backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小
 
 | 参数 | 默认值 | 含义 |
 | --- | ---: | --- |
-| `arena_id` | `local-buffer-main` | 配置包与引用共同使用、跨 Broker owner 唯一的稳定 arena 标识 |
+| `arena_id` | `local-buffer-main` | allocation/引用使用、跨 Broker owner 唯一的稳定 arena 标识 |
 | `arena_size_bytes` | 2 GiB | 主图片 arena 总容量 |
 | `min_block_size_bytes` | 1 MiB | buddy allocator 最小块 |
 | `max_allocation_bytes` | 1 GiB | 单次连续分配上限 |
@@ -87,11 +87,11 @@ descriptor 保存固定长度字段：state、arena id、descriptor index/genera
 - `content_length`；
 - `allocation_capacity_bytes`。
 
-服务端私有 receipt 另含权威 owner、deadline、guard identity 和 layout fingerprint。SDK 配置包固定允许的 buffers root、arena id/path、allocator metadata path、guard path、layout version 和 fingerprint；SDK 不接受请求载荷指定任意 mmap/metadata 路径。
+服务端私有 receipt 另含权威 owner、deadline、guard identity 和 layout fingerprint。SDK 配置包只固定允许的 `buffers_root`；SDK从固定 allocator header自动发现arena容量、descriptor/guard几何、epoch和fingerprint，并用 allocation 携带的fingerprint交叉校验。配置包不复制arena path、容量、reader guard数或图片上限，SDK也不接受请求载荷指定任意 mmap/metadata 路径。
 
 新 `BufferRef.v1` 与 Trigger allocation 不再传输可由请求选择的 `path`，SDK/worker只按 `arena_id` 从固定配置解析路径；旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 分别由语义明确的 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id` 取代。`buffer_id` 如为日志展示保留，也不得参与权威回收。最终实现不保留旧字段双读。
 
-.NET SDK 缓存 arena 文件 handle，不按固定 slot 长期缓存 view。普通调用按当前 extent 建立精确 view并随 lease 释放；frame channel 可以按稳定 descriptor 集、generation、offset 和 capacity 复用 view。backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 统一要求 64-bit；.NET SDK 固定使用 x64 目标并在启动时校验进程架构，不提供 32-bit 容量协商、错误分支或降级路径。
+.NET SDK 以 `buffers_root + header identity` 建立 mapping cache，整个arena只映射一次，普通调用只创建精确 extent lease并随结果生命周期释放；frame channel可以按稳定descriptor集、generation、offset和capacity复用。backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 统一要求 64-bit；.NET SDK 固定使用 x64 目标并在启动时校验进程架构，不提供 32-bit 容量协商、错误分支或降级路径。
 
 ### 7. frame channel 使用预留 extent
 

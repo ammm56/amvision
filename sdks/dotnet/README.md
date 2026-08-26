@@ -53,6 +53,10 @@ Console 示例不是 SDK 边界的一部分，不能把核心封装写到 consol
 
 SDK 默认会自动查找 `Config/config*.json`，并把所有 runtime、TriggerSource、ModelDeployment 配置按 `name` 建立索引。生成的 `name` 优先保留前端用户维护的应用、触发源和部署实例展示名称。
 
+下载包同时包含 `Config/sdk-bootstrap.json`。默认 `configuration_sync.enabled=false`，继续使用手工放置的 `config*.json`。需要由 HTTP 检查最新配置时，配置 backend 地址、Project 配置路径和专用 token，启用开关，并使用 `CreateFromConfigAsync` 或 `CreateFromConfigDirectoryAsync`。SDK发送 ETag 条件请求，完整校验 revision、manifest、逐文件 SHA-256和配置语义后，把不可变快照发布到 `Config/.managed/<revision>/`；下载或校验失败时可按 `use_last_known_good` 使用最近有效快照。同步工厂只在 client 创建时执行，不在运行中替换已创建 client。
+
+local-shared-memory 配置只保存同机受信 `data/buffers` 根目录、TriggerSource id/generation、默认 binding 和 timeout。SDK从 `local-buffer/allocator-main.mmap` header自动发现 arena 容量、descriptor/reader guard几何、broker epoch和layout fingerprint，因此后端调整arena容量或guard数量不要求修改SDK配置。该Trigger只适用于同一台机器；远程SDK即使能访问配置HTTP接口，也必须选择HTTP或ZeroMQ调用链路。
+
 `AMVisionOperationRunner` 高层 API 明确区分 name 与 id：原有不带 `ById` 后缀的方法只接收配置中的可读 `name`，对应的 `ById` 方法分别接收 `workflow_runtime_id`、`trigger_source_id` 或 `deployment_instance_id`。SDK 不在同一个字符串参数中猜测 name 或 id；模型 deployment 的管理类 `ById` 方法还要求显式传入 `sync` 或 `async` runtime mode，推理方法则由同步或异步方法语义确定 mode。
 
 生成配置和 .NET SDK 的 HTTP 默认超时统一为 300 秒。Workflow invoke 和 ZeroMQ reply 的业务超时仍由各自配置字段独立控制，不与 HTTP 连接超时混用。
@@ -83,9 +87,10 @@ using Amvar.Vision;
 
 public static class Example
 {
-    public static async Task Main()
+public static async Task Main()
     {
-        using (var client = AMVisionClient.CreateFromConfig())
+        using (var client = await AMVisionClient.CreateFromConfigAsync()
+            .ConfigureAwait(false))
         {
             var runtimeResult = await client.InvokeConfiguredWorkflowRuntimeByNameAsync(
                 "托盘分拣空盘检测应用").ConfigureAwait(false);

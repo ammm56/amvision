@@ -32,10 +32,10 @@ from backend.service.infrastructure.local_buffers.buddy_allocator import (
 
 
 _MAGIC = b"AMVLBA01"
-_LAYOUT_VERSION = 1
+_LAYOUT_VERSION = 2
 _HEADER_SIZE = 256
 _DESCRIPTOR_STRIDE = 256
-_HEADER = struct.Struct("<8sIIIIQQQQ16s32sQ")
+_HEADER = struct.Struct("<8sIIIIIIQQQQ16s32sQ")
 _DESCRIPTOR = struct.Struct("<IIQ16s16sQQQQQIIQ")
 
 _STATE_FREE = 0
@@ -360,6 +360,62 @@ class MmapBufferArena:
             )
             return updated
 
+    def publish_external_active_and_transfer(
+        self,
+        receipt: ArenaLeaseReceipt,
+        *,
+        new_deadline_ns: int,
+    ) -> ArenaLeaseReceipt:
+        """在 external writer 已退出后原子发布 ACTIVE 并更新 owner。
+
+        SDK 必须先释放 writer guard，再发布 mailbox REQUEST。REQUEST 已可见时
+        writer guard 仍被占用属于协议错误；这里使用非阻塞 guard，避免 Broker
+        线程进入隐藏等待或把仍可写的图片暴露给 Runtime。
+        """
+
+        if new_deadline_ns <= monotonic_ns():
+            raise ValueError("new_deadline_ns 必须位于未来")
+        new_owner_token = token_bytes(16)
+        try:
+            with self.hold_writer_guard(receipt.descriptor_index):
+                with self._publication_guard(receipt.descriptor_index):
+                    descriptor = self._require_receipt(
+                        receipt,
+                        expected_states={"writing"},
+                    )
+                    if monotonic_ns() >= descriptor.deadline_ns:
+                        raise LocalBufferArenaError(
+                            "LocalBuffer writing lease 已超过 deadline"
+                        )
+                    updated = ArenaLeaseReceipt(
+                        arena_id=receipt.arena_id,
+                        descriptor_index=receipt.descriptor_index,
+                        descriptor_generation=receipt.descriptor_generation,
+                        broker_epoch=receipt.broker_epoch,
+                        lease_token=receipt.lease_token,
+                        owner_token=new_owner_token,
+                        deadline_ns=new_deadline_ns,
+                        offset=receipt.offset,
+                        allocation_capacity_bytes=receipt.allocation_capacity_bytes,
+                        content_length=receipt.content_length,
+                    )
+                    self._publish_descriptor(
+                        descriptor_index=descriptor.descriptor_index,
+                        state="active",
+                        descriptor_generation=descriptor.descriptor_generation,
+                        lease_token=descriptor.lease_token,
+                        owner_token=new_owner_token,
+                        extent=_descriptor_extent(descriptor),
+                        deadline_ns=new_deadline_ns,
+                        revocation_deadline_ns=descriptor.revocation_deadline_ns,
+                        publication_guard_held=True,
+                    )
+                    return updated
+        except (BlockingIOError, OSError) as error:
+            raise LocalBufferArenaError(
+                "external LocalBuffer writer guard 仍被占用"
+            ) from error
+
     def transfer_owners_batch(
         self,
         receipts: tuple[ArenaLeaseReceipt, ...],
@@ -393,38 +449,96 @@ class MmapBufferArena:
             ]
             new_owner_tokens = [token_bytes(16) for _item in receipts]
             updated: list[ArenaLeaseReceipt] = []
-            for receipt, descriptor, owner_token in zip(
-                receipts,
-                descriptors,
-                new_owner_tokens,
-                strict=True,
-            ):
+            try:
+                for receipt, descriptor, owner_token in zip(
+                    receipts,
+                    descriptors,
+                    new_owner_tokens,
+                    strict=True,
+                ):
+                    self._publish_descriptor(
+                        descriptor_index=descriptor.descriptor_index,
+                        state=descriptor.state,
+                        descriptor_generation=descriptor.descriptor_generation,
+                        lease_token=descriptor.lease_token,
+                        owner_token=owner_token,
+                        extent=_descriptor_extent(descriptor),
+                        deadline_ns=new_deadline_ns,
+                        revocation_deadline_ns=descriptor.revocation_deadline_ns,
+                        publication_guard_held=True,
+                    )
+                    updated.append(
+                        ArenaLeaseReceipt(
+                            arena_id=receipt.arena_id,
+                            descriptor_index=receipt.descriptor_index,
+                            descriptor_generation=receipt.descriptor_generation,
+                            broker_epoch=receipt.broker_epoch,
+                            lease_token=receipt.lease_token,
+                            owner_token=owner_token,
+                            deadline_ns=new_deadline_ns,
+                            offset=receipt.offset,
+                            allocation_capacity_bytes=(
+                                receipt.allocation_capacity_bytes
+                            ),
+                            content_length=receipt.content_length,
+                        )
+                    )
+            except Exception as error:
+                rollback_failed = self._rollback_batch_descriptors(descriptors)
+                if rollback_failed:
+                    raise LocalBufferArenaIntegrityError(
+                        "batch handoff 写入失败且部分 descriptor 无法回滚，"
+                        "相关 lease 已进入 REVOKING"
+                    ) from error
+                raise LocalBufferArenaError(
+                    "batch handoff 写入失败，已回滚全部 descriptor"
+                ) from error
+            return tuple(updated)
+
+    def _rollback_batch_descriptors(
+        self,
+        descriptors: list[ArenaDescriptorSnapshot],
+    ) -> bool:
+        """在 publication guards 已持有时逆序恢复批量更新前快照。"""
+
+        rollback_failed = False
+        for descriptor in reversed(descriptors):
+            try:
                 self._publish_descriptor(
                     descriptor_index=descriptor.descriptor_index,
                     state=descriptor.state,
                     descriptor_generation=descriptor.descriptor_generation,
                     lease_token=descriptor.lease_token,
-                    owner_token=owner_token,
+                    owner_token=descriptor.owner_token,
                     extent=_descriptor_extent(descriptor),
-                    deadline_ns=new_deadline_ns,
+                    deadline_ns=descriptor.deadline_ns,
                     revocation_deadline_ns=descriptor.revocation_deadline_ns,
                     publication_guard_held=True,
                 )
-                updated.append(
-                    ArenaLeaseReceipt(
-                        arena_id=receipt.arena_id,
-                        descriptor_index=receipt.descriptor_index,
-                        descriptor_generation=receipt.descriptor_generation,
-                        broker_epoch=receipt.broker_epoch,
-                        lease_token=receipt.lease_token,
-                        owner_token=owner_token,
-                        deadline_ns=new_deadline_ns,
-                        offset=receipt.offset,
-                        allocation_capacity_bytes=receipt.allocation_capacity_bytes,
-                        content_length=receipt.content_length,
+            except Exception:
+                rollback_failed = True
+                try:
+                    current = self._read_descriptor(descriptor.descriptor_index)
+                    self._publish_descriptor(
+                        descriptor_index=current.descriptor_index,
+                        state="revoking",
+                        descriptor_generation=current.descriptor_generation,
+                        lease_token=current.lease_token,
+                        owner_token=current.owner_token,
+                        extent=_descriptor_extent(current),
+                        deadline_ns=current.deadline_ns,
+                        revocation_deadline_ns=(
+                            monotonic_ns()
+                            + int(
+                                self.config.revocation_grace_seconds
+                                * 1_000_000_000
+                            )
+                        ),
+                        publication_guard_held=True,
                     )
-                )
-            return tuple(updated)
+                except Exception:
+                    self._allocation_disabled = True
+        return rollback_failed
 
     def allocate_frame_channel(
         self,
@@ -881,6 +995,8 @@ class MmapBufferArena:
             header_size,
             descriptor_stride,
             descriptor_count,
+            reader_guard_slots,
+            guard_stride,
             arena_size,
             min_block,
             max_allocation,
@@ -894,6 +1010,8 @@ class MmapBufferArena:
             or header_size != _HEADER_SIZE
             or descriptor_stride != _DESCRIPTOR_STRIDE
             or descriptor_count != self.descriptor_count
+            or reader_guard_slots != self.config.reader_guard_slots
+            or guard_stride != self._guard_stride
             or arena_size != self.geometry.arena_size_bytes
             or min_block != self.geometry.min_block_size_bytes
             or max_allocation != self.geometry.max_allocation_bytes
@@ -1079,6 +1197,8 @@ class MmapBufferArena:
             _HEADER_SIZE,
             _DESCRIPTOR_STRIDE,
             self.descriptor_count,
+            self.config.reader_guard_slots,
+            self._guard_stride,
             self.geometry.arena_size_bytes,
             self.geometry.min_block_size_bytes,
             self.geometry.max_allocation_bytes,
@@ -1427,6 +1547,8 @@ class MmapBufferArenaExternalAccess:
             header_size,
             descriptor_stride,
             descriptor_count,
+            reader_guard_slots,
+            guard_stride,
             arena_size,
             min_block,
             max_allocation,
@@ -1441,6 +1563,8 @@ class MmapBufferArenaExternalAccess:
             or header_size != _HEADER_SIZE
             or descriptor_stride != _DESCRIPTOR_STRIDE
             or descriptor_count != self.geometry.descriptor_count
+            or reader_guard_slots != self.config.reader_guard_slots
+            or guard_stride != self._guard_stride
             or arena_size != self.geometry.arena_size_bytes
             or min_block != self.geometry.min_block_size_bytes
             or max_allocation != self.geometry.max_allocation_bytes
@@ -1461,7 +1585,7 @@ class MmapBufferArenaExternalAccess:
         if arena_id != self.config.arena_id:
             raise LocalBufferArenaError("LocalBuffer arena identity 不匹配")
         header = _HEADER.unpack_from(self._allocator_mmap, 0)
-        broker_epoch = bytes(header[9]).hex()
+        broker_epoch = bytes(header[11]).hex()
         if str(getattr(locator, "broker_epoch")) != broker_epoch:
             raise LocalBufferArenaError("LocalBuffer broker epoch 已失效")
         descriptor = self._read_descriptor(
@@ -1593,6 +1717,7 @@ def _build_layout_fingerprint(config: MmapBufferArenaConfig) -> bytes:
             "max_allocation_bytes": config.max_allocation_bytes,
             "huge_reserve_bytes": config.huge_reserve_bytes,
             "reader_guard_slots": config.reader_guard_slots,
+            "guard_stride": 2 + config.reader_guard_slots,
         },
         sort_keys=True,
         separators=(",", ":"),

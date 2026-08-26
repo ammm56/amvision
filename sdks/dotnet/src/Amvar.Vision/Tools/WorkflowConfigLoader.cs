@@ -92,7 +92,6 @@ namespace Amvar.Vision.Tools
             "buffers_root",
             "route_generation",
             "default_input_binding",
-            "max_image_bytes",
             "timeout_seconds"
         };
 
@@ -440,7 +439,7 @@ namespace Amvar.Vision.Tools
         /// 查找包含 config*.json 的 Config 目录，兼容开发态和发布态路径。
         /// </summary>
         /// <returns>可用的 Config 目录路径。</returns>
-        private static string FindConfigDirectory()
+        internal static string FindConfigDirectory()
         {
             foreach (var candidate in EnumerateCandidateDirectories())
             {
