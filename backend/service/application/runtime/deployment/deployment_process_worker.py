@@ -15,6 +15,7 @@ from backend.nodes.runtime_support import (
     IMAGE_TRANSPORT_MEMORY,
     require_image_payload,
 )
+from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import (
     InvalidRequestError,
     ServiceError,
@@ -256,6 +257,7 @@ def run_deployment_process_worker(
     - local_buffer_direct_reader_settings：跨独立 daemon 时使用的只读 mmap 配置。
     """
 
+    configure_managed_child_signals()
     _configure_process_threads(operator_thread_count)
     local_buffer_reader = _build_local_buffer_reader(
         local_buffer_broker_event_channel,

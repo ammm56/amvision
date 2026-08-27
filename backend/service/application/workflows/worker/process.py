@@ -17,6 +17,7 @@ from backend.contracts.workflows.workflow_graph import (
 from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.nodes.runtime_support import ExecutionImageRegistry
+from backend.runtime.processes import configure_managed_child_signals
 from backend.service.application.errors import InvalidRequestError, ServiceError
 from backend.service.application.local_buffers import (
     LocalBufferBrokerClient,
@@ -95,6 +96,7 @@ def run_workflow_runtime_worker_process(
 ) -> None:
     """workflow runtime worker 子进程入口。"""
 
+    configure_managed_child_signals()
     session_factory: SessionFactory | None = None
     sync_supervisor: LazyDeploymentProcessSupervisor | None = None
     async_supervisor: LazyDeploymentProcessSupervisor | None = None
