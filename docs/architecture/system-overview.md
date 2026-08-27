@@ -76,6 +76,12 @@ Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常
 
 同机大图片和视频帧使用 mmap 与 BufferRef/FrameRef 传输。JSON/ZeroMQ 控制消息不复制整张图片。需要持久化的输入输出使用 ObjectStore 或显式磁盘保存位置。
 
+### 结构化消息 IPC
+
+Workflow Trigger、Inference daemon 和训练遥测当前分别维护独立的结构化 mmap 实现；Workflow Runtime 当前使用 `multiprocessing.Queue`，自身没有独立 mmap mailbox。已经接受但尚未落地的 [ADR-0009](../decisions/ADR-0009-local-message-channel.md) 会统一 header、guard、CRC、page-chain、恢复和 health 基础设施，但继续保留每个物理 Channel 的单 owner、独立 epoch、容量和故障边界。
+
+目标 LocalMessageChannel 只传 JSON、UTF-8 文本、控制元数据、结构化结果和 BufferRef/FrameRef。图片 bytes 继续由 LocalBuffer 承担；数据库、Outbox、LocalFileQueue 和 ObjectStore 继续承担持久状态。详细阶段与门禁只在[本机结构化消息通道实施基线](../development/local-message-channel-implementation.md)维护。Workflow Runtime Queue 是否迁移必须由真实 P95/P99、CPU、清理和故障恢复基准裁决，不能为形式统一强制替换。
+
 ### Node Pack
 
 核心节点位于 `backend/nodes/`，行业规则、协议、硬件桥接、YOLOE、SAM3 等扩展位于 `custom_nodes/`。每个包必须有 manifest、version、capabilities、schema、timeout 和启用边界。

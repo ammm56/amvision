@@ -4,6 +4,8 @@
 
 Inference mailbox 是 backend-service 与独立 inference daemon 之间的同机低延迟结构化数据面。当前协议只有 v1，不存在并行维护的旧布局或 v2 兼容层。daemon 启动时按当前配置重新初始化固定大小文件；布局不匹配时 client 直接拒绝连接。
 
+本文描述当前已运行实现。[ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 已接受将底层 header、descriptor、page、CRC、deadline、回收和 health 收敛到公共 `RpcMailboxChannel.v1` engine，但代码迁移尚未发生。迁移后 Inference 仍有独立物理文件、daemon owner、epoch、descriptor/page 容量和故障边界，不与 Workflow Trigger 共用 mailbox 或 allocator。
+
 mailbox 承载：
 
 - detection、classification、segmentation、pose、OBB 同步推理请求和结构化结果；

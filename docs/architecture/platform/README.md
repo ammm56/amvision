@@ -10,6 +10,7 @@
 - [LocalBufferBroker](local-buffer-broker.md)：本机大对象租约与 mmap 数据面。
 - [Inference mailbox v1](inference-mailbox-v1.md)：固定 descriptor、overflow page chain、所有权与回收。
 - [图片数据面](image-data-plane.md)：ObjectStore、BufferRef、FrameRef、Base64 与 ZeroMQ 的边界。
-- [共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)：Workflow Trigger mailbox 修复与 LocalBuffer arena 重构顺序。
+- [共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)：已完成的 Workflow Trigger mailbox 修复与 LocalBuffer arena 重构记录。
+- [本机结构化消息通道 ADR](../../decisions/ADR-0009-local-message-channel.md)与[实施基线](../../development/local-message-channel-implementation.md)：已接受但尚未实现的 LocalMessageChannel 边界、原子迁移顺序和门禁。
 
 系统级入口见 [平台总览](../system-overview.md)。启动与排障分别见 [部署](../../deployment/README.md) 和 [运维](../../operations/README.md)。

@@ -26,7 +26,7 @@ backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena �
 
 ## 文件目录
 
-`local_buffer_broker.root_dir` 保持 `./data/buffers`，不能收窄为某个 LocalBuffer 子目录，因为 inference/workflow 图片 mailbox 也从该根派生。
+当前实现的 `local_buffer_broker.root_dir` 保持 `./data/buffers`，不能收窄为某个 LocalBuffer 子目录，因为 inference/workflow mailbox 也从该根派生。ADR-0009 实现后，该路径所有权会原子迁移到中立 `local_memory.root_dir`；LocalBuffer 只消费其中的 `local-buffer/` 子目录，且不会与 LocalMessage 共享 enable、owner 或生命周期。
 
 ```text
 data/buffers/
@@ -40,11 +40,13 @@ data/buffers/
 └─ inference-daemon-private/    daemon 私有异步暂存 arena
 ```
 
+该目录树描述当前实现。[ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 已接受把 `inference-control/`、`workflow-trigger/` 和训练遥测后续原子迁移到 `data/buffers/local-message/` 下的独立物理 Channel；迁移共享底层 engine，但不会合并 owner、epoch、descriptor、page pool 或容量。
+
 约束如下：
 
 - 正式图片数据面 mmap、guard 和 owner lock 只能位于 `data/buffers/` 的明确子目录；
 - 不在仓库根、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建正式 mmap；
-- 训练遥测不承载图片，继续使用 `data/runtime/training-telemetry/`，不属于本目录迁移范围；
+- 训练遥测不承载图片，当前继续使用 `data/runtime/training-telemetry/`；后续按 ADR-0009 迁移到 `data/buffers/local-message/training-telemetry/`，但始终不属于 LocalBuffer 图片 arena；
 - 发行包使用发行应用根下的 `data/buffers/`，不能引用源码工作区绝对路径；
 - 测试可重定向到 `.tmp/<test>/buffers/`，但使用同一 binary layout、guard 和路径 containment；
 - 文件由 Broker/daemon owner 创建，SDK 不创建或选择 arena/metadata 路径；
@@ -209,4 +211,4 @@ health 必须直接校验容量守恒：`general_total = general_free + general_
 - 不把图片放入 inference/workflow mailbox 的结构化 JSON page chain。
 - 不把 GPU IPC、RDMA 或恶意本地进程隔离写入当前 capability。
 
-相关文档：[高性能图片数据面](image-data-plane.md)、[本机共享内存 Workflow Trigger ADR](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)、[LocalBuffer 固定 arena ADR](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)、[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)。
+相关文档：[高性能图片数据面](image-data-plane.md)、[本机结构化消息通道 ADR](../../decisions/ADR-0009-local-message-channel.md)、[本机共享内存 Workflow Trigger ADR](../../decisions/ADR-0007-local-shared-memory-workflow-trigger.md)、[LocalBuffer 固定 arena ADR](../../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)、[共享内存数据面可靠性实施基线](../../development/shared-memory-data-plane-reliability-implementation.md)。

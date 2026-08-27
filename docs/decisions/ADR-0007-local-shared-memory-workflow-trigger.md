@@ -4,7 +4,7 @@
 
 已接受并完成阶段0–9实现。Workflow Trigger mailbox 的共享 overflow page 并发、单一总 deadline、独立 ACK deadline、PROCESSING 取消、per-source health，以及 ADR-0008 固定 arena 数据面均已接入正式链路；完整故障、容量、性能和业务 soak 仍在执行。这些实现完整性修正没有改变本 ADR 的 Trigger 产品边界。
 
-本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。协议细节与性能边界见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；当前完成状态和剩余门禁见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
+本 ADR 固定本机高频 Workflow Trigger 的架构边界和关键取舍。协议细节与性能边界见[本机共享内存 Trigger 实施基线](../development/local-shared-memory-trigger-implementation.md)；当前完成状态和剩余门禁见[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)和 [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md)。[ADR-0009](ADR-0009-local-message-channel.md) 只把 Trigger 与 Inference 的重复底层实现收敛到公共 engine，不改变本文独立物理 Channel、单 owner、独立 epoch 和容量隔离。`local-shared-memory` 与 `zeromq-topic` 仍是并列的正式 adapter；发布目录只能由当前源码按目标 profile 重新 assemble，不能手工覆盖。
 
 ## 背景
 
@@ -30,7 +30,7 @@
 
 同一 backend-service 实例使用一个全局 Workflow Trigger mailbox。mailbox 保存 descriptor、业务参数、LocalBuffer lease identity、小型结构化结果和大型结构化结果的 page-chain。直接公开的 `image-ref.v1` 图片主体始终位于 LocalBufferBroker；只有图中显式执行 `Image Base64 Encode` 后形成的 `image-base64.v1` 才作为结构化 JSON 进入 inline/page-chain，并受单响应容量上限约束。mailbox 采用当前开发期的 v1 契约，不创建旧协议兼容层，也不复用 inference mailbox 的文件或所有权空间。
 
-mailbox 路径固定从现有 `local_buffer_broker.root_dir` 派生。正式环境使用 `data/buffers/workflow-trigger/workflow-trigger-main.mmap`，guard 和 owner lock 也放在同一子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。
+mailbox 路径固定从现有 `local_buffer_broker.root_dir` 派生。当前正式环境使用 `data/buffers/workflow-trigger/workflow-trigger-main.mmap`，guard 和 owner lock 也放在同一子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。后续只在 [ADR-0009](ADR-0009-local-message-channel.md) 的原子迁移中把路径配置所有权转给中立 `local_memory.root_dir`，并改为 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`；Trigger、LocalMessage 和 LocalBuffer 仍分别启停，物理隔离与 owner 边界保持不变。
 
 ### 2. 每次调用动态占用一个普通 LocalBuffer lease
 
@@ -222,7 +222,7 @@ ObjectStore 增加正式应用端口：`stat_object()` 返回 object key、conte
 - **每个 TriggerSource 永久占用一个 slot**：启用数量会错误决定容量，空闲 TriggerSource 也会耗尽资源。
 - **永久 external frame channel**：会静态预留槽位，并允许帧代次覆盖，不适合必须持有输入到 Workflow 完成的同步调用。
 - **每个 TriggerSource 一个 `control.mmap` 或 `frames.mmap`**：增加文件、映射、恢复和生命周期复杂度，并形成不必要的第二图片缓冲区。
-- **为 Workflow Trigger 图片数据面增加独立 mmap root**：会让图片 pool、inference image mailbox 和 Trigger mailbox 的目录配置漂移；这些图片数据面文件统一收口到 `data/buffers/`。训练遥测等无关 mmap 继续使用自己的子系统目录。
+- **为 Workflow Trigger 图片数据面增加独立 mmap root**：会让图片 pool、inference image mailbox 和 Trigger mailbox 的目录配置漂移；这些数据面文件统一收口到 `data/buffers/`。训练遥测不进入图片 LocalBuffer；其后续结构化 Channel 目录迁移由 [ADR-0009](ADR-0009-local-message-channel.md) 单独定义。
 - **仍通过 ZeroMQ 发送图片，再称为共享内存 Trigger**：保留整图协议复制，不能达到新入口目标。
 - **所有图片入口强制转 BGR24**：会静默改变现有 SDK 语义，并可能让压缩图片无条件膨胀；encoded 入口继续正式支持。
 - **LocalBuffer 内探测或解码图片格式**：混淆字节存储和图片处理职责，难以保持 Broker 稳定。

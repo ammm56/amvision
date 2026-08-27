@@ -2,11 +2,11 @@
 
 ## 状态与职责
 
-状态：**已交付功能基线；历史阶段 0–9 曾通过对应门禁，但复审发现下一阶段必须修复的可靠性和容量模型问题。**
+状态：**已交付的历史功能基线；后续可靠性和动态 LocalBuffer 修复已经按新的实施基线完成。**
 
-本页保留 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 已交付协议、.NET SDK External LocalBuffer Writer Lease、全局 Trigger mailbox、Runtime execution token、output lease handoff、结果生命周期和历史性能证据。它不再表示当前共享内存实现没有缺口，也不作为下一阶段完成状态来源。
+本页保留 [ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 已交付协议、.NET SDK External LocalBuffer Writer Lease、全局 Trigger mailbox、Runtime execution token、output lease handoff、结果生命周期和历史性能证据。当前完成状态以[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)为准，未来结构化消息收敛以[本机结构化消息通道实施基线](local-message-channel-implementation.md)为准。
 
-下一阶段必须按[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)执行：先修复 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消和 per-source health，再按 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md)把固定分辨率 pool/slot 原子迁移为固定总容量 arena + buddy allocator。与下一阶段文档冲突时，以新实施基线和最新 ADR 为准。
+[共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)中的 overflow page 并发、总 deadline、ACK deadline、PROCESSING 取消、per-source health 和 [ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 固定 arena 迁移已经完成。后续尚未实现的结构化 mmap 公共 engine 收敛只按 [ADR-0009](../decisions/ADR-0009-local-message-channel.md) 与[本机结构化消息通道实施基线](local-message-channel-implementation.md)执行；本文中的旧目录是历史实现记录，不覆盖新的迁移目标。
 
 以下表格是已交付基线的历史验证记录，不是下一阶段完成清单：
 
@@ -174,7 +174,7 @@ allocate external writing lease
 - backend-service 实例拥有一个启动时创建、运行时不扩容的 `data/buffers/workflow-trigger/workflow-trigger-main.mmap`。
 - 路径从现有 `local_buffer_broker.root_dir` 派生，不新增第二个 mmap root。
 - descriptor guard、server lock、writer/reader guard 和恢复辅助文件全部位于图片数据面 `data/buffers/` 对应协议目录或 pool 目录。
-- 正式运行不得在仓库根目录、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建 Workflow Trigger mailbox。训练遥测等无关 mmap 不属于本协议，继续使用 `data/runtime/training-telemetry/` 等自己的子系统目录。
+- 正式运行不得在仓库根目录、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建 Workflow Trigger mailbox。本文交付时训练遥测继续使用 `data/runtime/training-telemetry/`；后续 EventRing 目录迁移由 ADR-0009 定义，训练遥测始终不进入 LocalBuffer 图片 arena。
 - 自动化测试可以把 buffers root 重定向到 `.tmp/<test>/buffers/`，但必须复用正式 path builder 和 root containment 校验。
 
 v1 默认容量：
@@ -980,7 +980,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - `accepted-then-query` 图片已持久化 ObjectStore 后可通过稳定 locator 查询；短期 BufferRef 不进入数据库或幂等缓存。
 - ObjectStore locator 必须包含不可变 version、checksum、准确长度和 media type；缺少稳定元数据的旧对象会物化为新不可变对象。`open_read_snapshot` 在 consumer/tracker 结束前保持同一内容，普通绝对路径不能冒充稳定 snapshot。
 - 连续10,000次多Trigger混合调用后，descriptor、page、active source、Runtime token、LocalBuffer active/REVOKING/QUARANTINED全部回到基线。
-- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer pool、inference image mailbox、Workflow Trigger mailbox、guard 和 owner lock 都只能出现在 `data/buffers/` 树内；`data/runtime/training-telemetry/` 等非图片 mmap 不属于该断言且不得被迁移。
+- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer pool、inference image mailbox、Workflow Trigger mailbox、guard 和 owner lock 都只能出现在 `data/buffers/` 树内；该阶段不迁移 `data/runtime/training-telemetry/`。其后续迁移必须按 ADR-0009 使用独立 EventRing Channel，不能混入图片 arena。
 - 源码开发环境和重新assemble的发行环境执行相同contract、smoke和soak门禁。
 
 ## 性能验收
@@ -1028,7 +1028,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - 不按Deployment、Runtime或已启用TriggerSource总数量做静态限流。
 - 不建立业务请求等待队列或有限自动重试。
 - 不新增每TriggerSource mmap、`control.mmap`、`frames.mmap`或永久frame channel。
-- 不为图片数据面新增第二个 mmap root；LocalBuffer、inference image mailbox 和 Workflow Trigger mailbox 统一使用 `data/buffers/`。不迁移训练遥测等无关 mmap。
+- 不为图片数据面新增第二个 mmap root；LocalBuffer、inference image mailbox 和 Workflow Trigger mailbox 统一使用 `data/buffers/`。本文阶段不迁移训练遥测；后续只允许按 ADR-0009 收敛到 `data/buffers/local-message/`。
 - 不把LocalBufferBroker变成图片codec、颜色转换或模型预处理服务。
 - 不让SDK直接修改Broker slot状态、lease owner或commit元数据。
 - 不把短生命周期BufferRef持久化到异步任务或数据库。

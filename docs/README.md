@@ -59,6 +59,7 @@ docs/
 - Worker Supervisor 启动数据集导入、导出、训练、转换、评估和异步推理六个 Profile。
 - Workflow App 发布为不可变版本；稳定 Runtime/Trigger id 通过 revision 与 generation 切换实现。
 - LocalBufferBroker、mmap 和 ZeroMQ 构成本机高性能图片数据面；大图不在进程间反复复制 Base64 JSON。
+- Workflow Trigger、Inference daemon 和训练遥测当前仍使用各自的结构化 mmap 实现；已接受但尚未落地的统一目标见 [ADR-0009](decisions/ADR-0009-local-message-channel.md)。
 - 生产日志按本地日期写入 `*-YYYYMMDD.log`，避免单文件无限增长。
 
 可复用 Workflow 清单见 [docs/examples/workflows/README.md](examples/workflows/README.md)。

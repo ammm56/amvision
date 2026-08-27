@@ -1,0 +1,198 @@
+# ADR-0009：本机结构化消息共享内存通道
+
+## 状态
+
+已接受，尚未实现。实现顺序与验证门禁见[本机结构化消息通道实施基线](../development/local-message-channel-implementation.md)。当前运行行为仍由现有 Workflow Trigger mailbox、Inference mailbox、训练遥测 ring 和 Workflow Runtime Queue 决定；在原子迁移完成前，不把本文目标描述为现状。
+
+## 背景
+
+项目已经形成统一的图片大数据面 LocalBuffer，但 JSON、UTF-8 文本、控制元数据和结构化结果仍分散在多套进程间实现中：
+
+| 链路 | 当前实现 | 所有者与语义 |
+| --- | --- | --- |
+| Workflow Trigger | 独立固定 mmap mailbox | backend-service 单 server owner；PREPARE、REQUEST、RESPONSE、ACK |
+| Inference daemon | 独立固定 mmap mailbox | inference daemon 单 server owner；REQUEST、PROCESSING、RESPONSE、ACK |
+| 训练遥测 | 每个训练 Worker 一个 mmap ring | 单 producer；允许覆盖并报告 gap |
+| Workflow Runtime | 每个 Runtime 一组 `multiprocessing.Queue` | Runtime manager 与 worker 的命令、响应和 heartbeat |
+
+Workflow Trigger 与 Inference mailbox 都实现了固定 descriptor、inline request/response、overflow page、CRC、deadline、generation、owner、取消和回收，但只复用了少量底层 guard 与 page-chain 原语。训练遥测又独立实现了 header、ring、generation、CRC、进程发现和清理。该现状没有构成功能错误，但造成协议、配置、容量计算、恢复和测试重复。
+
+普通请求通常只有几 KiB，但 segmentation polygon/RLE 和显式 Base64 节点结果可能达到现有 32 MiB 上限。因此目标不能退化成只支持小文本的固定 ring，仍需保留小消息 inline 快路径与有界大响应 page chain。
+
+## 决策
+
+### 1. 建立项目级 LocalMessageChannel
+
+LocalMessageChannel 与 LocalBuffer 平行，二者职责互斥：
+
+```text
+LocalMemory
+├─ LocalBuffer
+│  └─ 图片、视频帧和需要连续 view 的大块 binary
+└─ LocalMessageChannel
+   ├─ RpcMailboxChannel
+   └─ EventRingChannel
+```
+
+LocalMessageChannel 承载 JSON、UTF-8 文本、控制元数据、BufferRef/FrameRef 和结构化计算结果。原始图片 bytes、JPEG/PNG/BMP 等 encoded binary attachment、视频帧、OpenCV/NumPy 矩阵和模型 tensor 不进入 LocalMessageChannel。
+
+用户显式执行 `Image Base64 Encode` 后得到的 `image-base64.v1` 属于结构化 JSON，可以进入 RPC inline/page-chain，但它是兼容输出而不是本机高性能图片路径，并继续受序列化前 32 MiB 单响应上限约束。默认图片输入输出继续使用 LocalBuffer 引用。
+
+Database、Transactional Outbox、LocalFileQueue 和 ObjectStore 继续负责持久状态、跨重启任务、审计与长期文件。mmap 满载不能自动切换持久队列、临时文件、Base64 或其他协议。
+
+### 2. 统一框架，按 owner 隔离物理 Channel
+
+项目只维护一套 LocalMessageChannel 基础设施，包括：
+
+- binary header、layout fingerprint、Channel identity、owner epoch 和 checksum 算法标识；
+- guard、publication、owner lock、路径约束、恢复和 health 公共实现；
+- Python/.NET 共用的 schema 生成工具、fixture 和代码生成；
+- backend 配置、容量摘要与错误分类。
+
+Binary contract 分为四层，不能把 RPC 与 EventRing 合成一份完整 schema：
+
+```text
+LocalMessage binary common schema v1
+├─ magic / version / byte order / alignment
+├─ channel kind / channel id / owner epoch
+├─ layout fingerprint / checksum algorithm id
+│
+├─ RpcMailboxChannel.v1
+│  └─ descriptor / inline / page-chain / request-response lifecycle
+├─ EventRingChannel.v1
+│  └─ ring slot / sequence / overwrite / gap / producer lifecycle
+└─ Workflow Trigger RPC extension v1
+   └─ PREPARE / WRITING / LocalBuffer receipt / output handoff
+```
+
+Overflow page-chain 只属于 RPC，不进入 common primitives 或 EventRing。公共原语可以由两个完整 schema 引用或由同一生成工具组合，但不能形成要求两种 Channel 使用相同状态机、header 全字段或容量几何的单一 on-disk contract。
+
+路径 containment、guard 获取顺序、publication 顺序、owner lock 和异常恢复属于 engine 规范及公共实现，不是 on-disk binary schema 字段，也不进入代码生成 DTO。`.NET` 只生成公开 Workflow Trigger 使用的 common、RPC 和 Trigger extension contract；内部 Training EventRing 不生成 SDK 类型。
+
+Health 同样采用“公共 envelope + 分类型指标”：公共部分只报告 channel id/kind、owner epoch、layout fingerprint、服务状态、容量摘要和最近错误；RPC 单独报告 descriptor/page、request、ACK、cancel 和 timeout；EventRing 单独报告 slot、sequence、gap/drop 和 producer。不能为形式统一向 EventRing 填充无意义的 ACK/page 指标。
+
+每个 Channel 仍使用独立 mmap 文件、独立 owner lock 和独立 epoch。物理文件是故障与容量隔离单元，不代表独立实现。两种 Channel 的所有权和容量语义分别固定为：
+
+- `RpcMailboxChannel`：单 server owner、descriptor + inline + response page pool，并由 server 进程内 page allocator 独占分配和释放 response page；
+- `EventRingChannel`：单 producer owner、固定 ring slots、sequence/generation、overwrite/gap/drop，不包含 descriptor、page pool、ACK 或 server page allocator。
+
+不建立由 Trigger、Inference 和 Training 任意进程共同修改的全局动态 payload arena。当前 mailbox 的 page 安全性依赖单 server owner 与进程内 allocator lock；把它改成多 owner 全局 allocator 会要求额外的单 allocator owner、崩溃原子日志或在线一致性重建协议，并扩大锁竞争与故障影响范围。
+
+### 3. 只提供两种现行 Channel 语义
+
+`RpcMailboxChannel.v1` 提供：
+
+- 有界 request/response descriptor；
+- 小消息 inline request/response；
+- server owner 分配和释放的 response overflow page chain；
+- REQUEST、PROCESSING、RESPONSE、ACK、cancel、deadline 和异常回收；
+- domain extension，但不把所有领域字段写入通用 descriptor。
+
+Workflow Trigger 在通用 RPC engine 上保留 PREPARE、WRITING、External LocalBuffer Writer Lease、Runtime admission 和 output handoff 扩展。Inference 使用普通 RPC 路径，不承担 Trigger 的 External Writer 状态。
+
+`EventRingChannel.v1` 提供：
+
+- 单 producer、固定有界 ring；
+- sequence、generation、CRC、producer epoch；
+- reader cursor、覆盖、gap/drop 统计和 producer close；
+- 非阻塞 publish，不增加 RESPONSE、ACK、cancel 或 owner transfer。
+
+本轮不增加 latest-value/notification 第三种 Channel。只有真实 heartbeat 或通知基准证明现有 Queue/事件机制成为瓶颈后，才另行决策。
+
+### 4. 开发期只保留一个 v1
+
+当前协议仍处于发布前开发阶段。schema 分为 `local-message-common.v1`、`local-message-rpc.v1`、`local-message-event-ring.v1` 和 Workflow Trigger RPC extension v1；领域 contract 继续使用各自 v1 标识并引用或组合公共原语。
+
+每条业务链迁移时，后端、前端、配置、Python/.NET SDK、fixture、测试资产和现有开发文件在同一提交链中原子切换。迁移完成后删除旧 binary layout、旧字段和双读代码，不创建 v2，也不长期并行运行两套协议。
+
+### 5. 统一根目录但不合并 allocator
+
+所有正式共享内存文件统一位于受信任的 `data/buffers/` 根目录。目标布局为：
+
+```text
+data/buffers/
+├─ local-buffer/
+│  ├─ arena-main.mmap
+│  └─ allocator-main.mmap
+├─ local-message/
+│  ├─ inference-daemon-main.rpc.mmap
+│  ├─ workflow-trigger-main.rpc.mmap
+│  └─ training-telemetry/
+│     └─ <worker-session-id>.event.mmap
+└─ inference-daemon-private/
+```
+
+训练遥测迁移到 `data/buffers/local-message/training-telemetry/`，但仍不属于 LocalBuffer 图片 arena。测试使用 `.tmp/<test>/buffers/` 下的同一布局。
+
+Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 在基准裁决前不创建目标 mmap 目录或文件。稳定公开 Channel 使用固定 domain id；临时 Worker Channel 使用稳定 worker session identity，不能把 PID 单独作为权威 identity。外部 SDK 只能发现公开 Workflow Trigger Channel；内部 Inference 和 Training Channel 不进入 SDK 配置包。
+
+共享路径配置提升为中立的 `local_memory.root_dir`，默认 `./data/buffers`。它只定义受信文件根，不代表一个全局 owner、进程或 enable 开关：
+
+- `local_buffer_broker.enabled` 只控制 LocalBuffer；
+- `inference_daemon.mmap_mailbox.enabled` 只控制 Inference RPC Channel；
+- `training_telemetry.enabled` 只控制 Training EventRing；
+- Workflow Trigger Channel 的配置和路径所有权由对应 adapter/service 管理，不从 LocalBuffer 配置派生；
+- LocalMessage 基础设施、Inference RPC 和 Training EventRing 不依赖 `local_buffer_broker.enabled`，训练遥测可以在没有 LocalBuffer 的训练 Worker 中工作；
+- 当前 Workflow Trigger v1 的 PREPARE 必须申请输入图片 lease，因此 Trigger 服务能力明确依赖 LocalBufferBroker ready；Broker 未启用或未就绪时，Trigger capability 必须报告 unavailable，不能仅因 mailbox 文件存在而报告 healthy。
+
+不增加全局 `local_message.enabled`。SDK 配置包从中立 `local_memory.root_dir` 获得 `buffers_root`，但 SDK 必须读取 Workflow Trigger capability/health 判断业务可用性，不能只根据 LocalBuffer enabled、路径存在或静态配置推断 Channel healthy。`data/buffers/` 的文档含义相应扩大为本机共享内存数据根，其中 `local-buffer/` 是连续图片数据面，`local-message/` 是结构化消息数据面。
+
+### 6. 容量按 Channel 观测和配置
+
+不以现有两个约 256 MiB 文件之和为理由冻结一个 512 MiB 全局 arena。mmap 逻辑文件长度不等于全部物理内存常驻，合并文件本身也不会消除协议重复。
+
+迁移前先采集每个 Channel 的 request/response P50、P95、P99、最大值、并发、page 高水位和容量拒绝。随后为 Trigger RPC、Inference RPC 和 Training Event 分别在代码中冻结有名称的稳定默认 profile：
+
+- descriptor 数；
+- inline request/response 容量；
+- overflow page 大小、总数和单响应页数上限；
+- 单消息与单 Channel 在途容量上限；
+- poll/wakeup 与压缩阈值。
+
+普通部署配置不提供 `channel_profiles`，SDK、前端、TriggerSource 和 Workflow 节点也不显示 descriptor/page/profile。有效几何必须写入 header，client 打开文件后校验 header、layout fingerprint 和真实容量。只有真实消息分布证明某个固定默认值无法覆盖目标现场后，才单独设计仅供后端高级运维使用的容量覆盖项；本轮不预先实现该配置面。
+
+模型推理、Workflow executor 和 TriggerSource 的业务执行并发不属于 Channel 几何，继续由各领域配置与真实 admission gate 管理，不能藏进 transport profile。
+
+每个 Channel 容量独立，Inference 的大 segmentation 响应不得耗尽 Workflow Trigger 或训练遥测资源。满载立即返回稳定错误；不等待、不重试、不重跑推理或 Workflow。
+
+### 7. 应用层只依赖 port，Workflow Runtime Queue 通过基准决定
+
+Workflow Runtime 当前使用 `multiprocessing.Queue`，不属于重复 mmap 文件。application 层只保留四个窄 port、DTO、payload codec 和领域错误，不能 import `mmap`、文件路径、offset、guard 或 page layout：
+
+- `RpcClientPort`：提交不可变 wire bytes，并返回带受控 ACK/close 生命周期的 response handle；
+- `RpcServerPort`：接收 request context、观察取消并发布一次 response；
+- `EventPublisherPort`：非阻塞发布不可变 event wire bytes；
+- `EventReaderPort`：按 cursor 读取 event batch，并显式返回 sequence gap/closed 状态。
+
+Port 的 wire payload 统一为 `bytes`。typed DTO 与紧凑 UTF-8 JSON 的 encode/decode 位于 contract/application codec 边界，transport adapter 不解析业务 JSON。Queue 与 mmap 基准必须传输完全相同的 envelope 和 bytes，不能让 Queue 传 Python dict、mmap 传 JSON bytes。
+
+本机同步 RPC deadline 统一使用同一主机、同一启动周期内的绝对 monotonic nanoseconds；外部 duration 只在入口换算一次，deadline 不持久化且由 owner epoch 隔离重启。取消使用固定 `cancel_reason`，server 通过 request context 读取取消状态。client 完整取得 response bytes 后由 response handle ACK；普通 Queue adapter 的 ACK 可以是幂等 no-op，Workflow Trigger extension 可以把 ACK 延迟到输出 LocalBuffer result dispose。所有 port 的 `close(deadline_ns)` 必须幂等，owner epoch 变化统一映射为 `ChannelRestarted` 领域错误，不能向 application 暴露 offset、state 数值或 guard 异常。
+
+目标先让 Runtime manager/worker、PublishedInferenceGateway 和 LocalBuffer Broker 控制面依赖协议中立 port，正式 transport 继续使用 Queue。
+
+Queue 具有系统唤醒能力，小消息下不一定比轮询 mmap 慢。只有相同真实载荷基准证明 mmap 在 P95/P99、CPU、关闭清理和故障恢复上有明确收益时，才迁移对应 Queue。未证明收益的 Queue 继续保留，不为形式统一增加 mmap 文件和轮询线程。
+
+### 8. 训练控制仍以数据库为权威
+
+训练遥测 Channel 只传 loss、LR、batch、epoch、validation 和运行指标。训练暂停、终止、恢复、checkpoint 和 Task/Attempt 终态继续写数据库并由 TrainingControlProbe 确认。
+
+EventRing 不作为训练控制事实源，也不用于保证指令必达。未来即使增加低延迟通知，Worker 收到通知后仍必须读取数据库确认当前控制状态。
+
+## 未采用方案
+
+- 单个跨进程动态 512 MiB payload arena：引入多 owner allocator、一致性恢复、全局锁竞争和跨 Channel 故障扩散。
+- 复用 LocalBuffer buddy allocator：结构化消息允许 page chain，图片要求连续 view，生命周期和消费方式不同。
+- 把所有消息强制塞进一个状态机：RPC 与允许覆盖的 telemetry ring 语义不同。
+- 立即增加 latest-value/notification：当前没有测量确认的业务瓶颈。
+- 无基准地把所有 `multiprocessing.Queue` 替换成 mmap：轮询可能增加延迟、CPU 和关闭复杂度。
+- 把图片、checkpoint、持久任务或审计日志写入 LocalMessageChannel：破坏现有数据与恢复边界。
+- 长期双协议或兼容旧 layout：当前开发阶段采用原子迁移和明确重建。
+
+## 影响
+
+- 新增分层 LocalMessageChannel contract、公共原语、RPC/Event engine、path、配置和分类型 health；不新增一份要求所有 Channel 共享完整字段的 contract。
+- Workflow Trigger 与 Inference 保留独立文件和 owner，但删除重复的 page、CRC、deadline、sweep 和二进制读写实现。
+- 训练遥测迁移到通用 EventRing engine 和统一 `data/buffers/` 根目录。
+- Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 先依赖对应的 `RpcClientPort` / `RpcServerPort`，是否切换 transport 由基准裁决。
+- [ADR-0007](ADR-0007-local-shared-memory-workflow-trigger.md) 中“不复用 inference mailbox 文件或所有权空间”继续成立；其中“永远维护独立 mailbox 实现”的含义由本文替换为“共享 engine、隔离 Channel”。
+- [ADR-0008](ADR-0008-local-buffer-fixed-arena-allocation.md) 的 LocalBuffer 连续图片 allocator 保持不变；其中训练遥测目录与结构化 mailbox 目录说明由本文更新。

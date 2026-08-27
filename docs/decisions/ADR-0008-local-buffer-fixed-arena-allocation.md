@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受并完成阶段0–9实现。固定 arena、buddy allocator、持久 descriptor、guard/reclaim、BufferRef、Python/.NET SDK、frame channel、配置和正式调用点已原子迁移；阶段10源码开发环境的故障、容量、完整回归、真实图片传输与有界 soak 已通过，发行重组后的10,000次和24小时持续认证仍按[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)执行。
+已接受并完成阶段0–9实现。固定 arena、buddy allocator、持久 descriptor、guard/reclaim、BufferRef、Python/.NET SDK、frame channel、配置和正式调用点已原子迁移；阶段10源码开发环境的故障、容量、完整回归、真实图片传输与有界 soak 已通过，发行重组后的10,000次和24小时持续认证仍按[共享内存数据面可靠性实施基线](../development/shared-memory-data-plane-reliability-implementation.md)执行。本文关于 LocalBuffer 连续图片 allocator 的决策继续有效；结构化 mailbox 与训练遥测的后续目录和公共 engine 收敛由 [ADR-0009](ADR-0009-local-message-channel.md)更新。
 
 ## 背景
 
@@ -115,7 +115,7 @@ health按general与hard reserve分域报告free、reserved-writing、active、fr
 
 ### 9. 文件根目录保持统一但范围不扩大
 
-`local_buffer_broker.root_dir` 继续是 `./data/buffers`。正式文件布局为：
+当前实现的 `local_buffer_broker.root_dir` 继续是 `./data/buffers`。正式文件布局为：
 
 ```text
 data/buffers/
@@ -129,7 +129,9 @@ data/buffers/
 └─ inference-daemon-private/
 ```
 
-训练遥测继续使用 `data/runtime/training-telemetry/`，不属于图片数据面迁移范围。
+本文实施完成时，训练遥测继续使用 `data/runtime/training-telemetry/`，不属于 LocalBuffer 图片数据面迁移范围。[ADR-0009](ADR-0009-local-message-channel.md) 接受的后续迁移会把它收敛到 `data/buffers/local-message/training-telemetry/`，但不会写入 LocalBuffer arena。
+
+ADR-0009 原子迁移时会把共享路径所有权提升为中立 `local_memory.root_dir`，并删除 `local_buffer_broker.root_dir`。该变化只移动配置归属，`local-buffer/` 文件布局、LocalBuffer enable、Broker owner、allocator 和生命周期保持独立。
 
 `arena_id` 必须在一次安装内跨 Broker owner 唯一且不能使用 PID 等临时值。主 Broker 固定使用 `local-buffer-main`；当前单一 inference daemon 私有 owner 使用 `inference-daemon-private`；未来存在多个私有 owner 时使用 `inference-daemon-private-<stable-daemon-id>`。公开 locator 只用该 id 查询受信任配置映射，不能根据调用方输入拼接路径。
 
@@ -148,4 +150,4 @@ data/buffers/
 - `MmapBufferPool` 被 arena allocator 取代；普通 lease、External lease、frame channel、output handoff 和 direct reader 统一使用 descriptor/extent。
 - Python、.NET SDK、配置包、fixture、前端状态页和所有测试资产必须原子迁移。
 - 旧固定 pool 文件不能在线转换。升级时先停止所有 owner/SDK、确认 guard 释放，再运行明确的开发期维护命令重建 arena；新服务发现旧 layout 或 fingerprint 不一致时拒绝启动，不能自动 truncate。
-- 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责。
+- 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责；结构化 mmap 的后续公共 engine 收敛属于 [ADR-0009](ADR-0009-local-message-channel.md) 的独立原子迁移。

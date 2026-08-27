@@ -4,7 +4,7 @@
 
 状态：**阶段 0–9 已按开发期原子迁移完成；阶段 10 的源码开发环境故障、容量、完整回归和有界真实传输门禁已通过，发行重组后的 10,000 次与 24 小时持续 soak 仍属于发布认证门禁。**
 
-本文是下一阶段本地共享内存修复与 LocalBuffer 重构的唯一实施顺序，覆盖：
+本文记录已经完成的本地共享内存修复与 LocalBuffer 重构实施顺序，覆盖：
 
 - Workflow Trigger mailbox 共享 overflow page 并发、deadline、取消和终态错误；
 - local-shared-memory Trigger 的配置、health、前端入口与故障回收；
@@ -12,7 +12,9 @@
 - Python/.NET SDK、BufferRef、frame channel、配置、已有开发数据和验证门禁的原子迁移。
 - HTTP/ZeroMQ/local-shared-memory 输入、Workflow 节点间图片、Deployment 推理输入与结果图、Preview 和异步任务物化边界统一使用 LocalBuffer 的项目级规则。
 
-[ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 继续定义 Trigger 产品边界，[ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 定义 LocalBuffer 分配模型。旧的[本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)保留已交付协议细节和历史性能证据，但不再作为下一阶段完成状态来源；与本文冲突时以本文和最新 ADR 为准。
+[ADR-0007](../decisions/ADR-0007-local-shared-memory-workflow-trigger.md) 继续定义 Trigger 产品边界，[ADR-0008](../decisions/ADR-0008-local-buffer-fixed-arena-allocation.md) 定义 LocalBuffer 分配模型。旧的[本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)保留已交付协议细节和历史性能证据，但不再作为完成状态来源；与本文冲突时以本文和最新 ADR 为准。
+
+[ADR-0009](../decisions/ADR-0009-local-message-channel.md) 及[本机结构化消息通道实施基线](local-message-channel-implementation.md)定义后续尚未实现的结构化 mmap 公共 engine 收敛。该后续工作不改变本文已经完成的 LocalBuffer 图片 allocator，也不能反向把未来目录或 engine 描述为当前实现。
 
 ## 审计结论
 
@@ -46,7 +48,7 @@
 5. publication 前写完数据和 identity，publication 后内容不可变；consumer 只读取已发布状态。
 6. 外部 SDK 可以写受限 view，但不能修改 descriptor、owner、deadline 或 allocator 元数据。
 7. 当前处于开发阶段，协议和配置一次性原地升级；后端、前端、数据库、仓库内 SDK、fixture 和开发数据同批迁移，删除旧实现与双读代码。
-8. 所有正式图片数据面 mmap、guard 和 owner lock 位于 `data/buffers/`；训练遥测不迁移。
+8. 本实施阶段把正式图片数据面 mmap、guard 和 owner lock 收敛到 `data/buffers/`；训练遥测当时不迁移。其后续迁移由 ADR-0009 单独负责，并且不会进入 LocalBuffer 图片 arena。
 9. backend、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 只支持 64-bit；不设计 32-bit 协商、容量上限或降级分支。
 
 ### LocalBuffer 的项目级边界
@@ -209,7 +211,7 @@ data/buffers/local-buffer/arena-main.guard
 data/buffers/local-buffer/arena-main.owner.lock
 ```
 
-`workflow-trigger/`、`inference-control/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他图片数据面路径派生会漂移。
+本实施阶段的 `workflow-trigger/`、`inference-control/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。后续 ADR-0009 只共享结构化消息底层 engine，并继续保持 Workflow Trigger、Inference 和 daemon private owner 的物理隔离。
 
 backend-service、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 正式进程全部要求 64-bit；.NET SDK 固定使用 x64 目标。启动 preflight 必须校验进程位数、整数寻址、arena/metadata 文件长度、buffers root 可写空间和 layout fingerprint，不提供 32-bit 容量协商或降级。2 GiB 是固定逻辑 arena/file 容量，不表示启动时把全部页面常驻锁定到物理 RAM。文件支持 mmap 仍可能被操作系统分页或异步写回，`flush_on_write=false` 只禁止主动同步 flush。默认不预触碰整个 arena，性能门禁必须同时观察首次触页和稳态数据。
 
@@ -526,7 +528,7 @@ arena_total = general_total + huge_reserved_total
 - 不建立等待队列、自动重试或跨通道fallback。
 - 不让调用方选择size class/pool，也不按分辨率命名资源。
 - 不让SDK修改allocator metadata、descriptor state、owner或deadline。
-- 不把training telemetry迁入`data/buffers/`。
+- 本实施阶段不把 training telemetry 迁入 LocalBuffer 图片数据面；后续结构化 EventRing 与目录迁移只按[本机结构化消息通道实施基线](local-message-channel-implementation.md)执行。
 - 不在新实现中保留固定pool兼容层、旧字段双读或旧binary layout。
 
 ## 当前实施判定

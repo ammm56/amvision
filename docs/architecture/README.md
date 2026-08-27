@@ -18,7 +18,8 @@
 - [数据和文件](platform/data-and-files.md)：ObjectStore、文件引用与生命周期。
 - [运行时与打包](platform/runtime-packaging.md)：源码运行、bundled Python 和发行目录。
 - [WebSocket](platform/websocket.md)：消息版本、订阅、游标和恢复。
-- [LocalBufferBroker](platform/local-buffer-broker.md)、[Inference mailbox v1](platform/inference-mailbox-v1.md) 与 [高性能图片数据面](platform/image-data-plane.md)：共享图片、结构化推理结果、ZeroMQ 和引用边界。
+- [LocalBufferBroker](platform/local-buffer-broker.md)、[Inference mailbox v1](platform/inference-mailbox-v1.md) 与 [高性能图片数据面](platform/image-data-plane.md)：当前共享图片、结构化推理结果、ZeroMQ 和引用边界。
+- [本机结构化消息通道 ADR](../decisions/ADR-0009-local-message-channel.md)与[实施基线](../development/local-message-channel-implementation.md)：已接受但尚未实现的结构化 mmap 统一框架；共享底层 engine，不合并物理 Channel、owner、epoch 或容量。
 
 ## 模型平台
 
