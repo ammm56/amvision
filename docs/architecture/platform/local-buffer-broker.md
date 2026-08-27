@@ -201,7 +201,7 @@ health 必须直接校验容量守恒：`general_total = general_free + general_
 - 每个 Broker root 只有一个有效 owner；
 - Broker 重启提高 epoch，并从 descriptor/guard 重建状态；仍被旧进程持有的 extent 进入 REVOKING/QUARANTINED，不直接复用；
 - layout fingerprint或文件大小不匹配时拒绝启动，不能自动 truncate；
-- 固定 pool/slot 到 arena 是开发期一次性迁移：停止服务和 SDK、确认 guards 全部空闲、运行明确维护命令重建，再启动新代码；
+- 固定 pool/slot 到 arena 是开发期一次性迁移：停止服务和 SDK、确认 guards 全部空闲，离线移走或删除 `data/buffers/local-buffer/` 中的短期 arena 文件，再启动新代码完成重建；当前 maintenance CLI 不提供 LocalBuffer 重建命令；
 - 新实现不保留固定 pool 双读、旧 BufferRef layout 或旧 SDK 映射兼容路径；
 - 日志按日期轮转，异常包含 arena/descriptor/generation/owner/deadline，不记录图片内容。
 

@@ -32,9 +32,7 @@
 
 ```text
 backend/contracts/ipc/schemas/
-├─ local_message_common.v1.json
-├─ local_message_rpc.v1.json
-├─ local_message_event_ring.v1.json
+├─ local_message_channel.v1.json
 └─ workflow_trigger_rpc_extension.v1.json
 
 backend/service/application/message_channels/
@@ -58,7 +56,7 @@ backend/service/infrastructure/ipc/
 
 实际文件名可以按仓库命名规则微调，但职责不能重新散回 inference、workflow或training业务目录。application 只保存 port、DTO 和领域错误；mmap、Queue、文件路径、offset、guard、page layout 和具体 transport adapter 全部属于 infrastructure。领域目录只保留 payload 映射、handler 和状态扩展。
 
-`local_message_common.v1` 只定义 magic、version、byte order、alignment、Channel kind/id、owner epoch、layout fingerprint 和 checksum algorithm id。path containment、guard 获取、publication 顺序、owner lock 与恢复规则属于 engine 规范，不是 binary schema 字段。page-chain 只存在于 `local_message_rpc.v1`；EventRing 不引用 RPC descriptor、page 或 ACK 状态。Workflow Trigger extension 组合 RPC contract，但不把 PREPARE/WRITING 或 LocalBuffer receipt 写入通用 RPC/Event 字段。`.NET` 只生成公开 Trigger 所需的 common/RPC/extension 类型，不生成内部 Training EventRing SDK 类型。
+`local_message_channel.v1.json` 是唯一的 LocalMessage binary schema 文件，在同一个版本化文档内分别定义 common header、RPC profile/descriptor/page 和 EventRing profile/slot layout。这只是共用生成与 fixture 入口，不表示 RPC 与 EventRing 共享状态机或容量几何。common header 显式保存 magic、version、byte order marker、Channel kind/id、owner epoch 和 layout fingerprint；checksum algorithm 是 schema 顶层的固定契约，alignment 由固定 field offset/size 与 layout fingerprint 约束，不伪装成不存在的 header 字段。path containment、guard 获取、publication 顺序、owner lock 与恢复规则属于 engine 规范。page-chain 只存在于 RPC layout；EventRing 不引用 RPC descriptor、page 或 ACK 状态。Workflow Trigger extension 组合 RPC contract，但不把 PREPARE/WRITING 或 LocalBuffer receipt 写入通用 RPC/Event 字段。`.NET` 只生成公开 Trigger 所需的 common/RPC/extension 类型，不生成内部 Training EventRing SDK 类型。
 
 ## 不可变实施规则
 

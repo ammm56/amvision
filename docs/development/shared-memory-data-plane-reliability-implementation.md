@@ -300,7 +300,7 @@ Broker 在同一操作中需要两个内部锁时，唯一顺序是 `allocator l
 
 Broker owner lock 仍保证每个 root 单 owner。重启更新 broker epoch，先根据 descriptor 和 OS guards 重建状态：无 guard 的旧 lease可回收；仍有 writer/reader 的 extent进入 REVOKING/QUARANTINED，不得复用。SDK 在取得 guard后的 descriptor revalidation 会拒绝重启前的 allocation。
 
-layout fingerprint 不一致、arena 文件大小不一致或旧固定 pool 文件存在时，新服务拒绝自动 truncate。开发期维护命令必须在服务停止且 guard 全空闲后显式重建；正式启动不做在线转换、双 layout 读取或隐式删除。
+layout fingerprint 不一致、arena 文件大小不一致或旧固定 pool 文件存在时，新服务拒绝自动 truncate。开发期升级必须先停止服务和 SDK、确认 guard 全空闲，再离线移走或删除 `data/buffers/local-buffer/` 中的短期 arena 文件，由下一次启动显式重建。当前 maintenance CLI 没有 LocalBuffer 重建命令，不能误用会同时删除模型、任务、Deployment 和 Workflow Runtime 的 `reset-development-model-state`。正式启动不做在线转换、双 layout 读取或隐式删除。
 
 ### 7. Python/.NET mmap view
 
@@ -450,7 +450,7 @@ arena_total = general_total + huge_reserved_total
 ### 阶段 9：配置、数据迁移和旧实现删除（已完成）
 
 - 原子替换公开 v1 contract/codegen、Broker、正式 composition root、所有调用点和 x64 .NET SDK package；同一提交删除旧字段与固定 pool 实现。
-- 更新源码 config/profile模板、前端、fixture、Postman示例、现有TriggerSource JSON开发数据和维护命令；不手工修改 `release/<profile-id>/app/`。
+- 更新源码 config/profile模板、前端、fixture、Postman示例、现有TriggerSource JSON开发数据和离线迁移说明；不手工修改 `release/<profile-id>/app/`。
 - 停止服务后验证 guard，重建开发 arena。
 - 删除固定 pool/slot实现和双读代码。
 

@@ -49,7 +49,7 @@ Database、Transactional Outbox、LocalFileQueue 和 ObjectStore 继续负责持
 - Python/.NET 共用的 schema 生成工具、fixture 和代码生成；
 - backend 配置、容量摘要与错误分类。
 
-Binary contract 分为四层，不能把 RPC 与 EventRing 合成一份完整 schema：
+Binary contract 分为四个逻辑层，但当前实现把 common、RPC 和 EventRing layout 收敛在唯一的 `local_message_channel.v1.json` 中，Workflow Trigger extension 保持独立 schema。同文件用于统一代码生成和 fixture，不能把 RPC 与 EventRing 解释为共享完整 header、状态机或容量几何：
 
 ```text
 LocalMessage binary common schema v1
@@ -65,7 +65,7 @@ LocalMessage binary common schema v1
    └─ PREPARE / WRITING / LocalBuffer receipt / output handoff
 ```
 
-Overflow page-chain 只属于 RPC，不进入 common primitives 或 EventRing。公共原语可以由两个完整 schema 引用或由同一生成工具组合，但不能形成要求两种 Channel 使用相同状态机、header 全字段或容量几何的单一 on-disk contract。
+Overflow page-chain 只属于 RPC，不进入 common primitives 或 EventRing。公共原语和两类 layout 由同一 schema 与生成工具组合，但 RPC 文件只按 common + RPC layout 解析，EventRing 文件只按 common + Event layout 解析。不得因为 schema 物理文件统一，就要求两种 Channel 使用相同状态机、header 全字段或容量几何。
 
 路径 containment、guard 获取顺序、publication 顺序、owner lock 和异常恢复属于 engine 规范及公共实现，不是 on-disk binary schema 字段，也不进入代码生成 DTO。`.NET` 只生成公开 Workflow Trigger 使用的 common、RPC 和 Trigger extension contract；内部 Training EventRing 不生成 SDK 类型。
 
@@ -101,7 +101,7 @@ Workflow Trigger 在通用 RPC engine 上保留 PREPARE、WRITING、External Loc
 
 ### 4. 开发期只保留一个 v1
 
-当前协议仍处于发布前开发阶段。schema 分为 `local-message-common.v1`、`local-message-rpc.v1`、`local-message-event-ring.v1` 和 Workflow Trigger RPC extension v1；领域 contract 继续使用各自 v1 标识并引用或组合公共原语。
+当前协议仍处于发布前开发阶段。schema 物理文件为 `local_message_channel.v1.json` 和 `workflow_trigger_rpc_extension.v1.json`；前者内含 common/RPC/EventRing 三个逻辑 layout，领域 contract 继续使用各自 v1 标识并按 Channel kind 只组合需要的 layout。
 
 每条业务链迁移时，后端、前端、配置、Python/.NET SDK、fixture、测试资产和现有开发文件在同一提交链中原子切换。迁移完成后删除旧 binary layout、旧字段和双读代码，不创建 v2，也不长期并行运行两套协议。
 

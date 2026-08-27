@@ -152,5 +152,5 @@ ADR-0009 阶段 1 已把共享路径所有权提升为中立 `local_memory.root_
 - 删除 `LocalBufferBrokerPoolSettings`、`default_pool_name`、`pools`、调用方 `pool_name` 和按分辨率 preset；不保留双读或兼容分配路径。
 - `MmapBufferPool` 被 arena allocator 取代；普通 lease、External lease、frame channel、output handoff 和 direct reader 统一使用 descriptor/extent。
 - Python、.NET SDK、配置包、fixture、前端状态页和所有测试资产必须原子迁移。
-- 旧固定 pool 文件不能在线转换。升级时先停止所有 owner/SDK、确认 guard 释放，再运行明确的开发期维护命令重建 arena；新服务发现旧 layout 或 fingerprint 不一致时拒绝启动，不能自动 truncate。
+- 旧固定 pool 文件不能在线转换。开发期升级时先停止所有 owner/SDK、确认 guard 释放，再离线移走或删除 `data/buffers/local-buffer/` 中的短期 arena 文件，由下一次启动按当前 layout 重建；新服务发现旧 layout 或 fingerprint 不一致时拒绝启动，不能自动 truncate。当前 maintenance CLI 不提供 LocalBuffer 重建命令，不能把更宽范围的开发模型重置命令当作替代。
 - 该变更只替换图片 LocalBuffer 分配模型，不改变 Workflow Trigger mailbox、inference mailbox、ObjectStore 或训练遥测的数据职责；结构化 mmap 的后续公共 engine 收敛属于 [ADR-0009](ADR-0009-local-message-channel.md) 的独立原子迁移。
