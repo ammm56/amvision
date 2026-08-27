@@ -35,7 +35,7 @@
 - sync invoke 在当前请求内等待执行结束，适合低时延、短链路和高频交互。
 - async runs 在创建时先返回 workflow_run_id，调用方再通过 GET 查询结果，必要时可发起 cancel，适合长时间执行、后台提交、排队和后续回查。
 - WorkflowPreviewRun 只用于编辑态试跑。生产态正式执行统一落在 WorkflowRun，不再为不同触发方式引入另一类正式执行资源。
-- 当前公开入口是 HTTP API；后续如果通过 PLC、ZeroMQ、MQTT、gRPC、IO 变化或其他集成方式触发 workflow，仍应统一映射为 WorkflowRun。
+- 当前公开入口是 HTTP API；后续如果通过 PLC、ZeroMQ、MQTT、IO 变化或其他已实现的集成方式触发 workflow，仍应统一映射为 WorkflowRun。
 - 多 runtime 实例仍用于吞吐和隔离。async runs 解决的是长时间执行、排队、取消和回查，不承担扩容职责。
 
 ## 接口入口

@@ -17,7 +17,7 @@
 ## 总体原则
 
 - 浏览器前端默认使用 REST API 和 WebSocket
-- 外部系统可按部署场景使用 REST API、WebSocket、ZeroMQ、gRPC、MQTT、PLC、IO 或传感器触发入口
+- 外部系统按当前能力使用 REST API、WebSocket、ZeroMQ、PLC 或目录触发入口；未实现的协议不进入公开 capability
 - ZeroMQ 可作为 workstation 或 standalone 场景下的高速外部触发和图像提交入口之一
 - LocalBufferBroker 用于本机内部隔离进程之间的大图和帧数据交换，不作为外部公开接口
 - 触发入口负责把外部协议事件转换为 WorkflowRun 输入，结果回执负责把 workflow 输出转换回对应协议
@@ -98,7 +98,7 @@ LocalBufferBroker 用来做本机内部隔离进程之间的图片与视频帧�
 
 #### 不适合做的事
 
-- 替代 HTTP、ZeroMQ、gRPC、MQTT、PLC 或传感器等外部触发入口
+- 替代 HTTP、ZeroMQ、PLC 或目录监听等现有外部触发入口
 - 替代 ObjectStore 保存需要审计、下载、复现或长期保留的文件
 - 跨主机传递数据引用
 - 直接作为浏览器前端接口

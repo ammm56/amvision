@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from backend.contracts.workflows import ResultMappingContract
+from backend.contracts.workflows import (
+    ResultMappingContract,
+    WORKFLOW_TRIGGER_KINDS,
+)
 
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -56,20 +59,7 @@ if TYPE_CHECKING:
     )
 
 
-_TRIGGER_KINDS = {
-    "directory-poll",
-    "directory-watch",
-    "plc-register",
-    "mqtt-topic",
-    "zeromq-topic",
-    "local-shared-memory",
-    "grpc-method",
-    "io-change",
-    "sensor-read",
-    "schedule",
-    "webhook",
-    "http-api",
-}
+_TRIGGER_KINDS = set(WORKFLOW_TRIGGER_KINDS)
 _SUBMIT_MODES = {"sync", "async"}
 _ACK_POLICIES = {
     "ack-after-run-created",
