@@ -32,6 +32,7 @@ config/backend-service.json
 - `training_telemetry`
 - `workflow_runtime`
 - `zeromq_trigger`
+- `local_memory`
 - `local_buffer_broker`
 - `deployment_process_supervisor`
 - `deployment_runtime_reconciler`
@@ -125,7 +126,7 @@ launchers/service/start-backend-service.bat
 
 ## 单实例和 LocalBufferBroker
 
-同一 `local_buffer_broker.root_dir` 只能有一个有效 broker。开发态重复启动相同工作区的标准 Uvicorn 入口时，可按配置验证并接管较早实例；正常操作仍应优先在原终端优雅停止。
+同一 `local_memory.root_dir` 下的 `local-buffer-main` 只能有一个有效 broker。开发态重复启动相同工作区的标准 Uvicorn 入口时，可按配置验证并接管较早实例；正常操作仍应优先在原终端优雅停止。
 
 自动接管不是通用进程清理器，也不替代 full Supervisor 的状态文件。并行 backend-service 必须使用不同端口、数据库、队列和 LocalBuffer 根目录。
 

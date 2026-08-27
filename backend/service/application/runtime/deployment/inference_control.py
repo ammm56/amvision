@@ -48,8 +48,8 @@ from backend.service.application.runtime.deployment.deployment_process_superviso
     DeploymentProcessStatus,
     DeploymentProcessSupervisor,
 )
-from backend.service.application.runtime.deployment.inference_local_mmap import (
-    InferenceLocalMmapClient,
+from backend.service.application.runtime.deployment.inference_message_channel import (
+    InferenceMessageClient,
 )
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
     PredictionRequest,
@@ -107,7 +107,7 @@ class InferenceControlBinding:
 
 
 class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
-    """通过 mmap 数据面和持久化控制面调用独立 inference daemon。
+    """通过 LocalMessage 数据面和持久化控制面调用独立 inference daemon。
 
     inference、ping、status 和 health 使用 mmap v1；start、stop、warmup 和
     reset 使用持久化控制队列。该客户端不在 backend-service 内创建模型子进程。
@@ -126,7 +126,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         control_read_timeout_seconds: float = 2.0,
         availability_probe_timeout_seconds: float = 1.0,
         local_buffer_reader: Any | None = None,
-        local_mmap_client: InferenceLocalMmapClient | None = None,
+        message_client: InferenceMessageClient | None = None,
     ) -> None:
         """绑定控制队列、共享对象存储和 runtime mode。"""
 
@@ -152,7 +152,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             min(self.control_read_timeout_seconds, availability_probe_timeout_seconds),
         )
         self.local_buffer_reader = local_buffer_reader
-        self.local_mmap_client = local_mmap_client
+        self.message_client = message_client
 
     @property
     def is_running(self) -> bool:
@@ -197,7 +197,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         """通过 mmap v1 读取 daemon 中 deployment 状态。"""
 
         return _deserialize_status(
-            self._request_mmap_read(
+            self._request_message_read(
                 "status",
                 config,
                 timeout_seconds=self.control_read_timeout_seconds,
@@ -218,7 +218,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
         """通过 mmap v1 读取 daemon 中 deployment 健康状态。"""
 
         return _deserialize_health(
-            self._request_mmap_read(
+            self._request_message_read(
                 "health",
                 config,
                 timeout_seconds=self.control_read_timeout_seconds,
@@ -243,7 +243,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
     ) -> DeploymentProcessExecution:
         """通过 v1 mmap 执行同步推理；图片统一使用 LocalBuffer。"""
 
-        if self.local_mmap_client is None:
+        if self.message_client is None:
             raise ServiceConfigurationError("独立 inference daemon 缺少 mmap v1 热路径")
         request_id = uuid4().hex
         prepared_request, owned_buffer = self._stage_prediction_input(
@@ -254,26 +254,26 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             request=request,
             owner_id=f"inference-preview-{request_id}",
         )
-        mmap_request_started = False
-        mmap_request_completed = False
+        message_request_started = False
+        message_request_completed = False
         try:
             serialized_request = serialize_prediction_request(
                 task_type=config.runtime_target.task_type,
                 request=prepared_request,
             )
-            mmap_payload: dict[str, object] = {
+            message_payload: dict[str, object] = {
                 "action": "infer",
                 "runtime_mode": self.runtime_mode,
                 "process_config": _serialize_process_config(config),
                 "prediction_request": serialized_request,
             }
             if preview_output_lease is not None:
-                mmap_payload["preview_output_lease"] = preview_output_lease.model_dump(
+                message_payload["preview_output_lease"] = preview_output_lease.model_dump(
                     mode="json"
                 )
-            mmap_request_started = True
-            response = self.local_mmap_client.request(mmap_payload)
-            mmap_request_completed = True
+            message_request_started = True
+            response = self.message_client.request(message_payload)
+            message_request_completed = True
             if response.get("ok") is not True:
                 raise _deserialize_error(
                     response.get("error"),
@@ -288,7 +288,7 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
             )
             preview_output_lease = None
         finally:
-            if not mmap_request_started or mmap_request_completed:
+            if not message_request_started or message_request_completed:
                 self._release_owned_input_buffer(owned_buffer)
                 self._release_preview_output(preview_output_lease)
             elif owned_buffer is not None or preview_output_lease is not None:
@@ -325,13 +325,13 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
     def ping(self, *, timeout_seconds: float | None = None) -> dict[str, object]:
         """通过 mmap v1 探测 daemon 和 mailbox。"""
 
-        return self._request_mmap_read(
+        return self._request_message_read(
             "ping",
             None,
             timeout_seconds=timeout_seconds or self.control_read_timeout_seconds,
         )
 
-    def _request_mmap_read(
+    def _request_message_read(
         self,
         action: str,
         config: DeploymentProcessConfig | None,
@@ -345,13 +345,13 @@ class QueueBackedInferenceControlClient(DeploymentProcessSupervisor):
                 "inference mmap 只读 action 不合法",
                 details={"action": action},
             )
-        if self.local_mmap_client is None:
+        if self.message_client is None:
             raise ServiceConfigurationError("独立 inference daemon 缺少 mmap v1 热路径")
         request: dict[str, object] = {"action": action}
         if config is not None:
             request["runtime_mode"] = self.runtime_mode
             request["process_config"] = _serialize_process_config(config)
-        response = self.local_mmap_client.request(
+        response = self.message_client.request(
             request,
             timeout_seconds=timeout_seconds,
         )
@@ -889,7 +889,7 @@ class InferenceControlDispatcher:
             return
         self._send_response(message, response_queue_name, request_id, response)
 
-    def handle_local_mmap_request(
+    def handle_inference_message_request(
         self, payload: dict[str, object]
     ) -> dict[str, object]:
         """执行本机 mmap 热路径请求。

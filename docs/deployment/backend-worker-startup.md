@@ -44,7 +44,7 @@ Profile 源文件位于 `runtimes/manifests/worker-profiles/*.json`，格式固�
 | `evaluation` | detection、classification、segmentation、pose 和 OBB 评估 |
 | `inference` | 五类异步推理队列与 gateway 转发 |
 
-Profile 独立声明 consumer、并发数和轮询间隔。`config/backend-worker.json` 只保存共享数据库、ObjectStore、队列、workspace、telemetry 和 gateway 配置。
+Profile 独立声明 consumer、并发数和轮询间隔。`config/backend-worker.json` 只保存共享数据库、ObjectStore、队列、workspace、`local_memory`、telemetry 和 gateway 配置。Training Telemetry 的 mmap 文件位于 `local_memory.root_dir/local-message/training-telemetry/`；普通配置只保留启用开关与 worker 业务节流，不暴露 EventRing slot、payload、poll 或 scan 几何。
 
 默认 `training` Profile 的 `max_concurrent_tasks` 为 `1`。该值只限制同时执行的独立训练任务数，不改变单个任务的 batch size、DataLoader worker 或训练数值语义。Training 已在任务执行边界获取跨进程 GPU/MIG `exclusive` lease；多 GPU 环境需要并发时，可以在完成目标机容量验证后提高该值。显式指向同一 GPU 的任务会按统一 busy/timeout 策略拒绝，CPU 训练不获取 GPU 锁。完整边界见 [GPU 设备资源协调](../architecture/models/device-resource-coordination.md)。
 

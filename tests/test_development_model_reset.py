@@ -38,7 +38,7 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     database_path.parent.mkdir(parents=True, exist_ok=True)
     settings = SimpleNamespace(
         queue=SimpleNamespace(root_dir=str(queue_root)),
-        local_buffer_broker=SimpleNamespace(root_dir=str(buffer_root)),
+        local_memory=SimpleNamespace(root_dir=str(buffer_root)),
         to_database_settings=lambda: DatabaseSettings(
             url=f"sqlite+pysqlite:///{database_path.as_posix()}"
         ),
@@ -134,6 +134,9 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
     _write_marker(queue_root / "_worker_health" / "worker.json")
     _write_marker(tmp_path / "worker" / "worker-1.json")
     _write_marker(buffer_root / "buffer-1.bin")
+    _write_marker(
+        tmp_path / "runtime" / "training-telemetry" / "legacy-worker.mmap"
+    )
 
     preview = reset_development_model_state(
         request=DevelopmentModelResetRequest(confirm=False),
@@ -162,6 +165,7 @@ def test_reset_development_model_state_preserves_dataset_state(tmp_path: Path) -
         storage_root / "deployments" / "instances" / "deployment-1" / "events.jsonl"
     ).exists()
     assert not (queue_root / "yolo11-trainings").exists()
+    assert not (tmp_path / "runtime" / "training-telemetry").exists()
 
     verification_factory = SessionFactory(settings.to_database_settings())
     with verification_factory.create_session() as session:

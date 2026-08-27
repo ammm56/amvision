@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import multiprocessing
 import os
 from pathlib import Path
-import struct
 from tempfile import TemporaryDirectory
 from time import monotonic, sleep
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.ipc.mmap_primitives import MmapGuardBusyError
-from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
+from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
     WorkflowTriggerMailboxClient,
     WorkflowTriggerMailboxServer,
 )
 
 
-_REQUEST = struct.Struct("<II")
 _LARGE_RESPONSE_INTERVAL = 17
 _LARGE_RESPONSE_BODY_SIZE = 600 * 1024
 
@@ -35,7 +35,10 @@ def _client_worker(
     try:
         with WorkflowTriggerMailboxClient(buffers_root=buffers_root) as client:
             for sequence in range(iterations):
-                request_payload = _REQUEST.pack(worker_index, sequence)
+                request_payload = json.dumps(
+                    {"worker_index": worker_index, "sequence": sequence},
+                    separators=(",", ":"),
+                ).encode("utf-8")
                 identity = _claim_until_available(
                     client=client,
                     prepare_payload=request_payload,
@@ -53,17 +56,19 @@ def _client_worker(
                     client=client,
                     identity=allocation.identity,
                 )
-                expected_size = _REQUEST.size + (
-                    _LARGE_RESPONSE_BODY_SIZE
+                response_value = json.loads(response.payload)
+                if (
+                    response_value.get("worker_index") != worker_index
+                    or response_value.get("sequence") != sequence
+                ):
+                    raise AssertionError("response identity payload 串包")
+                expected_blob_size = (
+                    len(base64.b64encode(b"X" * _LARGE_RESPONSE_BODY_SIZE))
                     if sequence % _LARGE_RESPONSE_INTERVAL == 0
                     else 0
                 )
-                if len(response.payload) != expected_size:
-                    raise AssertionError(
-                        f"response size 不匹配：{len(response.payload)} != {expected_size}"
-                    )
-                if response.payload[: _REQUEST.size] != request_payload:
-                    raise AssertionError("response identity payload 串包")
+                if len(response_value.get("blob", "")) != expected_blob_size:
+                    raise AssertionError("response blob 大小不匹配")
                 _acknowledge_until_available(
                     client=client,
                     identity=allocation.identity,
@@ -211,13 +216,24 @@ def run_stress(*, worker_count: int, iterations_per_worker: int) -> None:
                         request = server.poll_request()
                         if request is None:
                             break
-                        worker_index, sequence = _REQUEST.unpack(request.payload)
-                        response_payload = request.payload
+                        request_value = json.loads(request.payload)
+                        worker_index = int(request_value["worker_index"])
+                        sequence = int(request_value["sequence"])
+                        response_value = {
+                            "worker_index": worker_index,
+                            "sequence": sequence,
+                            "blob": "",
+                        }
                         if sequence % _LARGE_RESPONSE_INTERVAL == 0:
-                            response_payload += large_body
+                            response_value["blob"] = base64.b64encode(
+                                large_body
+                            ).decode("ascii")
                         server.publish_response(
                             identity=request.identity,
-                            payload=response_payload,
+                            payload=json.dumps(
+                                response_value,
+                                separators=(",", ":"),
+                            ).encode("utf-8"),
                         )
                         completed += 1
                         made_progress = True

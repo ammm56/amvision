@@ -30,7 +30,7 @@
 - 同机 .NET SDK 把调用方选择的 BGR24 或 encoded bytes 直接写入 backend-service 分配的 LocalBuffer lease，消除 ZeroMQ 图片主体传输和 backend-service 的第二次整图写入。
 - 使用一个全局 Workflow Trigger mailbox 传递参数、lease identity 和结果，不为每个 TriggerSource 新建 mmap 文件。
 - 每个在途调用动态占用一个输入 slot；空闲 TriggerSource 不占资源，不同 TriggerSource 可以并行。
-- v1 每次调用只接收一张输入图片和一份不超过 512 KiB 的结构化参数，返回 0 到 N 张图片；多图片输入后续单独版本化，不在 v1 中隐式扩展。
+- v1 每次调用只接收一张输入图片；PREPARE 和最终 request 的完整 LocalMessage envelope 均不超过 64 KiB，返回 0 到 N 张图片；多图片输入后续单独版本化，不在 v1 中隐式扩展。
 - 同一 TriggerSource 默认单在途；同一单 worker Runtime 满载时立即失败，不排队、不重试。
 - raw BGR24 零解码；文件、Base64 和 encoded bytes 正式入口在单次 Workflow 首次消费时最多解码一次。
 - 正式支持把 Workflow 公开输出中的 LocalBuffer 图片引用返回给 SDK，并通过 owner handoff 保持到 ACK 或 response deadline。
@@ -73,8 +73,8 @@
 - [Workflow 单次执行图片缓存](../../backend/nodes/runtime_support.py)
 - [LocalBuffer arena lease 与 frame channel](../../backend/service/infrastructure/local_buffers/local_buffer_arena_pool.py)
 - [Workflow Runtime manager](../../backend/service/application/workflows/worker/manager.py)
-- [现有 inference mailbox guard](../../backend/service/application/runtime/deployment/inference_local_mmap.py)
-- [全局 Workflow Trigger mailbox](../../backend/service/infrastructure/ipc/workflow_trigger_mailbox.py)
+- [通用 LocalMessage descriptor guard](../../backend/service/infrastructure/ipc/local_message/guards.py)
+- [Workflow Trigger RpcMailbox extension](../../backend/service/infrastructure/ipc/workflow_trigger_rpc.py)
 - [mailbox、route、admission 与 handoff supervisor](../../backend/service/application/workflows/trigger_sources/local_shared_mailbox_supervisor.py)
 
 ## 不可偏离的设计边界
@@ -171,10 +171,10 @@ allocate external writing lease
 
 ### 文件与固定容量
 
-- backend-service 实例拥有一个启动时创建、运行时不扩容的 `data/buffers/workflow-trigger/workflow-trigger-main.mmap`。
-- 路径从现有 `local_buffer_broker.root_dir` 派生，不新增第二个 mmap root。
+- backend-service 实例拥有一个在 FastAPI lifespan 启动时创建、运行时不扩容的 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`。
+- 路径从中立 `local_memory.root_dir` 派生，不新增第二个 mmap root。
 - descriptor guard、server lock、writer/reader guard 和恢复辅助文件全部位于图片数据面 `data/buffers/` 对应协议目录或 pool 目录。
-- 正式运行不得在仓库根目录、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建 Workflow Trigger mailbox。本文交付时训练遥测继续使用 `data/runtime/training-telemetry/`；后续 EventRing 目录迁移由 ADR-0009 定义，训练遥测始终不进入 LocalBuffer 图片 arena。
+- 正式运行不得在仓库根目录、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建 Workflow Trigger mailbox。训练遥测使用 `data/buffers/local-message/training-telemetry/` 下的独立 EventRing，始终不进入 LocalBuffer 图片 arena。
 - 自动化测试可以把 buffers root 重定向到 `.tmp/<test>/buffers/`，但必须复用正式 path builder 和 root containment 校验。
 
 v1 默认容量：
@@ -182,17 +182,17 @@ v1 默认容量：
 | 项目 | 默认值 |
 | --- | ---: |
 | descriptor 数 | 128 |
-| inline request 上限 | 512 KiB |
-| inline response 上限 | 512 KiB |
-| overflow page 大小 | 512 KiB |
-| overflow page 数 | 256 |
-| 单响应 page 上限 | 64，即 32 MiB |
+| inline request 上限 | 64 KiB |
+| inline response 上限 | 64 KiB |
+| overflow page 大小 | 256 KiB |
+| overflow page 数 | 512 |
+| 单响应 wire page 上限 | 129；公开 JSON 正文仍为 32 MiB |
 | 初始 poll interval | 1 ms |
 | 数字字节序 | little-endian |
 | 字段对齐 | 8 byte |
 | 内容校验 | CRC32 IEEE（polynomial `0xedb88320`，algorithm id `1`） |
 
-请求参数超过 512 KiB 时返回 `trigger_request_too_large`，不建立 request page-chain、文件 fallback 或第二控制通道。结构化响应超过 inline 上限时使用同一 mailbox 内的固定 overflow page-chain；超过单响应或全局 page 上限时返回 `trigger_response_too_large` 或明确的全局容量错误。
+完整 request envelope 超过 64 KiB 时返回 `trigger_request_too_large`，不建立 request page-chain、文件 fallback 或第二控制通道。结构化响应超过 inline 上限时使用同一 mailbox 内的固定 overflow page-chain；公开 JSON 正文超过 32 MiB 或全局 page 容量不足时返回明确的超限或容量错误。
 
 直接公开的 `image-ref.v1`/`image-refs.v1` 图片主体始终使用 LocalBuffer attachment，不进入 inline 或 page-chain。图中显式 `Image Base64 Encode` 产生的 `image-base64.v1` 已经是结构化 JSON，允许进入 inline/page-chain，但不扩大默认 32 MiB 单响应上限、不自动改成 LocalBuffer、不回退文件或其他协议。57.1 MiB BMP 形成的约 76 MiB Base64 不属于默认 mailbox 可接受结果，应改用直接图片 attachment。
 
@@ -200,14 +200,15 @@ v1 默认容量：
 
 阶段 0 已完成以下实现并作为后续代码的唯一输入：
 
-- schema：`backend/contracts/ipc/schemas/workflow_trigger_mailbox.v1.json`；
-- 生成器：`python -m backend.maintenance.workflow_trigger_binary_contract --write`；
-- 只读门禁：`python -m backend.maintenance.workflow_trigger_binary_contract --check`；
-- Python layout：`backend/contracts/ipc/workflow_trigger_mailbox_v1.py`；
+- common schema：`backend/contracts/ipc/schemas/local_message_channel.v1.json`；
+- Trigger extension schema：`backend/contracts/ipc/schemas/workflow_trigger_rpc_extension.v1.json`；
+- Python extension layout：`backend/contracts/ipc/workflow_trigger_rpc_extension_v1.py`；
+- Python/.NET fixture 由 contract test 双向校验，不再维护旧 mailbox 生成器。
 - .NET layout：`sdks/dotnet/src/Amvar.Vision/SharedMemory/WorkflowTriggerMailboxV1.g.cs`；
-- 跨语言 fixture：`tests/fixtures/workflow_trigger_mailbox.v1.fixture.json`。
+- common fixture：`tests/fixtures/local_message_channel.v1.fixture.json`；
+- Trigger extension fixture：`tests/fixtures/workflow_trigger_rpc_extension.v1.fixture.json`。
 
-layout 固定为 128-byte file header、320-byte descriptor header 和 64-byte page header。生成文件带 schema SHA-256；Python/.NET 端不得手工复制 offset 或 enum。协议还未完成阶段 1–9 前不对 API capability 宣称可用。
+layout 固定为 256-byte common header、256-byte RPC profile header、256-byte descriptor header 和 64-byte page header。common fixture 保存 schema SHA-256，Python/.NET contract test 同时校验冻结字段、offset、profile 和 extension bytes；协议已按 ADR-0009 阶段 4 原子迁移，不再读取旧 mailbox layout。
 
 - 使用一份带固定 offset、width、alignment、enum 和 magic/version 的 schema 生成 Python 与 .NET 常量。
 - Python 与 .NET 不分别手写 descriptor offset。
@@ -499,7 +500,7 @@ TriggerSource 和 SDK 配置包不增加 `reply_protocol`、JSON/multipart mode 
 
 ### 1. PREPARE
 
-- v1 只接受一张输入图片；SDK 完成输入类别判断或 Base64 还原，得到精确 `content_length`，结构化参数序列化后不得超过 512 KiB。
+- v1 只接受一张输入图片；SDK 完成输入类别判断或 Base64 还原，得到精确 `content_length`，结构化参数的完整 LocalMessage envelope 不得超过 64 KiB。
 - SDK 只提交 TriggerSource id、event identity、业务参数和相对 `timeout_ms`。
 - backend-service 读取已启用 TriggerSource 快照，固定 project、Runtime、revision、route generation、input mapping、默认 metadata 和 timeout 上限。
 - backend-service 原子取得该 TriggerSource 的单在途 permit。
@@ -911,7 +912,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - 同一 Workflow 经 ZeroMQ encoded BMP：60 秒 48/48 成功，P50/P95/P99 为 1219/1317/1392 ms。
 - 同一 Workflow 经 local-shared-memory raw BGR24：55/55 成功，P50/P95/P99 为 1107.9/1169.2/1270.2 ms；数据面 P50/P95/P99 为 20.4/23.5/25.9 ms，SDK 写入 59.9 MiB LocalBuffer 平均 7.5 ms，后端 codec 解码为 0，.NET Gen0/1/2 GC 均为 0。
 - 真实 YOLO11 classification Deployment sync：60 秒 749/749 成功，P50/P95/P99 为 63/79/93 ms。
-- 512 KiB 边界、1/8/16/32 MiB page-chain、16 并发混合、碎片化、restart、mid-write crash、timeout/cancel、CRC/owner/generation 损坏和 4 进程共 2,000 次 mmap 压测组合 67 项通过。
+- 64 KiB request/inline response 边界、1/8/16/32 MiB page-chain、16 并发混合、restart、mid-write crash、timeout/cancel、CRC/owner/generation 损坏和 4 进程共 2,000 次 mmap 压测通过。
 - 所有正式持续负载结束后，三个 LocalBuffer pool 的 `used/active/writing/revoking/quarantined` 均为 0，allocation failure 与 stale fence 均为 0；服务日志无 ERROR、WARNING 或 Traceback。
 
 本轮验证针对源码开发环境。`release/<profile-id>/app/` 仍是 assemble 产物，禁止手工同步源码；生成下一版发行包时必须从当前源码按目标 profile 重新执行 `assemble-release`，并复用本页 contract、smoke 和 soak 门禁。
@@ -922,7 +923,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 
 - Python/.NET 对同一 header、descriptor、page、状态、checksum algorithm/value、字节序和对齐生成完全一致的 fixture。
 - Windows Python/.NET 双进程真实 guard 互斥、进程退出释放和重复获取通过。
-- 512 KiB 边界前后及 1/8/16/32 MiB 结构化响应均通过。
+- 64 KiB 新 inline 边界、旧 512 KiB 迁移样本及 1/8/16/32 MiB 结构化响应均通过。
 - page pool 碎片化后非连续 page-chain可正常读取和回收。
 - 显式 Base64 在 inline/page-chain 内能无损返回，超过单响应上限明确拒绝且不 fallback。
 - 统一 ZeroMQ v1 无图为一帧；图片响应为 `1 + N` 帧，其中 N 是唯一物理 payload 数而不是逻辑 attachment 数；manifest 与 frame 集合、索引、长度、checksum 完全一致。
@@ -980,7 +981,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - `accepted-then-query` 图片已持久化 ObjectStore 后可通过稳定 locator 查询；短期 BufferRef 不进入数据库或幂等缓存。
 - ObjectStore locator 必须包含不可变 version、checksum、准确长度和 media type；缺少稳定元数据的旧对象会物化为新不可变对象。`open_read_snapshot` 在 consumer/tracker 结束前保持同一内容，普通绝对路径不能冒充稳定 snapshot。
 - 连续10,000次多Trigger混合调用后，descriptor、page、active source、Runtime token、LocalBuffer active/REVOKING/QUARANTINED全部回到基线。
-- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer pool、inference image mailbox、Workflow Trigger mailbox、guard 和 owner lock 都只能出现在 `data/buffers/` 树内；该阶段不迁移 `data/runtime/training-telemetry/`。其后续迁移必须按 ADR-0009 使用独立 EventRing Channel，不能混入图片 arena。
+- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer、Inference RPC、Workflow Trigger RPC、Training EventRing、guard 和 owner lock 都只能出现在 `data/buffers/` 树内。训练遥测后续已按 ADR-0009 阶段 2 迁移到独立 EventRing Channel，始终不混入图片 arena。
 - 源码开发环境和重新assemble的发行环境执行相同contract、smoke和soak门禁。
 
 ## 性能验收

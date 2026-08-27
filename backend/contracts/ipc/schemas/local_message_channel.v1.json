@@ -1,0 +1,112 @@
+{
+  "contract_id": "amvision.local-message-channel.v1",
+  "byte_order": "little-endian",
+  "checksum": "crc32-ieee",
+  "publication": "body-and-metadata-before-state-or-sequence",
+  "layouts": {
+    "common_header": {
+      "size": 256,
+      "fields": {
+        "magic": [0, 8],
+        "version": [8, 2],
+        "channel_kind": [10, 2],
+        "endian_marker": [12, 4],
+        "layout_fingerprint": [16, 32],
+        "channel_id_high": [48, 8],
+        "channel_id_low": [56, 8],
+        "owner_epoch": [64, 8],
+        "owner_started_ns": [72, 8],
+        "owner_pid": [80, 4],
+        "flags": [84, 4]
+      }
+    },
+    "rpc_profile_header": {
+      "size": 256,
+      "fields": {
+        "descriptor_count": [0, 4],
+        "descriptor_header_size": [4, 4],
+        "descriptor_stride": [8, 4],
+        "inline_request_capacity": [12, 4],
+        "inline_response_capacity": [16, 4],
+        "page_header_size": [20, 4],
+        "page_capacity": [24, 4],
+        "page_count": [28, 4],
+        "max_pages_per_response": [32, 4],
+        "max_request_bytes": [36, 4],
+        "max_response_bytes": [40, 4],
+        "compression_threshold": [44, 4],
+        "descriptor_region_offset": [48, 8],
+        "page_region_offset": [56, 8],
+        "file_size": [64, 8],
+        "poll_interval_ns": [72, 8],
+        "profile_id": [80, 64]
+      }
+    },
+    "rpc_descriptor_header": {
+      "size": 256,
+      "fields": {
+        "state": [0, 4],
+        "flags": [4, 4],
+        "generation": [8, 8],
+        "owner_epoch": [16, 8],
+        "request_id": [24, 16],
+        "owner_token": [40, 8],
+        "deadline_ns": [48, 8],
+        "request_size": [56, 4],
+        "request_crc": [60, 4],
+        "response_size": [64, 4],
+        "response_crc": [68, 4],
+        "first_page_index": [72, 4],
+        "response_page_count": [76, 4],
+        "error_code": [80, 4],
+        "stored_response_size": [84, 4],
+        "response_ack_deadline_ns": [88, 8],
+        "published_ns": [96, 8]
+      }
+    },
+    "rpc_page_header": {
+      "size": 64,
+      "fields": {
+        "state": [0, 4],
+        "flags": [4, 4],
+        "descriptor_index": [8, 4],
+        "ordinal": [12, 4],
+        "descriptor_generation": [16, 8],
+        "next_page_index": [24, 4],
+        "payload_size": [28, 4],
+        "payload_crc": [32, 4],
+        "page_token": [36, 8],
+        "owner_epoch": [44, 8]
+      }
+    },
+    "event_profile_header": {
+      "size": 256,
+      "fields": {
+        "slot_count": [0, 4],
+        "slot_header_size": [4, 4],
+        "payload_capacity": [8, 4],
+        "slot_stride": [12, 4],
+        "flags": [16, 4],
+        "published_sequence": [24, 8],
+        "dropped_total": [32, 8],
+        "poll_interval_ns": [40, 8],
+        "scan_interval_ns": [48, 8],
+        "session_id": [56, 16],
+        "slot_region_offset": [72, 8],
+        "file_size": [80, 8],
+        "profile_id": [88, 64]
+      }
+    },
+    "event_slot_header": {
+      "size": 64,
+      "fields": {
+        "generation": [0, 8],
+        "sequence": [8, 8],
+        "payload_size": [16, 4],
+        "payload_crc": [20, 4],
+        "owner_epoch": [24, 8],
+        "flags": [32, 4]
+      }
+    }
+  }
+}

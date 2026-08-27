@@ -1,0 +1,16 @@
+{
+  "contract_id": "amvision.workflow-trigger-rpc-extension.v1",
+  "profile_id": "workflow-trigger-rpc.v1",
+  "relative_mmap_path": "local-message/workflow-trigger-main.rpc.mmap",
+  "values": {
+    "phase": 3,
+    "cancel_reason": 2,
+    "requested_timeout_ms": 5000,
+    "accepted_timeout_ms": 3000,
+    "route_generation": 72623859790382856,
+    "error_code": 16,
+    "response_output_lease_count": 2,
+    "handoff_state": 2
+  },
+  "packed_hex": "030000000200000088130000b80b000008070605040302011000000002000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

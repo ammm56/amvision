@@ -64,12 +64,7 @@
     "shutdown_timeout_seconds": 5.0
   },
   "training_telemetry": {
-    "enabled": true,
-    "root_dir": "./data/runtime/training-telemetry",
-    "slot_count": 512,
-    "payload_capacity_bytes": 16384,
-    "poll_interval_seconds": 0.1,
-    "scan_interval_seconds": 1.0
+    "enabled": true
   },
   "async_inference_gateway": {
     "service_id": "backend-service-main"
@@ -102,9 +97,11 @@
     "startup_timeout_seconds": 2.0,
     "shutdown_timeout_seconds": 10.0
   },
+  "local_memory": {
+    "root_dir": "./data/buffers"
+  },
   "local_buffer_broker": {
     "enabled": true,
-    "root_dir": "./data/buffers",
     "startup_timeout_seconds": 60.0,
     "takeover_existing_process": true,
     "takeover_timeout_seconds": 10.0,
@@ -156,20 +153,13 @@
     "runtime_owner": "daemon",
     "service_id": "inference-daemon-main",
     "control_max_concurrent_requests": 8,
+    "max_concurrent_inference_requests": 16,
     "control_poll_interval_seconds": 0.05,
     "control_lease_timeout_seconds": 900.0,
     "control_read_timeout_seconds": 2.0,
     "availability_probe_timeout_seconds": 1.0,
     "mmap_mailbox": {
-      "enabled": true,
-      "slot_count": 128,
-      "message_capacity_bytes": 524288,
-      "overflow_page_count": 256,
-      "overflow_page_capacity_bytes": 524288,
-      "max_overflow_pages_per_response": 64,
-      "compression_threshold_bytes": 262144,
-      "max_concurrent_requests": 16,
-      "poll_interval_seconds": 0.001
+      "enabled": true
     }
   }
 }

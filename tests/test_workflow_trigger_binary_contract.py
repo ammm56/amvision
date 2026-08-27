@@ -7,17 +7,11 @@ import os
 import shutil
 import subprocess
 import time
-import zlib
 from pathlib import Path
 
 import pytest
 
-from backend.contracts.ipc import workflow_trigger_mailbox_v1 as contract
-from backend.maintenance.workflow_trigger_binary_contract import (
-    FIXTURE_OUTPUT_PATH,
-    SCHEMA_PATH,
-    check_outputs,
-)
+from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as contract
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapOwnerLockBusyError,
     acquire_mmap_owner_lock,
@@ -30,14 +24,23 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
     try_lock_byte_range_file,
     unlock_byte_range_file,
 )
-from backend.service.infrastructure.ipc.workflow_trigger_mailbox_path import (
-    build_workflow_trigger_descriptor_guard_path,
-    build_workflow_trigger_mailbox_path,
-    build_workflow_trigger_owner_lock_path,
+from backend.service.infrastructure.ipc.local_message.paths import (
+    build_workflow_trigger_rpc_channel_paths,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = (
+    ROOT
+    / "backend"
+    / "contracts"
+    / "ipc"
+    / "schemas"
+    / "workflow_trigger_rpc_extension.v1.json"
+)
+FIXTURE_PATH = (
+    ROOT / "tests" / "fixtures" / "workflow_trigger_rpc_extension.v1.fixture.json"
+)
 DOTNET_PROJECT = (
     ROOT
     / "sdks"
@@ -55,57 +58,36 @@ DOTNET_PROBE = (
 )
 
 
-def test_binary_contract_generated_outputs_are_current() -> None:
-    """schema 必须是 Python、.NET 和 fixture 的唯一事实源。"""
+def test_binary_contract_schema_python_and_fixture_are_current() -> None:
+    """extension schema、Python packer 和 fixture 必须逐字节一致。"""
 
-    assert check_outputs() == []
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    fixture = json.loads(FIXTURE_OUTPUT_PATH.read_text(encoding="utf-8"))
+    fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     assert fixture["contract_id"] == contract.CONTRACT_ID
-    assert fixture["schema_sha256"] == contract.SCHEMA_SHA256
-    assert contract.FILE_HEADER_STRUCT.size == schema["layouts"]["file_header"]["size"]
-    assert (
-        contract.DESCRIPTOR_HEADER_STRUCT.size
-        == schema["layouts"]["descriptor_header"]["size"]
-    )
-    assert contract.PAGE_HEADER_STRUCT.size == schema["layouts"]["page_header"]["size"]
-    assert len(bytes.fromhex(fixture["packed_hex"]["file_header"])) == 128
-    assert len(bytes.fromhex(fixture["packed_hex"]["descriptor_header"])) == 320
-    assert len(bytes.fromhex(fixture["packed_hex"]["page_header"])) == 64
-
-
-def test_crc32_ieee_fixture_is_incremental_and_frozen() -> None:
-    """正式 algorithm id 与增量 CRC32 IEEE fixture 必须保持一致。"""
-
-    fixture = json.loads(FIXTURE_OUTPUT_PATH.read_text(encoding="utf-8"))
-    content = bytes.fromhex(fixture["checksum"]["input_hex"])
-    expected = int(fixture["checksum"]["value"], 16)
-    checksum = 0
-    for offset in range(0, len(content), 7):
-        checksum = zlib.crc32(content[offset : offset + 7], checksum)
-    assert checksum & 0xFFFFFFFF == expected
-    assert fixture["checksum"]["algorithm_id"] == contract.CHECKSUM_ALGORITHM_CRC32_IEEE
+    assert schema["base_contract_id"] == "amvision.local-message-channel.v1"
+    assert schema["descriptor_extension"]["offset"] == 104
+    assert schema["descriptor_extension"]["size"] == 152
+    packed = contract.pack_descriptor_extension(**fixture["values"])
+    assert packed.hex() == fixture["packed_hex"]
+    assert len(packed) == 152
 
 
 def test_workflow_trigger_paths_are_contained_by_buffers_root(tmp_path: Path) -> None:
-    """正式 mailbox、owner lock 与 descriptor guard 只能位于 buffers root。"""
+    """正式 mmap、owner lock 与统一 byte-range guard 只能位于中立 root。"""
 
     buffers_root = tmp_path / "data" / "buffers"
-    mailbox_path = build_workflow_trigger_mailbox_path(buffers_root)
-    assert mailbox_path == (
-        buffers_root / "workflow-trigger" / "workflow-trigger-main.mmap"
+    paths = build_workflow_trigger_rpc_channel_paths(buffers_root=buffers_root)
+    assert paths.mmap_path == (
+        buffers_root / "local-message" / "workflow-trigger-main.rpc.mmap"
     ).resolve()
-    assert mailbox_path.is_relative_to(buffers_root.resolve())
-    assert build_workflow_trigger_owner_lock_path(mailbox_path).name.endswith(
-        ".mmap.owner.lock"
-    )
-    assert build_workflow_trigger_descriptor_guard_path(mailbox_path, 127).name.endswith(
-        ".mmap.descriptor-127.guard"
-    )
-    with pytest.raises(ValueError, match="0..127"):
-        build_workflow_trigger_descriptor_guard_path(mailbox_path, 128)
+    assert paths.mmap_path.is_relative_to(buffers_root.resolve())
+    assert paths.owner_lock_path.name.endswith(".rpc.mmap.owner.lock")
+    assert paths.guard_path.name.endswith(".rpc.mmap.guard")
     with pytest.raises(ValueError, match="relative_path"):
-        build_contained_mmap_path(root_dir=buffers_root, relative_path=mailbox_path)
+        build_contained_mmap_path(
+            root_dir=buffers_root,
+            relative_path=paths.mmap_path,
+        )
     with pytest.raises(ValueError, match="配置 root"):
         build_contained_mmap_path(root_dir=buffers_root, relative_path="../escape.mmap")
 

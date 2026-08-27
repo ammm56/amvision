@@ -383,8 +383,8 @@ def _broker(
     """构造小容量固定 arena；capacity_units 只调节测试总容量。"""
 
     supervisor = LocalBufferBrokerProcessSupervisor(
+        root_dir=tmp_path / "buffers",
         settings=LocalBufferBrokerSettings(
-            root_dir=str(tmp_path / "buffers"),
             arena_id="local-buffer-main",
             arena_size_bytes=max(4, capacity_units) * 1024 * 1024,
             min_block_size_bytes=1024 * 1024,

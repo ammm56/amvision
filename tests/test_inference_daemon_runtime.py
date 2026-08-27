@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from backend.inference_daemon.runtime import (
     InferenceDaemonRuntime,
@@ -14,6 +15,7 @@ from backend.inference_daemon.runtime import (
 from backend.service.application.local_buffers import (
     LocalBufferBrokerSettings,
 )
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.settings import BackendServiceSettings
 
 
@@ -25,6 +27,20 @@ def test_backend_service_rejects_private_arena_as_public_main() -> None:
             local_buffer_broker=LocalBufferBrokerSettings(
                 arena_id="inference-daemon-private"
             )
+        )
+
+
+def test_inference_rpc_uses_fixed_profile_and_domain_admission_config() -> None:
+    """普通配置只能启停 Channel，并在领域层配置 handler admission。"""
+
+    settings = BackendServiceSettings()
+    assert settings.inference_daemon.mmap_mailbox.enabled is True
+    assert settings.inference_daemon.max_concurrent_inference_requests == 16
+    with pytest.raises(ValidationError, match="slot_count"):
+        BackendServiceSettings(
+            inference_daemon={
+                "mmap_mailbox": {"enabled": True, "slot_count": 128},
+            }
         )
 
 
@@ -46,8 +62,8 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
             "queue": base_settings.queue.model_copy(
                 update={"root_dir": str(tmp_path / "queue")}
             ),
+            "local_memory": LocalMemorySettings(root_dir=str(backend_buffer_root)),
             "local_buffer_broker": LocalBufferBrokerSettings(
-                root_dir=str(backend_buffer_root),
                 arena_size_bytes=16 * 1024 * 1024,
                 min_block_size_bytes=1024 * 1024,
                 max_allocation_bytes=8 * 1024 * 1024,
@@ -59,7 +75,7 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
     private_broker = runtime.async_local_buffer_broker_supervisor
 
     try:
-        assert Path(private_broker.settings.root_dir) == (
+        assert private_broker.root_dir == (
             backend_buffer_root / "inference-daemon-private"
         )
         assert private_broker.settings.arena_id == "inference-daemon-private"
@@ -72,8 +88,8 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
                 assert supervisor.local_buffer_broker_event_channel_provider is not None
                 assert supervisor.local_buffer_direct_reader_settings is not None
                 assert supervisor.local_buffer_direct_reader_settings[
-                    "root_dir"
-                ] == str(backend_buffer_root)
+                    "buffers_root"
+                ] == str(backend_buffer_root.resolve())
                 assert (
                     supervisor.local_buffer_direct_reader_settings["arena_id"]
                     == "local-buffer-main"

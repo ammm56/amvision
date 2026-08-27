@@ -75,7 +75,7 @@ def reset_development_model_state(
     )
     queue_root = Path(backend_service_settings.queue.root_dir)
     worker_root = queue_root.parent / "worker"
-    buffer_root = Path(backend_service_settings.local_buffer_broker.root_dir)
+    buffer_root = Path(backend_service_settings.local_memory.root_dir)
     initialize_database_schema(session_factory)
     preview = _build_reset_preview(
         session_factory=session_factory,
@@ -310,6 +310,7 @@ def _resolve_reset_storage_paths(
         *queue_paths,
         worker_root.resolve(),
         buffer_root.resolve(),
+        (queue_root.parent / "runtime" / "training-telemetry").resolve(),
     ]
     protected_paths = {
         dataset_storage.resolve("datasets").resolve(),

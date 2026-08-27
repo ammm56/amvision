@@ -31,6 +31,13 @@ def test_broker_rejects_noncanonical_main_arena_id() -> None:
         LocalBufferBrokerSettings(arena_id="custom-main")
 
 
+def test_broker_rejects_legacy_root_owned_by_local_memory() -> None:
+    """配置迁移后 LocalBufferBroker 不能继续双读旧 root_dir。"""
+
+    with pytest.raises(ValueError, match="不再拥有"):
+        LocalBufferBrokerSettings(root_dir="./data/buffers")
+
+
 def test_broker_process_serves_dynamic_extents_and_capacity_metrics(
     tmp_path: Path,
 ) -> None:
@@ -225,8 +232,8 @@ def test_workflow_parent_cleanup_releases_registered_lease(tmp_path: Path) -> No
 
 def _supervisor(tmp_path: Path) -> LocalBufferBrokerProcessSupervisor:
     return LocalBufferBrokerProcessSupervisor(
+        root_dir=tmp_path / "buffers",
         settings=LocalBufferBrokerSettings(
-            root_dir=str(tmp_path / "buffers"),
             arena_size_bytes=16 * _MIB,
             min_block_size_bytes=_MIB,
             max_allocation_bytes=8 * _MIB,

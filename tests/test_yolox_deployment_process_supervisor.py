@@ -105,8 +105,8 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
     (tmp_path / "runtime-inputs" / "image-1.jpg").write_bytes(b"image-1")
     (tmp_path / "runtime-inputs" / "image-2.jpg").write_bytes(b"image-2")
     buffer_broker = LocalBufferBrokerProcessSupervisor(
+        root_dir=tmp_path / "buffers",
         settings=LocalBufferBrokerSettings(
-            root_dir=str(tmp_path / "buffers"),
             arena_size_bytes=16 * 1024 * 1024,
             min_block_size_bytes=1024 * 1024,
             max_allocation_bytes=8 * 1024 * 1024,

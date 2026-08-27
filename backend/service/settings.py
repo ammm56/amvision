@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -15,6 +15,7 @@ from pydantic_settings import (
 
 from backend.bootstrap.settings import build_json_config_sources
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.runtime.deployment.deployment_process_settings import (
     DeploymentProcessSupervisorConfig,
 )
@@ -502,45 +503,10 @@ class BackendServiceDeploymentRuntimeReconcilerConfig(BaseModel):
 
 
 class BackendServiceInferenceMmapMailboxConfig(BaseModel):
-    """描述跨平台 inference mmap v1 mailbox。
+    """控制是否启用冻结 profile 的 inference LocalMessage RPC Channel。"""
 
-    字段：
-    - enabled：是否启用 mmap inference 热路径。
-    - slot_count：可同时占用的请求/响应消息槽位数，不是图片槽位数。
-    - message_capacity_bytes：每个描述符的请求区和内联响应区各自容量。
-    - overflow_page_count：大响应固定溢出页总数。
-    - overflow_page_capacity_bytes：单个固定溢出页正文容量。
-    - max_overflow_pages_per_response：单次响应最多占用的溢出页数。
-    - compression_threshold_bytes：开始尝试无损压缩的响应大小。
-    - max_concurrent_requests：mailbox 同时执行的请求上限。
-    - poll_interval_seconds：客户端和 daemon 扫描槽位状态的间隔。
-    """
-
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    slot_count: int = Field(default=128, ge=8)
-    message_capacity_bytes: int = Field(
-        default=512 * 1024,
-        ge=64 * 1024,
-    )
-    overflow_page_count: int = Field(default=256, ge=8)
-    overflow_page_capacity_bytes: int = Field(
-        default=512 * 1024,
-        ge=64 * 1024,
-    )
-    max_overflow_pages_per_response: int = Field(default=64, ge=1)
-    compression_threshold_bytes: int = Field(default=256 * 1024, ge=0)
-    max_concurrent_requests: int = Field(default=16, ge=1)
-    poll_interval_seconds: float = Field(default=0.001, gt=0)
-
-    @model_validator(mode="after")
-    def validate_page_pool(self) -> BackendServiceInferenceMmapMailboxConfig:
-        """校验单响应页数不能超过固定页池。"""
-
-        if self.max_overflow_pages_per_response > self.overflow_page_count:
-            raise ValueError(
-                "max_overflow_pages_per_response 不能超过 overflow_page_count"
-            )
-        return self
 
 
 class BackendServiceInferenceDaemonConfig(BaseModel):
@@ -550,16 +516,18 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
     - runtime_owner：embedded 仅供进程内单元测试；daemon 表示服务只使用控制客户端。
     - service_id：控制队列和 async inference 队列使用的稳定 daemon id。
     - control_max_concurrent_requests：daemon 控制请求执行池上限。
+    - max_concurrent_inference_requests：推理热路径 handler admission 上限。
     - control_poll_interval_seconds：控制队列空闲轮询间隔。
     - control_lease_timeout_seconds：异常退出后控制请求 lease 恢复时间。
     - control_read_timeout_seconds：ping、status、health 等轻量只读控制请求最长等待时间；不用于 stop、reset。
     - availability_probe_timeout_seconds：执行长操作前探测 daemon 的最长等待时间。
-    - mmap_mailbox：跨平台低延迟 inference 控制消息 mailbox 配置。
+    - mmap_mailbox：跨平台低延迟 inference 请求/响应 RpcMailbox 配置；变更控制仍使用持久 Queue。
     """
 
     runtime_owner: Literal["embedded", "daemon"] = "daemon"
     service_id: str = "inference-daemon-main"
     control_max_concurrent_requests: int = Field(default=8, gt=0)
+    max_concurrent_inference_requests: int = Field(default=16, gt=0)
     control_poll_interval_seconds: float = Field(default=0.05, gt=0)
     control_lease_timeout_seconds: float = Field(default=900.0, gt=0)
     control_read_timeout_seconds: float = Field(default=2.0, gt=0)
@@ -570,14 +538,10 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
 
 
 class BackendServiceTrainingTelemetryConfig(BaseModel):
-    """描述独立训练 worker 的本机 mmap 遥测通道。"""
+    """控制 backend-service 是否接收独立训练 worker 的 EventRing。"""
 
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    root_dir: str = "./data/runtime/training-telemetry"
-    slot_count: int = Field(default=512, gt=0)
-    payload_capacity_bytes: int = Field(default=16 * 1024, ge=1024)
-    poll_interval_seconds: float = Field(default=0.1, gt=0)
-    scan_interval_seconds: float = Field(default=1.0, gt=0)
 
 
 class BackendServiceQueueOutboxConfig(BaseModel):
@@ -616,7 +580,8 @@ class BackendServiceSettings(BaseSettings):
     - workflow_runtime：workflow runtime 结果缓存配置。
     - zeromq_trigger：ZeroMQ TriggerSource 全局缺省值与 listener 生命周期配置。
     - custom_nodes：自定义节点目录配置。
-    - local_buffer_broker：本机 buffer broker 进程配置。
+    - local_memory：全部本机共享内存数据面的受信根目录。
+    - local_buffer_broker：本机图片 buffer broker 进程配置。
     - deployment_process_supervisor：deployment 进程监督器配置。
     """
 
@@ -652,6 +617,7 @@ class BackendServiceSettings(BaseSettings):
     custom_nodes: BackendServiceCustomNodesConfig = Field(
         default_factory=BackendServiceCustomNodesConfig
     )
+    local_memory: LocalMemorySettings = Field(default_factory=LocalMemorySettings)
     local_buffer_broker: LocalBufferBrokerSettings = Field(
         default_factory=LocalBufferBrokerSettings
     )

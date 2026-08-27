@@ -1,185 +1,118 @@
-# Inference mmap mailbox v1
+# Inference LocalMessage RPC v1
 
 ## 目标与边界
 
-Inference mailbox 是 backend-service 与独立 inference daemon 之间的同机低延迟结构化数据面。当前协议只有 v1，不存在并行维护的旧布局或 v2 兼容层。daemon 启动时按当前配置重新初始化固定大小文件；布局不匹配时 client 直接拒绝连接。
+Inference RPC Channel 是 backend-service 与独立 inference daemon 之间的同机低延迟结构化数据面。阶段 3 已把原独立 mmap 实现原子迁移到 [ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 定义的通用 `RpcMailboxChannel.v1` engine；不存在旧布局双读或自动回退。
 
-本文描述当前已运行实现。[ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 已接受将底层 header、descriptor、page、CRC、deadline、回收和 health 收敛到公共 `RpcMailboxChannel.v1` engine，但代码迁移尚未发生。迁移后 Inference 仍有独立物理文件、daemon owner、epoch、descriptor/page 容量和故障边界，不与 Workflow Trigger 共用 mailbox 或 allocator。
-
-mailbox 承载：
+该 Channel 承载：
 
 - detection、classification、segmentation、pose、OBB 同步推理请求和结构化结果；
 - `ping`、`status`、`health` 只读请求；
 - process config、阈值、`BufferRef`、`FrameRef` 和结果图片引用。
 
-mailbox 不承载图片 bytes、Base64、持久任务和变更控制。输入或结果图片使用 [LocalBufferBroker](local-buffer-broker.md)；需要跨重启保存的异步结果在持久化边界复制到 ObjectStore。`start`、`stop`、`warmup`、`reset` 使用持久化控制队列。
+该 Channel 不承载图片 bytes、Base64、持久任务和变更控制。输入或结果图片使用 [LocalBufferBroker](local-buffer-broker.md)；`start`、`stop`、`warmup`、`reset` 继续使用持久化控制队列。
 
-## 固定布局
+Inference 拥有独立文件、daemon owner、epoch、descriptor/page 容量和故障边界，不与 Workflow Trigger 或 Training EventRing 共用 mailbox、page pool 或 allocator lock。正式路径为：
 
-文件由 64-byte file header、固定 descriptor 区和固定 overflow page pool 组成。启动后不扩文件。
+```text
+data/buffers/local-message/inference-daemon-main.rpc.mmap
+```
 
-默认配置：
+## 应用契约与分层
 
-| 项目 | 默认值 |
+应用层只依赖 `InferenceMessageClient` 和不可变 `bytes` wire envelope：
+
+```text
+inference-daemon.request.v1
+inference-daemon.response.v1
+```
+
+业务 payload 和现有 `{ok, result}` / `{ok, error}` 结果形状保持不变。应用层不读取 mmap offset、descriptor、page 或 guard；文件布局、CRC、压缩、deadline、ACK、owner fence 和资源回收只存在于 `infrastructure/ipc/local_message/`。
+
+请求一旦发布后不自动重试。owner 关闭或 epoch 变化时，当前调用返回可重试的取消错误；只有调用方发起的下一次独立请求才重新打开新 epoch，避免模型被静默执行两次。
+
+## 冻结 profile
+
+普通部署配置只保留 `inference_daemon.mmap_mailbox.enabled`。传输几何由代码中的 `inference-rpc.v1` profile 固定并写入 header：
+
+| 项目 | 固定值 |
 | --- | ---: |
 | descriptor 数 | 128 |
-| 单 descriptor 请求 inline 区 | 512 KiB |
-| 单 descriptor 响应 inline 区 | 512 KiB |
-| overflow page 数 | 256 |
-| 单 page 正文 | 512 KiB |
-| 单响应 page 上限 | 64 |
-| 单响应原始 JSON 上限 | 32 MiB |
-| mailbox 执行并发 | 16 |
+| 请求 inline 容量 | 64 KiB |
+| 响应 inline 容量 | 256 KiB |
+| overflow page 数 | 512 |
+| 单 page 正文 | 256 KiB |
+| 单响应 page 上限 | 129 |
+| 单请求上限 | 64 KiB |
+| 单响应业务正文上限 | 32 MiB |
+| 单响应原始 wire 上限 | 32 MiB + 64 KiB envelope reserve |
+| 压缩尝试阈值 | 256 KiB |
+| poll 间隔 | 1 ms |
 
-默认 descriptor inline 区约 128 MiB，overflow pool 约 128 MiB；加上 header 后，文件逻辑大小约 256 MiB。文件容量固定、可计算，与图片分辨率无关。
+`inference_daemon.max_concurrent_inference_requests` 默认 16，只控制业务 handler admission，不属于 transport profile。descriptor 容量、模型实例并发和 deployment runtime 限流仍是相互独立的边界。
 
-### File header
+文件逻辑大小约 168 MiB。mmap 文件不等于同等物理内存常驻量，但目标磁盘必须提供对应逻辑容量。
 
-File header 记录：
+## 状态、发布和容量
 
-- magic `AMVMBX1` 和 protocol version `1`；
-- descriptor count、inline capacity、descriptor stride；
-- page count、page capacity、page stride；
-- 单响应 page 上限；
-- 当前 daemon `server_epoch`。
-
-Client 打开文件时必须同时校验 magic、版本、所有 stride、总文件大小和页数边界。只校验版本号不足以证明布局一致。
-
-### Descriptor header
-
-每个 descriptor 独立代表一个请求，header 记录：
-
-- `state`、编码 flags；
-- `request_size`、`request_crc`；
-- `response_size`、`response_raw_size`、`response_crc`；
-- `first_page_index`、`page_count`；
-- `generation`、`owner_token`、`deadline_ns`、`server_epoch`。
-
-Descriptor 后面紧跟固定请求 inline 区和固定响应 inline 区。小响应不申请 overflow page。
-
-状态机固定为：
+通用 RPC 状态机为：
 
 ```text
-FREE -> REQUEST -> PROCESSING -> RESPONSE -> ACKED -> FREE
-                     |              |
-                     +-> CANCELLED <-+
-                              |
-                              +-> FREE
+FREE -> WRITING_REQUEST -> REQUEST -> PROCESSING -> RESPONSE -> FREE
+                                      |              ^
+                                      +-- cancel ----+
 ```
 
-Header 和 body 写完后才单独发布 state。状态发布是最后一步，reader 不把其他 header 字段当作就绪信号。
+请求或响应都先写 body 和 metadata，最后发布 state。身份由 `owner_epoch + descriptor_index + generation + owner_token + deadline_ns` 共同确定；任一字段不匹配都不能读取、ACK 或回收另一个请求。
 
-### Overflow page header
+响应达到压缩阈值时尝试 zlib；只有至少节省 12.5% 才采用压缩。压缩后不超过 inline 容量则保留 inline，否则一次申请完整 page-chain。page 不要求物理连续，每页和完整原始正文均校验 CRC。
 
-每个 page header 记录：
+page pool 满载或单响应 page 数超限时发布稳定 capacity error。handler 不重跑、不等待、不改走控制队列；inline transport error 仍可发布。响应超过 32 MiB 时，Inference adapter 返回现有 `mmap_response_capacity_exhausted` 业务错误 envelope。
 
-- `state`；
-- `next_page_index`；
-- `used_size`、`page_crc`；
-- `descriptor_index`、`descriptor_generation`、`owner_token`。
+## deadline、停止和恢复
 
-Daemon 是唯一 page allocator 和回收者。分配时先寻找连续区间；连续页不足但总空闲页足够时，使用非连续 page chain。Daemon 内存中的 allocation map 与 page header 必须同时表明 page 空闲后才能重新分配，损坏的 `FREE` header 不会覆盖仍登记在途的响应。Client 从 descriptor 的 `first_page_index` 开始沿 `next_page_index` 读取，不扫描整个 page pool，也不依赖物理连续或 ordinal 重排。
-
-## 请求与响应发布
-
-Client 发布请求：
-
-1. 取得 descriptor guard 和独占 owner 锁文件；
-2. 校验 `FREE`、`server_epoch` 和 owner；
-3. 写入紧凑 UTF-8 JSON、长度、CRC、generation、deadline；
-4. 最后发布 `REQUEST`。
-
-Daemon 发布响应：
-
-1. 请求只通过项目既有的 `pydantic-core` 序列化一次为紧凑 UTF-8 JSON；
-2. 原始 JSON 超过单响应上限时改写为 inline 容量错误；
-3. 达到压缩阈值时尝试 zlib level 1；只有压缩后不超过原始大小的 87.5% 才采用；
-4. 编码结果不超过 512 KiB 时写 descriptor inline response；
-5. 大响应一次性申请完整 page chain，写完每页正文、长度和 CRC 后发布 page `READY`；
-6. 写 descriptor 的 codec、长度、CRC、first page 和 page count；
-7. 最后发布 `RESPONSE`。
-
-推理 handler 只执行一次。页池不足时不重新推理、不等待、不重试、不改走控制队列，返回 `mmap_response_capacity_exhausted`（HTTP 语义 503）。错误 envelope 始终使用 descriptor inline response，不依赖 overflow page。
-
-Client 看到 `RESPONSE` 后校验 descriptor identity、page chain 循环/越界/长度、每页 CRC 和整体 CRC，再透明解压并校验原始长度。成功解码或确认协议错误后发布 `ACKED`，daemon 统一回收。
-
-## 所有权、超时与恢复
-
-一次请求的身份由下列字段共同确定：
-
-```text
-server_epoch + descriptor_index + generation + owner_token + deadline_ns
-```
-
-任何 generation、owner 或 epoch 不匹配都终止当前读取或状态修改，不能回收另一个请求的资源。
-
-回收规则：
-
-- 正常 ACK：daemon 立即释放 page chain 和 descriptor；
-- client timeout：client 发布 `CANCELLED`，daemon 在 handler 退出后回收；
-- client 在请求发布前退出：daemon 扫描已过 deadline 的 owner 锁并恢复 `FREE` descriptor；
-- client 在读取或 ACK 前退出：daemon 在 response deadline 加 ACK grace 后回收；
-- daemon 在 page 写入中退出：新 daemon 发布新 epoch，并在开放请求前清空全部 descriptor、page 和旧 owner 锁；
-- page loop、越界、重复 identity 或 CRC 错误：client 拒绝结果；daemon 依据本进程 allocator 记录回收该响应的实际页，避免损坏 header 造成泄漏或误释放。
-
-页分配表只存在于 daemon 内存，由 page pool lock 保护。跨进程同步只发生在 descriptor guard；不会为每个 page 创建锁文件。
+- client deadline 到期后发布取消，迟到 handler 结果不能覆盖终态；
+- daemon 停止时先发布 closed fence 并在 descriptor guard 下回收旧 epoch，再等待已进入 handler 的任务退出；client 不等待整个 handler；
+- daemon 重启生成新 owner epoch，旧 client 的当前请求失败且不会自动重放；
+- ACK、取消、超时、client 退出和 owner 重启后，descriptor 与 page 都必须恢复到冻结容量；
+- page CRC、chain、generation、owner 或 epoch 损坏时拒绝结果，不按不可信链释放其他请求的 page。
 
 ## 图片链路
-
-同步输入和结果图片：
 
 ```text
 HTTP / Workflow / Trigger image
   -> LocalBuffer BufferRef / FrameRef
-  -> mmap JSON 只传引用
+  -> Inference RPC 只传引用和结构化参数
   -> deployment worker 读取或写入 LocalBuffer
-  -> Workflow 后续节点继续使用引用
+  -> 调用方继续消费引用
 ```
 
-同步 HTTP 明确要求 Base64 时，只能在最终 HTTP 响应边界读取 LocalBuffer 并编码。Inference daemon IPC 不生成或传输 `preview_image_bytes_base64`。
+同步 HTTP 明确要求 Base64 时，只能在最终 HTTP 响应边界读取 LocalBuffer 并编码。Inference RPC 不生成或传输 `input_image_bytes_base64` 或 `preview_image_bytes_base64`。
 
-持久异步结果：
+## 健康指标
 
-```text
-LocalBuffer
-  -> async 持久化边界复制到 ObjectStore
-  -> TaskRecord / gateway message 保存 ImageRef 或 object key
-  -> 释放 LocalBuffer
-```
+`ping.mailbox` 公开当前 owner epoch、descriptor 各状态数量、活动 handler、handler admission、inline/page 容量、page 使用量和高水位。`response_metrics` 记录当前 epoch 的响应数、page-chain 响应数、压缩响应数、容量拒绝数，以及最近 4096 个响应整体和按 task type 分类的原始 wire P50/P95/P99/最大值。
 
-## 容量与健康指标
+这些指标用于现场容量判断，不暴露 mmap 路径和 payload 内容，也不能把合成载荷统计当成生产模型分布。
 
-`ping` 的 mailbox 摘要公开当前 epoch、descriptor 各状态数量、活动执行数、执行并发上限、inline 容量、page 总数/空闲数/使用数、高水位和单响应上限。`response_metrics` 记录当前 epoch 的响应总数、分页数、压缩数、容量拒绝数，以及最近 4096 个响应整体和按 task type 分类的原始 JSON P50/P95/P99/最大值。容量规划优先依据真实 segmentation 分布调整 page 数与单响应页上限，不能运行时扩容文件。
+## 阶段 3 验证结果
 
-仓库当前未保存可作为生产统计样本的真实 segmentation 响应记录，因此不能把合成边界载荷误写为 P50/P95/P99。现场或真实模型 soak 必须记录紧凑 JSON 的 P50、P95、P99 和最大值，再决定是否偏离默认 256 pages / 64 pages-per-response。
+专项门禁覆盖：
 
-## 验证门禁
+- 256 KiB 新 inline 边界、512 KiB 旧边界和 1/8/16/32 MiB 无损响应；
+- 16 路 inline/page-chain 混合并发且 handler 各执行一次；
+- page pool 满载仍返回 capacity error，inline 响应继续可用；
+- deadline、停止、owner 重启、不自动重试、CRC、generation、ACK 和资源恢复；
+- detection/segmentation 真实业务 DTO 经 dispatcher 往返，其他模型链由全量 runtime 测试继续覆盖；
+- 图片只使用 LocalBuffer 引用，不进入结构化 Channel。
 
-实现变更至少覆盖：
+同机 5 轮、每轮预热 10 次后采样 30 次的小响应基准如下：
 
-- 512 KiB 前后以及 1、8、16、32 MiB 无损响应；
-- 16 路 inline / page-chain 混合并发；
-- 连续优先和碎片化非连续 chain；
-- 压缩采用与拒绝边界；
-- pool 满载时明确容量错误，inline 请求仍成功；
-- request、processing、response、read、ACK 各阶段 timeout/退出；
-- daemon 在多页写入过程中退出并由新 epoch 恢复；
-- CRC、chain loop、owner、generation 和 epoch 不匹配；
-- 四个 client 进程共 2000 请求无 ownership 失效、重复释放和 page 泄漏；
-- detection、classification、segmentation、pose、OBB 路由不进入控制队列；
-- preview/result image 只通过 LocalBuffer 引用；
-- 真实 segmentation 模型结果在传输前后结构和值完全一致；
-- Workflow 双并行分支和 Trigger 长时 soak 后 descriptor/page 回到基线。
+| 指标 | 阶段 0 | 阶段 3 | 允许上限 | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| P95 | 17.552205 ms | 4.344305 ms | 19.307426 ms | 通过 |
+| P99 | 17.956461 ms | 4.830960 ms | 19.752107 ms | 通过 |
 
-性能对比必须使用同一机器、同一 Python 环境、同一 JSON 载荷和相同次数，分别记录 1 MiB 与 8 MiB 的中位数/P95。性能结论属于目标硬件 benchmark，不写成跨机器保证；小响应不得因 page-chain 支持产生明显回退。
+原始报告位于 `.tmp/local-message-channel-stage3/inference-benchmark.json`，SHA-256 为 `1161d657183fb128c7f605847406bbfa4df4a88ade142444660237e3bf44974e`。该结果只约束当前开发机和固定基准拓扑，不写成跨机器性能保证。
 
-2026-08-21 在当前 Windows 开发机、当前 conda 环境中，以相同的高重复 segmentation 风格 JSON、5 次预热后采样中位数，对照原持久化文件控制队列完整请求/响应轮询链路，结果为：
-
-| 原始响应大小 | mmap v1 中位数 | 文件控制队列中位数 | 加速比 |
-| --- | ---: | ---: | ---: |
-| 1 MiB | 15.63 ms | 50.42 ms | 3.23× |
-| 8 MiB | 58.63 ms | 201.89 ms | 3.44× |
-
-该记录只证明当前环境和该载荷通过 3× 门禁。真实目标设备仍须用真实 segmentation 响应重新采集 P50/P95/P99 和最大值，不能直接沿用开发机数字。
-
-同日使用本地预训练 YOLO11n segmentation checkpoint 和仓库开发测试图片执行真实 PyTorch 推理，得到 9 个 instance、1776 个 polygon 数值；序列化结果经过 mmap v1 后逐字段比较完全相同。该结果证明传输不改变当前样本的结构和值，不替代目标数据集的模型精度验证。
+既有真实 YOLO11n segmentation 样本得到 9 个 instance、1776 个 polygon 数值，传输前后逐字段一致。该结果证明结构化传输不改变该样本的值，不替代目标数据集的模型精度验证。

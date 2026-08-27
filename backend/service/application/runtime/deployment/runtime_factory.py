@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from backend.service.application.events import InMemoryServiceEventBus
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.models.inference.classification_async_inference_gateway import (
@@ -121,7 +123,10 @@ def _build_deployment_supervisor(
             local_buffer_broker_supervisor.get_event_channel
         ),
         local_buffer_direct_reader_settings=(
-            settings.local_buffer_broker.model_dump(mode="python")
+            {
+                **settings.local_buffer_broker.model_dump(mode="python"),
+                "buffers_root": str(Path(settings.local_memory.root_dir).resolve()),
+            }
             if enable_direct_mmap_reader
             else None
         ),

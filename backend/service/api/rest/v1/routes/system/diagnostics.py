@@ -108,7 +108,7 @@ def _build_system_diagnostics(settings: BackendServiceSettings) -> dict[str, obj
     object_store_root = _resolve_path(settings.dataset_storage.root_dir)
     queue_root = _resolve_path(settings.queue.root_dir)
     custom_nodes_root = _resolve_path(settings.custom_nodes.root_dir)
-    local_buffer_root = _resolve_path(settings.local_buffer_broker.root_dir)
+    local_buffer_root = _resolve_path(settings.local_memory.root_dir)
     return {
         "os": platform_module.platform(),
         "system": platform_module.system(),
@@ -252,6 +252,10 @@ def _build_service_diagnostics(
             request=request,
             settings=settings,
         ),
+        "local_message": _build_local_message_summary(
+            request=request,
+            settings=settings,
+        ),
         "websocket": {
             "status": "configured",
             "query_token_enabled": settings.auth.websocket_query_token_enabled,
@@ -348,10 +352,105 @@ def _build_inference_daemon_summary(
             "error_type": error.__class__.__name__,
         }
     reachable = bool(result.get("ready")) if isinstance(result, dict) else False
-    return {
+    response = {
         **summary,
         "status": "ok" if reachable else "unavailable",
         "reachable": reachable,
+    }
+    mailbox = result.get("mailbox") if isinstance(result, dict) else None
+    if isinstance(mailbox, dict):
+        response["mailbox"] = dict(mailbox)
+    return response
+
+
+def _build_local_message_summary(
+    *,
+    request: Request,
+    settings: BackendServiceSettings,
+) -> dict[str, object]:
+    """汇总本进程拥有的 Trigger RPC 与 Training EventRing 健康状态。"""
+
+    trigger_supervisor = getattr(
+        request.app.state,
+        "workflow_trigger_mailbox_supervisor",
+        None,
+    )
+    if trigger_supervisor is None:
+        trigger_summary: dict[str, object] = {
+            "configured": False,
+            "running": False,
+        }
+    else:
+        try:
+            trigger_status = trigger_supervisor.build_status()
+        except Exception as error:  # noqa: BLE001 - 诊断端点必须可降级
+            trigger_summary = {
+                "configured": True,
+                "running": False,
+                "error_type": type(error).__name__,
+            }
+        else:
+            trigger_summary = {
+                "configured": True,
+                **dict(trigger_status),
+            }
+
+    telemetry_receiver = getattr(
+        request.app.state,
+        "training_telemetry_receiver",
+        None,
+    )
+    event_channels: list[dict[str, object]] = []
+    if telemetry_receiver is not None:
+        try:
+            event_channels = [
+                {
+                    "channel_id": str(item.channel_id),
+                    "owner_epoch": item.owner_epoch,
+                    "session_id": str(item.session_id),
+                    "closed": item.closed,
+                    "published_sequence": item.published_sequence,
+                    "dropped_total": item.dropped_total,
+                    "reader_gap_total": item.reader_gap_total,
+                }
+                for item in telemetry_receiver.snapshot_health()
+            ]
+        except Exception as error:  # noqa: BLE001 - 诊断端点必须可降级
+            telemetry_summary: dict[str, object] = {
+                "configured": True,
+                "running": False,
+                "channel_count": 0,
+                "channels": [],
+                "error_type": type(error).__name__,
+            }
+        else:
+            telemetry_summary = {
+                "configured": True,
+                "running": bool(telemetry_receiver.is_running),
+                "channel_count": len(event_channels),
+                "channels": event_channels,
+            }
+    else:
+        telemetry_summary = {
+            "configured": False,
+            "running": False,
+            "channel_count": 0,
+            "channels": [],
+        }
+
+    return {
+        "buffers_root": str(_resolve_path(settings.local_memory.root_dir)),
+        "workflow_trigger_rpc": trigger_summary,
+        "training_telemetry_event": telemetry_summary,
+        "inference_rpc": {
+            "enabled": settings.inference_daemon.mmap_mailbox.enabled,
+            "health_source": "inference_daemon.mailbox",
+        },
+        "retained_queue_channels": [
+            "workflow-runtime",
+            "published-inference-gateway",
+            "local-buffer-broker-control",
+        ],
     }
 
 

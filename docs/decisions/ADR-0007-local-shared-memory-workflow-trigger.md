@@ -30,13 +30,13 @@
 
 同一 backend-service 实例使用一个全局 Workflow Trigger mailbox。mailbox 保存 descriptor、业务参数、LocalBuffer lease identity、小型结构化结果和大型结构化结果的 page-chain。直接公开的 `image-ref.v1` 图片主体始终位于 LocalBufferBroker；只有图中显式执行 `Image Base64 Encode` 后形成的 `image-base64.v1` 才作为结构化 JSON 进入 inline/page-chain，并受单响应容量上限约束。mailbox 采用当前开发期的 v1 契约，不创建旧协议兼容层，也不复用 inference mailbox 的文件或所有权空间。
 
-mailbox 路径固定从现有 `local_buffer_broker.root_dir` 派生。当前正式环境使用 `data/buffers/workflow-trigger/workflow-trigger-main.mmap`，guard 和 owner lock 也放在同一子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。后续只在 [ADR-0009](ADR-0009-local-message-channel.md) 的原子迁移中把路径配置所有权转给中立 `local_memory.root_dir`，并改为 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`；Trigger、LocalMessage 和 LocalBuffer 仍分别启停，物理隔离与 owner 边界保持不变。
+mailbox 路径固定从中立的 `local_memory.root_dir` 派生。当前正式环境使用 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`，guard 和 owner lock 也放在 `local-message/` 子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。Trigger、Inference 和 LocalBuffer 仍分别启停，物理隔离与 owner 边界保持不变。
 
 ### 2. 每次调用动态占用一个普通 LocalBuffer lease
 
 每个正在执行的图片 Trigger 调用动态申请一个普通 writing lease。TriggerSource 启用但未调用时占用为零；调用完成、失败或超时后按身份释放 lease。协议不把 TriggerSource 固定绑定到物理 slot，也不创建 `external producer frame channel`。
 
-SDK 通过 PREPARE 获得 backend-service 分配的精确长度 lease，然后只通过 SDK 内部受限 view 写入本次 `path + offset + size`。backend-service 仍是 allocate、publish、validate、owner transfer 和 release 的权威协调者。该能力命名为 **External LocalBuffer Writer Lease**。v1 每次调用最多携带一张输入图片和一份不超过 512 KiB 的结构化参数；结果可以包含 0 到 N 张图片。多图片输入不复用或隐式扩展 v1，后续如确有需要再显式版本化。
+SDK 通过 PREPARE 获得 backend-service 分配的精确长度 lease，然后只通过 SDK 内部受限 view 写入本次 `path + offset + size`。backend-service 仍是 allocate、publish、validate、owner transfer 和 release 的权威协调者。该能力命名为 **External LocalBuffer Writer Lease**。v1 每次调用最多携带一张输入图片；PREPARE 和最终 request 的完整 LocalMessage envelope 均不得超过 64 KiB。结果可以包含 0 到 N 张图片。多图片输入不复用或隐式扩展 v1，后续如确有需要再显式版本化。
 
 ### 3. External Writer 属于 trusted-local 协作边界
 

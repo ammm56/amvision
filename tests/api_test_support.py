@@ -20,6 +20,7 @@ from backend.service.application.auth.local_auth_service import (
 from backend.service.application.local_buffers.broker_settings import (
     LocalBufferBrokerSettings,
 )
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.tasks.queue_outbox import QueueOutboxDispatcher
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import DatabaseSettings, SessionFactory
@@ -133,9 +134,11 @@ def create_api_test_context(
         # 使用 daemon，但测试必须显式选择 embedded，不能隐式读取现场 JSON。
         inference_daemon=BackendServiceInferenceDaemonConfig(runtime_owner="embedded"),
         zeromq_trigger=_build_test_zeromq_trigger_config(),
+        local_memory=LocalMemorySettings(
+            root_dir=str(tmp_path / "local-buffer-broker")
+        ),
         local_buffer_broker=LocalBufferBrokerSettings(
             enabled=enable_local_buffer_broker,
-            root_dir=str(tmp_path / "local-buffer-broker"),
             startup_timeout_seconds=10.0,
             arena_size_bytes=16 * 1024 * 1024,
             min_block_size_bytes=1024 * 1024,

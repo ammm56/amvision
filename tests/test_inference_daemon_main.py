@@ -34,13 +34,10 @@ def _settings(*, mmap_enabled: bool) -> SimpleNamespace:
     """构造 probe 使用的最小配置。"""
 
     return SimpleNamespace(
-        local_buffer_broker=SimpleNamespace(root_dir="./data/buffers"),
+        local_memory=SimpleNamespace(root_dir="./data/buffers"),
         inference_daemon=SimpleNamespace(
             service_id="inference-daemon-main",
-            mmap_mailbox=SimpleNamespace(
-                enabled=mmap_enabled,
-                poll_interval_seconds=0.001,
-            ),
+            mmap_mailbox=SimpleNamespace(enabled=mmap_enabled),
         ),
     )
 
@@ -59,15 +56,11 @@ def test_probe_uses_mmap_ping_without_legacy_control_queue(monkeypatch) -> None:
         "InferenceLocalMmapClient",
         _FakeMmapClient,
     )
-    monkeypatch.setattr(
-        inference_daemon_main,
-        "build_inference_local_mmap_path",
-        lambda **_kwargs: "mailbox.mmap",
-    )
-
     assert inference_daemon_main.main(["--probe"]) == 0
     assert len(_FakeMmapClient.instances) == 1
     client = _FakeMmapClient.instances[0]
+    assert client.kwargs["buffers_root"] == "./data/buffers"
+    assert client.kwargs["service_id"] == "inference-daemon-main"
     assert client.requests == [{"action": "ping"}]
     assert client.closed is True
 

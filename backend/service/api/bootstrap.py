@@ -67,9 +67,6 @@ from backend.service.application.models.training.training_runtime_metrics_snapsh
 from backend.service.application.models.training.training_telemetry import (
     TrainingTelemetryBroker,
 )
-from backend.service.application.models.training.training_telemetry_mmap import (
-    TrainingTelemetryMmapReceiver,
-)
 from backend.service.application.project_deletion import ProjectDeletionService
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
@@ -85,10 +82,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     NoOpAsyncInferenceGatewayRegistry,
     QueueBackedInferenceControlClient,
 )
-from backend.service.application.runtime.deployment.inference_local_mmap import (
-    InferenceLocalMmapClient,
-    build_inference_local_mmap_path,
-)
+from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapClient
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -141,6 +135,12 @@ from backend.service.application.workflows.worker.manager import (
 )
 from backend.service.infrastructure.db.schema import initialize_database_schema
 from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.ipc.training_telemetry import (
+    TrainingTelemetryMmapReceiver,
+)
+from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
+    WorkflowTriggerMailboxServer,
+)
 from backend.service.infrastructure.integrations.directory import (
     DirectoryPollTriggerAdapter,
     DirectoryWatchTriggerAdapter,
@@ -237,7 +237,7 @@ class BackendServiceRuntime:
     obb_async_inference_gateway_registry: (
         ObbAsyncInferenceGatewayDispatcherRegistry | None
     ) = None
-    inference_local_mmap_client: InferenceLocalMmapClient | None = None
+    inference_message_client: InferenceLocalMmapClient | None = None
 
     def iter_all_deployment_supervisors(self):
         """按 (task_type, mode) 遍历所有 deployment supervisor 和 gateway registry。"""
@@ -469,15 +469,8 @@ class BackendServiceBootstrap(
         )
         training_telemetry_receiver = (
             TrainingTelemetryMmapReceiver(
-                root_dir=settings.training_telemetry.root_dir,
+                buffers_root=settings.local_memory.root_dir,
                 broker=training_telemetry_broker,
-                poll_interval_seconds=(
-                    settings.training_telemetry.poll_interval_seconds
-                ),
-                scan_interval_seconds=(
-                    settings.training_telemetry.scan_interval_seconds
-                ),
-                replay_limit=settings.training_telemetry.slot_count,
             )
             if settings.training_telemetry.enabled
             else None
@@ -523,6 +516,7 @@ class BackendServiceBootstrap(
         )
         local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
             settings=settings.local_buffer_broker,
+            root_dir=settings.local_memory.root_dir,
         )
         deployment_services_by_task_type = {
             "detection": SqlAlchemyDetectionDeploymentService(
@@ -546,19 +540,14 @@ class BackendServiceBootstrap(
                 dataset_storage=dataset_storage,
             ),
         }
-        inference_local_mmap_client: InferenceLocalMmapClient | None = None
+        inference_message_client: InferenceLocalMmapClient | None = None
         if settings.inference_daemon.runtime_owner == "daemon":
             if settings.inference_daemon.mmap_mailbox.enabled:
-                inference_local_mmap_client = InferenceLocalMmapClient(
-                    path=build_inference_local_mmap_path(
-                        root_dir=settings.local_buffer_broker.root_dir,
-                        service_id=settings.inference_daemon.service_id,
-                    ),
+                inference_message_client = InferenceLocalMmapClient(
+                    buffers_root=settings.local_memory.root_dir,
+                    service_id=settings.inference_daemon.service_id,
                     request_timeout_seconds=(
                         settings.deployment_process_supervisor.request_timeout_seconds
-                    ),
-                    poll_interval_seconds=(
-                        settings.inference_daemon.mmap_mailbox.poll_interval_seconds
                     ),
                 )
 
@@ -588,7 +577,7 @@ class BackendServiceBootstrap(
                         settings.inference_daemon.availability_probe_timeout_seconds
                     ),
                     local_buffer_reader=local_buffer_broker_supervisor,
-                    local_mmap_client=inference_local_mmap_client,
+                    message_client=inference_message_client,
                 )
 
             detection_sync_deployment_process_supervisor = build_control_client("sync")
@@ -762,7 +751,18 @@ class BackendServiceBootstrap(
         )
         workflow_trigger_mailbox_supervisor = (
             WorkflowTriggerMailboxSupervisor(
-                buffers_root=settings.local_buffer_broker.root_dir,
+                mailbox_provider=(
+                    lambda: WorkflowTriggerMailboxServer(
+                        buffers_root=settings.local_memory.root_dir,
+                        response_ack_timeout_ms=max(
+                            1,
+                            round(
+                                settings.workflow_runtime.local_shared_trigger_response_ack_timeout_seconds
+                                * 1_000
+                            ),
+                        ),
+                    )
+                ),
                 runtime_service=trigger_workflow_runtime_service,
                 local_buffer_client_provider=(
                     local_buffer_broker_supervisor.create_client
@@ -845,7 +845,7 @@ class BackendServiceBootstrap(
             obb_sync_deployment_supervisor=obb_sync_deployment_supervisor,
             obb_async_deployment_supervisor=obb_async_deployment_supervisor,
             obb_async_inference_gateway_registry=obb_async_inference_gateway_registry,
-            inference_local_mmap_client=inference_local_mmap_client,
+            inference_message_client=inference_message_client,
         )
 
     def bind_application_state(
@@ -1007,7 +1007,7 @@ class BackendServiceBootstrap(
         runtime.training_telemetry_broker.close()
         runtime.trigger_source_supervisor.stop_all()
         if runtime.workflow_trigger_mailbox_supervisor is not None:
-            runtime.workflow_trigger_mailbox_supervisor.close()
+            runtime.workflow_trigger_mailbox_supervisor.stop()
         runtime.deployment_runtime_reconciler.stop()
         runtime.workflow_runtime_worker_manager.stop()
         runtime.workflow_preview_run_manager.close()
@@ -1025,8 +1025,8 @@ class BackendServiceBootstrap(
         # 反序停止所有 deployment supervisor 和 gateway registry
         for component in reversed(list(runtime.iter_all_deployment_supervisors())):
             component.stop()
-        if runtime.inference_local_mmap_client is not None:
-            runtime.inference_local_mmap_client.close()
+        if runtime.inference_message_client is not None:
+            runtime.inference_message_client.close()
         runtime.local_buffer_broker_supervisor.stop()
         runtime.session_factory.engine.dispose()
 

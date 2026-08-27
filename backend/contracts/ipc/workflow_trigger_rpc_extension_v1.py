@@ -1,0 +1,117 @@
+"""Workflow Trigger RPC descriptor extension v1 的稳定常量。"""
+
+from __future__ import annotations
+
+import struct
+
+from backend.contracts.ipc.local_message_profiles import (
+    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+)
+
+
+CONTRACT_ID = "amvision.workflow-trigger-rpc-extension.v1"
+RELATIVE_MMAP_PATH = "local-message/workflow-trigger-main.rpc.mmap"
+
+DESCRIPTOR_COUNT = WORKFLOW_TRIGGER_RPC_PROFILE_V1.descriptor_count
+INLINE_REQUEST_CAPACITY_BYTES = (
+    WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_request_capacity_bytes
+)
+INLINE_RESPONSE_CAPACITY_BYTES = (
+    WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_response_capacity_bytes
+)
+OVERFLOW_PAGE_COUNT = WORKFLOW_TRIGGER_RPC_PROFILE_V1.overflow_page_count
+OVERFLOW_PAGE_CAPACITY_BYTES = (
+    WORKFLOW_TRIGGER_RPC_PROFILE_V1.overflow_page_capacity_bytes
+)
+MAX_OVERFLOW_PAGES_PER_RESPONSE = (
+    WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_overflow_pages_per_response
+)
+MAX_REQUEST_BYTES = WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_request_bytes
+MAX_RESPONSE_BYTES = WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_response_bytes
+
+# 该结构只占用 common RPC descriptor header 的 152-byte 保留扩展区。
+DESCRIPTOR_EXTENSION_STRUCT = struct.Struct("<IIIIQIII116x")
+DESCRIPTOR_EXTENSION_SIZE = 152
+DESCRIPTOR_PHASE_OFFSET = 0
+DESCRIPTOR_CANCEL_REASON_OFFSET = 4
+DESCRIPTOR_REQUESTED_TIMEOUT_MS_OFFSET = 8
+DESCRIPTOR_ACCEPTED_TIMEOUT_MS_OFFSET = 12
+DESCRIPTOR_ROUTE_GENERATION_OFFSET = 16
+DESCRIPTOR_ERROR_CODE_OFFSET = 24
+DESCRIPTOR_RESPONSE_OUTPUT_LEASE_COUNT_OFFSET = 28
+DESCRIPTOR_HANDOFF_STATE_OFFSET = 32
+
+assert DESCRIPTOR_EXTENSION_STRUCT.size == DESCRIPTOR_EXTENSION_SIZE
+
+DESCRIPTOR_STATE_FREE = 0
+DESCRIPTOR_STATE_PREPARE = 1
+DESCRIPTOR_STATE_WRITING = 2
+DESCRIPTOR_STATE_REQUEST = 3
+DESCRIPTOR_STATE_PROCESSING = 4
+DESCRIPTOR_STATE_RESPONSE = 5
+DESCRIPTOR_STATE_ACKED = 6
+DESCRIPTOR_STATE_CANCELLED = 7
+
+CANCEL_REASON_NONE = 0
+CANCEL_REASON_REQUEST_TIMEOUT = 1
+CANCEL_REASON_EXPLICIT = 2
+CANCEL_REASON_CLIENT_SHUTDOWN = 3
+
+HANDOFF_STATE_NONE = 0
+HANDOFF_STATE_PENDING = 1
+HANDOFF_STATE_COMPLETE = 2
+HANDOFF_STATE_DETACHED = 3
+
+ERROR_CODE_NONE = 0
+ERROR_CODE_INVALID_REQUEST = 1
+ERROR_CODE_TRIGGER_SOURCE_NOT_FOUND = 2
+ERROR_CODE_ROUTE_GENERATION_MISMATCH = 3
+ERROR_CODE_TRIGGER_SOURCE_BUSY = 4
+ERROR_CODE_WORKFLOW_RUNTIME_BUSY = 5
+ERROR_CODE_WORKFLOW_EXECUTOR_BUSY = 6
+ERROR_CODE_LOCAL_BUFFER_CAPACITY_EXHAUSTED = 7
+ERROR_CODE_LOCAL_BUFFER_OUTPUT_CAPACITY_EXHAUSTED = 8
+ERROR_CODE_TRIGGER_REQUEST_TOO_LARGE = 9
+ERROR_CODE_TRIGGER_RESPONSE_TOO_LARGE = 10
+ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED = 11
+ERROR_CODE_CHECKSUM_MISMATCH = 12
+ERROR_CODE_IDENTITY_MISMATCH = 13
+ERROR_CODE_DEADLINE_EXCEEDED = 14
+ERROR_CODE_CANCELLED = 15
+ERROR_CODE_WORKFLOW_EXECUTION_FAILED = 16
+ERROR_CODE_OUTPUT_HANDOFF_FAILED = 17
+ERROR_CODE_PROTOCOL_ERROR = 18
+ERROR_CODE_SERVER_UNAVAILABLE = 19
+
+
+def pack_descriptor_extension(
+    *,
+    phase: int,
+    cancel_reason: int = CANCEL_REASON_NONE,
+    requested_timeout_ms: int = 0,
+    accepted_timeout_ms: int = 0,
+    route_generation: int = 0,
+    error_code: int = ERROR_CODE_NONE,
+    response_output_lease_count: int = 0,
+    handoff_state: int = HANDOFF_STATE_NONE,
+) -> bytes:
+    """编码完整扩展区，调用方不能把上一 phase 的字段带入下一代。"""
+
+    return DESCRIPTOR_EXTENSION_STRUCT.pack(
+        phase,
+        cancel_reason,
+        requested_timeout_ms,
+        accepted_timeout_ms,
+        route_generation,
+        error_code,
+        response_output_lease_count,
+        handoff_state,
+    )
+
+
+def unpack_descriptor_extension(content: bytes) -> tuple[int, ...]:
+    """解码并拒绝长度不足的扩展区。"""
+
+    if len(content) < DESCRIPTOR_EXTENSION_SIZE:
+        raise ValueError("Workflow Trigger descriptor extension 不完整")
+    return DESCRIPTOR_EXTENSION_STRUCT.unpack_from(content)

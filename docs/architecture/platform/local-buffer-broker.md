@@ -26,7 +26,7 @@ backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena �
 
 ## 文件目录
 
-当前实现的 `local_buffer_broker.root_dir` 保持 `./data/buffers`，不能收窄为某个 LocalBuffer 子目录，因为 inference/workflow mailbox 也从该根派生。ADR-0009 实现后，该路径所有权会原子迁移到中立 `local_memory.root_dir`；LocalBuffer 只消费其中的 `local-buffer/` 子目录，且不会与 LocalMessage 共享 enable、owner 或生命周期。
+当前共享根由中立的 `local_memory.root_dir` 配置，默认保持 `./data/buffers`，不能收窄为某个 LocalBuffer 子目录，因为 Inference/Workflow Trigger/Training Telemetry Channel 也从该根派生。LocalBuffer 只消费其中的 `local-buffer/` 子目录，且不会与 LocalMessage 共享 enable、owner 或生命周期。
 
 ```text
 data/buffers/
@@ -35,18 +35,20 @@ data/buffers/
 │  ├─ allocator-main.mmap       固定 header 与 descriptor 表
 │  ├─ arena-main.guard          publication/writer/reader byte-range guards
 │  └─ arena-main.owner.lock     Broker 单 owner lock
-├─ inference-control/           inference mailbox 与 guard
-├─ workflow-trigger/            Workflow Trigger mailbox 与 guard
+├─ local-message/
+│  ├─ inference-daemon-main.rpc.mmap
+│  ├─ workflow-trigger-main.rpc.mmap
+│  └─ training-telemetry/       每个训练 Worker 的独立 EventRing
 └─ inference-daemon-private/    daemon 私有异步暂存 arena
 ```
 
-该目录树描述当前实现。[ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 已接受把 `inference-control/`、`workflow-trigger/` 和训练遥测后续原子迁移到 `data/buffers/local-message/` 下的独立物理 Channel；迁移共享底层 engine，但不会合并 owner、epoch、descriptor、page pool 或容量。
+该目录树描述当前实现。三类结构化 Channel 已按 [ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 原子迁移到 `local-message/`。它们共享底层 engine，但不会合并 owner、epoch、descriptor、page pool 或容量；旧 `inference-control/` 与 `workflow-trigger/` layout 不再读取。
 
 约束如下：
 
 - 正式图片数据面 mmap、guard 和 owner lock 只能位于 `data/buffers/` 的明确子目录；
 - 不在仓库根、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建正式 mmap；
-- 训练遥测不承载图片，当前继续使用 `data/runtime/training-telemetry/`；后续按 ADR-0009 迁移到 `data/buffers/local-message/training-telemetry/`，但始终不属于 LocalBuffer 图片 arena；
+- 训练遥测不承载图片，使用 `data/buffers/local-message/training-telemetry/` 的独立 EventRing，但始终不属于 LocalBuffer 图片 arena；
 - 发行包使用发行应用根下的 `data/buffers/`，不能引用源码工作区绝对路径；
 - 测试可重定向到 `.tmp/<test>/buffers/`，但使用同一 binary layout、guard 和路径 containment；
 - 文件由 Broker/daemon owner 创建，SDK 不创建或选择 arena/metadata 路径；

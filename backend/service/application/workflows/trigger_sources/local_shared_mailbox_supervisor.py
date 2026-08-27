@@ -6,7 +6,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import logging
 from math import ceil
-from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic_ns, perf_counter, sleep
 from typing import Callable
@@ -18,7 +17,7 @@ from backend.contracts.buffers.lease_ownership import (
     ExternalBufferAllocation,
     LeaseOwnershipReceipt,
 )
-from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contract
+from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as mailbox_contract
 from backend.contracts.workflows import (
     TriggerEventContract,
     WorkflowTriggerAllocationV1,
@@ -62,6 +61,11 @@ from backend.service.application.workflows.trigger_sources.local_shared_runtime 
 from backend.service.application.workflows.trigger_sources.result_dispatcher import (
     WorkflowResultDispatcher,
 )
+from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
+    WorkflowTriggerDescriptorIdentity,
+    WorkflowTriggerMailboxRequest,
+    WorkflowTriggerMailboxServerPort,
+)
 from backend.service.application.workflows.trigger_sources.output_delivery import (
     WORKFLOW_OUTPUT_DELIVERY_PLAN_METADATA_KEY,
     PreparedTriggerResult,
@@ -75,11 +79,6 @@ from backend.service.application.workflows.trigger_sources.workflow_submitter im
 )
 from backend.service.domain.workflows.workflow_trigger_source_records import (
     WorkflowTriggerSource,
-)
-from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
-    WorkflowTriggerDescriptorIdentity,
-    WorkflowTriggerMailboxRequest,
-    WorkflowTriggerMailboxServer,
 )
 
 
@@ -134,7 +133,10 @@ class WorkflowTriggerMailboxSupervisor:
     def __init__(
         self,
         *,
-        buffers_root: str | Path,
+        mailbox: WorkflowTriggerMailboxServerPort | None = None,
+        mailbox_provider: (
+            Callable[[], WorkflowTriggerMailboxServerPort] | None
+        ) = None,
         runtime_service: WorkflowRuntimeService,
         local_buffer_client: LocalBufferBrokerClient | None = None,
         local_buffer_client_provider: (
@@ -157,14 +159,20 @@ class WorkflowTriggerMailboxSupervisor:
             raise ValueError(
                 "local_buffer_client 与 local_buffer_client_provider 至少提供一个"
             )
-        self.buffers_root = Path(buffers_root)
+        if (mailbox is None) == (mailbox_provider is None):
+            raise ValueError("mailbox 与 mailbox_provider 必须且只能提供一个")
         self.runtime_service = runtime_service
         self._local_buffer_client = local_buffer_client
         self._local_buffer_client_provider = local_buffer_client_provider
         self._owns_local_buffer_client = local_buffer_client is None
-        self._mailbox: WorkflowTriggerMailboxServer | None = None
+        self._mailbox: WorkflowTriggerMailboxServerPort | None = mailbox
+        self._mailbox_provider = mailbox_provider
+        self._mailbox_creation_lock = Lock()
+        self._mailbox_closed = False
         self.routes = WorkflowTriggerRouteRegistry()
+        self._max_executor_workers = max_executor_workers
         self.executor = BoundedWorkflowTriggerExecutor(max_workers=max_executor_workers)
+        self._executor_closed = False
         self.input_binding_mapper = InputBindingMapper()
         self.result_dispatcher = WorkflowResultDispatcher()
         self.poll_interval_seconds = poll_interval_seconds
@@ -188,20 +196,23 @@ class WorkflowTriggerMailboxSupervisor:
         self._thread: Thread | None = None
 
     @property
-    def mailbox(self) -> WorkflowTriggerMailboxServer:
-        """返回惰性创建的唯一 mailbox owner。"""
+    def mailbox(self) -> WorkflowTriggerMailboxServerPort:
+        """在服务 lifespan 启动后惰性取得唯一 mailbox owner。"""
 
         mailbox = self._mailbox
-        if mailbox is None:
-            mailbox = WorkflowTriggerMailboxServer(
-                buffers_root=self.buffers_root,
-                response_ack_timeout_ms=max(
-                    1,
-                    round(self.response_ack_timeout_seconds * 1_000),
-                ),
-            )
-            self._mailbox = mailbox
-        return mailbox
+        if mailbox is not None:
+            return mailbox
+        with self._mailbox_creation_lock:
+            if self._mailbox_closed:
+                raise RuntimeError("Workflow Trigger mailbox supervisor 已关闭")
+            mailbox = self._mailbox
+            if mailbox is None:
+                provider = self._mailbox_provider
+                if provider is None:
+                    raise RuntimeError("Workflow Trigger mailbox provider 不存在")
+                mailbox = provider()
+                self._mailbox = mailbox
+            return mailbox
 
     def register_trigger_source(
         self,
@@ -258,8 +269,15 @@ class WorkflowTriggerMailboxSupervisor:
 
         if self._thread is not None and self._thread.is_alive():
             return
+        if self._mailbox_closed:
+            raise RuntimeError("Workflow Trigger mailbox supervisor 已关闭")
         self._require_local_buffer_client()
         self.mailbox
+        if self._executor_closed:
+            self.executor = BoundedWorkflowTriggerExecutor(
+                max_workers=self._max_executor_workers
+            )
+            self._executor_closed = False
         self._stop_event.clear()
         self._thread = Thread(
             target=self._run,
@@ -400,26 +418,41 @@ class WorkflowTriggerMailboxSupervisor:
                 ),
             }
 
+    def stop(self) -> None:
+        """停止当前运行代；provider 模式允许下一次 lifespan 重新启动。"""
+
+        self._stop(permanent=False)
+
     def close(self) -> None:
-        """停止 poller，等待正式任务结束，并按 receipt 清理全部上下文。"""
+        """永久关闭 supervisor，不再允许创建新的 mailbox owner。"""
+
+        self._stop(permanent=True)
+
+    def _stop(self, *, permanent: bool) -> None:
+        """结束 poller、执行器和当前 owner，并按模式保留可重启依赖。"""
 
         self._stop_event.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout=5.0)
-        self.executor.shutdown(wait=True, cancel_futures=False)
+        self._thread = None
+        if not self._executor_closed:
+            self.executor.shutdown(wait=True, cancel_futures=False)
+            self._executor_closed = True
         with self._pending_lock:
             identities = tuple(self._pending)
         for identity in identities:
             self._cleanup_pending(identity)
         mailbox = self._mailbox
         self._mailbox = None
+        self._mailbox_closed = permanent or self._mailbox_provider is None
         if mailbox is not None:
             mailbox.close()
-        client = self._local_buffer_client
-        self._local_buffer_client = None
-        if self._owns_local_buffer_client and client is not None:
-            client.close()
+        if self._owns_local_buffer_client:
+            client = self._local_buffer_client
+            self._local_buffer_client = None
+            if client is not None:
+                client.close()
 
     def _run(self) -> None:
         """持续轮询；poller 从不等待 Workflow future。"""

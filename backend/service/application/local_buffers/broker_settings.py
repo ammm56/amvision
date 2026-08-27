@@ -23,7 +23,6 @@ class LocalBufferBrokerSettings(BaseModel):
     """描述单 Broker owner、单固定容量图片 arena。"""
 
     enabled: bool = True
-    root_dir: str = "./data/buffers"
     arena_id: str = _MAIN_ARENA_ID
     arena_size_bytes: int = 2 * _GIB
     min_block_size_bytes: int = _MIB
@@ -41,8 +40,8 @@ class LocalBufferBrokerSettings(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def reject_fixed_pool_fields(cls, data: object) -> object:
-        """开发期协议原地升级后拒绝全部旧 pool/slot 配置。"""
+    def reject_obsolete_fields(cls, data: object) -> object:
+        """拒绝旧 pool/slot 字段和已转交 local_memory 的 root。"""
 
         if isinstance(data, dict):
             obsolete = {
@@ -52,10 +51,11 @@ class LocalBufferBrokerSettings(BaseModel):
                 "pool_name",
                 "slot_size_bytes",
                 "slot_count",
+                "root_dir",
             }.intersection(data)
             if obsolete:
                 raise ValueError(
-                    "LocalBufferBroker 不再支持固定 pool/slot 字段: "
+                    "LocalBufferBroker 不再拥有以下配置字段: "
                     + ", ".join(sorted(obsolete))
                 )
         return data
@@ -66,10 +66,7 @@ class LocalBufferBrokerSettings(BaseModel):
 
         if struct.calcsize("P") != 8 or sys.maxsize <= 2**32:
             raise ValueError("LocalBufferBroker 只支持 64-bit 进程")
-        self.root_dir = self.root_dir.strip()
         self.arena_id = self.arena_id.strip()
-        if not self.root_dir:
-            raise ValueError("LocalBufferBroker root_dir 不能为空")
         if self.arena_id not in _SUPPORTED_ARENA_IDS:
             raise ValueError(
                 "LocalBufferBroker 主 arena_id 必须固定为 local-buffer-main；"

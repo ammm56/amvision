@@ -443,7 +443,12 @@ class _LocalBufferBrokerEventRouter:
 class LocalBufferBrokerProcessSupervisor:
     """管理本机 LocalBufferBroker companion process。"""
 
-    def __init__(self, *, settings: LocalBufferBrokerSettings) -> None:
+    def __init__(
+        self,
+        *,
+        settings: LocalBufferBrokerSettings,
+        root_dir: str | Path,
+    ) -> None:
         """初始化 broker 进程监督器。
 
         参数：
@@ -451,6 +456,7 @@ class LocalBufferBrokerProcessSupervisor:
         """
 
         self.settings = settings
+        self.root_dir = Path(root_dir).resolve()
         self._context = multiprocessing.get_context("spawn")
         self._process: Any | None = None
         self._startup_queue: Queue[Any] | None = None
@@ -495,6 +501,7 @@ class LocalBufferBrokerProcessSupervisor:
                     target=run_local_buffer_broker_process,
                     kwargs={
                         "settings_payload": self.settings.model_dump(mode="python"),
+                        "root_dir": str(self.root_dir),
                         "startup_queue": startup_queue,
                         "request_connection": request_receive_connection,
                         "response_connection": response_send_connection,
@@ -525,9 +532,9 @@ class LocalBufferBrokerProcessSupervisor:
                             "timeout_seconds": self.settings.startup_timeout_seconds,
                             "process_id": process_id,
                             "process_exitcode": process_exitcode,
-                            "root_dir": self.settings.root_dir,
+                            "root_dir": str(self.root_dir),
                             "arena_file": str(
-                                Path(self.settings.root_dir)
+                                self.root_dir
                                 / "local-buffer"
                                 / "arena-main.mmap"
                             ),
@@ -548,7 +555,7 @@ class LocalBufferBrokerProcessSupervisor:
                         details={
                             "process_id": process_id,
                             "process_exitcode": process_exitcode,
-                            "root_dir": self.settings.root_dir,
+                            "root_dir": str(self.root_dir),
                         },
                     )
 
@@ -586,13 +593,13 @@ class LocalBufferBrokerProcessSupervisor:
                         "等待接管 LocalBufferBroker 占用进程超时",
                         details={
                             "timeout_seconds": self.settings.startup_timeout_seconds,
-                            "root_dir": self.settings.root_dir,
+                            "root_dir": str(self.root_dir),
                         },
                     )
                 try:
                     takeover_summary = take_over_backend_service_owner(
                         owner_metadata=owner_metadata,
-                        root_dir=Path(self.settings.root_dir),
+                        root_dir=self.root_dir,
                         timeout_seconds=min(
                             self.settings.takeover_timeout_seconds,
                             remaining_seconds,
@@ -617,7 +624,7 @@ class LocalBufferBrokerProcessSupervisor:
                     "接管旧 backend-service 后等待 LocalBufferBroker 启动超时",
                     details={
                         "timeout_seconds": self.settings.startup_timeout_seconds,
-                        "root_dir": self.settings.root_dir,
+                        "root_dir": str(self.root_dir),
                     },
                 )
             if (
@@ -678,7 +685,7 @@ class LocalBufferBrokerProcessSupervisor:
             response_queue=channel.response_queue,
             request_timeout_seconds=channel.request_timeout_seconds,
             channel_id=channel.channel_id,
-            direct_access_settings=self.settings.model_dump(mode="python"),
+            direct_access_settings=self._direct_access_settings(),
         )
 
     def create_client(self) -> LocalBufferBrokerClient | None:
@@ -697,9 +704,17 @@ class LocalBufferBrokerProcessSupervisor:
                 response_queue=channel.response_queue,
                 request_timeout_seconds=channel.request_timeout_seconds,
                 channel_id=channel.channel_id,
-                direct_access_settings=self.settings.model_dump(mode="python"),
+                direct_access_settings=self._direct_access_settings(),
             )
         )
+
+    def _direct_access_settings(self) -> dict[str, object]:
+        """组合几何配置与中立 root，供同机直接 mmap adapter 使用。"""
+
+        return {
+            **self.settings.model_dump(mode="python"),
+            "buffers_root": str(self.root_dir),
+        }
 
     def get_status(self) -> dict[str, object]:
         """读取 broker 状态摘要。"""

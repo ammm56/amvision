@@ -34,13 +34,14 @@ class LocalBufferBrokerRegistry:
     """把单一固定容量 arena 收敛为 Broker 控制动作。"""
 
     settings: LocalBufferBrokerSettings
+    root_dir: Path
 
     def __post_init__(self) -> None:
         """按冻结几何创建唯一主 arena。"""
 
         self._arena = LocalBufferArenaPool(
             MmapBufferArenaConfig(
-                root_dir=Path(self.settings.root_dir),
+                root_dir=self.root_dir,
                 arena_id=self.settings.arena_id,
                 arena_size_bytes=self.settings.arena_size_bytes,
                 min_block_size_bytes=self.settings.min_block_size_bytes,
@@ -380,6 +381,7 @@ class LocalBufferBrokerRegistry:
 def run_local_buffer_broker_process(
     *,
     settings_payload: dict[str, object],
+    root_dir: str,
     startup_queue: Any,
     request_connection: Any,
     response_connection: Any,
@@ -390,9 +392,10 @@ def run_local_buffer_broker_process(
     instance_lock: LocalBufferBrokerInstanceLock | None = None
     try:
         settings = LocalBufferBrokerSettings.model_validate(settings_payload)
-        instance_lock = LocalBufferBrokerInstanceLock(Path(settings.root_dir))
+        resolved_root = Path(root_dir).resolve()
+        instance_lock = LocalBufferBrokerInstanceLock(resolved_root)
         instance_lock.acquire()
-        registry = LocalBufferBrokerRegistry(settings=settings)
+        registry = LocalBufferBrokerRegistry(settings=settings, root_dir=resolved_root)
         supervisor_process = parent_process()
         _publish_startup_message(
             startup_queue,

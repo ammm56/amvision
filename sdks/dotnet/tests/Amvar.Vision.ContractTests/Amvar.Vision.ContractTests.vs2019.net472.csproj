@@ -48,6 +48,7 @@
     <Compile Include="WorkflowTriggerContractProbe.cs" />
     <Compile Include="WorkflowTriggerBenchmarkProbe.cs" />
     <Compile Include="WorkflowTriggerMailboxV1Fixture.g.cs" />
+    <Compile Include="LocalMessageChannelV1Fixture.g.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Amvar.Vision\Amvar.Vision.vs2019.net472.csproj">

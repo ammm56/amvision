@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -13,6 +13,7 @@ from pydantic_settings import (
 )
 
 from backend.bootstrap.settings import build_json_config_sources
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.runtime.device_leases import (
     DeviceLeaseProviderConfig,
 )
@@ -158,12 +159,10 @@ class BackendWorkerQueueConfig(BaseModel):
 
 
 class BackendWorkerTrainingTelemetryConfig(BaseModel):
-    """描述 worker 写入本机 mmap 训练遥测 ring 的参数。"""
+    """描述 worker 的训练遥测启用和业务节流策略。"""
 
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    root_dir: str = "./data/runtime/training-telemetry"
-    slot_count: int = Field(default=512, gt=0)
-    payload_capacity_bytes: int = Field(default=16 * 1024, ge=1024)
     min_publish_interval_seconds: float = Field(default=0.1, ge=0)
 
 
@@ -184,6 +183,8 @@ class BackendWorkerSettings(BaseSettings):
     - database：数据库连接配置。
     - dataset_storage：数据集文件存储配置。
     - queue：本地任务队列配置。
+    - local_memory：与 backend-service 共享的中立本机共享内存根目录。
+    - training_telemetry：训练 EventRing 启用与业务节流配置。
     - conversion：conversion attempt 进程树和发布恢复配置。
     - device_leases：Training/CUDA Conversion 跨进程独占设备 lease 配置。
     - Profile Manifest：消费者集合、并发数和轮询间隔的唯一配置来源。
@@ -207,6 +208,7 @@ class BackendWorkerSettings(BaseSettings):
         default_factory=BackendWorkerDatasetStorageConfig
     )
     queue: BackendWorkerQueueConfig = Field(default_factory=BackendWorkerQueueConfig)
+    local_memory: LocalMemorySettings = Field(default_factory=LocalMemorySettings)
     training_telemetry: BackendWorkerTrainingTelemetryConfig = Field(
         default_factory=BackendWorkerTrainingTelemetryConfig
     )

@@ -362,7 +362,6 @@ def test_deployment_worker_routes_backend_and_daemon_local_buffers(
     """验证 worker 按 arena id 路由主 Broker 与 daemon 私有 Broker。"""
 
     settings = LocalBufferBrokerSettings(
-        root_dir=str(tmp_path / "backend-buffers"),
         arena_size_bytes=16 * 1024 * 1024,
         min_block_size_bytes=1024 * 1024,
         max_allocation_bytes=8 * 1024 * 1024,
@@ -370,7 +369,7 @@ def test_deployment_worker_routes_backend_and_daemon_local_buffers(
     )
     pool = LocalBufferArenaPool(
         MmapBufferArenaConfig(
-            root_dir=Path(settings.root_dir),
+            root_dir=tmp_path / "backend-buffers",
             arena_id=settings.arena_id,
             arena_size_bytes=settings.arena_size_bytes,
             min_block_size_bytes=settings.min_block_size_bytes,
@@ -396,8 +395,12 @@ def test_deployment_worker_routes_backend_and_daemon_local_buffers(
     broker = _PrivateBufferBroker()
     access = _RoutedLocalBufferAccess(
         broker_client=broker,
-        direct_reader=DirectMmapLocalBufferReader(settings),
-        direct_writer=DirectMmapLocalBufferWriter(settings),
+        direct_reader=DirectMmapLocalBufferReader(
+            settings, root_dir=tmp_path / "backend-buffers"
+        ),
+        direct_writer=DirectMmapLocalBufferWriter(
+            settings, root_dir=tmp_path / "backend-buffers"
+        ),
     )
     daemon_ref = backend_result.buffer_ref.model_copy(
         update={

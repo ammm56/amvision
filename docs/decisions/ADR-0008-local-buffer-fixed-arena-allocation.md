@@ -115,7 +115,7 @@ health按general与hard reserve分域报告free、reserved-writing、active、fr
 
 ### 9. 文件根目录保持统一但范围不扩大
 
-当前实现的 `local_buffer_broker.root_dir` 继续是 `./data/buffers`。正式文件布局为：
+当前共享根由中立的 `local_memory.root_dir` 配置，默认是 `./data/buffers`。正式文件布局为：
 
 ```text
 data/buffers/
@@ -124,14 +124,17 @@ data/buffers/
 │  ├─ allocator-main.mmap
 │  ├─ arena-main.guard
 │  └─ arena-main.owner.lock
-├─ inference-control/
-├─ workflow-trigger/
+├─ local-message/
+│  ├─ inference-daemon-main.rpc.mmap
+│  ├─ workflow-trigger-main.rpc.mmap
+│  └─ training-telemetry/
+│     └─ <worker-session-id>.event.mmap
 └─ inference-daemon-private/
 ```
 
-本文实施完成时，训练遥测继续使用 `data/runtime/training-telemetry/`，不属于 LocalBuffer 图片数据面迁移范围。[ADR-0009](ADR-0009-local-message-channel.md) 接受的后续迁移会把它收敛到 `data/buffers/local-message/training-telemetry/`，但不会写入 LocalBuffer arena。
+本文实施完成时，训练遥测继续使用 `data/runtime/training-telemetry/`，不属于当时的 LocalBuffer 图片数据面迁移范围。[ADR-0009](ADR-0009-local-message-channel.md) 阶段 2 现已把它迁移到 `data/buffers/local-message/training-telemetry/`；该目录使用独立 EventRing，仍不会写入 LocalBuffer arena。
 
-ADR-0009 原子迁移时会把共享路径所有权提升为中立 `local_memory.root_dir`，并删除 `local_buffer_broker.root_dir`。该变化只移动配置归属，`local-buffer/` 文件布局、LocalBuffer enable、Broker owner、allocator 和生命周期保持独立。
+ADR-0009 阶段 1 已把共享路径所有权提升为中立 `local_memory.root_dir`，并删除 `local_buffer_broker.root_dir`。该变化只移动配置归属，`local-buffer/` 文件布局、LocalBuffer enable、Broker owner、allocator 和生命周期保持独立。
 
 `arena_id` 必须在一次安装内跨 Broker owner 唯一且不能使用 PID 等临时值。主 Broker 固定使用 `local-buffer-main`；当前单一 inference daemon 私有 owner 使用 `inference-daemon-private`；未来存在多个私有 owner 时使用 `inference-daemon-private-<stable-daemon-id>`。公开 locator 只用该 id 查询受信任配置映射，不能根据调用方输入拼接路径。
 

@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.bootstrap.core import BootstrapStep, RuntimeBootstrap
-from backend.service.application.models.training.training_telemetry_mmap import (
+from backend.service.infrastructure.db.session import SessionFactory
+from backend.service.infrastructure.ipc.training_telemetry import (
     TrainingTelemetryMmapPublisher,
 )
-from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.object_store.local_dataset_storage import (
     LocalDatasetStorage,
 )
@@ -131,11 +131,7 @@ class BackendWorkerBootstrap(RuntimeBootstrap[BackendWorkerSettings, BackendWork
         session_factory = SessionFactory(settings.to_database_settings())
         training_telemetry_publisher = (
             TrainingTelemetryMmapPublisher(
-                root_dir=settings.training_telemetry.root_dir,
-                slot_count=settings.training_telemetry.slot_count,
-                payload_capacity_bytes=(
-                    settings.training_telemetry.payload_capacity_bytes
-                ),
+                buffers_root=settings.local_memory.root_dir,
                 min_publish_interval_seconds=(
                     settings.training_telemetry.min_publish_interval_seconds
                 ),

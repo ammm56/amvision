@@ -26,15 +26,18 @@ class DirectMmapLocalBufferReader:
     调用方必须让 acquire view context 覆盖完整消费过程。
     """
 
-    def __init__(self, settings: LocalBufferBrokerSettings | dict[str, Any]) -> None:
+    def __init__(
+        self,
+        settings: LocalBufferBrokerSettings | dict[str, Any],
+        *,
+        root_dir: str | Path | None = None,
+    ) -> None:
         """打开固定 arena 的非 owner 访问器。"""
 
-        self.settings = (
-            settings
-            if isinstance(settings, LocalBufferBrokerSettings)
-            else LocalBufferBrokerSettings.model_validate(settings)
+        self.settings, self.root_dir = _normalize_settings(settings, root_dir=root_dir)
+        self._access = MmapBufferArenaExternalAccess(
+            _build_config(self.settings, root_dir=self.root_dir)
         )
-        self._access = MmapBufferArenaExternalAccess(_build_config(self.settings))
 
     def accepts_arena(self, arena_id: str) -> bool:
         """返回 locator 是否属于 backend 主 arena。"""
@@ -94,15 +97,18 @@ class DirectMmapLocalBufferReader:
 class DirectMmapLocalBufferWriter:
     """在 writer guard 内写入 backend 主 arena 的预分配 lease。"""
 
-    def __init__(self, settings: LocalBufferBrokerSettings | dict[str, Any]) -> None:
+    def __init__(
+        self,
+        settings: LocalBufferBrokerSettings | dict[str, Any],
+        *,
+        root_dir: str | Path | None = None,
+    ) -> None:
         """打开固定 arena 的非 owner 访问器。"""
 
-        self.settings = (
-            settings
-            if isinstance(settings, LocalBufferBrokerSettings)
-            else LocalBufferBrokerSettings.model_validate(settings)
+        self.settings, self.root_dir = _normalize_settings(settings, root_dir=root_dir)
+        self._access = MmapBufferArenaExternalAccess(
+            _build_config(self.settings, root_dir=self.root_dir)
         )
-        self._access = MmapBufferArenaExternalAccess(_build_config(self.settings))
 
     def write_lease_bytes(
         self,
@@ -149,11 +155,34 @@ class DirectMmapLocalBufferWriter:
         self._access.close()
 
 
-def _build_config(settings: LocalBufferBrokerSettings) -> MmapBufferArenaConfig:
+def _normalize_settings(
+    settings: LocalBufferBrokerSettings | dict[str, Any],
+    *,
+    root_dir: str | Path | None,
+) -> tuple[LocalBufferBrokerSettings, Path]:
+    """拆分 Broker 几何与由 local_memory 提供的受信 root。"""
+
+    if isinstance(settings, LocalBufferBrokerSettings):
+        normalized = settings
+        raw_root = root_dir
+    else:
+        payload = dict(settings)
+        raw_root = root_dir or payload.pop("buffers_root", None)
+        normalized = LocalBufferBrokerSettings.model_validate(payload)
+    if raw_root is None or not str(raw_root).strip():
+        raise ValueError("Direct LocalBuffer mmap 需要 local_memory root_dir")
+    return normalized, Path(raw_root).resolve()
+
+
+def _build_config(
+    settings: LocalBufferBrokerSettings,
+    *,
+    root_dir: Path,
+) -> MmapBufferArenaConfig:
     """把应用配置收敛为唯一固定 arena layout。"""
 
     return MmapBufferArenaConfig(
-        root_dir=Path(settings.root_dir),
+        root_dir=root_dir,
         arena_id=settings.arena_id,
         arena_size_bytes=settings.arena_size_bytes,
         min_block_size_bytes=settings.min_block_size_bytes,

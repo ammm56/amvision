@@ -515,7 +515,8 @@ namespace Amvar.Vision.SharedMemory
             TriggerResult triggerResult;
             try
             {
-                triggerResult = WorkflowJsonDefaults.Deserialize<TriggerResult>(Encoding.UTF8.GetString(response.Payload));
+                triggerResult = WorkflowJsonDefaults.Deserialize<TriggerResult>(
+                    DecodeUtf8(response.Payload));
             }
             catch (Exception error)
             {
@@ -689,7 +690,7 @@ namespace Amvar.Vision.SharedMemory
             string message = "Workflow Trigger returned an error.";
             try
             {
-                var root = JObject.Parse(Encoding.UTF8.GetString(response.Payload));
+                var root = JObject.Parse(DecodeUtf8(response.Payload));
                 message = root.Value<string>("error_message") ?? message;
             }
             finally
@@ -698,6 +699,17 @@ namespace Amvar.Vision.SharedMemory
             }
 
             throw new SharedMemoryTriggerException(MapErrorCode(response.ErrorCode), message);
+        }
+
+        private static string DecodeUtf8(ArraySegment<byte> payload)
+        {
+            if (payload.Array == null)
+            {
+                throw new SharedMemoryTriggerException(
+                    "protocol_error",
+                    "Workflow Trigger response payload is missing.");
+            }
+            return Encoding.UTF8.GetString(payload.Array, payload.Offset, payload.Count);
         }
 
         private void ReleaseResultAndAcknowledge(WorkflowTriggerDescriptorIdentity identity)

@@ -17,9 +17,7 @@ from backend.service.application.deployments.deployment_instance_service import 
     SqlAlchemyDeploymentInstanceService,
 )
 from backend.service.application.errors import InvalidRequestError
-from backend.service.application.local_buffers.broker_settings import (
-    LocalBufferBrokerSettings,
-)
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.workflows.trigger_sources.output_delivery import (
     TRIGGER_RESPONSE_PLAN_METADATA_KEY,
     TriggerResponsePlan,
@@ -124,7 +122,7 @@ class SdkConfigPackageService:
         *,
         session_factory: SessionFactory,
         dataset_storage: LocalDatasetStorage,
-        local_buffer_broker_settings: LocalBufferBrokerSettings,
+        local_memory_settings: LocalMemorySettings,
     ) -> None:
         """初始化配置包服务。
 
@@ -135,7 +133,7 @@ class SdkConfigPackageService:
 
         self.session_factory = session_factory
         self.dataset_storage = dataset_storage
-        self.local_buffer_broker_settings = local_buffer_broker_settings
+        self.local_memory_settings = local_memory_settings
 
     def build_plan(self, request: SdkConfigPackageBuildRequest) -> SdkConfigPackagePlan:
         """生成配置包计划，供 preview 和 download 共用。
@@ -151,7 +149,7 @@ class SdkConfigPackageService:
         resources = self._load_project_resources(normalized_request.project_id)
         builder = _SdkConfigPackageBuilder(
             normalized_request,
-            local_buffer_broker_settings=self.local_buffer_broker_settings,
+            local_memory_settings=self.local_memory_settings,
         )
         return builder.build(resources)
 
@@ -231,11 +229,11 @@ class _SdkConfigPackageBuilder:
         self,
         request: SdkConfigPackageBuildRequest,
         *,
-        local_buffer_broker_settings: LocalBufferBrokerSettings,
+        local_memory_settings: LocalMemorySettings,
     ) -> None:
         self.request = request
-        self.local_buffer_broker_settings = local_buffer_broker_settings
-        self.buffers_root = Path(local_buffer_broker_settings.root_dir).resolve()
+        self.local_memory_settings = local_memory_settings
+        self.buffers_root = Path(local_memory_settings.root_dir).resolve()
         self.generated_at = datetime.now(timezone.utc)
         self.timestamp = self.generated_at.strftime("%Y%m%d%H%M%S")
         self.warnings: list[str] = []

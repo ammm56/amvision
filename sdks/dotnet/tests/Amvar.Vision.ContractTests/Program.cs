@@ -39,6 +39,7 @@ namespace Amvar.Vision.ContractTests
         private static async Task RunAsync()
         {
             WorkflowTriggerMailboxV1Fixture.Verify();
+            LocalMessageChannelV1Fixture.Verify();
             VerifyZeroMqTriggerResultFrames();
             VerifyLocalBufferMappingCache();
             VerifyWorkflowTriggerHealthResponse();

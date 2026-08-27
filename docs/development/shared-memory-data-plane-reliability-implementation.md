@@ -82,8 +82,9 @@ LocalBuffer 是本机进程间和 Workflow 节点间短期内存图片的统一�
   -> Workflow Runtime / deployment / output handoff
 
 Workflow Trigger 参数与结构化结果
-  -> data/buffers/workflow-trigger/workflow-trigger-main.mmap
-  -> 128 descriptors + inline 512 KiB + fixed overflow page pool
+  -> data/buffers/local-message/workflow-trigger-main.rpc.mmap
+  -> 通用 RpcMailbox + Trigger extension
+  -> 128 descriptors + inline 64 KiB + 256 KiB fixed overflow page pool
 ```
 
 资源事实分开维护：
@@ -179,9 +180,11 @@ binary schema 用固定 `cancel_reason` 枚举替换单一 `cancel_requested` bi
 
 ```json
 {
+  "local_memory": {
+    "root_dir": "./data/buffers"
+  },
   "local_buffer_broker": {
     "enabled": true,
-    "root_dir": "./data/buffers",
     "arena_id": "local-buffer-main",
     "arena_size_bytes": 2147483648,
     "min_block_size_bytes": 1048576,
@@ -211,7 +214,7 @@ data/buffers/local-buffer/arena-main.guard
 data/buffers/local-buffer/arena-main.owner.lock
 ```
 
-本实施阶段的 `workflow-trigger/`、`inference-control/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。后续 ADR-0009 只共享结构化消息底层 engine，并继续保持 Workflow Trigger、Inference 和 daemon private owner 的物理隔离。
+共享内存根下的 `local-buffer/`、`local-message/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。ADR-0009 已把 Workflow Trigger、Inference 和 Training Telemetry 的结构化消息迁入共享 engine，但三类 Channel 仍使用独立文件、owner、epoch、容量与故障边界；daemon private 图片 arena 继续独立。
 
 backend-service、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 正式进程全部要求 64-bit；.NET SDK 固定使用 x64 目标。启动 preflight 必须校验进程位数、整数寻址、arena/metadata 文件长度、buffers root 可写空间和 layout fingerprint，不提供 32-bit 容量协商或降级。2 GiB 是固定逻辑 arena/file 容量，不表示启动时把全部页面常驻锁定到物理 RAM。文件支持 mmap 仍可能被操作系统分页或异步写回，`flush_on_write=false` 只禁止主动同步 flush。默认不预触碰整个 arena，性能门禁必须同时观察首次触页和稳态数据。
 

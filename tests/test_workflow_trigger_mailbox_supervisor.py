@@ -17,7 +17,7 @@ import pytest
 from backend.contracts.buffers import BufferRef
 
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
-from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contract
+from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as mailbox_contract
 from backend.contracts.workflows import (
     TriggerResultContract,
     WorkflowTriggerAllocationV1,
@@ -53,8 +53,9 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
     acquire_mmap_guard,
     MmapGuardBusyError,
 )
-from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
+from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
     WorkflowTriggerMailboxClient,
+    WorkflowTriggerMailboxServer,
 )
 from backend.service.infrastructure.local_buffers import (
     LocalBufferArenaPool,
@@ -903,7 +904,7 @@ def test_dotnet_result_holds_reader_guard_until_dispose_and_then_acks(
             ),
         )
         supervisor = WorkflowTriggerMailboxSupervisor(
-            buffers_root=str(tmp_path),
+            mailbox=WorkflowTriggerMailboxServer(buffers_root=tmp_path),
             runtime_service=runtime,  # type: ignore[arg-type]
             local_buffer_client=pool_client,  # type: ignore[arg-type]
             max_executor_workers=1,
@@ -1270,7 +1271,7 @@ def test_transfer_failure_closes_admission_and_releases_writer_receipt(
         client_adapter = _PoolClient(pool)
         client_adapter.fail_transfer = True
         supervisor = WorkflowTriggerMailboxSupervisor(
-            buffers_root=str(tmp_path),
+            mailbox=WorkflowTriggerMailboxServer(buffers_root=tmp_path),
             runtime_service=runtime,  # type: ignore[arg-type]
             local_buffer_client=client_adapter,  # type: ignore[arg-type]
             max_executor_workers=1,
@@ -1572,13 +1573,93 @@ def _build_supervisor(
     """创建不启动后台线程的可确定性 supervisor。"""
 
     supervisor = WorkflowTriggerMailboxSupervisor(
-        buffers_root=str(tmp_path),
+        mailbox=WorkflowTriggerMailboxServer(buffers_root=tmp_path),
         runtime_service=runtime,  # type: ignore[arg-type]
         local_buffer_client=_PoolClient(pool),  # type: ignore[arg-type]
         max_executor_workers=1,
     )
     _ = supervisor.mailbox
     return supervisor
+
+
+def test_mailbox_provider_is_lazy_until_runtime_access(tmp_path: Path) -> None:
+    """模块装配不得在 FastAPI lifespan 之前取得跨进程 owner。"""
+
+    created: list[WorkflowTriggerMailboxServer] = []
+
+    def provide_mailbox() -> WorkflowTriggerMailboxServer:
+        mailbox = WorkflowTriggerMailboxServer(buffers_root=tmp_path)
+        created.append(mailbox)
+        return mailbox
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = WorkflowTriggerMailboxSupervisor(
+            mailbox_provider=provide_mailbox,
+            runtime_service=runtime,  # type: ignore[arg-type]
+            local_buffer_client=_PoolClient(pool),  # type: ignore[arg-type]
+            max_executor_workers=1,
+        )
+        assert created == []
+        try:
+            assert supervisor.mailbox is created[0]
+            assert supervisor.mailbox is created[0]
+            assert len(created) == 1
+        finally:
+            supervisor.close()
+
+
+def test_provider_backed_supervisor_can_restart_after_lifespan_stop(
+    tmp_path: Path,
+) -> None:
+    """同一 app 的重复 lifespan 必须取得新 owner 和新 executor。"""
+
+    created: list[WorkflowTriggerMailboxServer] = []
+
+    def provide_mailbox() -> WorkflowTriggerMailboxServer:
+        mailbox = WorkflowTriggerMailboxServer(buffers_root=tmp_path)
+        created.append(mailbox)
+        return mailbox
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = WorkflowTriggerMailboxSupervisor(
+            mailbox_provider=provide_mailbox,
+            runtime_service=runtime,  # type: ignore[arg-type]
+            local_buffer_client=_PoolClient(pool),  # type: ignore[arg-type]
+            max_executor_workers=1,
+        )
+        try:
+            supervisor.start()
+            first_mailbox = supervisor.mailbox
+            supervisor.stop()
+
+            assert supervisor.executor.build_status()["closed"] is True
+
+            supervisor.start()
+
+            assert supervisor.mailbox is not first_mailbox
+            assert len(created) == 2
+            assert supervisor.build_status()["running"] is True
+            assert supervisor.executor.build_status()["closed"] is False
+            assert (
+                supervisor.executor.submit(lambda: "ok").result(timeout=1.0)
+                == "ok"
+            )
+        finally:
+            supervisor.close()
+
+
+def test_permanently_closed_supervisor_rejects_restart(tmp_path: Path) -> None:
+    """显式 close 是最终销毁，不能静默创建新的 owner。"""
+
+    runtime = _FakeRuntimeService()
+    with _build_pool(tmp_path) as pool:
+        supervisor = _build_supervisor(tmp_path, pool, runtime)
+        supervisor.close()
+
+        with pytest.raises(RuntimeError, match="已关闭"):
+            supervisor.start()
 
 
 def _prepare(

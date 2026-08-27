@@ -123,8 +123,8 @@ def test_frame_reader_guard_prevents_ring_overwrite(tmp_path: Path) -> None:
 
 def _supervisor(tmp_path: Path) -> LocalBufferBrokerProcessSupervisor:
     return LocalBufferBrokerProcessSupervisor(
+        root_dir=tmp_path / "buffers",
         settings=LocalBufferBrokerSettings(
-            root_dir=str(tmp_path / "buffers"),
             arena_size_bytes=16 * _MIB,
             min_block_size_bytes=_MIB,
             max_allocation_bytes=8 * _MIB,

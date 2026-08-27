@@ -41,10 +41,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlBinding,
     InferenceControlDispatcher,
 )
-from backend.service.application.runtime.deployment.inference_local_mmap import (
-    InferenceLocalMmapServer,
-    build_inference_local_mmap_path,
-)
+from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapServer
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -164,13 +161,12 @@ def build_inference_daemon_runtime(
     async_local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
         settings=settings.local_buffer_broker.model_copy(
             update={
-                "root_dir": str(
-                    Path(settings.local_buffer_broker.root_dir)
-                    / "inference-daemon-private"
-                ),
                 "arena_id": "inference-daemon-private",
             }
-        )
+        ),
+        root_dir=str(
+            Path(settings.local_memory.root_dir) / "inference-daemon-private"
+        ),
     )
     build_kwargs = {
         "dataset_storage": dataset_storage,
@@ -254,32 +250,11 @@ def build_inference_daemon_runtime(
     )
     local_mmap_server = (
         InferenceLocalMmapServer(
-            path=build_inference_local_mmap_path(
-                root_dir=settings.local_buffer_broker.root_dir,
-                service_id=settings.inference_daemon.service_id,
-            ),
-            request_handler=control_dispatcher.handle_local_mmap_request,
-            slot_count=settings.inference_daemon.mmap_mailbox.slot_count,
-            slot_payload_capacity_bytes=(
-                settings.inference_daemon.mmap_mailbox.message_capacity_bytes
-            ),
-            overflow_page_count=(
-                settings.inference_daemon.mmap_mailbox.overflow_page_count
-            ),
-            overflow_page_capacity_bytes=(
-                settings.inference_daemon.mmap_mailbox.overflow_page_capacity_bytes
-            ),
-            max_overflow_pages_per_response=(
-                settings.inference_daemon.mmap_mailbox.max_overflow_pages_per_response
-            ),
-            compression_threshold_bytes=(
-                settings.inference_daemon.mmap_mailbox.compression_threshold_bytes
-            ),
+            buffers_root=settings.local_memory.root_dir,
+            service_id=settings.inference_daemon.service_id,
+            request_handler=control_dispatcher.handle_inference_message_request,
             max_concurrent_requests=(
-                settings.inference_daemon.mmap_mailbox.max_concurrent_requests
-            ),
-            poll_interval_seconds=(
-                settings.inference_daemon.mmap_mailbox.poll_interval_seconds
+                settings.inference_daemon.max_concurrent_inference_requests
             ),
         )
         if settings.inference_daemon.mmap_mailbox.enabled

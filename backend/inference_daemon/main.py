@@ -8,10 +8,7 @@ import sys
 from threading import Event
 
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
-from backend.service.application.runtime.deployment.inference_local_mmap import (
-    InferenceLocalMmapClient,
-    build_inference_local_mmap_path,
-)
+from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapClient
 from backend.service.settings import get_backend_service_settings
 
 
@@ -45,14 +42,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         mmap_client = InferenceLocalMmapClient(
-            path=build_inference_local_mmap_path(
-                root_dir=settings.local_buffer_broker.root_dir,
-                service_id=settings.inference_daemon.service_id,
-            ),
+            buffers_root=settings.local_memory.root_dir,
+            service_id=settings.inference_daemon.service_id,
             request_timeout_seconds=5.0,
-            poll_interval_seconds=(
-                settings.inference_daemon.mmap_mailbox.poll_interval_seconds
-            ),
         )
         try:
             mmap_response = mmap_client.request({"action": "ping"})

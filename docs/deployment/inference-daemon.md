@@ -37,7 +37,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 `start`、`stop`、`warmup`、`reset` 和恢复意图使用本地持久化控制队列。`ping`、`status`、`health` 是无副作用读操作，与 `infer` 一样使用 mmap v1，不创建临时响应队列。
 
-`infer` 不使用持久化文件队列。backend-service 和 inference daemon 通过同一个跨平台 mmap v1 mailbox 交换 JSON 控制信息和结构化推理结果；图片主体不进入 mailbox：
+`infer` 不使用持久化文件队列。backend-service 和 inference daemon 通过独立的 LocalMessage RPC Channel 交换 JSON 控制信息和结构化推理结果；图片主体不进入 Channel：
 
 - `BufferRef` / `FrameRef` 只传 path、offset、size、shape、dtype、layout、pixel format、broker epoch 和 generation。
 - deployment worker 只读映射 LocalBufferBroker 已配置 pool 的对应区间。raw BGR24 直接返回 `memoryview`，由统一 raw-aware loader 构造 NumPy view。
@@ -46,11 +46,11 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 - mmap 已完成时，本次临时输入和结果 lease 立即释放；timeout、daemon 重启等传输状态不确定时不立即复用槽位，而是保留到有界 TTL 后由 Broker 回收。daemon 拒绝写入剩余有效期不足的结果 lease。
 - 热路径禁止 inline image bytes、base64、PNG 临时编码和 `runtime/inputs/inference-control/` 临时图片。
 
-mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon `server_epoch`、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的槽位由 daemon 回收。
+Inference RPC 复用项目级 LocalMessage common/RpcMailbox engine，覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon owner epoch、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的 descriptor 由 daemon 回收。
 
 描述符使用两阶段发布：先写完 body 和 header，最后单独发布 `REQUEST` 或 `RESPONSE`。超过 inline 容量的结构化结果进入固定 overflow page chain；连续页不足时允许非连续链。请求发布、`REQUEST -> PROCESSING`、取消、`PROCESSING -> RESPONSE` 和 ACK 使用同一 descriptor guard；daemon 根据 allocator 记录在 ACK、取消、超时或重启时统一回收。完整布局、压缩、CRC、所有权和异常恢复见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 
-### mmap mailbox 配置
+### Inference RPC 配置
 
 `config/backend-service.json` 中的配置如下：
 
@@ -58,28 +58,17 @@ mmap mailbox、原子槽位锁文件和 JSON 协议使用同一份实现覆盖 W
 {
   "inference_daemon": {
     "mmap_mailbox": {
-      "enabled": true,
-      "slot_count": 128,
-      "message_capacity_bytes": 524288,
-      "overflow_page_count": 256,
-      "overflow_page_capacity_bytes": 524288,
-      "max_overflow_pages_per_response": 64,
-      "compression_threshold_bytes": 262144,
-      "max_concurrent_requests": 16,
-      "poll_interval_seconds": 0.001
-    }
+      "enabled": true
+    },
+    "max_concurrent_inference_requests": 16
   }
 }
 ```
 
-- `slot_count` 是可同时等待或执行的 inference 消息数量，不是 LocalBufferBroker 图片槽位数量。默认 128；真正同时执行的 handler 数由 mailbox 的 `max_concurrent_requests` 限制，默认 16。控制队列另用 `control_max_concurrent_requests`，两者互不混用。
-- `message_capacity_bytes` 是每个槽位中请求 JSON 区和响应 JSON 区各自的容量。默认 512 KiB 不限制 2K、4K 或 20MP 图片，因为图片主体不进入 mailbox。
-- `overflow_page_count` 和 `overflow_page_capacity_bytes` 定义进程级固定页池。默认 256 × 512 KiB，共 128 MiB，不在请求时扩文件或创建临时文件。
-- 单个结构化响应上限为 `max(message_capacity_bytes, max_overflow_pages_per_response × overflow_page_capacity_bytes)`；默认为 32 MiB。上限同时约束压缩前 JSON 和编码后 body，防止解压膨胀。超限直接返回结构化容量错误，不退回控制队列。
-- `compression_threshold_bytes` 默认 256 KiB。只在 zlib level 1 至少节省 12.5% 时采用压缩，避免对不可压缩结果浪费 CPU。
-- `max_concurrent_requests` 是 mmap handler 的执行上限。Descriptor 和 page pool 是传输容量，不代表模型自身可并发执行数；deployment 的实例数和 runtime 限流继续独立生效。
-- 单个 mailbox 文件的逻辑大小约为 `文件头 + descriptor 区 + 固定页池`；默认约 256 MiB。descriptor 内联容量按 descriptor 数量成倍增长，页池容量只按页数增长，两者独立配置。
-- `poll_interval_seconds` 默认 1ms。继续降低会提高空闲扫描 CPU，增大会直接增加短请求唤醒延迟。
+- `mmap_mailbox.enabled` 只控制 Inference RPC Channel 是否启用。
+- `max_concurrent_inference_requests` 是业务 handler admission，默认 16。控制队列另用 `control_max_concurrent_requests`，两者互不混用。
+- descriptor、inline、page、压缩阈值和 poll 几何由 `inference-rpc.v1` profile 固定，不向普通配置暴露。当前 profile 为 128 descriptors、64 KiB request inline、256 KiB response inline、512 × 256 KiB pages、单响应最多 128 pages、32 MiB response 上限和 1 ms poll。
+- 配置中出现已删除的 transport 几何字段会被拒绝，不保留旧配置双读。
 
 detection、classification、segmentation、pose、OBB 的结构化结果全部走同一 mailbox。常见小结果使用 descriptor 内联响应区；较大的 segmentation polygon/RLE 等结果使用固定页池。预览图、绘制结果或调试图片必须使用 LocalBuffer 或显式持久化保存位置，不得放入页池。
 

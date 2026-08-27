@@ -145,7 +145,6 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     """验证 worker 响应不携带图片 bytes/Base64，只返回 LocalBuffer 元数据。"""
 
     settings = LocalBufferBrokerSettings(
-        root_dir=str(tmp_path / "buffers"),
         arena_size_bytes=16 * 1024 * 1024,
         min_block_size_bytes=1024 * 1024,
         max_allocation_bytes=8 * 1024 * 1024,
@@ -153,7 +152,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     )
     pool = LocalBufferArenaPool(
         MmapBufferArenaConfig(
-            root_dir=Path(settings.root_dir),
+            root_dir=tmp_path / "buffers",
             arena_id=settings.arena_id,
             arena_size_bytes=settings.arena_size_bytes,
             min_block_size_bytes=settings.min_block_size_bytes,
@@ -184,8 +183,8 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     infer_slots = BoundedSemaphore(1)
     assert infer_slots.acquire(blocking=False) is True
 
-    writer = DirectMmapLocalBufferWriter(settings)
-    reader = DirectMmapLocalBufferReader(settings)
+    writer = DirectMmapLocalBufferWriter(settings, root_dir=tmp_path / "buffers")
+    reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
     try:
         _run_inference_request(
             response_queue=response_queue,

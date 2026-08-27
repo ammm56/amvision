@@ -18,6 +18,7 @@ from backend.nodes.local_node_pack_loader import LocalNodePackLoader
 from backend.nodes.node_catalog_registry import NodeCatalogRegistry
 from backend.service.api.app import create_app
 from backend.service.application.local_buffers import LocalBufferBrokerSettings
+from backend.service.application.local_memory import LocalMemorySettings
 from backend.service.application.workflows.process_executor import (
     WorkflowApplicationExecutionRequest,
     WorkflowApplicationRuntimeExecutor,
@@ -63,7 +64,7 @@ def BackendServiceSettings(**values: Any) -> BackendServiceSettingsModel:
         if not isinstance(queue_config, BackendServiceQueueConfig):
             raise TypeError("workflow 测试设置必须显式提供 queue 配置")
         queue_root = Path(queue_config.root_dir).resolve()
-        values["local_buffer_broker"] = LocalBufferBrokerSettings(
+        values["local_memory"] = LocalMemorySettings(
             root_dir=str(queue_root.parent / "buffers")
         )
     return BackendServiceSettingsModel(**values)

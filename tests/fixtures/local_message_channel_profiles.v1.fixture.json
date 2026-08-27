@@ -1,0 +1,90 @@
+{
+  "format_id": "amvision.local-message-channel-profile-evidence.v1",
+  "source": {
+    "benchmark_format_id": "amvision.local-message-channel-stage0-baseline.v1",
+    "benchmark_sha256": "f98c11c3445b525c734ecbe4d09fb845f212d269a76caac68520647d8bd69271",
+    "git_commit": "1e5bfb62a65c80377b7042e02b066b18dd89045d",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "logical_cpu_count": 16,
+    "physical_cpu_count": 8,
+    "total_memory_bytes": 42507214848,
+    "power_scheme": "high-performance",
+    "rounds": 5
+  },
+  "payload_evidence": {
+    "trigger_prepare_bytes": 298,
+    "trigger_request_bytes": 442,
+    "observed_workflow_output_samples": 259,
+    "observed_workflow_output_p99_bytes": 10823.36,
+    "observed_workflow_output_max_bytes": 33678,
+    "inference_detection_300_bytes": 29385,
+    "inference_obb_300_bytes": 49564,
+    "inference_classification_1000_bytes": 83384,
+    "inference_pose_100x17_bytes": 87864,
+    "inference_segmentation_normal_100x100_bytes": 185964,
+    "inference_segmentation_dense_100x1000_bytes": 1738464,
+    "training_telemetry_bytes": 477
+  },
+  "page_geometry_median_p99_ms": {
+    "payload_32mib": {
+      "page_64kib": 37.8143,
+      "page_128kib": 36.0522,
+      "page_256kib": 35.9665,
+      "page_512kib": 41.3723
+    }
+  },
+  "telemetry_policy_evidence": {
+    "poll_50ms_p99_ms": 50.664828,
+    "poll_100ms_p99_ms": 99.722139,
+    "scan_100ms_p99_ms": 40.6547,
+    "scan_1000ms_p99_ms": 927.5964
+  },
+  "current_capacity_evidence": {
+    "trigger_16mib_concurrency_16_success": 55,
+    "trigger_16mib_concurrency_16_rejected": 30,
+    "trigger_32mib_concurrency_16_success": 31,
+    "trigger_32mib_concurrency_16_rejected": 54,
+    "inference_32mib_concurrency_16_success": 59,
+    "inference_32mib_concurrency_16_rejected": 26
+  },
+  "queue_codec_evidence": {
+    "codec": "pydantic-core-compact-utf8-json",
+    "observed_file_queue_max_bytes": 5846,
+    "payload_64kib_concurrency_1_object_p99_ms": 0.329138,
+    "payload_64kib_concurrency_1_bytes_p99_ms": 0.442696,
+    "payload_1mib_concurrency_1_object_p99_ms": 4.828512,
+    "payload_1mib_concurrency_1_bytes_p99_ms": 8.75738
+  },
+  "profiles": {
+    "workflow-trigger-rpc.v1": {
+      "descriptor_count": 128,
+      "inline_request_capacity_bytes": 65536,
+      "inline_response_capacity_bytes": 65536,
+      "overflow_page_capacity_bytes": 262144,
+      "overflow_page_count": 512,
+      "max_overflow_pages_per_response": 129,
+      "max_request_bytes": 65536,
+      "max_response_bytes": 33619968,
+      "compression_threshold_bytes": 65536,
+      "poll_interval_seconds": 0.001
+    },
+    "inference-rpc.v1": {
+      "descriptor_count": 128,
+      "inline_request_capacity_bytes": 65536,
+      "inline_response_capacity_bytes": 262144,
+      "overflow_page_capacity_bytes": 262144,
+      "overflow_page_count": 512,
+      "max_overflow_pages_per_response": 129,
+      "max_request_bytes": 65536,
+      "max_response_bytes": 33619968,
+      "compression_threshold_bytes": 262144,
+      "poll_interval_seconds": 0.001
+    },
+    "training-telemetry-event.v1": {
+      "slot_count": 512,
+      "payload_capacity_bytes": 4096,
+      "poll_interval_seconds": 0.05,
+      "scan_interval_seconds": 0.1
+    }
+  }
+}

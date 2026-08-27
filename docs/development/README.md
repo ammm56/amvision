@@ -7,7 +7,8 @@
 - [任务执行与运行时可靠性实施基线](task-runtime-reliability-implementation.md)：阶段 1 至阶段 7 已完成，源码真实业务链路与发行基础设施已分别通过验收。该文档是 Task/Attempt、Training Resume、Conversion、完整前端 Task 状态和 Node Pack timeout 的唯一详细实施记录。
 - [共享内存数据面可靠性实施基线](shared-memory-data-plane-reliability-implementation.md)：Workflow Trigger mailbox 正确性修复与 LocalBuffer 固定 arena 重构已经完成，保留源码门禁和发行持续认证边界。
 - [本机共享内存 Trigger 实施基线](local-shared-memory-trigger-implementation.md)：保留已交付 Trigger 协议、SDK、结果生命周期和历史性能证据；当前可靠性与 allocator 完成状态以共享内存数据面可靠性实施基线为准。
-- [本机结构化消息通道实施基线](local-message-channel-implementation.md)：已接受但尚未实现的 LocalMessageChannel 原子迁移顺序，统一 Workflow Trigger、Inference 和训练遥测的底层结构化 mmap 基础设施；现有 Queue 是否迁移由真实基准裁决。
+- [本机结构化消息通道实施基线](local-message-channel-implementation.md)：LocalMessageChannel 原子迁移顺序；阶段 0、阶段 1 已完成，业务 transport 尚未迁移。
+- [LocalMessage Channel 阶段 0 基线](local-message-channel-stage0-baseline.md)：Trigger、Inference、Training Telemetry 和 Queue 的可复现实测证据，以及三个已冻结的默认 profile。
 
 ## 环境
 
