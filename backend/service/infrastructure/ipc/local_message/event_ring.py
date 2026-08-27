@@ -1,9 +1,10 @@
-"""未接业务 composition root 的 LocalMessage EventRing v1 engine。"""
+"""LocalMessage EventRing v1 engine。"""
 
 from __future__ import annotations
 
 import mmap
 import struct
+from threading import Lock
 from time import monotonic_ns, sleep
 from typing import BinaryIO
 from uuid import UUID, uuid4
@@ -35,16 +36,14 @@ from backend.service.infrastructure.ipc.local_message.common_layout import (
     pack_common_header,
     unpack_common_header,
 )
-from backend.service.infrastructure.ipc.local_message.guards import (
-    acquire_owner,
-    release_owner,
-)
+from backend.service.infrastructure.ipc.local_message.guards import acquire_owner
 from backend.service.infrastructure.ipc.local_message.health import EventChannelHealth
 from backend.service.infrastructure.ipc.local_message.paths import (
     LocalMessageChannelPaths,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapOwnerLockBusyError,
+    MmapOwnerLockHandle,
     acquire_mmap_owner_lock,
     crc32_ieee,
     new_nonzero_u64_token,
@@ -79,15 +78,16 @@ class MmapEventRingPublisher:
         self.channel_id = channel_id or UUID(int=0)
         self.session_id = session_id or uuid4()
         self.owner_epoch = new_nonzero_u64_token()
-        self._owner_lock: BinaryIO | None = None
+        self._owner_lock: MmapOwnerLockHandle | None = None
         self._file: BinaryIO | None = None
         self._view: mmap.mmap | None = None
         self._closed = False
+        self._close_lock = Lock()
         self._published_sequence = 0
         self._dropped_total = 0
         try:
             self._initialize_files()
-        except Exception:
+        except BaseException:
             self._close_handles()
             raise
 
@@ -147,15 +147,15 @@ class MmapEventRingPublisher:
         """幂等发布 graceful close；不等待或管理 reader 生命周期。"""
 
         del deadline_ns
-        if self._closed:
-            return
-        self._closed = True
-        view = self._view
-        if view is not None:
-            publish_u32(view, offset=_EVENT_FLAGS_OFFSET, value=EVENT_FLAG_CLOSED)
-            publish_u32(view, offset=_COMMON_FLAGS_OFFSET, value=FILE_FLAG_CLOSED)
-            view.flush()
-        self._close_handles()
+        with self._close_lock:
+            if not self._closed:
+                self._closed = True
+                view = self._view
+                if view is not None:
+                    publish_u32(view, offset=_EVENT_FLAGS_OFFSET, value=EVENT_FLAG_CLOSED)
+                    publish_u32(view, offset=_COMMON_FLAGS_OFFSET, value=FILE_FLAG_CLOSED)
+                    view.flush()
+            self._close_handles()
 
     def _initialize_files(self) -> None:
         """初始化 fixed mmap 与 Event profile header。"""
@@ -239,16 +239,15 @@ class MmapEventRingPublisher:
     def _close_handles(self) -> None:
         """按 view、file、owner lock 顺序关闭。"""
 
-        view, file, owner = self._view, self._file, self._owner_lock
-        self._view = None
-        self._file = None
-        self._owner_lock = None
-        if view is not None:
-            view.close()
-        if file is not None:
-            file.close()
-        if owner is not None:
-            release_owner(owner)
+        if self._view is not None:
+            self._view.close()
+            self._view = None
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+        if self._owner_lock is not None:
+            self._owner_lock.release()
+            self._owner_lock = None
 
 
 class MmapEventRingReader:
@@ -268,6 +267,7 @@ class MmapEventRingReader:
         self._file: BinaryIO | None = None
         self._view: mmap.mmap | None = None
         self._closed = False
+        self._close_lock = Lock()
         self._reader_gap_total = 0
         try:
             self._file = paths.mmap_path.open("r+b", buffering=0)
@@ -288,7 +288,7 @@ class MmapEventRingReader:
         except FileNotFoundError as error:
             self._close_handles()
             raise ChannelClosedError("Event producer 文件不存在") from error
-        except Exception:
+        except BaseException:
             self._close_handles()
             raise
 
@@ -336,7 +336,7 @@ class MmapEventRingReader:
             sleep(min(self.profile.poll_interval_seconds, (deadline_ns - now_ns) / 1e9))
 
     def owner_alive(self) -> bool:
-        """使用 owner guard 判断异常退出；PID 不是权威依据。"""
+        """使用 owner lock 判断异常退出；PID 不是权威依据。"""
 
         try:
             handle = acquire_mmap_owner_lock(self.paths.owner_lock_path)
@@ -363,10 +363,10 @@ class MmapEventRingReader:
         """幂等关闭 reader view。"""
 
         del deadline_ns
-        if self._closed:
-            return
-        self._closed = True
-        self._close_handles()
+        with self._close_lock:
+            if not self._closed:
+                self._closed = True
+            self._close_handles()
 
     def _read_available(
         self,
@@ -464,10 +464,9 @@ class MmapEventRingReader:
     def _close_handles(self) -> None:
         """幂等关闭 reader mapping。"""
 
-        view, file = self._view, self._file
-        self._view = None
-        self._file = None
-        if view is not None:
-            view.close()
-        if file is not None:
-            file.close()
+        if self._view is not None:
+            self._view.close()
+            self._view = None
+        if self._file is not None:
+            self._file.close()
+            self._file = None

@@ -12,6 +12,10 @@ from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.local_buffers import (
     backend_service_process_takeover as takeover_module,
 )
+from backend.service.application.local_buffers import broker_instance_lock as lock_module
+from backend.service.application.local_buffers.broker_instance_lock import (
+    LocalBufferBrokerInstanceLock,
+)
 
 
 _BACKEND_COMMAND = [
@@ -400,3 +404,23 @@ def _install_fake_processes(
         "wait_procs",
         lambda process_list, timeout: (list(process_list), []),
     )
+
+
+def test_broker_instance_lock_releases_owner_when_metadata_write_is_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """取得 OS lock 后遇到 KeyboardInterrupt 也必须立即释放 handle。"""
+
+    def interrupt_metadata(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt("injected metadata interruption")
+
+    monkeypatch.setattr(lock_module, "_write_owner_metadata", interrupt_metadata)
+    interrupted = LocalBufferBrokerInstanceLock(root_dir=tmp_path)
+    with pytest.raises(KeyboardInterrupt, match="injected metadata interruption"):
+        interrupted.acquire()
+
+    monkeypatch.undo()
+    recovered = LocalBufferBrokerInstanceLock(root_dir=tmp_path)
+    recovered.acquire()
+    recovered.release()

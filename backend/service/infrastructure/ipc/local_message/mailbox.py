@@ -1,4 +1,4 @@
-"""未接业务 composition root 的 LocalMessage Mailbox v1 engine。"""
+"""LocalMessage Mailbox v1 engine。"""
 
 from __future__ import annotations
 
@@ -63,7 +63,6 @@ from backend.service.infrastructure.ipc.local_message.guards import (
     MmapGuardBusyError,
     acquire_owner,
     descriptor_guard,
-    release_owner,
 )
 from backend.service.infrastructure.ipc.local_message.health import MailboxChannelHealth
 from backend.service.infrastructure.ipc.local_message.page_pool import (
@@ -73,8 +72,10 @@ from backend.service.infrastructure.ipc.local_message.paths import (
     LocalMessageChannelPaths,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapOwnerLockHandle,
     crc32_ieee,
     new_nonzero_u64_token,
+    open_mmap_guard_identity,
     publish_u32,
 )
 
@@ -197,11 +198,13 @@ class MmapMailboxServer:
         self.channel_id = channel_id or UUID(int=0)
         self.owner_epoch = new_nonzero_u64_token()
         self.response_ack_timeout_ns = int(response_ack_timeout_seconds * 1e9)
-        self._owner_lock: BinaryIO | None = None
+        self._owner_lock: MmapOwnerLockHandle | None = None
+        self._guard_file: BinaryIO | None = None
         self._file: BinaryIO | None = None
         self._view: mmap.mmap | None = None
         self._page_pool: MmapResponsePagePool | None = None
         self._closed = False
+        self._close_lock = Lock()
         self._poll_cursor = 0
         self._requests_total = 0
         self._responses_total = 0
@@ -212,7 +215,7 @@ class MmapMailboxServer:
         self._terminal_events: deque[MailboxTerminalEvent] = deque()
         try:
             self._initialize_files()
-        except Exception:
+        except BaseException:
             self._close_handles()
             raise
 
@@ -617,18 +620,20 @@ class MmapMailboxServer:
     def close(self, *, deadline_ns: int) -> None:
         """幂等发布 closed fence 并有界回收已 ACK response。"""
 
-        if self._closed:
-            return
-        self._closed = True
-        view = self._view
-        if view is not None:
-            struct.pack_into("<I", view, _COMMON_FLAGS_OFFSET, FILE_FLAG_CLOSED)
-            while monotonic_ns() < deadline_ns:
-                if self._reclaim_all_descriptors_for_close(deadline_ns=deadline_ns):
-                    break
-                sleep(self.profile.poll_interval_seconds)
-            view.flush()
-        self._close_handles()
+        with self._close_lock:
+            if not self._closed:
+                self._closed = True
+                view = self._view
+                if view is not None:
+                    struct.pack_into("<I", view, _COMMON_FLAGS_OFFSET, FILE_FLAG_CLOSED)
+                    while monotonic_ns() < deadline_ns:
+                        if self._reclaim_all_descriptors_for_close(
+                            deadline_ns=deadline_ns
+                        ):
+                            break
+                        sleep(self.profile.poll_interval_seconds)
+                    view.flush()
+            self._close_handles()
 
     def _reclaim_all_descriptors_for_close(self, *, deadline_ns: int) -> bool:
         """owner fence 发布后，在 descriptor guard 下回收全部旧 epoch 资源。"""
@@ -664,15 +669,15 @@ class MmapMailboxServer:
 
         self.paths.mmap_path.parent.mkdir(parents=True, exist_ok=True)
         self._owner_lock = acquire_owner(self.paths.owner_lock_path)
-        guard_file = self.paths.guard_path.open("a+b", buffering=0)
-        try:
-            guard_file.truncate(max(self.profile.descriptor_count, 1))
-        finally:
-            guard_file.close()
         existing_size = (
             self.paths.mmap_path.stat().st_size
             if self.paths.mmap_path.exists()
             else 0
+        )
+        self._guard_file = open_mmap_guard_identity(
+            self.paths.guard_path,
+            expected_size=max(self.profile.descriptor_count, 1),
+            create=existing_size == 0,
         )
         if existing_size not in {0, self.layout.file_size_bytes}:
             raise ChannelCorruptMessageError("Mailbox owner 文件长度与冻结 profile 不匹配")
@@ -1215,17 +1220,19 @@ class MmapMailboxServer:
     def _close_handles(self) -> None:
         """按 view、file、owner lock 顺序幂等关闭资源。"""
 
-        view, file, owner = self._view, self._file, self._owner_lock
-        self._view = None
-        self._file = None
-        self._owner_lock = None
-        self._page_pool = None
-        if view is not None:
-            view.close()
-        if file is not None:
-            file.close()
-        if owner is not None:
-            release_owner(owner)
+        if self._view is not None:
+            self._view.close()
+            self._view = None
+            self._page_pool = None
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+        if self._guard_file is not None:
+            self._guard_file.close()
+            self._guard_file = None
+        if self._owner_lock is not None:
+            self._owner_lock.release()
+            self._owner_lock = None
 
 
 class MmapMailboxClient:
@@ -1243,9 +1250,16 @@ class MmapMailboxClient:
         self.profile = profile
         self.layout = mailbox_layout(profile)
         self._file: BinaryIO | None = None
+        self._guard_file: BinaryIO | None = None
         self._view: mmap.mmap | None = None
         self._closed = False
+        self._close_lock = Lock()
         try:
+            self._guard_file = open_mmap_guard_identity(
+                paths.guard_path,
+                expected_size=max(self.profile.descriptor_count, 1),
+                create=False,
+            )
             self._file = paths.mmap_path.open("r+b", buffering=0)
             if self.paths.mmap_path.stat().st_size != self.layout.file_size_bytes:
                 raise ChannelCorruptMessageError("Mailbox mmap 文件长度不匹配")
@@ -1271,7 +1285,7 @@ class MmapMailboxClient:
         except FileNotFoundError as error:
             self._close_handles()
             raise ChannelClosedError("Mailbox owner 文件不存在") from error
-        except Exception:
+        except BaseException:
             self._close_handles()
             raise
 
@@ -1324,10 +1338,10 @@ class MmapMailboxClient:
         """幂等关闭本 client view；不改变 owner 生命周期。"""
 
         del deadline_ns
-        if self._closed:
-            return
-        self._closed = True
-        self._close_handles()
+        with self._close_lock:
+            if not self._closed:
+                self._closed = True
+            self._close_handles()
 
     def claim_prepared(
         self,
@@ -1822,13 +1836,15 @@ class MmapMailboxClient:
     def _close_handles(self) -> None:
         """幂等关闭 client mapping。"""
 
-        view, file = self._view, self._file
-        self._view = None
-        self._file = None
-        if view is not None:
-            view.close()
-        if file is not None:
-            file.close()
+        if self._view is not None:
+            self._view.close()
+            self._view = None
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+        if self._guard_file is not None:
+            self._guard_file.close()
+            self._guard_file = None
 
 
 def _error_from_code(error_code: int) -> LocalMessageChannelError:

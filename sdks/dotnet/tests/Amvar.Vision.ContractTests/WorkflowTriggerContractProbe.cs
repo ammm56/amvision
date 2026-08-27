@@ -407,7 +407,7 @@ namespace Amvar.Vision.ContractTests
                 path,
                 FileMode.OpenOrCreate,
                 FileAccess.ReadWrite,
-                FileShare.ReadWrite | FileShare.Delete,
+                FileShare.ReadWrite,
                 1,
                 FileOptions.None);
         }

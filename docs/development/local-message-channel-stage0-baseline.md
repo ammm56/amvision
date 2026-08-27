@@ -165,6 +165,6 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 - 三个 profile 已冻结，可以进入阶段 1 的未接业务 engine 实现。
 - `local_memory.root_dir` 迁移必须是独立原子提交，不能与 engine 混合。
 - 阶段 1 不修改 composition root，不读取正式 LocalMessage 文件，不迁移 Trigger、Inference 或 Telemetry。
-- EventRing 的 owner guard/epoch/session 是异常退出权威依据；PID 只作为诊断元数据。
+- EventRing 的 owner lock/epoch/session 是异常退出权威依据；PID 只作为诊断元数据。
 - `.NET` SDK 只提交 timeout duration；Python owner 在入口建立自身 clock domain 的绝对 monotonic deadline。
 - 阶段 5 已按同一 `MailboxPort`、envelope/bytes 和跨进程拓扑完成候选基准，裁决为保留 Workflow Runtime、PublishedInferenceGateway 与 LocalBuffer Broker 的现有 Queue/pipe 传输；详细结果见[实施基线阶段 5](local-message-channel-implementation.md#阶段-5窄-port-与-queue-基准)。

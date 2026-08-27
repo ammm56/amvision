@@ -12,13 +12,14 @@ from pathlib import Path
 from secrets import token_bytes
 import struct
 import sys
-from threading import RLock
-from time import monotonic_ns
+from threading import Condition, RLock
+from time import monotonic, monotonic_ns
 from typing import BinaryIO, Iterator, Literal
 from uuid import uuid4
 
 from backend.service.infrastructure.ipc.mmap_primitives import (
     acquire_mmap_owner_lock,
+    open_mmap_guard_identity,
     release_mmap_owner_lock,
     try_lock_byte_range_file,
     unlock_byte_range_file,
@@ -64,6 +65,10 @@ class LocalBufferArenaError(RuntimeError):
 
 class LocalBufferArenaIntegrityError(LocalBufferArenaError):
     """表示 arena 容量守恒或 allocator identity 已不可信。"""
+
+
+class LocalBufferArenaCloseBusyError(LocalBufferArenaError):
+    """表示仍有当前进程借用的 mmap view，arena 暂时不能关闭。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +160,12 @@ class MmapBufferArena:
         self.geometry = config.geometry
         self._allocator = BuddyArenaAllocator(self.geometry)
         self._allocator_lock = RLock()
+        self._lifecycle = Condition(RLock())
+        self._lifecycle_state: Literal[
+            "open", "closing", "close_blocked", "closed"
+        ] = "open"
+        self._active_borrows = 0
+        self._close_blocked_count = 0
         self._allocation_disabled = False
         self._closed = False
         self._publication_generation = 0
@@ -173,16 +184,17 @@ class MmapBufferArena:
         self._allocator_file: BinaryIO | None = None
         self._arena_mmap: mmap.mmap | None = None
         self._allocator_mmap: mmap.mmap | None = None
+        self._guard_file: BinaryIO | None = None
         try:
             self._open_files()
             existing = self._initialize_or_validate_metadata()
-            self._initialize_guard_file()
+            self._initialize_guard_file(existing=existing)
             if existing:
                 self._restore_descriptors()
             self._write_header()
             if existing:
                 self._recover_previous_epoch()
-        except Exception:
+        except BaseException:
             self.close()
             raise
 
@@ -201,6 +213,7 @@ class MmapBufferArena:
     ) -> ArenaLeaseReceipt:
         """分配最小连续 extent 并最后发布 WRITING/FRAME_RESERVED。"""
 
+        self._ensure_open()
         if deadline_ns <= monotonic_ns():
             raise ValueError("deadline_ns 必须位于未来")
         if self._allocation_disabled:
@@ -652,6 +665,10 @@ class MmapBufferArena:
     def build_status(self) -> dict[str, object]:
         """构造直接满足 general/reserve 守恒式的容量状态。"""
 
+        with self._lifecycle:
+            lifecycle_state = self._lifecycle_state
+            active_borrow_count = self._active_borrows
+            close_blocked_count = self._close_blocked_count
         allocator_status = self._allocator.snapshot()
         buckets = {
             domain: {
@@ -700,6 +717,9 @@ class MmapBufferArena:
             "state": "healthy" if healthy else "degraded",
             "arena_id": self.config.arena_id,
             "broker_epoch": self.broker_epoch,
+            "lifecycle_state": lifecycle_state,
+            "active_borrow_count": active_borrow_count,
+            "close_blocked_count": close_blocked_count,
             "layout_version": _LAYOUT_VERSION,
             "layout_fingerprint": self.layout_fingerprint.hex(),
             "arena_total_bytes": self.geometry.arena_size_bytes,
@@ -755,6 +775,7 @@ class MmapBufferArena:
     def write_bytes(self, receipt: ArenaLeaseReceipt, content: memoryview) -> None:
         """把精确长度内容写入 receipt 指向的连续 arena extent。"""
 
+        self._ensure_open()
         if content.nbytes != receipt.content_length:
             raise ValueError("写入长度必须等于 receipt.content_length")
         self.validate_receipt(receipt, expected_states={"writing"})
@@ -777,16 +798,14 @@ class MmapBufferArena:
                 receipt,
                 expected_states={"writing", "frame_reserved"},
             )
-            assert self._arena_mmap is not None
-            view = memoryview(self._arena_mmap)[
-                receipt.offset : receipt.offset + receipt.content_length
-            ]
-            try:
+            with self._borrow_arena_view(
+                offset=receipt.offset,
+                content_length=receipt.content_length,
+            ) as view:
                 yield view
-            finally:
-                view.release()
-                if self.config.flush_on_write:
-                    self._arena_mmap.flush()
+            if self.config.flush_on_write:
+                assert self._arena_mmap is not None
+                self._arena_mmap.flush()
 
     @contextmanager
     def hold_frame_write_guards(
@@ -887,52 +906,95 @@ class MmapBufferArena:
                 receipt,
                 expected_states={"active", "frame_reserved"},
             )
-            assert self._arena_mmap is not None
-            view = memoryview(self._arena_mmap)[
-                receipt.offset : receipt.offset + receipt.content_length
-            ]
-            try:
+            with self._borrow_arena_view(
+                offset=receipt.offset,
+                content_length=receipt.content_length,
+            ) as view:
                 yield view
-            finally:
-                view.release()
         finally:
             unlock_byte_range_file(guard_file, offset=acquired_offset, length=1)
             guard_file.close()
 
-    def read_view(self, receipt: ArenaLeaseReceipt) -> memoryview:
-        """返回精确 content range view；调用方负责释放 view。"""
+    def write_frame_bytes(
+        self,
+        receipt: ArenaLeaseReceipt,
+        *,
+        content: memoryview,
+    ) -> None:
+        """持有 frame 全部 guard 后覆盖已预留 extent 的有效内容。"""
 
-        self.validate_receipt(
-            receipt,
-            expected_states={"active", "frame_reserved"},
-        )
-        assert self._arena_mmap is not None
-        return memoryview(self._arena_mmap)[
-            receipt.offset : receipt.offset + receipt.content_length
-        ]
+        if content.nbytes <= 0 or content.nbytes > receipt.content_length:
+            raise ValueError("frame 写入长度超出预留范围")
+        with self.hold_frame_write_guards(receipt.descriptor_index):
+            self.validate_receipt(receipt, expected_states={"frame_reserved"})
+            with self._borrow_arena_view(
+                offset=receipt.offset,
+                content_length=content.nbytes,
+            ) as view:
+                view[:] = content
+            if self.config.flush_on_write:
+                assert self._arena_mmap is not None
+                self._arena_mmap.flush()
 
     def close(self) -> None:
-        """幂等关闭 mmap、文件和 owner lock。"""
+        """按可重试状态机关闭资源，并把 owner lock 保留到最后。"""
 
-        if self._closed:
-            return
-        self._closed = True
-        if self._allocator_mmap is not None:
-            self._allocator_mmap.close()
-            self._allocator_mmap = None
-        if self._arena_mmap is not None:
-            self._arena_mmap.close()
-            self._arena_mmap = None
-        if self._allocator_file is not None:
-            self._allocator_file.close()
-            self._allocator_file = None
-        if self._arena_file is not None:
-            self._arena_file.close()
-            self._arena_file = None
-        owner_lock = getattr(self, "_owner_lock", None)
-        if owner_lock is not None:
-            release_mmap_owner_lock(owner_lock)
-            self._owner_lock = None
+        close_deadline = monotonic() + 0.25
+        with self._lifecycle:
+            while self._lifecycle_state == "closing":
+                remaining = close_deadline - monotonic()
+                if remaining <= 0:
+                    raise LocalBufferArenaCloseBusyError("arena 正由其他线程关闭")
+                self._lifecycle.wait(remaining)
+            if self._lifecycle_state == "closed":
+                return
+            self._lifecycle_state = "closing"
+            while self._active_borrows > 0:
+                remaining = close_deadline - monotonic()
+                if remaining <= 0:
+                    self._lifecycle_state = "close_blocked"
+                    self._close_blocked_count += 1
+                    self._lifecycle.notify_all()
+                    raise LocalBufferArenaCloseBusyError(
+                        f"arena 仍有 {self._active_borrows} 个 mmap view 未释放"
+                    )
+                self._lifecycle.wait(remaining)
+
+        try:
+            if self._allocator_mmap is not None:
+                self._allocator_mmap.close()
+                self._allocator_mmap = None
+            if self._arena_mmap is not None:
+                try:
+                    self._arena_mmap.close()
+                except BufferError as error:
+                    raise LocalBufferArenaCloseBusyError(
+                        "arena 存在未纳入借用管理的 mmap view"
+                    ) from error
+                self._arena_mmap = None
+            if self._allocator_file is not None:
+                self._allocator_file.close()
+                self._allocator_file = None
+            if self._arena_file is not None:
+                self._arena_file.close()
+                self._arena_file = None
+            if self._guard_file is not None:
+                self._guard_file.close()
+                self._guard_file = None
+            owner_lock = getattr(self, "_owner_lock", None)
+            if owner_lock is not None:
+                release_mmap_owner_lock(owner_lock)
+                self._owner_lock = None
+        except BaseException:
+            with self._lifecycle:
+                self._lifecycle_state = "close_blocked"
+                self._close_blocked_count += 1
+                self._lifecycle.notify_all()
+            raise
+        with self._lifecycle:
+            self._closed = True
+            self._lifecycle_state = "closed"
+            self._lifecycle.notify_all()
 
     def __enter__(self) -> MmapBufferArena:
         """进入 context manager。"""
@@ -965,6 +1027,38 @@ class MmapBufferArena:
             metadata_size,
         )
 
+    def _ensure_open(self) -> None:
+        """拒绝在关闭已经开始后建立新的 arena 操作。"""
+
+        with self._lifecycle:
+            if self._lifecycle_state != "open":
+                raise LocalBufferArenaError("LocalBuffer arena 正在关闭或已经关闭")
+
+    @contextmanager
+    def _borrow_arena_view(
+        self,
+        *,
+        offset: int,
+        content_length: int,
+    ) -> Iterator[memoryview]:
+        """跟踪当前进程导出的 view，确保关闭不会遗留 owner lock。"""
+
+        with self._lifecycle:
+            if self._lifecycle_state != "open":
+                raise LocalBufferArenaError("LocalBuffer arena 正在关闭或已经关闭")
+            arena_mmap = self._arena_mmap
+            if arena_mmap is None:
+                raise LocalBufferArenaError("LocalBuffer arena mmap 不可用")
+            self._active_borrows += 1
+        view = memoryview(arena_mmap)[offset : offset + content_length]
+        try:
+            yield view
+        finally:
+            view.release()
+            with self._lifecycle:
+                self._active_borrows -= 1
+                self._lifecycle.notify_all()
+
     def _initialize_or_validate_metadata(self) -> bool:
         """新文件初始化；已有文件只接受完全相同 layout。"""
 
@@ -972,7 +1066,6 @@ class MmapBufferArena:
         magic = bytes(self._allocator_mmap[: len(_MAGIC)])
         if magic == b"\x00" * len(_MAGIC):
             self._allocator_mmap[:] = b"\x00" * len(self._allocator_mmap)
-            self._write_header()
             return False
         if magic != _MAGIC:
             raise LocalBufferArenaError("allocator metadata magic 不匹配，拒绝隐式转换")
@@ -1012,12 +1105,15 @@ class MmapBufferArena:
         self._publication_generation = publication_generation
         return True
 
-    def _initialize_guard_file(self) -> None:
-        """创建 descriptor guards 与末尾 allocator lock byte。"""
+    def _initialize_guard_file(self, *, existing: bool) -> None:
+        """创建并持续持有 descriptor guards 的文件身份。"""
 
         expected_size = self.descriptor_count * self._guard_stride + 1
-        guard_file = _open_exact_file(self.guard_path, expected_size=expected_size)
-        guard_file.close()
+        self._guard_file = open_mmap_guard_identity(
+            self.guard_path,
+            expected_size=expected_size,
+            create=not existing,
+        )
 
     def _restore_descriptors(self) -> None:
         """从 descriptor 恢复所有尚未回收 extent 的 buddy 占用。"""
@@ -1408,11 +1504,26 @@ class MmapBufferArenaExternalAccess:
         self.allocator_path = local_buffer_dir / "state.mmap"
         self.guard_path = local_buffer_dir / "access.guard"
         self.layout_fingerprint = _build_layout_fingerprint(config)
-        self._lock = RLock()
+        self._lifecycle = Condition(RLock())
         self._closed = False
-        self._arena_file = self.arena_path.open("r+b", buffering=0)
-        self._allocator_file = self.allocator_path.open("r+b", buffering=0)
+        self._lifecycle_state: Literal[
+            "open", "closing", "close_blocked", "closed"
+        ] = "open"
+        self._active_borrows = 0
+        self._guard_file: BinaryIO | None = None
+        self._arena_file: BinaryIO | None = None
+        self._allocator_file: BinaryIO | None = None
+        self._arena_mmap: mmap.mmap | None = None
+        self._allocator_mmap: mmap.mmap | None = None
+        expected_guard_size = self.geometry.descriptor_count * self._guard_stride + 1
         try:
+            self._guard_file = open_mmap_guard_identity(
+                self.guard_path,
+                expected_size=expected_guard_size,
+                create=False,
+            )
+            self._arena_file = self.arena_path.open("r+b", buffering=0)
+            self._allocator_file = self.allocator_path.open("r+b", buffering=0)
             expected_metadata_size = (
                 _HEADER_SIZE + self.geometry.descriptor_count * _DESCRIPTOR_STRIDE
             )
@@ -1429,9 +1540,17 @@ class MmapBufferArenaExternalAccess:
                 expected_metadata_size,
             )
             self._validate_header()
-        except Exception:
-            self._allocator_file.close()
-            self._arena_file.close()
+        except BaseException:
+            if self._allocator_mmap is not None:
+                self._allocator_mmap.close()
+            if self._arena_mmap is not None:
+                self._arena_mmap.close()
+            if self._allocator_file is not None:
+                self._allocator_file.close()
+            if self._arena_file is not None:
+                self._arena_file.close()
+            if self._guard_file is not None:
+                self._guard_file.close()
             raise
 
     @property
@@ -1449,10 +1568,12 @@ class MmapBufferArenaExternalAccess:
     def acquire_reader_view(self, locator: object) -> Iterator[memoryview]:
         """持有 reader guard，并在 guard 内重验 locator 后返回只读 view。"""
 
-        descriptor_index = int(getattr(locator, "descriptor_index"))
-        guard_file = self.guard_path.open("r+b", buffering=0)
+        self._begin_borrow()
+        guard_file: BinaryIO | None = None
         acquired_offset: int | None = None
         try:
+            descriptor_index = int(getattr(locator, "descriptor_index"))
+            guard_file = self.guard_path.open("r+b", buffering=0)
             for reader_index in range(self.config.reader_guard_slots):
                 candidate = self._reader_guard_offset(
                     descriptor_index,
@@ -1475,6 +1596,7 @@ class MmapBufferArenaExternalAccess:
                     locator,
                     expected_states={"active", "frame_reserved"},
                 )
+            assert self._arena_mmap is not None
             view = memoryview(self._arena_mmap)[
                 int(getattr(locator, "offset")) : int(getattr(locator, "offset"))
                 + int(getattr(locator, "content_length"))
@@ -1490,40 +1612,97 @@ class MmapBufferArenaExternalAccess:
                     offset=acquired_offset,
                     length=1,
                 )
-            guard_file.close()
+            if guard_file is not None:
+                guard_file.close()
+            self._end_borrow()
 
     @contextmanager
     def acquire_writer_view(self, lease: object) -> Iterator[memoryview]:
         """持有 writer guard，并在 guard 内重验 WRITING lease。"""
 
-        descriptor_index = int(getattr(lease, "descriptor_index"))
-        with self._guard(self._writer_guard_offset(descriptor_index)):
-            with self._publication_guard(descriptor_index):
-                self._require_locator(lease, expected_states={"writing"})
-            view = memoryview(self._arena_mmap)[
-                int(getattr(lease, "offset")) : int(getattr(lease, "offset"))
-                + int(getattr(lease, "content_length"))
-            ]
-            try:
-                yield view
-            finally:
-                view.release()
+        self._begin_borrow()
+        try:
+            descriptor_index = int(getattr(lease, "descriptor_index"))
+            with self._guard(self._writer_guard_offset(descriptor_index)):
+                with self._publication_guard(descriptor_index):
+                    self._require_locator(lease, expected_states={"writing"})
+                assert self._arena_mmap is not None
+                view = memoryview(self._arena_mmap)[
+                    int(getattr(lease, "offset")) : int(getattr(lease, "offset"))
+                    + int(getattr(lease, "content_length"))
+                ]
+                try:
+                    yield view
+                finally:
+                    view.release()
+        finally:
+            self._end_borrow()
 
     def close(self) -> None:
-        """关闭当前进程的 mmap view；幂等执行。"""
+        """按可重试状态机关闭当前进程的 mmap view。"""
 
-        with self._lock:
-            if self._closed:
+        close_deadline = monotonic() + 0.25
+        with self._lifecycle:
+            while self._lifecycle_state == "closing":
+                remaining = close_deadline - monotonic()
+                if remaining <= 0:
+                    raise LocalBufferArenaCloseBusyError(
+                        "external access 正由其他线程关闭"
+                    )
+                self._lifecycle.wait(remaining)
+            if self._lifecycle_state == "closed":
                 return
-            self._closed = True
-            try:
+            self._lifecycle_state = "closing"
+            while self._active_borrows > 0:
+                remaining = close_deadline - monotonic()
+                if remaining <= 0:
+                    self._lifecycle_state = "close_blocked"
+                    self._lifecycle.notify_all()
+                    raise LocalBufferArenaCloseBusyError(
+                        f"external access 仍有 {self._active_borrows} 个 view 未释放"
+                    )
+                self._lifecycle.wait(remaining)
+
+        try:
+            if self._allocator_mmap is not None:
                 self._allocator_mmap.close()
-            finally:
-                try:
-                    self._arena_mmap.close()
-                finally:
-                    self._allocator_file.close()
-                    self._arena_file.close()
+                self._allocator_mmap = None
+            if self._arena_mmap is not None:
+                self._arena_mmap.close()
+                self._arena_mmap = None
+            if self._allocator_file is not None:
+                self._allocator_file.close()
+                self._allocator_file = None
+            if self._arena_file is not None:
+                self._arena_file.close()
+                self._arena_file = None
+            if self._guard_file is not None:
+                self._guard_file.close()
+                self._guard_file = None
+        except BaseException:
+            with self._lifecycle:
+                self._lifecycle_state = "close_blocked"
+                self._lifecycle.notify_all()
+            raise
+        with self._lifecycle:
+            self._closed = True
+            self._lifecycle_state = "closed"
+            self._lifecycle.notify_all()
+
+    def _begin_borrow(self) -> None:
+        """阻止关闭与新的 external view 建立发生竞态。"""
+
+        with self._lifecycle:
+            if self._lifecycle_state != "open":
+                raise LocalBufferArenaError("LocalBuffer external access 正在关闭")
+            self._active_borrows += 1
+
+    def _end_borrow(self) -> None:
+        """释放 external view 借用并唤醒等待关闭的线程。"""
+
+        with self._lifecycle:
+            self._active_borrows -= 1
+            self._lifecycle.notify_all()
 
     def _validate_header(self) -> None:
         """拒绝 magic、layout 或 arena identity 不匹配的数据面。"""

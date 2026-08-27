@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -135,3 +136,29 @@ def test_profile_lock_rejects_second_process_slot_for_same_epoch_profile(
 
     second.acquire()
     second.release()
+
+
+def test_profile_lock_releases_handle_when_owner_metadata_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """取得 OS lock 后的 metadata/fsync 异常不得遗留同进程锁。"""
+
+    lock_path = tmp_path / "worker-profile.lock"
+    broken = BackendWorkerProfileLock(lock_path=lock_path, owner={"instance": "broken"})
+    original_fsync = os.fsync
+
+    def fail_fsync(_fd: int) -> None:
+        raise OSError("boom")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="boom"):
+        broken.acquire()
+
+    monkeypatch.setattr(os, "fsync", original_fsync)
+    recovered = BackendWorkerProfileLock(
+        lock_path=lock_path,
+        owner={"instance": "recovered"},
+    )
+    recovered.acquire()
+    recovered.release()

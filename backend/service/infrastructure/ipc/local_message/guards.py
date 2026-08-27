@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import Iterator
 
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapGuardBusyError,
+    MmapOwnerLockHandle,
     acquire_mmap_guard,
     acquire_mmap_owner_lock,
     release_mmap_owner_lock,
@@ -17,13 +18,13 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
 _MAX_DESCRIPTOR_GUARD_POLL_SECONDS = 0.0002
 
 
-def acquire_owner(lock_path: str | Path) -> BinaryIO:
+def acquire_owner(lock_path: str | Path) -> MmapOwnerLockHandle:
     """取得由 OS 在进程退出时回收的单 owner lock。"""
 
     return acquire_mmap_owner_lock(lock_path)
 
 
-def release_owner(handle: BinaryIO) -> None:
+def release_owner(handle: MmapOwnerLockHandle) -> None:
     """释放 owner lock。"""
 
     release_mmap_owner_lock(handle)

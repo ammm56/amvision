@@ -78,7 +78,7 @@ Preview 在 backend-service 进程内直接执行；生产 Workflow 在独立常
 
 ### 结构化消息 IPC
 
-训练遥测已经迁移到通用 LocalMessage EventRing，Inference daemon 已迁移到通用 LocalMessage Mailbox；两者仍各自持有独立文件、owner epoch、容量和故障边界。Workflow Trigger 暂时使用自己的结构化 mmap mailbox；Workflow Runtime 使用 `multiprocessing.Queue`，自身没有独立 mmap mailbox。[ADR-0009](../decisions/ADR-0009-local-message-channel.md) 按链路原子迁移公共 header、guard、CRC、page-chain、恢复和 health 基础设施，不合并物理 Channel 的 owner 或容量。
+训练遥测已经迁移到通用 LocalMessage EventRing，Inference daemon 与 Workflow Trigger 已分别迁移到通用 LocalMessage Mailbox；三者仍各自持有独立文件、owner epoch、容量和故障边界。Workflow Runtime 使用 `multiprocessing.Queue`，自身没有独立 mmap mailbox。[ADR-0009](../decisions/ADR-0009-local-message-channel.md) 已按链路原子迁移公共 header、CRC、Mailbox guard/page-chain、恢复和 health 基础设施，不合并物理 Channel 的 owner 或容量。
 
 目标 LocalMessageChannel 只传 JSON、UTF-8 文本、控制元数据、结构化结果和 BufferRef/FrameRef。图片 bytes 继续由 LocalBuffer 承担；数据库、Outbox、LocalFileQueue 和 ObjectStore 继续承担持久状态。详细阶段与门禁只在[本机结构化消息通道实施基线](../development/local-message-channel-implementation.md)维护。Workflow Runtime Queue 是否迁移必须由真实 P95/P99、CPU、清理和故障恢复基准裁决，不能为形式统一强制替换。
 

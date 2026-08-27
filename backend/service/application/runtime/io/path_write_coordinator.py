@@ -139,7 +139,7 @@ class _InterprocessPathLock:
                     return self
                 except OSError:
                     self.control.wait_interruptibly(0.05)
-        except Exception:
+        except BaseException:
             self._file.close()
             self._file = None
             raise

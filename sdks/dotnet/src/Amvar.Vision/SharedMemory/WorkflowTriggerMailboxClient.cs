@@ -49,6 +49,7 @@ namespace Amvar.Vision.SharedMemory
         private readonly string mailboxPath;
         private readonly string guardPath;
         private readonly FileStream mailboxFile;
+        private readonly FileStream guardFile;
         private readonly MemoryMappedFile mailboxMap;
         private readonly MemoryMappedViewAccessor view;
         private readonly IDisposable timerResolutionLease;
@@ -74,7 +75,7 @@ namespace Amvar.Vision.SharedMemory
                     mailboxPath,
                     FileMode.Open,
                     FileAccess.ReadWrite,
-                    FileShare.ReadWrite | FileShare.Delete);
+                    FileShare.ReadWrite);
             }
             catch (Exception error)
             {
@@ -96,6 +97,17 @@ namespace Amvar.Vision.SharedMemory
 
             try
             {
+                guardFile = new FileStream(
+                    guardPath,
+                    FileMode.Open,
+                    FileAccess.ReadWrite,
+                    FileShare.ReadWrite);
+                if (guardFile.Length != WorkflowTriggerMailboxV1.DescriptorCount)
+                {
+                    throw new SharedMemoryTriggerException(
+                        "protocol_error",
+                        "Workflow Trigger guard size does not match the frozen profile.");
+                }
                 mailboxMap = MemoryMappedFile.CreateFromFile(
                     mailboxFile,
                     null,
@@ -111,6 +123,7 @@ namespace Amvar.Vision.SharedMemory
             }
             catch
             {
+                guardFile?.Dispose();
                 mailboxFile.Dispose();
                 timerResolutionLease.Dispose();
                 throw;
@@ -595,6 +608,7 @@ namespace Amvar.Vision.SharedMemory
                 view.Dispose();
                 mailboxMap.Dispose();
                 mailboxFile.Dispose();
+                guardFile.Dispose();
                 timerResolutionLease.Dispose();
             }
         }
@@ -1371,7 +1385,7 @@ namespace Amvar.Vision.SharedMemory
                     path,
                     FileMode.Open,
                     FileAccess.ReadWrite,
-                    FileShare.ReadWrite | FileShare.Delete);
+                    FileShare.ReadWrite);
             }
             catch (IOException error)
             {

@@ -257,7 +257,7 @@ def test_training_telemetry_receiver_survives_worker_replacement_and_locked_clea
 
 
 def test_training_telemetry_receiver_restart_keeps_live_worker_file(tmp_path) -> None:
-    """验证 service receiver 重启不清理仍由 owner guard 持有的 producer。"""
+    """验证 service receiver 重启不清理仍由 owner lock 持有的 producer。"""
 
     broker = TrainingTelemetryBroker(
         event_bus=InMemoryServiceEventBus(), min_publish_interval_seconds=0
@@ -480,7 +480,7 @@ def test_training_telemetry_supports_multiple_spawned_workers(tmp_path) -> None:
 
 
 def test_training_telemetry_recovers_event_after_abnormal_worker_exit(tmp_path) -> None:
-    """验证 producer crash 依靠 owner guard 收敛，且稳定事件不会丢失。"""
+    """验证 producer crash 依靠 owner lock 收敛，且稳定事件不会丢失。"""
 
     context = multiprocessing.get_context("spawn")
     process = context.Process(

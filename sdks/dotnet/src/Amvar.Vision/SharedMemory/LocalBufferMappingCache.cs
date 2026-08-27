@@ -26,6 +26,7 @@ namespace Amvar.Vision.SharedMemory
         private readonly string layoutFingerprint;
         private readonly FileStream arenaFile;
         private readonly FileStream allocatorFile;
+        private FileStream? guardFile;
         private readonly MemoryMappedFile arenaMap;
         private readonly MemoryMappedFile allocatorMap;
         private readonly MemoryMappedViewAccessor arenaView;
@@ -49,7 +50,7 @@ namespace Amvar.Vision.SharedMemory
                 allocatorPath,
                 FileMode.Open,
                 FileAccess.ReadWrite,
-                FileShare.ReadWrite | FileShare.Delete);
+                FileShare.ReadWrite);
             try
             {
                 allocatorMap = MemoryMappedFile.CreateFromFile(
@@ -242,18 +243,18 @@ namespace Amvar.Vision.SharedMemory
         private void ValidateGuardFile(int descriptorCount)
         {
             var expectedLength = checked((long)descriptorCount * guardStride + 1);
-            using (var guardFile = new FileStream(
+            guardFile = new FileStream(
                 guardPath,
                 FileMode.Open,
                 FileAccess.ReadWrite,
-                FileShare.ReadWrite | FileShare.Delete))
+                FileShare.ReadWrite);
+            if (guardFile.Length != expectedLength)
             {
-                if (guardFile.Length != expectedLength)
-                {
-                    throw new SharedMemoryTriggerException(
-                        "protocol_error",
-                        "LocalBuffer guard layout does not match allocator metadata.");
-                }
+                guardFile.Dispose();
+                guardFile = null;
+                throw new SharedMemoryTriggerException(
+                    "protocol_error",
+                    "LocalBuffer guard layout does not match allocator metadata.");
             }
         }
 
@@ -333,6 +334,7 @@ namespace Amvar.Vision.SharedMemory
             arenaMap.Dispose();
             allocatorFile.Dispose();
             arenaFile.Dispose();
+            guardFile?.Dispose();
         }
 
         private static FileStream OpenExact(string path, long expectedLength)
@@ -341,7 +343,7 @@ namespace Amvar.Vision.SharedMemory
                 Path.GetFullPath(path),
                 FileMode.Open,
                 FileAccess.ReadWrite,
-                FileShare.ReadWrite | FileShare.Delete);
+                FileShare.ReadWrite);
             if (file.Length != expectedLength)
             {
                 file.Dispose();

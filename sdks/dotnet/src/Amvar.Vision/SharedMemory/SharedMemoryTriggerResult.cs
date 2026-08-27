@@ -322,7 +322,7 @@ namespace Amvar.Vision.SharedMemory
                 throw new ObjectDisposedException(nameof(PhysicalPayloadReader));
             }
 
-            var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             try
             {
                 var map = MemoryMappedFile.CreateFromFile(file, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, false);

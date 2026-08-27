@@ -82,7 +82,7 @@ class TrainingTelemetryMmapPublisher:
             return self._require_publisher_locked().publish(point)
 
     def close(self) -> None:
-        """幂等发布 producer closed 并释放 owner guard。"""
+        """幂等发布 producer closed 并释放 owner lock。"""
 
         with self._lock:
             if self._closed:
@@ -267,7 +267,7 @@ class TrainingTelemetryMmapReceiver:
 
     @staticmethod
     def _owner_alive(entry: _ReaderEntry) -> bool:
-        """使用 owner guard 判断 producer，而不是依赖 PID 或文件存在性。"""
+        """使用 owner lock 判断 producer，而不是依赖 PID 或文件存在性。"""
 
         try:
             return entry.reader.owner_alive()

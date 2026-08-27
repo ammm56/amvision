@@ -568,16 +568,7 @@ class LocalBufferArenaPool:
         content_length = _payload_int(reservation, "content_length")
         if content.nbytes != content_length:
             raise InvalidRequestError("frame 写入长度与 reservation 不一致")
-        with self.arena.hold_frame_write_guards(receipt.descriptor_index):
-            self.arena.validate_receipt(
-                receipt,
-                expected_states={"frame_reserved"},
-            )
-            view = self.arena.read_view(receipt)
-            try:
-                view[:content_length] = content
-            finally:
-                view.release()
+        self.arena.write_frame_bytes(receipt, content=content)
 
     def commit_frame(
         self,

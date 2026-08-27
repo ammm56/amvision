@@ -128,7 +128,7 @@ LocalBuffer 是所有本机短期内存图片跨模块、跨节点和跨进程�
 - mailbox descriptor 请求和响应包含 server epoch、generation、owner、deadline 和 CRC32；大型 segmentation 等结构化结果使用固定溢出页池，每页也有 descriptor identity、next page、长度和 CRC32。
 - 溢出页连续优先，碎片化时沿非连续 page chain 读取；client ACK 后由 daemon 回收。页池满载或单响应超过配置上限时返回 `mmap_response_capacity_exhausted`，不退回持久化队列、不动态扩文件。
 - daemon 对 ACK、超时、取消、调用进程崩溃和 daemon 重启执行统一回收。
-- 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。Windows、Ubuntu x64/ARM64、macOS ARM 使用相同的 mmap 和原子槽位文件实现。
+- 协议不得依赖 Windows named pipe、Unix domain socket 或 TCP loopback。二进制 mmap layout 保持平台中立；当前正式 byte-range lock、强杀恢复和 Python/.NET 互操作认证以 Windows x64 为准。Ubuntu/Linux 与 macOS 必须分别补齐 OFD lock 或等价语义、进程内线程互斥和故障门禁后再声明正式支持，不能仅凭相同文件 layout 推断锁语义等价。
 
 Descriptor、page header、压缩、发布顺序和异常恢复见 [Inference mailbox v1](inference-mailbox-v1.md)。
 

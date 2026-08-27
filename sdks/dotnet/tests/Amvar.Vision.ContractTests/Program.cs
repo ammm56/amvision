@@ -204,12 +204,12 @@ namespace Amvar.Vision.ContractTests
             var allocatorPath = Path.Combine(localBufferRoot, "state.mmap");
             var guardPath = Path.Combine(localBufferRoot, "access.guard");
             const long arenaSize = 4 * 1024 * 1024;
-            using (var file = new FileStream(arenaPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            using (var file = new FileStream(arenaPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
             {
                 file.SetLength(arenaSize);
             }
             var brokerEpoch = CreateArenaMetadata(allocatorPath, arenaSize);
-            using (var guard = new FileStream(guardPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            using (var guard = new FileStream(guardPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
             {
                 guard.SetLength(25);
             }
@@ -323,7 +323,7 @@ namespace Amvar.Vision.ContractTests
                 epoch[index] = checked((byte)(index + 1));
             }
 
-            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
             using (var writer = new BinaryWriter(file, Encoding.UTF8, leaveOpen: false))
             {
                 file.SetLength(256 + 4 * 256);

@@ -75,6 +75,10 @@ descriptor 保存固定长度字段：state、arena id、descriptor index/genera
 
 外部 SDK 取得 allocation 后必须先取得 writer guard，再在 publication guard 内重新校验 broker epoch、descriptor generation、lease、owner、offset、capacity 和 deadline，成功后才创建 writable view。Broker 在 WRITING/ACTIVE 回收时先发布 `REVOKING`，随后按 writer、reader index 升序非阻塞取得并持续持有全部外部 guards；取得成功后才进入 allocator lock 与 publication guard 完成最终 identity/state 校验、generation 提升、FREE publication 和 buddy merge，最后释放外部 guards。无法取得全部 guards 时释放本次已取得的 guards并保持 `REVOKING`，超过 grace 后进入 `QUARANTINED`。Broker 重启不能让旧 SDK 在新 generation 上继续写入。
 
+锁文件不是持久锁记录。`owner.lock` 的文件存在不代表 owner 存活，权威依据是进程持续持有的 OS byte-range lock；进程被强制结束后 OS 释放 lock，下一 owner 可以复用同一路径并提高 epoch。`access.guard` 是固定 byte-range 的文件身份：只有首次创建 arena 的 owner 可以创建并设置精确长度，已有已发布 header 的 arena 缺失 guard 或长度错误时 fail closed，client/SDK 不得创建、truncate 或修复。首次初始化必须按“未发布零 metadata → 创建 guard → 发布 header”执行；若在 header publication 前强杀，下一 owner 只可在确认 metadata 仍为全零时继续初始化。Broker 和所有长生命周期 mapping 持有 guard identity handle；Windows 打开方式禁止 delete/rename/replace sharing，避免路径替换造成锁身份分裂。
+
+关闭必须先停止新 view，再等待并销毁当前进程的所有借用，按 mapping、文件、guard identity、owner lock 的顺序释放。任一 view 未释放或 close 失败时 owner 保持 `close_blocked` 并保留 lock，释放 view 后可以重试关闭；不能先标记 closed 或先释放 owner lock。当前该语义的正式发布认证以 Windows x64 为准；Linux/macOS 的 POSIX lock 后端须另行完成同进程线程互斥、跨进程、强杀和路径替换认证，不能仅因 mmap layout 相同就宣称等价支持。
+
 ### 6. BufferRef 与 SDK 映射按 extent 工作
 
 开发期未冻结的 `BufferRef.v1`、Workflow Trigger allocation、Python reader/writer 和仓库内 .NET SDK 在同一提交链中原地升级。locator 至少包含：
@@ -119,6 +123,7 @@ health按general与hard reserve分域报告free、reserved-writing、active、fr
 
 ```text
 data/buffers/
+├─ .local-buffer-broker.lock    Broker companion process 单实例与接管锁
 ├─ local-buffer/
 │  ├─ images.mmap              arena_id=local-buffer-main
 │  ├─ state.mmap
@@ -137,6 +142,8 @@ data/buffers/
 │     └─ <worker-session-id>.event.mmap
 └─ inference-daemon-private/
 ```
+
+`.local-buffer-broker.lock` 与 `local-buffer/owner.lock` 不能混为一层：前者保护 companion process 启动/接管，后者保护 arena allocator owner。两者都以存活 handle 上的 OS lock 为权威，遗留文件本身不阻塞重启。
 
 本文实施完成时，训练遥测继续使用 `data/runtime/training-telemetry/`，不属于当时的 LocalBuffer 图片数据面迁移范围。[ADR-0009](ADR-0009-local-message-channel.md) 阶段 2 现已把它迁移到 `data/buffers/local-message/training-telemetry/`；该目录使用独立 EventRing，仍不会写入 LocalBuffer arena。
 

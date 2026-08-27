@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from multiprocessing.context import BaseContext
 from threading import Event, Thread
-from time import monotonic_ns
+from time import monotonic_ns, sleep
 from uuid import UUID, uuid4
 import hashlib
 import json
@@ -60,6 +60,11 @@ from backend.service.infrastructure.ipc.local_message.registry import (
 from backend.service.infrastructure.ipc.multiprocessing_queue_channel import (
     MultiprocessingQueueMailboxClient,
     MultiprocessingQueueMailboxServer,
+)
+from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapGuardFileError,
+    MmapOwnerLockBusyError,
+    acquire_mmap_owner_lock,
 )
 
 
@@ -137,6 +142,40 @@ def _cross_process_mailbox_server(
         server.sweep()
     finally:
         server.close(deadline_ns=_deadline())
+
+
+def _hold_mailbox_owner(buffers_root: str, ready: object) -> None:
+    """spawn 子进程持续持有 Mailbox owner，供强杀恢复测试使用。"""
+
+    paths = build_local_message_channel_paths(
+        buffers_root=buffers_root,
+        channel_name="mailbox-kill-recovery",
+        channel_kind="mailbox",
+    )
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    ready.set()
+    try:
+        while True:
+            sleep(1)
+    finally:
+        server.close(deadline_ns=_deadline())
+
+
+def _hold_event_ring_owner(buffers_root: str, ready: object) -> None:
+    """spawn 子进程持续持有 EventRing owner，供强杀恢复测试使用。"""
+
+    paths = build_local_message_channel_paths(
+        buffers_root=buffers_root,
+        channel_name="event-kill-recovery",
+        channel_kind="event",
+    )
+    publisher = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+    ready.set()
+    try:
+        while True:
+            sleep(1)
+    finally:
+        publisher.close(deadline_ns=_deadline())
 
 
 def _round_trip(
@@ -800,6 +839,90 @@ def test_mailbox_cross_process_owner_client_and_os_guards(tmp_path: Path) -> Non
     assert process.exitcode == 0
 
 
+def test_mailbox_forced_owner_exit_releases_os_lock(tmp_path: Path) -> None:
+    """Mailbox server 被强杀后，遗留 owner.lock 文件不阻塞新 owner。"""
+
+    import multiprocessing
+
+    context: BaseContext = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    buffers_root = tmp_path / "buffers"
+    process = context.Process(
+        target=_hold_mailbox_owner,
+        args=(str(buffers_root), ready),
+    )
+    process.start()
+    paths = build_local_message_channel_paths(
+        buffers_root=buffers_root,
+        channel_name="mailbox-kill-recovery",
+        channel_kind="mailbox",
+    )
+    try:
+        assert ready.wait(timeout=10)
+        with pytest.raises(MmapOwnerLockBusyError):
+            MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+        process.terminate()
+        process.join(timeout=10)
+        assert not process.is_alive()
+
+        restarted = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+        restarted.close(deadline_ns=_deadline())
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=10)
+
+
+def test_mailbox_close_keeps_owner_until_exported_view_is_released(
+    tmp_path: Path,
+) -> None:
+    """mmap close 被 view 阻止时保留 owner，释放 view 后可重试关闭。"""
+
+    paths = _paths(tmp_path, "mailbox-close-retry", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    exported = memoryview(server._require_view())
+    with pytest.raises(BufferError):
+        server.close(deadline_ns=_deadline())
+    with pytest.raises(MmapOwnerLockBusyError):
+        MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+
+    exported.release()
+    server.close(deadline_ns=_deadline())
+    restarted = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    restarted.close(deadline_ns=_deadline())
+
+
+def test_existing_mailbox_missing_guard_fails_closed_and_releases_owner(
+    tmp_path: Path,
+) -> None:
+    """已发布 Mailbox 不允许 client/server 重建 guard，初始化失败也不遗留 owner。"""
+
+    paths = _paths(tmp_path, "mailbox-missing-guard", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    server.close(deadline_ns=_deadline())
+    paths.guard_path.unlink()
+
+    with pytest.raises(MmapGuardFileError, match="guard 文件不存在"):
+        MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    assert not paths.guard_path.exists()
+    owner = acquire_mmap_owner_lock(paths.owner_lock_path)
+    owner.release()
+
+
+def test_unpublished_mailbox_repairs_partial_guard(tmp_path: Path) -> None:
+    """Mailbox 数据文件尚未发布时可收敛首次启动留下的短 guard。"""
+
+    paths = _paths(tmp_path, "mailbox-partial-guard", "mailbox")
+    paths.guard_path.parent.mkdir(parents=True)
+    paths.guard_path.write_bytes(b"x")
+
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    try:
+        assert paths.guard_path.stat().st_size == MAILBOX_PROFILE.descriptor_count
+    finally:
+        server.close(deadline_ns=_deadline())
+
+
 def test_mailbox_stale_open_client_is_fenced_by_new_owner_epoch(tmp_path: Path) -> None:
     """旧 client mapping 保持打开时，新 owner 仍能接管并使旧调用返回 restarted。"""
 
@@ -870,6 +993,48 @@ def test_event_ring_gap_drop_close_and_owner_restart(tmp_path: Path) -> None:
     finally:
         restarted_reader.close(deadline_ns=_deadline())
         restarted.close(deadline_ns=_deadline())
+
+
+def test_event_ring_forced_owner_exit_releases_os_lock(tmp_path: Path) -> None:
+    """producer 被强杀后遗留 lock 文件不阻塞新 owner 与新 epoch。"""
+
+    import multiprocessing
+
+    context: BaseContext = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    buffers_root = tmp_path / "buffers"
+    process = context.Process(
+        target=_hold_event_ring_owner,
+        args=(str(buffers_root), ready),
+    )
+    process.start()
+    paths = build_local_message_channel_paths(
+        buffers_root=buffers_root,
+        channel_name="event-kill-recovery",
+        channel_kind="event",
+    )
+    reader: MmapEventRingReader | None = None
+    try:
+        assert ready.wait(timeout=10)
+        reader = MmapEventRingReader(paths=paths, profile=EVENT_PROFILE)
+        old_epoch = reader.owner_epoch
+        assert reader.owner_alive() is True
+        process.terminate()
+        process.join(timeout=10)
+        assert not process.is_alive()
+        assert reader.owner_alive() is False
+
+        restarted = MmapEventRingPublisher(paths=paths, profile=EVENT_PROFILE)
+        try:
+            assert restarted.owner_epoch != old_epoch
+        finally:
+            restarted.close(deadline_ns=_deadline())
+    finally:
+        if reader is not None:
+            reader.close(deadline_ns=_deadline())
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=10)
 
 
 def test_event_ring_reports_gap_for_stale_cursor(tmp_path: Path) -> None:

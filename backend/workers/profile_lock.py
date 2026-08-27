@@ -36,20 +36,28 @@ class BackendWorkerProfileLock:
             raise RuntimeError(
                 f"backend-worker Profile 已有运行实例: {self.lock_path}"
             ) from error
-        handle.seek(0)
-        handle.truncate()
-        handle.write(
-            (
-                json.dumps(
-                    {**self.owner, "process_id": os.getpid()},
-                    ensure_ascii=False,
-                    sort_keys=True,
+        try:
+            handle.seek(0)
+            handle.truncate()
+            handle.write(
+                (
+                    json.dumps(
+                        {**self.owner, "process_id": os.getpid()},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\n"
                 )
-                + "\n"
-            ).encode("utf-8")
-        )
-        handle.flush()
-        os.fsync(handle.fileno())
+                .encode("utf-8")
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        except BaseException:
+            try:
+                _unlock_file(handle)
+            finally:
+                handle.close()
+            raise
         self._handle = handle
 
     def release(self) -> None:

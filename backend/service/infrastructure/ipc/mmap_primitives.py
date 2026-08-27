@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from secrets import randbits
+from threading import Lock
 from time import monotonic_ns, sleep
 from typing import BinaryIO, TypeVar
 
@@ -23,6 +24,42 @@ class MmapGuardBusyError(Exception):
 
 class MmapOwnerLockBusyError(Exception):
     """表示 mailbox owner lock 已由另一个进程持有。"""
+
+
+class MmapGuardFileError(RuntimeError):
+    """表示 guard 文件缺失、长度不符或已失去可信身份。"""
+
+
+class MmapOwnerLockHandle:
+    """持有一个 owner lock，并提供线程安全且真正幂等的释放。"""
+
+    def __init__(self, lock_file: BinaryIO) -> None:
+        """接管已经取得 byte-range lock 的文件 handle。"""
+
+        self._lock_file: BinaryIO | None = lock_file
+        self._release_lock = Lock()
+
+    @property
+    def released(self) -> bool:
+        """返回 owner lock 是否已经释放。"""
+
+        with self._release_lock:
+            return self._lock_file is None
+
+    def release(self) -> None:
+        """至多执行一次 unlock/close；进程退出仍由 OS 最终兜底。"""
+
+        with self._release_lock:
+            lock_file = self._lock_file
+            if lock_file is None:
+                return
+            try:
+                unlock_byte_range_file(lock_file)
+            finally:
+                try:
+                    lock_file.close()
+                finally:
+                    self._lock_file = None
 
 
 class MmapPageChainError(ValueError):
@@ -123,6 +160,66 @@ def unlock_byte_range_file(
     )
 
 
+def open_mmap_guard_identity(
+    guard_path: str | Path,
+    *,
+    expected_size: int,
+    create: bool,
+) -> BinaryIO:
+    """打开并持有固定 guard；只有未发布数据的 owner 可以创建或修复。"""
+
+    if expected_size <= 0:
+        raise ValueError("guard expected_size 必须大于 0")
+    path = Path(guard_path)
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            guard_file = path.open("x+b", buffering=0)
+        except FileExistsError:
+            guard_file = path.open("r+b", buffering=0)
+    else:
+        try:
+            guard_file = path.open("r+b", buffering=0)
+        except FileNotFoundError as error:
+            raise MmapGuardFileError(f"guard 文件不存在：{path}") from error
+    actual_size = os.fstat(guard_file.fileno()).st_size
+    if actual_size != expected_size:
+        if not create:
+            guard_file.close()
+            raise MmapGuardFileError(
+                f"guard 文件长度不匹配：expected={expected_size}, actual={actual_size}"
+            )
+        try:
+            guard_file.truncate(expected_size)
+            guard_file.flush()
+            os.fsync(guard_file.fileno())
+        except BaseException:
+            guard_file.close()
+            raise
+    return guard_file
+
+
+def _open_existing_guard_range(
+    guard_path: str | Path,
+    *,
+    minimum_size: int,
+) -> BinaryIO:
+    """为一次短锁打开已有 guard，并拒绝任何隐式创建或扩容。"""
+
+    path = Path(guard_path)
+    try:
+        guard_file = path.open("r+b", buffering=0)
+    except FileNotFoundError as error:
+        raise MmapGuardFileError(f"guard 文件不存在：{path}") from error
+    actual_size = os.fstat(guard_file.fileno()).st_size
+    if actual_size < minimum_size:
+        guard_file.close()
+        raise MmapGuardFileError(
+            f"guard 文件长度不足：required={minimum_size}, actual={actual_size}"
+        )
+    return guard_file
+
+
 @contextmanager
 def acquire_mmap_guard(
     *,
@@ -139,16 +236,10 @@ def acquire_mmap_guard(
     # guard 位于每次 descriptor claim 的热路径；正式 path builder 已完成
     # containment 和绝对化，这里不能重复执行 Windows resolve/stat。
     path = Path(guard_path)
-    # 正式 mailbox/LocalBuffer guard 在 owner 启动时一次性创建。正常请求只
-    # 打开已有文件，避免每次短临界区都触发 CreateDirectory/OpenOrCreate 的
-    # NTFS 元数据路径；独立测试或首次初始化仍允许一次性回退创建。
-    try:
-        guard_file = path.open("r+b", buffering=0)
-    except FileNotFoundError:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        guard_file = path.open("a+b", buffering=0)
-        if os.fstat(guard_file.fileno()).st_size < offset + length:
-            guard_file.truncate(offset + length)
+    guard_file = _open_existing_guard_range(
+        path,
+        minimum_size=offset + length,
+    )
     acquired = False
     try:
         while True:
@@ -191,14 +282,10 @@ def acquire_mmap_reader_guard(
         raise ValueError("poll_interval_seconds 必须大于 0")
     if start_offset < 0:
         raise ValueError("reader guard start_offset 不能小于 0")
-    path = Path(guard_path)
-    try:
-        guard_file = path.open("r+b", buffering=0)
-    except FileNotFoundError:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        guard_file = path.open("a+b", buffering=0)
-        if os.fstat(guard_file.fileno()).st_size < start_offset + slot_count:
-            guard_file.truncate(start_offset + slot_count)
+    guard_file = _open_existing_guard_range(
+        guard_path,
+        minimum_size=start_offset + slot_count,
+    )
     acquired_offset: int | None = None
     try:
         while acquired_offset is None:
@@ -221,7 +308,7 @@ def acquire_mmap_reader_guard(
         guard_file.close()
 
 
-def acquire_mmap_owner_lock(lock_path: str | Path) -> BinaryIO:
+def acquire_mmap_owner_lock(lock_path: str | Path) -> MmapOwnerLockHandle:
     """非阻塞取得 mailbox 单 owner lock，并由调用方持有返回的 handle。"""
 
     path = Path(lock_path)
@@ -232,16 +319,13 @@ def acquire_mmap_owner_lock(lock_path: str | Path) -> BinaryIO:
     except (BlockingIOError, OSError) as error:
         lock_file.close()
         raise MmapOwnerLockBusyError from error
-    return lock_file
+    return MmapOwnerLockHandle(lock_file)
 
 
-def release_mmap_owner_lock(lock_file: BinaryIO) -> None:
+def release_mmap_owner_lock(lock_file: MmapOwnerLockHandle) -> None:
     """幂等语义地释放 owner lock handle。"""
 
-    try:
-        unlock_byte_range_file(lock_file)
-    finally:
-        lock_file.close()
+    lock_file.release()
 
 
 def select_page_indices(

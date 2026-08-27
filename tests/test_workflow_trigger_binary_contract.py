@@ -13,7 +13,9 @@ import pytest
 
 from backend.contracts.ipc import workflow_trigger_mailbox_v1 as contract
 from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapGuardFileError,
     MmapOwnerLockBusyError,
+    acquire_mmap_guard,
     acquire_mmap_owner_lock,
     MmapPageChainError,
     build_contained_mmap_path,
@@ -165,10 +167,44 @@ def test_neutral_owner_lock_fences_second_owner_and_allows_takeover(
     try:
         with pytest.raises(MmapOwnerLockBusyError):
             acquire_mmap_owner_lock(lock_path)
+        if os.name == "nt":
+            with pytest.raises(PermissionError):
+                lock_path.unlink()
     finally:
         release_mmap_owner_lock(first_owner)
     second_owner = acquire_mmap_owner_lock(lock_path)
     release_mmap_owner_lock(second_owner)
+    release_mmap_owner_lock(second_owner)
+    assert second_owner.released is True
+    lock_path.unlink()
+
+
+def test_guard_client_never_creates_or_expands_guard_file(tmp_path: Path) -> None:
+    """client 只能使用 owner 已创建的固定 guard，缺失或过短均 fail-closed。"""
+
+    guard_path = tmp_path / "access.guard"
+    with pytest.raises(MmapGuardFileError, match="不存在"):
+        with acquire_mmap_guard(
+            guard_path=guard_path,
+            deadline_ns=time.monotonic_ns() + 1_000_000,
+            poll_interval_seconds=0.0001,
+            offset=0,
+            length=1,
+        ):
+            pass
+    assert not guard_path.exists()
+
+    guard_path.write_bytes(b"\0")
+    with pytest.raises(MmapGuardFileError, match="长度不足"):
+        with acquire_mmap_guard(
+            guard_path=guard_path,
+            deadline_ns=time.monotonic_ns() + 1_000_000,
+            poll_interval_seconds=0.0001,
+            offset=1,
+            length=1,
+        ):
+            pass
+    assert guard_path.stat().st_size == 1
 
 
 def _build_dotnet_probe() -> Path:
@@ -218,6 +254,8 @@ def test_python_and_dotnet_byte_range_guards_are_mutually_exclusive(
         while not ready_path.exists() and time.monotonic() < deadline:
             time.sleep(0.02)
         assert ready_path.exists(), "等待 .NET guard holder 超时"
+        with pytest.raises(PermissionError):
+            guard_path.unlink()
         with guard_path.open("a+b", buffering=0) as guard_file:
             with pytest.raises(BlockingIOError):
                 try_lock_byte_range_file(guard_file)

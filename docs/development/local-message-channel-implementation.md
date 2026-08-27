@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | Workflow Trigger | `data/buffers/local-message/workflow-trigger/mailbox.mmap` | 通用 Mailbox + Trigger 业务字段、PREPARE/WRITING、response page-chain、ACK |
 | Inference daemon | `data/buffers/local-message/inference/mailbox.mmap` | 通用 Mailbox request/response、segmentation page-chain、取消、ACK、daemon epoch |
-| Training telemetry | `data/buffers/local-message/training-telemetry/<worker-session-id>.event.mmap` | 通用 EventRing、owner guard、sequence、CRC、gap、非阻塞发布 |
+| Training telemetry | `data/buffers/local-message/training-telemetry/<worker-session-id>.event.mmap` | 通用 EventRing、owner lock、sequence、CRC、gap、非阻塞发布 |
 | Workflow Runtime | 每 Runtime request/response `multiprocessing.Queue` | 命令、结果、heartbeat、取消 |
 | LocalBuffer | `data/buffers/local-buffer/` | 图片 bytes、连续 extent、lease 与 guard；不属于本轮 allocator 替换范围 |
 
@@ -63,7 +63,7 @@ backend/service/infrastructure/ipc/
 1. LocalBuffer只保存图片和大块连续binary；LocalMessage只保存结构化消息与引用。显式`image-base64.v1`可以作为JSON进入MAILBOX，但不是高性能图片路径并受序列化前32 MiB单响应上限约束。
 2. Mailbox物理Channel只有一个server owner、一个owner epoch和一个server进程内response page allocator；EventRing物理Channel只有一个producer owner、一个producer epoch和固定ring slots，不存在descriptor、page allocator或ACK。
 3. 不建立跨Trigger、Inference、Training的全局动态payload arena或allocator lock。
-4. Mailbox和EventRing共享可组合的identity/guard/CRC/path原语，但不共享完整binary schema、状态机或容量几何；page-chain只属于MAILBOX。
+4. Mailbox和EventRing共享可组合的identity/CRC/path/owner-lock原语，descriptor guard只属于Mailbox；两者不共享完整binary schema、状态机或容量几何，page-chain也只属于Mailbox。
 5. Mailbox client request保持有界inline；response page只由server owner分配，避免跨进程共同修改page allocator；EventRing只执行非阻塞slot publication和覆盖检测。
 6. publication最后写state；读取方在guard内重新校验epoch、generation、owner、deadline、长度和CRC。
 7. 满载立即失败；不排队、不重试、不重跑业务、不切换持久队列或临时文件。
@@ -73,6 +73,15 @@ backend/service/infrastructure/ipc/
 11. 不增加全局`local_message.enabled`；LocalMessage基础设施、Inference MAILBOX和Training Event不依赖LocalBuffer enable。Workflow Trigger的配置与路径所有权独立，但当前v1 PREPARE强制包含输入图片，因此其服务ready明确依赖LocalBufferBroker ready，并通过Trigger capability/health对SDK公开。
 12. 普通部署配置不包含`channel_profiles`；Trigger Mailbox、Inference MAILBOX和Training Event的稳定默认profile由代码固定并写入header。
 13. 已迁移 LocalMessage 的 application adapter 不能直接 import `mmap`、LocalMessage 文件布局或具体 transport；它们通过四个窄 port 由 composition root 注入。未迁移的领域 Queue/pipe 通道保留自己的并发、主动事件和路由语义，不建立一个覆盖全部 IPC 的过宽 `MessageChannelPort`。
+
+### 文件锁身份与关闭规则
+
+- `owner.lock` 是 owner 用于 OS byte-range lock 的稳定路径，文件存在不表示锁仍被持有。Mailbox server/EventRing producer 在整个 owner 生命周期持有 handle；正常关闭显式 unlock，进程被强制结束时由 OS 释放，下一 owner 复用同一路径并发布新 epoch。
+- Mailbox 的 `access.guard` 由首次创建 mailbox 文件的 server 创建并固定为 descriptor 数量对应的精确长度。只有 mailbox 数据文件尚未创建或仍为零长度/未发布状态时，下一 owner 可以收敛首次启动中断留下的空或短 guard；已有已发布 mailbox 的 guard 缺失或长度不符时 server/client 都拒绝启动。client、SDK 和短 guard 路径不得创建、扩容或 truncate。
+- Mailbox server/client 在 mapping 生命周期持有 `access.guard` identity handle；Windows handle 禁止 delete/rename/replace sharing，避免活动 Channel 的路径被替换为第二个文件。每次 descriptor guard 后仍重验 epoch、generation、owner 和 state。
+- EventRing 没有 descriptor、reader/writer guard 或 `access.guard`；它只使用每个 producer session 独立的 `owner.lock`。`owner_alive()` 通过尝试取得该 owner lock 判断异常退出，PID 和 event 文件存在只作诊断。
+- 关闭先拒绝新操作，再关闭导出的 response/view、mmap 和数据文件；Mailbox 再关闭 guard identity，server/Event producer 最后释放 owner lock。关闭过程中出现活动 memoryview 或资源关闭错误时保留尚未关闭的 handle，并允许重试；owner lock release 必须线程安全且幂等。
+- 当前正式锁互操作认证为 Windows x64。Linux/macOS 的 mmap layout 可以保持相同，但 POSIX lock 后端须完成同进程线程、跨进程、强杀和路径替换门禁后才可标记为正式支持；不能把当前 `lockf` 开发实现直接解释为同等认证。
 
 ## 阶段 0：测量与契约冻结
 
@@ -101,7 +110,7 @@ backend/service/infrastructure/ipc/
 - ADR、架构文档和schema字段复核；
 - Python/.NET little-endian、字段宽度、对齐和CRC fixture；
 - 旧文件、配置、测试fixture和SDK生成物的原子迁移清单；
-- EventRing owner lock/guard、owner epoch、worker session identity、诊断PID/process start identity，以及正常close与异常退出的回收判定。
+- EventRing owner lock、owner epoch、worker session identity、诊断PID/process start identity，以及正常close与异常退出的回收判定；EventRing 不创建 descriptor access guard。
 
 同阶段冻结四个窄 port 的共同传输契约：
 
@@ -187,10 +196,10 @@ backend/service/infrastructure/ipc/
 实际实现已收敛为：
 
 - `training_telemetry_channel.py` 只负责 `TrainingTelemetryPoint` 与 `training-telemetry.event.v1` wire envelope 的逐字段映射，以及按 `task_id` 执行 `min_publish_interval_seconds` 业务节流；
-- `infrastructure/ipc/training_telemetry.py` 只负责 worker session 文件发现、通用 EventRing endpoint 组合、owner guard 存活判断与退休文件清理；
+- `infrastructure/ipc/training_telemetry.py` 只负责 worker session 文件发现、通用 EventRing endpoint 组合、owner lock 存活判断与退休文件清理；
 - 原 `training_telemetry_mmap.py` 的独立 header、ring、CRC、PID 探测和 reader/writer 已删除；
 - backend-service 普通配置只保留 `training_telemetry.enabled`，backend-worker 只保留 `enabled` 与 `min_publish_interval_seconds`；路径统一读取 `local_memory.root_dir`，4 KiB × 512 slots、50 ms poll、100 ms scan 只来自冻结代码 profile；
-- receiver 停止或 service 重启不会删除仍由 worker owner guard 持有的文件；正常关闭与异常退出都会先读取已发布的稳定 slot，再清理该 session 的 mmap/guard 文件。
+- receiver 停止或 service 重启不会删除仍由 worker owner lock 持有的文件；正常关闭与异常退出都会先读取已发布的稳定 slot，再清理该 session 的 mmap 与 owner lock 文件。
 
 同机阶段 2 复测使用 5 轮、每轮 30 个真实 spawn producer 事件和 50 ms poll；原始报告只写入 `.tmp/local-message-channel-stage2/telemetry-benchmark.json`，本次报告 SHA-256 为 `8513bfa90ece52a6080f26a7babba22e95c430fbe7230c680685e323ba3407c5`。结果如下：
 
@@ -391,6 +400,9 @@ fault、线程/句柄和关闭清理不差时，才另行更新 ADR 并原子切
 - page/ring CRC、循环、越界、owner/generation/epoch错误；
 - request timeout、response ACK timeout、explicit cancel和client shutdown；
 - telemetry wrap、gap、producer crash和receiver restart；
+- owner持锁时强杀Mailbox server/Event producer/LocalBuffer owner，下一owner必须立即可取得OS lock并按新epoch恢复；遗留`.lock`文件不能造成假死锁；
+- Mailbox `access.guard` 缺失、长度错误或被替换时fail closed且client不得修复；Windows持有identity handle时delete/rename/replace必须失败；
+- 活动response/view阻塞close时保留owner与资源handle，释放view后重试close成功；重复close/release不重复unlock；
 - Queue保留/迁移链路的shutdown与handle守恒；
 - 真实HTTP、ZeroMQ、local-shared、Workflow Runtime、Trigger、Inference和training telemetry混合负载；
 - 10,000次门禁后descriptor、page、ring、file、guard、thread、handle和Channel回到基线；

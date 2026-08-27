@@ -300,6 +300,12 @@ Broker 在同一操作中需要两个内部锁时，唯一顺序是 `allocator l
 
 Broker owner lock 仍保证每个 root 单 owner。重启更新 broker epoch，先根据 descriptor 和 OS guards 重建状态：无 guard 的旧 lease可回收；仍有 writer/reader 的 extent进入 REVOKING/QUARANTINED，不得复用。SDK 在取得 guard后的 descriptor revalidation 会拒绝重启前的 allocation。
 
+`.lock`/`.guard` 文件内容或存在状态都不是锁的权威事实。owner 必须在完整服务生命周期持有 `owner.lock` 的 OS byte-range lock；进程被正常关闭或强制结束后，由 close 或 OS 释放 handle，遗留文件由下一 owner 原路径复用。`access.guard` 只能由首次创建数据文件的 owner 建立并设置精确长度；已有已发布 header 的数据文件缺少 guard、长度不足或长度超出都视为 identity/layout 损坏，owner、Python client 和 .NET SDK 全部 fail closed，禁止自动补建、truncate 或扩容。首次创建使用“零 metadata → guard identity → header publication”顺序；header 尚未发布即异常退出时，下一 owner 只在 metadata 仍为全零的条件下继续完成初始化。
+
+Broker、Mailbox server/client、Python external access 与 .NET mapping cache 必须持有长生命周期 guard identity handle。Windows 打开 handle 时不允许 delete/rename/replace sharing；短 guard 只在已经固定的文件身份上锁定 byte range。正常关闭按 `停止新借用 -> 等待活动 view -> view/mapping -> data file -> guard identity -> owner lock` 执行。活动 view、`BufferError` 或任一资源关闭失败时，状态进入可重试 `close_blocked`，owner lock 继续持有，禁止新 allocation/view；调用方释放借用后重试关闭。释放函数必须线程安全、幂等，初始化在取得 owner lock 后任一步失败都必须立即释放 lock 和 handle。
+
+正式发布门禁当前以 Windows x64 的 `msvcrt`/`.NET FileStream.Lock` 互操作为准，包括同进程线程、Python/.NET 跨进程、强杀、启动失败和路径删除/替换。POSIX `lockf` 只能作为尚未认证的开发后端：Linux 需采用 OFD lock 或等价语义，macOS 需增加进程内 range registry 与持久 handle；对应平台在完成同等门禁前，文档不得宣称共享内存 lock 与 Windows 等价。
+
 layout fingerprint 不一致、arena 文件大小不一致或旧固定 pool 文件存在时，新服务拒绝自动 truncate。开发期升级必须先停止服务和 SDK、确认 guard 全空闲，再离线移走或删除 `data/buffers/local-buffer/` 中的短期 arena 文件，由下一次启动显式重建。当前 maintenance CLI 没有 LocalBuffer 重建命令，不能误用会同时删除模型、任务、Deployment 和 Workflow Runtime 的 `reset-development-model-state`。正式启动不做在线转换、双 layout 读取或隐式删除。
 
 ### 7. Python/.NET mmap view
@@ -484,6 +490,9 @@ arena_total = general_total + huge_reserved_total
 - 相同allocation/free序列始终返回相同offset；默认低地址小图压力后，高地址完整1 GiB root在容量允许时保持可分配。
 - 多线程/多进程同时 allocate/commit/read/release无重叠和重复释放。
 - Broker 重启时 SDK 分别位于 allocation reply前后、guard前后、写入中、commit前后和读取中。
+- backend/Broker/worker 在持有 owner lock、writer guard、reader guard 和 publication guard 时分别被强制结束；下一次启动必须取得 owner、提高 epoch并正常调用，遗留 `.lock` 文件不得形成假死锁。
+- 已有 mmap 缺少或损坏 `access.guard` 时 owner/client/SDK 必须拒绝且不自动修复；Windows 持有 guard identity 时删除、rename和replace必须失败。
+- 导出 view 未释放时关闭必须报告 `close_blocked`并保留 owner；释放 view 后重试关闭成功，连续多次 close/release 不重复 unlock或丢失 handle。
 - 旧 epoch/generation/owner、错误 offset/capacity、越界 view和损坏 descriptor全部拒绝。
 - reclaim在发布REVOKING后必须持续持有writer和全部reader guards直到FREE/merge；旧SDK在探测与回收竞态中不能把guard带入新generation。
 - reader/writer挂起时进入REVOKING/QUARANTINED，其他extent继续工作；guard释放后恢复。

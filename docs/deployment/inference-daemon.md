@@ -46,7 +46,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 - mmap 已完成时，本次临时输入和结果 lease 立即释放；timeout、daemon 重启等传输状态不确定时不立即复用槽位，而是保留到有界 TTL 后由 Broker 回收。daemon 拒绝写入剩余有效期不足的结果 lease。
 - 热路径禁止 inline image bytes、base64、PNG 临时编码和 `runtime/inputs/inference-control/` 临时图片。
 
-Inference Mailbox 复用项目级 LocalMessage common/Mailbox engine，覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon owner epoch、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的 descriptor 由 daemon 回收。
+Inference Mailbox 复用项目级 LocalMessage common/Mailbox engine，不使用 TCP/HTTP、Windows named pipe 或 Unix domain socket 作为核心推理通道。二进制 layout 不绑定平台，但 owner/descriptor byte-range lock 必然依赖操作系统实现；当前正式强杀恢复和互操作认证以 Windows x64 为准。Ubuntu/Linux 与 macOS 必须完成各自的线程、跨进程、路径替换和强杀门禁后再标记为正式支持。请求和响应带 daemon owner epoch、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的 descriptor 由 daemon 回收。
 
 描述符使用两阶段发布：先写完 body 和 header，最后单独发布 `REQUEST` 或 `RESPONSE`。超过 inline 容量的结构化结果进入固定 overflow page chain；连续页不足时允许非连续链。请求发布、`REQUEST -> PROCESSING`、取消、`PROCESSING -> RESPONSE` 和 ACK 使用同一 descriptor guard；daemon 根据 allocator 记录在 ACK、取消、超时或重启时统一回收。完整布局、压缩、CRC、所有权和异常恢复见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 

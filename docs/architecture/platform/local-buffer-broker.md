@@ -30,6 +30,7 @@ backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena �
 
 ```text
 data/buffers/
+├─ .local-buffer-broker.lock    Broker companion process 单实例与接管锁
 ├─ local-buffer/
 │  ├─ images.mmap           主图片 bytes，arena_id=local-buffer-main
 │  ├─ state.mmap            固定 header、allocation 与 lease 状态
@@ -47,6 +48,8 @@ data/buffers/
 │  └─ training-telemetry/   每个训练 Worker 的独立 EventRing
 └─ inference-daemon-private/    daemon 私有异步暂存 arena
 ```
+
+根目录 `.local-buffer-broker.lock` 只保护 Broker companion process 的单实例启动、进程身份记录和 backend-service takeover；`local-buffer/owner.lock` 只保护图片 arena allocator owner。两者职责不同，不能合并为同一个锁，也都不以文件存在表示存活。Inference/Workflow Trigger Mailbox 与 Training EventRing 的 `owner.lock` 只保护各自物理 Channel，不参与图片 allocator 所有权。
 
 该目录树描述当前实现。三类结构化 Channel 已按 [ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 原子迁移到 `local-message/`。它们共享底层 engine，但不会合并 owner、epoch、descriptor、page pool 或容量；旧 `inference-control/` 与 `workflow-trigger/` layout 不再读取。
 
@@ -122,6 +125,16 @@ Broker 回收先在 publication guard 内发布 `REVOKING`，释放内部 guard 
 
 Broker 同时需要内部锁时固定使用 `allocator lock -> publication guard`；SDK 不取得 allocator lock。任何路径都不能持有 publication/allocator lock等待外部 writer/reader guard，也不能使用 `publication guard -> allocator lock` 的反向顺序。
 
+`owner.lock` 和 `access.guard` 都只是操作系统锁使用的稳定文件身份，文件存在本身不表示仍被锁定。权威状态是存活进程持有的文件 handle 和 byte-range lock：
+
+- Broker 启动时取得并持续持有 `owner.lock` 的 byte 0，只有该 handle 释放或进程退出后，新 owner 才能接管；强制结束进程时由操作系统释放 lock，遗留的空文件不会阻塞下一次启动；
+- 只有创建新 arena 的 owner 可以首次创建并固定 `access.guard` 长度；已有已发布 header 的 arena 缺少 guard、长度不符或 layout 不匹配时直接拒绝启动，client/SDK 不得补建、扩容或截断；首次初始化若在 header publication 前中断，下一 owner 可在确认 metadata 仍为全零未发布状态后完成 guard 创建和 header publication；
+- Broker、Python external access 和 .NET mapping cache 在整个映射生命周期持有同一个 guard 文件身份。Windows handle 不允许 delete/rename/replace sharing，防止路径被替换后不同进程锁住两个不同文件；
+- 每次短 guard 只打开已经验证的文件并取得指定 byte range，guard 后仍必须重新校验 descriptor identity；文件名、路径或文件存在不能代替该校验；
+- 正常关闭顺序固定为：停止新借用、等待活动 view、关闭 view/mapping、关闭数据文件、关闭 guard identity handle，最后释放 owner lock。活动 view 或资源关闭失败时进入可重试 `close_blocked`，不得提前释放 owner lock；释放 view 后重试同一个 `close()` 完成收敛。
+
+当前正式强杀恢复和跨语言 byte-range lock 门禁以 Windows x64 为发布基线。POSIX `lockf` 代码只提供开发实现，不据此宣称 Linux/macOS 已完成同等线程与异常恢复认证；Linux 必须补齐 OFD lock 或等价的 open-file-description 语义，macOS 必须补齐进程内 range registry 与持久 handle，再分别通过同进程多线程、跨进程、强杀和路径替换门禁后才能标记为正式支持。该平台边界不改变 mmap 二进制 layout。
+
 状态统一为：
 
 ```text
@@ -194,6 +207,7 @@ health 至少报告：
 - active owner/lease、generation、deadline；
 - total/contiguous/max/reserve/integrity分类失败；
 - stale fence、guard wait、orphan/recovery 和 broker heartbeat。
+- `lifecycle_state`、`active_borrow_count` 和 `close_blocked_count`，用于区分正常运行、正在关闭和被未释放 view 阻塞；
 - event router 的 active client channel、active forward thread、pending response route、closed channel、forward/drop error；短生命周期 client close 后 active/pending 必须回到调用前基线。
 
 `rounding_waste_bytes` 只表示 block rounding，不混入 frame reserve、hard reserve 或 quarantine。

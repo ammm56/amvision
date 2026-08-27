@@ -871,10 +871,12 @@ class _MmapFileCache:
 
     def close(self) -> None:
         with self._lock:
-            files = tuple(self._files.values())
-            self._files.clear()
-        for mapped in files:
+            files = tuple(self._files.items())
+        for path, mapped in files:
             mapped.close()
+            with self._lock:
+                if self._files.get(path) is mapped:
+                    self._files.pop(path, None)
 
     def _require_mapped_file(self, path: str) -> _MappedFile:
         normalized = str(Path(path).resolve())

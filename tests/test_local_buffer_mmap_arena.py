@@ -4,15 +4,25 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from dataclasses import replace
-from time import monotonic_ns
+import multiprocessing
+import os
+from pathlib import Path
+from time import monotonic_ns, sleep
 
 import pytest
 
+from backend.service.infrastructure.local_buffers import mmap_buffer_arena as arena_module
+from backend.service.infrastructure.ipc.mmap_primitives import (
+    MmapGuardFileError,
+    MmapOwnerLockBusyError,
+)
 from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
+    LocalBufferArenaCloseBusyError,
     LocalBufferArenaError,
     LocalBufferArenaIntegrityError,
     MmapBufferArena,
     MmapBufferArenaConfig,
+    MmapBufferArenaExternalAccess,
 )
 from backend.service.infrastructure.local_buffers.buddy_allocator import (
     BuddyAllocationError,
@@ -43,6 +53,18 @@ def _deadline(seconds: float = 5.0) -> int:
     return monotonic_ns() + int(seconds * 1_000_000_000)
 
 
+def _hold_arena_owner(root_dir: str, ready: object) -> None:
+    """子进程持有真实 arena owner，供强制终止恢复门禁使用。"""
+
+    arena = MmapBufferArena(_config(Path(root_dir)))
+    getattr(ready, "set")()
+    try:
+        while True:
+            sleep(1)
+    finally:
+        arena.close()
+
+
 def test_arena_allocates_exact_extent_and_publishes_active_bytes(tmp_path) -> None:
     """descriptor body、连续 extent、写入和 ACTIVE publication 保持一致。"""
 
@@ -59,12 +81,8 @@ def test_arena_allocates_exact_extent_and_publishes_active_bytes(tmp_path) -> No
         with arena.hold_writer_guard(receipt.descriptor_index):
             arena.write_bytes(receipt, payload)
         arena.publish_active(receipt)
-        with arena.hold_reader_guard(receipt.descriptor_index):
-            view = arena.read_view(receipt)
-            try:
-                assert bytes(view) == payload
-            finally:
-                view.release()
+        with arena.acquire_reader_view(receipt) as view:
+            assert bytes(view) == payload
 
         assert arena.request_reclaim(receipt) == "released"
         status = arena.build_status()
@@ -174,6 +192,97 @@ def test_layout_mismatch_refuses_start_without_truncating_files(tmp_path) -> Non
     assert allocator_path.stat().st_size == original_size
 
 
+def test_existing_arena_refuses_to_recreate_missing_guard(tmp_path) -> None:
+    """已有 allocator 失去 guard 身份后必须 fail-closed，不能新建第二锁域。"""
+
+    first = MmapBufferArena(_config(tmp_path))
+    guard_path = first.guard_path
+    first.close()
+    guard_path.unlink()
+
+    with pytest.raises(MmapGuardFileError, match="guard 文件不存在"):
+        MmapBufferArena(_config(tmp_path))
+    assert not guard_path.exists()
+
+
+def test_interrupted_first_initialization_can_resume_before_header_publication(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """首次 guard 创建前异常只留下未发布文件，下一 owner 可安全完成初始化。"""
+
+    original_open = arena_module.open_mmap_guard_identity
+    failed = False
+
+    def fail_first_guard(*args, **kwargs):
+        nonlocal failed
+        if kwargs.get("create") and not failed:
+            failed = True
+            raise KeyboardInterrupt("injected guard initialization failure")
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(arena_module, "open_mmap_guard_identity", fail_first_guard)
+    with pytest.raises(KeyboardInterrupt, match="injected guard initialization failure"):
+        MmapBufferArena(_config(tmp_path))
+
+    monkeypatch.setattr(arena_module, "open_mmap_guard_identity", original_open)
+    with MmapBufferArena(_config(tmp_path)) as recovered:
+        assert recovered.build_status()["state"] == "healthy"
+
+
+def test_unpublished_first_initialization_repairs_partial_guard(tmp_path) -> None:
+    """header 尚未发布时可修复强杀留下的短 guard，不扩大已发布布局。"""
+
+    guard_path = tmp_path / "local-buffer" / "access.guard"
+    guard_path.parent.mkdir(parents=True)
+    guard_path.write_bytes(b"x")
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        expected_size = arena.descriptor_count * (2 + arena.config.reader_guard_slots) + 1
+        assert guard_path.stat().st_size == expected_size
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 文件共享语义门禁")
+def test_owner_identity_handle_blocks_guard_replacement_on_windows(tmp_path) -> None:
+    """owner 存活时同名 guard 不得被删除后替换成第二锁域。"""
+
+    arena = MmapBufferArena(_config(tmp_path))
+    guard_path = arena.guard_path
+    try:
+        with pytest.raises(PermissionError):
+            guard_path.unlink()
+        assert guard_path.exists()
+    finally:
+        arena.close()
+    guard_path.unlink()
+    assert not guard_path.exists()
+
+
+def test_forced_owner_process_exit_releases_arena_lock(tmp_path) -> None:
+    """命令行/服务进程被强杀后，OS 释放 owner，原文件可由新 epoch 接管。"""
+
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    process = context.Process(
+        target=_hold_arena_owner,
+        args=(str(tmp_path), ready),
+    )
+    process.start()
+    try:
+        assert ready.wait(timeout=10)
+        with pytest.raises(MmapOwnerLockBusyError):
+            MmapBufferArena(_config(tmp_path))
+        process.terminate()
+        process.join(timeout=10)
+        assert not process.is_alive()
+        with MmapBufferArena(_config(tmp_path)) as recovered:
+            assert recovered.build_status()["state"] == "healthy"
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=10)
+
+
 def test_health_capacity_conservation_in_all_descriptor_states(tmp_path) -> None:
     """general/reserve 分域和 arena 总量对所有状态严格守恒。"""
 
@@ -219,6 +328,52 @@ def test_direct_writer_and_reader_views_revalidate_after_guard(tmp_path) -> None
         with arena.acquire_reader_view(transferred) as reader:
             assert bytes(reader) == b"BGR24!"
         assert arena.request_reclaim(transferred) == "released"
+
+
+def test_close_waits_for_borrow_and_remains_retryable(tmp_path) -> None:
+    """未释放 view 只阻止当前关闭；释放后可重试且 owner lock 最后释放。"""
+
+    arena = MmapBufferArena(_config(tmp_path))
+    receipt = arena.allocate(content_length=6, deadline_ns=_deadline())
+    arena.publish_active(receipt)
+    reader = arena.acquire_reader_view(receipt)
+    view = reader.__enter__()
+    try:
+        with pytest.raises(LocalBufferArenaCloseBusyError):
+            arena.close()
+        blocked_status = arena.build_status()
+        assert blocked_status["lifecycle_state"] == "close_blocked"
+        assert blocked_status["active_borrow_count"] == 1
+        assert blocked_status["close_blocked_count"] == 1
+        with pytest.raises(LocalBufferArenaError):
+            arena.allocate(content_length=1, deadline_ns=_deadline())
+        with pytest.raises(MmapOwnerLockBusyError):
+            MmapBufferArena(_config(tmp_path))
+    finally:
+        reader.__exit__(None, None, None)
+
+    arena.close()
+    with MmapBufferArena(_config(tmp_path)):
+        pass
+    with pytest.raises(ValueError):
+        bytes(view)
+
+
+def test_external_access_close_is_retryable_while_view_is_borrowed(tmp_path) -> None:
+    """非 owner mapping 同样不能因活动 view 关闭失败而遗失文件 handle。"""
+
+    with MmapBufferArena(_config(tmp_path)) as arena:
+        receipt = arena.allocate(content_length=4, deadline_ns=_deadline())
+        arena.publish_active(receipt)
+        external = MmapBufferArenaExternalAccess(_config(tmp_path))
+        reader = external.acquire_reader_view(receipt)
+        reader.__enter__()
+        try:
+            with pytest.raises(LocalBufferArenaCloseBusyError):
+                external.close()
+        finally:
+            reader.__exit__(None, None, None)
+        external.close()
 
 
 def test_batch_handoff_is_all_or_nothing(tmp_path) -> None:

@@ -80,7 +80,7 @@ class LocalBufferBrokerInstanceLock:
                     },
                 ) from exc
             _write_owner_metadata(lock_file, root_dir=resolved_root_dir)
-        except Exception:
+        except BaseException:
             lock_file.close()
             raise
         self.root_dir = resolved_root_dir

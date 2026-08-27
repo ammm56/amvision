@@ -76,6 +76,10 @@ Health 同样采用“公共 envelope + 分类型指标”：公共部分只报�
 - `MailboxChannel`：单 server owner、descriptor + inline + response page pool，并由 server 进程内 page allocator 独占分配和释放 response page；
 - `EventRingChannel`：单 producer owner、固定 ring slots、sequence/generation、overwrite/gap/drop，不包含 descriptor、page pool、ACK 或 server page allocator。
 
+`owner.lock` 文件本身不是持久锁标志；权威状态是 owner 进程持续持有的 OS byte-range lock。正常关闭显式释放，进程被强杀时 OS 释放，遗留文件由下一 owner 复用并通过新 epoch 隔离旧 reader。Mailbox 另有固定长度 `access.guard`：只允许数据文件尚未发布时的 server 创建或收敛首次启动遗留的短 guard；已有已发布 Mailbox 缺失或长度不符时 server/client fail closed，client/SDK 不得自动创建或截断。Mailbox 两端在 mapping 生命周期持有 guard identity handle，Windows 禁止 delete/rename/replace sharing。EventRing 没有 descriptor access guard，只使用独立 owner lock。
+
+关闭顺序固定为停止新操作、关闭活动 view/response、mmap、数据文件、Mailbox guard identity，最后释放 owner lock。活动 view 或 close 错误时保持可重试状态并保留 owner lock；释放借用后再次 close 完成收敛。正式共享内存锁认证当前以 Windows x64 为基线；Linux/macOS 必须补齐各自的同进程线程、跨进程、强杀和路径替换门禁后才可宣称同等支持，二进制 layout 无需因此新增版本。
+
 不建立由 Trigger、Inference 和 Training 任意进程共同修改的全局动态 payload arena。当前 mailbox 的 page 安全性依赖单 server owner 与进程内 allocator lock；把它改成多 owner 全局 allocator 会要求额外的单 allocator owner、崩溃原子日志或在线一致性重建协议，并扩大锁竞争与故障影响范围。
 
 ### 3. 只提供两种现行 Channel 语义
@@ -124,13 +128,14 @@ data/buffers/
 │  │  ├─ access.guard
 │  │  └─ owner.lock
 │  └─ training-telemetry/
-│     └─ <worker-session-id>.event.mmap
+│     ├─ <worker-session-id>.event.mmap
+│     └─ <worker-session-id>.owner.lock
 └─ inference-daemon-private/
 ```
 
 训练遥测迁移到 `data/buffers/local-message/training-telemetry/`，但仍不属于 LocalBuffer 图片 arena。测试使用 `.tmp/<test>/buffers/` 下的同一布局。
 
-Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 在基准裁决前不创建目标 mmap 目录或文件。稳定公开 Channel 使用固定 domain id；临时 Worker Channel 使用稳定 worker session identity，不能把 PID 单独作为权威 identity。EventRing 的 owner lock/guard、owner epoch 和 worker session identity 是生产者存活、重启隔离和回收的权威依据；producer PID 与 process start identity 只作为诊断和快速存活探测元数据。`producer closed` 只表示正常关闭，异常退出必须由 owner guard 释放和 epoch 规则收敛，不能等待不会再发布的 closed 状态。外部 SDK 只能发现公开 Workflow Trigger Channel；内部 Inference 和 Training Channel 不进入 SDK 配置包。
+Workflow Runtime、PublishedInferenceGateway 和 LocalBuffer Broker 在基准裁决前不创建目标 mmap 目录或文件。稳定公开 Channel 使用固定 domain id；临时 Worker Channel 使用稳定 worker session identity，不能把 PID 单独作为权威 identity。EventRing 的 owner lock、owner epoch 和 worker session identity 是生产者存活、重启隔离和回收的权威依据；producer PID 与 process start identity 只作为诊断和快速存活探测元数据。`producer closed` 只表示正常关闭，异常退出必须由 OS 释放 owner lock并由epoch规则收敛，不能等待不会再发布的closed状态。外部 SDK 只能发现公开 Workflow Trigger Channel；内部 Inference 和 Training Channel 不进入 SDK 配置包。
 
 共享路径配置提升为中立的 `local_memory.root_dir`，默认 `./data/buffers`。它只定义受信文件根，不代表一个全局 owner、进程或 enable 开关：
 
