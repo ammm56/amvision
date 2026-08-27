@@ -2,7 +2,7 @@
 
 脚本只使用 ``.tmp`` 隔离目录，不接 composition root，也不创建正式 Channel。
 阶段 0 的 current Inference mailbox 是单次 request/response 的可比基线；Workflow
-Trigger 还包含 PREPARE/WRITING 扩展，因此不拿它与通用 RPC engine 直接比较。
+Trigger 还包含 PREPARE/WRITING 扩展，因此不拿它与通用 Mailbox engine 直接比较。
 """
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.contracts.ipc.local_message_profiles import (  # noqa: E402
-    INFERENCE_RPC_PROFILE_V1,
+    INFERENCE_MAILBOX_PROFILE_V1,
 )
 from backend.service.infrastructure.ipc.local_message.paths import (  # noqa: E402
     build_local_message_channel_paths,
 )
-from backend.service.infrastructure.ipc.local_message.rpc_mailbox import (  # noqa: E402
-    MmapRpcMailboxClient,
-    MmapRpcMailboxServer,
+from backend.service.infrastructure.ipc.local_message.mailbox import (  # noqa: E402
+    MmapMailboxClient,
+    MmapMailboxServer,
 )
 from tests.integration.local_message_channel_stage0_benchmark import (  # noqa: E402
     MIB,
@@ -105,7 +105,7 @@ def _median_rounds(rounds: list[dict[str, float | int]]) -> dict[str, float]:
     }
 
 
-def _run_rpc_round(
+def _run_mailbox_round(
     *,
     root: Path,
     response: bytes,
@@ -117,10 +117,10 @@ def _run_rpc_round(
     paths = build_local_message_channel_paths(
         buffers_root=root,
         channel_name="stage1-inference",
-        channel_kind="rpc",
+        channel_kind="mailbox",
     )
-    server = MmapRpcMailboxServer(paths=paths, profile=INFERENCE_RPC_PROFILE_V1)
-    client = MmapRpcMailboxClient(paths=paths, profile=INFERENCE_RPC_PROFILE_V1)
+    server = MmapMailboxServer(paths=paths, profile=INFERENCE_MAILBOX_PROFILE_V1)
+    client = MmapMailboxClient(paths=paths, profile=INFERENCE_MAILBOX_PROFILE_V1)
     expected = warmup_iterations + iterations
     completed = 0
     failures: list[str] = []
@@ -139,7 +139,7 @@ def _run_rpc_round(
         except BaseException as error:  # noqa: BLE001 - 转交主线程
             failures.append(f"{error.__class__.__name__}: {error}")
 
-    worker = Thread(target=serve, name="stage1-rpc-owner")
+    worker = Thread(target=serve, name="stage1-mailbox-owner")
     worker.start()
     latencies: list[float] = []
     try:
@@ -151,7 +151,7 @@ def _run_rpc_round(
                 deadline_ns=monotonic_ns() + 60_000_000_000,
             )
             if handle.wire_bytes != response:
-                raise AssertionError("阶段 1 RPC response bytes 不一致")
+                raise AssertionError("阶段 1 Mailbox response bytes 不一致")
             handle.close()
             if index >= warmup_iterations:
                 latencies.append((perf_counter_ns() - started_ns) / 1_000_000)
@@ -160,21 +160,21 @@ def _run_rpc_round(
             server.sweep()
             health = server.health()
             if (
-                health.free_descriptors == INFERENCE_RPC_PROFILE_V1.descriptor_count
+                health.free_descriptors == INFERENCE_MAILBOX_PROFILE_V1.descriptor_count
                 and health.free_pages
-                == INFERENCE_RPC_PROFILE_V1.overflow_page_count
+                == INFERENCE_MAILBOX_PROFILE_V1.overflow_page_count
             ):
                 break
-            sleep(INFERENCE_RPC_PROFILE_V1.poll_interval_seconds)
+            sleep(INFERENCE_MAILBOX_PROFILE_V1.poll_interval_seconds)
         else:
-            raise AssertionError("阶段 1 RPC 资源未在 deadline 内恢复")
+            raise AssertionError("阶段 1 Mailbox 资源未在 deadline 内恢复")
     finally:
         stop.set()
         worker.join(timeout=5)
         client.close(deadline_ns=monotonic_ns() + 1_000_000_000)
         server.close(deadline_ns=monotonic_ns() + 1_000_000_000)
     if worker.is_alive() or failures:
-        raise AssertionError(f"阶段 1 RPC owner 失败: {failures}")
+        raise AssertionError(f"阶段 1 Mailbox owner 失败: {failures}")
     return {
         **_summary(latencies),
         "response_size_bytes": len(response),
@@ -226,7 +226,7 @@ def run(settings: BenchmarkSettings) -> dict[str, object]:
             else settings.large_iterations
         )
         round_rows = [
-            _run_rpc_round(
+            _run_mailbox_round(
                 root=work_root,
                 response=response,
                 warmup_iterations=settings.warmup_iterations,
@@ -254,13 +254,13 @@ def run(settings: BenchmarkSettings) -> dict[str, object]:
     result = {
         "format_id": "amvision.local-message-channel-stage1-benchmark.v1",
         "settings": asdict(settings),
-        "transport": "local-message-rpc.v1-unconnected",
-        "profile_id": INFERENCE_RPC_PROFILE_V1.profile_id,
+        "transport": "local-message-mailbox.v1-unconnected",
+        "profile_id": INFERENCE_MAILBOX_PROFILE_V1.profile_id,
         "cells": cells,
         "all_gates_passed": all(bool(cell["p99_gate_passed"]) for cell in cells),
     }
     if not result["all_gates_passed"]:
-        raise AssertionError("阶段 1 RPC P99 超过阶段 0 current Inference 门禁")
+        raise AssertionError("阶段 1 Mailbox P99 超过阶段 0 current Inference 门禁")
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(f"{output.suffix}.tmp")
     temporary.write_text(

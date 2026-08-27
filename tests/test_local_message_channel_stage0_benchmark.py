@@ -10,11 +10,11 @@ import sqlite3
 import pytest
 
 from backend.contracts.ipc.local_message_profiles import (
-    INFERENCE_RPC_PROFILE_V1,
-    RPC_ENVELOPE_RESERVE_BYTES,
-    RPC_PUBLIC_RESPONSE_CAPACITY_BYTES,
+    INFERENCE_MAILBOX_PROFILE_V1,
+    MAILBOX_ENVELOPE_RESERVE_BYTES,
+    MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES,
     TRAINING_TELEMETRY_EVENT_PROFILE_V1,
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
 )
 from tests.integration.local_message_channel_stage0_benchmark import (
     BenchmarkSettings,
@@ -76,13 +76,13 @@ def test_stage0_payload_inventory_uses_current_public_shapes() -> None:
         samples["inference.segmentation-normal-100x100.response"][
             "serialized_size_bytes"
         ]
-        < INFERENCE_RPC_PROFILE_V1.inline_response_capacity_bytes
+        < INFERENCE_MAILBOX_PROFILE_V1.inline_response_capacity_bytes
     )
     assert (
         samples["inference.segmentation-dense-100x1000.response"][
             "serialized_size_bytes"
         ]
-        > INFERENCE_RPC_PROFILE_V1.inline_response_capacity_bytes
+        > INFERENCE_MAILBOX_PROFILE_V1.inline_response_capacity_bytes
     )
 
 
@@ -100,9 +100,9 @@ def test_stage0_contract_inventory_keeps_domain_admission_outside_profile() -> N
 def test_stage0_profiles_keep_capacity_and_domain_policy_separate() -> None:
     """冻结 profile 覆盖 32 MiB 正文与 envelope，且不吸收业务并发。"""
 
-    for profile in (WORKFLOW_TRIGGER_RPC_PROFILE_V1, INFERENCE_RPC_PROFILE_V1):
+    for profile in (WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1, INFERENCE_MAILBOX_PROFILE_V1):
         assert profile.max_response_bytes == (
-            RPC_PUBLIC_RESPONSE_CAPACITY_BYTES + RPC_ENVELOPE_RESERVE_BYTES
+            MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES + MAILBOX_ENVELOPE_RESERVE_BYTES
         )
         assert profile.overflow_capacity_bytes == 128 * 1024 * 1024
         assert (
@@ -113,8 +113,8 @@ def test_stage0_profiles_keep_capacity_and_domain_policy_separate() -> None:
         assert "max_concurrent_requests" not in {
             field.name for field in fields(profile)
         }
-    assert WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_response_capacity_bytes == 64 * 1024
-    assert INFERENCE_RPC_PROFILE_V1.inline_response_capacity_bytes == 256 * 1024
+    assert WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_response_capacity_bytes == 64 * 1024
+    assert INFERENCE_MAILBOX_PROFILE_V1.inline_response_capacity_bytes == 256 * 1024
     assert TRAINING_TELEMETRY_EVENT_PROFILE_V1.payload_capacity_bytes == 4096
     assert TRAINING_TELEMETRY_EVENT_PROFILE_V1.poll_interval_seconds == 0.05
     assert TRAINING_TELEMETRY_EVENT_PROFILE_V1.scan_interval_seconds == 0.1
@@ -131,14 +131,14 @@ def test_stage0_profile_fixture_matches_frozen_code() -> None:
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     profiles = fixture["profiles"]
 
-    assert profiles[WORKFLOW_TRIGGER_RPC_PROFILE_V1.profile_id] == {
+    assert profiles[WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.profile_id] == {
         key: value
-        for key, value in asdict(WORKFLOW_TRIGGER_RPC_PROFILE_V1).items()
+        for key, value in asdict(WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1).items()
         if key != "profile_id"
     }
-    assert profiles[INFERENCE_RPC_PROFILE_V1.profile_id] == {
+    assert profiles[INFERENCE_MAILBOX_PROFILE_V1.profile_id] == {
         key: value
-        for key, value in asdict(INFERENCE_RPC_PROFILE_V1).items()
+        for key, value in asdict(INFERENCE_MAILBOX_PROFILE_V1).items()
         if key != "profile_id"
     }
     assert profiles[TRAINING_TELEMETRY_EVENT_PROFILE_V1.profile_id] == {

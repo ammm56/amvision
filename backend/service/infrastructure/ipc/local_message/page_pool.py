@@ -1,10 +1,10 @@
-"""RPC server 独占的固定 overflow page pool。"""
+"""Mailbox server 独占的固定 overflow page pool。"""
 
 from __future__ import annotations
 
 from threading import Lock
 
-from backend.contracts.ipc.local_message_profiles import RpcChannelProfile
+from backend.contracts.ipc.local_message_profiles import MailboxChannelProfile
 from backend.service.application.message_channels.errors import (
     ChannelCapacityExhaustedError,
     ChannelCorruptMessageError,
@@ -14,9 +14,9 @@ from backend.service.infrastructure.ipc.local_message.common_layout import (
     PAGE_STATE_FREE,
     PAGE_STATE_PUBLISHED,
     PAGE_STATE_RESERVED,
-    RPC_PAGE_HEADER,
-    RPC_PAGE_HEADER_SIZE,
-    RpcLayout,
+    MAILBOX_PAGE_HEADER,
+    MAILBOX_PAGE_HEADER_SIZE,
+    MailboxLayout,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapPageChainError,
@@ -29,14 +29,14 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
 
 
 class MmapResponsePagePool:
-    """在单 RPC owner 内分配、发布、验证并回收 response pages。"""
+    """在单 Mailbox owner 内分配、发布、验证并回收 response pages。"""
 
     def __init__(
         self,
         *,
         view: object,
-        profile: RpcChannelProfile,
-        layout: RpcLayout,
+        profile: MailboxChannelProfile,
+        layout: MailboxLayout,
         owner_epoch: int,
     ) -> None:
         """绑定已校验的可写 mmap view。"""
@@ -68,7 +68,7 @@ class MmapResponsePagePool:
                 page_count=page_count,
             )
             if len(selected) != page_count:
-                raise ChannelCapacityExhaustedError("RPC response page pool 已满")
+                raise ChannelCapacityExhaustedError("Mailbox response page pool 已满")
             try:
                 for ordinal, page_index in enumerate(selected):
                     next_page = (
@@ -120,7 +120,7 @@ class MmapResponsePagePool:
             )
         except MmapPageChainError as error:
             raise ChannelCorruptMessageError(
-                f"RPC page-chain 损坏: {error.reason}"
+                f"Mailbox page-chain 损坏: {error.reason}"
             ) from error
         payload_views: list[memoryview] = []
         view = memoryview(self._view)
@@ -139,21 +139,21 @@ class MmapResponsePagePool:
                     page_epoch,
                 ) = header
                 if state != PAGE_STATE_PUBLISHED:
-                    raise ChannelCorruptMessageError("RPC page 尚未完整发布")
+                    raise ChannelCorruptMessageError("Mailbox page 尚未完整发布")
                 if (
                     actual_descriptor_index != descriptor_index
                     or actual_generation != descriptor_generation
                     or page_epoch != self.owner_epoch
                     or page_token == 0
                 ):
-                    raise ChannelCorruptMessageError("RPC page identity 不匹配")
+                    raise ChannelCorruptMessageError("Mailbox page identity 不匹配")
                 if not 0 < payload_size <= self.profile.overflow_page_capacity_bytes:
-                    raise ChannelCorruptMessageError("RPC page payload size 不合法")
-                payload_offset = self._page_offset(page_index) + RPC_PAGE_HEADER_SIZE
+                    raise ChannelCorruptMessageError("Mailbox page payload size 不合法")
+                payload_offset = self._page_offset(page_index) + MAILBOX_PAGE_HEADER_SIZE
                 content = view[payload_offset : payload_offset + payload_size]
                 if crc32_ieee(content) != expected_crc:
                     content.release()
-                    raise ChannelCorruptMessageError("RPC page CRC 不匹配")
+                    raise ChannelCorruptMessageError("Mailbox page CRC 不匹配")
                 payload_views.append(content)
             payload = b"".join(payload_views)
         finally:
@@ -161,7 +161,7 @@ class MmapResponsePagePool:
                 payload_view.release()
             view.release()
         if len(payload) != expected_size:
-            raise ChannelCorruptMessageError("RPC page-chain 总长度不匹配")
+            raise ChannelCorruptMessageError("Mailbox page-chain 总长度不匹配")
         return payload
 
     def free_for_descriptor(
@@ -209,7 +209,7 @@ class MmapResponsePagePool:
         """写 RESERVED header 与正文，publication 由调用方最后执行。"""
 
         page_offset = self._page_offset(page_index)
-        RPC_PAGE_HEADER.pack_into(
+        MAILBOX_PAGE_HEADER.pack_into(
             self._view,
             page_offset,
             PAGE_STATE_RESERVED,
@@ -223,7 +223,7 @@ class MmapResponsePagePool:
             new_nonzero_u64_token(),
             self.owner_epoch,
         )
-        payload_offset = page_offset + RPC_PAGE_HEADER_SIZE
+        payload_offset = page_offset + MAILBOX_PAGE_HEADER_SIZE
         self._view[payload_offset : payload_offset + len(payload)] = payload
 
     def _free_page_indices_locked(self) -> tuple[int, ...]:
@@ -246,19 +246,19 @@ class MmapResponsePagePool:
     def _read_header(self, page_index: int) -> tuple[int, ...]:
         """读取一个固定 page header。"""
 
-        return RPC_PAGE_HEADER.unpack_from(self._view, self._page_offset(page_index))
+        return MAILBOX_PAGE_HEADER.unpack_from(self._view, self._page_offset(page_index))
 
     def _reset_page_locked(self, page_index: int) -> None:
         """把 page header 清零为 FREE；正文无需擦除。"""
 
         page_offset = self._page_offset(page_index)
-        self._view[page_offset : page_offset + RPC_PAGE_HEADER_SIZE] = (
-            b"\0" * RPC_PAGE_HEADER_SIZE
+        self._view[page_offset : page_offset + MAILBOX_PAGE_HEADER_SIZE] = (
+            b"\0" * MAILBOX_PAGE_HEADER_SIZE
         )
 
     def _page_offset(self, page_index: int) -> int:
         """返回 page header 的绝对 mmap offset。"""
 
         if not 0 <= page_index < self.profile.overflow_page_count:
-            raise ChannelCorruptMessageError("RPC page index 越界")
+            raise ChannelCorruptMessageError("Mailbox page index 越界")
         return self.layout.page_region_offset + page_index * self.layout.page_stride_bytes

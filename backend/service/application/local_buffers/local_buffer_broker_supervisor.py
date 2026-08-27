@@ -536,7 +536,7 @@ class LocalBufferBrokerProcessSupervisor:
                             "arena_file": str(
                                 self.root_dir
                                 / "local-buffer"
-                                / "arena-main.mmap"
+                                / "images.mmap"
                             ),
                         },
                     )

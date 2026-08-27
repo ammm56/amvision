@@ -120,13 +120,19 @@ health按general与hard reserve分域报告free、reserved-writing、active、fr
 ```text
 data/buffers/
 ├─ local-buffer/
-│  ├─ arena-main.mmap              arena_id=local-buffer-main
-│  ├─ allocator-main.mmap
-│  ├─ arena-main.guard
-│  └─ arena-main.owner.lock
+│  ├─ images.mmap              arena_id=local-buffer-main
+│  ├─ state.mmap
+│  ├─ access.guard
+│  └─ owner.lock
 ├─ local-message/
-│  ├─ inference-daemon-main.rpc.mmap
-│  ├─ workflow-trigger-main.rpc.mmap
+│  ├─ inference/
+│  │  ├─ mailbox.mmap
+│  │  ├─ access.guard
+│  │  └─ owner.lock
+│  ├─ workflow-trigger/
+│  │  ├─ mailbox.mmap
+│  │  ├─ access.guard
+│  │  └─ owner.lock
 │  └─ training-telemetry/
 │     └─ <worker-session-id>.event.mmap
 └─ inference-daemon-private/

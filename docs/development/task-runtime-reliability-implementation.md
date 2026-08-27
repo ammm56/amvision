@@ -454,7 +454,7 @@ min(workflow_remaining, node_pack.defaultSeconds)
 - 任一节点超时后 manager 设置 Event，取消的是整个 Run，不尝试只取消一个并行分支。
 - `deadline_monotonic` 只在同一台主机、同一系统 boot 内由 manager 与其子进程比较；它不持久化、不跨主机、不在 worker generation 间复用。持久化的 Workflow deadline 仍使用 UTC，manager 启动/恢复时重新计算本机 monotonic 剩余量。
 
-节点生命周期通过 worker 已有 response queue 单向上报，不建立节点数据 RPC：
+节点生命周期通过 worker 已有 response queue 单向上报，不建立节点数据 Mailbox：
 
 ```text
 node-started(run_id, node_invocation_id, node_id, pack_id,

@@ -9,7 +9,7 @@ from backend.service.application.message_channels.models import (
     EventBatch,
     EventCursor,
     EventPublishResult,
-    RpcRequestContext,
+    MailboxRequestContext,
 )
 
 
@@ -20,7 +20,7 @@ class CancellationSource(Protocol):
         """返回请求是否已经取消。"""
 
 
-class RpcResponseHandle(Protocol):
+class MailboxResponseHandle(Protocol):
     """持有 response bytes 与 ACK 生命周期。"""
 
     @property
@@ -34,8 +34,8 @@ class RpcResponseHandle(Protocol):
         """幂等结束 handle；普通响应等价于 ACK。"""
 
 
-class RpcClientPort(Protocol):
-    """同步、有 deadline 的本机 RPC client。"""
+class MailboxClientPort(Protocol):
+    """同步、有 deadline 的本机 Mailbox client。"""
 
     def call(
         self,
@@ -44,22 +44,22 @@ class RpcClientPort(Protocol):
         wire_bytes: bytes,
         deadline_ns: int,
         cancellation: CancellationSource | None = None,
-    ) -> RpcResponseHandle:
+    ) -> MailboxResponseHandle:
         """提交一次调用并返回受控 response handle。"""
 
     def close(self, *, deadline_ns: int) -> None:
         """幂等关闭 client endpoint。"""
 
 
-class RpcServerPort(Protocol):
-    """单 owner RPC server。"""
+class MailboxServerPort(Protocol):
+    """单 owner Mailbox server。"""
 
-    def receive(self, *, deadline_ns: int) -> RpcRequestContext | None:
+    def receive(self, *, deadline_ns: int) -> MailboxRequestContext | None:
         """在 deadline 前返回一个请求；无请求时返回 None。"""
 
     def publish_response(
         self,
-        request: RpcRequestContext,
+        request: MailboxRequestContext,
         *,
         wire_bytes: bytes,
     ) -> None:

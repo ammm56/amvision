@@ -74,7 +74,7 @@
 - [LocalBuffer arena lease 与 frame channel](../../backend/service/infrastructure/local_buffers/local_buffer_arena_pool.py)
 - [Workflow Runtime manager](../../backend/service/application/workflows/worker/manager.py)
 - [通用 LocalMessage descriptor guard](../../backend/service/infrastructure/ipc/local_message/guards.py)
-- [Workflow Trigger RpcMailbox extension](../../backend/service/infrastructure/ipc/workflow_trigger_rpc.py)
+- [Workflow Trigger Mailbox extension](../../backend/service/infrastructure/ipc/workflow_trigger_mailbox.py)
 - [mailbox、route、admission 与 handoff supervisor](../../backend/service/application/workflows/trigger_sources/local_shared_mailbox_supervisor.py)
 
 ## 不可偏离的设计边界
@@ -171,7 +171,7 @@ allocate external writing lease
 
 ### 文件与固定容量
 
-- backend-service 实例拥有一个在 FastAPI lifespan 启动时创建、运行时不扩容的 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`。
+- backend-service 实例拥有一个在 FastAPI lifespan 启动时创建、运行时不扩容的 `data/buffers/local-message/workflow-trigger/mailbox.mmap`。
 - 路径从中立 `local_memory.root_dir` 派生，不新增第二个 mmap root。
 - descriptor guard、server lock、writer/reader guard 和恢复辅助文件全部位于图片数据面 `data/buffers/` 对应协议目录或 pool 目录。
 - 正式运行不得在仓库根目录、`data/files/`、`data/queue/`、`.tmp/`、系统临时目录或 SDK 配置目录创建 Workflow Trigger mailbox。训练遥测使用 `data/buffers/local-message/training-telemetry/` 下的独立 EventRing，始终不进入 LocalBuffer 图片 arena。
@@ -201,14 +201,14 @@ v1 默认容量：
 阶段 0 已完成以下实现并作为后续代码的唯一输入：
 
 - common schema：`backend/contracts/ipc/schemas/local_message_channel.v1.json`；
-- Trigger extension schema：`backend/contracts/ipc/schemas/workflow_trigger_rpc_extension.v1.json`；
-- Python extension layout：`backend/contracts/ipc/workflow_trigger_rpc_extension_v1.py`；
+- Trigger 业务契约 schema：`backend/contracts/ipc/schemas/workflow_trigger_mailbox.v1.json`；
+- Python extension layout：`backend/contracts/ipc/workflow_trigger_mailbox_v1.py`；
 - Python/.NET fixture 由 contract test 双向校验，不再维护旧 mailbox 生成器。
 - .NET layout：`sdks/dotnet/src/Amvar.Vision/SharedMemory/WorkflowTriggerMailboxV1.g.cs`；
 - common fixture：`tests/fixtures/local_message_channel.v1.fixture.json`；
-- Trigger extension fixture：`tests/fixtures/workflow_trigger_rpc_extension.v1.fixture.json`。
+- Trigger 业务契约 fixture：`tests/fixtures/workflow_trigger_mailbox.v1.fixture.json`。
 
-layout 固定为 256-byte common header、256-byte RPC profile header、256-byte descriptor header 和 64-byte page header。common fixture 保存 schema SHA-256，Python/.NET contract test 同时校验冻结字段、offset、profile 和 extension bytes；协议已按 ADR-0009 阶段 4 原子迁移，不再读取旧 mailbox layout。
+layout 固定为 256-byte common header、256-byte Mailbox profile header、256-byte descriptor header 和 64-byte page header。common fixture 保存 schema SHA-256，Python/.NET contract test 同时校验冻结字段、offset、profile 和 extension bytes；协议已按 ADR-0009 阶段 4 原子迁移，不再读取旧 mailbox layout。
 
 - 使用一份带固定 offset、width、alignment、enum 和 magic/version 的 schema 生成 Python 与 .NET 常量。
 - Python 与 .NET 不分别手写 descriptor offset。
@@ -981,7 +981,7 @@ health 显示 mailbox owner/epoch、descriptor/page 使用量、lease 状态、R
 - `accepted-then-query` 图片已持久化 ObjectStore 后可通过稳定 locator 查询；短期 BufferRef 不进入数据库或幂等缓存。
 - ObjectStore locator 必须包含不可变 version、checksum、准确长度和 media type；缺少稳定元数据的旧对象会物化为新不可变对象。`open_read_snapshot` 在 consumer/tracker 结束前保持同一内容，普通绝对路径不能冒充稳定 snapshot。
 - 连续10,000次多Trigger混合调用后，descriptor、page、active source、Runtime token、LocalBuffer active/REVOKING/QUARANTINED全部回到基线。
-- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer、Inference RPC、Workflow Trigger RPC、Training EventRing、guard 和 owner lock 都只能出现在 `data/buffers/` 树内。训练遥测后续已按 ADR-0009 阶段 2 迁移到独立 EventRing Channel，始终不混入图片 arena。
+- 启动、调用、重启和退出后扫描图片数据面，所有 LocalBuffer、Inference Mailbox、Workflow Trigger Mailbox、Training EventRing、guard 和 owner lock 都只能出现在 `data/buffers/` 树内。训练遥测后续已按 ADR-0009 阶段 2 迁移到独立 EventRing Channel，始终不混入图片 arena。
 - 源码开发环境和重新assemble的发行环境执行相同contract、smoke和soak门禁。
 
 ## 性能验收

@@ -8,7 +8,7 @@ import sys
 from threading import Event
 
 from backend.inference_daemon.runtime import build_inference_daemon_runtime
-from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapClient
+from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapClient
 from backend.service.settings import get_backend_service_settings
 
 

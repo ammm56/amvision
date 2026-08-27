@@ -15,10 +15,10 @@ import pytest
 
 from backend.contracts.ipc.local_message_profiles import (
     EventRingChannelProfile,
-    INFERENCE_RPC_PROFILE_V1,
-    RpcChannelProfile,
+    INFERENCE_MAILBOX_PROFILE_V1,
+    MailboxChannelProfile,
     TRAINING_TELEMETRY_EVENT_PROFILE_V1,
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
 )
 from backend.service.application.message_channels.codec import (
     WireEnvelope,
@@ -37,9 +37,9 @@ from backend.service.application.message_channels.errors import (
 from backend.service.application.message_channels.models import EventPublishResult
 from backend.service.infrastructure.ipc.local_message.common_layout import (
     PAGE_STATE_RESERVED,
-    RPC_PAGE_HEADER,
-    RPC_STATE_WRITING_REQUEST,
-    rpc_layout,
+    MAILBOX_PAGE_HEADER,
+    MAILBOX_STATE_WRITING_REQUEST,
+    mailbox_layout,
 )
 from backend.service.infrastructure.ipc.local_message import common_layout as layout_contract
 from backend.service.infrastructure.ipc.local_message.event_ring import (
@@ -49,22 +49,22 @@ from backend.service.infrastructure.ipc.local_message.event_ring import (
 from backend.service.infrastructure.ipc.local_message.paths import (
     build_local_message_channel_paths,
 )
-from backend.service.infrastructure.ipc.local_message.rpc_mailbox import (
-    MmapRpcMailboxClient,
-    MmapRpcMailboxServer,
-    RpcTerminalReason,
+from backend.service.infrastructure.ipc.local_message.mailbox import (
+    MmapMailboxClient,
+    MmapMailboxServer,
+    MailboxTerminalReason,
 )
 from backend.service.infrastructure.ipc.local_message.registry import (
     LocalMessageChannelRegistry,
 )
 from backend.service.infrastructure.ipc.multiprocessing_queue_channel import (
-    MultiprocessingQueueRpcClient,
-    MultiprocessingQueueRpcServer,
+    MultiprocessingQueueMailboxClient,
+    MultiprocessingQueueMailboxServer,
 )
 
 
-RPC_PROFILE = RpcChannelProfile(
-    profile_id="test-rpc.v1",
+MAILBOX_PROFILE = MailboxChannelProfile(
+    profile_id="test-mailbox.v1",
     descriptor_count=4,
     inline_request_capacity_bytes=128,
     inline_response_capacity_bytes=128,
@@ -114,24 +114,24 @@ def _deadline(seconds: float = 2.0) -> int:
     return monotonic_ns() + int(seconds * 1e9)
 
 
-def _cross_process_rpc_server(
+def _cross_process_mailbox_server(
     buffers_root: str,
     ready: object,
     consumed: object,
 ) -> None:
-    """spawn 子进程中的独立 RPC owner。"""
+    """spawn 子进程中的独立 Mailbox owner。"""
 
     paths = build_local_message_channel_paths(
         buffers_root=buffers_root,
-        channel_name="rpc-process",
-        channel_kind="rpc",
+        channel_name="mailbox-process",
+        channel_kind="mailbox",
     )
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
     ready.set()
     try:
         request = server.receive(deadline_ns=_deadline(10))
         if request is None:
-            raise RuntimeError("未收到跨进程 RPC request")
+            raise RuntimeError("未收到跨进程 Mailbox request")
         server.publish_response(request, wire_bytes=b"process:" + request.wire_bytes)
         consumed.wait(timeout=10)
         server.sweep()
@@ -141,12 +141,12 @@ def _cross_process_rpc_server(
 
 def _round_trip(
     *,
-    server: MmapRpcMailboxServer,
-    client: MmapRpcMailboxClient,
+    server: MmapMailboxServer,
+    client: MmapMailboxClient,
     request: bytes,
     response: bytes,
 ):
-    """在真实等待线程中完成一次 RPC。"""
+    """在真实等待线程中完成一次 Mailbox。"""
 
     failures: list[BaseException] = []
 
@@ -236,7 +236,7 @@ def test_raw_json_object_fast_path_rejects_wrong_fence_or_non_object() -> None:
 
 
 def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None:
-    """common/RPC/Event little-endian bytes 与 .NET Trigger fixture 必须逐字节稳定。"""
+    """common/Mailbox/Event little-endian bytes 与 .NET Trigger fixture 必须逐字节稳定。"""
 
     fixture = json.loads(LOCAL_MESSAGE_FIXTURE.read_text(encoding="utf-8"))
     schema = json.loads(LOCAL_MESSAGE_SCHEMA.read_text(encoding="utf-8"))
@@ -245,15 +245,15 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
         LOCAL_MESSAGE_SCHEMA.read_bytes()
     ).hexdigest()
 
-    workflow_profile = WORKFLOW_TRIGGER_RPC_PROFILE_V1
-    workflow = layout_contract.rpc_layout(workflow_profile)
-    inference = layout_contract.rpc_layout(INFERENCE_RPC_PROFILE_V1)
+    workflow_profile = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1
+    workflow = layout_contract.mailbox_layout(workflow_profile)
+    inference = layout_contract.mailbox_layout(INFERENCE_MAILBOX_PROFILE_V1)
     telemetry_profile = TRAINING_TELEMETRY_EVENT_PROFILE_V1
     telemetry = layout_contract.event_layout(telemetry_profile)
     common = layout_contract.COMMON_HEADER.pack(
         layout_contract.FILE_MAGIC,
         layout_contract.FILE_VERSION,
-        layout_contract.CHANNEL_KIND_RPC,
+        layout_contract.CHANNEL_KIND_MAILBOX,
         layout_contract.ENDIAN_MARKER,
         workflow.fingerprint,
         0x0011223344556677,
@@ -265,20 +265,20 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
     )
     assert common.hex() == fixture["packed_hex"]["common_header"]
     assert len(common) == schema["layouts"]["common_header"]["size"]
-    assert workflow.fingerprint.hex() == fixture["layout_fingerprints"]["workflow_trigger_rpc_v1"]
-    assert inference.fingerprint.hex() == fixture["layout_fingerprints"]["inference_rpc_v1"]
+    assert workflow.fingerprint.hex() == fixture["layout_fingerprints"]["workflow_trigger_mailbox_v1"]
+    assert inference.fingerprint.hex() == fixture["layout_fingerprints"]["inference_mailbox_v1"]
     assert telemetry.fingerprint.hex() == fixture["layout_fingerprints"]["training_telemetry_event_v1"]
-    assert workflow.file_size_bytes == fixture["file_sizes"]["workflow_trigger_rpc_v1"]
-    assert inference.file_size_bytes == fixture["file_sizes"]["inference_rpc_v1"]
+    assert workflow.file_size_bytes == fixture["file_sizes"]["workflow_trigger_mailbox_v1"]
+    assert inference.file_size_bytes == fixture["file_sizes"]["inference_mailbox_v1"]
     assert telemetry.file_size_bytes == fixture["file_sizes"]["training_telemetry_event_v1"]
 
-    rpc_profile_header = layout_contract.RPC_HEADER.pack(
+    mailbox_profile_header = layout_contract.MAILBOX_HEADER.pack(
         workflow_profile.descriptor_count,
-        layout_contract.RPC_DESCRIPTOR_HEADER_SIZE,
+        layout_contract.MAILBOX_DESCRIPTOR_HEADER_SIZE,
         workflow.descriptor_stride_bytes,
         workflow_profile.inline_request_capacity_bytes,
         workflow_profile.inline_response_capacity_bytes,
-        layout_contract.RPC_PAGE_HEADER_SIZE,
+        layout_contract.MAILBOX_PAGE_HEADER_SIZE,
         workflow_profile.overflow_page_capacity_bytes,
         workflow_profile.overflow_page_count,
         workflow_profile.max_overflow_pages_per_response,
@@ -291,8 +291,8 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
         int(workflow_profile.poll_interval_seconds * 1e9),
         layout_contract.encode_profile_id(workflow_profile.profile_id),
     )
-    descriptor = layout_contract.RPC_DESCRIPTOR_HEADER.pack(
-        layout_contract.RPC_STATE_REQUEST,
+    descriptor = layout_contract.MAILBOX_DESCRIPTOR_HEADER.pack(
+        layout_contract.MAILBOX_STATE_REQUEST,
         0,
         0x0102030405060708,
         0x1112131415161718,
@@ -310,7 +310,7 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
         0,
         0x4142434445464748,
     )
-    page = layout_contract.RPC_PAGE_HEADER.pack(
+    page = layout_contract.MAILBOX_PAGE_HEADER.pack(
         layout_contract.PAGE_STATE_PUBLISHED,
         0,
         3,
@@ -347,25 +347,25 @@ def test_binary_schema_python_fixture_and_dotnet_fixture_are_identical() -> None
         0,
     )
     packed = fixture["packed_hex"]
-    assert rpc_profile_header.hex() == packed["rpc_profile_header"]
-    assert descriptor.hex() == packed["rpc_descriptor_header"]
-    assert page.hex() == packed["rpc_page_header"]
+    assert mailbox_profile_header.hex() == packed["mailbox_profile_header"]
+    assert descriptor.hex() == packed["mailbox_descriptor_header"]
+    assert page.hex() == packed["mailbox_page_header"]
     assert hashlib.sha256(event_profile_header).hexdigest() == fixture["packed_sha256"]["event_profile_header"]
     assert event_slot.hex() == packed["event_slot_header"]
 
     dotnet = DOTNET_LOCAL_MESSAGE_FIXTURE.read_text(encoding="utf-8")
     assert common[:88].hex() in dotnet
-    assert rpc_profile_header[:144].hex() in dotnet
-    for fixture_name in ("rpc_descriptor_header", "rpc_page_header"):
+    assert mailbox_profile_header[:144].hex() in dotnet
+    for fixture_name in ("mailbox_descriptor_header", "mailbox_page_header"):
         assert fixture["packed_hex"][fixture_name] in dotnet
 
 
-def test_rpc_inline_page_compression_ack_and_resource_recovery(tmp_path: Path) -> None:
+def test_mailbox_inline_page_compression_ack_and_resource_recovery(tmp_path: Path) -> None:
     """inline、不可压缩 page-chain、压缩、ACK 后均恢复全部资源。"""
 
-    paths = _paths(tmp_path, "rpc-main", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-main", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     try:
         inline = _round_trip(
             server=server,
@@ -385,7 +385,7 @@ def test_rpc_inline_page_compression_ack_and_resource_recovery(tmp_path: Path) -
             response=page_payload,
         )
         assert page.wire_bytes == page_payload
-        assert server.health().free_pages < RPC_PROFILE.overflow_page_count
+        assert server.health().free_pages < MAILBOX_PROFILE.overflow_page_count
         page.ack()
         server.sweep()
 
@@ -401,8 +401,8 @@ def test_rpc_inline_page_compression_ack_and_resource_recovery(tmp_path: Path) -
         server.sweep()
 
         health = server.health()
-        assert health.free_descriptors == RPC_PROFILE.descriptor_count
-        assert health.free_pages == RPC_PROFILE.overflow_page_count
+        assert health.free_descriptors == MAILBOX_PROFILE.descriptor_count
+        assert health.free_pages == MAILBOX_PROFILE.overflow_page_count
         assert health.requests_total == 3
         assert health.responses_total == 3
         assert health.acknowledgements_total == 3
@@ -411,14 +411,14 @@ def test_rpc_inline_page_compression_ack_and_resource_recovery(tmp_path: Path) -
         server.close(deadline_ns=_deadline())
 
 
-def test_rpc_prepared_descriptor_reuses_identity_and_preserves_extension(
+def test_mailbox_prepared_descriptor_reuses_identity_and_preserves_extension(
     tmp_path: Path,
 ) -> None:
     """PREPARE response 可在同一 descriptor 上转回 REQUEST，且只建立一次 deadline。"""
 
-    paths = _paths(tmp_path, "rpc-prepared", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-prepared", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     prepare_extension = b"prepare.v1"
     writing_extension = b"writing.v1"
     request_extension = b"request.v1"
@@ -485,20 +485,20 @@ def test_rpc_prepared_descriptor_reuses_identity_and_preserves_extension(
         events = server.sweep()
         assert len(events) == 1
         assert events[0].identity == identity
-        assert events[0].reason == RpcTerminalReason.ACKNOWLEDGED
+        assert events[0].reason == MailboxTerminalReason.ACKNOWLEDGED
         assert server.drain_terminal_events() == events
-        assert server.health().free_descriptors == RPC_PROFILE.descriptor_count
+        assert server.health().free_descriptors == MAILBOX_PROFILE.descriptor_count
     finally:
         client.close(deadline_ns=_deadline())
         server.close(deadline_ns=_deadline())
 
 
-def test_rpc_prepared_writing_cancel_is_terminal_and_reclaimed(tmp_path: Path) -> None:
+def test_mailbox_prepared_writing_cancel_is_terminal_and_reclaimed(tmp_path: Path) -> None:
     """两阶段调用在 WRITING 取消时不遗留 descriptor 或业务终态事件。"""
 
-    paths = _paths(tmp_path, "rpc-prepared-cancel", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-prepared-cancel", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     try:
         identity = client.claim_prepared(
             request_id=uuid4(),
@@ -519,21 +519,21 @@ def test_rpc_prepared_writing_cancel_is_terminal_and_reclaimed(tmp_path: Path) -
 
         events = server.sweep()
         assert len(events) == 1
-        assert events[0].reason == RpcTerminalReason.CANCELLED
-        assert server.health().free_descriptors == RPC_PROFILE.descriptor_count
+        assert events[0].reason == MailboxTerminalReason.CANCELLED
+        assert server.health().free_descriptors == MAILBOX_PROFILE.descriptor_count
     finally:
         client.close(deadline_ns=_deadline())
         server.close(deadline_ns=_deadline())
 
 
-def test_rpc_page_pool_exhaustion_is_explicit_and_inline_stays_available(
+def test_mailbox_page_pool_exhaustion_is_explicit_and_inline_stays_available(
     tmp_path: Path,
 ) -> None:
     """page pool 满载必须返回 capacity，且不能阻塞无需 page 的响应。"""
 
-    paths = _paths(tmp_path, "rpc-capacity", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-capacity", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     first = second = inline = None
     try:
         first = _round_trip(
@@ -591,12 +591,12 @@ def test_rpc_page_pool_exhaustion_is_explicit_and_inline_stays_available(
         server.close(deadline_ns=_deadline())
 
 
-def test_rpc_page_chain_crc_corruption_is_rejected(tmp_path: Path) -> None:
+def test_mailbox_page_chain_crc_corruption_is_rejected(tmp_path: Path) -> None:
     """page publication 后正文损坏必须在 ACK 前被 client 拒绝。"""
 
-    paths = _paths(tmp_path, "rpc-corrupt", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-corrupt", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     try:
         identity = client._claim_descriptor(
             request_id=uuid4(), payload=b"x", deadline_ns=_deadline()
@@ -604,11 +604,11 @@ def test_rpc_page_chain_crc_corruption_is_rejected(tmp_path: Path) -> None:
         context = server.receive(deadline_ns=_deadline())
         assert context is not None
         server.publish_response(context, wire_bytes=os.urandom(220))
-        layout = rpc_layout(RPC_PROFILE)
+        layout = mailbox_layout(MAILBOX_PROFILE)
         header = server._read_descriptor(identity.descriptor_index)
         first_page = int(header[11])
         page_offset = layout.page_region_offset + first_page * layout.page_stride_bytes
-        server._require_view()[page_offset + RPC_PAGE_HEADER.size] ^= 0xFF
+        server._require_view()[page_offset + MAILBOX_PAGE_HEADER.size] ^= 0xFF
         with pytest.raises(ChannelCorruptMessageError, match="CRC"):
             client._read_response(identity, client._read_descriptor(identity.descriptor_index))
     finally:
@@ -628,12 +628,12 @@ class _Cancellation:
         return self.event.is_set()
 
 
-def test_rpc_processing_observes_cancel_and_sweep_reclaims(tmp_path: Path) -> None:
+def test_mailbox_processing_observes_cancel_and_sweep_reclaims(tmp_path: Path) -> None:
     """PROCESSING 能观察取消，终态经 ACK/sweep 回收。"""
 
-    paths = _paths(tmp_path, "rpc-cancel", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-cancel", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     cancellation = _Cancellation()
     claimed = Event()
     observed: list[bool] = []
@@ -676,15 +676,15 @@ def test_rpc_processing_observes_cancel_and_sweep_reclaims(tmp_path: Path) -> No
         server.close(deadline_ns=monotonic_ns())
 
 
-def test_independent_rpc_channels_do_not_share_page_capacity(tmp_path: Path) -> None:
+def test_independent_mailbox_channels_do_not_share_page_capacity(tmp_path: Path) -> None:
     """一个 Channel 的 page pool 使用量不影响另一个 Channel。"""
 
-    first_paths = _paths(tmp_path, "rpc-first", "rpc")
-    second_paths = _paths(tmp_path, "rpc-second", "rpc")
-    first_server = MmapRpcMailboxServer(paths=first_paths, profile=RPC_PROFILE)
-    second_server = MmapRpcMailboxServer(paths=second_paths, profile=RPC_PROFILE)
-    first_client = MmapRpcMailboxClient(paths=first_paths, profile=RPC_PROFILE)
-    second_client = MmapRpcMailboxClient(paths=second_paths, profile=RPC_PROFILE)
+    first_paths = _paths(tmp_path, "mailbox-first", "mailbox")
+    second_paths = _paths(tmp_path, "mailbox-second", "mailbox")
+    first_server = MmapMailboxServer(paths=first_paths, profile=MAILBOX_PROFILE)
+    second_server = MmapMailboxServer(paths=second_paths, profile=MAILBOX_PROFILE)
+    first_client = MmapMailboxClient(paths=first_paths, profile=MAILBOX_PROFILE)
+    second_client = MmapMailboxClient(paths=second_paths, profile=MAILBOX_PROFILE)
     first_handle = second_handle = None
     try:
         first_handle = _round_trip(
@@ -693,8 +693,8 @@ def test_independent_rpc_channels_do_not_share_page_capacity(tmp_path: Path) -> 
             request=b"first",
             response=os.urandom(220),
         )
-        assert first_server.health().free_pages < RPC_PROFILE.overflow_page_count
-        assert second_server.health().free_pages == RPC_PROFILE.overflow_page_count
+        assert first_server.health().free_pages < MAILBOX_PROFILE.overflow_page_count
+        assert second_server.health().free_pages == MAILBOX_PROFILE.overflow_page_count
         second_handle = _round_trip(
             server=second_server,
             client=second_client,
@@ -719,20 +719,20 @@ def test_independent_rpc_channels_do_not_share_page_capacity(tmp_path: Path) -> 
     "fault_stage",
     ("writing_request", "processing", "page_reserved", "response", "ack"),
 )
-def test_rpc_owner_restart_recovers_every_publication_stage(
+def test_mailbox_owner_restart_recovers_every_publication_stage(
     tmp_path: Path,
     fault_stage: str,
 ) -> None:
     """owner 在 request/page/response/ACK 任一点退出后，新 epoch 不复用脏状态。"""
 
-    paths = _paths(tmp_path, f"rpc-crash-{fault_stage.replace('_', '-')}", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, f"mailbox-crash-{fault_stage.replace('_', '-')}", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     identity = client._claim_descriptor(
         request_id=uuid4(), payload=b"crash", deadline_ns=_deadline(10)
     )
     if fault_stage == "writing_request":
-        server._require_view()[server._descriptor_offset(identity.descriptor_index) : server._descriptor_offset(identity.descriptor_index) + 4] = RPC_STATE_WRITING_REQUEST.to_bytes(4, "little")
+        server._require_view()[server._descriptor_offset(identity.descriptor_index) : server._descriptor_offset(identity.descriptor_index) + 4] = MAILBOX_STATE_WRITING_REQUEST.to_bytes(4, "little")
     else:
         request = server.receive(deadline_ns=_deadline())
         assert request is not None
@@ -743,8 +743,8 @@ def test_rpc_owner_restart_recovers_every_publication_stage(
                 payload=os.urandom(220),
             )
             page_offset = (
-                rpc_layout(RPC_PROFILE).page_region_offset
-                + first_page * rpc_layout(RPC_PROFILE).page_stride_bytes
+                mailbox_layout(MAILBOX_PROFILE).page_region_offset
+                + first_page * mailbox_layout(MAILBOX_PROFILE).page_stride_bytes
             )
             server._require_view()[page_offset : page_offset + 4] = PAGE_STATE_RESERVED.to_bytes(4, "little")
         elif fault_stage in {"response", "ack"}:
@@ -758,18 +758,18 @@ def test_rpc_owner_restart_recovers_every_publication_stage(
     server._close_handles()
     server._closed = True
 
-    restarted = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
+    restarted = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
     try:
         assert restarted.owner_epoch != old_epoch
         assert restarted.channel_id == old_channel_id
         health = restarted.health()
-        assert health.free_descriptors == RPC_PROFILE.descriptor_count
-        assert health.free_pages == RPC_PROFILE.overflow_page_count
+        assert health.free_descriptors == MAILBOX_PROFILE.descriptor_count
+        assert health.free_pages == MAILBOX_PROFILE.overflow_page_count
     finally:
         restarted.close(deadline_ns=_deadline())
 
 
-def test_rpc_cross_process_owner_client_and_os_guards(tmp_path: Path) -> None:
+def test_mailbox_cross_process_owner_client_and_os_guards(tmp_path: Path) -> None:
     """真实 spawn 进程通过同一 mmap/guard 完成 request、response 与 ACK。"""
 
     import multiprocessing
@@ -778,13 +778,13 @@ def test_rpc_cross_process_owner_client_and_os_guards(tmp_path: Path) -> None:
     ready = context.Event()
     consumed = context.Event()
     process = context.Process(
-        target=_cross_process_rpc_server,
+        target=_cross_process_mailbox_server,
         args=(str(tmp_path / "buffers"), ready, consumed),
     )
     process.start()
     assert ready.wait(timeout=10)
-    paths = _paths(tmp_path, "rpc-process", "rpc")
-    client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-process", "mailbox")
+    client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     try:
         handle = client.call(
             request_id=uuid4(),
@@ -800,18 +800,18 @@ def test_rpc_cross_process_owner_client_and_os_guards(tmp_path: Path) -> None:
     assert process.exitcode == 0
 
 
-def test_rpc_stale_open_client_is_fenced_by_new_owner_epoch(tmp_path: Path) -> None:
+def test_mailbox_stale_open_client_is_fenced_by_new_owner_epoch(tmp_path: Path) -> None:
     """旧 client mapping 保持打开时，新 owner 仍能接管并使旧调用返回 restarted。"""
 
-    paths = _paths(tmp_path, "rpc-live-restart", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    stale_client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    paths = _paths(tmp_path, "mailbox-live-restart", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    stale_client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     old_epoch = stale_client.owner_epoch
     old_channel_id = stale_client.channel_id
     server._close_handles()
     server._closed = True
-    restarted = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    current_client = MmapRpcMailboxClient(paths=paths, profile=RPC_PROFILE)
+    restarted = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    current_client = MmapMailboxClient(paths=paths, profile=MAILBOX_PROFILE)
     try:
         assert restarted.owner_epoch != old_epoch
         assert restarted.channel_id == old_channel_id
@@ -892,19 +892,19 @@ def test_event_ring_reports_gap_for_stale_cursor(tmp_path: Path) -> None:
         publisher.close(deadline_ns=_deadline())
 
 
-def test_registry_keeps_rpc_and_event_health_metrics_separate(tmp_path: Path) -> None:
+def test_registry_keeps_mailbox_and_event_health_metrics_separate(tmp_path: Path) -> None:
     """common envelope 不把 descriptor/page 字段强加给 EventRing。"""
 
-    rpc_paths = _paths(tmp_path, "registry-rpc", "rpc")
+    mailbox_paths = _paths(tmp_path, "registry-mailbox", "mailbox")
     event_paths = _paths(tmp_path, "registry-event", "event")
-    rpc = MmapRpcMailboxServer(paths=rpc_paths, profile=RPC_PROFILE)
+    mailbox = MmapMailboxServer(paths=mailbox_paths, profile=MAILBOX_PROFILE)
     event = MmapEventRingPublisher(paths=event_paths, profile=EVENT_PROFILE)
     registry = LocalMessageChannelRegistry()
     registry.register(
-        channel_name="rpc",
-        channel_kind="rpc",
-        profile_id=RPC_PROFILE.profile_id,
-        health_provider=rpc.health,
+        channel_name="mailbox",
+        channel_kind="mailbox",
+        profile_id=MAILBOX_PROFILE.profile_id,
+        health_provider=mailbox.health,
     )
     registry.register(
         channel_name="event",
@@ -914,12 +914,12 @@ def test_registry_keeps_rpc_and_event_health_metrics_separate(tmp_path: Path) ->
     )
     try:
         snapshot = registry.snapshot()
-        assert [item.channel_name for item in snapshot] == ["event", "rpc"]
-        assert snapshot[0].event is not None and snapshot[0].rpc is None
-        assert snapshot[1].rpc is not None and snapshot[1].event is None
+        assert [item.channel_name for item in snapshot] == ["event", "mailbox"]
+        assert snapshot[0].event is not None and snapshot[0].mailbox is None
+        assert snapshot[1].mailbox is not None and snapshot[1].event is None
     finally:
         event.close(deadline_ns=_deadline())
-        rpc.close(deadline_ns=_deadline())
+        mailbox.close(deadline_ns=_deadline())
 
 
 def test_paths_and_profile_fingerprint_reject_escape_or_mismatch(tmp_path: Path) -> None:
@@ -927,11 +927,11 @@ def test_paths_and_profile_fingerprint_reject_escape_or_mismatch(tmp_path: Path)
 
     with pytest.raises(ValueError):
         build_local_message_channel_paths(
-            buffers_root=tmp_path, channel_name="../escape", channel_kind="rpc"
+            buffers_root=tmp_path, channel_name="../escape", channel_kind="mailbox"
         )
-    paths = _paths(tmp_path, "profile", "rpc")
-    server = MmapRpcMailboxServer(paths=paths, profile=RPC_PROFILE)
-    different = RpcChannelProfile(
+    paths = _paths(tmp_path, "profile", "mailbox")
+    server = MmapMailboxServer(paths=paths, profile=MAILBOX_PROFILE)
+    different = MailboxChannelProfile(
         profile_id="different.v1",
         descriptor_count=4,
         inline_request_capacity_bytes=128,
@@ -946,7 +946,7 @@ def test_paths_and_profile_fingerprint_reject_escape_or_mismatch(tmp_path: Path)
     )
     try:
         with pytest.raises(ChannelCorruptMessageError):
-            MmapRpcMailboxClient(paths=paths, profile=different)
+            MmapMailboxClient(paths=paths, profile=different)
     finally:
         server.close(deadline_ns=_deadline())
 
@@ -959,12 +959,12 @@ def test_queue_adapter_uses_same_bytes_port_and_noop_ack() -> None:
     requests: Queue[object] = Queue()
     responses: Queue[object] = Queue()
     epoch = 123
-    server = MultiprocessingQueueRpcServer(
+    server = MultiprocessingQueueMailboxServer(
         request_queue=requests,
         response_queue=responses,
         owner_epoch=epoch,
     )
-    client = MultiprocessingQueueRpcClient(
+    client = MultiprocessingQueueMailboxClient(
         request_queue=requests,
         response_queue=responses,
         owner_epoch=epoch,

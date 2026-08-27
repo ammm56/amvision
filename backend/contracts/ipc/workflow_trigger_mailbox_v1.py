@@ -1,35 +1,36 @@
-"""Workflow Trigger RPC descriptor extension v1 的稳定常量。"""
+"""Workflow Trigger Mailbox descriptor extension v1 的稳定常量。"""
 
 from __future__ import annotations
 
 import struct
 
 from backend.contracts.ipc.local_message_profiles import (
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
 )
 
 
-CONTRACT_ID = "amvision.workflow-trigger-rpc-extension.v1"
-RELATIVE_MMAP_PATH = "local-message/workflow-trigger-main.rpc.mmap"
+CONTRACT_ID = "amvision.workflow-trigger-mailbox.v1"
+RELATIVE_MMAP_PATH = "local-message/workflow-trigger/mailbox.mmap"
+RELATIVE_GUARD_PATH = "local-message/workflow-trigger/access.guard"
 
-DESCRIPTOR_COUNT = WORKFLOW_TRIGGER_RPC_PROFILE_V1.descriptor_count
+DESCRIPTOR_COUNT = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.descriptor_count
 INLINE_REQUEST_CAPACITY_BYTES = (
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_request_capacity_bytes
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_request_capacity_bytes
 )
 INLINE_RESPONSE_CAPACITY_BYTES = (
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_response_capacity_bytes
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_response_capacity_bytes
 )
-OVERFLOW_PAGE_COUNT = WORKFLOW_TRIGGER_RPC_PROFILE_V1.overflow_page_count
+OVERFLOW_PAGE_COUNT = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.overflow_page_count
 OVERFLOW_PAGE_CAPACITY_BYTES = (
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1.overflow_page_capacity_bytes
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.overflow_page_capacity_bytes
 )
 MAX_OVERFLOW_PAGES_PER_RESPONSE = (
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_overflow_pages_per_response
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_overflow_pages_per_response
 )
-MAX_REQUEST_BYTES = WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_request_bytes
-MAX_RESPONSE_BYTES = WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_response_bytes
+MAX_REQUEST_BYTES = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_request_bytes
+MAX_RESPONSE_BYTES = WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_response_bytes
 
-# 该结构只占用 common RPC descriptor header 的 152-byte 保留扩展区。
+# 该结构只占用 common Mailbox descriptor header 的 152-byte 保留扩展区。
 DESCRIPTOR_EXTENSION_STRUCT = struct.Struct("<IIIIQIII116x")
 DESCRIPTOR_EXTENSION_SIZE = 152
 DESCRIPTOR_PHASE_OFFSET = 0

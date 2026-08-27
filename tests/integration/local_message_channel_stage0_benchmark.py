@@ -38,11 +38,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.contracts.ipc import (  # noqa: E402
-    workflow_trigger_rpc_extension_v1 as trigger_contract,
+    workflow_trigger_mailbox_v1 as trigger_contract,
 )
 from backend.contracts.ipc.local_message_profiles import (  # noqa: E402
     TRAINING_TELEMETRY_EVENT_PROFILE_V1,
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
     EventRingChannelProfile,
 )
 from backend.service.application.message_channels.models import EventCursor  # noqa: E402
@@ -55,7 +55,7 @@ from backend.service.application.models.training.training_telemetry_channel impo
     _serialize_transport_point,
 )
 from backend.service.application.events import InMemoryServiceEventBus  # noqa: E402
-from backend.service.infrastructure.ipc.inference_rpc import (  # noqa: E402
+from backend.service.infrastructure.ipc.inference_mailbox import (  # noqa: E402
     InferenceLocalMmapClient,
     InferenceLocalMmapServer,
 )
@@ -66,7 +66,7 @@ from backend.service.infrastructure.ipc.local_message.event_ring import (  # noq
     MmapEventRingReader,
 )
 from backend.service.infrastructure.ipc.local_message.common_layout import (  # noqa: E402
-    rpc_layout,
+    mailbox_layout,
 )
 from backend.service.infrastructure.ipc.local_message.paths import (  # noqa: E402
     LocalMessageChannelPaths,
@@ -75,7 +75,7 @@ from backend.service.infrastructure.ipc.training_telemetry import (  # noqa: E40
     TrainingTelemetryMmapPublisher,
     TrainingTelemetryMmapReceiver,
 )
-from backend.service.infrastructure.ipc.workflow_trigger_rpc import (  # noqa: E402
+from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (  # noqa: E402
     WorkflowTriggerMailboxClient,
     WorkflowTriggerMailboxServer,
 )
@@ -721,8 +721,8 @@ def benchmark_cold_open(settings: BenchmarkSettings) -> dict[str, object]:
         reports["workflow_trigger"] = {
             "cold_create_ms": summarize_samples(trigger_create),
             "cold_reopen_ms": summarize_samples(trigger_reopen),
-            "file_size_bytes": rpc_layout(
-                WORKFLOW_TRIGGER_RPC_PROFILE_V1
+            "file_size_bytes": mailbox_layout(
+                WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1
             ).file_size_bytes,
         }
         reports["inference"] = {
@@ -1108,7 +1108,7 @@ def _inference_client_process(
 ) -> None:
     """在独立进程内调用当前 Inference mailbox。"""
 
-    import backend.service.infrastructure.ipc.local_message.rpc_mailbox as module
+    import backend.service.infrastructure.ipc.local_message.mailbox as module
 
     latencies: list[float] = []
     poll_count = 0
@@ -1325,7 +1325,7 @@ def benchmark_inference(settings: BenchmarkSettings) -> dict[str, object]:
                         "summary": summarize_rounds(rounds),
                     }
                 )
-    return {"transport": "local-message-inference-rpc.v1", "cells": cells}
+    return {"transport": "local-message-inference-mailbox.v1", "cells": cells}
 
 
 def _telemetry_publisher_process(

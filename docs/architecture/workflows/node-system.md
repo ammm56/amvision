@@ -71,7 +71,7 @@ Node Pack 承担：
 - Core、内置和第三方节点使用同一套进程内 handler 调用。
 - Preview 在 backend-service 内直接执行可信节点。
 - 正式 Workflow App 在长期 Runtime worker 内直接执行节点。
-- 正常节点调用不创建 per-node 进程，不经过跨进程 RPC，也不维护 permission scope。
+- 正常节点调用不创建 per-node 进程，不经过跨进程 Mailbox，也不维护 permission scope。
 - 一次性安装校验可以在辅助进程检查 import 和 handler 注册，但不进入执行热路径。
 
 Workflow Runtime worker、Deployment 常驻进程和后台 Worker 是服务生命周期与故障恢复边界，不是节点权限沙箱。未经信任的代码必须使用独立服务或操作系统级 container/sandbox，不用 manifest 字段伪装成安全隔离。

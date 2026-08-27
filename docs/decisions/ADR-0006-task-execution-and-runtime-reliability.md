@@ -134,7 +134,7 @@ Timeout policy 从当前 Runtime worker 已启用的 Runtime Registry/Node Pack 
 - 不改变 `save_location` 的 ObjectStore 相对路径和磁盘绝对路径契约。
 - 不改变 LocalBuffer、mmap 和 ZeroMQ 的图片数据面边界。
 - 不修改模型结构、权重加载、前处理、后处理和数值容差，不以逐位相同替代既有准确率门禁。
-- 不为可信 Core/Custom Node 引入权限沙箱、每节点进程或通用 RPC。
+- 不为可信 Core/Custom Node 引入权限沙箱、每节点进程或通用 Mailbox。
 
 ## 未采用方案
 

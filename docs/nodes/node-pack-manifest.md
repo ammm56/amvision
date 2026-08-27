@@ -220,7 +220,7 @@ python -m custom_nodes.barcode_nodes.workflow.generate_catalog
 - `killGraceSeconds` 是正式 Workflow Runtime 设置协作取消信号后，等待本次 Run 返回的宽限时间；到期后终止整个 worker generation
 - 有效 deadline 为 Workflow 剩余预算与 `defaultSeconds` 的较小值，不会延长 Workflow 总预算
 - Preview 在 backend-service 内直接调用可信 handler，只提供协作式 deadline/cancellation；不可协作的 handler 会在返回后被报告为超时
-- 正式 Runtime 使用 generation 级共享 Event 和现有 response queue 的 started/ended 控制消息，不创建每节点进程、线程、队列或数据 RPC
+- 正式 Runtime 使用 generation 级共享 Event 和现有 response queue 的 started/ended 控制消息，不创建每节点进程、线程、队列或数据 Mailbox
 - timeout 后不自动重放原 Run；manager 持久化 `timed_out` 后按 Runtime 期望状态恢复新 generation
 - HTTP、数据库、相机等节点参数中的 timeout 属于业务 I/O timeout，不能覆盖本执行器策略
 - node pack 必须支持 enable、disable、upgrade、rollback 这些基本管理动作

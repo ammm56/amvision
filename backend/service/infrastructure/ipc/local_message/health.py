@@ -8,8 +8,8 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
-class RpcChannelHealth:
-    """RPC descriptor/page 与生命周期计数。"""
+class MailboxChannelHealth:
+    """Mailbox descriptor/page 与生命周期计数。"""
 
     channel_id: UUID
     owner_epoch: int
@@ -45,16 +45,16 @@ class LocalMessageChannelHealthEnvelope:
     """只统一 identity/transport，类型专属指标保持互斥。"""
 
     channel_name: str
-    channel_kind: Literal["rpc", "event"]
+    channel_kind: Literal["mailbox", "event"]
     transport: Literal["mmap"]
     profile_id: str
-    rpc: RpcChannelHealth | None = None
+    mailbox: MailboxChannelHealth | None = None
     event: EventChannelHealth | None = None
 
     def __post_init__(self) -> None:
         """要求 envelope 只携带对应类型的一组指标。"""
 
-        if self.channel_kind == "rpc" and (self.rpc is None or self.event is not None):
-            raise ValueError("RPC health envelope 类型不一致")
-        if self.channel_kind == "event" and (self.event is None or self.rpc is not None):
+        if self.channel_kind == "mailbox" and (self.mailbox is None or self.event is not None):
+            raise ValueError("Mailbox health envelope 类型不一致")
+        if self.channel_kind == "event" and (self.event is None or self.mailbox is not None):
             raise ValueError("Event health envelope 类型不一致")

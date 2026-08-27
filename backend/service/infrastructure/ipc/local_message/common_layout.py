@@ -1,4 +1,4 @@
-"""LocalMessage common、RPC 和 EventRing 的 little-endian binary layout。"""
+"""LocalMessage common、Mailbox 和 EventRing 的 little-endian binary layout。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import psutil
 
 from backend.contracts.ipc.local_message_profiles import (
     EventRingChannelProfile,
-    RpcChannelProfile,
+    MailboxChannelProfile,
 )
 from backend.service.application.message_channels.errors import (
     ChannelCorruptMessageError,
@@ -24,55 +24,55 @@ FILE_MAGIC = b"AMVLMSG\0"
 FILE_VERSION = 1
 ENDIAN_MARKER = 0x01020304
 COMMON_HEADER_SIZE = 256
-RPC_HEADER_SIZE = 256
-RPC_DESCRIPTOR_HEADER_SIZE = 256
-RPC_DESCRIPTOR_EXTENSION_OFFSET = 104
-RPC_DESCRIPTOR_EXTENSION_SIZE = (
-    RPC_DESCRIPTOR_HEADER_SIZE - RPC_DESCRIPTOR_EXTENSION_OFFSET
+MAILBOX_HEADER_SIZE = 256
+MAILBOX_DESCRIPTOR_HEADER_SIZE = 256
+MAILBOX_DESCRIPTOR_EXTENSION_OFFSET = 104
+MAILBOX_DESCRIPTOR_EXTENSION_SIZE = (
+    MAILBOX_DESCRIPTOR_HEADER_SIZE - MAILBOX_DESCRIPTOR_EXTENSION_OFFSET
 )
-RPC_PAGE_HEADER_SIZE = 64
+MAILBOX_PAGE_HEADER_SIZE = 64
 EVENT_HEADER_SIZE = 256
 EVENT_SLOT_HEADER_SIZE = 64
 
-CHANNEL_KIND_RPC = 1
+CHANNEL_KIND_MAILBOX = 1
 CHANNEL_KIND_EVENT = 2
 
 FILE_FLAG_CLOSED = 1 << 0
-RPC_FLAG_CANCEL_REQUESTED = 1 << 0
-RPC_FLAG_ACKED = 1 << 1
-RPC_FLAG_RESPONSE_COMPRESSED = 1 << 2
+MAILBOX_FLAG_CANCEL_REQUESTED = 1 << 0
+MAILBOX_FLAG_ACKED = 1 << 1
+MAILBOX_FLAG_RESPONSE_COMPRESSED = 1 << 2
 EVENT_FLAG_CLOSED = 1 << 0
 
-RPC_STATE_FREE = 0
-RPC_STATE_WRITING_REQUEST = 1
-RPC_STATE_REQUEST = 2
-RPC_STATE_PROCESSING = 3
-RPC_STATE_RESPONSE = 4
+MAILBOX_STATE_FREE = 0
+MAILBOX_STATE_WRITING_REQUEST = 1
+MAILBOX_STATE_REQUEST = 2
+MAILBOX_STATE_PROCESSING = 3
+MAILBOX_STATE_RESPONSE = 4
 
 PAGE_STATE_FREE = 0
 PAGE_STATE_RESERVED = 1
 PAGE_STATE_PUBLISHED = 2
 NO_PAGE_INDEX = -1
 
-RPC_ERROR_NONE = 0
-RPC_ERROR_DEADLINE_EXCEEDED = 1
-RPC_ERROR_CANCELLED = 2
-RPC_ERROR_INVALID_MESSAGE = 3
-RPC_ERROR_CAPACITY_EXHAUSTED = 4
-RPC_ERROR_SERVER_FAILURE = 5
+MAILBOX_ERROR_NONE = 0
+MAILBOX_ERROR_DEADLINE_EXCEEDED = 1
+MAILBOX_ERROR_CANCELLED = 2
+MAILBOX_ERROR_INVALID_MESSAGE = 3
+MAILBOX_ERROR_CAPACITY_EXHAUSTED = 4
+MAILBOX_ERROR_SERVER_FAILURE = 5
 
 COMMON_HEADER = struct.Struct("<8sHHI32sQQQQII168x")
-RPC_HEADER = struct.Struct("<IIIIIIIIIIIIQQQQ64s112x")
-RPC_DESCRIPTOR_HEADER = struct.Struct("<IIQQ16sQQIIIIiIIIQQ152x")
-RPC_PAGE_HEADER = struct.Struct("<IIIIQiIIQQ12x")
+MAILBOX_HEADER = struct.Struct("<IIIIIIIIIIIIQQQQ64s112x")
+MAILBOX_DESCRIPTOR_HEADER = struct.Struct("<IIQQ16sQQIIIIiIIIQQ152x")
+MAILBOX_PAGE_HEADER = struct.Struct("<IIIIQiIIQQ12x")
 EVENT_HEADER = struct.Struct("<IIIIIIQQQQ16sQQ64s104x")
 EVENT_SLOT_HEADER = struct.Struct("<QQIIQI28x")
 
 assert COMMON_HEADER.size == COMMON_HEADER_SIZE
-assert RPC_HEADER.size == RPC_HEADER_SIZE
-assert RPC_DESCRIPTOR_HEADER.size == RPC_DESCRIPTOR_HEADER_SIZE
-assert RPC_DESCRIPTOR_EXTENSION_SIZE == 152
-assert RPC_PAGE_HEADER.size == RPC_PAGE_HEADER_SIZE
+assert MAILBOX_HEADER.size == MAILBOX_HEADER_SIZE
+assert MAILBOX_DESCRIPTOR_HEADER.size == MAILBOX_DESCRIPTOR_HEADER_SIZE
+assert MAILBOX_DESCRIPTOR_EXTENSION_SIZE == 152
+assert MAILBOX_PAGE_HEADER.size == MAILBOX_PAGE_HEADER_SIZE
 assert EVENT_HEADER.size == EVENT_HEADER_SIZE
 assert EVENT_SLOT_HEADER.size == EVENT_SLOT_HEADER_SIZE
 
@@ -91,8 +91,8 @@ class CommonHeaderValue:
 
 
 @dataclass(frozen=True, slots=True)
-class RpcLayout:
-    """由冻结 profile 推导的 RPC 文件布局。"""
+class MailboxLayout:
+    """由冻结 profile 推导的 Mailbox 文件布局。"""
 
     descriptor_stride_bytes: int
     descriptor_region_offset: int
@@ -112,31 +112,31 @@ class EventLayout:
     fingerprint: bytes
 
 
-def rpc_layout(profile: RpcChannelProfile) -> RpcLayout:
-    """返回 profile 对应的确定性 RPC layout。"""
+def mailbox_layout(profile: MailboxChannelProfile) -> MailboxLayout:
+    """返回 profile 对应的确定性 Mailbox layout。"""
 
     descriptor_stride = (
-        RPC_DESCRIPTOR_HEADER_SIZE
+        MAILBOX_DESCRIPTOR_HEADER_SIZE
         + profile.inline_request_capacity_bytes
         + profile.inline_response_capacity_bytes
     )
-    descriptor_region = COMMON_HEADER_SIZE + RPC_HEADER_SIZE
-    page_stride = RPC_PAGE_HEADER_SIZE + profile.overflow_page_capacity_bytes
+    descriptor_region = COMMON_HEADER_SIZE + MAILBOX_HEADER_SIZE
+    page_stride = MAILBOX_PAGE_HEADER_SIZE + profile.overflow_page_capacity_bytes
     page_region = descriptor_region + profile.descriptor_count * descriptor_stride
     file_size = page_region + profile.overflow_page_count * page_stride
     fingerprint = _layout_fingerprint(
-        kind="rpc",
+        kind="mailbox",
         profile=asdict(profile),
         fixed={
             "common_header": COMMON_HEADER_SIZE,
-            "rpc_header": RPC_HEADER_SIZE,
-            "descriptor_header": RPC_DESCRIPTOR_HEADER_SIZE,
-            "page_header": RPC_PAGE_HEADER_SIZE,
+            "mailbox_header": MAILBOX_HEADER_SIZE,
+            "descriptor_header": MAILBOX_DESCRIPTOR_HEADER_SIZE,
+            "page_header": MAILBOX_PAGE_HEADER_SIZE,
             "descriptor_stride": descriptor_stride,
             "page_stride": page_stride,
         },
     )
-    return RpcLayout(
+    return MailboxLayout(
         descriptor_stride_bytes=descriptor_stride,
         descriptor_region_offset=descriptor_region,
         page_stride_bytes=page_stride,

@@ -30,7 +30,7 @@
 
 同一 backend-service 实例使用一个全局 Workflow Trigger mailbox。mailbox 保存 descriptor、业务参数、LocalBuffer lease identity、小型结构化结果和大型结构化结果的 page-chain。直接公开的 `image-ref.v1` 图片主体始终位于 LocalBufferBroker；只有图中显式执行 `Image Base64 Encode` 后形成的 `image-base64.v1` 才作为结构化 JSON 进入 inline/page-chain，并受单响应容量上限约束。mailbox 采用当前开发期的 v1 契约，不创建旧协议兼容层，也不复用 inference mailbox 的文件或所有权空间。
 
-mailbox 路径固定从中立的 `local_memory.root_dir` 派生。当前正式环境使用 `data/buffers/local-message/workflow-trigger-main.rpc.mmap`，guard 和 owner lock 也放在 `local-message/` 子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。Trigger、Inference 和 LocalBuffer 仍分别启停，物理隔离与 owner 边界保持不变。
+mailbox 路径固定从中立的 `local_memory.root_dir` 派生。当前正式环境使用 `data/buffers/local-message/workflow-trigger/mailbox.mmap`，guard 和 owner lock 也放在 `local-message/` 子目录。不增加 Workflow Trigger 专属 root 配置，不在其他数据目录、临时目录或 SDK 配置目录创建 mmap。Trigger、Inference 和 LocalBuffer 仍分别启停，物理隔离与 owner 边界保持不变。
 
 ### 2. 每次调用动态占用一个普通 LocalBuffer lease
 

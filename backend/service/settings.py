@@ -503,7 +503,7 @@ class BackendServiceDeploymentRuntimeReconcilerConfig(BaseModel):
 
 
 class BackendServiceInferenceMmapMailboxConfig(BaseModel):
-    """控制是否启用冻结 profile 的 inference LocalMessage RPC Channel。"""
+    """控制是否启用冻结 profile 的 inference LocalMessage Mailbox Channel。"""
 
     model_config = ConfigDict(extra="forbid")
     enabled: bool = True
@@ -521,7 +521,7 @@ class BackendServiceInferenceDaemonConfig(BaseModel):
     - control_lease_timeout_seconds：异常退出后控制请求 lease 恢复时间。
     - control_read_timeout_seconds：ping、status、health 等轻量只读控制请求最长等待时间；不用于 stop、reset。
     - availability_probe_timeout_seconds：执行长操作前探测 daemon 的最长等待时间。
-    - mmap_mailbox：跨平台低延迟 inference 请求/响应 RpcMailbox 配置；变更控制仍使用持久 Queue。
+    - mmap_mailbox：跨平台低延迟 inference 请求/响应 Mailbox 配置；变更控制仍使用持久 Queue。
     """
 
     runtime_owner: Literal["embedded", "daemon"] = "daemon"

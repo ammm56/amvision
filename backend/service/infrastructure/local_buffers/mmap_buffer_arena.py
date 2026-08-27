@@ -79,7 +79,6 @@ class MmapBufferArenaConfig:
     reader_guard_slots: int = 64
     flush_on_write: bool = False
     revocation_grace_seconds: float = 5.0
-    file_stem: str = "main"
 
     def __post_init__(self) -> None:
         """校验路径无关配置并冻结 buddy geometry。"""
@@ -88,8 +87,6 @@ class MmapBufferArenaConfig:
             raise LocalBufferArenaError("LocalBuffer 正式数据面只支持 64-bit 进程")
         if not self.arena_id.strip():
             raise ValueError("arena_id 不能为空")
-        if not self.file_stem.strip():
-            raise ValueError("file_stem 不能为空")
         if self.reader_guard_slots <= 0:
             raise ValueError("reader_guard_slots 必须大于 0")
         if self.revocation_grace_seconds <= 0:
@@ -167,11 +164,10 @@ class MmapBufferArena:
 
         local_buffer_dir = config.root_dir.resolve() / "local-buffer"
         local_buffer_dir.mkdir(parents=True, exist_ok=True)
-        stem = config.file_stem.strip()
-        self.arena_path = local_buffer_dir / f"arena-{stem}.mmap"
-        self.allocator_path = local_buffer_dir / f"allocator-{stem}.mmap"
-        self.guard_path = local_buffer_dir / f"arena-{stem}.guard"
-        self.owner_lock_path = local_buffer_dir / f"arena-{stem}.owner.lock"
+        self.arena_path = local_buffer_dir / "images.mmap"
+        self.allocator_path = local_buffer_dir / "state.mmap"
+        self.guard_path = local_buffer_dir / "access.guard"
+        self.owner_lock_path = local_buffer_dir / "owner.lock"
         self._owner_lock = acquire_mmap_owner_lock(self.owner_lock_path)
         self._arena_file: BinaryIO | None = None
         self._allocator_file: BinaryIO | None = None
@@ -1408,10 +1404,9 @@ class MmapBufferArenaExternalAccess:
         self.config = config
         self.geometry = config.geometry
         local_buffer_dir = config.root_dir.resolve() / "local-buffer"
-        stem = config.file_stem.strip()
-        self.arena_path = local_buffer_dir / f"arena-{stem}.mmap"
-        self.allocator_path = local_buffer_dir / f"allocator-{stem}.mmap"
-        self.guard_path = local_buffer_dir / f"arena-{stem}.guard"
+        self.arena_path = local_buffer_dir / "images.mmap"
+        self.allocator_path = local_buffer_dir / "state.mmap"
+        self.guard_path = local_buffer_dir / "access.guard"
         self.layout_fingerprint = _build_layout_fingerprint(config)
         self._lock = RLock()
         self._closed = False

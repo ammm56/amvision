@@ -135,7 +135,7 @@ def test_inference_daemon_diagnostics_degrades_when_ping_fails() -> None:
     assert summary["error_type"] == "TimeoutError"
 
 
-def test_local_message_diagnostics_separates_rpc_event_and_retained_queue(
+def test_local_message_diagnostics_separates_mailbox_event_and_retained_queue(
     tmp_path: Path,
 ) -> None:
     """诊断只暴露类型化健康摘要，不暴露 descriptor/page 几何配置。"""
@@ -182,7 +182,7 @@ def test_local_message_diagnostics_separates_rpc_event_and_retained_queue(
         settings=settings,
     )
 
-    assert summary["workflow_trigger_rpc"]["running"] is True
+    assert summary["workflow_trigger_mailbox"]["running"] is True
     assert summary["training_telemetry_event"] == {
         "configured": True,
         "running": True,
@@ -199,7 +199,7 @@ def test_local_message_diagnostics_separates_rpc_event_and_retained_queue(
             }
         ],
     }
-    assert summary["inference_rpc"]["enabled"] is True
+    assert summary["inference_mailbox"]["enabled"] is True
     assert summary["retained_queue_channels"] == [
         "workflow-runtime",
         "published-inference-gateway",

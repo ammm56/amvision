@@ -20,15 +20,15 @@ from backend.service.application.message_channels.models import (
     EventBatch,
     EventCursor,
     EventPublishResult,
-    RpcRequestContext,
+    MailboxRequestContext,
 )
 from backend.service.application.message_channels.ports import (
     CancellationSource,
     EventPublisherPort,
     EventReaderPort,
-    RpcClientPort,
-    RpcResponseHandle,
-    RpcServerPort,
+    MailboxClientPort,
+    MailboxResponseHandle,
+    MailboxServerPort,
 )
 
 __all__ = [
@@ -47,10 +47,10 @@ __all__ = [
     "EventPublishResult",
     "EventReaderPort",
     "LocalMessageChannelError",
-    "RpcClientPort",
-    "RpcRequestContext",
-    "RpcResponseHandle",
-    "RpcServerPort",
+    "MailboxClientPort",
+    "MailboxRequestContext",
+    "MailboxResponseHandle",
+    "MailboxServerPort",
     "WireEnvelope",
     "decode_wire_envelope",
     "encode_wire_envelope",

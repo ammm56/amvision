@@ -1,4 +1,4 @@
-"""阶段 5 Queue/RpcMailbox 基准契约测试。"""
+"""阶段 5 Queue/Mailbox 基准契约测试。"""
 
 from __future__ import annotations
 

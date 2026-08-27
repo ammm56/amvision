@@ -13,7 +13,7 @@ from time import monotonic, sleep
 
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.ipc.mmap_primitives import MmapGuardBusyError
-from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
+from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     WorkflowTriggerMailboxClient,
     WorkflowTriggerMailboxServer,
 )

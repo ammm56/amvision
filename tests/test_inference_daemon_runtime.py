@@ -30,7 +30,7 @@ def test_backend_service_rejects_private_arena_as_public_main() -> None:
         )
 
 
-def test_inference_rpc_uses_fixed_profile_and_domain_admission_config() -> None:
+def test_inference_mailbox_uses_fixed_profile_and_domain_admission_config() -> None:
     """普通配置只能启停 Channel，并在领域层配置 handler admission。"""
 
     settings = BackendServiceSettings()

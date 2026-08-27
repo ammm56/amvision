@@ -17,7 +17,7 @@ INFERENCE_RESPONSE_SCHEMA_ID = "inference-daemon.response.v1"
 
 
 class InferenceMessageClient(Protocol):
-    """供 application control client 使用的窄 inference RPC client。"""
+    """供 application control client 使用的窄 inference Mailbox client。"""
 
     def request(
         self,
@@ -25,7 +25,7 @@ class InferenceMessageClient(Protocol):
         *,
         timeout_seconds: float | None = None,
     ) -> dict[str, object]:
-        """执行一次不自动重试的本机 inference RPC。"""
+        """执行一次不自动重试的本机 inference Mailbox。"""
 
     def close(self) -> None:
         """幂等关闭 client endpoint。"""
@@ -48,9 +48,9 @@ def decode_inference_request(wire_bytes: bytes) -> dict[str, object]:
 
     envelope = decode_wire_envelope(wire_bytes)
     if envelope.schema_id != INFERENCE_REQUEST_SCHEMA_ID:
-        raise InvalidRequestError("inference RPC request schema 不兼容")
+        raise InvalidRequestError("inference Mailbox request schema 不兼容")
     if not isinstance(envelope.payload, dict):
-        raise InvalidRequestError("inference RPC request payload 必须是 JSON 对象")
+        raise InvalidRequestError("inference Mailbox request payload 必须是 JSON 对象")
     payload = dict(envelope.payload)
     reject_inline_image_bytes(payload)
     return payload
@@ -72,9 +72,9 @@ def decode_inference_response(wire_bytes: bytes) -> dict[str, object]:
 
     envelope = decode_wire_envelope(wire_bytes)
     if envelope.schema_id != INFERENCE_RESPONSE_SCHEMA_ID:
-        raise InvalidRequestError("inference RPC response schema 不兼容")
+        raise InvalidRequestError("inference Mailbox response schema 不兼容")
     if not isinstance(envelope.payload, dict):
-        raise InvalidRequestError("inference RPC response payload 必须是 JSON 对象")
+        raise InvalidRequestError("inference Mailbox response payload 必须是 JSON 对象")
     return dict(envelope.payload)
 
 
@@ -97,7 +97,7 @@ def reject_inline_image_bytes(payload: dict[str, object]) -> None:
 
     if contains_image_content(payload):
         raise InvalidRequestError(
-            "inference RPC 只传控制信息，图片必须使用 LocalBuffer 引用"
+            "inference Mailbox 只传控制信息，图片必须使用 LocalBuffer 引用"
         )
 
 

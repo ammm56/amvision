@@ -27,7 +27,7 @@ try:
         WorkflowTriggerMailboxServer,
     )
 except ModuleNotFoundError:
-    from backend.service.infrastructure.ipc.workflow_trigger_rpc import (  # type: ignore[assignment,no-redef]  # noqa: E402
+    from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (  # type: ignore[assignment,no-redef]  # noqa: E402
         WorkflowTriggerMailboxClient,
         WorkflowTriggerMailboxServer,
     )

@@ -41,7 +41,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlBinding,
     InferenceControlDispatcher,
 )
-from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapServer
+from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapServer
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )

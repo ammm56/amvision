@@ -1,16 +1,16 @@
-// 由 local_message_channel.v1 + workflow_trigger_rpc_extension.v1 生成；禁止手工修改。
+// 由 local_message_channel.v1 + workflow_trigger_mailbox.v1 生成；禁止手工修改。
 namespace Amvar.Vision.SharedMemory
 {
     internal static class WorkflowTriggerMailboxV1
     {
-        internal const string ContractId = "amvision.workflow-trigger-rpc-extension.v1";
-        internal const string ProfileId = "workflow-trigger-rpc.v1";
+        internal const string ContractId = "amvision.workflow-trigger-mailbox.v1";
+        internal const string ProfileId = "workflow-trigger-mailbox.v1";
         internal const int Version = 1;
-        internal const int ChannelKindRpc = 1;
+        internal const int ChannelKindMailbox = 1;
         internal const int EndianMarker = 0x01020304;
-        internal const string LayoutFingerprintHex = "1fa3998808b1cdb1d8758839a954d2098d92b337dae246c4f58cbfc64038ed2c";
-        internal const string RelativeMmapPath = "local-message/workflow-trigger-main.rpc.mmap";
-        internal const string GuardSuffix = ".guard";
+        internal const string LayoutFingerprintHex = "a235669d2fe1f02848bbf816e06efde0f4c1eaae4a19943e2878d9593e83f345";
+        internal const string RelativeMmapPath = "local-message/workflow-trigger/mailbox.mmap";
+        internal const string RelativeGuardPath = "local-message/workflow-trigger/access.guard";
 
         internal const int DescriptorCount = 128;
         internal const int InlineRequestCapacityBytes = 65536;
@@ -24,7 +24,7 @@ namespace Amvar.Vision.SharedMemory
         internal const int CompressionThresholdBytes = 65536;
 
         internal const int CommonHeaderSize = 256;
-        internal const int RpcHeaderSize = 256;
+        internal const int MailboxHeaderSize = 256;
         internal const int DescriptorHeaderSize = 256;
         internal const int PageHeaderSize = 64;
         internal const int DescriptorStrideBytes = 131328;
@@ -42,23 +42,23 @@ namespace Amvar.Vision.SharedMemory
         internal const int CommonFlagsOffset = 84;
         internal const int FileFlagClosed = 1;
 
-        internal const int RpcDescriptorCountOffset = 256;
-        internal const int RpcDescriptorHeaderSizeOffset = 260;
-        internal const int RpcDescriptorStrideOffset = 264;
-        internal const int RpcInlineRequestCapacityOffset = 268;
-        internal const int RpcInlineResponseCapacityOffset = 272;
-        internal const int RpcPageHeaderSizeOffset = 276;
-        internal const int RpcPageCapacityOffset = 280;
-        internal const int RpcPageCountOffset = 284;
-        internal const int RpcMaxPagesPerResponseOffset = 288;
-        internal const int RpcMaxRequestBytesOffset = 292;
-        internal const int RpcMaxResponseBytesOffset = 296;
-        internal const int RpcCompressionThresholdOffset = 300;
-        internal const int RpcDescriptorRegionOffset = 304;
-        internal const int RpcPageRegionOffset = 312;
-        internal const int RpcFileSizeOffset = 320;
-        internal const int RpcPollIntervalNsOffset = 328;
-        internal const int RpcProfileIdOffset = 336;
+        internal const int MailboxDescriptorCountOffset = 256;
+        internal const int MailboxDescriptorHeaderSizeOffset = 260;
+        internal const int MailboxDescriptorStrideOffset = 264;
+        internal const int MailboxInlineRequestCapacityOffset = 268;
+        internal const int MailboxInlineResponseCapacityOffset = 272;
+        internal const int MailboxPageHeaderSizeOffset = 276;
+        internal const int MailboxPageCapacityOffset = 280;
+        internal const int MailboxPageCountOffset = 284;
+        internal const int MailboxMaxPagesPerResponseOffset = 288;
+        internal const int MailboxMaxRequestBytesOffset = 292;
+        internal const int MailboxMaxResponseBytesOffset = 296;
+        internal const int MailboxCompressionThresholdOffset = 300;
+        internal const int MailboxDescriptorRegionOffset = 304;
+        internal const int MailboxPageRegionOffset = 312;
+        internal const int MailboxFileSizeOffset = 320;
+        internal const int MailboxPollIntervalNsOffset = 328;
+        internal const int MailboxProfileIdOffset = 336;
 
         internal const int DescriptorStateOffset = 0;
         internal const int DescriptorFlagsOffset = 4;
@@ -87,20 +87,20 @@ namespace Amvar.Vision.SharedMemory
         internal const int ExtensionOutputLeaseCountOffset = 132;
         internal const int ExtensionHandoffStateOffset = 136;
 
-        internal const int RpcStateFree = 0;
-        internal const int RpcStateWritingRequest = 1;
-        internal const int RpcStateRequest = 2;
-        internal const int RpcStateProcessing = 3;
-        internal const int RpcStateResponse = 4;
-        internal const int RpcFlagCancelRequested = 1;
-        internal const int RpcFlagAcked = 2;
-        internal const int RpcFlagResponseCompressed = 4;
-        internal const int RpcErrorNone = 0;
-        internal const int RpcErrorDeadlineExceeded = 1;
-        internal const int RpcErrorCancelled = 2;
-        internal const int RpcErrorInvalidMessage = 3;
-        internal const int RpcErrorCapacityExhausted = 4;
-        internal const int RpcErrorServerFailure = 5;
+        internal const int MailboxStateFree = 0;
+        internal const int MailboxStateWritingRequest = 1;
+        internal const int MailboxStateRequest = 2;
+        internal const int MailboxStateProcessing = 3;
+        internal const int MailboxStateResponse = 4;
+        internal const int MailboxFlagCancelRequested = 1;
+        internal const int MailboxFlagAcked = 2;
+        internal const int MailboxFlagResponseCompressed = 4;
+        internal const int MailboxErrorNone = 0;
+        internal const int MailboxErrorDeadlineExceeded = 1;
+        internal const int MailboxErrorCancelled = 2;
+        internal const int MailboxErrorInvalidMessage = 3;
+        internal const int MailboxErrorCapacityExhausted = 4;
+        internal const int MailboxErrorServerFailure = 5;
 
         internal const int PhasePrepare = 1;
         internal const int PhaseWriting = 2;

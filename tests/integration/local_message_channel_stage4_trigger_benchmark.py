@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.contracts.ipc.local_message_profiles import (  # noqa: E402
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
 )
 from tests.integration.local_message_channel_stage0_benchmark import (  # noqa: E402
     _compact_json,
@@ -298,8 +298,8 @@ def run(settings: BenchmarkSettings) -> dict[str, object]:
     result = {
         "format_id": "amvision.local-message-channel-stage4-trigger-benchmark.v1",
         "settings": asdict(settings),
-        "transport": "local-message-workflow-trigger-rpc.v1",
-        "profile_id": WORKFLOW_TRIGGER_RPC_PROFILE_V1.profile_id,
+        "transport": "local-message-workflow-trigger-mailbox.v1",
+        "profile_id": WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.profile_id,
         "cells": current_cells,
         "comparisons": comparison_cells,
         "resources": {

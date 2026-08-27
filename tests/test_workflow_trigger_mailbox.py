@@ -1,4 +1,4 @@
-"""Workflow Trigger RPC extension 的两阶段、page-chain 与终态门禁。"""
+"""Workflow Trigger Mailbox extension 的两阶段、page-chain 与终态门禁。"""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from time import sleep
 
 import pytest
 
-from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as contract
+from backend.contracts.ipc import workflow_trigger_mailbox_v1 as contract
 from backend.contracts.ipc.local_message_profiles import (
-    RPC_PUBLIC_RESPONSE_CAPACITY_BYTES,
+    MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES,
 )
 from backend.service.application.errors import InvalidRequestError
 from backend.service.infrastructure.ipc.mmap_primitives import MmapOwnerLockBusyError
-from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
+from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     MAILBOX_FILE_SIZE_BYTES,
     WorkflowTriggerMailboxClient,
     WorkflowTriggerMailboxServer,
@@ -81,7 +81,7 @@ def test_structured_response_uses_common_page_chain_without_data_loss(
 def test_compressible_large_json_remains_inline_after_common_compression(
     tmp_path: Path,
 ) -> None:
-    """通用 RPC 压缩有收益时不占用 overflow page。"""
+    """通用 Mailbox 压缩有收益时不占用 overflow page。"""
 
     payload = json.dumps(
         {"state": "succeeded", "mask": "A" * (1024 * 1024)},
@@ -109,9 +109,9 @@ def test_public_response_keeps_exact_32_mib_boundary_after_envelope(
     prefix = b'{"state":"succeeded","data":"'
     suffix = b'"}'
     payload = prefix + b"A" * (
-        RPC_PUBLIC_RESPONSE_CAPACITY_BYTES - len(prefix) - len(suffix)
+        MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES - len(prefix) - len(suffix)
     ) + suffix
-    assert len(payload) == RPC_PUBLIC_RESPONSE_CAPACITY_BYTES
+    assert len(payload) == MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES
     with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
         with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
             identity = _publish_request(server, client, {})
@@ -133,7 +133,7 @@ def test_oversized_public_response_returns_readable_business_error(
 ) -> None:
     """超过 32 MiB 时发布稳定紧凑终态，不伪装成 server failure。"""
 
-    payload = b'{"data":"' + b"A" * RPC_PUBLIC_RESPONSE_CAPACITY_BYTES + b'"}'
+    payload = b'{"data":"' + b"A" * MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES + b'"}'
     with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
         with WorkflowTriggerMailboxClient(buffers_root=tmp_path) as client:
             identity = _publish_request(server, client, {})
@@ -314,7 +314,7 @@ def test_frozen_path_and_file_size_use_neutral_local_message_root(
 
     with WorkflowTriggerMailboxServer(buffers_root=tmp_path) as server:
         assert server.path == (
-            tmp_path / "local-message" / "workflow-trigger-main.rpc.mmap"
+            tmp_path / "local-message" / "workflow-trigger" / "mailbox.mmap"
         ).resolve()
         assert server.path.stat().st_size == MAILBOX_FILE_SIZE_BYTES
         with server.path.open("rb") as handle:
@@ -330,7 +330,7 @@ def test_workflow_trigger_owner_rejects_legacy_layout(tmp_path: Path) -> None:
     with pytest.raises(ChannelLegacyLayoutError, match="旧 LocalMessage layout"):
         WorkflowTriggerMailboxServer(buffers_root=tmp_path)
     assert not (
-        tmp_path / "local-message" / "workflow-trigger-main.rpc.mmap"
+        tmp_path / "local-message" / "workflow-trigger" / "mailbox.mmap"
     ).exists()
 
 

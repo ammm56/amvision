@@ -17,7 +17,7 @@ from backend.contracts.buffers.lease_ownership import (
     ExternalBufferAllocation,
     LeaseOwnershipReceipt,
 )
-from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as mailbox_contract
+from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contract
 from backend.contracts.workflows import (
     TriggerEventContract,
     WorkflowTriggerAllocationV1,

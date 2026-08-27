@@ -65,7 +65,9 @@ namespace Amvar.Vision.SharedMemory
             mailboxPath = Path.GetFullPath(Path.Combine(
                 buffersRoot,
                 WorkflowTriggerMailboxV1.RelativeMmapPath.Replace('/', Path.DirectorySeparatorChar)));
-            guardPath = mailboxPath + WorkflowTriggerMailboxV1.GuardSuffix;
+            guardPath = Path.GetFullPath(Path.Combine(
+                buffersRoot,
+                WorkflowTriggerMailboxV1.RelativeGuardPath.Replace('/', Path.DirectorySeparatorChar)));
             try
             {
                 mailboxFile = new FileStream(
@@ -156,7 +158,7 @@ namespace Amvar.Vision.SharedMemory
                     ThrowIfDisposed();
                     VerifyOwnerReady();
                     if (ReadInt32(DescriptorOffset(descriptorIndex))
-                        != WorkflowTriggerMailboxV1.RpcStateFree)
+                        != WorkflowTriggerMailboxV1.MailboxStateFree)
                     {
                         continue;
                     }
@@ -178,7 +180,7 @@ namespace Amvar.Vision.SharedMemory
                         VerifyOwnerReady();
                         var descriptorOffset = DescriptorOffset(descriptorIndex);
                         if (ReadInt32(descriptorOffset)
-                            != WorkflowTriggerMailboxV1.RpcStateFree)
+                            != WorkflowTriggerMailboxV1.MailboxStateFree)
                         {
                             continue;
                         }
@@ -197,7 +199,7 @@ namespace Amvar.Vision.SharedMemory
                         view.WriteArray(descriptorOffset, header, 0, header.Length);
                         WriteInt32(
                             descriptorOffset + WorkflowTriggerMailboxV1.DescriptorStateOffset,
-                            WorkflowTriggerMailboxV1.RpcStateWritingRequest);
+                            WorkflowTriggerMailboxV1.MailboxStateWritingRequest);
                         WriteUInt64(
                             descriptorOffset + WorkflowTriggerMailboxV1.DescriptorGenerationOffset,
                             generation);
@@ -245,7 +247,7 @@ namespace Amvar.Vision.SharedMemory
                         Thread.MemoryBarrier();
                         WriteInt32(
                             descriptorOffset + WorkflowTriggerMailboxV1.DescriptorStateOffset,
-                            WorkflowTriggerMailboxV1.RpcStateRequest);
+                            WorkflowTriggerMailboxV1.MailboxStateRequest);
                         return new WorkflowTriggerDescriptorIdentity
                         {
                             DescriptorIndex = descriptorIndex,
@@ -272,7 +274,7 @@ namespace Amvar.Vision.SharedMemory
                 ThrowIfDisposed();
                 VerifyOwnerReady();
                 var state = ReadInt32(DescriptorOffset(claimedIdentity.DescriptorIndex));
-                if (state != WorkflowTriggerMailboxV1.RpcStateResponse)
+                if (state != WorkflowTriggerMailboxV1.MailboxStateResponse)
                 {
                     return null;
                 }
@@ -295,7 +297,7 @@ namespace Amvar.Vision.SharedMemory
                     var current = RequireIdentity(claimedIdentity, true);
                     var descriptorOffset = DescriptorOffset(current.DescriptorIndex);
                     if (ReadInt32(descriptorOffset)
-                        != WorkflowTriggerMailboxV1.RpcStateResponse)
+                        != WorkflowTriggerMailboxV1.MailboxStateResponse)
                     {
                         return null;
                     }
@@ -306,7 +308,7 @@ namespace Amvar.Vision.SharedMemory
                         descriptorOffset
                         + WorkflowTriggerMailboxV1.DescriptorTransportErrorCodeOffset);
                     if (phase != WorkflowTriggerMailboxV1.PhaseWriting
-                        || transportError != WorkflowTriggerMailboxV1.RpcErrorNone)
+                        || transportError != WorkflowTriggerMailboxV1.MailboxErrorNone)
                     {
                         return null;
                     }
@@ -357,7 +359,7 @@ namespace Amvar.Vision.SharedMemory
                 {
                     ThrowIfDisposed();
                     VerifyOwnerReady();
-                    RequireState(identity, WorkflowTriggerMailboxV1.RpcStateWritingRequest);
+                    RequireState(identity, WorkflowTriggerMailboxV1.MailboxStateWritingRequest);
                     var descriptorOffset = DescriptorOffset(identity.DescriptorIndex);
                     if (ReadInt32(
                         descriptorOffset + WorkflowTriggerMailboxV1.DescriptorFlagsOffset)
@@ -386,7 +388,7 @@ namespace Amvar.Vision.SharedMemory
                     Thread.MemoryBarrier();
                     WriteInt32(
                         descriptorOffset + WorkflowTriggerMailboxV1.DescriptorStateOffset,
-                        WorkflowTriggerMailboxV1.RpcStateRequest);
+                        WorkflowTriggerMailboxV1.MailboxStateRequest);
                 }
             }
         }
@@ -399,7 +401,7 @@ namespace Amvar.Vision.SharedMemory
                 ThrowIfDisposed();
                 VerifyOwnerReady();
                 if (ReadInt32(DescriptorOffset(identity.DescriptorIndex))
-                    != WorkflowTriggerMailboxV1.RpcStateResponse)
+                    != WorkflowTriggerMailboxV1.MailboxStateResponse)
                 {
                     return null;
                 }
@@ -422,7 +424,7 @@ namespace Amvar.Vision.SharedMemory
                     var current = RequireIdentity(identity, true);
                     var descriptorOffset = DescriptorOffset(identity.DescriptorIndex);
                     if (ReadInt32(descriptorOffset)
-                        != WorkflowTriggerMailboxV1.RpcStateResponse)
+                        != WorkflowTriggerMailboxV1.MailboxStateResponse)
                     {
                         return null;
                     }
@@ -433,14 +435,14 @@ namespace Amvar.Vision.SharedMemory
                         descriptorOffset
                         + WorkflowTriggerMailboxV1.DescriptorTransportErrorCodeOffset);
                     if (phase == WorkflowTriggerMailboxV1.PhaseWriting
-                        && transportError == WorkflowTriggerMailboxV1.RpcErrorNone)
+                        && transportError == WorkflowTriggerMailboxV1.MailboxErrorNone)
                     {
                         return null;
                     }
 
                     int businessError;
                     ArraySegment<byte> payload;
-                    if (transportError != WorkflowTriggerMailboxV1.RpcErrorNone)
+                    if (transportError != WorkflowTriggerMailboxV1.MailboxErrorNone)
                     {
                         businessError = BusinessErrorFromTransport(transportError);
                         payload = new ArraySegment<byte>(Encoding.UTF8.GetBytes(
@@ -490,12 +492,12 @@ namespace Amvar.Vision.SharedMemory
                 {
                     ThrowIfDisposed();
                     VerifyOwnerReady();
-                    RequireState(identity, WorkflowTriggerMailboxV1.RpcStateResponse);
+                    RequireState(identity, WorkflowTriggerMailboxV1.MailboxStateResponse);
                     var flagsOffset = DescriptorOffset(identity.DescriptorIndex)
                         + WorkflowTriggerMailboxV1.DescriptorFlagsOffset;
                     WriteInt32(
                         flagsOffset,
-                        ReadInt32(flagsOffset) | WorkflowTriggerMailboxV1.RpcFlagAcked);
+                        ReadInt32(flagsOffset) | WorkflowTriggerMailboxV1.MailboxFlagAcked);
                 }
             }
 
@@ -526,7 +528,7 @@ namespace Amvar.Vision.SharedMemory
                     var current = RequireIdentity(identity, true);
                     var descriptorOffset = DescriptorOffset(current.DescriptorIndex);
                     var state = ReadInt32(descriptorOffset);
-                    if (state == WorkflowTriggerMailboxV1.RpcStateFree)
+                    if (state == WorkflowTriggerMailboxV1.MailboxStateFree)
                     {
                         return;
                     }
@@ -547,7 +549,7 @@ namespace Amvar.Vision.SharedMemory
                     WriteInt32(
                         flagsOffset,
                         ReadInt32(flagsOffset)
-                        | WorkflowTriggerMailboxV1.RpcFlagCancelRequested);
+                        | WorkflowTriggerMailboxV1.MailboxFlagCancelRequested);
                 }
             }
         }
@@ -569,7 +571,7 @@ namespace Amvar.Vision.SharedMemory
                     try
                     {
                         VerifyOwnerReady();
-                        RequireState(identity, WorkflowTriggerMailboxV1.RpcStateResponse);
+                        RequireState(identity, WorkflowTriggerMailboxV1.MailboxStateResponse);
                         return true;
                     }
                     catch (SharedMemoryTriggerException)
@@ -623,7 +625,7 @@ namespace Amvar.Vision.SharedMemory
             WriteInt32(
                 descriptorOffset
                 + WorkflowTriggerMailboxV1.DescriptorTransportErrorCodeOffset,
-                WorkflowTriggerMailboxV1.RpcErrorNone);
+                WorkflowTriggerMailboxV1.MailboxErrorNone);
             WriteInt32(
                 descriptorOffset + WorkflowTriggerMailboxV1.DescriptorResponseStoredSizeOffset,
                 0);
@@ -637,7 +639,7 @@ namespace Amvar.Vision.SharedMemory
             Thread.MemoryBarrier();
             WriteInt32(
                 descriptorOffset + WorkflowTriggerMailboxV1.DescriptorStateOffset,
-                WorkflowTriggerMailboxV1.RpcStateWritingRequest);
+                WorkflowTriggerMailboxV1.MailboxStateWritingRequest);
         }
 
         private byte[] ReadResponseWireBytes(WorkflowTriggerDescriptorIdentity identity)
@@ -678,7 +680,7 @@ namespace Amvar.Vision.SharedMemory
 
             var flags = ReadInt32(
                 descriptorOffset + WorkflowTriggerMailboxV1.DescriptorFlagsOffset);
-            var payload = (flags & WorkflowTriggerMailboxV1.RpcFlagResponseCompressed) != 0
+            var payload = (flags & WorkflowTriggerMailboxV1.MailboxFlagResponseCompressed) != 0
                 ? ZlibCodec.Decompress(stored, rawSize)
                 : stored;
             if (payload.Length != rawSize
@@ -804,7 +806,7 @@ namespace Amvar.Vision.SharedMemory
                         + WorkflowTriggerMailboxV1.DescriptorGenerationOffset);
                     if (ServerEpochUnsafe() != identity.ServerEpoch
                         || generation != identity.Generation
-                        || state == WorkflowTriggerMailboxV1.RpcStateFree)
+                        || state == WorkflowTriggerMailboxV1.MailboxStateFree)
                     {
                         return;
                     }
@@ -886,7 +888,7 @@ namespace Amvar.Vision.SharedMemory
                     || ReadUInt16(WorkflowTriggerMailboxV1.CommonVersionOffset)
                         != WorkflowTriggerMailboxV1.Version
                     || ReadUInt16(WorkflowTriggerMailboxV1.CommonChannelKindOffset)
-                        != WorkflowTriggerMailboxV1.ChannelKindRpc
+                        != WorkflowTriggerMailboxV1.ChannelKindMailbox
                     || ReadInt32(WorkflowTriggerMailboxV1.CommonEndianOffset)
                         != WorkflowTriggerMailboxV1.EndianMarker)
                 {
@@ -913,43 +915,43 @@ namespace Amvar.Vision.SharedMemory
                 if (ReadInt32(WorkflowTriggerMailboxV1.CommonFlagsOffset)
                         != 0
                     || ReadUInt64(WorkflowTriggerMailboxV1.CommonOwnerEpochOffset) == 0
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcDescriptorCountOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxDescriptorCountOffset)
                         != WorkflowTriggerMailboxV1.DescriptorCount
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcDescriptorHeaderSizeOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxDescriptorHeaderSizeOffset)
                         != WorkflowTriggerMailboxV1.DescriptorHeaderSize
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcDescriptorStrideOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxDescriptorStrideOffset)
                         != WorkflowTriggerMailboxV1.DescriptorStrideBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcInlineRequestCapacityOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxInlineRequestCapacityOffset)
                         != WorkflowTriggerMailboxV1.InlineRequestCapacityBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcInlineResponseCapacityOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxInlineResponseCapacityOffset)
                         != WorkflowTriggerMailboxV1.InlineResponseCapacityBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcPageHeaderSizeOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxPageHeaderSizeOffset)
                         != WorkflowTriggerMailboxV1.PageHeaderSize
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcPageCapacityOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxPageCapacityOffset)
                         != WorkflowTriggerMailboxV1.OverflowPageCapacityBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcPageCountOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxPageCountOffset)
                         != WorkflowTriggerMailboxV1.OverflowPageCount
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcMaxPagesPerResponseOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxMaxPagesPerResponseOffset)
                         != WorkflowTriggerMailboxV1.MaxOverflowPagesPerResponse
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcMaxRequestBytesOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxMaxRequestBytesOffset)
                         != WorkflowTriggerMailboxV1.MaxRequestBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcMaxResponseBytesOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxMaxResponseBytesOffset)
                         != WorkflowTriggerMailboxV1.MaxResponseBytes
-                    || ReadInt32(WorkflowTriggerMailboxV1.RpcCompressionThresholdOffset)
+                    || ReadInt32(WorkflowTriggerMailboxV1.MailboxCompressionThresholdOffset)
                         != WorkflowTriggerMailboxV1.CompressionThresholdBytes
-                    || ReadUInt64(WorkflowTriggerMailboxV1.RpcDescriptorRegionOffset)
+                    || ReadUInt64(WorkflowTriggerMailboxV1.MailboxDescriptorRegionOffset)
                         != (ulong)WorkflowTriggerMailboxV1.DescriptorRegionOffset
-                    || ReadUInt64(WorkflowTriggerMailboxV1.RpcPageRegionOffset)
+                    || ReadUInt64(WorkflowTriggerMailboxV1.MailboxPageRegionOffset)
                         != (ulong)WorkflowTriggerMailboxV1.PageRegionOffset
-                    || ReadUInt64(WorkflowTriggerMailboxV1.RpcFileSizeOffset)
+                    || ReadUInt64(WorkflowTriggerMailboxV1.MailboxFileSizeOffset)
                         != (ulong)WorkflowTriggerMailboxV1.MailboxFileSizeBytes
                     || ReadFixedAscii(
-                        WorkflowTriggerMailboxV1.RpcProfileIdOffset,
+                        WorkflowTriggerMailboxV1.MailboxProfileIdOffset,
                         64) != WorkflowTriggerMailboxV1.ProfileId)
                 {
                     throw new SharedMemoryTriggerException(
                         "protocol_error",
-                        "Workflow Trigger RPC profile header does not match.");
+                        "Workflow Trigger Mailbox profile header does not match.");
                 }
             }
         }
@@ -1099,13 +1101,13 @@ namespace Amvar.Vision.SharedMemory
         {
             switch (errorCode)
             {
-                case WorkflowTriggerMailboxV1.RpcErrorDeadlineExceeded:
+                case WorkflowTriggerMailboxV1.MailboxErrorDeadlineExceeded:
                     return WorkflowTriggerMailboxV1.ErrorCodeDeadlineExceeded;
-                case WorkflowTriggerMailboxV1.RpcErrorCancelled:
+                case WorkflowTriggerMailboxV1.MailboxErrorCancelled:
                     return WorkflowTriggerMailboxV1.ErrorCodeCancelled;
-                case WorkflowTriggerMailboxV1.RpcErrorInvalidMessage:
+                case WorkflowTriggerMailboxV1.MailboxErrorInvalidMessage:
                     return WorkflowTriggerMailboxV1.ErrorCodeChecksumMismatch;
-                case WorkflowTriggerMailboxV1.RpcErrorCapacityExhausted:
+                case WorkflowTriggerMailboxV1.MailboxErrorCapacityExhausted:
                     return WorkflowTriggerMailboxV1.ErrorCodeTriggerResponseCapacityExhausted;
                 default:
                     return WorkflowTriggerMailboxV1.ErrorCodeProtocolError;

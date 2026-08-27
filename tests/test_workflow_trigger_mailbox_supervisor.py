@@ -17,7 +17,7 @@ import pytest
 from backend.contracts.buffers import BufferRef
 
 from backend.contracts.buffers.lease_ownership import LeaseOwnershipReceipt
-from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as mailbox_contract
+from backend.contracts.ipc import workflow_trigger_mailbox_v1 as mailbox_contract
 from backend.contracts.workflows import (
     TriggerResultContract,
     WorkflowTriggerAllocationV1,
@@ -53,7 +53,7 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
     acquire_mmap_guard,
     MmapGuardBusyError,
 )
-from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
+from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     WorkflowTriggerMailboxClient,
     WorkflowTriggerMailboxServer,
 )
@@ -1817,6 +1817,5 @@ def _build_pool(tmp_path: Path, *, capacity_units: int = 1) -> LocalBufferArenaP
             max_allocation_bytes=4 * 1024 * 1024,
             reader_guard_slots=8,
             revocation_grace_seconds=0.01,
-            file_stem="main",
         )
     )

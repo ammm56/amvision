@@ -31,14 +31,20 @@ backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena �
 ```text
 data/buffers/
 ├─ local-buffer/
-│  ├─ arena-main.mmap           主图片 bytes，arena_id=local-buffer-main
-│  ├─ allocator-main.mmap       固定 header 与 descriptor 表
-│  ├─ arena-main.guard          publication/writer/reader byte-range guards
-│  └─ arena-main.owner.lock     Broker 单 owner lock
+│  ├─ images.mmap           主图片 bytes，arena_id=local-buffer-main
+│  ├─ state.mmap            固定 header、allocation 与 lease 状态
+│  ├─ access.guard          publication/writer/reader byte-range guards
+│  └─ owner.lock            Broker 单 owner lock
 ├─ local-message/
-│  ├─ inference-daemon-main.rpc.mmap
-│  ├─ workflow-trigger-main.rpc.mmap
-│  └─ training-telemetry/       每个训练 Worker 的独立 EventRing
+│  ├─ inference/
+│  │  ├─ mailbox.mmap
+│  │  ├─ access.guard
+│  │  └─ owner.lock
+│  ├─ workflow-trigger/
+│  │  ├─ mailbox.mmap
+│  │  ├─ access.guard
+│  │  └─ owner.lock
+│  └─ training-telemetry/   每个训练 Worker 的独立 EventRing
 └─ inference-daemon-private/    daemon 私有异步暂存 arena
 ```
 

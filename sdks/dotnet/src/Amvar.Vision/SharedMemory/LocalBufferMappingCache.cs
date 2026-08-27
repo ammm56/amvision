@@ -42,9 +42,9 @@ namespace Amvar.Vision.SharedMemory
             }
 
             var localBufferRoot = Path.Combine(options.BuffersRoot, "local-buffer");
-            arenaPath = Path.GetFullPath(Path.Combine(localBufferRoot, "arena-main.mmap"));
-            var allocatorPath = Path.GetFullPath(Path.Combine(localBufferRoot, "allocator-main.mmap"));
-            guardPath = Path.GetFullPath(Path.Combine(localBufferRoot, "arena-main.guard"));
+            arenaPath = Path.GetFullPath(Path.Combine(localBufferRoot, "images.mmap"));
+            var allocatorPath = Path.GetFullPath(Path.Combine(localBufferRoot, "state.mmap"));
+            guardPath = Path.GetFullPath(Path.Combine(localBufferRoot, "access.guard"));
             allocatorFile = new FileStream(
                 allocatorPath,
                 FileMode.Open,

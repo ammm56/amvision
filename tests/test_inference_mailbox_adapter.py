@@ -1,4 +1,4 @@
-"""Inference 业务 adapter 接入通用 LocalMessage RpcMailbox 的专项测试。"""
+"""Inference 业务 adapter 接入通用 LocalMessage Mailbox 的专项测试。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from backend.service.application.message_channels.errors import (
 from backend.service.application.runtime.deployment.inference_message_channel import (
     encode_inference_response,
 )
-from backend.service.infrastructure.ipc.inference_rpc import (
+from backend.service.infrastructure.ipc.inference_mailbox import (
     InferenceLocalMmapClient,
     InferenceLocalMmapServer,
 )
@@ -51,7 +51,7 @@ def _result_with_exact_wire_size(target_size: int) -> dict[str, object]:
     return result
 
 
-def test_inference_rpc_owner_rejects_legacy_layout(tmp_path) -> None:
+def test_inference_mailbox_owner_rejects_legacy_layout(tmp_path) -> None:
     """旧 service-id 命名的 mmap 存在时不能同时创建新 owner。"""
 
     legacy_path = tmp_path / "inference-control" / "inference_daemon_main.mmap"
@@ -65,11 +65,11 @@ def test_inference_rpc_owner_rejects_legacy_layout(tmp_path) -> None:
     with pytest.raises(ChannelLegacyLayoutError, match="旧 LocalMessage layout"):
         server.start()
     assert not (
-        tmp_path / "local-message" / "inference-daemon-main.rpc.mmap"
+        tmp_path / "local-message" / "inference" / "mailbox.mmap"
     ).exists()
 
 
-def test_inference_rpc_round_trips_inline_and_page_chain(tmp_path) -> None:
+def test_inference_mailbox_round_trips_inline_and_page_chain(tmp_path) -> None:
     """验证小响应与 1 MiB response 都保持现有 ok/result envelope。"""
 
     server = InferenceLocalMmapServer(
@@ -102,7 +102,7 @@ def test_inference_rpc_round_trips_inline_and_page_chain(tmp_path) -> None:
         server.stop()
 
 
-def test_inference_rpc_serializes_handler_error_and_rejects_inline_image(tmp_path) -> None:
+def test_inference_mailbox_serializes_handler_error_and_rejects_inline_image(tmp_path) -> None:
     """验证业务异常仍走 error envelope，图片正文在 client 边界即拒绝。"""
 
     def handler(_request):
@@ -126,7 +126,7 @@ def test_inference_rpc_serializes_handler_error_and_rejects_inline_image(tmp_pat
         server.stop()
 
 
-def test_inference_rpc_timeout_does_not_publish_late_result(tmp_path) -> None:
+def test_inference_mailbox_timeout_does_not_publish_late_result(tmp_path) -> None:
     """验证 deadline 取消 descriptor，handler 返回后不能发布过期结果。"""
 
     server = InferenceLocalMmapServer(
@@ -150,7 +150,7 @@ def test_inference_rpc_timeout_does_not_publish_late_result(tmp_path) -> None:
         server.stop()
 
 
-def test_inference_rpc_fences_old_client_epoch_without_retry(tmp_path) -> None:
+def test_inference_mailbox_fences_old_client_epoch_without_retry(tmp_path) -> None:
     """验证 owner 切换不重跑当前请求，后续独立请求可打开新 epoch。"""
 
     first = InferenceLocalMmapServer(
@@ -177,7 +177,7 @@ def test_inference_rpc_fences_old_client_epoch_without_retry(tmp_path) -> None:
         second.stop()
 
 
-def test_inference_rpc_admission_limits_handler_not_descriptor_capacity(tmp_path) -> None:
+def test_inference_mailbox_admission_limits_handler_not_descriptor_capacity(tmp_path) -> None:
     """验证 max concurrency 只控制 handler，第二请求保留在 transport REQUEST。"""
 
     entered = Event()
@@ -217,7 +217,7 @@ def test_inference_rpc_admission_limits_handler_not_descriptor_capacity(tmp_path
         server.stop()
 
 
-def test_inference_rpc_preserves_frozen_response_boundaries(tmp_path) -> None:
+def test_inference_mailbox_preserves_frozen_response_boundaries(tmp_path) -> None:
     """验证新 inline、旧 512 KiB 边界和 1/8/16/32 MiB 响应逐字节一致。"""
 
     targets = (
@@ -250,7 +250,7 @@ def test_inference_rpc_preserves_frozen_response_boundaries(tmp_path) -> None:
         server.stop()
 
 
-def test_inference_rpc_handles_sixteen_mixed_calls_once_each(tmp_path) -> None:
+def test_inference_mailbox_handles_sixteen_mixed_calls_once_each(tmp_path) -> None:
     """验证 16 并发混合 inline/page-chain 请求不重跑 handler。"""
 
     executions: dict[int, int] = {}

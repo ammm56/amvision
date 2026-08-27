@@ -21,7 +21,7 @@
 
 - 安装或启用 Node Pack 表示使用者信任其代码。
 - Core Node、内置 Node Pack 和第三方 Node Pack 使用同一套进程内直接调用路径。
-- 正常节点执行不创建 per-node 隔离进程，也不经过跨进程 RPC。
+- 正常节点执行不创建 per-node 隔离进程，也不经过跨进程 Mailbox。
 - manifest 声明版本、依赖、capability、config schema、timeout 与启用状态，不维护 permission scope。
 - Workflow Runtime worker、Deployment 常驻进程和后台 Worker 属于服务生命周期边界，不是节点权限沙箱。
 

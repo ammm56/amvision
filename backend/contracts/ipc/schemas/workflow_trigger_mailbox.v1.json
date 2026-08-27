@@ -1,8 +1,9 @@
 {
-  "contract_id": "amvision.workflow-trigger-rpc-extension.v1",
+  "contract_id": "amvision.workflow-trigger-mailbox.v1",
   "base_contract_id": "amvision.local-message-channel.v1",
-  "profile_id": "workflow-trigger-rpc.v1",
-  "relative_mmap_path": "local-message/workflow-trigger-main.rpc.mmap",
+  "profile_id": "workflow-trigger-mailbox.v1",
+  "relative_mmap_path": "local-message/workflow-trigger/mailbox.mmap",
+  "relative_guard_path": "local-message/workflow-trigger/access.guard",
   "descriptor_extension": {
     "offset": 104,
     "size": 152,
@@ -32,7 +33,7 @@
   "deadline": {
     "client_field": "requested_timeout_ms",
     "authoritative_owner": "server",
-    "authoritative_field": "rpc_descriptor.deadline_ns",
-    "response_ack_field": "rpc_descriptor.response_ack_deadline_ns"
+    "authoritative_field": "mailbox_descriptor.deadline_ns",
+    "response_ack_field": "mailbox_descriptor.response_ack_deadline_ns"
   }
 }

@@ -1,4 +1,4 @@
-"""与 mmap port 同 envelope/bytes 契约的 multiprocessing.Queue RPC adapter。"""
+"""与 mmap port 同 envelope/bytes 契约的 multiprocessing.Queue Mailbox adapter。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from backend.service.application.message_channels.errors import (
     ChannelRestartedError,
     LocalMessageChannelError,
 )
-from backend.service.application.message_channels.models import RpcRequestContext
+from backend.service.application.message_channels.models import MailboxRequestContext
 from backend.service.application.message_channels.ports import CancellationSource
 from backend.service.infrastructure.ipc.mmap_primitives import (
     crc32_ieee,
@@ -58,7 +58,7 @@ class _QueueFrame:
     payload: bytes
 
 
-class QueueRpcResponseHandle:
+class QueueMailboxResponseHandle:
     """Queue 已复制响应的幂等 no-op ACK handle。"""
 
     def __init__(self, wire_bytes: bytes) -> None:
@@ -79,8 +79,8 @@ class QueueRpcResponseHandle:
         """Queue adapter close 是幂等 no-op ACK。"""
 
 
-class MultiprocessingQueueRpcClient:
-    """单 endpoint 串行调用的 Queue RpcClientPort adapter。"""
+class MultiprocessingQueueMailboxClient:
+    """单 endpoint 串行调用的 Queue MailboxClientPort adapter。"""
 
     def __init__(
         self,
@@ -110,14 +110,14 @@ class MultiprocessingQueueRpcClient:
         wire_bytes: bytes,
         deadline_ns: int,
         cancellation: CancellationSource | None = None,
-    ) -> QueueRpcResponseHandle:
+    ) -> QueueMailboxResponseHandle:
         """发送 bytes frame 并等待同 request id 的 response。"""
 
         with self._call_lock:
             if self._closed:
-                raise ChannelClosedError("Queue RPC client 已关闭")
+                raise ChannelClosedError("Queue Mailbox client 已关闭")
             if monotonic_ns() >= deadline_ns:
-                raise ChannelDeadlineExceededError("Queue RPC deadline 已到期")
+                raise ChannelDeadlineExceededError("Queue Mailbox deadline 已到期")
             self.request_queue.put(
                 _encode_frame(
                     _QueueFrame(
@@ -133,11 +133,11 @@ class MultiprocessingQueueRpcClient:
             while True:
                 if cancellation is not None and cancellation.is_cancelled():
                     self._publish_cancel(request_id, deadline_ns)
-                    raise ChannelCancelledError("Queue RPC client 已取消")
+                    raise ChannelCancelledError("Queue Mailbox client 已取消")
                 now_ns = monotonic_ns()
                 if now_ns >= deadline_ns:
                     self._publish_cancel(request_id, deadline_ns)
-                    raise ChannelDeadlineExceededError("Queue RPC response 等待超时")
+                    raise ChannelDeadlineExceededError("Queue Mailbox response 等待超时")
                 try:
                     raw = self.response_queue.get(
                         timeout=min(
@@ -149,12 +149,12 @@ class MultiprocessingQueueRpcClient:
                     continue
                 frame = _decode_frame(raw)
                 if frame.owner_epoch != self.owner_epoch:
-                    raise ChannelRestartedError("Queue RPC owner epoch 已变化")
+                    raise ChannelRestartedError("Queue Mailbox owner epoch 已变化")
                 if frame.kind != _KIND_RESPONSE or frame.request_id != request_id:
-                    raise ChannelCorruptMessageError("Queue RPC response 路由不匹配")
+                    raise ChannelCorruptMessageError("Queue Mailbox response 路由不匹配")
                 if frame.error_code:
                     raise _queue_error(frame.error_code)
-                return QueueRpcResponseHandle(frame.payload)
+                return QueueMailboxResponseHandle(frame.payload)
 
     def close(self, *, deadline_ns: int) -> None:
         """幂等关闭 client endpoint；不关闭共享 server。"""
@@ -179,8 +179,8 @@ class MultiprocessingQueueRpcClient:
         )
 
 
-class MultiprocessingQueueRpcServer:
-    """使用 bytes frame 的 Queue RpcServerPort adapter。"""
+class MultiprocessingQueueMailboxServer:
+    """使用 bytes frame 的 Queue MailboxServerPort adapter。"""
 
     def __init__(
         self,
@@ -204,7 +204,7 @@ class MultiprocessingQueueRpcServer:
         self._pump_lock = Lock()
         self._closed = False
 
-    def receive(self, *, deadline_ns: int) -> RpcRequestContext | None:
+    def receive(self, *, deadline_ns: int) -> MailboxRequestContext | None:
         """读取 request；cancel/close frame 在 transport 内消费。"""
 
         while not self._closed:
@@ -220,11 +220,11 @@ class MultiprocessingQueueRpcServer:
                 self._closed = True
                 return None
             if frame.kind != _KIND_REQUEST:
-                raise ChannelCorruptMessageError("Queue RPC request frame kind 不合法")
+                raise ChannelCorruptMessageError("Queue Mailbox request frame kind 不合法")
             if monotonic_ns() >= frame.deadline_ns:
                 self._publish_error(frame.request_id, frame.deadline_ns, 1)
                 continue
-            return RpcRequestContext(
+            return MailboxRequestContext(
                 request_id=frame.request_id,
                 wire_bytes=frame.payload,
                 deadline_ns=frame.deadline_ns,
@@ -238,19 +238,19 @@ class MultiprocessingQueueRpcServer:
 
     def publish_response(
         self,
-        request: RpcRequestContext,
+        request: MailboxRequestContext,
         *,
         wire_bytes: bytes,
     ) -> None:
         """为 request 最多发布一次 response bytes frame。"""
 
         if request.owner_epoch != self.owner_epoch:
-            raise ChannelRestartedError("Queue RPC owner epoch 已变化")
+            raise ChannelRestartedError("Queue Mailbox owner epoch 已变化")
         request_id = request._transport_token
         if not isinstance(request_id, UUID) or request_id != request.request_id:
-            raise ChannelInvalidMessageError("Queue RpcRequestContext 不属于该 adapter")
+            raise ChannelInvalidMessageError("Queue MailboxRequestContext 不属于该 adapter")
         if request_id in self._completed:
-            raise ChannelInvalidMessageError("Queue RPC response 已发布")
+            raise ChannelInvalidMessageError("Queue Mailbox response 已发布")
         if request.cancelled:
             code = 1 if monotonic_ns() >= request.deadline_ns else 2
             self._publish_error(request_id, request.deadline_ns, code)
@@ -359,11 +359,11 @@ def _decode_frame(raw: object) -> _QueueFrame:
     """拒绝 Python object/dict Queue 消息，只接受完整 bytes frame。"""
 
     if not isinstance(raw, bytes) or len(raw) < _HEADER.size:
-        raise ChannelCorruptMessageError("Queue RPC frame 必须是 bytes")
+        raise ChannelCorruptMessageError("Queue Mailbox frame 必须是 bytes")
     magic, kind, request_id, epoch, deadline, error, size, checksum = _HEADER.unpack_from(raw)
     payload = raw[_HEADER.size :]
     if magic != _MAGIC or size != len(payload) or crc32_ieee(payload) != checksum:
-        raise ChannelCorruptMessageError("Queue RPC frame header/CRC 损坏")
+        raise ChannelCorruptMessageError("Queue Mailbox frame header/CRC 损坏")
     return _QueueFrame(
         kind=kind,
         request_id=UUID(bytes=request_id),
@@ -378,7 +378,7 @@ def _queue_error(code: int) -> LocalMessageChannelError:
     """映射 Queue wire error。"""
 
     if code == 1:
-        return ChannelDeadlineExceededError("Queue RPC request 超时")
+        return ChannelDeadlineExceededError("Queue Mailbox request 超时")
     if code == 2:
-        return ChannelCancelledError("Queue RPC request 已取消")
-    return LocalMessageChannelError(f"Queue RPC server error: {code}")
+        return ChannelCancelledError("Queue Mailbox request 已取消")
+    return LocalMessageChannelError(f"Queue Mailbox server error: {code}")

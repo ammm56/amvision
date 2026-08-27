@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as contract
+from backend.contracts.ipc import workflow_trigger_mailbox_v1 as contract
 from backend.service.infrastructure.ipc.mmap_primitives import (
     MmapOwnerLockBusyError,
     acquire_mmap_owner_lock,
@@ -25,7 +25,7 @@ from backend.service.infrastructure.ipc.mmap_primitives import (
     unlock_byte_range_file,
 )
 from backend.service.infrastructure.ipc.local_message.paths import (
-    build_workflow_trigger_rpc_channel_paths,
+    build_workflow_trigger_mailbox_paths,
 )
 
 
@@ -36,10 +36,10 @@ SCHEMA_PATH = (
     / "contracts"
     / "ipc"
     / "schemas"
-    / "workflow_trigger_rpc_extension.v1.json"
+    / "workflow_trigger_mailbox.v1.json"
 )
 FIXTURE_PATH = (
-    ROOT / "tests" / "fixtures" / "workflow_trigger_rpc_extension.v1.fixture.json"
+    ROOT / "tests" / "fixtures" / "workflow_trigger_mailbox.v1.fixture.json"
 )
 DOTNET_PROJECT = (
     ROOT
@@ -59,11 +59,16 @@ DOTNET_PROBE = (
 
 
 def test_binary_contract_schema_python_and_fixture_are_current() -> None:
-    """extension schema、Python packer 和 fixture 必须逐字节一致。"""
+    """Trigger schema、Python packer 和 fixture 必须逐字节一致。"""
 
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     assert fixture["contract_id"] == contract.CONTRACT_ID
+    assert schema["contract_id"] == contract.CONTRACT_ID
+    assert fixture["relative_mmap_path"] == contract.RELATIVE_MMAP_PATH
+    assert fixture["relative_guard_path"] == contract.RELATIVE_GUARD_PATH
+    assert schema["relative_mmap_path"] == contract.RELATIVE_MMAP_PATH
+    assert schema["relative_guard_path"] == contract.RELATIVE_GUARD_PATH
     assert schema["base_contract_id"] == "amvision.local-message-channel.v1"
     assert schema["descriptor_extension"]["offset"] == 104
     assert schema["descriptor_extension"]["size"] == 152
@@ -76,13 +81,13 @@ def test_workflow_trigger_paths_are_contained_by_buffers_root(tmp_path: Path) ->
     """正式 mmap、owner lock 与统一 byte-range guard 只能位于中立 root。"""
 
     buffers_root = tmp_path / "data" / "buffers"
-    paths = build_workflow_trigger_rpc_channel_paths(buffers_root=buffers_root)
+    paths = build_workflow_trigger_mailbox_paths(buffers_root=buffers_root)
     assert paths.mmap_path == (
-        buffers_root / "local-message" / "workflow-trigger-main.rpc.mmap"
+        buffers_root / "local-message" / "workflow-trigger" / "mailbox.mmap"
     ).resolve()
     assert paths.mmap_path.is_relative_to(buffers_root.resolve())
-    assert paths.owner_lock_path.name.endswith(".rpc.mmap.owner.lock")
-    assert paths.guard_path.name.endswith(".rpc.mmap.guard")
+    assert paths.owner_lock_path.name == "owner.lock"
+    assert paths.guard_path.name == "access.guard"
     with pytest.raises(ValueError, match="relative_path"):
         build_contained_mmap_path(
             root_dir=buffers_root,

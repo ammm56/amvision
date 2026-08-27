@@ -1,4 +1,4 @@
-"""阶段 5：以相同 RpcPort/envelope 比较 Queue 与候选 RpcMailbox。"""
+"""阶段 5：以相同 MailboxPort/envelope 比较 Queue 与候选 Mailbox。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.contracts.ipc.local_message_profiles import (  # noqa: E402
-    INFERENCE_RPC_PROFILE_V1,
+    INFERENCE_MAILBOX_PROFILE_V1,
 )
 from backend.service.application.message_channels.codec import (  # noqa: E402
     WireEnvelope,
@@ -30,13 +30,13 @@ from backend.service.application.message_channels.codec import (  # noqa: E402
 from backend.service.infrastructure.ipc.local_message.paths import (  # noqa: E402
     build_local_message_channel_paths,
 )
-from backend.service.infrastructure.ipc.local_message.rpc_mailbox import (  # noqa: E402
-    MmapRpcMailboxClient,
-    MmapRpcMailboxServer,
+from backend.service.infrastructure.ipc.local_message.mailbox import (  # noqa: E402
+    MmapMailboxClient,
+    MmapMailboxServer,
 )
 from backend.service.infrastructure.ipc.multiprocessing_queue_channel import (  # noqa: E402
-    MultiprocessingQueueRpcClient,
-    MultiprocessingQueueRpcServer,
+    MultiprocessingQueueMailboxClient,
+    MultiprocessingQueueMailboxServer,
 )
 from backend.service.infrastructure.ipc.mmap_primitives import (  # noqa: E402
     new_nonzero_u64_token,
@@ -76,8 +76,8 @@ class BenchmarkSettings:
             raise ValueError("阶段 5 benchmark iterations 必须大于 0")
         if not self.payload_sizes or min(self.payload_sizes) <= 0:
             raise ValueError("阶段 5 payload_sizes 必须为正数")
-        if max(self.payload_sizes) > INFERENCE_RPC_PROFILE_V1.max_request_bytes:
-            raise ValueError("阶段 5 request 不能超过冻结 RPC request 上限")
+        if max(self.payload_sizes) > INFERENCE_MAILBOX_PROFILE_V1.max_request_bytes:
+            raise ValueError("阶段 5 request 不能超过冻结 Mailbox request 上限")
 
 
 def _payload(target_size: int, *, seed: int) -> bytes:
@@ -89,7 +89,7 @@ def _payload(target_size: int, *, seed: int) -> bytes:
     body = "".join(generator.choice(alphabet) for _ in range(target_size))
     wire = encode_wire_envelope(
         WireEnvelope(
-            schema_id="amvision.stage5.rpc-benchmark.v1",
+            schema_id="amvision.stage5.mailbox-benchmark.v1",
             payload={"value": body},
         )
     )
@@ -98,7 +98,7 @@ def _payload(target_size: int, *, seed: int) -> bytes:
     trim = len(wire) - target_size
     return encode_wire_envelope(
         WireEnvelope(
-            schema_id="amvision.stage5.rpc-benchmark.v1",
+            schema_id="amvision.stage5.mailbox-benchmark.v1",
             payload={"value": body[:-trim]},
         )
     )
@@ -113,11 +113,11 @@ def _queue_server_process(
     ready: object,
     result: object,
 ) -> None:
-    """使用 Queue RpcServerPort 完成固定次数 echo。"""
+    """使用 Queue MailboxServerPort 完成固定次数 echo。"""
 
     try:
         before = _snapshot_process_resources([os.getpid()])
-        server = MultiprocessingQueueRpcServer(
+        server = MultiprocessingQueueMailboxServer(
             request_queue=request_queue,  # type: ignore[arg-type]
             response_queue=response_queue,  # type: ignore[arg-type]
             owner_epoch=owner_epoch,
@@ -126,7 +126,7 @@ def _queue_server_process(
         for _ in range(expected):
             request = server.receive(deadline_ns=monotonic_ns() + 60_000_000_000)
             if request is None:
-                raise TimeoutError("Queue RpcServer 未收到预期 request")
+                raise TimeoutError("Queue MailboxServer 未收到预期 request")
             server.publish_response(request, wire_bytes=request.wire_bytes)
         server.close(deadline_ns=monotonic_ns() + 1_000_000_000)
         result.put(  # type: ignore[attr-defined]
@@ -151,24 +151,24 @@ def _mmap_server_process(
     ready: object,
     result: object,
 ) -> None:
-    """使用候选 RpcMailbox RpcServerPort 完成固定次数 echo。"""
+    """使用候选 Mailbox MailboxServerPort 完成固定次数 echo。"""
 
     try:
         before = _snapshot_process_resources([os.getpid()])
         paths = build_local_message_channel_paths(
             buffers_root=buffers_root,
             channel_name="stage5-queue-candidate",
-            channel_kind="rpc",
+            channel_kind="mailbox",
         )
-        server = MmapRpcMailboxServer(
+        server = MmapMailboxServer(
             paths=paths,
-            profile=INFERENCE_RPC_PROFILE_V1,
+            profile=INFERENCE_MAILBOX_PROFILE_V1,
         )
         ready.set()  # type: ignore[attr-defined]
         for _ in range(expected):
             request = server.receive(deadline_ns=monotonic_ns() + 60_000_000_000)
             if request is None:
-                raise TimeoutError("Mmap RpcServer 未收到预期 request")
+                raise TimeoutError("Mmap MailboxServer 未收到预期 request")
             server.publish_response(request, wire_bytes=request.wire_bytes)
             server.sweep()
         cleanup_deadline_ns = monotonic_ns() + 5_000_000_000
@@ -177,12 +177,12 @@ def _mmap_server_process(
             health = server.health()
             if (
                 health.free_descriptors
-                == INFERENCE_RPC_PROFILE_V1.descriptor_count
+                == INFERENCE_MAILBOX_PROFILE_V1.descriptor_count
                 and health.free_pages
-                == INFERENCE_RPC_PROFILE_V1.overflow_page_count
+                == INFERENCE_MAILBOX_PROFILE_V1.overflow_page_count
             ):
                 break
-            sleep(INFERENCE_RPC_PROFILE_V1.poll_interval_seconds)
+            sleep(INFERENCE_MAILBOX_PROFILE_V1.poll_interval_seconds)
         server.close(deadline_ns=monotonic_ns() + 5_000_000_000)
         result.put(  # type: ignore[attr-defined]
             {
@@ -237,7 +237,7 @@ def _run_round(
                 "result": result,
             }
         ),
-        name=f"stage5-{transport}-rpc-server",
+        name=f"stage5-{transport}-mailbox-server",
     )
     process.start()
     if not ready.wait(timeout=60.0):
@@ -246,19 +246,19 @@ def _run_round(
         raise TimeoutError(f"阶段 5 {transport} server ready 超时")
     before = _snapshot_process_resources([os.getpid()])
     if transport == "queue":
-        client = MultiprocessingQueueRpcClient(
+        client = MultiprocessingQueueMailboxClient(
             request_queue=request_queue,  # type: ignore[arg-type]
             response_queue=response_queue,  # type: ignore[arg-type]
             owner_epoch=owner_epoch,
         )
     else:
-        client = MmapRpcMailboxClient(
+        client = MmapMailboxClient(
             paths=build_local_message_channel_paths(
                 buffers_root=buffers_root,
                 channel_name="stage5-queue-candidate",
-                channel_kind="rpc",
+                channel_kind="mailbox",
             ),
-            profile=INFERENCE_RPC_PROFILE_V1,
+            profile=INFERENCE_MAILBOX_PROFILE_V1,
         )
     latencies: list[float] = []
     try:
@@ -270,7 +270,7 @@ def _run_round(
                 deadline_ns=monotonic_ns() + 60_000_000_000,
             )
             if handle.wire_bytes != wire_bytes:
-                raise AssertionError("阶段 5 RPC response bytes 不一致")
+                raise AssertionError("阶段 5 Mailbox response bytes 不一致")
             handle.close()
             if sequence >= warmup_iterations:
                 latencies.append((perf_counter_ns() - started_ns) / 1_000_000)

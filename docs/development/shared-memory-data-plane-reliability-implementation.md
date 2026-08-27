@@ -82,8 +82,8 @@ LocalBuffer 是本机进程间和 Workflow 节点间短期内存图片的统一�
   -> Workflow Runtime / deployment / output handoff
 
 Workflow Trigger 参数与结构化结果
-  -> data/buffers/local-message/workflow-trigger-main.rpc.mmap
-  -> 通用 RpcMailbox + Trigger extension
+  -> data/buffers/local-message/workflow-trigger/mailbox.mmap
+  -> 通用 Mailbox + Trigger 业务字段
   -> 128 descriptors + inline 64 KiB + 256 KiB fixed overflow page pool
 ```
 
@@ -208,10 +208,10 @@ binary schema 用固定 `cancel_reason` 枚举替换单一 `cancel_requested` bi
 正式文件：
 
 ```text
-data/buffers/local-buffer/arena-main.mmap
-data/buffers/local-buffer/allocator-main.mmap
-data/buffers/local-buffer/arena-main.guard
-data/buffers/local-buffer/arena-main.owner.lock
+data/buffers/local-buffer/images.mmap
+data/buffers/local-buffer/state.mmap
+data/buffers/local-buffer/access.guard
+data/buffers/local-buffer/owner.lock
 ```
 
 共享内存根下的 `local-buffer/`、`local-message/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。ADR-0009 已把 Workflow Trigger、Inference 和 Training Telemetry 的结构化消息迁入共享 engine，但三类 Channel 仍使用独立文件、owner、epoch、容量与故障边界；daemon private 图片 arena 继续独立。

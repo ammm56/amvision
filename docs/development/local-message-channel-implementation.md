@@ -4,7 +4,7 @@
 
 状态：**阶段 0–6 已完成；阶段 7 的源码、本机故障、性能、10,000 次压力和发行装配门禁已完成。真实发行环境 24 小时混合 soak 仍是发布前门禁，因此 ADR 暂不标记为“已实现”。**
 
-本文是 [ADR-0009](../decisions/ADR-0009-local-message-channel.md) 的唯一详细实施顺序，负责把 Workflow Trigger mailbox、Inference mailbox 和训练 telemetry ring 收敛到统一 LocalMessageChannel 基础设施，并为现有 Queue 热路径建立可测量的窄 RPC/Event port。
+本文是 [ADR-0009](../decisions/ADR-0009-local-message-channel.md) 的唯一详细实施顺序，负责把 Workflow Trigger mailbox、Inference mailbox 和训练 telemetry ring 收敛到统一 LocalMessageChannel 基础设施，并为现有 Queue 热路径建立可测量的窄 Mailbox/Event port。
 
 当前实现与目标实现必须明确区分。任何阶段未完成其原子切换与门禁前，正式 composition root 继续使用当前 transport，文档和页面不得宣称对应链路已经迁移。
 
@@ -12,8 +12,8 @@
 
 | 链路 | 当前文件或 IPC | 关键语义 |
 | --- | --- | --- |
-| Workflow Trigger | `data/buffers/local-message/workflow-trigger-main.rpc.mmap` | 通用 RpcMailbox + Trigger extension、PREPARE/WRITING、response page-chain、ACK |
-| Inference daemon | `data/buffers/local-message/inference-daemon-main.rpc.mmap` | 通用 RpcMailbox request/response、segmentation page-chain、取消、ACK、daemon epoch |
+| Workflow Trigger | `data/buffers/local-message/workflow-trigger/mailbox.mmap` | 通用 Mailbox + Trigger 业务字段、PREPARE/WRITING、response page-chain、ACK |
+| Inference daemon | `data/buffers/local-message/inference/mailbox.mmap` | 通用 Mailbox request/response、segmentation page-chain、取消、ACK、daemon epoch |
 | Training telemetry | `data/buffers/local-message/training-telemetry/<worker-session-id>.event.mmap` | 通用 EventRing、owner guard、sequence、CRC、gap、非阻塞发布 |
 | Workflow Runtime | 每 Runtime request/response `multiprocessing.Queue` | 命令、结果、heartbeat、取消 |
 | LocalBuffer | `data/buffers/local-buffer/` | 图片 bytes、连续 extent、lease 与 guard；不属于本轮 allocator 替换范围 |
@@ -23,7 +23,7 @@
 - Workflow Runtime 自身没有 mmap mailbox；图中模型节点经 Inference mailbox调用daemon。
 - Training telemetry只传指标，数据库和checkpoint仍是训练控制与恢复事实源。
 - Trigger与Inference各自依赖单server owner和进程内page allocator lock。
-- 两套RPC mailbox重复实现大量header、descriptor、page、CRC、deadline、回收和health逻辑。
+- 两套MAILBOX mailbox重复实现大量header、descriptor、page、CRC、deadline、回收和health逻辑。
 - 普通参数通常很小，但结构化response必须继续覆盖现有32 MiB级别结果。
 
 ## 目标模块边界
@@ -33,7 +33,7 @@
 ```text
 backend/contracts/ipc/schemas/
 ├─ local_message_channel.v1.json
-└─ workflow_trigger_rpc_extension.v1.json
+└─ workflow_trigger_mailbox.v1.json
 
 backend/service/application/message_channels/
 ├─ ports.py
@@ -45,7 +45,7 @@ backend/service/infrastructure/ipc/local_message/
 ├─ common_layout.py
 ├─ guards.py
 ├─ page_pool.py
-├─ rpc_mailbox.py
+├─ mailbox.py
 ├─ event_ring.py
 ├─ health.py
 └─ errors.py
@@ -56,22 +56,22 @@ backend/service/infrastructure/ipc/
 
 实际文件名可以按仓库命名规则微调，但职责不能重新散回 inference、workflow或training业务目录。application 只保存 port、DTO 和领域错误；mmap、Queue、文件路径、offset、guard、page layout 和具体 transport adapter 全部属于 infrastructure。领域目录只保留 payload 映射、handler 和状态扩展。
 
-`local_message_channel.v1.json` 是唯一的 LocalMessage binary schema 文件，在同一个版本化文档内分别定义 common header、RPC profile/descriptor/page 和 EventRing profile/slot layout。这只是共用生成与 fixture 入口，不表示 RPC 与 EventRing 共享状态机或容量几何。common header 显式保存 magic、version、byte order marker、Channel kind/id、owner epoch 和 layout fingerprint；checksum algorithm 是 schema 顶层的固定契约，alignment 由固定 field offset/size 与 layout fingerprint 约束，不伪装成不存在的 header 字段。path containment、guard 获取、publication 顺序、owner lock 与恢复规则属于 engine 规范。page-chain 只存在于 RPC layout；EventRing 不引用 RPC descriptor、page 或 ACK 状态。Workflow Trigger extension 组合 RPC contract，但不把 PREPARE/WRITING 或 LocalBuffer receipt 写入通用 RPC/Event 字段。`.NET` 只生成公开 Trigger 所需的 common/RPC/extension 类型，不生成内部 Training EventRing SDK 类型。
+`local_message_channel.v1.json` 是唯一的 LocalMessage binary schema 文件，在同一个版本化文档内分别定义 common header、Mailbox profile/descriptor/page 和 EventRing profile/slot layout。这只是共用生成与 fixture 入口，不表示 Mailbox 与 EventRing 共享状态机或容量几何。common header 显式保存 magic、version、byte order marker、Channel kind/id、owner epoch 和 layout fingerprint；checksum algorithm 是 schema 顶层的固定契约，alignment 由固定 field offset/size 与 layout fingerprint 约束，不伪装成不存在的 header 字段。path containment、guard 获取、publication 顺序、owner lock 与恢复规则属于 engine 规范。page-chain 只存在于 Mailbox layout；EventRing 不引用 Mailbox descriptor、page 或 ACK 状态。Workflow Trigger 业务契约 组合 Mailbox contract，但不把 PREPARE/WRITING 或 LocalBuffer receipt 写入通用 Mailbox/Event 字段。`.NET` 只生成公开 Trigger 所需的 common/Mailbox/extension 类型，不生成内部 Training EventRing SDK 类型。
 
 ## 不可变实施规则
 
-1. LocalBuffer只保存图片和大块连续binary；LocalMessage只保存结构化消息与引用。显式`image-base64.v1`可以作为JSON进入RPC，但不是高性能图片路径并受序列化前32 MiB单响应上限约束。
-2. RpcMailbox物理Channel只有一个server owner、一个owner epoch和一个server进程内response page allocator；EventRing物理Channel只有一个producer owner、一个producer epoch和固定ring slots，不存在descriptor、page allocator或ACK。
+1. LocalBuffer只保存图片和大块连续binary；LocalMessage只保存结构化消息与引用。显式`image-base64.v1`可以作为JSON进入MAILBOX，但不是高性能图片路径并受序列化前32 MiB单响应上限约束。
+2. Mailbox物理Channel只有一个server owner、一个owner epoch和一个server进程内response page allocator；EventRing物理Channel只有一个producer owner、一个producer epoch和固定ring slots，不存在descriptor、page allocator或ACK。
 3. 不建立跨Trigger、Inference、Training的全局动态payload arena或allocator lock。
-4. RpcMailbox和EventRing共享可组合的identity/guard/CRC/path原语，但不共享完整binary schema、状态机或容量几何；page-chain只属于RPC。
-5. RpcMailbox client request保持有界inline；response page只由server owner分配，避免跨进程共同修改page allocator；EventRing只执行非阻塞slot publication和覆盖检测。
+4. Mailbox和EventRing共享可组合的identity/guard/CRC/path原语，但不共享完整binary schema、状态机或容量几何；page-chain只属于MAILBOX。
+5. Mailbox client request保持有界inline；response page只由server owner分配，避免跨进程共同修改page allocator；EventRing只执行非阻塞slot publication和覆盖检测。
 6. publication最后写state；读取方在guard内重新校验epoch、generation、owner、deadline、长度和CRC。
 7. 满载立即失败；不排队、不重试、不重跑业务、不切换持久队列或临时文件。
 8. 当前开发阶段只保留v1；每条链路原子迁移后删除旧layout和双读代码。
 9. 所有正式mmap、guard和owner lock位于中立`local_memory.root_dir`，默认`data/buffers/`；测试只重定向整个root。
 10. Queue是否替换由真实基准决定，不能把“统一接口”误解成“统一强制mmap transport”。
-11. 不增加全局`local_message.enabled`；LocalMessage基础设施、Inference RPC和Training Event不依赖LocalBuffer enable。Workflow Trigger的配置与路径所有权独立，但当前v1 PREPARE强制包含输入图片，因此其服务ready明确依赖LocalBufferBroker ready，并通过Trigger capability/health对SDK公开。
-12. 普通部署配置不包含`channel_profiles`；Trigger RPC、Inference RPC和Training Event的稳定默认profile由代码固定并写入header。
+11. 不增加全局`local_message.enabled`；LocalMessage基础设施、Inference MAILBOX和Training Event不依赖LocalBuffer enable。Workflow Trigger的配置与路径所有权独立，但当前v1 PREPARE强制包含输入图片，因此其服务ready明确依赖LocalBufferBroker ready，并通过Trigger capability/health对SDK公开。
+12. 普通部署配置不包含`channel_profiles`；Trigger Mailbox、Inference MAILBOX和Training Event的稳定默认profile由代码固定并写入header。
 13. 已迁移 LocalMessage 的 application adapter 不能直接 import `mmap`、LocalMessage 文件布局或具体 transport；它们通过四个窄 port 由 composition root 注入。未迁移的领域 Queue/pipe 通道保留自己的并发、主动事件和路由语义，不建立一个覆盖全部 IPC 的过宽 `MessageChannelPort`。
 
 ## 阶段 0：测量与契约冻结
@@ -105,13 +105,13 @@ backend/service/infrastructure/ipc/
 
 同阶段冻结四个窄 port 的共同传输契约：
 
-- `RpcClientPort`输入request id、不可变wire bytes、绝对`deadline_ns`和cancellation source，返回持有response bytes与ACK/close生命周期的handle；
-- `RpcServerPort`返回request context与cancel probe，并保证每个request最多发布一次response；
+- `MailboxClientPort`输入request id、不可变wire bytes、绝对`deadline_ns`和cancellation source，返回持有response bytes与ACK/close生命周期的handle；
+- `MailboxServerPort`返回request context与cancel probe，并保证每个request最多发布一次response；
 - `EventPublisherPort.try_publish()`只接受不可变wire bytes并非阻塞返回published/full/closed结果；
 - `EventReaderPort.read()`接受cursor和绝对等待`deadline_ns`，返回event batch、next cursor、gap和producer closed状态；
-- RPC外部timeout duration只在权威server入口换算为其monotonic clock domain的绝对deadline；公开.NET SDK不得提交自身monotonic绝对值，重启由owner epoch fence并统一返回`ChannelRestarted`；
+- MAILBOX外部timeout duration只在权威server入口换算为其monotonic clock domain的绝对deadline；公开.NET SDK不得提交自身monotonic绝对值，重启由owner epoch fence并统一返回`ChannelRestarted`；
 - structured payload统一使用同一紧凑UTF-8 JSON codec编码为bytes，codec位于contract/application边界；Queue和mmap transport均接收同一envelope和bytes；
-- 普通structured response在client取得自有bytes后ACK；Trigger extension含输出LocalBuffer lease时，response handle持有ACK直至SDK result dispose；
+- 普通structured response在client取得自有bytes后ACK；Trigger 业务契约含输出LocalBuffer lease时，response handle持有ACK直至SDK result dispose；
 - `close(deadline_ns)`幂等，关闭后拒绝新操作；Queue backend的ACK可为幂等no-op，但cancel、deadline、close和错误分类必须与候选mmap port一致。
 
 同阶段只冻结中立配置迁移清单：后续新增`local_memory.root_dir=./data/buffers`并删除`local_buffer_broker.root_dir`的路径所有权；LocalBuffer、当前旧Trigger/Inference path builder和SDK配置包统一改读中立root，实际目录和协议行为不变。阶段0不修改正式配置或composition root。
@@ -120,9 +120,9 @@ backend/service/infrastructure/ipc/
 
 ## 阶段 1：通用 contract 与底层 engine
 
-本阶段已经完成。已实现独立的 common layout、RPC mailbox、EventRing、Queue adapter、application ports、Python/.NET fixture、owner restart fence 和分类型 health；正式 composition root 未引用新 engine。`local_memory.root_dir` 配置所有权也已独立迁移，现有 LocalBuffer、Inference 与 Workflow Trigger 的实际目录和 transport 未变化。
+本阶段已经完成。已实现独立的 common layout、Mailbox、EventRing、Queue adapter、application ports、Python/.NET fixture、owner restart fence 和分类型 health；正式 composition root 未引用新 engine。`local_memory.root_dir` 配置所有权也已独立迁移，现有 LocalBuffer、Inference 与 Workflow Trigger 的实际目录和 transport 未变化。
 
-同机 5 轮阶段 1 RPC 回归基准使用冻结的 `inference-rpc.v1` profile，与阶段 0 当前 Inference mailbox 的单次 request/response 基线比较。原始报告保存在 `.tmp/local-message-channel-stage1/benchmark.json`：
+同机 5 轮阶段 1 Mailbox 回归基准使用冻结的 `inference-mailbox.v1` profile，与阶段 0 当前 Inference mailbox 的单次 request/response 基线比较。原始报告保存在 `.tmp/local-message-channel-stage1/benchmark.json`：
 
 | response | 新 engine P99 | 阶段 0 current P99 | 门禁 |
 | --- | ---: | ---: | --- |
@@ -140,10 +140,10 @@ backend/service/infrastructure/ipc/
 - descriptor/ring header读写；
 - byte-range guard、CRC、token和publication helper；
 - server-owned response page reserve、write、publish、read、rollback和free；
-- RpcMailbox状态机、deadline、cancel、ACK和sweep；
+- Mailbox状态机、deadline、cancel、ACK和sweep；
 - EventRing sequence、generation、gap/drop和closed publication；
-- common health envelope与分类型指标：RPC报告descriptor/page/request/ACK/cancel，Event报告slot/sequence/gap/drop/producer；
-- application `RpcClientPort`、`RpcServerPort`、`EventPublisherPort`、`EventReaderPort`、wire envelope DTO、payload codec和领域错误；
+- common health envelope与分类型指标：MAILBOX报告descriptor/page/request/ACK/cancel，Event报告slot/sequence/gap/drop/producer；
+- application `MailboxClientPort`、`MailboxServerPort`、`EventPublisherPort`、`EventReaderPort`、wire envelope DTO、payload codec和领域错误；
 - infrastructure Queue adapter，但正式composition root暂不切换。
 
 同阶段以独立原子提交迁移中立root配置：代码、默认配置、发行profile、SDK配置包和当前LocalBuffer/Trigger/Inference path builder一起改用`local_memory.root_dir`，删除`local_buffer_broker.root_dir`且不保留双读。该提交只转移路径配置所有权，现有文件位置、协议和transport保持不变，不能与底层engine实现混在同一提交中。
@@ -201,9 +201,9 @@ backend/service/infrastructure/ipc/
 
 复测脚本为 `python -m tests.integration.local_message_channel_stage2_telemetry_benchmark`；Windows 必须使用模块入口，以便 `multiprocessing.spawn` 能重新导入主模块。
 
-## 阶段 3：迁移 Inference RPC mailbox
+## 阶段 3：迁移 Inference Mailbox
 
-本阶段已经完成。Inference 内部 Python 链路已原子迁移到通用 RpcMailbox：
+本阶段已经完成。Inference 内部 Python 链路已原子迁移到通用 Mailbox：
 
 - 保留现有task payload和result envelope；
 - 保留classification、detection、segmentation、pose、OBB与只读状态路由；
@@ -211,16 +211,16 @@ backend/service/infrastructure/ipc/
 - 保留request deadline、cancel、ACK和daemon epoch；
 - 图片继续只传LocalBuffer引用；
 - start、stop、reset、warmup等持久化控制继续使用原控制队列；
-- `inference_daemon.mmap_mailbox`中的descriptor/inline/page/压缩几何改用代码内Inference RPC默认profile；poll字段在阶段0测量后裁决，不能预先删除；
+- `inference_daemon.mmap_mailbox`中的descriptor/inline/page/压缩几何改用代码内Inference MAILBOX默认profile；poll字段在阶段0测量后裁决，不能预先删除；
 - `inference_daemon.mmap_mailbox.max_concurrent_requests`是真正的推理handler admission，原子迁移为领域字段`inference_daemon.max_concurrent_inference_requests`，同步更新service、daemon、配置、发行profile和测试，不藏入transport profile；
-- 原子切换路径到`local-message/inference-daemon-main.rpc.mmap`后删除`inference_local_mmap.py`中的底层mmap实现。
+- 原子切换路径到`local-message/inference/mailbox.mmap`后删除`inference_local_mmap.py`中的底层mmap实现。
 
 实际实现已收敛为：
 
 - application 层新增 `InferenceMessageClient`、`inference-daemon.request.v1` 和 `inference-daemon.response.v1`，只处理业务 envelope 与图片正文拒绝；
-- `infrastructure/ipc/inference_rpc.py` 组合通用 RpcMailbox、handler admission、错误序列化和现有 health 摘要；
+- `infrastructure/ipc/inference_mailbox.py` 组合通用 Mailbox、handler admission、错误序列化和现有 health 摘要；
 - 正式 service/daemon composition root 只创建新 adapter，旧 `inference_local_mmap.py` 已删除，不存在双读或 fallback；
-- 普通配置只保留 `mmap_mailbox.enabled`，handler admission 已迁移为 `inference_daemon.max_concurrent_inference_requests`；transport 几何只来自 `inference-rpc.v1`；
+- 普通配置只保留 `mmap_mailbox.enabled`，handler admission 已迁移为 `inference_daemon.max_concurrent_inference_requests`；transport 几何只来自 `inference-mailbox.v1`；
 - daemon 停止先发布 closed owner fence，再等待已 claim handler；owner 重启不自动重放已发布请求；page pool 满载发布稳定 capacity error。
 
 门禁：
@@ -243,9 +243,9 @@ backend/service/infrastructure/ipc/
 
 复测脚本为 `python -m tests.integration.local_message_channel_stage3_inference_benchmark`。该性能结果只适用于当前同机固定拓扑。
 
-## 阶段 4：迁移 Workflow Trigger RPC mailbox（已完成）
+## 阶段 4：迁移 Workflow Trigger Mailbox（已完成）
 
-正式链路已经原子切换到通用 RpcMailbox。Trigger extension 只保留
+正式链路已经原子切换到通用 Mailbox。Trigger 业务契约 只保留
 PREPARE/WRITING、相对 timeout 接受、route generation、业务错误和 LocalBuffer
 handoff 字段；descriptor、page-chain、CRC、owner epoch、cancel、deadline、ACK
 与回收均由通用 engine 负责。旧 `workflow_trigger_mailbox.py`、旧 binary schema、
@@ -267,7 +267,7 @@ composition root provider 注入并延迟到 FastAPI lifespan 启动，Windows s
 - Python/.NET schema、generated constants、fixture、SDK、配置包和开发数据；
 - 前端health只显示业务可用容量，不暴露内部路径和几何；
 - 删除普通配置中的Trigger mailbox poll/descriptor/page几何；reply timeout、ACK timeout和executor并发继续作为领域策略保留；
-- 路径切换到`local-message/workflow-trigger-main.rpc.mmap`；
+- 路径切换到`local-message/workflow-trigger/mailbox.mmap`；
 - 删除旧`workflow_trigger_mailbox.py`底层实现和旧binary schema。
 
 Trigger mailbox路径、schema和启用配置不能从LocalBuffer配置派生，但当前v1 supervisor只有在LocalBufferBroker ready时才可接收PREPARE。正式capability/health必须同时校验Trigger owner和Broker ready；SDK不能用静态enabled或文件存在代替健康检查。
@@ -313,17 +313,17 @@ Trigger mailbox路径、schema和启用配置不能从LocalBuffer配置派生，
 ## 阶段 5：窄 Port 与 Queue 基准
 
 本阶段已经完成，正式裁决为 `retain-queue`。候选基准使用阶段 1 的相同
-`RpcPort`、相同 wire envelope/bytes 和相同跨进程 echo 拓扑，比较
-`MultiprocessingQueueRpc*` 与只服务基准的 `MmapRpcMailbox*`，未创建正式
+`MailboxPort`、相同 wire envelope/bytes 和相同跨进程 echo 拓扑，比较
+`MultiprocessingQueueMailbox*` 与只服务基准的 `MmapMailbox*`，未创建正式
 `workflow-runtime/`、PublishedInferenceGateway 或 LocalBuffer Broker mmap 目录。
 
 实际语义审计同时确认：
 
 - Workflow Runtime response Queue 还承载主动 heartbeat、runtime state 和异步运行结果，不是严格的一问一答；
-- PublishedInferenceGateway 使用 response router 支持并发请求和乱序响应，阶段 1 的 Queue RpcClient 是单 endpoint 串行语义；
-- LocalBuffer Broker 组合每 client response route、同进程直达和跨进程 pipe，不是单一 Queue RPC。
+- PublishedInferenceGateway 使用 response router 支持并发请求和乱序响应，阶段 1 的 Queue MailboxClient 是单 endpoint 串行语义；
+- LocalBuffer Broker 组合每 client response route、同进程直达和跨进程 pipe，不是单一 Queue Mailbox。
 
-因此四个 LocalMessage port 只作为严格 RPC/Event 的协议边界，不强制覆盖上述
+因此四个 LocalMessage port 只作为严格 Mailbox/Event 的协议边界，不强制覆盖上述
 领域通道。保留链路不增加 JSON/bytes 二次编码、串行锁或形式化 wrapper；后续若要
 迁移，必须先为对应异步语义单独设计 port 和基准，不能扩张当前 common schema。
 
@@ -350,7 +350,7 @@ mmap 降低了 Windows Queue 的偶发 P99 尾峰，但三档 P95 均显著回�
 - 进程退出、父进程崩溃、cancel和timeout清理；
 - 长期运行内存、文件和Channel数量。
 
-裁决规则保持为：只有 RpcMailbox 在至少 5 轮稳态采样中同时改善多轮中位 P95 和
+裁决规则保持为：只有 Mailbox 在至少 5 轮稳态采样中同时改善多轮中位 P95 和
 P99 至少 10%，且至少一个指标绝对改善不小于 1 ms，同时 CPU、working set、page
 fault、线程/句柄和关闭清理不差时，才另行更新 ADR 并原子切换对应链路。本轮未通过。
 
@@ -376,7 +376,7 @@ fault、线程/句柄和关闭清理不差时，才另行更新 ADR 并原子切
 - `local_memory.root_dir` 已成为 LocalBuffer 与 LocalMessage 的唯一共享根配置；三个 Channel 的普通配置不再暴露 descriptor、page 或 ring 几何；
 - 旧 Inference、Workflow Trigger 和 Training Telemetry mmap 实现、schema、fixture 与双读路径已经删除；新代码发现旧正式 layout 时会在取得新 owner 前明确拒绝启动；
 - 开发机上确认没有存活 owner 后，旧运行文件已从正式目录移动到 `.tmp/local-message-channel-stage6/legacy-runtime/` 隔离保留，正式目录不再存在旧 Inference、Trigger、Telemetry layout；同时取得 194 个旧 owner/reader/writer guard 后，遗留的 LocalBuffer 固定分辨率池也已隔离到其 `local-buffer-fixed-pools/` 子目录，`data/buffers/` 顶层只保留 `local-buffer/`、`local-message/` 和 `inference-daemon-private/`；
-- system diagnostics 已按 Channel 分别报告 Workflow Trigger RPC、Inference RPC 和 Training Event 状态，保留 Queue 的领域链路不会伪装成 LocalMessage；
+- system diagnostics 已按 Channel 分别报告 Workflow Trigger Mailbox、Inference Mailbox 和 Training Event 状态，保留 Queue 的领域链路不会伪装成 LocalMessage；
 - `full-windows-x64-nvidia` 已从当前源码装配到 `.tmp/local-message-channel-stage7/release/`，生成结果包含新 engine/schema 且不包含四个旧实现文件。该独立验证目录的 bundled Python 为 `placeholder-empty`，真实随包 Python 启动仍属于目标发行目录验收；
 - 全仓静态扫描确认，迁移业务模块不直接 import `mmap` 或 LocalMessage layout；application 中保留的 `local_buffers/local_buffer_client.py` 是 ADR 明确排除的连续图片数据面。
 
@@ -408,7 +408,7 @@ fault、线程/句柄和关闭清理不差时，才另行更新 ADR 并原子切
 
 - 后端全量：`3796 passed in 2106.46s`；全量顺序首次暴露并已修复同一 FastAPI app 重复 lifespan 时 Trigger supervisor 被永久关闭的问题，最终 JUnit 位于 `.tmp/local-message-channel-stage7/backend-full-after-lifecycle-fix.xml`；
 - 前端：`74` 个测试文件、`285` 项测试通过，Vue TypeScript 检查和 Vite 生产构建通过；
-- .NET：`Amvar.Vision.ContractTests` 以 .NET Framework 4.7.2 Release 配置重新编译并执行通过，覆盖 LocalMessage common/RPC/Trigger extension 的跨语言 fixture；
+- .NET：`Amvar.Vision.ContractTests` 以 .NET Framework 4.7.2 Release 配置重新编译并执行通过，覆盖 LocalMessage common/Mailbox/Trigger 业务契约 的跨语言 fixture；
 - Trigger 跨进程压力：8 个 client、10,000 次请求通过，耗时 60.969 秒；结束后 128 个 descriptor 和全部 response page 回到空闲基线；
 - 阶段 0–5 原始报告 SHA-256 分别为 `f98c11c3445b525c734ecbe4d09fb845f212d269a76caac68520647d8bd69271`、`54559a4da315fe6cd6b468d7922c89140a7b9eb169e24f8a9eb8c12e5a2815c4`、`8513bfa90ece52a6080f26a7babba22e95c430fbe7230c680685e323ba3407c5`、`1161d657183fb128c7f605847406bbfa4df4a88ade142444660237e3bf44974e`、`c43ea1d4b7be1bd66974961747f79a708094a2bcbd5300c84db731eb1c9ef285` 和 `c38d188b4f7484371a4c3a873614b672d08f9ab496945e7c40efc945971fa219`。
 

@@ -200,9 +200,9 @@ namespace Amvar.Vision.ContractTests
                 "amvision-local-buffer-cache-" + Guid.NewGuid().ToString("N"));
             var localBufferRoot = Path.Combine(root, "local-buffer");
             Directory.CreateDirectory(localBufferRoot);
-            var arenaPath = Path.Combine(localBufferRoot, "arena-main.mmap");
-            var allocatorPath = Path.Combine(localBufferRoot, "allocator-main.mmap");
-            var guardPath = Path.Combine(localBufferRoot, "arena-main.guard");
+            var arenaPath = Path.Combine(localBufferRoot, "images.mmap");
+            var allocatorPath = Path.Combine(localBufferRoot, "state.mmap");
+            var guardPath = Path.Combine(localBufferRoot, "access.guard");
             const long arenaSize = 4 * 1024 * 1024;
             using (var file = new FileStream(arenaPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
             {

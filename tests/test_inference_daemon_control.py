@@ -51,7 +51,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     InferenceControlDispatcher,
     QueueBackedInferenceControlClient,
 )
-from backend.service.infrastructure.ipc.inference_rpc import (
+from backend.service.infrastructure.ipc.inference_mailbox import (
     InferenceLocalMmapClient,
     InferenceLocalMmapServer,
 )

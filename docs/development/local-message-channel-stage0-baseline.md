@@ -102,7 +102,7 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 | Trigger 32 MiB，concurrency 16 | 31 | 54 |
 | Inference 32 MiB，concurrency 16 | 59 | 26 |
 
-该结果不是扩大总页池的依据。32 MiB 是显式 Base64 兼容和极端结构化结果上限；默认图片输入输出继续使用 LocalBuffer。每个 RPC Channel 保留独立 128 MiB page pool，避免大响应扩大为全局共享 arena。
+该结果不是扩大总页池的依据。32 MiB 是显式 Base64 兼容和极端结构化结果上限；默认图片输入输出继续使用 LocalBuffer。每个 Mailbox Channel 保留独立 128 MiB page pool，避免大响应扩大为全局共享 arena。
 
 ### Page geometry
 
@@ -143,7 +143,7 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 
 代码定义见 [local_message_profiles.py](../../backend/contracts/ipc/local_message_profiles.py)。
 
-| 字段 | Workflow Trigger RPC | Inference RPC | Training Event |
+| 字段 | Workflow Trigger Mailbox | Inference Mailbox | Training Event |
 | --- | ---: | ---: | ---: |
 | descriptor / slot count | 128 | 128 | 512 |
 | inline request | 64 KiB | 64 KiB | - |
@@ -154,7 +154,7 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 | max pages / response | 128 | 128 | - |
 | total page capacity | 128 MiB | 128 MiB | - |
 | max response | 32 MiB | 32 MiB | - |
-| RPC poll | 1 ms | 1 ms | - |
+| Mailbox poll | 1 ms | 1 ms | - |
 | Event poll | - | - | 50 ms |
 | producer scan | - | - | 100 ms |
 
@@ -167,4 +167,4 @@ Trigger 与 Inference 当前固定文件均约 256 MiB。profile 收缩 inline �
 - 阶段 1 不修改 composition root，不读取正式 LocalMessage 文件，不迁移 Trigger、Inference 或 Telemetry。
 - EventRing 的 owner guard/epoch/session 是异常退出权威依据；PID 只作为诊断元数据。
 - `.NET` SDK 只提交 timeout duration；Python owner 在入口建立自身 clock domain 的绝对 monotonic deadline。
-- 阶段 5 已按同一 `RpcPort`、envelope/bytes 和跨进程拓扑完成候选基准，裁决为保留 Workflow Runtime、PublishedInferenceGateway 与 LocalBuffer Broker 的现有 Queue/pipe 传输；详细结果见[实施基线阶段 5](local-message-channel-implementation.md#阶段-5窄-port-与-queue-基准)。
+- 阶段 5 已按同一 `MailboxPort`、envelope/bytes 和跨进程拓扑完成候选基准，裁决为保留 Workflow Runtime、PublishedInferenceGateway 与 LocalBuffer Broker 的现有 Queue/pipe 传输；详细结果见[实施基线阶段 5](local-message-channel-implementation.md#阶段-5窄-port-与-queue-基准)。

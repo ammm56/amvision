@@ -10,12 +10,12 @@ from typing import Literal
 from backend.service.infrastructure.ipc.local_message.health import (
     EventChannelHealth,
     LocalMessageChannelHealthEnvelope,
-    RpcChannelHealth,
+    MailboxChannelHealth,
 )
 
 
-ChannelKind = Literal["rpc", "event"]
-HealthValue = RpcChannelHealth | EventChannelHealth
+ChannelKind = Literal["mailbox", "event"]
+HealthValue = MailboxChannelHealth | EventChannelHealth
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +68,7 @@ class LocalMessageChannelRegistry:
             self._registrations.pop(channel_name, None)
 
     def snapshot(self) -> tuple[LocalMessageChannelHealthEnvelope, ...]:
-        """返回按名称排序、RPC/Event 指标互斥的 health 快照。"""
+        """返回按名称排序、Mailbox/Event 指标互斥的 health 快照。"""
 
         with self._lock:
             registrations = tuple(self._registrations.values())
@@ -77,16 +77,16 @@ class LocalMessageChannelRegistry:
             registrations, key=lambda item: item.channel_name
         ):
             health = registration.health_provider()
-            if registration.channel_kind == "rpc":
-                if not isinstance(health, RpcChannelHealth):
-                    raise TypeError("RPC registry provider 返回了非 RPC health")
+            if registration.channel_kind == "mailbox":
+                if not isinstance(health, MailboxChannelHealth):
+                    raise TypeError("Mailbox registry provider 返回了非 Mailbox health")
                 envelopes.append(
                     LocalMessageChannelHealthEnvelope(
                         channel_name=registration.channel_name,
-                        channel_kind="rpc",
+                        channel_kind="mailbox",
                         transport="mmap",
                         profile_id=registration.profile_id,
-                        rpc=health,
+                        mailbox=health,
                     )
                 )
             else:

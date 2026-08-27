@@ -76,21 +76,21 @@ def build_local_message_channel_paths(
     channel_name: str,
     channel_kind: str,
 ) -> LocalMessageChannelPaths:
-    """在中立 buffers root 下构造受控的 rpc/event 文件路径。"""
+    """在中立 buffers root 下构造受控的 mailbox/event 文件路径。"""
 
     if not _CHANNEL_NAME.fullmatch(channel_name):
         raise ValueError("LocalMessage channel_name 只能使用小写字母、数字和连字符")
-    if channel_kind not in {"rpc", "event"}:
-        raise ValueError("LocalMessage channel_kind 必须是 rpc 或 event")
+    if channel_kind not in {"mailbox", "event"}:
+        raise ValueError("LocalMessage channel_kind 必须是 mailbox 或 event")
+    channel_dir = Path("local-message") / channel_name
     mmap_path = build_contained_mmap_path(
         root_dir=buffers_root,
-        relative_path=Path("local-message")
-        / f"{channel_name}.{channel_kind}.mmap",
+        relative_path=channel_dir / f"{channel_kind}.mmap",
     )
     return LocalMessageChannelPaths(
         mmap_path=mmap_path,
-        owner_lock_path=mmap_path.with_name(f"{mmap_path.name}.owner.lock"),
-        guard_path=mmap_path.with_name(f"{mmap_path.name}.guard"),
+        owner_lock_path=mmap_path.with_name("owner.lock"),
+        guard_path=mmap_path.with_name("access.guard"),
     )
 
 
@@ -117,37 +117,32 @@ def build_training_telemetry_channel_paths(
     )
     return LocalMessageChannelPaths(
         mmap_path=mmap_path,
-        owner_lock_path=mmap_path.with_name(f"{mmap_path.name}.owner.lock"),
-        guard_path=mmap_path.with_name(f"{mmap_path.name}.guard"),
+        owner_lock_path=mmap_path.with_name(f"{session_id.hex}.owner.lock"),
+        guard_path=mmap_path.with_name(f"{session_id.hex}.access.guard"),
     )
 
 
-def build_inference_rpc_channel_paths(
+def build_inference_mailbox_paths(
     *,
     buffers_root: str | Path,
-    service_id: str,
 ) -> LocalMessageChannelPaths:
-    """构造 inference daemon 独占的稳定 RPC Channel 路径。"""
+    """构造 inference daemon 独占的稳定 Mailbox Channel 路径。"""
 
-    normalized = "".join(
-        character if character.isalnum() or character == "-" else "-"
-        for character in service_id.strip().lower()
-    ).strip("-")
     return build_local_message_channel_paths(
         buffers_root=buffers_root,
-        channel_name=normalized or "inference-daemon-main",
-        channel_kind="rpc",
+        channel_name="inference",
+        channel_kind="mailbox",
     )
 
 
-def build_workflow_trigger_rpc_channel_paths(
+def build_workflow_trigger_mailbox_paths(
     *,
     buffers_root: str | Path,
 ) -> LocalMessageChannelPaths:
-    """构造全局 Workflow Trigger RPC Channel 的冻结路径。"""
+    """构造全局 Workflow Trigger Mailbox Channel 的冻结路径。"""
 
     return build_local_message_channel_paths(
         buffers_root=buffers_root,
-        channel_name="workflow-trigger-main",
-        channel_kind="rpc",
+        channel_name="workflow-trigger",
+        channel_kind="mailbox",
     )

@@ -1,4 +1,4 @@
-"""Workflow Trigger 在通用 LocalMessage RPC engine 上的两阶段 adapter。"""
+"""Workflow Trigger 在通用 LocalMessage Mailbox engine 上的两阶段 adapter。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from threading import Lock
 from time import monotonic_ns
 from uuid import UUID, uuid4
 
-from backend.contracts.ipc import workflow_trigger_rpc_extension_v1 as contract
+from backend.contracts.ipc import workflow_trigger_mailbox_v1 as contract
 from backend.contracts.ipc.local_message_profiles import (
-    RPC_PUBLIC_RESPONSE_CAPACITY_BYTES,
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+    MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES,
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
 )
 from backend.service.application.errors import (
     InvalidRequestError,
@@ -26,7 +26,7 @@ from backend.service.application.message_channels.errors import (
     ChannelInvalidMessageError,
     LocalMessageChannelError,
 )
-from backend.service.application.message_channels.models import RpcRequestContext
+from backend.service.application.message_channels.models import MailboxRequestContext
 from backend.service.application.workflows.trigger_sources.trigger_message_channel import (
     ALLOCATION_SCHEMA_ID,
     PREPARE_SCHEMA_ID,
@@ -43,33 +43,33 @@ from backend.service.application.message_channels.codec import (
     locate_raw_json_object_envelope,
 )
 from backend.service.infrastructure.ipc.local_message.common_layout import (
-    RPC_ERROR_CANCELLED,
-    RPC_ERROR_CAPACITY_EXHAUSTED,
-    RPC_ERROR_DEADLINE_EXCEEDED,
-    RPC_ERROR_INVALID_MESSAGE,
-    RPC_ERROR_NONE,
-    RPC_ERROR_SERVER_FAILURE,
-    RPC_STATE_FREE,
-    RPC_STATE_PROCESSING,
-    rpc_layout,
+    MAILBOX_ERROR_CANCELLED,
+    MAILBOX_ERROR_CAPACITY_EXHAUSTED,
+    MAILBOX_ERROR_DEADLINE_EXCEEDED,
+    MAILBOX_ERROR_INVALID_MESSAGE,
+    MAILBOX_ERROR_NONE,
+    MAILBOX_ERROR_SERVER_FAILURE,
+    MAILBOX_STATE_FREE,
+    MAILBOX_STATE_PROCESSING,
+    mailbox_layout,
 )
 from backend.service.infrastructure.ipc.local_message.paths import (
-    build_workflow_trigger_rpc_channel_paths,
+    build_workflow_trigger_mailbox_paths,
     reject_legacy_workflow_trigger_layout,
 )
-from backend.service.infrastructure.ipc.local_message.rpc_mailbox import (
-    MmapRpcMailboxClient,
-    MmapRpcMailboxServer,
-    RpcTerminalReason,
-    RpcTransportIdentity,
+from backend.service.infrastructure.ipc.local_message.mailbox import (
+    MmapMailboxClient,
+    MmapMailboxServer,
+    MailboxTerminalReason,
+    MailboxTransportIdentity,
 )
 
 
-DESCRIPTOR_STRIDE_BYTES = rpc_layout(
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1
+DESCRIPTOR_STRIDE_BYTES = mailbox_layout(
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1
 ).descriptor_stride_bytes
-MAILBOX_FILE_SIZE_BYTES = rpc_layout(
-    WORKFLOW_TRIGGER_RPC_PROFILE_V1
+MAILBOX_FILE_SIZE_BYTES = mailbox_layout(
+    WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1
 ).file_size_bytes
 
 
@@ -130,10 +130,10 @@ def _transport_key(identity: WorkflowTriggerDescriptorIdentity) -> tuple[int, ..
 
 def _to_transport_identity(
     identity: WorkflowTriggerDescriptorIdentity,
-) -> RpcTransportIdentity:
-    """把业务 identity 投影为通用 RPC fence。"""
+) -> MailboxTransportIdentity:
+    """把业务 identity 投影为通用 Mailbox fence。"""
 
-    return RpcTransportIdentity(
+    return MailboxTransportIdentity(
         descriptor_index=identity.descriptor_index,
         generation=identity.generation,
         owner_epoch=identity.server_epoch,
@@ -153,7 +153,7 @@ def _unpack_extension(content: bytes) -> tuple[int, ...]:
 
 
 class WorkflowTriggerMailboxServer:
-    """保留 Trigger 业务状态机，复用通用 RPC descriptor/page allocator。"""
+    """保留 Trigger 业务状态机，复用通用 Mailbox descriptor/page allocator。"""
 
     def __init__(
         self,
@@ -162,7 +162,7 @@ class WorkflowTriggerMailboxServer:
         max_request_timeout_ms: int = 120_000,
         response_ack_timeout_ms: int = 30_000,
     ) -> None:
-        """创建唯一 Trigger RPC owner。"""
+        """创建唯一 Trigger Mailbox owner。"""
 
         if max_request_timeout_ms <= 0:
             raise ServiceConfigurationError(
@@ -173,23 +173,23 @@ class WorkflowTriggerMailboxServer:
                 "Workflow Trigger response ACK timeout 必须大于 0"
             )
         reject_legacy_workflow_trigger_layout(buffers_root=buffers_root)
-        self.paths = build_workflow_trigger_rpc_channel_paths(
+        self.paths = build_workflow_trigger_mailbox_paths(
             buffers_root=buffers_root
         )
         self.path = self.paths.mmap_path
         self.max_request_timeout_ms = max_request_timeout_ms
         self.response_ack_timeout_ms = response_ack_timeout_ms
-        self._rpc = MmapRpcMailboxServer(
+        self._mailbox = MmapMailboxServer(
             paths=self.paths,
-            profile=WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+            profile=WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
             response_ack_timeout_seconds=response_ack_timeout_ms / 1_000,
         )
-        self.server_epoch = self._rpc.owner_epoch
-        self._contexts: dict[tuple[int, ...], RpcRequestContext] = {}
+        self.server_epoch = self._mailbox.owner_epoch
+        self._contexts: dict[tuple[int, ...], MailboxRequestContext] = {}
         self._identities: dict[tuple[int, ...], WorkflowTriggerDescriptorIdentity] = {}
         self._extensions: dict[tuple[int, ...], tuple[int, ...]] = {}
-        self._prepare_queue: deque[tuple[RpcRequestContext, tuple[int, ...]]] = deque()
-        self._request_queue: deque[tuple[RpcRequestContext, tuple[int, ...]]] = deque()
+        self._prepare_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = deque()
+        self._request_queue: deque[tuple[MailboxRequestContext, tuple[int, ...]]] = deque()
         self._lock = Lock()
         self._last_timeout_diagnostic: dict[str, int] | None = None
 
@@ -212,7 +212,7 @@ class WorkflowTriggerMailboxServer:
             accepted_timeout_ms=accepted_timeout_ms,
             route_generation=int(extension[4]),
         )
-        context = self._rpc.update_processing_deadline(
+        context = self._mailbox.update_processing_deadline(
             context,
             deadline_ns=accepted_at_ns + accepted_timeout_ms * 1_000_000,
             descriptor_extension=updated_extension,
@@ -269,7 +269,7 @@ class WorkflowTriggerMailboxServer:
                 accepted_timeout_ms=accepted_timeout_ms,
                 route_generation=int(extension[4]),
         )
-        context = self._rpc.update_processing_deadline(
+        context = self._mailbox.update_processing_deadline(
             context,
             deadline_ns=accepted_at_ns + accepted_timeout_ms * 1_000_000,
             descriptor_extension=updated_extension,
@@ -296,7 +296,7 @@ class WorkflowTriggerMailboxServer:
             payload=allocation_payload,
             request_id=identity.request_id,
         )
-        if len(wire_bytes) > WORKFLOW_TRIGGER_RPC_PROFILE_V1.inline_response_capacity_bytes:
+        if len(wire_bytes) > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.inline_response_capacity_bytes:
             raise InvalidRequestError(
                 "Workflow Trigger allocation envelope 超过 64 KiB inline 上限"
             )
@@ -307,7 +307,7 @@ class WorkflowTriggerMailboxServer:
                 accepted_timeout_ms=int(extension[3]),
                 route_generation=int(extension[4]),
         )
-        self._rpc.publish_response(
+        self._mailbox.publish_response(
             context,
             wire_bytes=wire_bytes,
             descriptor_extension=updated_extension,
@@ -363,8 +363,8 @@ class WorkflowTriggerMailboxServer:
         )
         wire_size = sum(len(segment) for segment in wire_segments)
         if (
-            len(payload) > RPC_PUBLIC_RESPONSE_CAPACITY_BYTES
-            or wire_size > WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_response_bytes
+            len(payload) > MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES
+            or wire_size > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_response_bytes
         ):
             error_code = contract.ERROR_CODE_TRIGGER_RESPONSE_TOO_LARGE
             response_output_lease_count = 0
@@ -394,7 +394,7 @@ class WorkflowTriggerMailboxServer:
                 handoff_state=handoff_state,
         )
         try:
-            self._rpc.publish_response_segments_with_receipt(
+            self._mailbox.publish_response_segments_with_receipt(
                 context,
                 wire_segments=wire_segments,
                 response_ack_deadline_ns=response_ack_deadline_ns,
@@ -455,7 +455,7 @@ class WorkflowTriggerMailboxServer:
         )
 
     def new_response_ack_deadline_ns(self) -> int:
-        """生成和通用 RPC owner 配置一致的 ACK deadline。"""
+        """生成和通用 Mailbox owner 配置一致的 ACK deadline。"""
 
         return monotonic_ns() + self.response_ack_timeout_ms * 1_000_000
 
@@ -477,7 +477,7 @@ class WorkflowTriggerMailboxServer:
     ) -> dict[str, object]:
         """把通用 transport 终态映射为 Trigger 生命周期分类。"""
 
-        self._rpc.sweep(
+        self._mailbox.sweep(
             now_ns=now_ns,
             descriptor_indexes=descriptor_indexes,
         )
@@ -485,7 +485,7 @@ class WorkflowTriggerMailboxServer:
         deadlines: list[WorkflowTriggerDescriptorIdentity] = []
         ack_timeouts: list[WorkflowTriggerDescriptorIdentity] = []
         released: list[WorkflowTriggerDescriptorIdentity] = []
-        for event in self._rpc.drain_terminal_events():
+        for event in self._mailbox.drain_terminal_events():
             key = (
                 event.identity.descriptor_index,
                 event.identity.generation,
@@ -503,18 +503,18 @@ class WorkflowTriggerMailboxServer:
                     owner_token=event.identity.owner_token,
                     deadline_ns=0,
                 )
-            if event.reason == RpcTerminalReason.CANCELLED:
+            if event.reason == MailboxTerminalReason.CANCELLED:
                 cancelled.append(identity)
-            elif event.reason == RpcTerminalReason.DEADLINE_EXCEEDED:
+            elif event.reason == MailboxTerminalReason.DEADLINE_EXCEEDED:
                 deadlines.append(identity)
-            elif event.reason == RpcTerminalReason.RESPONSE_ACK_TIMEOUT:
+            elif event.reason == MailboxTerminalReason.RESPONSE_ACK_TIMEOUT:
                 ack_timeouts.append(identity)
-            elif event.reason == RpcTerminalReason.ACKNOWLEDGED:
+            elif event.reason == MailboxTerminalReason.ACKNOWLEDGED:
                 released.append(identity)
             if event.reason in {
-                RpcTerminalReason.ACKNOWLEDGED,
-                RpcTerminalReason.RESPONSE_ACK_TIMEOUT,
-                RpcTerminalReason.CANCELLED,
+                MailboxTerminalReason.ACKNOWLEDGED,
+                MailboxTerminalReason.RESPONSE_ACK_TIMEOUT,
+                MailboxTerminalReason.CANCELLED,
             }:
                 with self._lock:
                     self._identities.pop(key, None)
@@ -535,16 +535,16 @@ class WorkflowTriggerMailboxServer:
         """返回与现有 health API 兼容的无内容容量摘要。"""
 
         state_counts = [0] * 8
-        for transport_state, extension_bytes in self._rpc.descriptor_statuses():
-            if transport_state == RPC_STATE_FREE:
+        for transport_state, extension_bytes in self._mailbox.descriptor_statuses():
+            if transport_state == MAILBOX_STATE_FREE:
                 state_counts[contract.DESCRIPTOR_STATE_FREE] += 1
                 continue
             phase = int(_unpack_extension(extension_bytes)[0])
-            if transport_state == RPC_STATE_PROCESSING:
+            if transport_state == MAILBOX_STATE_PROCESSING:
                 phase = contract.DESCRIPTOR_STATE_PROCESSING
             if 0 <= phase < len(state_counts):
                 state_counts[phase] += 1
-        health = self._rpc.health()
+        health = self._mailbox.health()
         return {
             "contract_id": contract.CONTRACT_ID,
             "path": str(self.path),
@@ -553,7 +553,7 @@ class WorkflowTriggerMailboxServer:
             "descriptor_state_counts": tuple(state_counts),
             "free_page_count": health.free_pages,
             "used_page_count": (
-                WORKFLOW_TRIGGER_RPC_PROFILE_V1.overflow_page_count
+                WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.overflow_page_count
                 - health.free_pages
             ),
             "last_timeout_diagnostic": (
@@ -564,9 +564,9 @@ class WorkflowTriggerMailboxServer:
         }
 
     def close(self) -> None:
-        """有界关闭通用 RPC owner。"""
+        """有界关闭通用 Mailbox owner。"""
 
-        self._rpc.close(deadline_ns=monotonic_ns() + 2_000_000_000)
+        self._mailbox.close(deadline_ns=monotonic_ns() + 2_000_000_000)
 
     def __enter__(self) -> WorkflowTriggerMailboxServer:
         """返回 server context。"""
@@ -581,7 +581,7 @@ class WorkflowTriggerMailboxServer:
     def _poll_phase(
         self,
         expected_phase: int,
-    ) -> tuple[RpcRequestContext, tuple[int, ...]] | None:
+    ) -> tuple[MailboxRequestContext, tuple[int, ...]] | None:
         """按扩展 phase 分流通用 REQUEST，不维护第二套 descriptor scanner。"""
 
         queue = (
@@ -594,7 +594,7 @@ class WorkflowTriggerMailboxServer:
         while True:
             # Trigger supervisor 在同一次 process_once 末尾统一执行带活动集合的
             # terminal sweep；此处只扫描 request，避免每个 phase 重复全表扫描。
-            received = self._rpc.receive_with_extension(
+            received = self._mailbox.receive_with_extension(
                 deadline_ns=monotonic_ns() + 1,
                 sweep_before_receive=False,
             )
@@ -610,17 +610,17 @@ class WorkflowTriggerMailboxServer:
             elif phase == contract.DESCRIPTOR_STATE_REQUEST:
                 self._request_queue.append((context, extension))
             else:
-                self._rpc.publish_failure(context)
+                self._mailbox.publish_failure(context)
 
-    def _read_extension(self, context: RpcRequestContext) -> tuple[int, ...]:
+    def _read_extension(self, context: MailboxRequestContext) -> tuple[int, ...]:
         """读取并解码当前 PROCESSING extension。"""
 
-        return _unpack_extension(self._rpc.read_processing_extension(context))
+        return _unpack_extension(self._mailbox.read_processing_extension(context))
 
-    def _identity(self, context: RpcRequestContext) -> WorkflowTriggerDescriptorIdentity:
+    def _identity(self, context: MailboxRequestContext) -> WorkflowTriggerDescriptorIdentity:
         """从通用 request context 构造业务 identity。"""
 
-        transport = self._rpc.transport_identity(context)
+        transport = self._mailbox.transport_identity(context)
         return WorkflowTriggerDescriptorIdentity(
             descriptor_index=transport.descriptor_index,
             generation=transport.generation,
@@ -633,7 +633,7 @@ class WorkflowTriggerMailboxServer:
     def _remember(
         self,
         identity: WorkflowTriggerDescriptorIdentity,
-        context: RpcRequestContext,
+        context: MailboxRequestContext,
         *,
         extension: tuple[int, ...] | None = None,
     ) -> None:
@@ -655,7 +655,7 @@ class WorkflowTriggerMailboxServer:
     def _require_context(
         self,
         identity: WorkflowTriggerDescriptorIdentity,
-    ) -> RpcRequestContext:
+    ) -> MailboxRequestContext:
         """按完整 transport fence 取得当前 handler context。"""
 
         with self._lock:
@@ -708,19 +708,19 @@ class WorkflowTriggerMailboxServer:
             raise InvalidRequestError(str(error)) from error
 
 class WorkflowTriggerMailboxClient:
-    """Python SDK harness；.NET SDK 使用相同 common/RPC/extension contract。"""
+    """Python SDK harness；.NET SDK 使用相同 common/Mailbox/extension contract。"""
 
     def __init__(self, *, buffers_root: str | Path) -> None:
-        """连接全局 Trigger RPC owner。"""
+        """连接全局 Trigger Mailbox owner。"""
 
-        self.paths = build_workflow_trigger_rpc_channel_paths(
+        self.paths = build_workflow_trigger_mailbox_paths(
             buffers_root=buffers_root
         )
         self.path = self.paths.mmap_path
         try:
-            self._rpc = MmapRpcMailboxClient(
+            self._mailbox = MmapMailboxClient(
                 paths=self.paths,
-                profile=WORKFLOW_TRIGGER_RPC_PROFILE_V1,
+                profile=WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1,
             )
         except LocalMessageChannelError as error:
             raise ServiceConfigurationError(
@@ -733,7 +733,7 @@ class WorkflowTriggerMailboxClient:
     def server_epoch(self) -> int:
         """返回连接时可见的 owner epoch。"""
 
-        return self._rpc.owner_epoch
+        return self._mailbox.owner_epoch
 
     def claim(
         self,
@@ -755,7 +755,7 @@ class WorkflowTriggerMailboxClient:
             payload=prepare_payload,
             request_id=resolved_request_id,
         )
-        if len(wire_bytes) > WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_request_bytes:
+        if len(wire_bytes) > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_request_bytes:
             raise InvalidRequestError(
                 "Workflow Trigger PREPARE envelope 超过 64 KiB 上限"
             )
@@ -765,7 +765,7 @@ class WorkflowTriggerMailboxClient:
             route_generation=route_generation,
         )
         try:
-            transport = self._rpc.claim_prepared(
+            transport = self._mailbox.claim_prepared(
                 request_id=resolved_request_id,
                 wire_bytes=wire_bytes,
                 claim_deadline_ns=monotonic_ns() + 50_000_000,
@@ -811,7 +811,7 @@ class WorkflowTriggerMailboxClient:
             owner_token=identity.owner_token,
             deadline_ns=snapshot.deadline_ns,
         )
-        self._rpc.reopen_response_for_request(
+        self._mailbox.reopen_response_for_request(
             _to_transport_identity(current),
             descriptor_extension=contract.pack_descriptor_extension(
                 phase=contract.DESCRIPTOR_STATE_WRITING,
@@ -835,7 +835,7 @@ class WorkflowTriggerMailboxClient:
             payload=payload,
             request_id=identity.request_id,
         )
-        if len(wire_bytes) > WORKFLOW_TRIGGER_RPC_PROFILE_V1.max_request_bytes:
+        if len(wire_bytes) > WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1.max_request_bytes:
             raise InvalidRequestError(
                 "Workflow Trigger request envelope 超过 64 KiB 上限"
             )
@@ -850,7 +850,7 @@ class WorkflowTriggerMailboxClient:
             route_generation=int(values[4]),
         )
         try:
-            self._rpc.publish_reopened_request(
+            self._mailbox.publish_reopened_request(
                 _to_transport_identity(identity),
                 wire_bytes=wire_bytes,
                 descriptor_extension=snapshot_extension,
@@ -871,7 +871,7 @@ class WorkflowTriggerMailboxClient:
         extension = _unpack_extension(snapshot.extension)
         phase = int(extension[0])
         business_error = int(extension[5])
-        if snapshot.error_code != RPC_ERROR_NONE:
+        if snapshot.error_code != MAILBOX_ERROR_NONE:
             business_error = _business_error_from_transport(snapshot.error_code)
             payload = json.dumps(
                 {"state": "failed", "error": {"code": business_error}},
@@ -913,7 +913,7 @@ class WorkflowTriggerMailboxClient:
     def acknowledge(self, *, identity: WorkflowTriggerDescriptorIdentity) -> None:
         """幂等发布最终 response ACK。"""
 
-        self._rpc.acknowledge(_to_transport_identity(identity))
+        self._mailbox.acknowledge(_to_transport_identity(identity))
 
     def cancel(
         self,
@@ -941,7 +941,7 @@ class WorkflowTriggerMailboxClient:
                 response_output_lease_count=int(values[6]),
                 handoff_state=int(values[7]),
             )
-            self._rpc.request_cancel(
+            self._mailbox.request_cancel(
                 _to_transport_identity(identity),
                 descriptor_extension=extension,
             )
@@ -951,7 +951,7 @@ class WorkflowTriggerMailboxClient:
     def close(self) -> None:
         """关闭 client view。"""
 
-        self._rpc.close(deadline_ns=monotonic_ns() + 1_000_000_000)
+        self._mailbox.close(deadline_ns=monotonic_ns() + 1_000_000_000)
 
     def __enter__(self) -> WorkflowTriggerMailboxClient:
         """返回 client context。"""
@@ -967,7 +967,7 @@ class WorkflowTriggerMailboxClient:
         """读取 snapshot 并统一映射 owner fence。"""
 
         try:
-            return self._rpc.try_read_response_snapshot(
+            return self._mailbox.try_read_response_snapshot(
                 _to_transport_identity(identity)
             )
         except LocalMessageChannelError as error:
@@ -980,7 +980,7 @@ class WorkflowTriggerMailboxClient:
         """读取 client 自有 descriptor extension。"""
 
         try:
-            return self._rpc.read_descriptor_extension(
+            return self._mailbox.read_descriptor_extension(
                 _to_transport_identity(identity)
             )
         except LocalMessageChannelError as error:
@@ -1023,7 +1023,7 @@ class WorkflowTriggerMailboxClient:
     def _raise_transport_error(error_code: int) -> None:
         """把 PREPARE transport 错误映射为现有 SDK 可观察异常。"""
 
-        if error_code != RPC_ERROR_NONE:
+        if error_code != MAILBOX_ERROR_NONE:
             raise InvalidRequestError(
                 f"Workflow Trigger transport error: {_business_error_from_transport(error_code)}"
             )
@@ -1033,13 +1033,13 @@ def _business_error_from_transport(error_code: int) -> int:
     """把通用 transport 终态映射为 Trigger 业务错误码。"""
 
     return {
-        RPC_ERROR_DEADLINE_EXCEEDED: contract.ERROR_CODE_DEADLINE_EXCEEDED,
-        RPC_ERROR_CANCELLED: contract.ERROR_CODE_CANCELLED,
-        RPC_ERROR_INVALID_MESSAGE: contract.ERROR_CODE_CHECKSUM_MISMATCH,
-        RPC_ERROR_CAPACITY_EXHAUSTED: (
+        MAILBOX_ERROR_DEADLINE_EXCEEDED: contract.ERROR_CODE_DEADLINE_EXCEEDED,
+        MAILBOX_ERROR_CANCELLED: contract.ERROR_CODE_CANCELLED,
+        MAILBOX_ERROR_INVALID_MESSAGE: contract.ERROR_CODE_CHECKSUM_MISMATCH,
+        MAILBOX_ERROR_CAPACITY_EXHAUSTED: (
             contract.ERROR_CODE_TRIGGER_RESPONSE_CAPACITY_EXHAUSTED
         ),
-        RPC_ERROR_SERVER_FAILURE: contract.ERROR_CODE_PROTOCOL_ERROR,
+        MAILBOX_ERROR_SERVER_FAILURE: contract.ERROR_CODE_PROTOCOL_ERROR,
     }.get(error_code, contract.ERROR_CODE_PROTOCOL_ERROR)
 
 

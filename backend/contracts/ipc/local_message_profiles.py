@@ -10,8 +10,8 @@ MIB = 1024 * KIB
 
 
 @dataclass(frozen=True, slots=True)
-class RpcChannelProfile:
-    """描述单 owner RPC mailbox 的固定容量与轮询策略。"""
+class MailboxChannelProfile:
+    """描述单 owner Mailbox 的固定容量与轮询策略。"""
 
     profile_id: str
     descriptor_count: int
@@ -29,7 +29,7 @@ class RpcChannelProfile:
         """校验 profile 内部容量关系。"""
 
         if not self.profile_id.strip():
-            raise ValueError("RPC profile_id 不能为空")
+            raise ValueError("Mailbox profile_id 不能为空")
         integer_fields = (
             self.descriptor_count,
             self.inline_request_capacity_bytes,
@@ -41,7 +41,7 @@ class RpcChannelProfile:
             self.max_response_bytes,
         )
         if min(integer_fields) <= 0:
-            raise ValueError("RPC profile 容量必须大于 0")
+            raise ValueError("Mailbox profile 容量必须大于 0")
         if self.max_overflow_pages_per_response > self.overflow_page_count:
             raise ValueError("单响应页数不能超过总页数")
         if (
@@ -57,7 +57,7 @@ class RpcChannelProfile:
         if not 0 <= self.compression_threshold_bytes <= self.max_response_bytes:
             raise ValueError("compression threshold 超出响应范围")
         if self.poll_interval_seconds <= 0:
-            raise ValueError("RPC poll interval 必须大于 0")
+            raise ValueError("Mailbox poll interval 必须大于 0")
 
     @property
     def overflow_capacity_bytes(self) -> int:
@@ -98,14 +98,14 @@ class EventRingChannelProfile:
 # Trigger 正式输出观测最大 33,678 B，64 KiB inline 保留接近 2 倍余量。
 # 公开正文继续支持 32 MiB；transport 额外保留 64 KiB 给版本化
 # envelope，避免迁移后边界值因 schema/correlation 字段被误拒绝。
-RPC_PUBLIC_RESPONSE_CAPACITY_BYTES = 32 * MIB
-RPC_ENVELOPE_RESERVE_BYTES = 64 * KIB
-RPC_MAX_WIRE_RESPONSE_BYTES = (
-    RPC_PUBLIC_RESPONSE_CAPACITY_BYTES + RPC_ENVELOPE_RESERVE_BYTES
+MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES = 32 * MIB
+MAILBOX_ENVELOPE_RESERVE_BYTES = 64 * KIB
+MAILBOX_MAX_WIRE_RESPONSE_BYTES = (
+    MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES + MAILBOX_ENVELOPE_RESERVE_BYTES
 )
 
-WORKFLOW_TRIGGER_RPC_PROFILE_V1 = RpcChannelProfile(
-    profile_id="workflow-trigger-rpc.v1",
+WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1 = MailboxChannelProfile(
+    profile_id="workflow-trigger-mailbox.v1",
     descriptor_count=128,
     inline_request_capacity_bytes=64 * KIB,
     inline_response_capacity_bytes=64 * KIB,
@@ -113,14 +113,14 @@ WORKFLOW_TRIGGER_RPC_PROFILE_V1 = RpcChannelProfile(
     overflow_page_count=512,
     max_overflow_pages_per_response=129,
     max_request_bytes=64 * KIB,
-    max_response_bytes=RPC_MAX_WIRE_RESPONSE_BYTES,
+    max_response_bytes=MAILBOX_MAX_WIRE_RESPONSE_BYTES,
     compression_threshold_bytes=64 * KIB,
     poll_interval_seconds=0.001,
 )
 
 # 正式五类 normal corpus 最大约 186 KiB；dense segmentation 明确进入 page-chain。
-INFERENCE_RPC_PROFILE_V1 = RpcChannelProfile(
-    profile_id="inference-rpc.v1",
+INFERENCE_MAILBOX_PROFILE_V1 = MailboxChannelProfile(
+    profile_id="inference-mailbox.v1",
     descriptor_count=128,
     inline_request_capacity_bytes=64 * KIB,
     inline_response_capacity_bytes=256 * KIB,
@@ -128,7 +128,7 @@ INFERENCE_RPC_PROFILE_V1 = RpcChannelProfile(
     overflow_page_count=512,
     max_overflow_pages_per_response=129,
     max_request_bytes=64 * KIB,
-    max_response_bytes=RPC_MAX_WIRE_RESPONSE_BYTES,
+    max_response_bytes=MAILBOX_MAX_WIRE_RESPONSE_BYTES,
     compression_threshold_bytes=256 * KIB,
     poll_interval_seconds=0.001,
 )
@@ -146,11 +146,11 @@ TRAINING_TELEMETRY_EVENT_PROFILE_V1 = EventRingChannelProfile(
 
 __all__ = [
     "EventRingChannelProfile",
-    "INFERENCE_RPC_PROFILE_V1",
-    "RPC_ENVELOPE_RESERVE_BYTES",
-    "RPC_MAX_WIRE_RESPONSE_BYTES",
-    "RPC_PUBLIC_RESPONSE_CAPACITY_BYTES",
-    "RpcChannelProfile",
+    "INFERENCE_MAILBOX_PROFILE_V1",
+    "MAILBOX_ENVELOPE_RESERVE_BYTES",
+    "MAILBOX_MAX_WIRE_RESPONSE_BYTES",
+    "MAILBOX_PUBLIC_RESPONSE_CAPACITY_BYTES",
+    "MailboxChannelProfile",
     "TRAINING_TELEMETRY_EVENT_PROFILE_V1",
-    "WORKFLOW_TRIGGER_RPC_PROFILE_V1",
+    "WORKFLOW_TRIGGER_MAILBOX_PROFILE_V1",
 ]

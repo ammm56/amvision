@@ -368,7 +368,7 @@ def _build_local_message_summary(
     request: Request,
     settings: BackendServiceSettings,
 ) -> dict[str, object]:
-    """汇总本进程拥有的 Trigger RPC 与 Training EventRing 健康状态。"""
+    """汇总本进程拥有的 Trigger Mailbox 与 Training EventRing 健康状态。"""
 
     trigger_supervisor = getattr(
         request.app.state,
@@ -440,9 +440,9 @@ def _build_local_message_summary(
 
     return {
         "buffers_root": str(_resolve_path(settings.local_memory.root_dir)),
-        "workflow_trigger_rpc": trigger_summary,
+        "workflow_trigger_mailbox": trigger_summary,
         "training_telemetry_event": telemetry_summary,
-        "inference_rpc": {
+        "inference_mailbox": {
             "enabled": settings.inference_daemon.mmap_mailbox.enabled,
             "health_source": "inference_daemon.mailbox",
         },

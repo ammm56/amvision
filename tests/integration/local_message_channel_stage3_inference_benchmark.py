@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.contracts.ipc.local_message_profiles import (  # noqa: E402
-    INFERENCE_RPC_PROFILE_V1,
+    INFERENCE_MAILBOX_PROFILE_V1,
 )
 from tests.integration.local_message_channel_stage0_benchmark import (  # noqa: E402
     _deterministic_text,
@@ -102,8 +102,8 @@ def run(settings: BenchmarkSettings) -> dict[str, object]:
     result = {
         "format_id": "amvision.local-message-channel-stage3-inference-benchmark.v1",
         "settings": asdict(settings),
-        "transport": "local-message-inference-rpc.v1",
-        "profile_id": INFERENCE_RPC_PROFILE_V1.profile_id,
+        "transport": "local-message-inference-mailbox.v1",
+        "profile_id": INFERENCE_MAILBOX_PROFILE_V1.profile_id,
         "response_size_class": "1-kib",
         "concurrency": 1,
         "summary": {

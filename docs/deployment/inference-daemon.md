@@ -37,7 +37,7 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 
 `start`、`stop`、`warmup`、`reset` 和恢复意图使用本地持久化控制队列。`ping`、`status`、`health` 是无副作用读操作，与 `infer` 一样使用 mmap v1，不创建临时响应队列。
 
-`infer` 不使用持久化文件队列。backend-service 和 inference daemon 通过独立的 LocalMessage RPC Channel 交换 JSON 控制信息和结构化推理结果；图片主体不进入 Channel：
+`infer` 不使用持久化文件队列。backend-service 和 inference daemon 通过独立的 LocalMessage Mailbox Channel 交换 JSON 控制信息和结构化推理结果；图片主体不进入 Channel：
 
 - `BufferRef` / `FrameRef` 只传 path、offset、size、shape、dtype、layout、pixel format、broker epoch 和 generation。
 - deployment worker 只读映射 LocalBufferBroker 已配置 pool 的对应区间。raw BGR24 直接返回 `memoryview`，由统一 raw-aware loader 构造 NumPy view。
@@ -46,11 +46,11 @@ backend-service 不可达不会改变 daemon 中已运行模型进程的期望�
 - mmap 已完成时，本次临时输入和结果 lease 立即释放；timeout、daemon 重启等传输状态不确定时不立即复用槽位，而是保留到有界 TTL 后由 Broker 回收。daemon 拒绝写入剩余有效期不足的结果 lease。
 - 热路径禁止 inline image bytes、base64、PNG 临时编码和 `runtime/inputs/inference-control/` 临时图片。
 
-Inference RPC 复用项目级 LocalMessage common/RpcMailbox engine，覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon owner epoch、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的 descriptor 由 daemon 回收。
+Inference Mailbox 复用项目级 LocalMessage common/Mailbox engine，覆盖 Windows、Ubuntu x64、Ubuntu ARM64 和 macOS ARM。不使用 TCP/HTTP、Windows named pipe、Unix domain socket 或平台专用系统调用作为核心推理通道。请求和响应带 daemon owner epoch、64 位 `generation`、64 位 `owner_token`、monotonic deadline 和 CRC32；超时或调用进程崩溃后的 descriptor 由 daemon 回收。
 
 描述符使用两阶段发布：先写完 body 和 header，最后单独发布 `REQUEST` 或 `RESPONSE`。超过 inline 容量的结构化结果进入固定 overflow page chain；连续页不足时允许非连续链。请求发布、`REQUEST -> PROCESSING`、取消、`PROCESSING -> RESPONSE` 和 ACK 使用同一 descriptor guard；daemon 根据 allocator 记录在 ACK、取消、超时或重启时统一回收。完整布局、压缩、CRC、所有权和异常恢复见 [Inference mailbox v1](../architecture/platform/inference-mailbox-v1.md)。
 
-### Inference RPC 配置
+### Inference Mailbox 配置
 
 `config/backend-service.json` 中的配置如下：
 
@@ -65,9 +65,9 @@ Inference RPC 复用项目级 LocalMessage common/RpcMailbox engine，覆盖 Win
 }
 ```
 
-- `mmap_mailbox.enabled` 只控制 Inference RPC Channel 是否启用。
+- `mmap_mailbox.enabled` 只控制 Inference Mailbox Channel 是否启用。
 - `max_concurrent_inference_requests` 是业务 handler admission，默认 16。控制队列另用 `control_max_concurrent_requests`，两者互不混用。
-- descriptor、inline、page、压缩阈值和 poll 几何由 `inference-rpc.v1` profile 固定，不向普通配置暴露。当前 profile 为 128 descriptors、64 KiB request inline、256 KiB response inline、512 × 256 KiB pages、单响应最多 128 pages、32 MiB response 上限和 1 ms poll。
+- descriptor、inline、page、压缩阈值和 poll 几何由 `inference-mailbox.v1` profile 固定，不向普通配置暴露。当前 profile 为 128 descriptors、64 KiB request inline、256 KiB response inline、512 × 256 KiB pages、单响应最多 128 pages、32 MiB response 上限和 1 ms poll。
 - 配置中出现已删除的 transport 几何字段会被拒绝，不保留旧配置双读。
 
 detection、classification、segmentation、pose、OBB 的结构化结果全部走同一 mailbox。常见小结果使用 descriptor 内联响应区；较大的 segmentation polygon/RLE 等结果使用固定页池。预览图、绘制结果或调试图片必须使用 LocalBuffer 或显式持久化保存位置，不得放入页池。

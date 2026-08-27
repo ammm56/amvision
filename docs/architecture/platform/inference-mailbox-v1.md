@@ -1,8 +1,8 @@
-# Inference LocalMessage RPC v1
+# Inference LocalMessage Mailbox v1
 
 ## 目标与边界
 
-Inference RPC Channel 是 backend-service 与独立 inference daemon 之间的同机低延迟结构化数据面。阶段 3 已把原独立 mmap 实现原子迁移到 [ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 定义的通用 `RpcMailboxChannel.v1` engine；不存在旧布局双读或自动回退。
+Inference Mailbox Channel 是 backend-service 与独立 inference daemon 之间的同机低延迟结构化数据面。阶段 3 已把原独立 mmap 实现原子迁移到 [ADR-0009](../../decisions/ADR-0009-local-message-channel.md) 定义的通用 `MailboxChannel.v1` engine；不存在旧布局双读或自动回退。
 
 该 Channel 承载：
 
@@ -15,7 +15,7 @@ Inference RPC Channel 是 backend-service 与独立 inference daemon 之间的�
 Inference 拥有独立文件、daemon owner、epoch、descriptor/page 容量和故障边界，不与 Workflow Trigger 或 Training EventRing 共用 mailbox、page pool 或 allocator lock。正式路径为：
 
 ```text
-data/buffers/local-message/inference-daemon-main.rpc.mmap
+data/buffers/local-message/inference/mailbox.mmap
 ```
 
 ## 应用契约与分层
@@ -33,7 +33,7 @@ inference-daemon.response.v1
 
 ## 冻结 profile
 
-普通部署配置只保留 `inference_daemon.mmap_mailbox.enabled`。传输几何由代码中的 `inference-rpc.v1` profile 固定并写入 header：
+普通部署配置只保留 `inference_daemon.mmap_mailbox.enabled`。传输几何由代码中的 `inference-mailbox.v1` profile 固定并写入 header：
 
 | 项目 | 固定值 |
 | --- | ---: |
@@ -55,7 +55,7 @@ inference-daemon.response.v1
 
 ## 状态、发布和容量
 
-通用 RPC 状态机为：
+通用 Mailbox 状态机为：
 
 ```text
 FREE -> WRITING_REQUEST -> REQUEST -> PROCESSING -> RESPONSE -> FREE
@@ -82,12 +82,12 @@ page pool 满载或单响应 page 数超限时发布稳定 capacity error。hand
 ```text
 HTTP / Workflow / Trigger image
   -> LocalBuffer BufferRef / FrameRef
-  -> Inference RPC 只传引用和结构化参数
+  -> Inference Mailbox 只传引用和结构化参数
   -> deployment worker 读取或写入 LocalBuffer
   -> 调用方继续消费引用
 ```
 
-同步 HTTP 明确要求 Base64 时，只能在最终 HTTP 响应边界读取 LocalBuffer 并编码。Inference RPC 不生成或传输 `input_image_bytes_base64` 或 `preview_image_bytes_base64`。
+同步 HTTP 明确要求 Base64 时，只能在最终 HTTP 响应边界读取 LocalBuffer 并编码。Inference Mailbox 不生成或传输 `input_image_bytes_base64` 或 `preview_image_bytes_base64`。
 
 ## 健康指标
 

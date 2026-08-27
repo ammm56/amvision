@@ -20,7 +20,7 @@
         "flags": [84, 4]
       }
     },
-    "rpc_profile_header": {
+    "mailbox_profile_header": {
       "size": 256,
       "fields": {
         "descriptor_count": [0, 4],
@@ -42,7 +42,7 @@
         "profile_id": [80, 64]
       }
     },
-    "rpc_descriptor_header": {
+    "mailbox_descriptor_header": {
       "size": 256,
       "fields": {
         "state": [0, 4],
@@ -64,7 +64,7 @@
         "published_ns": [96, 8]
       }
     },
-    "rpc_page_header": {
+    "mailbox_page_header": {
       "size": 64,
       "fields": {
         "state": [0, 4],

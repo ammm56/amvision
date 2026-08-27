@@ -82,7 +82,7 @@ from backend.service.application.runtime.deployment.inference_control import (
     NoOpAsyncInferenceGatewayRegistry,
     QueueBackedInferenceControlClient,
 )
-from backend.service.infrastructure.ipc.inference_rpc import InferenceLocalMmapClient
+from backend.service.infrastructure.ipc.inference_mailbox import InferenceLocalMmapClient
 from backend.service.application.runtime.deployment.runtime_factory import (
     build_task_type_deployment_runtimes,
 )
@@ -138,7 +138,7 @@ from backend.service.infrastructure.db.session import SessionFactory
 from backend.service.infrastructure.ipc.training_telemetry import (
     TrainingTelemetryMmapReceiver,
 )
-from backend.service.infrastructure.ipc.workflow_trigger_rpc import (
+from backend.service.infrastructure.ipc.workflow_trigger_mailbox import (
     WorkflowTriggerMailboxServer,
 )
 from backend.service.infrastructure.integrations.directory import (

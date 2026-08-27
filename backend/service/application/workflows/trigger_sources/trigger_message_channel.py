@@ -1,4 +1,4 @@
-"""Workflow Trigger 在 LocalMessage RPC 上使用的版本化 envelope。"""
+"""Workflow Trigger 在 LocalMessage Mailbox 上使用的版本化 envelope。"""
 
 from __future__ import annotations
 

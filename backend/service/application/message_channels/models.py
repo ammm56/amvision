@@ -17,7 +17,7 @@ class EventPublishResult(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class RpcRequestContext:
+class MailboxRequestContext:
     """Server 已 claim 的请求及其协作式取消观察器。"""
 
     request_id: UUID
