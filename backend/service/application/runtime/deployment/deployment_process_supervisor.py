@@ -714,8 +714,18 @@ class DeploymentProcessSupervisor:
         config: DeploymentProcessConfig,
         request: PredictionRequest,
         preview_output_lease: BufferLease | None = None,
+        preview_output_object_key: str | None = None,
     ) -> DeploymentProcessExecution:
-        """通过 deployment 子进程执行推理，图片只经 LocalBuffer 跨进程。"""
+        """通过 deployment 子进程执行推理。
+
+        同步链路使用主 LocalBuffer；持久异步链路传递 ObjectStore key，结果图
+        由 worker 直接写入请求专属位置。两种输出承载不能同时出现。
+        """
+
+        if preview_output_lease is not None and preview_output_object_key is not None:
+            raise InvalidRequestError(
+                "结果图片不能同时使用 LocalBuffer lease 和 ObjectStore key"
+            )
 
         state = self._ensure_state(config)
         self._require_running_process(state)
@@ -724,9 +734,11 @@ class DeploymentProcessSupervisor:
             request=request,
             owner_id=f"deployment-request-{request_id}",
         )
-        managed_preview_lease = preview_output_lease is None
+        managed_preview_lease = (
+            preview_output_lease is None and preview_output_object_key is None
+        )
         try:
-            if preview_output_lease is None:
+            if preview_output_lease is None and preview_output_object_key is None:
                 preview_output_lease = self._allocate_preview_output(
                     request=request,
                     owner_id=f"deployment-preview-{request_id}",
@@ -747,6 +759,10 @@ class DeploymentProcessSupervisor:
             if preview_output_lease is not None:
                 request_payload["preview_output_lease"] = (
                     preview_output_lease.model_dump(mode="json")
+                )
+            if preview_output_object_key is not None:
+                request_payload["preview_output_object_key"] = (
+                    preview_output_object_key
                 )
             request_started = True
             payload = self._send_request(
@@ -770,6 +786,11 @@ class DeploymentProcessSupervisor:
                     preview_transfer=preview_transfer,
                 )
                 preview_output_lease = None
+            elif preview_output_object_key is not None:
+                self._validate_object_store_preview_output(
+                    expected_object_key=preview_output_object_key,
+                    preview_transfer=preview_transfer,
+                )
             instance_id = _require_response_str(payload, "instance_id")
         finally:
             if not request_started or request_completed:
@@ -789,18 +810,23 @@ class DeploymentProcessSupervisor:
         request: PredictionRequest,
         owner_id: str,
     ) -> tuple[PredictionRequest, str | None]:
-        """把 embedded owner 收到的图片写入 LocalBuffer；daemon 只接受既有引用。"""
+        """按同步或异步边界准备 deployment worker 输入。"""
 
         image_payload = getattr(request, "input_image_payload", None)
         if isinstance(image_payload, dict):
             normalized_payload = require_image_payload(image_payload)
-            if normalized_payload.get("transport_kind") in {
-                IMAGE_TRANSPORT_BUFFER,
-                IMAGE_TRANSPORT_FRAME,
-            }:
-                return request, None
         else:
             normalized_payload = {}
+        if self.runtime_mode == "async":
+            return self._prepare_async_object_store_input(
+                request=request,
+                normalized_payload=normalized_payload,
+            )
+        if normalized_payload.get("transport_kind") in {
+            IMAGE_TRANSPORT_BUFFER,
+            IMAGE_TRANSPORT_FRAME,
+        }:
+            return request, None
         local_buffer_io = self.local_buffer_io
         if local_buffer_io is None:
             raise ServiceConfigurationError(
@@ -874,6 +900,48 @@ class DeploymentProcessSupervisor:
             write_result.lease.lease_id,
         )
 
+    def _prepare_async_object_store_input(
+        self,
+        *,
+        request: PredictionRequest,
+        normalized_payload: dict[str, object],
+    ) -> tuple[PredictionRequest, None]:
+        """冻结异步输入为 ObjectStore key，不在父进程复制图片。"""
+
+        if getattr(request, "input_image_bytes", None) is not None:
+            raise InvalidRequestError(
+                "持久异步 deployment 输入必须先保存为 ObjectStore key"
+            )
+        object_key: str | None = None
+        if normalized_payload:
+            if normalized_payload.get("transport_kind") != IMAGE_TRANSPORT_STORAGE:
+                raise InvalidRequestError(
+                    "持久异步 deployment 不接受短期 LocalBuffer 或本机路径引用"
+                )
+            candidate = normalized_payload.get("object_key")
+            object_key = candidate.strip() if isinstance(candidate, str) else None
+        if object_key is None:
+            candidate = getattr(request, "input_uri", None)
+            object_key = candidate.strip() if isinstance(candidate, str) else None
+        if not object_key:
+            raise InvalidRequestError("持久异步 deployment 缺少 ObjectStore key")
+        if self.dataset_storage is None:
+            raise ServiceConfigurationError("deployment 缺少 ObjectStore 读取能力")
+        if not self.dataset_storage.resolve(object_key).is_file():
+            raise InvalidRequestError(
+                "deployment 推理图片不存在",
+                details={"object_key": object_key},
+            )
+        return (
+            replace_prediction_request_inputs(
+                request=request,
+                input_uri=object_key,
+                input_image_bytes=None,
+                input_image_payload=None,
+            ),
+            None,
+        )
+
     def _allocate_preview_output(
         self,
         *,
@@ -942,6 +1010,31 @@ class DeploymentProcessSupervisor:
             execution_result,
             preview_image_bytes=preview_image_bytes,
         )
+
+    def _validate_object_store_preview_output(
+        self,
+        *,
+        expected_object_key: str,
+        preview_transfer: dict[str, object] | None,
+    ) -> None:
+        """校验 worker 已原子发布请求专属的异步结果图片。"""
+
+        if preview_transfer is None:
+            raise ServiceConfigurationError("异步结果图片缺少 ObjectStore 传输状态")
+        object_key = preview_transfer.get("object_key")
+        size = preview_transfer.get("size")
+        media_type = preview_transfer.get("media_type")
+        if object_key != expected_object_key:
+            raise ServiceConfigurationError("异步结果图片 ObjectStore key 不一致")
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise ServiceConfigurationError("异步结果图片长度不合法")
+        if not isinstance(media_type, str) or not media_type.strip():
+            raise ServiceConfigurationError("异步结果图片媒体类型缺失")
+        if self.dataset_storage is None:
+            raise ServiceConfigurationError("deployment 缺少 ObjectStore 读取能力")
+        output_path = self.dataset_storage.resolve(expected_object_key)
+        if not output_path.is_file() or output_path.stat().st_size != size:
+            raise ServiceConfigurationError("异步结果图片没有完整写入 ObjectStore")
 
     def _release_local_buffer(
         self,

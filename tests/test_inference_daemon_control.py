@@ -744,7 +744,7 @@ def test_direct_mmap_reader_reads_only_configured_arena_identity(tmp_path: Path)
         with pytest.raises(InvalidRequestError, match="arena identity"):
             reader.read_buffer_ref(
                 result.buffer_ref.model_copy(
-                    update={"arena_id": "inference-daemon-private"}
+                    update={"arena_id": "unexpected-arena"}
                 )
             )
         with pytest.raises(InvalidRequestError, match="identity"):

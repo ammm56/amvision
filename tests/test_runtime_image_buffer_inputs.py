@@ -10,19 +10,8 @@ import cv2
 import numpy as np
 import pytest
 
-from backend.contracts.buffers import BufferLease, BufferRef
-from backend.service.application.local_buffers import (
-    DirectMmapLocalBufferReader,
-    DirectMmapLocalBufferWriter,
-    LocalBufferBrokerSettings,
-)
+from backend.contracts.buffers import BufferRef
 from backend.service.application.errors import InvalidRequestError
-from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import (
-    LocalBufferArenaPool,
-)
-from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
-    MmapBufferArenaConfig,
-)
 from backend.nodes.runtime_support import (
     ExecutionImageRegistry,
     build_memory_image_payload,
@@ -31,7 +20,6 @@ from backend.nodes.runtime_support import (
 )
 from backend.service.application.runtime.deployment.deployment_process_worker import (
     _LocalBufferBrokerRuntimeHealth,
-    _RoutedLocalBufferAccess,
     _build_prediction_request,
 )
 from backend.service.application.runtime.tasks.task_prediction_runtime import (
@@ -356,99 +344,6 @@ def test_prediction_ipc_rejects_removed_base64_image_fields() -> None:
         )
 
 
-def test_deployment_worker_routes_backend_and_daemon_local_buffers(
-    tmp_path: Path,
-) -> None:
-    """验证 worker 按 arena id 路由主 Broker 与 daemon 私有 Broker。"""
-
-    settings = LocalBufferBrokerSettings(
-        arena_size_bytes=16 * 1024 * 1024,
-        min_block_size_bytes=1024 * 1024,
-        max_allocation_bytes=8 * 1024 * 1024,
-        reader_guard_slots=4,
-    )
-    pool = LocalBufferArenaPool(
-        MmapBufferArenaConfig(
-            root_dir=tmp_path / "backend-buffers",
-            arena_id=settings.arena_id,
-            arena_size_bytes=settings.arena_size_bytes,
-            min_block_size_bytes=settings.min_block_size_bytes,
-            max_allocation_bytes=settings.max_allocation_bytes,
-            reader_guard_slots=settings.reader_guard_slots,
-        )
-    )
-    active_lease = pool.allocate(
-        content_length=7,
-        owner_kind="workflow-runtime",
-        owner_id="run-1",
-    )
-    pool.write_lease_bytes(lease=active_lease, content=memoryview(b"backend"))
-    backend_result = pool.commit_lease(
-        lease=active_lease,
-        media_type="image/png",
-    )
-    writing_lease = pool.allocate(
-        content_length=7,
-        owner_kind="deployment-preview",
-        owner_id="request-1",
-    )
-    broker = _PrivateBufferBroker()
-    access = _RoutedLocalBufferAccess(
-        broker_client=broker,
-        direct_reader=DirectMmapLocalBufferReader(
-            settings, root_dir=tmp_path / "backend-buffers"
-        ),
-        direct_writer=DirectMmapLocalBufferWriter(
-            settings, root_dir=tmp_path / "backend-buffers"
-        ),
-    )
-    daemon_ref = backend_result.buffer_ref.model_copy(
-        update={
-            "buffer_id": "daemon-buffer",
-            "lease_id": "daemon-lease",
-            "arena_id": "inference-daemon-private",
-            "broker_epoch": "2" * 32,
-        }
-    )
-    daemon_lease = writing_lease.model_copy(
-        update={
-            "lease_id": "daemon-lease",
-            "buffer_id": "daemon-buffer",
-            "arena_id": "inference-daemon-private",
-            "broker_epoch": "2" * 32,
-        }
-    )
-
-    try:
-        assert bytes(access.read_buffer_ref(backend_result.buffer_ref)) == b"backend"
-        assert access.read_buffer_ref(daemon_ref) == b"daemon"
-        access.write_lease_bytes(lease=writing_lease, content=b"updated")
-        access.write_lease_bytes(lease=daemon_lease, content=b"preview")
-        with pytest.raises(InvalidRequestError):
-            access.write_lease_bytes(
-                lease=writing_lease.model_copy(
-                    update={
-                        "offset": (
-                            writing_lease.offset
-                            + writing_lease.allocation_capacity_bytes
-                        )
-                    }
-                ),
-                content=b"outside",
-            )
-
-        committed = pool.commit_lease(
-            lease=writing_lease,
-            media_type="image/png",
-        )
-        assert pool.read_buffer_ref(committed.buffer_ref) == b"updated"
-        assert broker.read_count == 1
-        assert broker.writes == [("daemon-lease", b"preview")]
-    finally:
-        access.close()
-        pool.close()
-
-
 def _buffer_ref_payload(
     *,
     content_length: int,
@@ -503,47 +398,6 @@ class _BorrowedViewReader:
         """提供运行时上下文要求的 FrameRef 读取接口。"""
 
         return bytes(self.content)
-
-
-class _PrivateBufferBroker:
-    """模拟 daemon 私有 LocalBufferBroker client。"""
-
-    def __init__(self) -> None:
-        """初始化调用记录。"""
-
-        self.channel = SimpleNamespace(channel_id="daemon-private-channel")
-        self.read_count = 0
-        self.writes: list[tuple[str, bytes]] = []
-
-    def read_buffer_ref(self, _buffer_ref: BufferRef) -> bytes:
-        """返回私有池图片。"""
-
-        self.read_count += 1
-        return b"daemon"
-
-    def read_frame_ref(self, _frame_ref) -> bytes:
-        """返回私有池帧。"""
-
-        self.read_count += 1
-        return b"daemon-frame"
-
-    def write_lease_bytes(
-        self,
-        *,
-        lease: BufferLease,
-        content: bytes | bytearray | memoryview,
-    ) -> None:
-        """记录私有池结果写入。"""
-
-        self.writes.append((lease.lease_id, bytes(content)))
-
-    def get_health_summary(self) -> dict[str, object]:
-        """返回测试健康摘要。"""
-
-        return {"connected": True, "channel_id": self.channel.channel_id}
-
-    def close(self) -> None:
-        """关闭测试 client。"""
 
 
 class _DirectReader:

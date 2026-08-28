@@ -9,7 +9,6 @@
 - deployment 期望状态恢复协调器
 - 本地持久化控制队列 dispatcher
 - 跨平台 mmap inference mailbox
-- 仅供持久异步任务暂存图片的 daemon 私有 LocalBufferBroker
 
 `runtime_owner=embedded` 只供不启动独立进程的隔离单元测试。完整开发环境和正式发布均使用 `runtime_owner=daemon`。
 
@@ -83,11 +82,9 @@ mailbox 只保存控制信息和结构化结果，LocalBufferBroker 固定总容
 
 backend 主 arena 默认总容量 2 GiB、最小 block 1 MiB、单次连续分配上限 1 GiB。Broker 根据精确 `content_length` 动态选择最小可容纳的 1/2/4/.../1024 MiB buddy order，因此不同尺寸图片不会预占固定分辨率槽位。是否能写入由当前总空闲容量、最大连续块和单次分配上限共同决定，与 mailbox 的 512 KiB 无关；满载或碎片不足立即返回分类错误，不排队或切换传输协议。
 
-同步 Workflow、OpenCV 和 deployment worker 共同引用 backend 主 arena 中的同一个 BufferRef，不建立同步“推理专用图片池”，也不在推理前复制图片。持久异步任务是不同边界：短期 BufferRef 不能写入可跨重启队列，因此队列保存 ObjectStore 引用；daemon 实际领取任务后，才把图片写入 `inference-daemon-private` arena，模型 worker 完成后立即释放。worker 的路由只接受 backend 主 arena 和 daemon 私有 arena 这两组固定配置路径，不接受任意磁盘路径。
+同步 Workflow、Trigger、OpenCV 和 deployment worker 共同引用 backend 主 arena 中的同一个 BufferRef，不建立“推理专用图片池”，也不在推理前复制图片。持久异步任务使用不同的生命周期边界：短期 BufferRef 不写入可跨重启队列，队列只保存 ObjectStore key；deployment worker 领取任务后直接通过自身已装配的 `LocalDatasetStorage` 读取输入文件，不再复制到第二个 LocalBuffer arena。
 
-daemon 私有 broker 不是第三条业务传输协议，也不承载同步调用。它只解决异步队列“输入必须可恢复”和模型 worker“图片必须走 LocalBuffer”之间的生命周期转换。同步调用没有这次复制；异步调用只在真正开始执行时复制一次 ObjectStore 图片，且不会把图片 bytes 放进 mailbox 或进程 Queue。
-
-异步结果图在模型进程与 daemon 之间使用 LocalBuffer。必须跨持久 gateway 响应队列时，daemon 把结果图写入本次请求的临时 ObjectStore 目录，队列只返回 object key；worker 读取后删除目录，超时残留由 retention cleanup 回收。响应队列不携带图片 bytes 或 Base64。
+异步结果图由 deployment worker 直接原子写入本次请求专属的临时 ObjectStore key，gateway 响应队列只返回该 key。调用端读取后删除请求目录，超时残留由 retention cleanup 回收。响应队列和 deployment 进程 Queue 都不携带图片 bytes 或 Base64。以后只有实测证明异步 ObjectStore 成为瓶颈时，才评估让 daemon 连接唯一主 Broker；不能创建第二个固定容量 arena。
 
 每个变更控制请求使用独立响应队列。daemon 定期按 `queue.response_queue_retention_seconds` 清理客户端超时后遗留的 `inference-control-response-*` 目录。控制请求必须携带明确 `expires_at`；缺少 deadline 的消息直接丢弃。请求队列使用 lease 恢复，瞬时文件系统错误只记录日志并继续消费，不会终止 dispatcher。只读状态不会创建这些目录。
 

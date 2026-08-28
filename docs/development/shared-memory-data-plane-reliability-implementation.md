@@ -214,7 +214,7 @@ data/buffers/local-buffer/access.guard
 data/buffers/local-buffer/owner.lock
 ```
 
-共享内存根下的 `local-buffer/`、`local-message/` 和 `inference-daemon-private/` 保持独立职责。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。ADR-0009 已把 Workflow Trigger、Inference 和 Training Telemetry 的结构化消息迁入共享 engine，但三类 Channel 仍使用独立文件、owner、epoch、容量与故障边界；daemon private 图片 arena 继续独立。
+共享内存根下只保留 `local-buffer/` 和 `local-message/` 两类数据面。`root_dir` 不能改成 `./data/buffers/local-buffer`，否则其他数据面路径派生会漂移。ADR-0009 已把 Workflow Trigger、Inference 和 Training Telemetry 的结构化消息迁入共享 engine，但三类 Channel 仍使用独立文件、owner、epoch、容量与故障边界。持久异步 deployment 通过 ObjectStore key 读取输入并写回请求专属结果，不属于共享内存数据面。
 
 backend-service、Broker、Workflow/deployment worker、独立运行时和仓库内 .NET SDK 正式进程全部要求 64-bit；.NET SDK 固定使用 x64 目标。启动 preflight 必须校验进程位数、整数寻址、arena/metadata 文件长度、buffers root 可写空间和 layout fingerprint，不提供 32-bit 容量协商或降级。2 GiB 是固定逻辑 arena/file 容量，不表示启动时把全部页面常驻锁定到物理 RAM。文件支持 mmap 仍可能被操作系统分页或异步写回，`flush_on_write=false` 只禁止主动同步 flush。默认不预触碰整个 arena，性能门禁必须同时观察首次触页和稳态数据。
 
@@ -244,7 +244,7 @@ descriptor 保存固定二进制字段，包括128-bit opaque owner token，不�
 
 协议原子迁移时删除 locator/allocation 中可由请求选择的 `path`。SDK配置只保留受信 `buffers_root`，从固定 allocator header自动发现arena容量、metadata/guard几何、epoch和fingerprint；worker按服务端registry解析 `arena_id`。旧 `size`、`generation`、`slot_capacity_bytes`、`pool_name` 替换为 `content_length`、`descriptor_generation`、`allocation_capacity_bytes`、`arena_id`。`buffer_id` 若因日志/追踪保留也只是展示字段，不参与权威回收；不写双读或字段别名。
 
-`arena_id` 在一次安装内必须跨 Broker owner 唯一、稳定且不能包含 PID。主 Broker 固定为 `local-buffer-main`，服务配置出现其他主 id 时立即拒绝启动；当前 inference daemon 私有 owner 固定为 `inference-daemon-private`；未来多个私有 owner 使用 `inference-daemon-private-<stable-daemon-id>`。同步 Workflow/Deployment/Trigger 只使用主 arena，异步任务领取后的私有物化才使用 daemon 私有 arena，两个 arena 之间不能因 locator 同名而误映射。
+`arena_id` 固定为 `local-buffer-main`，服务配置出现其他 id 时立即拒绝启动。同步 Workflow、Trigger 和 Inference 只使用该主 arena。异步任务不把短期 BufferRef 写入持久队列：队列保存 ObjectStore key，deployment worker 直接读取输入并把结果图原子写入请求专属 ObjectStore 位置。
 
 这一删除只针对 buffer/frame locator，不改变 storage `image-ref.v1` 对 ObjectStore 相对路径和受控本机绝对文件路径的支持。
 

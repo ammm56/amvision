@@ -20,12 +20,12 @@ from backend.service.settings import BackendServiceSettings
 
 
 def test_backend_service_rejects_private_arena_as_public_main() -> None:
-    """正式 backend 配置不能把 daemon 私有 arena 暴露为主图片数据面。"""
+    """正式配置只允许唯一主图片 arena。"""
 
     with pytest.raises(ValueError, match="必须固定为 local-buffer-main"):
         BackendServiceSettings(
             local_buffer_broker=LocalBufferBrokerSettings(
-                arena_id="inference-daemon-private"
+                arena_id="unexpected-arena"
             )
         )
 
@@ -44,10 +44,10 @@ def test_inference_mailbox_uses_fixed_profile_and_domain_admission_config() -> N
         )
 
 
-def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool(
+def test_inference_daemon_uses_only_backend_main_local_buffer(
     tmp_path: Path,
 ) -> None:
-    """验证 daemon 私有暂存池与 backend 主图片池保持独立且同时装配。"""
+    """验证 daemon 不创建私有 arena，并只直连 backend 主图片池。"""
 
     base_settings = BackendServiceSettings()
     backend_buffer_root = tmp_path / "backend-buffers"
@@ -72,33 +72,27 @@ def test_inference_daemon_uses_private_async_buffer_pool_and_backend_direct_pool
         }
     )
     runtime = build_inference_daemon_runtime(settings)
-    private_broker = runtime.async_local_buffer_broker_supervisor
 
     try:
-        assert private_broker.root_dir == (
-            backend_buffer_root / "inference-daemon-private"
-        )
-        assert private_broker.settings.arena_id == "inference-daemon-private"
+        assert not (backend_buffer_root / "local-buffer").exists()
         for task_runtime in runtime.task_runtimes:
-            for supervisor in (
-                task_runtime.sync_supervisor,
-                task_runtime.async_supervisor,
-            ):
-                assert supervisor.local_buffer_io is private_broker
-                assert supervisor.local_buffer_broker_event_channel_provider is not None
-                assert supervisor.local_buffer_direct_reader_settings is not None
-                assert supervisor.local_buffer_direct_reader_settings[
-                    "buffers_root"
-                ] == str(backend_buffer_root.resolve())
-                assert (
-                    supervisor.local_buffer_direct_reader_settings["arena_id"]
-                    == "local-buffer-main"
-                )
+            sync_supervisor = task_runtime.sync_supervisor
+            assert sync_supervisor.local_buffer_io is None
+            assert sync_supervisor.local_buffer_broker_event_channel_provider is None
+            assert sync_supervisor.local_buffer_direct_reader_settings is not None
+            assert sync_supervisor.local_buffer_direct_reader_settings[
+                "buffers_root"
+            ] == str(backend_buffer_root.resolve())
+            assert (
+                sync_supervisor.local_buffer_direct_reader_settings["arena_id"]
+                == "local-buffer-main"
+            )
 
-        private_broker.start()
-        assert private_broker.get_status()["state"] == "healthy"
+            async_supervisor = task_runtime.async_supervisor
+            assert async_supervisor.local_buffer_io is None
+            assert async_supervisor.local_buffer_broker_event_channel_provider is None
+            assert async_supervisor.local_buffer_direct_reader_settings is None
     finally:
-        private_broker.stop()
         runtime.session_factory.engine.dispose()
 
 
@@ -126,7 +120,6 @@ def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> N
         session_factory=SimpleNamespace(engine=_Engine()),  # type: ignore[arg-type]
         dataset_storage=SimpleNamespace(),  # type: ignore[arg-type]
         queue_backend=SimpleNamespace(),  # type: ignore[arg-type]
-        async_local_buffer_broker_supervisor=_Component("private-buffer"),  # type: ignore[arg-type]
         task_runtimes=(
             SimpleNamespace(
                 async_gateway_registry=_Component("gateway"),
@@ -149,6 +142,5 @@ def test_inference_daemon_stop_reclaims_every_component_after_one_failure() -> N
         "gateway",
         "async-supervisor",
         "sync-supervisor",
-        "private-buffer",
         "engine",
     ]

@@ -227,6 +227,62 @@ def test_deployment_process_supervisor_supports_lifecycle_and_auto_restart(
         buffer_broker.stop()
 
 
+def test_async_deployment_process_uses_object_store_without_local_buffer(
+    tmp_path: Path,
+) -> None:
+    """验证持久异步输入和结果图均由 worker 直接访问 ObjectStore。"""
+
+    runtime_artifact_path = tmp_path / "runtime-artifact.onnx"
+    runtime_artifact_path.write_bytes(b"fake-runtime-artifact")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+    )
+    input_key = "runtime/transfers/async/request/input.bin"
+    output_key = "runtime/transfers/async/request/preview.bin"
+    dataset_storage.write_bytes(input_key, b"image")
+    config = DeploymentProcessConfig(
+        deployment_instance_id="deployment-instance-async-object-store",
+        runtime_target=_build_runtime_target(runtime_artifact_path),
+    )
+    supervisor = DeploymentProcessSupervisor(
+        dataset_storage_root_dir=str(dataset_storage.root_dir),
+        runtime_mode="async",
+        settings=BackendServiceDeploymentProcessSupervisorConfig(
+            auto_restart=False,
+            request_timeout_seconds=30.0,
+            shutdown_timeout_seconds=1.0,
+            operator_thread_count=1,
+        ),
+        dataset_storage=dataset_storage,
+        worker_target=fake_deployment_process_worker,
+    )
+
+    supervisor.start()
+    try:
+        supervisor.start_deployment(config)
+        execution = supervisor.run_inference(
+            config=config,
+            request=DetectionPredictionRequest(
+                input_uri=input_key,
+                score_threshold=0.3,
+                save_result_image=True,
+                extra_options={},
+            ),
+            preview_output_object_key=output_key,
+        )
+
+        assert execution.execution_result.preview_image_bytes is None
+        assert execution.preview_image_transfer == {
+            "object_key": output_key,
+            "size": len(b"preview-jpg"),
+            "media_type": "image/jpeg",
+        }
+        assert dataset_storage.resolve(output_key).read_bytes() == b"preview-jpg"
+        assert not (tmp_path / "buffers").exists()
+    finally:
+        supervisor.stop()
+
+
 def test_deployment_process_supervisor_limits_running_processes_across_supervisors(
     tmp_path: Path,
 ) -> None:

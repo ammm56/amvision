@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.service.application.events import InMemoryServiceEventBus
+from backend.service.application.errors import ServiceConfigurationError
 from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.models.inference.classification_async_inference_gateway import (
     ClassificationAsyncInferenceGatewayDispatcherRegistry,
@@ -51,7 +52,7 @@ def build_task_type_deployment_runtimes(
     dataset_storage: LocalDatasetStorage,
     service_event_bus: InMemoryServiceEventBus,
     session_factory: SessionFactory,
-    local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor,
+    local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor | None,
     queue_backend: LocalFileQueueBackend,
     async_inference_service_id: str,
     settings: BackendServiceSettings,
@@ -84,7 +85,6 @@ def build_task_type_deployment_runtimes(
         queue_backend=queue_backend,
         execution_handler=_build_async_inference_gateway_execution_handler(
             deployment_process_supervisor=async_supervisor,
-            dataset_storage=dataset_storage,
             async_inference_service_id=async_inference_service_id,
         ),
         service_id=async_inference_service_id,
@@ -106,12 +106,13 @@ def _build_deployment_supervisor(
     dataset_storage: LocalDatasetStorage,
     service_event_bus: InMemoryServiceEventBus,
     session_factory: SessionFactory,
-    local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor,
+    local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor | None,
     settings: BackendServiceSettings,
     enable_direct_mmap_reader: bool,
 ) -> DeploymentProcessSupervisor:
     """构建一个进程监督器。"""
 
+    uses_local_buffer = runtime_mode == "sync"
     return DeploymentProcessSupervisor(
         dataset_storage_root_dir=str(dataset_storage.root_dir),
         runtime_mode=runtime_mode,
@@ -121,23 +122,26 @@ def _build_deployment_supervisor(
         dataset_storage=dataset_storage,
         local_buffer_broker_event_channel_provider=(
             local_buffer_broker_supervisor.get_event_channel
+            if uses_local_buffer and local_buffer_broker_supervisor is not None
+            else None
         ),
         local_buffer_direct_reader_settings=(
             {
                 **settings.local_buffer_broker.model_dump(mode="python"),
                 "buffers_root": str(Path(settings.local_memory.root_dir).resolve()),
             }
-            if enable_direct_mmap_reader
+            if uses_local_buffer and enable_direct_mmap_reader
             else None
         ),
-        local_buffer_io=local_buffer_broker_supervisor,
+        local_buffer_io=(
+            local_buffer_broker_supervisor if uses_local_buffer else None
+        ),
     )
 
 
 def _build_async_inference_gateway_execution_handler(
     *,
     deployment_process_supervisor: DeploymentProcessSupervisor,
-    dataset_storage: LocalDatasetStorage,
     async_inference_service_id: str,
 ):
     """构造 async gateway 的 deployment 执行处理器。"""
@@ -150,22 +154,31 @@ def _build_async_inference_gateway_execution_handler(
     ) -> dict[str, object]:
         """通过指定 async supervisor 执行一次推理。"""
 
-        execution_result = deployment_process_supervisor.run_inference(
-            config=process_config,
-            request=request,
-        )
-        preview_image_object_key: str | None = None
-        preview_image_bytes = execution_result.execution_result.preview_image_bytes
-        if preview_image_bytes is not None:
-            preview_image_object_key = build_async_inference_preview_object_key(
+        preview_image_object_key = (
+            build_async_inference_preview_object_key(
                 owner_id=async_inference_service_id,
                 deployment_instance_id=process_config.deployment_instance_id,
                 request_id=request_id,
             )
-            dataset_storage.write_bytes(
-                preview_image_object_key,
-                preview_image_bytes,
+            if bool(getattr(request, "save_result_image", False))
+            else None
+        )
+        execution_result = deployment_process_supervisor.run_inference(
+            config=process_config,
+            request=request,
+            preview_output_object_key=preview_image_object_key,
+        )
+        preview_transfer = execution_result.preview_image_transfer
+        if preview_image_object_key is not None:
+            actual_object_key = (
+                preview_transfer.get("object_key")
+                if isinstance(preview_transfer, dict)
+                else None
             )
+            if actual_object_key != preview_image_object_key:
+                raise ServiceConfigurationError(
+                    "deployment worker 未写入预期的异步结果图片"
+                )
         return serialize_async_inference_execution_result(
             task_type=process_config.runtime_target.task_type,
             result=execution_result,

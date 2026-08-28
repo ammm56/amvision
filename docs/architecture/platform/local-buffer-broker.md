@@ -18,9 +18,7 @@ LocalBuffer 是全项目短期内存图片的统一数据面。HTTP/ZeroMQ/local
 - Python direct reader/writer 和 .NET SDK 只通过受限 locator、guard 和精确 mmap view 访问图片 bytes；
 - backend-service takeover 只在验证旧 owner 后接管，不允许同一 root 出现两个 allocator owner。
 
-backend-service 主图片 arena 与 inference daemon 私有异步暂存 arena 是两个互不重叠的 owner。两者可以使用相同文件格式和分配器，但容量、epoch、owner lock 和 descriptor 表独立；同步调用不复制到私有 arena。
-
-主 arena 由 backend-service、Workflow Runtime、各种节点、同步 Deployment和本机 Trigger共享，按实际在途图片动态占用；不按 Runtime、Deployment、TriggerSource或节点数量静态预留。只读消费者借用 mmap view，产生新像素的节点申请新 extent并在写完后发布不可变引用。零整图复制指消除协议和模块桥接中的可避免副本，不包括解码、颜色转换、裁剪、绘制和模型预处理必需的算法写入。
+唯一主 arena 由 backend-service、Workflow Runtime、各种节点、同步 Deployment 和本机 Trigger 共享，按实际在途图片动态占用；不按 Runtime、Deployment、TriggerSource 或节点数量静态预留。持久异步 deployment 使用 ObjectStore，不创建独立图片 arena。只读消费者借用 mmap view，产生新像素的节点申请新 extent并在写完后发布不可变引用。零整图复制指消除协议和模块桥接中的可避免副本，不包括解码、颜色转换、裁剪、绘制和模型预处理必需的算法写入。
 
 实现位于 `backend/service/application/local_buffers/` 和 `backend/service/infrastructure/local_buffers/`。
 
@@ -46,7 +44,6 @@ data/buffers/
 │  │  ├─ access.guard
 │  │  └─ owner.lock
 │  └─ training-telemetry/   每个训练 Worker 的独立 EventRing
-└─ inference-daemon-private/    daemon 私有异步暂存 arena
 ```
 
 根目录 `.local-buffer-broker.lock` 只保护 Broker companion process 的单实例启动、进程身份记录和 backend-service takeover；`local-buffer/owner.lock` 只保护图片 arena allocator owner。两者职责不同，不能合并为同一个锁，也都不以文件存在表示存活。Inference/Workflow Trigger Mailbox 与 Training EventRing 的 `owner.lock` 只保护各自物理 Channel，不参与图片 allocator 所有权。
@@ -105,7 +102,7 @@ buddy free lists 只保存在 Broker 进程内，启动时从 descriptor 和 gua
 
 locator 不携带可由请求选择的 mmap/metadata/guard路径。SDK从受信 `buffers_root` 派生固定主 arena 文件，再从 allocator header发现真实容量、descriptor/guard几何、epoch和layout fingerprint；worker按服务端 arena registry解析。旧 `size`、`generation`、`slot_capacity_bytes` 和 `pool_name` 不进入新layout，分别使用 `content_length`、`descriptor_generation`、`allocation_capacity_bytes` 和 `arena_id`。展示用 `buffer_id` 不能作为回收凭据。
 
-`arena_id` 在一次安装内跨 Broker owner唯一且稳定：主 Broker 强制使用 `local-buffer-main`，配置为其他值时启动校验直接失败；当前 inference daemon私有 owner使用 `inference-daemon-private`；未来多个私有 owner使用 `inference-daemon-private-<stable-daemon-id>`，不能使用 PID。同步 Workflow/Deployment/Trigger只解析主 arena id。
+`arena_id` 固定为 `local-buffer-main`，配置为其他值时启动校验直接失败。同步 Workflow、Trigger 和 Inference 只解析该主 arena；持久异步 deployment 使用 ObjectStore key，不创建第二个图片 arena。
 
 该规则只约束短期 LocalBuffer locator，不删除 `image-ref.v1` 已有的 ObjectStore 相对路径或受控本机绝对文件路径能力；文件输入与 mmap arena 是两种不同 transport kind。
 

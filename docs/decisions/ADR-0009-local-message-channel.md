@@ -130,7 +130,6 @@ data/buffers/
 │  └─ training-telemetry/
 │     ├─ <worker-session-id>.event.mmap
 │     └─ <worker-session-id>.owner.lock
-└─ inference-daemon-private/
 ```
 
 训练遥测迁移到 `data/buffers/local-message/training-telemetry/`，但仍不属于 LocalBuffer 图片 arena。测试使用 `.tmp/<test>/buffers/` 下的同一布局。

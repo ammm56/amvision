@@ -384,7 +384,7 @@ fault、线程/句柄和关闭清理不差时，才另行更新 ADR 并原子切
 
 - `local_memory.root_dir` 已成为 LocalBuffer 与 LocalMessage 的唯一共享根配置；三个 Channel 的普通配置不再暴露 descriptor、page 或 ring 几何；
 - 旧 Inference、Workflow Trigger 和 Training Telemetry mmap 实现、schema、fixture 与双读路径已经删除；新代码发现旧正式 layout 时会在取得新 owner 前明确拒绝启动；
-- 开发机上确认没有存活 owner 后，旧运行文件已从正式目录移动到 `.tmp/local-message-channel-stage6/legacy-runtime/` 隔离保留，正式目录不再存在旧 Inference、Trigger、Telemetry layout；同时取得 194 个旧 owner/reader/writer guard 后，遗留的 LocalBuffer 固定分辨率池也已隔离到其 `local-buffer-fixed-pools/` 子目录，`data/buffers/` 顶层只保留 `local-buffer/`、`local-message/` 和 `inference-daemon-private/`；
+- 开发机上确认没有存活 owner 后，旧运行文件已从正式目录移动到 `.tmp/local-message-channel-stage6/legacy-runtime/` 隔离保留，正式目录不再存在旧 Inference、Trigger、Telemetry layout；同时取得 194 个旧 owner/reader/writer guard 后，遗留的 LocalBuffer 固定分辨率池也已隔离到其 `local-buffer-fixed-pools/` 子目录；当前 `data/buffers/` 顶层数据面只保留唯一图片 arena `local-buffer/` 和结构化消息目录 `local-message/`；
 - system diagnostics 已按 Channel 分别报告 Workflow Trigger Mailbox、Inference Mailbox 和 Training Event 状态，保留 Queue 的领域链路不会伪装成 LocalMessage；
 - `full-windows-x64-nvidia` 已从当前源码装配到 `.tmp/local-message-channel-stage7/release/`，生成结果包含新 engine/schema 且不包含四个旧实现文件。该独立验证目录的 bundled Python 为 `placeholder-empty`，真实随包 Python 启动仍属于目标发行目录验收；
 - 全仓静态扫描确认，迁移业务模块不直接 import `mmap` 或 LocalMessage layout；application 中保留的 `local_buffers/local_buffer_client.py` 是 ADR 明确排除的连续图片数据面。

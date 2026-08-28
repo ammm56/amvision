@@ -15,8 +15,6 @@ from backend.service.infrastructure.local_buffers.buddy_allocator import (
 _MIB = 1024 * 1024
 _GIB = 1024 * _MIB
 _MAIN_ARENA_ID = "local-buffer-main"
-_PRIVATE_INFERENCE_ARENA_ID = "inference-daemon-private"
-_SUPPORTED_ARENA_IDS = frozenset({_MAIN_ARENA_ID, _PRIVATE_INFERENCE_ARENA_ID})
 
 
 class LocalBufferBrokerSettings(BaseModel):
@@ -67,10 +65,9 @@ class LocalBufferBrokerSettings(BaseModel):
         if struct.calcsize("P") != 8 or sys.maxsize <= 2**32:
             raise ValueError("LocalBufferBroker 只支持 64-bit 进程")
         self.arena_id = self.arena_id.strip()
-        if self.arena_id not in _SUPPORTED_ARENA_IDS:
+        if self.arena_id != _MAIN_ARENA_ID:
             raise ValueError(
-                "LocalBufferBroker 主 arena_id 必须固定为 local-buffer-main；"
-                "内部推理暂存 arena 只能使用 inference-daemon-private"
+                "LocalBufferBroker arena_id 必须固定为 local-buffer-main"
             )
         BuddyArenaGeometry(
             arena_size_bytes=self.arena_size_bytes,

@@ -20,15 +20,15 @@ LocalBuffer 承担图片 bytes 和短期生命周期，不承担图片格式识�
 
 ## 决策
 
-### 1. 每个 Broker owner 使用一个固定容量 arena
+### 1. 全项目使用一个固定容量主 arena
 
-backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小的 arena。inference daemon 私有异步暂存区仍属于独立 Broker owner，可以使用相同文件格式和分配器，但有独立容量；不同 owner 不共享 allocator 状态。
+backend-service 主 LocalBuffer 默认使用一个 2 GiB、启动时固定大小的 arena。同步 Workflow、Trigger 和 Inference 共用该 arena。持久异步 deployment 的队列只保存 ObjectStore key，worker 直接读取输入并把结果图写入请求专属 ObjectStore 位置，不再创建第二个固定容量 arena。
 
 默认几何参数：
 
 | 参数 | 默认值 | 含义 |
 | --- | ---: | --- |
-| `arena_id` | `local-buffer-main` | allocation/引用使用、跨 Broker owner 唯一的稳定 arena 标识 |
+| `arena_id` | `local-buffer-main` | allocation 和引用使用的唯一稳定 arena 标识 |
 | `arena_size_bytes` | 2 GiB | 主图片 arena 总容量 |
 | `min_block_size_bytes` | 1 MiB | buddy allocator 最小块 |
 | `max_allocation_bytes` | 1 GiB | 单次连续分配上限 |
@@ -140,7 +140,6 @@ data/buffers/
 │  │  └─ owner.lock
 │  └─ training-telemetry/
 │     └─ <worker-session-id>.event.mmap
-└─ inference-daemon-private/
 ```
 
 `.local-buffer-broker.lock` 与 `local-buffer/owner.lock` 不能混为一层：前者保护 companion process 启动/接管，后者保护 arena allocator owner。两者都以存活 handle 上的 OS lock 为权威，遗留文件本身不阻塞重启。
@@ -149,7 +148,7 @@ data/buffers/
 
 ADR-0009 阶段 1 已把共享路径所有权提升为中立 `local_memory.root_dir`，并删除 `local_buffer_broker.root_dir`。该变化只移动配置归属，`local-buffer/` 文件布局、LocalBuffer enable、Broker owner、allocator 和生命周期保持独立。
 
-`arena_id` 必须在一次安装内跨 Broker owner 唯一且不能使用 PID 等临时值。主 Broker 固定使用 `local-buffer-main`；当前单一 inference daemon 私有 owner 使用 `inference-daemon-private`；未来存在多个私有 owner 时使用 `inference-daemon-private-<stable-daemon-id>`。公开 locator 只用该 id 查询受信任配置映射，不能根据调用方输入拼接路径。
+`arena_id` 固定使用 `local-buffer-main`。公开 locator 只用该 id 查询受信任配置映射，不能根据调用方输入拼接路径。同步 Workflow、Trigger 和 Inference 共享唯一主 arena；持久异步 deployment 的队列输入与结果图片使用 ObjectStore key，不在 daemon 内创建第二个图片 arena。
 
 ## 未采用方案
 

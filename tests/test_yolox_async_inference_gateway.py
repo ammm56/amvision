@@ -26,6 +26,10 @@ from backend.service.application.runtime.contracts.detection.prediction import (
 )
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
+    DeploymentProcessExecution,
+)
+from backend.service.application.runtime.deployment.runtime_factory import (
+    _build_async_inference_gateway_execution_handler,
 )
 from backend.service.application.runtime.targets.runtime_target import (
     RuntimeTargetSnapshot,
@@ -113,6 +117,78 @@ def test_async_gateway_dispatcher_consumes_owner_deployment_queue(
     assert (
         dispatcher.request_queue_name == "inference-gateway-backend-service-owner-1-1"
     )
+
+
+def test_async_gateway_assigns_request_scoped_object_store_output(
+    tmp_path: Path,
+) -> None:
+    """验证 gateway 把结果 key 下沉给 deployment worker，不在父进程搬运图片。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "files"))
+    )
+    process_config = _build_process_config(dataset_storage=dataset_storage)
+    execution_result = DetectionPredictionExecutionResult(
+        detections=(),
+        latency_ms=1.0,
+        image_width=2,
+        image_height=2,
+        preview_image_bytes=None,
+        runtime_session_info=DetectionRuntimeSessionInfo(
+            backend_name="onnxruntime",
+            model_uri="models/model.onnx",
+            device_name="cpu",
+            input_spec=DetectionRuntimeTensorSpec(
+                name="images", shape=(1, 3, 2, 2), dtype="float32"
+            ),
+            output_spec=DetectionRuntimeTensorSpec(
+                name="detections", shape=(-1, 7), dtype="float32"
+            ),
+        ),
+    )
+
+    class _Supervisor:
+        """记录 gateway 指定输出 key 的测试 supervisor。"""
+
+        def run_inference(self, **kwargs: object) -> DeploymentProcessExecution:
+            """模拟 worker 已直接写入 ObjectStore。"""
+
+            object_key = str(kwargs["preview_output_object_key"])
+            dataset_storage.write_bytes(object_key, b"preview")
+            return DeploymentProcessExecution(
+                deployment_instance_id=process_config.deployment_instance_id,
+                instance_id="deployment-instance-1:instance-0",
+                execution_result=execution_result,
+                preview_image_transfer={
+                    "object_key": object_key,
+                    "size": len(b"preview"),
+                    "media_type": "image/jpeg",
+                },
+            )
+
+    handler = _build_async_inference_gateway_execution_handler(
+        deployment_process_supervisor=_Supervisor(),  # type: ignore[arg-type]
+        async_inference_service_id="backend-service-owner-1",
+    )
+    request = DetectionPredictionRequest(
+        input_uri="runtime/transfers/request/input.bin",
+        score_threshold=0.3,
+        save_result_image=True,
+    )
+    result = handler(
+        request_id="async-inference-request-1",
+        process_config=process_config,
+        request=request,
+    )
+
+    expected_key = build_async_inference_preview_object_key(
+        owner_id="backend-service-owner-1",
+        deployment_instance_id=process_config.deployment_instance_id,
+        request_id="async-inference-request-1",
+    )
+    assert result["preview_image_object_key"] == expected_key
+    assert dataset_storage.resolve(expected_key).read_bytes() == b"preview"
+    assert "preview_image_bytes" not in result["execution_result"]
 
 
 def test_async_gateway_client_requires_owner_id(tmp_path: Path) -> None:

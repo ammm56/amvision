@@ -8,6 +8,10 @@ from typing import Any
 
 from backend.contracts.buffers import BufferLease
 from backend.service.application.local_buffers import LocalBufferBrokerClient
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 
 
 def fake_deployment_process_worker(
@@ -25,9 +29,11 @@ def fake_deployment_process_worker(
     这个函数单独放在轻量 support 模块里，避免 Windows spawn 子进程重新导入完整测试文件。
     """
 
-    del dataset_storage_root_dir
     del operator_thread_count
     del supervisor_settings
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=dataset_storage_root_dir)
+    )
     local_buffer_client = (
         LocalBufferBrokerClient(local_buffer_broker_event_channel)
         if local_buffer_broker_event_channel is not None
@@ -124,19 +130,28 @@ def fake_deployment_process_worker(
             preview_image_transfer = None
             if prediction_request.get("save_result_image"):
                 lease_payload = payload.get("preview_output_lease")
-                if not isinstance(lease_payload, dict):
-                    raise RuntimeError("fake worker 缺少 preview_output_lease")
-                if local_buffer_client is None:
-                    raise RuntimeError("fake worker 缺少 LocalBuffer writer")
                 preview_content = b"preview-jpg"
-                local_buffer_client.write_lease_bytes(
-                    lease=BufferLease.model_validate(lease_payload),
-                    content=preview_content,
-                )
-                preview_image_transfer = {
-                    "size": len(preview_content),
-                    "media_type": "image/jpeg",
-                }
+                object_key = payload.get("preview_output_object_key")
+                if isinstance(object_key, str) and object_key.strip():
+                    dataset_storage.write_bytes(object_key, preview_content)
+                    preview_image_transfer = {
+                        "object_key": object_key,
+                        "size": len(preview_content),
+                        "media_type": "image/jpeg",
+                    }
+                else:
+                    if not isinstance(lease_payload, dict):
+                        raise RuntimeError("fake worker 缺少结果图片输出位置")
+                    if local_buffer_client is None:
+                        raise RuntimeError("fake worker 缺少 LocalBuffer writer")
+                    local_buffer_client.write_lease_bytes(
+                        lease=BufferLease.model_validate(lease_payload),
+                        content=preview_content,
+                    )
+                    preview_image_transfer = {
+                        "size": len(preview_content),
+                        "media_type": "image/jpeg",
+                    }
             response_queue.put(
                 {
                     "request_id": request_id,

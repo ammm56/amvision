@@ -18,6 +18,10 @@ from backend.service.infrastructure.local_buffers.local_buffer_arena_pool import
 from backend.service.infrastructure.local_buffers.mmap_buffer_arena import (
     MmapBufferArenaConfig,
 )
+from backend.service.infrastructure.object_store.local_dataset_storage import (
+    DatasetStorageSettings,
+    LocalDatasetStorage,
+)
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessConfig,
 )
@@ -139,6 +143,28 @@ class _PreviewRuntimePool:
         )
 
 
+class _ObjectStorePreviewRuntimePool:
+    """核对异步 worker 直接保留 ObjectStore key 的测试 runtime pool。"""
+
+    def __init__(self, *, dataset_storage, execution_result) -> None:
+        """保存对象存储和固定执行结果。"""
+
+        self.dataset_storage = dataset_storage
+        self.execution_result = execution_result
+
+    def run_inference(self, *, config, request) -> DeploymentRuntimeExecution:
+        """直接从请求 key 读取输入并返回固定结果。"""
+
+        assert request.input_image_bytes is None
+        assert request.input_uri == "runtime/transfers/request/input.bin"
+        assert self.dataset_storage.resolve(request.input_uri).read_bytes() == b"input"
+        return DeploymentRuntimeExecution(
+            deployment_instance_id=config.deployment_instance_id,
+            instance_id="instance-object-store-preview",
+            execution_result=self.execution_result,
+        )
+
+
 def test_deployment_worker_returns_preview_only_through_localbuffer(
     tmp_path: Path,
 ) -> None:
@@ -185,6 +211,9 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
 
     writer = DirectMmapLocalBufferWriter(settings, root_dir=tmp_path / "buffers")
     reader = DirectMmapLocalBufferReader(settings, root_dir=tmp_path / "buffers")
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+    )
     try:
         _run_inference_request(
             response_queue=response_queue,
@@ -215,6 +244,7 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
                 connected=True,
                 channel_id="direct-mmap",
             ),
+            dataset_storage=dataset_storage,
             infer_slots=infer_slots,
             keep_warm_state=None,
         )
@@ -238,6 +268,72 @@ def test_deployment_worker_returns_preview_only_through_localbuffer(
     )
     assert pool.read_buffer_ref(output.buffer_ref) == preview_bytes
     pool.close()
+
+
+def test_async_deployment_worker_reads_and_writes_object_store_directly(
+    tmp_path: Path,
+) -> None:
+    """验证异步 worker 不经过 LocalBuffer，直接消费和发布 ObjectStore 文件。"""
+
+    dataset_storage = LocalDatasetStorage(
+        DatasetStorageSettings(root_dir=str(tmp_path / "objects"))
+    )
+    input_key = "runtime/transfers/request/input.bin"
+    output_key = "runtime/transfers/request/preview.bin"
+    dataset_storage.write_bytes(input_key, b"input")
+    runtime_target = _build_runtime_target(tmp_path)
+    preview_bytes = b"\xff\xd8\xffpreview-image"
+    execution_result = replace(
+        build_test_execution_result(runtime_target=runtime_target),
+        preview_image_bytes=preview_bytes,
+    )
+    response_queue: Queue = Queue()
+    infer_slots = BoundedSemaphore(1)
+    assert infer_slots.acquire(blocking=False) is True
+
+    _run_inference_request(
+        response_queue=response_queue,
+        request_id="request-object-store-preview",
+        runtime_pool=_ObjectStorePreviewRuntimePool(
+            dataset_storage=dataset_storage,
+            execution_result=execution_result,
+        ),
+        runtime_pool_config=DeploymentRuntimePoolConfig(
+            deployment_instance_id="deployment-preview",
+            runtime_target=runtime_target,
+        ),
+        payload={
+            "task_type": "detection",
+            "prediction_request": {
+                "input_uri": input_key,
+                "input_image_payload": {},
+                "score_threshold": 0.3,
+                "save_result_image": True,
+                "extra_options": {},
+            },
+            "preview_output_object_key": output_key,
+        },
+        local_buffer_reader=None,
+        local_buffer_writer=None,
+        local_buffer_health=_LocalBufferBrokerRuntimeHealth(
+            connected=False,
+            channel_id=None,
+        ),
+        dataset_storage=dataset_storage,
+        infer_slots=infer_slots,
+        keep_warm_state=None,
+    )
+
+    response = response_queue.get_nowait()
+    assert response["ok"] is True
+    payload = response["payload"]
+    assert payload["preview_image_transfer"] == {
+        "object_key": output_key,
+        "size": len(preview_bytes),
+        "media_type": "image/jpeg",
+    }
+    assert "preview_image_bytes" not in payload["execution_result"]
+    assert dataset_storage.resolve(output_key).read_bytes() == preview_bytes
 
 
 def test_increment_safe_counter_normalizes_negative_value_and_rolls_over() -> None:

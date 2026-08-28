@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 from backend.service.application.deployments.classification_deployment_service import (
     SqlAlchemyClassificationDeploymentService,
@@ -26,7 +25,6 @@ from backend.service.application.deployments.segmentation_deployment_service imp
     SqlAlchemySegmentationDeploymentService,
 )
 from backend.service.application.events import InMemoryServiceEventBus
-from backend.service.application.local_buffers import LocalBufferBrokerProcessSupervisor
 from backend.service.application.runtime.deployment.deployment_process_supervisor import (
     DeploymentProcessSupervisor,
 )
@@ -75,7 +73,6 @@ class InferenceDaemonRuntime:
     session_factory: SessionFactory
     dataset_storage: LocalDatasetStorage
     queue_backend: LocalFileQueueBackend
-    async_local_buffer_broker_supervisor: LocalBufferBrokerProcessSupervisor
     task_runtimes: tuple[InferenceDaemonTaskRuntime, ...]
     deployment_runtime_reconciler: DeploymentRuntimeReconciler
     control_dispatcher: InferenceControlDispatcher
@@ -84,15 +81,12 @@ class InferenceDaemonRuntime:
     def start(self) -> None:
         """按依赖顺序启动 supervisor、gateway、恢复协调器和控制面。
 
-        backend 主 LocalBufferBroker 仍由 backend-service 负责。daemon 私有 broker
-        只把持久异步任务的 ObjectStore 图片暂存为短期 BufferRef；同步请求继续
-        直接读取 backend 主池。模型子进程在两条链路上都只接收 LocalBuffer 引用。
+        同步请求直接访问 backend 主 LocalBuffer；持久异步请求由 deployment
+        worker 直接读取和写入 ObjectStore，不再创建第二个图片 arena。
         """
 
         started_components: list[object] = []
         try:
-            self.async_local_buffer_broker_supervisor.start()
-            started_components.append(self.async_local_buffer_broker_supervisor)
             for task_runtime in self.task_runtimes:
                 for component in (
                     task_runtime.sync_supervisor,
@@ -129,8 +123,6 @@ class InferenceDaemonRuntime:
                     task_runtime.sync_supervisor,
                 )
             )
-        components.append(self.async_local_buffer_broker_supervisor)
-
         first_error: Exception | None = None
         for component in components:
             try:
@@ -158,21 +150,11 @@ def build_inference_daemon_runtime(
     session_factory.service_event_bus = service_event_bus
     dataset_storage = LocalDatasetStorage(settings.to_dataset_storage_settings())
     queue_backend = LocalFileQueueBackend(settings.to_queue_settings())
-    async_local_buffer_broker_supervisor = LocalBufferBrokerProcessSupervisor(
-        settings=settings.local_buffer_broker.model_copy(
-            update={
-                "arena_id": "inference-daemon-private",
-            }
-        ),
-        root_dir=str(
-            Path(settings.local_memory.root_dir) / "inference-daemon-private"
-        ),
-    )
     build_kwargs = {
         "dataset_storage": dataset_storage,
         "service_event_bus": service_event_bus,
         "session_factory": session_factory,
-        "local_buffer_broker_supervisor": async_local_buffer_broker_supervisor,
+        "local_buffer_broker_supervisor": None,
         "queue_backend": queue_backend,
         "async_inference_service_id": settings.async_inference_gateway.service_id,
         "settings": settings,
@@ -265,7 +247,6 @@ def build_inference_daemon_runtime(
         session_factory=session_factory,
         dataset_storage=dataset_storage,
         queue_backend=queue_backend,
-        async_local_buffer_broker_supervisor=async_local_buffer_broker_supervisor,
         task_runtimes=tuple(task_runtimes),
         deployment_runtime_reconciler=deployment_runtime_reconciler,
         control_dispatcher=control_dispatcher,
